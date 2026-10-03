@@ -57,6 +57,11 @@ impl WeakOwner {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn allocation_strong_count(&self) -> usize {
+        self.allocation.strong_count()
+    }
+
     pub(crate) fn same_owner(&self, other: &Self) -> bool {
         Weak::ptr_eq(&self.allocation, &other.allocation)
     }
@@ -139,6 +144,9 @@ impl<'session> StoredOwner<'session> {
     }
 
     pub(crate) fn from_value(value: &Sexp<'session>) -> SexpResult<Self> {
+        if !value.is_live() {
+            return Err(SexpError::StaleAllocation);
+        }
         if let Some(owner) = &value.runtime_owner {
             owner.pin()?;
             return Ok(Self::Managed(owner.clone()));
@@ -319,6 +327,11 @@ impl<'session> OwnerToken<'session> {
     /// Capture immutable allocation-domain and availability capabilities before
     /// lending the arena. Later node wrapping needs no instance field access.
     pub(crate) fn node_factory(self) -> super::object::SessionNodeFactory<'session> {
+        if let Some(owner) = self.weak_owner() {
+            return owner
+                .node_factory()
+                .expect("live managed node factory owner");
+        }
         // SAFETY: the token's lifetime retains the physical owner. This short
         // field access ends before the factory can be used inside an arena lend.
         let (heap, availability) = unsafe {

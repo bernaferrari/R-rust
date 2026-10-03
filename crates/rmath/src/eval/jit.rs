@@ -634,27 +634,48 @@ pub(crate) fn set_R_loop_jit_score_in(inst: *mut RInstance, val: c_int) {
 // R_exec_token -- for tail call optimization
 // ---------------------------------------------------------------------------
 
-// Initialize the exec token for tail call support.
+// Initialize the actual owning exec token for tail call support.
 pub unsafe fn init_exec_token() {
     with_required_current_instance(|inst| unsafe { init_exec_token_in(inst) });
-    // In the full implementation, R_PreserveObject would be called here
 }
 
 pub(crate) unsafe fn init_exec_token_in(inst: *mut RInstance) {
+    let pin = unsafe { (*inst).runtime_owner.clone() }
+        .unwrap_or_else(|| {
+            crate::sexp::context::r_error("exec token requires an original managed owner")
+        })
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     unsafe {
-        let sym = Rf_install_in(inst, b".__EXEC__.\x00".as_ptr() as *const c_char);
-        let token = with_arena_in(inst, |arena| {
-            arena.cons(sym, R_NilValue(), std::ptr::null_mut())
+        crate::sexp::session::with_instance_active(inst, || {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(inst);
+            let factory = owner.node_factory();
+            let symbol = owner
+                .sexp(Rf_install_in(inst, c".__EXEC__.".as_ptr()))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let nil = factory.nil();
+            let token = factory
+                .allocate(|arena| {
+                    Some(arena.cons(symbol.as_raw(), nil.as_raw(), std::ptr::null_mut()))
+                })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            set_R_exec_token_in(inst, token.as_raw());
         });
-        set_R_exec_token_in(inst, token);
     }
 }
 
 pub(crate) fn get_R_exec_token_in(inst: *mut RInstance) -> SEXP {
-    unsafe { (*inst).eval_state.exec_token }
+    unsafe { (*inst).eval_state.exec_token.as_raw() }
+}
+
+fn exec_token_owner_in(inst: *mut RInstance) -> Option<Sexp<'static>> {
+    unsafe { (*inst).eval_state.exec_token.owned() }
 }
 
 pub(crate) fn set_R_exec_token_in(inst: *mut RInstance, token: SEXP) {
+    let token = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(inst, token) };
     unsafe { (*inst).eval_state.exec_token = token };
 }
 
@@ -672,12 +693,13 @@ pub(crate) unsafe fn is_exec_continuation_in(inst: *mut RInstance, val: SEXP) ->
         if len != 4 {
             return FALSE;
         }
-        let token = get_R_exec_token_in(inst);
-        if token.is_null() {
+        let Some(token) = exec_token_owner_in(inst) else {
             return FALSE;
-        }
+        };
+        let pin = crate::sexp::context::pin_context_owner_in(inst);
         let elt = crate::sexp::accessors::VECTOR_ELT(val, 0);
-        if elt == token { TRUE } else { FALSE }
+        crate::sexp::context::require_context_owner_live(&pin);
+        if elt == token.as_raw() { TRUE } else { FALSE }
     }
 }
 
@@ -686,6 +708,8 @@ pub(crate) unsafe fn is_exec_continuation_in(inst: *mut RInstance, val: SEXP) ->
 /// Ported from R's `handle_exec_continuation()` in eval.c.
 pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
     unsafe {
+        let instance = with_required_current_instance(|instance| instance);
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let factory = super::dispatch::active_argument_factory();
         let mut continuation = super::dispatch::argument_value(&factory, val);
         while is_exec_continuation(continuation.as_raw()) != FALSE {
@@ -705,35 +729,38 @@ pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                     rho.clone(),
                 );
+                crate::sexp::context::require_context_owner_live(&owner_pin);
                 let ctx = crate::eval::runtime::global_context();
-                let supplied = if !ctx.is_null()
-                    && (*ctx).sysparent.as_raw() != std::ptr::null_mut()
-                    && (*ctx).sysparent.as_raw() != R_NilValue()
-                    && TYPEOF((*ctx).sysparent.as_raw()) == SEXPTYPE::ENVSXP
-                {
-                    (*ctx).sysparent.as_raw()
+                let supplied = if ctx.is_null() {
+                    None
                 } else {
-                    rho.as_raw()
+                    (*ctx).sysparent.owned()
                 };
+                let supplied = supplied
+                    .filter(|value| value.typeof_() == SEXPTYPE::ENVSXP)
+                    .unwrap_or_else(|| rho.clone());
                 super::closure::applyClosure(
                     call.as_raw(),
                     op.as_raw(),
                     arglist_owner.as_raw(),
                     rho.as_raw(),
-                    supplied,
+                    supplied.as_raw(),
                     TRUE,
                 )
             } else {
                 // For non-closures, build a call and eval.
                 let expr = Rf_cons(op.as_raw(), CDR(call.as_raw()));
+                crate::sexp::context::require_context_owner_live(&owner_pin);
                 if !expr.is_null() {
                     crate::sexp::accessors::SET_TYPEOF(expr, SEXPTYPE::LANGSXP.as_c_int());
                 }
                 let _expr_guard = protect(expr);
                 super::eval::Rf_eval(expr, rho.as_raw())
             };
+            crate::sexp::context::require_context_owner_live(&owner_pin);
             continuation = super::dispatch::argument_value(&factory, result);
         }
+        crate::sexp::context::require_context_owner_live(&owner_pin);
         continuation.as_raw()
     }
 }
@@ -830,19 +857,39 @@ unsafe fn is_in_tail_position() -> bool {
 unsafe fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
     unsafe {
         with_required_current_instance(|inst| {
-            let token = get_R_exec_token_in(inst);
-            if token.is_null() {
+            let pin = crate::sexp::context::pin_context_owner_in(inst);
+            let factory = super::dispatch::active_argument_factory();
+            let call = super::dispatch::argument_value(&factory, call);
+            let rho = super::dispatch::argument_value(&factory, rho);
+            let op = super::dispatch::argument_value(&factory, op);
+            if exec_token_owner_in(inst).is_none() {
                 init_exec_token_in(inst);
             }
-            let token = get_R_exec_token_in(inst);
-            with_arena_in(inst, |arena| {
-                let continuation = arena.alloc_vector(SEXPTYPE::VECSXP, 4);
-                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 0, token);
-                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 1, call);
-                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 2, rho);
-                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 3, op);
-                continuation
-            })
+            let token = exec_token_owner_in(inst)
+                .unwrap_or_else(|| crate::sexp::context::r_error("missing exec token"));
+            let continuation = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 4)))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            // The mutable arena loan has ended before checked vector links
+            // consult the heap or callbacks can replace the runtime token.
+            continuation
+                .clone()
+                .try_set_vector_elt(0, token)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            continuation
+                .clone()
+                .try_set_vector_elt(1, call)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            continuation
+                .clone()
+                .try_set_vector_elt(2, rho)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            continuation
+                .clone()
+                .try_set_vector_elt(3, op)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            crate::sexp::context::require_context_owner_live(&pin);
+            continuation.as_raw()
         })
     }
 }
@@ -852,32 +899,61 @@ unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             tailcall_error("argument \"expr\" is missing, with no default");
         }
-
-        let mut expr = Rf_eval(CAR(args), rho);
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) == 1 {
-            expr = VECTOR_ELT(expr, 0);
+        let instance = with_required_current_instance(|instance| instance);
+        let pin = crate::sexp::context::pin_context_owner_in(instance);
+        let factory = super::dispatch::active_argument_factory();
+        let args = super::dispatch::argument_value(&factory, args);
+        let rho = super::dispatch::argument_value(&factory, rho);
+        let source = args
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let tail = args
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let environment_expression = if tail.is_nil() {
+            None
+        } else {
+            let value = tail
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if value.as_raw() == R_MissingArg() {
+                None
+            } else {
+                Some(value)
+            }
+        };
+        let evaluated = Rf_eval(source.as_raw(), rho.as_raw());
+        crate::sexp::context::require_context_owner_live(&pin);
+        let mut expr = super::dispatch::argument_value(&factory, evaluated);
+        if expr.typeof_() == SEXPTYPE::EXPRSXP && expr.len() == 1 {
+            expr = expr
+                .try_vector_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+        crate::sexp::context::require_context_owner_live(&pin);
+        if expr.typeof_() != SEXPTYPE::LANGSXP {
             tailcall_error("\"expr\" must be a call expression");
         }
-
-        let env_arg = CDR(args);
-        let env = if env_arg.is_null() || env_arg == R_NilValue() || CAR(env_arg) == R_MissingArg()
-        {
-            rho
+        let env = if let Some(environment_expression) = environment_expression {
+            let value = Rf_eval(environment_expression.as_raw(), rho.as_raw());
+            crate::sexp::context::require_context_owner_live(&pin);
+            super::dispatch::argument_value(&factory, value)
         } else {
-            Rf_eval(CAR(env_arg), rho)
+            rho
         };
-        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+        if env.typeof_() != SEXPTYPE::ENVSXP {
             tailcall_error("\"envir\" must be an environment");
         }
-
-        if is_in_tail_position() {
-            let op = CAR(expr);
-            return make_exec_continuation(expr, env, op);
-        }
-
-        Rf_eval(expr, env)
+        let result = if is_in_tail_position() {
+            let op = expr
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            make_exec_continuation(expr.as_raw(), env.as_raw(), op.as_raw())
+        } else {
+            Rf_eval(expr.as_raw(), env.as_raw())
+        };
+        crate::sexp::context::require_context_owner_live(&pin);
+        result
     }
 }
 
@@ -918,12 +994,21 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
             tailcall_error("argument \"FUN\" is missing, with no default");
         }
 
+        let instance = with_required_current_instance(|instance| instance);
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
+        let factory = super::dispatch::active_argument_factory();
+        let arguments = super::dispatch::argument_value(&factory, args);
+        let environment = super::dispatch::argument_value(&factory, rho);
+        let fun_expression = arguments
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let expr = Rf_cons(CAR(args), CDR(args));
+        crate::sexp::context::require_context_owner_live(&owner_pin);
         if expr.is_null() {
             return R_NilValue();
         }
         crate::sexp::accessors::SET_TYPEOF(expr, SEXPTYPE::LANGSXP.as_c_int());
-        let _expr_guard = protect(expr);
+        let expr = super::dispatch::argument_value(&factory, expr);
 
         let mask = crate::sexp::context::ctxt_flags::CTXT_FUNCTION
             | crate::sexp::context::ctxt_flags::CTXT_BROWSER;
@@ -932,13 +1017,19 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
             // No closure owns this call. GNU evaluates it in place, so
             // `try(Tailcall(...))` at top level sees an ordinary result
             // or an ordinary error.
-            return Rf_eval(expr, rho);
+            let result = Rf_eval(expr.as_raw(), environment.as_raw());
+            crate::sexp::context::require_context_owner_live(&owner_pin);
+            return result;
         }
 
-        let fun = Rf_eval(CAR(args), rho);
-        let value = make_exec_continuation(expr, rho, fun);
-        let _guard = protect(value);
-        crate::eval::context::R_jumpctxt(target, mask, value);
+        let _target_owner = crate::sexp::context::retain_context_in(instance, target)
+            .unwrap_or_else(|| crate::sexp::context::r_error("unavailable tailcall target"));
+        let fun = Rf_eval(fun_expression.as_raw(), environment.as_raw());
+        crate::sexp::context::require_context_owner_live(&owner_pin);
+        let fun = super::dispatch::argument_value(&factory, fun);
+        let value = make_exec_continuation(expr.as_raw(), environment.as_raw(), fun.as_raw());
+        let value = super::dispatch::argument_value(&factory, value);
+        crate::eval::context::R_jumpctxt(target, mask, value.as_raw());
     }
 }
 
@@ -990,6 +1081,148 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    #[test]
+    fn owned_exec_expression_child_survives_collecting_environment_lookup() {
+        use std::{cell::Cell, rc::Rc};
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = SessionNodeFactory::new(owner);
+            let global = factory.wrap(crate::sexp::globals::R_GlobalEnv()).unwrap();
+            (*instance).eval_state.jit_enabled = 0;
+            let parse = |source: &str| {
+                owner
+                    .with_arena(|arena| crate::eval::parser::parse(source, arena, factory.clone()))
+                    .unwrap()
+                    .unwrap()
+            };
+            let expression = parse("1L + 2L");
+            let node = crate::sexp::memory::checked_projection(expression.as_raw())
+                .unwrap()
+                .1;
+            let container = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::EXPRSXP, 1)))
+                .unwrap();
+            container.clone().try_set_vector_elt(0, expression).unwrap();
+            let expression_name = factory
+                .wrap(crate::sexp::symbol::Rf_install(
+                    c"exec_expressions".as_ptr(),
+                ))
+                .unwrap();
+            let environment_name = factory
+                .wrap(crate::sexp::symbol::Rf_install(
+                    c"exec_environment".as_ptr(),
+                ))
+                .unwrap();
+            let target_name = factory
+                .wrap(crate::sexp::symbol::Rf_install(c"exec_target".as_ptr()))
+                .unwrap();
+            crate::sexp::envir::defineVar(
+                expression_name.as_raw(),
+                container.as_raw(),
+                global.as_raw(),
+            );
+            crate::sexp::envir::defineVar(target_name.as_raw(), global.as_raw(), global.as_raw());
+            let function_expression = parse("function() { 1L + 2L; exec_target }");
+            let function = factory
+                .wrap(Rf_eval(function_expression.as_raw(), global.as_raw()))
+                .unwrap();
+            crate::sexp::envir::make_active_binding_raw(
+                global.as_raw(),
+                environment_name.as_raw(),
+                function.as_raw(),
+            );
+            let mut arguments = crate::sexp::object::PairlistBuilder::from_factory(factory.clone());
+            arguments.push(expression_name.clone(), None).unwrap();
+            arguments.push(environment_name, None).unwrap();
+            let arguments = arguments.finish().unwrap();
+            let container_pointer = container.as_raw();
+            let global_pointer = global.as_raw();
+            let expression_symbol = expression_name.as_raw();
+            drop(container);
+            drop(function);
+            drop(function_expression);
+            let observed = Rc::new(Cell::new(false));
+            let called = observed.clone();
+            let node_observed = node.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if called.replace(true) {
+                    return;
+                }
+                crate::sexp::accessors::SET_VECTOR_ELT(container_pointer, 0, R_NilValue());
+                crate::sexp::envir::defineVar(expression_symbol, R_NilValue(), global_pointer);
+                crate::sexp::gengc::full_gc_in(instance);
+                assert!(
+                    node_observed.is_live(),
+                    "selected expression child must be independently owned"
+                );
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let answer = factory
+                .wrap(eval_exec_call(arguments.as_raw(), global.as_raw()))
+                .unwrap();
+            (*instance).memory_state.gc_force_gap = 0;
+            assert!(observed.get());
+            assert_eq!(answer.integer_elt(0), Some(3));
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
+        });
+    }
+
+    #[test]
+    fn owned_exec_continuation_captures_token_before_collecting_field_replacement() {
+        use std::{cell::Cell, rc::Rc};
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = SessionNodeFactory::new(owner);
+            init_exec_token_in(instance);
+            let token = get_R_exec_token_in(instance);
+            let token_node = crate::sexp::memory::checked_projection(token).unwrap().1;
+            let call = owner
+                .with_arena(|arena| crate::eval::parser::parse("f()", arena, factory.clone()))
+                .unwrap()
+                .unwrap();
+            let pointer = call.as_raw();
+            let call_node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+            drop(call);
+            let observed = Rc::new(Cell::new(false));
+            let called = observed.clone();
+            let token_observed = token_node.clone();
+            let call_observed = call_node.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if called.replace(true) {
+                    return;
+                }
+                (*instance).eval_state.exec_token = crate::sexp::instance::RuntimeValue::empty();
+                crate::sexp::gengc::full_gc_in(instance);
+                assert!(token_observed.is_live());
+                assert!(call_observed.is_live());
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let continuation = factory
+                .wrap(make_exec_continuation(
+                    pointer,
+                    crate::sexp::globals::R_GlobalEnv(),
+                    R_NilValue(),
+                ))
+                .unwrap();
+            (*instance).memory_state.gc_force_gap = 0;
+            assert!(observed.get());
+            owner.full_gc().unwrap();
+            assert_eq!(continuation.try_vector_elt(0).unwrap().as_raw(), token);
+            assert_eq!(continuation.try_vector_elt(1).unwrap().as_raw(), pointer);
+            assert!(token_node.is_live());
+            assert!(call_node.is_live());
+            drop(continuation);
+            owner.full_gc().unwrap();
+            assert!(!token_node.is_live());
+            assert!(!call_node.is_live());
+        });
+    }
 
     #[test]
     fn owned_tailcall_arguments_preserve_forwarded_promises_and_missing_through_gc() {
@@ -1377,30 +1610,38 @@ mod tests {
 
     #[test]
     fn test_exec_token_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
-
-        unsafe {
-            init_exec_token_in(&mut left as *mut RInstance);
-            let left_token = get_R_exec_token_in(&mut left as *mut RInstance);
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        let left_ptr = left.with_active_in(|instance| instance);
+        let right_ptr = right.with_active_in(|instance| instance);
+        right.with_active(|| unsafe {
+            init_exec_token_in(left_ptr);
+            let left_token = get_R_exec_token_in(left_ptr);
             assert!(!left_token.is_null());
-            assert!(get_R_exec_token_in(&mut right as *mut RInstance).is_null());
-
-            let continuation = with_arena_in(&mut left as *mut RInstance, |arena| {
-                let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 4);
-                crate::sexp::accessors::SET_VECTOR_ELT(vec, 0, left_token);
-                vec
+            assert!(get_R_exec_token_in(right_ptr).is_null());
+            assert_eq!(
+                crate::sexp::instance::current_instance_ptr(),
+                Some(right_ptr)
+            );
+            left.with_active(|| {
+                let factory = SessionNodeFactory::new(left.owner_token().unwrap());
+                let continuation = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 4)))
+                    .unwrap();
+                continuation
+                    .clone()
+                    .try_set_vector_elt(0, exec_token_owner_in(left_ptr).unwrap())
+                    .unwrap();
+                assert_eq!(
+                    is_exec_continuation_in(left_ptr, continuation.as_raw()),
+                    TRUE
+                );
+                assert_eq!(
+                    is_exec_continuation_in(right_ptr, continuation.as_raw()),
+                    FALSE
+                );
             });
-
-            assert_eq!(
-                is_exec_continuation_in(&mut left as *mut RInstance, continuation),
-                TRUE
-            );
-            assert_eq!(
-                is_exec_continuation_in(&mut right as *mut RInstance, continuation),
-                FALSE
-            );
-        }
+        });
     }
 
     #[test]

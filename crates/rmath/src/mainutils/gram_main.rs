@@ -97,13 +97,21 @@ pub unsafe fn R_CurrentParseLine() -> c_int {
 /// Get the current parse filename.
 pub unsafe fn R_ParseFilename() -> *const c_char {
     unsafe {
-        let file = crate::mainutils::source::R_GetParseErrorFile();
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
+        let file_owner = crate::mainutils::source::parse_error_file_owner();
+        let file = file_owner
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |value| value.as_raw());
         if !file.is_null()
             && file != R_NilValue()
             && TYPEOF(file) == SEXPTYPE::STRSXP
             && XLENGTH(file) > 0
         {
             let charsxp = STRING_ELT(file, 0);
+            crate::sexp::context::require_context_owner_live(&owner_pin);
+            let chars_owner = crate::sexp::context::own_control_value(charsxp);
+            let charsxp = chars_owner.as_raw();
             if !charsxp.is_null() && charsxp != R_NaString() {
                 let value = CHAR(charsxp);
                 if !value.is_null() {

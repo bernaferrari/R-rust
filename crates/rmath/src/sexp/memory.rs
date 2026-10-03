@@ -2090,6 +2090,12 @@ pub(crate) unsafe fn with_arena_in<F, R>(inst: *mut super::instance::RInstance, 
 where
     F: FnOnce(&mut RArena) -> R,
 {
+    // Reject through TLS identity alone, before even snapshotting a field:
+    // another call may currently hold a protected exclusive arena reference.
+    assert!(
+        !is_arena_lent(inst),
+        "reentrant mutable arena access; release the arena before calling the interpreter"
+    );
     // P1: the `&mut RArena` lend below is arena-local by construction —
     // arena methods defer their GC firings (alloc_gc_torture_ticks /
     // alloc_gc_collect_requested) instead of touching instance state, so

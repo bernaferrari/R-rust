@@ -200,7 +200,7 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     };
                     let cmsg = std::ffi::CString::new(msgstr).unwrap_or_default();
                     verrorcall_dflt(ecall, cmsg.as_ptr(), ptr::null_mut());
-                } else {
+                } else if !super::native::dispatch_calling_handler(h, cond) {
                     let hcall = Rf_lang2(h, cond);
                     let _hcall_guard = protect(hcall);
                     let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
@@ -278,7 +278,7 @@ pub unsafe fn R_makeErrorCondition(
 
 /// The raw attribute bridge remains here until graph edges use checked links.
 /// Text and vector construction use bounded Rust inputs and owning roots.
-unsafe fn make_condition(
+pub(super) unsafe fn make_condition(
     call: SEXP,
     class: &str,
     subclass: &str,
@@ -536,77 +536,17 @@ fn exiting_handler_result(lease: &crate::sexp::transfer::TransferLease) -> SEXP 
     result.as_raw()
 }
 
-/// R_tryCatchError — C-level tryCatch for error conditions.
+/// Native error catcher. Callback data must remain live for this dynamic scope.
+/// Rust callbacks declare C-unwind so evaluation can use nonlocal transfers.
 pub unsafe fn R_tryCatchError(
-    body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
-    bdata: *mut c_void,
-    handler: Option<unsafe extern "C" fn(SEXP, *mut c_void) -> SEXP>,
-    hdata: *mut c_void,
+    body: Option<super::NativeBody>, bdata: *mut c_void,
+    handler: Option<super::NativeHandler>, hdata: *mut c_void,
 ) -> SEXP {
-    unsafe {
-        let instance = crate::sexp::instance::current_instance_ptr()
-            .unwrap_or_else(|| crate::sexp::context::r_error("no active condition owner"));
-        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
-        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-        let _klass_guard = protect(klass);
-        let handler_fn = if handler.is_some() {
-            Rf_mkString(b"tryCatchError\0".as_ptr() as *const c_char)
-        } else {
-            globals::R_NilValue()
-        };
-        let entry = mkHandlerEntry(
-            klass,
-            globals::R_GlobalEnv(),
-            handler_fn,
-            globals::R_NilValue(),
-            globals::R_NilValue(),
-            0,
-        );
-        let _entry_guard = protect(entry);
-
-        let old_stack = handler_stack();
-        let _old_stack_guard = protect(old_stack);
-        let new_top = Rf_cons(entry, old_stack);
-        set_handler_stack(new_top);
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if let Some(f) = body {
-                f(bdata)
-            } else {
-                globals::R_NilValue()
-            }
-        }));
-
-        // Cleanup uses the pinned original runtime, even if a callback revoked it.
-        (*instance).error_state.handler_stack = old_stack;
-        crate::sexp::context::require_context_owner_live(&owner_pin);
-
-        match result {
-            Ok(val) => val,
-            Err(payload) => {
-                let payload = match take_matching_exiting_handler(payload) {
-                    Ok(lease) => return exiting_handler_result(&lease),
-                    Err(payload) => payload,
-                };
-                if is_nonlocal_transfer(payload.as_ref()) {
-                    std::panic::resume_unwind(payload);
-                }
-                if let Some(h) = handler {
-                    let condition = crate::sexp::context::own_control_value(
-                        crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1),
-                    );
-                    let message =
-                        crate::sexp::context::own_control_value(Rf_mkChar(c"error".as_ptr()));
-                    crate::sexp::accessors::SET_STRING_ELT(condition.as_raw(), 0, message.as_raw());
-                    let result = h(condition.as_raw(), hdata);
-                    crate::sexp::context::require_context_owner_live(&owner_pin);
-                    result
-                } else {
-                    std::panic::resume_unwind(payload)
-                }
-            }
-        }
-    }
+    let factory = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())).node_factory();
+    let classes = factory.strings(&["error"])
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    unsafe { super::native::catch_native(body, bdata, classes.as_raw(), handler, hdata, None, ptr::null_mut()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,111 +968,24 @@ pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
     }
 }
 
-/// R_tryCatch — C-level tryCatch.
-/// Matches C's `SEXP R_tryCatch(SEXP (*body)(void *), void *bdata,
-///                              SEXP (*handler)(void *, SEXP), void *hdata)`
+/// Native tryCatch with GNU class filtering and finalization arguments.
+/// # Safety
+/// Callback data remains valid until the scope ends; callback result projections
+/// belong to the live active runtime. Callbacks that evaluate R permit unwinding.
 pub unsafe fn R_tryCatch(
-    body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
-    bdata: *mut c_void,
-    handler: Option<unsafe extern "C" fn(*mut c_void, SEXP) -> SEXP>,
-    hdata: *mut c_void,
+    body: Option<super::NativeBody>, bdata: *mut c_void, classes: SEXP,
+    handler: Option<super::NativeHandler>, hdata: *mut c_void,
+    finally: Option<super::NativeFinally>, fdata: *mut c_void,
 ) -> SEXP {
-    unsafe {
-        let instance = crate::sexp::instance::current_instance_ptr()
-            .unwrap_or_else(|| crate::sexp::context::r_error("no active condition owner"));
-        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if let Some(f) = body {
-                f(bdata)
-            } else {
-                globals::R_NilValue()
-            }
-        })) {
-            Ok(result) => {
-                crate::sexp::context::require_context_owner_live(&owner_pin);
-                result
-            }
-            Err(panic_payload) => {
-                let panic_payload = match take_matching_exiting_handler(panic_payload) {
-                    Ok(lease) => return exiting_handler_result(&lease),
-                    Err(payload) => payload,
-                };
-                if is_nonlocal_transfer(panic_payload.as_ref()) {
-                    std::panic::resume_unwind(panic_payload);
-                }
-                // Try to extract the error condition
-                let cond = if let Some(ref e) = panic_payload.downcast_ref::<RError>() {
-                    R_makeErrorCondition(
-                        ptr::null_mut(),
-                        b"simpleError\0".as_ptr() as *const c_char,
-                        ptr::null_mut(),
-                        0,
-                        std::ffi::CString::new(e.message.clone())
-                            .unwrap_or_default()
-                            .as_ptr(),
-                    )
-                } else {
-                    R_makeErrorCondition(
-                        ptr::null_mut(),
-                        b"simpleError\0".as_ptr() as *const c_char,
-                        ptr::null_mut(),
-                        0,
-                        b"unknown error\0".as_ptr() as *const c_char,
-                    )
-                };
-                let condition = crate::sexp::context::own_control_value(cond);
-                if let Some(f) = handler {
-                    let result = f(hdata, condition.as_raw());
-                    crate::sexp::context::require_context_owner_live(&owner_pin);
-                    result
-                } else {
-                    globals::R_NilValue()
-                }
-            }
-        }
-    }
+    unsafe { super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata) }
 }
 
-/// R_withCallingErrorHandler — C-level withCallingHandler for errors.
-/// Matches C's `SEXP R_withCallingErrorHandler(...)`
+/// Native calling error handler. Callback data follows the same scoped contract.
 pub unsafe fn R_withCallingErrorHandler(
-    body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
-    bdata: *mut c_void,
-    handler: Option<unsafe extern "C" fn(*mut c_void, SEXP) -> SEXP>,
-    hdata: *mut c_void,
+    body: Option<super::NativeBody>, bdata: *mut c_void,
+    handler: Option<super::NativeHandler>, hdata: *mut c_void,
 ) -> SEXP {
-    unsafe {
-        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-        let _klass_guard = protect(klass);
-        let handler_fn = if let Some(h) = handler {
-            Rf_mkString(b"withCallingErrorHandler\0".as_ptr() as *const c_char)
-        } else {
-            globals::R_NilValue()
-        };
-        let entry = mkHandlerEntry(
-            klass,
-            globals::R_GlobalEnv(),
-            handler_fn,
-            globals::R_NilValue(),
-            globals::R_NilValue(),
-            1,
-        );
-        let _entry_guard = protect(entry);
-
-        let old_stack = handler_stack();
-        let _old_stack_guard = protect(old_stack);
-        let new_top = Rf_cons(entry, old_stack);
-        set_handler_stack(new_top);
-
-        let val = if let Some(f) = body {
-            f(bdata)
-        } else {
-            globals::R_NilValue()
-        };
-
-        set_handler_stack(old_stack);
-        val
-    }
+    unsafe { super::native::calling_native(body, bdata, handler, hdata) }
 }
 
 #[cfg(test)]

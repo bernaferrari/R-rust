@@ -225,6 +225,13 @@ impl<'a> Sexp<'a> {
         Sexp::from_singleton(pool.nil(), pool)
     }
 
+    /// Retain NULL from this value's original singleton bank, including after
+    /// the runtime closes or the ambient bank rotates.
+    pub(crate) fn original_singleton_nil(&self) -> Option<Sexp<'static>> {
+        let pool = self.singletons.as_ref()?.clone();
+        Some(Sexp::from_singleton(pool.nil(), pool))
+    }
+
     /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
     ///
     /// Returns `None` if the pointer is null or visibly invalid. Public safe

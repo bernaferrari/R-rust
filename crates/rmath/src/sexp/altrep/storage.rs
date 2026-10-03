@@ -109,9 +109,18 @@ impl<'s> Metadata<'s> {
         entry.try_set_vector_elt(0, key.freeze())?;
         entry.try_set_vector_elt(1, child)?;
         let tail = self.get(Slot::NativeChildren)?;
-        let cell = cons(owner, entry.freeze(), tail, Sexp::nil())?;
+        let cell = cons(owner, entry.freeze(), tail, owner.node_factory().nil())?;
         self.set(Slot::NativeChildren, cell)
     }
+}
+
+/// Translated helpers receive only an operation-local projection. Stored
+/// managed authority remains weak and is rechecked after every callback.
+pub(super) fn with_owner<'s, T>(
+    owner: &StoredOwner<'s>,
+    operation: impl for<'operation> FnOnce(OwnerToken<'operation>) -> SexpResult<T>,
+) -> SexpResult<T> {
+    owner.with_projection(|pointer| operation(unsafe { OwnerToken::from_raw(pointer) }))
 }
 
 pub(super) fn owner<'s>(object: &Sexp<'s>) -> SexpResult<OwnerToken<'s>> {
@@ -201,7 +210,7 @@ struct Declaration<'s> {
 /// Owns the roots necessary for construction or final payload publication.
 /// Provider callbacks receive handles, never this physical storage capability.
 pub(super) struct InstanceStorage<'s> {
-    owner: OwnerToken<'s>,
+    owner: StoredOwner<'s>,
     object: Sexp<'s>,
     metadata: Metadata<'s>,
     declaration: Declaration<'s>,
@@ -213,26 +222,37 @@ impl<'s> InstanceStorage<'s> {
         data1: Sexp<'s>,
         data2: Sexp<'s>,
     ) -> SexpResult<PendingInstance<'s>> {
-        let owner = class.owner;
-        let data1 = owner.sexp(data1.as_raw())?;
-        let data2 = owner.sexp(data2.as_raw())?;
-        let object = allocate(owner, kind.sexp_type(), 0)?;
-        let mut slots = SexpMut::try_from_checked(allocate(owner, SEXPTYPE::VECSXP, SLOT_COUNT)?)?;
-        slots.try_set_vector_elt(Slot::Descriptor.index(), class.descriptor.clone())?;
-        slots.try_set_vector_elt(Slot::Data1.index(), data1)?;
-        slots.try_set_vector_elt(Slot::Data2.index(), data2)?;
-        let metadata = Metadata {
-            slots: slots.freeze(),
-        };
-        let tag = intern(owner, TAG)?;
-        let cell = cons(owner, metadata.slots.clone(), Sexp::nil(), tag)?;
-        link_attributes(owner, &object, &cell)?;
-        // The pending header has traced metadata before Length callbacks run.
-        update_header(&object, |header| header.sxpinfo.set_alt(true))?;
-        let mut storage = Self::load(&object)?;
-        storage.declaration.descriptor = class.descriptor.clone();
-        storage.validate()?;
-        Ok(PendingInstance { storage })
+        with_owner(&class.owner, |owner| {
+            let data1 = owner.sexp(data1.as_raw())?;
+            let data2 = owner.sexp(data2.as_raw())?;
+            let object = allocate(owner, kind.sexp_type(), 0)?;
+            let mut slots =
+                SexpMut::try_from_checked(allocate(owner, SEXPTYPE::VECSXP, SLOT_COUNT)?)?;
+            slots.try_set_vector_elt(
+                Slot::Descriptor.index(),
+                owner.sexp(class.descriptor.as_raw())?,
+            )?;
+            slots.try_set_vector_elt(Slot::Data1.index(), data1)?;
+            slots.try_set_vector_elt(Slot::Data2.index(), data2)?;
+            let metadata = Metadata {
+                slots: slots.freeze(),
+            };
+            let tag = intern(owner, TAG)?;
+            let cell = cons(
+                owner,
+                metadata.slots.clone(),
+                owner.node_factory().nil(),
+                tag,
+            )?;
+            link_attributes(owner, &object, &cell)?;
+            // The pending header has traced metadata before Length callbacks run.
+            update_header(&object, |header| header.sxpinfo.set_alt(true))?;
+            let object = class.owner.sexp(object.as_raw())?;
+            let mut storage = Self::load(&object)?;
+            storage.declaration.descriptor = class.descriptor.clone();
+            storage.validate()?;
+            Ok(PendingInstance { storage })
+        })
     }
     pub(super) fn load(object: &Sexp<'s>) -> SexpResult<Self> {
         let metadata = Metadata::load(object).ok_or(failure("invalid ALTREP metadata"))?;
@@ -244,7 +264,7 @@ impl<'s> InstanceStorage<'s> {
             payload: object.header().payload,
         };
         Ok(Self {
-            owner: owner(object)?,
+            owner: StoredOwner::from_value(object)?,
             object: object.clone(),
             metadata,
             declaration,
@@ -267,62 +287,65 @@ impl<'s> InstanceStorage<'s> {
         Ok(())
     }
     pub(super) fn publish_dense(&self, output: Sexp<'s>, policy: CachePolicy) -> SexpResult<()> {
-        self.validate()?;
-        let output = self.owner.sexp(output.as_raw())?;
-        if output.typeof_() != self.declaration.kind || output.len() != self.declaration.length {
-            return Err(failure("ALTREP cache shape mismatch"));
-        }
-        if super::super::memory::is_arena_lent(self.owner.as_ptr()) {
-            return Err(failure("release the arena lend before materialization"));
-        }
-        let parent = self.object.allocation()?;
-        let heap = parent.heap_identity();
-        let source = output.allocation()?;
-        let lease = heap
-            .payload_lease(source)
-            .ok_or(failure("ALTREP cache payload"))?;
-        let slots = self.metadata.slots.allocation()?;
-        let cells = heap
-            .reference_payload_lease(slots)
-            .ok_or(failure("ALTREP cache slots"))?;
-        let output_link = output.link_in(&heap)?;
-        let changes = [
-            (Slot::DenseCache.index() as usize, output_link),
-            (Slot::Data2.index() as usize, output_link),
-        ];
-        let changes = &changes[..if matches!(policy, CachePolicy::Data2) {
-            2
-        } else {
-            1
-        }];
-        // Check writability and every bound without changing any cache cell.
-        cells
-            .replace_sparse(&[])
-            .ok_or(failure("ALTREP immutable cache slots"))?;
-        if changes
-            .iter()
-            .any(|(index, _)| cells.element(*index).is_none())
-        {
-            return Err(failure("ALTREP cache slot bounds"));
-        }
-        barrier(self.owner, &self.object, &output)?;
-        barrier(self.owner, &self.metadata.slots, &output)?;
-        self.validate()?;
-        // This exact heap publication performs its fallible storage admission
-        // before changing the header. It runs no R callback or deferred lend.
-        heap.publish_payload(parent, self.declaration.payload, &lease)
-            .ok_or(failure("ALTREP cache payload publication"))?;
-        let mut header = heap
-            .node_snapshot(parent)
-            .expect("published ALTREP parent stays live");
-        header.data.vector_mut().truelength = self.declaration.length;
-        heap.replace_node(parent, header)
-            .expect("published ALTREP payload retains its valid shape");
-        // No callback or lease mutation occurs between preflight and commit.
-        cells
-            .replace_sparse(changes)
-            .expect("preflighted ALTREP cache cells stay writable");
-        Ok(())
+        with_owner(&self.owner, |owner| {
+            self.validate()?;
+            let output = owner.sexp(output.as_raw())?;
+            if output.typeof_() != self.declaration.kind || output.len() != self.declaration.length
+            {
+                return Err(failure("ALTREP cache shape mismatch"));
+            }
+            if super::super::memory::is_arena_lent(owner.as_ptr()) {
+                return Err(failure("release the arena lend before materialization"));
+            }
+            let parent = self.object.allocation()?;
+            let heap = parent.heap_identity();
+            let source = output.allocation()?;
+            let lease = heap
+                .payload_lease(source)
+                .ok_or(failure("ALTREP cache payload"))?;
+            let slots = self.metadata.slots.allocation()?;
+            let cells = heap
+                .reference_payload_lease(slots)
+                .ok_or(failure("ALTREP cache slots"))?;
+            let output_link = output.link_in(&heap)?;
+            let changes = [
+                (Slot::DenseCache.index() as usize, output_link),
+                (Slot::Data2.index() as usize, output_link),
+            ];
+            let changes = &changes[..if matches!(policy, CachePolicy::Data2) {
+                2
+            } else {
+                1
+            }];
+            // Check writability and every bound without changing any cache cell.
+            cells
+                .replace_sparse(&[])
+                .ok_or(failure("ALTREP immutable cache slots"))?;
+            if changes
+                .iter()
+                .any(|(index, _)| cells.element(*index).is_none())
+            {
+                return Err(failure("ALTREP cache slot bounds"));
+            }
+            barrier(owner, &self.object, &output)?;
+            barrier(owner, &self.metadata.slots, &output)?;
+            self.validate()?;
+            // This exact heap publication performs its fallible storage admission
+            // before changing the header. It runs no R callback or deferred lend.
+            heap.publish_payload(parent, self.declaration.payload, &lease)
+                .ok_or(failure("ALTREP cache payload publication"))?;
+            let mut header = heap
+                .node_snapshot(parent)
+                .expect("published ALTREP parent stays live");
+            header.data.vector_mut().truelength = self.declaration.length;
+            heap.replace_node(parent, header)
+                .expect("published ALTREP payload retains its valid shape");
+            // No callback or lease mutation occurs between preflight and commit.
+            cells
+                .replace_sparse(changes)
+                .expect("preflighted ALTREP cache cells stay writable");
+            Ok(())
+        })
     }
 }
 /// Construction and publication are separate capabilities. Only a pending
@@ -333,12 +356,7 @@ pub(super) struct PendingInstance<'s> {
 impl<'s> PendingInstance<'s> {
     pub(super) fn context(&self) -> AltrepContext<'s> {
         AltrepContext {
-            pin: self
-                .storage
-                .object
-                .pin_runtime()
-                .expect("live ALTREP construction owner"),
-            owner: self.storage.owner,
+            owner: self.storage.owner.clone(),
             object: self.storage.object.clone(),
             metadata: self.storage.metadata.clone(),
         }

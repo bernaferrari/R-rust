@@ -463,18 +463,25 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                 if ENTRY_HANDLER(entry) == globals::R_RestartToken() {
                     break;
                 }
+                let handler = crate::sexp::context::own_control_value(ENTRY_HANDLER(entry));
+                let condition = crate::sexp::context::own_control_value(super::conditions::make_condition(call, "simpleError", "", 0, &localbuf, "error"));
+                if super::native::dispatch_calling_handler(handler.as_raw(), condition.as_raw()) {
+                    list = findSimpleErrorHandler();
+                    continue;
+                }
                 let hooksym = Rf_install(b".handleSimpleError\0".as_ptr() as *const c_char);
                 let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
                 let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
                 let _msg_guard = protect(msg_sexp);
-                let handler = ENTRY_HANDLER(entry);
-                let inner = Rf_lang2(handler, msg_sexp);
+                let inner = Rf_lang2(handler.as_raw(), msg_sexp);
                 let _inner_guard = protect(inner);
                 let hcall = Rf_lang3(hooksym, inner, call);
                 let _hcall_guard = protect(hcall);
                 let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
             } else {
-                gotoExitingHandler(globals::R_NilValue(), call, entry);
+                let entry = crate::sexp::context::own_control_value(entry);
+                let condition = crate::sexp::context::own_control_value(super::conditions::make_condition(call, "simpleError", "", 0, &localbuf, "error"));
+                gotoExitingHandler(condition.as_raw(), call, entry.as_raw());
             }
             list = findSimpleErrorHandler();
         }

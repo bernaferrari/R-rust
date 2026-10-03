@@ -287,7 +287,7 @@ pub(crate) fn reset_parse_state() {
         (*inst).eval_state.parse_error_msg.fill(0);
         (*inst).eval_state.parse_error = 0;
         (*inst).eval_state.parse_error_col = 0;
-        (*inst).eval_state.parse_error_file = ptr::null_mut();
+        (*inst).eval_state.parse_error_file = crate::sexp::instance::RuntimeValue::empty();
         (*inst).eval_state.parse_context_line = 0;
         (*inst).eval_state.parse_context.clear();
     });
@@ -320,11 +320,8 @@ pub(crate) unsafe fn store_parse_error(message: &str, status: c_int, col: c_int,
         msg[..copy_len].copy_from_slice(&bytes[..copy_len]);
         (*inst).eval_state.parse_error = status;
         (*inst).eval_state.parse_error_col = col.max(0);
-        (*inst).eval_state.parse_error_file = if file.is_null() {
-            ptr::null_mut()
-        } else {
-            file
-        };
+        let file = crate::sexp::instance::RuntimeValue::from_raw_in(inst, file);
+        (*inst).eval_state.parse_error_file = file;
     });
 }
 
@@ -429,9 +426,16 @@ pub unsafe fn R_GetParseErrorCol() -> c_int {
     .unwrap_or(0)
 }
 
+pub(crate) fn parse_error_file_owner() -> Option<crate::sexp::object::Sexp<'static>> {
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error_file.owned()
+    })
+    .flatten()
+}
+
 pub unsafe fn R_GetParseErrorFile() -> SEXP {
     crate::sexp::instance::with_current_instance(|inst| unsafe {
-        (*inst).eval_state.parse_error_file
+        (*inst).eval_state.parse_error_file.as_raw()
     })
     .unwrap_or(ptr::null_mut())
 }

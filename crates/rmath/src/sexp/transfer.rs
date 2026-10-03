@@ -55,6 +55,7 @@ thread_local! {
 
 pub(crate) struct TransferScopeGuard {
     activation: Arc<()>,
+    _thread: std::marker::PhantomData<Rc<()>>,
 }
 impl TransferScopeGuard {
     pub(crate) fn enter(owner: WeakOwner) -> SexpResult<Self> {
@@ -77,7 +78,10 @@ impl TransferScopeGuard {
                 });
             scopes.push((activation.clone(), scope));
         });
-        Ok(Self { activation })
+        Ok(Self {
+            activation,
+            _thread: std::marker::PhantomData,
+        })
     }
 }
 impl Drop for TransferScopeGuard {

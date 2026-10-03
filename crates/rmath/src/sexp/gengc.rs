@@ -398,11 +398,6 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         }
 
         MARK_WHERE.with(|w| w.set("eval_state"));
-        mark_reachable((*instance).eval_state.current_expr);
-        mark_reachable((*instance).eval_state.parse_error_file);
-        mark_reachable((*instance).eval_state.exec_token);
-        mark_reachable((*instance).eval_state.profiling.sref);
-        mark_reachable((*instance).eval_state.profiling.srcfiles_buffer);
         mark_reachable((*instance).eval_state.printvector.na_string);
         mark_reachable((*instance).eval_state.printvector.na_string_noquote);
         mark_reachable((*instance).eval_state.print.data.na_string);
@@ -928,14 +923,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
             update_field(call, old_to_new);
         }
 
-        update_field(&mut (*instance).eval_state.current_expr, old_to_new);
-        update_field(&mut (*instance).eval_state.parse_error_file, old_to_new);
-        update_field(&mut (*instance).eval_state.exec_token, old_to_new);
-        update_field(&mut (*instance).eval_state.profiling.sref, old_to_new);
-        update_field(
-            &mut (*instance).eval_state.profiling.srcfiles_buffer,
-            old_to_new,
-        );
         update_field(
             &mut (*instance).eval_state.printvector.na_string,
             old_to_new,
@@ -1905,11 +1892,13 @@ mod tests {
             (*instance).error_state.try_catch_nframes.clear();
             (*instance).error_state.mathlib_warning_call = nil;
             (*instance).error_state.mathlib_warning_call_stack.clear();
-            (*instance).eval_state.current_expr = nil;
-            (*instance).eval_state.parse_error_file = nil;
-            (*instance).eval_state.exec_token = nil;
-            (*instance).eval_state.profiling.sref = nil;
-            (*instance).eval_state.profiling.srcfiles_buffer = nil;
+            (*instance).eval_state.current_expr = instance::RuntimeValue::empty();
+            (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
+            (*instance).eval_state.exec_token = instance::RuntimeValue::empty();
+            (*instance).eval_state.profiling.sref = instance::RuntimeValue::empty();
+            (*instance).eval_state.profiling.srcfiles.clear();
+            (*instance).eval_state.profiling.srcfile_bytes_used = 0;
+            (*instance).eval_state.profiling.srcfiles_buffer = instance::RuntimeValue::empty();
             (*instance).eval_state.printvector.na_string = nil;
             (*instance).eval_state.printvector.na_string_noquote = nil;
             (*instance).eval_state.print.data.na_string = nil;

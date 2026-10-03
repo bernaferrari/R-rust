@@ -26,32 +26,41 @@ fn error(msg: &str) -> ! {
     })
 }
 
-/// Saves `eval_state.current_expr` for the source assignment
-/// (`xx[[]] <- pi`) while `applydefine` runs, then restores it.
-///
-/// GNU pushes a `CTXT_CCODE` context with that call so `error()` reports
-/// it. `current_expr` is the scanned slot for the same value.
+/// Own the previous attribution and original runtime while a complex source
+/// assignment executes. Restoration does not depend on ambient availability.
 struct SourceAssignCall {
-    instance: *mut crate::sexp::instance::RInstance,
-    previous: SEXP,
+    previous: crate::sexp::instance::RuntimeValue,
+    _call: Sexp<'static>,
+    owner: crate::sexp::owner::OwnerPin,
 }
 
 impl SourceAssignCall {
     unsafe fn enter(call: SEXP) -> Self {
-        let instance =
-            crate::sexp::instance::with_required_current_instance(|instance| instance);
-        let previous = unsafe { (*instance).eval_state.current_expr };
-        unsafe {
-            (*instance).eval_state.current_expr = call;
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let owner = unsafe { (*instance).runtime_owner.clone() }
+            .unwrap_or_else(|| error("source assignment requires an original managed owner"))
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let current = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(instance, call) };
+        let call = current
+            .owned()
+            .unwrap_or_else(|| error("source assignment requires an initialized call"));
+        let previous =
+            unsafe { std::mem::replace(&mut (*instance).eval_state.current_expr, current) };
+        Self {
+            owner,
+            previous,
+            _call: call,
         }
-        Self { instance, previous }
     }
 }
 
 impl Drop for SourceAssignCall {
     fn drop(&mut self) {
+        // Revocation rejects new work, but the original strong pin permits this
+        // local owning-field cleanup even if the session was closed or dropped.
         unsafe {
-            (*self.instance).eval_state.current_expr = self.previous;
+            (*self.owner.as_ptr()).eval_state.current_expr = std::mem::take(&mut self.previous);
         }
     }
 }
@@ -664,5 +673,115 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
         let c_name = std::ffi::CString::new(assign_name)
             .expect("assignment symbol derived from a CStr cannot contain NUL");
         crate::sexp::symbol::Rf_install(c_name.as_ptr())
+    }
+}
+
+#[cfg(test)]
+mod owned_source_assignment_tests {
+    use super::*;
+    use crate::sexp::{instance::RuntimeValue, owner::OwnerToken, session::RSession};
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_source_attribution_restores_after_collecting_callback_and_unwind() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = OwnerToken::from_raw(instance);
+            let factory = owner.node_factory();
+            let previous = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let current = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let old_node = crate::sexp::memory::checked_projection(previous.as_raw())
+                .unwrap()
+                .1;
+            let new_node = crate::sexp::memory::checked_projection(current.as_raw())
+                .unwrap()
+                .1;
+            let previous_pointer = previous.as_raw();
+            (*instance).eval_state.current_expr =
+                RuntimeValue::from_raw_in(instance, previous_pointer);
+            drop(previous);
+            let call = current.as_raw();
+            let observed = Rc::new(Cell::new(false));
+            let called = observed.clone();
+            let old_observed = old_node.clone();
+            let new_observed = new_node.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if called.replace(true) {
+                    return;
+                }
+                (*instance).eval_state.current_expr = RuntimeValue::empty();
+                crate::sexp::gengc::full_gc_in(instance);
+                assert!(
+                    old_observed.is_live(),
+                    "previous attribution must be owned by restoration guard"
+                );
+                assert!(
+                    new_observed.is_live(),
+                    "original source input must survive field replacement"
+                );
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _guard = SourceAssignCall::enter(call);
+                drop(current);
+                let _allocated = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 9)))
+                    .unwrap();
+                crate::sexp::context::r_error("unwind source assignment");
+            }));
+            (*instance).memory_state.gc_force_gap = 0;
+            assert!(result.is_err());
+            assert!(observed.get());
+            assert_eq!(
+                (*instance).eval_state.current_expr.as_raw(),
+                previous_pointer
+            );
+            owner.full_gc().unwrap();
+            assert!(old_node.is_live());
+            assert!(!new_node.is_live());
+            (*instance).eval_state.current_expr = RuntimeValue::empty();
+            owner.full_gc().unwrap();
+            assert!(!old_node.is_live());
+        });
+    }
+
+    #[test]
+    fn owned_source_attribution_cleanup_keeps_dropped_original_runtime_alive() {
+        let session = RSession::new_for_gc_tests();
+        let (guard, old_node, new_node) = session.with_active_in(|instance| unsafe {
+            let owner = OwnerToken::from_raw(instance);
+            let factory = owner.node_factory();
+            let previous = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let current = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let old_node = crate::sexp::memory::checked_projection(previous.as_raw())
+                .unwrap()
+                .1;
+            let new_node = crate::sexp::memory::checked_projection(current.as_raw())
+                .unwrap()
+                .1;
+            (*instance).eval_state.current_expr =
+                RuntimeValue::from_raw_in(instance, previous.as_raw());
+            let guard = SourceAssignCall::enter(current.as_raw());
+            drop(previous);
+            drop(current);
+            owner.full_gc().unwrap();
+            (guard, old_node, new_node)
+        });
+        drop(session);
+        assert!(guard.owner.require_live().is_err());
+        assert!(old_node.is_live());
+        assert!(new_node.is_live());
+        drop(guard);
+        assert!(!old_node.is_live());
+        assert!(!new_node.is_live());
     }
 }

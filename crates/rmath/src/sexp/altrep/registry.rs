@@ -108,28 +108,36 @@ pub(super) fn register<'s>(
     name: &str,
     provider: Rc<dyn AltrepClass>,
 ) -> SexpResult<AltrepClassHandle<'s>> {
-    let kind = storage::activate(owner, || VectorKind::from_sexp(provider.vector_type()))?;
-    let cache = storage::activate(owner, || {
-        if provider.cache_in_data2() {
-            CachePolicy::Data2
-        } else {
-            CachePolicy::Private
-        }
-    });
-    let name = CString::new(format!(".AltrepClass.{name}"))
-        .map_err(|_| failure("invalid ALTREP class name"))?;
-    let descriptor = storage::intern(owner, &name)?;
-    let key = descriptor.clone().as_raw() as usize;
-    let class = Rc::new(RegisteredClass {
-        kind,
-        cache,
-        provider,
-    });
-    bridge::runtime(owner).insert(key, class.clone())?;
-    Ok(AltrepClassHandle {
-        owner,
-        descriptor,
-        record: class,
+    let capability = StoredOwner::from_token(owner);
+    storage::with_owner(&capability, |owner| {
+        let kind = storage::with_owner(&capability, |owner| {
+            storage::activate(owner, || VectorKind::from_sexp(provider.vector_type()))
+        })?;
+        let cache = storage::with_owner(&capability, |owner| {
+            Ok(storage::activate(owner, || {
+                if provider.cache_in_data2() {
+                    CachePolicy::Data2
+                } else {
+                    CachePolicy::Private
+                }
+            }))
+        })?;
+        let name = CString::new(format!(".AltrepClass.{name}"))
+            .map_err(|_| failure("invalid ALTREP class name"))?;
+        let descriptor = storage::intern(owner, &name)?;
+        let descriptor = capability.sexp(descriptor.as_raw())?;
+        let key = descriptor.clone().as_raw() as usize;
+        let class = Rc::new(RegisteredClass {
+            kind,
+            cache,
+            provider,
+        });
+        bridge::runtime(owner).insert(key, class.clone())?;
+        Ok(AltrepClassHandle {
+            owner: capability.clone(),
+            descriptor,
+            record: class,
+        })
     })
 }
 pub(super) fn lookup(owner: OwnerToken<'_>, descriptor: SEXP) -> Option<Rc<RegisteredClass>> {
@@ -144,7 +152,7 @@ pub(crate) fn class_handle<'s>(
     let record =
         lookup(owner, descriptor.clone().as_raw()).ok_or(failure("unregistered ALTREP class"))?;
     Ok(AltrepClassHandle {
-        owner,
+        owner: StoredOwner::from_token(owner),
         descriptor,
         record,
     })

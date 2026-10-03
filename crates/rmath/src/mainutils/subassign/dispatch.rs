@@ -128,10 +128,9 @@ pub(crate) unsafe fn errorNotSubsettable(x: SEXP) {
 /// assignment, which `applydefine` stores on `eval_state.current_expr`.
 pub(crate) unsafe fn errorMissingSubscript(x: SEXP, call: SEXP) {
     unsafe {
-        let instance =
-            crate::sexp::instance::with_required_current_instance(|instance| instance);
-        let source = (*instance).eval_state.current_expr;
-        let call = if source.is_null() { call } else { source };
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let source = (*instance).eval_state.current_expr.owned();
+        let call = source.as_ref().map_or(call, |source| source.as_raw());
         crate::mainutils::errors::R_MissingSubscriptError(x, call);
     }
 }

@@ -283,10 +283,9 @@ fn serialize_falls_back_to_plain_values_without_internal_metadata() {
         assert_eq!(copy.len(), 5);
         assert_eq!(copy.real_elt(4), Some(12.0));
         assert!(!is_altrep(&copy));
-        assert!(
-            copy.attrib()
-                .is_none_or(|v| v.typeof_() == SEXPTYPE::NILSXP)
-        );
+        assert!(copy
+            .attrib()
+            .is_none_or(|v| v.typeof_() == SEXPTYPE::NILSXP));
         assert!(!is_materialized(&x));
     });
 }
@@ -297,13 +296,11 @@ fn zero_negative_and_invalid_scalar_lengths_are_handled() {
         .register_altrep_class("repeat", RepeatClass(SEXPTYPE::REALSXP))
         .unwrap();
     for length in [-1.0, f64::NAN, f64::INFINITY, 0.5, i64::MAX as f64] {
-        assert!(
-            AltrepBuilder::new(cls.clone())
-                .data1(real(&s, 1.0))
-                .data2(real(&s, length))
-                .build()
-                .is_err()
-        );
+        assert!(AltrepBuilder::new(cls.clone())
+            .data1(real(&s, 1.0))
+            .data2(real(&s, length))
+            .build()
+            .is_err());
     }
     let empty = AltrepBuilder::new(cls)
         .data1(real(&s, 1.0))
@@ -392,9 +389,13 @@ fn deferred_evaluation_caches_a_rooted_result() {
 fn long_integer_sequence_rejects_unrepresentable_expansion_without_truncation() {
     let s = RSession::new_for_gc_tests();
     let x = new_sequence(
-        s.owner_token().unwrap(), SEXPTYPE::INTSXP,
-        i32::MIN as f64, 1.0, 1_i64 << 32,
-    ).unwrap();
+        s.owner_token().unwrap(),
+        SEXPTYPE::INTSXP,
+        i32::MIN as f64,
+        1.0,
+        1_i64 << 32,
+    )
+    .unwrap();
     assert_eq!(x.len(), 1_i64 << 32);
     assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
     assert!(force_materialization(&x).is_err());
@@ -506,27 +507,22 @@ fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
         })
     }))
     .unwrap_err();
-    assert!(
-        error
-            .downcast_ref::<crate::sexp::context::RError>()
-            .is_some()
-    );
+    assert!(error
+        .downcast_ref::<crate::sexp::context::RError>()
+        .is_some());
     assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         s.with_active(|| unsafe { crate::mainutils::duplicate::Rf_duplicate(x.clone().as_raw()) })
     }))
     .unwrap_err();
-    assert!(
-        error
-            .downcast_ref::<crate::sexp::context::RError>()
-            .is_some()
-    );
+    assert!(error
+        .downcast_ref::<crate::sexp::context::RError>()
+        .is_some());
     assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     force_materialization(&x).unwrap();
     s.gc();
     assert_eq!(x.vector_elt(0).unwrap().as_raw(), x.clone().as_raw());
 }
-
 
 struct MutableConfiguration {
     kind: Rc<Cell<SEXPTYPE>>,
@@ -733,26 +729,41 @@ fn owned_registry_and_operation_leases_survive_owner_teardown() {
     assert_eq!(drops.get(), 1);
 }
 
-
 #[test]
 fn mismatched_typed_reads_do_not_invoke_lazy_providers() {
     struct RejectReads(SEXPTYPE);
     impl AltrepClass for RejectReads {
-        fn vector_type(&self) -> SEXPTYPE { self.0 }
-        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> { Ok(1) }
+        fn vector_type(&self) -> SEXPTYPE {
+            self.0
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(1)
+        }
         fn element<'s>(&self, _: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
             panic!("a mismatched typed read invoked the provider")
         }
     }
     let session = RSession::new_for_gc_tests();
-    for kind in [SEXPTYPE::INTSXP, SEXPTYPE::REALSXP, SEXPTYPE::LGLSXP,
-                 SEXPTYPE::RAWSXP, SEXPTYPE::CPLXSXP, SEXPTYPE::STRSXP, SEXPTYPE::VECSXP] {
-        let class = session.register_altrep_class(&format!("reject-{}", kind.0), RejectReads(kind)).unwrap();
+    for kind in [
+        SEXPTYPE::INTSXP,
+        SEXPTYPE::REALSXP,
+        SEXPTYPE::LGLSXP,
+        SEXPTYPE::RAWSXP,
+        SEXPTYPE::CPLXSXP,
+        SEXPTYPE::STRSXP,
+        SEXPTYPE::VECSXP,
+    ] {
+        let class = session
+            .register_altrep_class(&format!("reject-{}", kind.0), RejectReads(kind))
+            .unwrap();
         let object = AltrepBuilder::new(class).build().unwrap();
         macro_rules! reject {
             ($kind:ident, $read:ident) => {
                 if kind != SEXPTYPE::$kind {
-                    assert!(matches!(object.$read(0), Err(SexpError::TypeMismatch { .. })));
+                    assert!(matches!(
+                        object.$read(0),
+                        Err(SexpError::TypeMismatch { .. })
+                    ));
                 }
             };
         }
@@ -765,4 +776,88 @@ fn mismatched_typed_reads_do_not_invoke_lazy_providers() {
         reject!(VECSXP, try_vector_elt);
         assert!(!is_materialized(&object));
     }
+}
+
+#[test]
+fn retained_class_and_context_have_only_revocable_stored_authority() {
+    struct RetainedProvider {
+        lengths: Rc<Cell<usize>>,
+        elements: Rc<Cell<usize>>,
+    }
+    impl AltrepClass for RetainedProvider {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::REALSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            self.lengths.set(self.lengths.get() + 1);
+            Ok(1)
+        }
+        fn element<'s>(&self, _: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            self.elements.set(self.elements.get() + 1);
+            Ok(AltrepElement::Real(7.0))
+        }
+    }
+    let mut session = RSession::new_for_gc_tests();
+    let weak = session.owner_token().unwrap().weak_owner().unwrap();
+    let lengths = Rc::new(Cell::new(0));
+    let elements = Rc::new(Cell::new(0));
+    let class = session
+        .register_altrep_class(
+            "retained-weak-capability",
+            RetainedProvider {
+                lengths: lengths.clone(),
+                elements: elements.clone(),
+            },
+        )
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    assert!(matches!(&class.owner, StoredOwner::Managed(_)));
+    let value = AltrepBuilder::new(class.clone())
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let (context, record) = super::context(&value).unwrap();
+    drop(record);
+    assert!(matches!(&context.owner, StoredOwner::Managed(_)));
+    assert_eq!(weak.allocation_strong_count(), 1);
+    assert_eq!(value.try_real_elt(0).unwrap(), 7.0);
+    let allocated = context.alloc_vector(SEXPTYPE::INTSXP, 1).unwrap();
+    let descriptor = class.descriptor().as_raw();
+    let context_object = context.object().as_raw();
+    session.close();
+    assert!(matches!(context.gc(), Err(SexpError::RootUnavailable)));
+    assert!(matches!(
+        context.alloc_vector(SEXPTYPE::INTSXP, 1),
+        Err(SexpError::RootUnavailable)
+    ));
+    assert!(matches!(
+        context.string("closed"),
+        Err(SexpError::RootUnavailable)
+    ));
+    assert!(matches!(
+        context.set_data2(allocated),
+        Err(SexpError::RootUnavailable)
+    ));
+    assert!(matches!(
+        AltrepBuilder::new(class.clone()).build(),
+        Err(SexpError::RootUnavailable)
+    ));
+    assert!(matches!(
+        value.try_real_elt(0),
+        Err(SexpError::RootUnavailable)
+    ));
+    drop(session);
+    assert_eq!(weak.allocation_strong_count(), 0);
+    assert_eq!(class.descriptor().as_raw(), descriptor);
+    assert_eq!(context.object().as_raw(), context_object);
+    assert!(context.data1().unwrap().is_nil());
+    assert!(matches!(context.gc(), Err(SexpError::RootUnavailable)));
+    assert!(matches!(
+        AltrepBuilder::new(class).build(),
+        Err(SexpError::RootUnavailable)
+    ));
+    assert_eq!(lengths.get(), 1);
+    assert_eq!(elements.get(), 1);
 }

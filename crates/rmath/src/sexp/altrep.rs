@@ -10,8 +10,8 @@
 use super::{
     ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpMut, SexpResult},
-    owner::OwnerToken,
-    session::{RSession, with_instance_active},
+    owner::{OwnerToken, StoredOwner},
+    session::{with_instance_active, RSession},
 };
 use std::{ffi::CString, rc::Rc};
 
@@ -19,9 +19,9 @@ mod bridge;
 mod registry;
 mod storage;
 pub(crate) use bridge::{has_extension_raw, lazy_raw, materialize_raw, rooted_raw};
-pub(crate) use registry::{AltrepRuntimeState, OperationGuard, class_handle};
-use registry::{Operation, RegisteredClass, enter_operation, lookup, register};
-use storage::{InstanceStorage, Metadata, allocate, owner};
+pub(crate) use registry::{class_handle, AltrepRuntimeState, OperationGuard};
+use registry::{enter_operation, lookup, register, Operation, RegisteredClass};
+use storage::{allocate, owner, InstanceStorage, Metadata};
 
 /// A copied element, or an independently rooted string/list element.
 #[derive(Debug)]
@@ -57,8 +57,7 @@ pub trait AltrepClass: 'static {
 /// Lifetime-bound activation and allocation for a class callback.
 /// No method exposes a borrowed R buffer or a mutable RInstance reference.
 pub struct AltrepContext<'s> {
-    pin: Option<super::owner::OwnerPin>,
-    owner: OwnerToken<'s>,
+    owner: StoredOwner<'s>,
     object: Sexp<'s>,
     metadata: Metadata<'s>,
 }
@@ -81,19 +80,32 @@ impl<'s> AltrepContext<'s> {
         self.metadata.set_data2(self.owner.sexp(value.as_raw())?)
     }
     pub fn gc(&self) -> SexpResult<()> {
-        self.active(|| self.owner.full_gc().map(|_| ()))
+        storage::with_owner(&self.owner, |owner| {
+            storage::activate(owner, || owner.full_gc().map(|_| ()))
+        })
     }
     pub fn alloc_vector(&self, kind: SEXPTYPE, length: R_xlen_t) -> SexpResult<Sexp<'s>> {
-        allocate(self.owner, kind, length)
+        storage::with_owner(&self.owner, |owner| {
+            let value = allocate(owner, kind, length)?;
+            self.owner.sexp(value.as_raw())
+        })
     }
     pub fn string(&self, text: &str) -> SexpResult<Sexp<'s>> {
-        storage::string(self.owner, text)
+        storage::with_owner(&self.owner, |owner| {
+            let value = storage::string(owner, text)?;
+            self.owner.sexp(value.as_raw())
+        })
     }
     pub fn eval(&self, expression: Sexp<'s>, environment: Sexp<'s>) -> SexpResult<Sexp<'s>> {
-        bridge::eval(self.owner, expression, environment)
+        storage::with_owner(&self.owner, |owner| {
+            let expression = owner.sexp(expression.as_raw())?;
+            let environment = owner.sexp(environment.as_raw())?;
+            let value = bridge::eval(owner, expression, environment)?;
+            self.owner.sexp(value.as_raw())
+        })
     }
-    fn active<T>(&self, f: impl FnOnce() -> T) -> T {
-        storage::activate(self.owner, f)
+    fn active<T>(&self, f: impl FnOnce() -> SexpResult<T>) -> SexpResult<T> {
+        storage::with_owner(&self.owner, |owner| storage::activate(owner, f))
     }
 }
 
@@ -101,13 +113,23 @@ impl<'s> AltrepContext<'s> {
 /// in a different session, or disappear while an instance is being built.
 #[derive(Clone)]
 pub struct AltrepClassHandle<'s> {
-    owner: OwnerToken<'s>,
+    owner: StoredOwner<'s>,
     descriptor: Sexp<'s>,
     record: Rc<RegisteredClass>,
 }
 impl<'s> AltrepClassHandle<'s> {
     pub fn descriptor(&self) -> Sexp<'s> {
         self.descriptor.clone()
+    }
+
+    /// Retain the actual descriptor and weak authority independently of a
+    /// session borrow. Construction fails after the original runtime closes.
+    pub fn into_owned(self) -> SexpResult<AltrepClassHandle<'static>> {
+        Ok(AltrepClassHandle {
+            owner: self.owner.into_owned()?,
+            descriptor: self.descriptor.into_owned()?,
+            record: self.record,
+        })
     }
 }
 
@@ -137,10 +159,14 @@ pub struct AltrepBuilder<'s> {
 }
 impl<'s> AltrepBuilder<'s> {
     pub fn new(class: AltrepClassHandle<'s>) -> Self {
+        let nil = class
+            .descriptor
+            .original_singleton_nil()
+            .unwrap_or_else(Sexp::nil);
         Self {
             class,
-            data1: Sexp::nil(),
-            data2: Sexp::nil(),
+            data1: nil.clone(),
+            data2: nil,
         }
     }
     pub fn data1(mut self, data: Sexp<'s>) -> Self {
@@ -156,25 +182,22 @@ impl<'s> AltrepBuilder<'s> {
         let pending = InstanceStorage::create(&self.class, class.kind, self.data1, self.data2)?;
         let context = pending.context();
         let length = context.active(|| class.provider.length(&context))?;
-        if let Some(pin) = &context.pin {
-            pin.require_live()?;
-        }
         pending.finish(length)
     }
 }
 
 fn context<'s>(object: &Sexp<'s>) -> SexpResult<(AltrepContext<'s>, Rc<RegisteredClass>)> {
-    let pin = object.pin_runtime()?;
-    let owner = owner(object)?;
+    let owner = StoredOwner::from_value(object)?;
     let data = Metadata::load(object).ok_or(failure("invalid ALTREP metadata"))?;
     let descriptor = data.descriptor()?;
-    let class = lookup(owner, descriptor.as_raw()).ok_or(failure("unregistered ALTREP class"))?;
+    let class = storage::with_owner(&owner, |token| {
+        lookup(token, descriptor.as_raw()).ok_or(failure("unregistered ALTREP class"))
+    })?;
     if class.kind.sexp_type() != object.typeof_() {
         return Err(failure("ALTREP class type mismatch"));
     }
     Ok((
         AltrepContext {
-            pin,
             owner,
             object: object.clone(),
             metadata: data,
@@ -276,17 +299,17 @@ fn validate_element<'s>(
     })
 }
 pub(crate) fn serialization_guard(object: &Sexp<'_>) -> SexpResult<OperationGuard> {
-    enter_operation(
-        owner(object)?,
-        Operation::Serialize(object.clone().as_raw() as usize),
-    )
+    let owner = StoredOwner::from_value(object)?;
+    storage::with_owner(&owner, |token| {
+        enter_operation(token, Operation::Serialize(object.as_raw() as usize))
+    })
 }
 
 pub(crate) fn duplication_guard(object: &Sexp<'_>) -> SexpResult<OperationGuard> {
-    enter_operation(
-        owner(object)?,
-        Operation::Duplicate(object.clone().as_raw() as usize),
-    )
+    let owner = StoredOwner::from_value(object)?;
+    storage::with_owner(&owner, |token| {
+        enter_operation(token, Operation::Duplicate(object.as_raw() as usize))
+    })
 }
 
 fn invoke_element<'s>(
@@ -294,15 +317,13 @@ fn invoke_element<'s>(
     class: &RegisteredClass,
     index: i64,
 ) -> SexpResult<AltrepElement<'s>> {
-    let _operation = enter_operation(
-        context.owner,
-        Operation::Read(context.object.clone().as_raw() as usize, index),
-    )?;
-    let result = context.active(|| class.provider.element(context, index));
-    if let Some(pin) = &context.pin {
-        pin.require_live()?;
-    }
-    result
+    storage::with_owner(&context.owner, |owner| {
+        let _operation = enter_operation(
+            owner,
+            Operation::Read(context.object.as_raw() as usize, index),
+        )?;
+        context.active(|| class.provider.element(context, index))
+    })
 }
 pub(crate) fn lazy_element<'s>(
     object: &Sexp<'s>,
@@ -363,26 +384,27 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
         return Ok(());
     }
     let (context, class) = context(object)?;
-    let storage = InstanceStorage::load(object)?;
-    let _operation = enter_operation(
-        context.owner,
-        Operation::Expand(object.clone().as_raw() as usize),
-    )?;
-    if super::memory::is_arena_lent(context.owner.as_ptr()) {
-        return Err(failure("release the arena lend before materialization"));
-    }
-    let output = allocate(context.owner, object.typeof_(), object.len())?;
-    let mut output = SexpMut::try_from_checked(output)?;
-    storage.validate()?;
-    for i in 0..object.len() {
-        let value = invoke_element(&context, &*class, i)?;
+    storage::with_owner(&context.owner, |owner| {
+        let storage = InstanceStorage::load(object)?;
+        let _operation =
+            enter_operation(owner, Operation::Expand(object.clone().as_raw() as usize))?;
+        if super::memory::is_arena_lent(owner.as_ptr()) {
+            return Err(failure("release the arena lend before materialization"));
+        }
+        let output = allocate(owner, object.typeof_(), object.len())?;
+        let output = context.owner.sexp(output.as_raw())?;
+        let mut output = SexpMut::try_from_checked(output)?;
         storage.validate()?;
-        write_element(&mut output, i, validate_element(&context, value)?)?;
-    }
-    let output = output.freeze();
-    // Storage installs traced cache roots and a checked buffer lease together.
-    storage.publish_dense(output, class.cache)?;
-    Ok(())
+        for i in 0..object.len() {
+            let value = invoke_element(&context, &*class, i)?;
+            storage.validate()?;
+            write_element(&mut output, i, validate_element(&context, value)?)?;
+        }
+        let output = output.freeze();
+        // Storage installs traced cache roots and a checked buffer lease together.
+        storage.publish_dense(context.owner.sexp(output.as_raw())?, class.cache)?;
+        Ok(())
+    })
 }
 
 /// Create a dense value copy, preserving public attributes. Serialization uses
@@ -401,8 +423,8 @@ pub fn materialized_copy<'s>(object: &Sexp<'s>) -> SexpResult<Sexp<'s>> {
 }
 
 mod builtins;
-pub use builtins::{DeferredClass, RepeatClass, SequenceClass};
 pub(crate) use builtins::{builtin_sequence, new_sequence};
+pub use builtins::{DeferredClass, RepeatClass, SequenceClass};
 
 #[cfg(test)]
 mod tests;

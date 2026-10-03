@@ -29,7 +29,7 @@ use std::ptr;
 use crate::eval::attrib_core::getAttrib;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
+    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
 use crate::sexp::context::RCNTXT;
@@ -42,7 +42,6 @@ use crate::sexp::instance::{
     NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, RInstance,
     with_required_current_instance,
 };
-use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
 
 /// Profiling timer type (ITIMER_PROF is not available on Android).
 #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
@@ -422,85 +421,76 @@ unsafe fn pb_dbl(pb: *mut profbuf, num: c_double) {
 /// Ported from R's `getFilenum()` in eval.c.
 unsafe fn getFilenum(filename: *const c_char) -> c_int {
     unsafe {
-        let r_srcfiles = with_profiling_state(|state| state.srcfiles);
-        let r_srcfiles_buffer = with_profiling_state(|state| state.srcfiles_buffer);
-        if r_srcfiles.is_null() || r_srcfiles_buffer.is_null() {
+        if filename.is_null() {
             return 0;
         }
-
-        let line_prof = with_profiling_state(|state| state.line_profiling);
-        if line_prof <= 0 {
+        // Copy before callbacks or buffer access can invalidate a borrowed name.
+        let filename = std::ffi::CStr::from_ptr(filename).to_bytes().to_vec();
+        let instance = with_required_current_instance(|instance| instance);
+        let pin = crate::sexp::context::pin_context_owner_in(instance);
+        let (buffer, offsets, used, capacity, line_prof) = with_profiling_state(|state| {
+            (
+                state.srcfiles_buffer.owned(),
+                state.srcfiles.clone(),
+                state.srcfile_bytes_used,
+                state.srcfile_bufcount,
+                state.line_profiling,
+            )
+        });
+        let Some(buffer) = buffer else {
+            return 0;
+        };
+        if line_prof <= 0 || buffer.typeof_() != SEXPTYPE::RAWSXP {
             return 0;
         }
-
-        let mut fnum: c_int = 0;
-
-        // Linear search through previously recorded filenames
-        while fnum < line_prof - 1 {
-            let existing = *r_srcfiles.add(fnum as usize);
-            if existing.is_null() {
-                break;
-            }
-            // Compare strings
-            let mut equal = true;
-            let mut j: usize = 0;
-            loop {
-                let a = *filename.add(j) as u8;
-                let b = *existing.add(j) as u8;
-                if a != b {
-                    equal = false;
-                    break;
-                }
-                if a == 0 {
-                    break;
-                }
-                j += 1;
-            }
-            if equal {
-                return fnum + 1;
-            }
-            fnum += 1;
+        let total = XLENGTH(buffer.as_raw()) as usize;
+        crate::sexp::context::require_context_owner_live(&pin);
+        let bytes = RAW(buffer.as_raw());
+        crate::sexp::context::require_context_owner_live(&pin);
+        if !with_profiling_state(|state| state.srcfiles_buffer.as_raw() == buffer.as_raw()) {
+            return 0;
         }
-
-        if fnum == line_prof - 1 {
-            // Compute length of filename
-            let mut len: usize = 0;
-            while *filename.add(len) != 0 {
-                len += 1;
-            }
-
-            let bufcount = with_profiling_state(|state| state.srcfile_bufcount);
-            if (fnum as usize) >= bufcount {
-                // Too many files
-                with_profiling_state(|state| state.profiling_error = 1);
+        for (index, offset) in offsets.iter().copied().enumerate() {
+            let Some(remaining) = total.checked_sub(offset) else {
+                with_profiling_state(|state| state.profiling_error = 2);
                 return 0;
-            }
-
-            // Check buffer space
-            let buf_start = RAW(r_srcfiles_buffer) as *mut c_char;
-            let current_ptr = *r_srcfiles.add(fnum as usize);
-            let used = current_ptr as usize - buf_start as usize;
-            let total = LENGTH(r_srcfiles_buffer) as usize;
-
-            if used + len + 1 > total {
-                // Out of space in the buffer
+            };
+            if remaining == 0 || bytes.is_null() {
                 with_profiling_state(|state| state.profiling_error = 2);
                 return 0;
             }
-
-            // Copy filename into buffer
-            let dst = *r_srcfiles.add(fnum as usize);
-            ptr::copy_nonoverlapping(filename as *const u8, dst as *mut u8, len + 1);
-
-            // Set up next pointer
-            let next_ptr = dst.add(len + 1);
-            *r_srcfiles.add((fnum + 1) as usize) = next_ptr as *mut c_char;
-            *next_ptr = 0; // NUL terminator
-
-            with_profiling_state(|state| state.line_profiling += 1);
+            let stored = std::slice::from_raw_parts(bytes.add(offset), remaining);
+            let Some(end) = stored.iter().position(|byte| *byte == 0) else {
+                with_profiling_state(|state| state.profiling_error = 2);
+                return 0;
+            };
+            if stored[..end] == filename {
+                return (index + 1) as c_int;
+            }
         }
-
-        fnum + 1
+        if offsets.len() >= capacity {
+            with_profiling_state(|state| state.profiling_error = 1);
+            return 0;
+        }
+        let Some(next) = used
+            .checked_add(filename.len())
+            .and_then(|len| len.checked_add(1))
+        else {
+            with_profiling_state(|state| state.profiling_error = 2);
+            return 0;
+        };
+        if next > total || bytes.is_null() {
+            with_profiling_state(|state| state.profiling_error = 2);
+            return 0;
+        }
+        ptr::copy_nonoverlapping(filename.as_ptr(), bytes.add(used), filename.len());
+        *bytes.add(next - 1) = 0;
+        with_profiling_state(|state| {
+            state.srcfiles.push(used);
+            state.srcfile_bytes_used = next;
+            state.line_profiling = state.srcfiles.len() as c_int + 1;
+        });
+        (offsets.len() + 1) as c_int
     }
 }
 
@@ -516,38 +506,42 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         if srcref.is_null() || srcref == R_NilValue() {
             return;
         }
-
-        // Get line number from srcref
-        let line_val = crate::mainutils::coerce::asInteger(srcref);
-        if line_val == NA_INTEGER {
+        let instance = with_required_current_instance(|instance| instance);
+        let pin = crate::sexp::context::pin_context_owner_in(instance);
+        let srcref = crate::sexp::context::own_control_value(srcref);
+        let line = crate::mainutils::coerce::asInteger(srcref.as_raw());
+        crate::sexp::context::require_context_owner_live(&pin);
+        if line == NA_INTEGER {
             return;
         }
-        let line = line_val;
-
-        // Get the srcfile attribute
-        let srcfile_sym = Rf_install(b"srcfile\0".as_ptr() as *const c_char);
-        let srcfile = getAttrib(srcref, srcfile_sym);
-        if srcfile.is_null() || srcfile == R_NilValue() {
+        let srcfile_sym = Rf_install(c"srcfile".as_ptr());
+        crate::sexp::context::require_context_owner_live(&pin);
+        let srcfile = getAttrib(srcref.as_raw(), srcfile_sym);
+        if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return;
         }
-        if TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
+        let srcfile = crate::sexp::context::own_control_value(srcfile);
+        let filename_sym = Rf_install(c"filename".as_ptr());
+        crate::sexp::context::require_context_owner_live(&pin);
+        let filename = R_findVar(filename_sym, srcfile.as_raw());
+        crate::sexp::context::require_context_owner_live(&pin);
+        let filename = crate::sexp::context::own_control_value(filename);
+        if filename.typeof_() != SEXPTYPE::STRSXP {
             return;
         }
-
-        // Look up the filename in the srcfile environment
-        let fn_sym = Rf_install(b"filename\0".as_ptr() as *const c_char);
-        let filename_sexp = R_findVar(fn_sym, srcfile);
-        if TYPEOF(filename_sexp) != SEXPTYPE::STRSXP || LENGTH(filename_sexp) == 0 {
+        let length = filename.len();
+        crate::sexp::context::require_context_owner_live(&pin);
+        if length == 0 {
             return;
         }
-        let filename = CHAR(STRING_ELT(filename_sexp, 0));
-
-        let fnum = getFilenum(filename);
-        if fnum != 0 {
-            pb_int(pb, fnum as i64);
-            pb_str(pb, b"#\0".as_ptr() as *const c_char);
+        let chars = crate::sexp::context::own_control_value(STRING_ELT(filename.as_raw(), 0));
+        crate::sexp::context::require_context_owner_live(&pin);
+        let number = getFilenum(CHAR(chars.as_raw()));
+        if number != 0 {
+            pb_int(pb, number as i64);
+            pb_str(pb, c"#".as_ptr());
             pb_int(pb, line as i64);
-            pb_str(pb, b" \0".as_ptr() as *const c_char);
+            pb_str(pb, c" ".as_ptr());
         }
     }
 }
@@ -562,7 +556,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
 /// to skip intermediate frames. Otherwise, simply returns the next context.
 ///
 /// Ported from R's `findProfContext()` in eval.c.
-unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
+unsafe fn findProfContext(cptr: *mut RCNTXT, eval_internal: SEXP) -> *mut RCNTXT {
     unsafe {
         if with_profiling_state(|state| state.filter_callframes) == 0 {
             return (*cptr).nextcontext;
@@ -582,8 +576,6 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
         if !parent.is_null() {
             let parent_callfun = (*parent).callfun.as_raw();
             if !parent_callfun.is_null() {
-                let eval_sym = Rf_install(b"eval\0".as_ptr() as *const c_char);
-                let eval_internal = crate::sexp::accessors::INTERNAL(eval_sym);
                 if parent_callfun == eval_internal {
                     let sysparent = (*cptr).sysparent.as_raw();
                     result = super::context::R_findExecContext((*parent).nextcontext, sysparent);
@@ -695,7 +687,7 @@ unsafe fn pf_int(num: c_int) {
 /// Ported from R's `R_getCurrentSrcref()` in eval.c.
 unsafe fn R_getCurrentSrcref() -> SEXP {
     unsafe {
-        let srcref = with_profiling_state(|state| state.sref);
+        let srcref = with_profiling_state(|state| state.sref.as_raw());
         let in_bc = get_R_InBCInterpreter();
         if srcref != in_bc {
             srcref
@@ -741,27 +733,56 @@ unsafe fn doprof(_sig: c_int) {
             pb_str(&mut pb, b"\"<GC>\" \0".as_ptr() as *const c_char);
         }
 
-        // Line profiling
-        if with_profiling_state(|state| state.line_profiling) != 0 {
-            lineprof(&mut pb, R_getCurrentSrcref());
-        }
-
-        // Walk the context stack
+        let instance = with_required_current_instance(|instance| instance);
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
+        let eval_internal = if with_profiling_state(|state| state.filter_callframes) != 0 {
+            let symbol = Rf_install(c"eval".as_ptr());
+            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::accessors::INTERNAL(symbol)
+        } else {
+            ptr::null_mut()
+        };
+        let current_srcref = with_profiling_state(|state| state.sref.owned());
+        let mut frames = Vec::new();
         let mut cptr = super::runtime::global_context();
         while !cptr.is_null() {
-            cptr = findProfContext(cptr);
+            cptr = findProfContext(cptr, eval_internal);
             if cptr.is_null() {
                 break;
             }
-
-            let callflag = (*cptr).callflag;
-            let call = (*cptr).call.as_raw();
-
+            let cell = crate::sexp::context::retain_context_in(instance, cptr)
+                .unwrap_or_else(|| crate::sexp::context::r_error("unavailable profiling context"));
+            frames.push((
+                cell,
+                (*cptr).callflag,
+                (*cptr).call.owned(),
+                (*cptr).srcref.owned(),
+            ));
+        }
+        if with_profiling_state(|state| state.line_profiling) != 0 {
+            let srcref = current_srcref
+                .as_ref()
+                .map_or(ptr::null_mut(), |value| value.as_raw());
+            lineprof(
+                &mut pb,
+                if srcref == get_R_InBCInterpreter() {
+                    R_findBCInterpreterSrcref(ptr::null_mut())
+                } else {
+                    srcref
+                },
+            );
+        }
+        for (cell, callflag, call_owner, srcref_owner) in frames {
+            let cptr = cell.get();
+            let call = call_owner
+                .as_ref()
+                .map_or(ptr::null_mut(), |value| value.as_raw());
             if (callflag & (ctxt_flags::CTXT_FUNCTION | ctxt_flags::CTXT_BUILTIN)) != 0
                 && !call.is_null()
                 && TYPEOF(call) == SEXPTYPE::LANGSXP
             {
-                let fun = CAR(call);
+                let fun_owner = crate::sexp::context::own_control_value(CAR(call));
+                let fun = fun_owner.as_raw();
                 pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
 
                 if TYPEOF(fun) == SEXPTYPE::SYMSXP {
@@ -769,32 +790,33 @@ unsafe fn doprof(_sig: c_int) {
                     pb_str(&mut pb, CHAR(PRINTNAME(fun)));
                 } else if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::LANGSXP {
                     let fun_head = CAR(fun);
+                    let arg1_owner = crate::sexp::context::own_control_value(CADR(fun));
+                    let arg2_owner = crate::sexp::context::own_control_value(CADDR(fun));
+                    let arg1 = arg1_owner.as_raw();
+                    let arg2 = arg2_owner.as_raw();
                     if (fun_head == R_DoubleColonSymbol()
                         || fun_head == R_TripleColonSymbol()
                         || fun_head == R_DollarSymbol())
-                        && !CADR(fun).is_null()
-                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP
-                        && !CADDR(fun).is_null()
-                        && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
+                        && !arg1.is_null()
+                        && TYPEOF(arg1) == SEXPTYPE::SYMSXP
+                        && !arg2.is_null()
+                        && TYPEOF(arg2) == SEXPTYPE::SYMSXP
                     {
                         // Function accessed via ::, :::, or $
-                        pb_str(&mut pb, CHAR(PRINTNAME(CADR(fun))));
+                        pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
                         pb_str(&mut pb, CHAR(PRINTNAME(CAR(fun))));
-                        pb_str(&mut pb, CHAR(PRINTNAME(CADDR(fun))));
+                        pb_str(&mut pb, CHAR(PRINTNAME(arg2)));
                     } else if fun_head == R_Bracket2Symbol()
-                        && !CADR(fun).is_null()
-                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP
-                        && !CADDR(fun).is_null()
-                        && (TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::STRSXP
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::INTSXP
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::REALSXP)
-                        && LENGTH(CADDR(fun)) > 0
+                        && !arg1.is_null()
+                        && TYPEOF(arg1) == SEXPTYPE::SYMSXP
+                        && !arg2.is_null()
+                        && (TYPEOF(arg2) == SEXPTYPE::SYMSXP
+                            || TYPEOF(arg2) == SEXPTYPE::STRSXP
+                            || TYPEOF(arg2) == SEXPTYPE::INTSXP
+                            || TYPEOF(arg2) == SEXPTYPE::REALSXP)
+                        && LENGTH(arg2) > 0
                     {
                         // Function accessed via [[
-                        let arg1 = CADR(fun);
-                        let arg2 = CADDR(fun);
-
                         pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
                         pb_str(&mut pb, b"[[\0".as_ptr() as *const c_char);
 
@@ -822,7 +844,9 @@ unsafe fn doprof(_sig: c_int) {
 
                 // Line profiling for this context
                 if with_profiling_state(|state| state.line_profiling) != 0 {
-                    let srcref_val = (*cptr).srcref.as_raw();
+                    let srcref_val = srcref_owner
+                        .as_ref()
+                        .map_or(ptr::null_mut(), |value| value.as_raw());
                     let in_bc = get_R_InBCInterpreter();
                     if srcref_val == in_bc {
                         lineprof(&mut pb, R_findBCInterpreterSrcref(cptr));
@@ -831,6 +855,7 @@ unsafe fn doprof(_sig: c_int) {
                     }
                 }
             }
+            crate::sexp::context::require_context_owner_live(&owner_pin);
         }
 
         // Null-terminate the buffer
@@ -844,16 +869,20 @@ unsafe fn doprof(_sig: c_int) {
 
         // Write any new source file references
         let line_prof_val = with_profiling_state(|state| state.line_profiling);
-        let r_srcfiles = with_profiling_state(|state| state.srcfiles);
+        let (source_offsets, source_buffer) =
+            with_profiling_state(|state| (state.srcfiles.clone(), state.srcfiles_buffer.owned()));
         let mut i = prevnum;
         while i < line_prof_val {
             pf_str(b"#File \0".as_ptr() as *const c_char);
             pf_int(i);
             pf_str(b": \0".as_ptr() as *const c_char);
-            if !r_srcfiles.is_null() {
-                let fname = *r_srcfiles.add((i - 1) as usize);
-                if !fname.is_null() {
-                    pf_str(fname);
+            if let (Some(buffer), Some(offset)) =
+                (&source_buffer, source_offsets.get((i - 1) as usize))
+            {
+                if *offset < XLENGTH(buffer.as_raw()) as usize {
+                    let bytes = RAW(buffer.as_raw());
+                    crate::sexp::context::require_context_owner_live(&owner_pin);
+                    pf_str(bytes.add(*offset).cast());
                 }
             }
             pf_str(b"\n\0".as_ptr() as *const c_char);
@@ -862,7 +891,7 @@ unsafe fn doprof(_sig: c_int) {
 
         // Write the profile line
         let mut len: usize = 0;
-        while buf[len] != 0 && len < PROFBUFSIZ {
+        while len < PROFBUFSIZ && buf[len] != 0 {
             len += 1;
         }
         if len > 0 {
@@ -951,13 +980,12 @@ unsafe fn R_EndProfiling() {
             state.line_profiling = 0;
         });
 
-        // Release the source files buffer
-        let buf = with_profiling_state(|state| state.srcfiles_buffer);
-        if !buf.is_null() && buf != R_NilValue() {
-            R_ReleaseObject(buf);
-            with_profiling_state(|state| state.srcfiles_buffer = ptr::null_mut());
-        }
-        with_profiling_state(|state| state.srcfiles = ptr::null_mut());
+        // Clear derived offsets before releasing the canonical buffer owner.
+        with_profiling_state(|state| {
+            state.srcfiles.clear();
+            state.srcfile_bytes_used = 0;
+            state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
+        });
 
         // Report any profiling errors
         let err = with_profiling_state(|state| state.profiling_error);
@@ -988,13 +1016,12 @@ unsafe fn R_EndProfiling() {
             state.line_profiling = 0;
         });
 
-        // Release the source files buffer
-        let buf = with_profiling_state(|state| state.srcfiles_buffer);
-        if !buf.is_null() && buf != R_NilValue() {
-            R_ReleaseObject(buf);
-            with_profiling_state(|state| state.srcfiles_buffer = ptr::null_mut());
-        }
-        with_profiling_state(|state| state.srcfiles = ptr::null_mut());
+        // Clear derived offsets before releasing the canonical buffer owner.
+        with_profiling_state(|state| {
+            state.srcfiles.clear();
+            state.srcfile_bytes_used = 0;
+            state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
+        });
     }
 }
 
@@ -1083,26 +1110,29 @@ unsafe fn R_InitProfiling(
             state.filter_callframes = filter_callframes;
         });
 
-        // Set up line profiling buffer
+        // Filenames use safe byte offsets; the buffer never stores native
+        // pointers or relies on alignment suitable for a pointer array.
         if line_profiling != 0 {
-            let bufcount = numfiles as usize;
-            with_profiling_state(|state| state.srcfile_bufcount = bufcount);
-            let len1 = bufcount * std::mem::size_of::<*mut c_char>();
-            let len2 = bufsize as usize;
-            let total = (len1 + len2) as c_int;
-
-            let buf = Rf_allocVector(SEXPTYPE::RAWSXP, total);
-            with_profiling_state(|state| state.srcfiles_buffer = buf);
-            R_PreserveObject(buf);
-
-            // Set up the pointer array in the first part of the buffer
-            let srcfiles = RAW(buf) as *mut *mut c_char;
-            with_profiling_state(|state| state.srcfiles = srcfiles);
-
-            // The actual strings start after the pointer array
-            let buf_start = (RAW(buf) as *mut c_char).add(len1);
-            *srcfiles = buf_start as *mut c_char;
-            *buf_start = 0; // NUL terminator for first filename slot
+            let count = usize::try_from(numfiles)
+                .ok()
+                .filter(|count| *count > 0)
+                .unwrap_or_else(|| crate::sexp::context::r_error("invalid source file capacity"));
+            if bufsize < 0 {
+                crate::sexp::context::r_error("invalid source filename buffer size");
+            }
+            let instance = with_required_current_instance(|instance| instance);
+            let pin = crate::sexp::context::pin_context_owner_in(instance);
+            let buffer = crate::sexp::instance::RuntimeValue::from_raw_in(
+                instance,
+                Rf_allocVector(SEXPTYPE::RAWSXP, bufsize),
+            );
+            crate::sexp::context::require_context_owner_live(&pin);
+            with_profiling_state(|state| {
+                state.srcfiles.clear();
+                state.srcfile_bytes_used = 0;
+                state.srcfile_bufcount = count;
+                state.srcfiles_buffer = buffer;
+            });
         }
 
         with_profiling_state(|state| state.profiling_event = profiling_event_code(event));
@@ -1131,6 +1161,7 @@ unsafe fn R_InitProfiling(
     _event: rpe_type,
 ) {
 }
+
 // ---------------------------------------------------------------------------
 // do_Rprof -- Rprof() builtin (full implementation)
 // ---------------------------------------------------------------------------
@@ -1565,6 +1596,145 @@ mod tests {
     }
 
     #[test]
+    fn owned_profile_filename_offsets_respect_exact_capacity_and_release_buffer() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let buffer = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 6)))
+                .unwrap();
+            let node = crate::sexp::memory::checked_projection(buffer.as_raw())
+                .unwrap()
+                .1;
+            let value = crate::sexp::instance::RuntimeValue::from_raw_in(instance, buffer.as_raw());
+            with_profiling_state(|state| {
+                state.srcfiles_buffer = value;
+                state.line_profiling = 1;
+                state.srcfile_bufcount = 1;
+            });
+            drop(buffer);
+            owner.full_gc().unwrap();
+            assert!(node.is_live());
+            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
+            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
+            assert_eq!(with_profiling_state(|state| state.srcfiles.clone()), [0]);
+            assert_eq!(with_profiling_state(|state| state.srcfile_bytes_used), 6);
+            assert_eq!(getFilenum(c"x".as_ptr()), 0);
+            assert_eq!(with_profiling_state(|state| state.profiling_error), 1);
+            with_profiling_state(|state| {
+                state.srcfile_bufcount = 2;
+                state.profiling_error = 0;
+            });
+            assert_eq!(getFilenum(c"x".as_ptr()), 0);
+            assert_eq!(with_profiling_state(|state| state.profiling_error), 2);
+            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
+            R_EndProfiling();
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
+            with_profiling_state(|state| {
+                assert!(state.srcfiles_buffer.is_null());
+                assert!(state.srcfiles.is_empty());
+                assert_eq!(state.srcfile_bytes_used, 0);
+            });
+        });
+    }
+
+    #[test]
+    fn owned_line_profile_survives_collecting_active_filename_binding() {
+        use std::{cell::Cell, rc::Rc};
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+            let nil = R_NilValue();
+            (*instance).eval_state.jit_enabled = 0;
+            let srcfile = factory
+                .wrap(crate::sexp::memory_ext::NewEnvironment(
+                    nil,
+                    nil,
+                    crate::sexp::globals::R_GlobalEnv(),
+                ))
+                .unwrap();
+            let function_expression = owner
+                .with_arena(|arena| {
+                    crate::eval::parser::parse(
+                        "function() { 1L + 2L; \"script.R\" }",
+                        arena,
+                        factory.clone(),
+                    )
+                })
+                .unwrap()
+                .unwrap();
+            let function = factory
+                .wrap(crate::eval::eval::Rf_eval(
+                    function_expression.as_raw(),
+                    crate::sexp::globals::R_GlobalEnv(),
+                ))
+                .unwrap();
+            let filename_symbol = Rf_install(c"filename".as_ptr());
+            let srcfile_symbol = Rf_install(c"srcfile".as_ptr());
+            crate::sexp::envir::make_active_binding_raw(
+                srcfile.as_raw(),
+                filename_symbol,
+                function.as_raw(),
+            );
+            let srcref = factory.wrap(Rf_ScalarInteger(71)).unwrap();
+            let pointer = srcref.as_raw();
+            let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+            crate::sexp::attrib_core::setAttrib(pointer, srcfile_symbol, srcfile.as_raw());
+            (*instance).eval_state.profiling.sref =
+                crate::sexp::instance::RuntimeValue::from_raw_in(instance, pointer);
+            let buffer = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 64)))
+                .unwrap();
+            let buffer =
+                crate::sexp::instance::RuntimeValue::from_raw_in(instance, buffer.as_raw());
+            with_profiling_state(|state| {
+                state.srcfiles_buffer = buffer;
+                state.line_profiling = 1;
+                state.srcfile_bufcount = 4;
+            });
+            drop(srcref);
+            drop(srcfile);
+            drop(function);
+            drop(function_expression);
+            let observed = Rc::new(Cell::new(false));
+            let called = observed.clone();
+            let node_observed = node.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if called.replace(true) {
+                    return;
+                }
+                (*instance).eval_state.profiling.sref =
+                    crate::sexp::instance::RuntimeValue::empty();
+                crate::sexp::attrib_core::setAttrib(pointer, srcfile_symbol, R_NilValue());
+                (*instance).context_stack.clear();
+                crate::sexp::gengc::full_gc_in(instance);
+                assert!(node_observed.is_live());
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let mut bytes = [0_u8; 32];
+            let mut output = profbuf {
+                ptr: bytes.as_mut_ptr().cast(),
+                left: bytes.len(),
+            };
+            lineprof(&mut output, pointer);
+            (*instance).memory_state.gc_force_gap = 0;
+            assert!(observed.get());
+            assert_eq!(
+                CStr::from_ptr(bytes.as_ptr().cast()).to_str().unwrap(),
+                "1#71 "
+            );
+            assert_eq!(with_profiling_state(|state| state.srcfiles.len()), 1);
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
+            R_EndProfiling();
+        });
+    }
+
+    #[test]
     fn profiling_flags_are_session_local_on_same_thread() {
         let left = RSession::new();
         let right = RSession::new();
@@ -1703,8 +1873,8 @@ mod tests {
         unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            arena.alloc_vector(SEXPTYPE::INTSXP, 64);
-        })
+                arena.alloc_vector(SEXPTYPE::INTSXP, 64);
+            })
         };
         let snapshot = memory_profile_snapshot();
 

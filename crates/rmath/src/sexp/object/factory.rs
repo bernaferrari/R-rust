@@ -212,6 +212,50 @@ mod tests {
     use std::{cell::Cell, rc::Rc};
 
     #[test]
+    fn managed_factories_retain_original_bank_without_raw_token_or_runtime_cycle() {
+        let mut session = RSession::new_for_gc_tests();
+        let weak = session.owner_token().unwrap().weak_owner().unwrap();
+        let factory: SessionNodeFactory<'static> = weak.node_factory().unwrap();
+        assert!(matches!(
+            &factory.owner,
+            crate::sexp::owner::StoredOwner::Managed(_)
+        ));
+        let nil = factory.nil();
+        let character = factory
+            .character("original owned factory bytes")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        close_immutable_singletons_for_test();
+        let replacement = crate::sexp::globals::immutable_singleton_pool();
+        assert_ne!(nil.as_raw(), replacement.nil().projection());
+        // A fresh translated boundary still chooses this runtime's original
+        // bank, rather than whichever process bank happens to be current.
+        let later = session.owner_token().unwrap().node_factory();
+        assert_eq!(later.nil().as_raw(), nil.as_raw());
+        drop(later);
+        session.close();
+        assert!(matches!(
+            factory.require_active(),
+            Err(SexpError::RootUnavailable)
+        ));
+        assert!(matches!(
+            factory.character("closed"),
+            Err(SexpError::RootUnavailable)
+        ));
+        assert!(matches!(
+            factory.wrap(character.as_raw()),
+            Err(SexpError::RootUnavailable)
+        ));
+        drop(session);
+        assert_eq!(weak.allocation_strong_count(), 0);
+        assert_eq!(factory.nil().as_raw(), nil.as_raw());
+        assert!(character
+            .try_char_eq(b"original owned factory bytes")
+            .unwrap());
+    }
+
+    #[test]
     fn checked_producers_publish_initialized_roots_and_keep_original_sentinels() {
         let mut session = RSession::new_for_gc_tests();
         {

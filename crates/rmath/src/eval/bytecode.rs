@@ -4,35 +4,42 @@
 //! The bytecode format is a vector of integers where each
 //! instruction is an opcode followed by operand indices.
 
-// Constant initializers build scalar vectors through the SexpMut mutation guard
-// (sexp::object); the guard is the in-crate mutation path — a containment
-// boundary (construction is crate-internal), not a uniqueness proof.
+// Private instruction execution owns each operand and publishes initialized
+// scalar and call nodes through the original allocation-domain capability.
 use std::os::raw::{c_double, c_int};
 
-use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::memory::with_arena;
-use crate::sexp::object::{Sexp, SexpError, SexpMut};
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpError};
+use crate::sexp::owner::OwnerPin;
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }
 
-unsafe fn format_expression_vector(exprs: SEXP) -> String {
-    unsafe {
-        let n = XLENGTH(exprs);
-        if n == 0 {
-            return "expression()".to_string();
-        }
-
-        let mut parts = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let expr = VECTOR_ELT(exprs, i);
-            let deparsed = crate::mainutils::deparse::deparse1line(expr, false);
-            parts.push(crate::mainutils::essentials::elt_to_string(deparsed, 0));
-        }
-        format!("expression({})", parts.join(", "))
+fn format_expression_vector(
+    exprs: &Sexp<'static>,
+    execution: &PrivateExecution,
+) -> Result<String, String> {
+    let entries = snapshot_constants(Some(exprs.clone()))?;
+    if entries.is_empty() {
+        return Ok("expression()".into());
     }
+    let mut parts = Vec::new();
+    parts
+        .try_reserve_exact(entries.len())
+        .map_err(|_| "cannot reserve expression print buffer")?;
+    for expr in &entries {
+        execution.require_live()?;
+        let deparsed = unsafe { crate::mainutils::deparse::deparse1line(expr.as_raw(), false) };
+        execution.require_live()?;
+        let deparsed = execution
+            .factory
+            .wrap(deparsed)
+            .map_err(|e| sexp_err("deparsed expression", e))?;
+        parts.push(unsafe { crate::mainutils::essentials::elt_to_string(deparsed.as_raw(), 0) });
+        execution.require_live()?;
+    }
+    Ok(format!("expression({})", parts.join(", ")))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1854,74 +1861,136 @@ fn read_jump_target(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<
     Ok(target)
 }
 
-unsafe fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
-    let lgl = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::LGLSXP, 1)) };
-    if lgl.is_null() {
-        return Err("failed to allocate logical scalar".to_string());
+/// All interpreter work uses the original revocable owner and initialized,
+/// counted roots; the operation pin retains physical cleanup storage only.
+struct PrivateExecution {
+    factory: SessionNodeFactory<'static>,
+    pin: OwnerPin,
+    nil: Sexp<'static>,
+    true_value: Sexp<'static>,
+    false_value: Sexp<'static>,
+}
+impl PrivateExecution {
+    fn require_live(&self) -> Result<(), String> {
+        self.pin
+            .require_live()
+            .and_then(|_| self.factory.require_active())
+            .map_err(|e| sexp_err("private bytecode owner", e))
     }
-    let sexp = unsafe { Sexp::from_raw(lgl) }
-        .ok_or_else(|| "invalid logical scalar pointer".to_string())?;
-    // SAFETY: this freshly allocated scalar has no borrowed payload views.
-    let mut guard = unsafe { SexpMut::from_owned(sexp) };
-    guard
-        .try_set_logical_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
-    let sexp = guard.freeze();
-    unsafe {
-        (*lgl).sxpinfo.set_scalar(true);
-    }
-    Ok(sexp)
 }
 
-unsafe fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
-    let real = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 1)) };
-    if real.is_null() {
-        return Err("failed to allocate real scalar".to_string());
+fn initialized_scalar(
+    execution: &PrivateExecution,
+    kind: SEXPTYPE,
+    initialize: impl FnOnce(&crate::sexp::payload::PayloadLease) -> Option<()>,
+) -> Result<Sexp<'static>, String> {
+    execution.require_live()?;
+    let result = execution
+        .factory
+        .allocate(|arena| {
+            let pointer = arena.alloc_vector(kind, 1);
+            let heap = arena.heap_identity();
+            let node = arena.node_token(pointer)?;
+            initialize(&heap.payload_lease(&node)?)?;
+            let mut header = heap.node_snapshot(&node)?;
+            header.sxpinfo.set_scalar(true);
+            heap.replace_node(&node, header)?;
+            Some(pointer)
+        })
+        .map_err(|e| sexp_err("private bytecode scalar", e))?;
+    execution.require_live()?;
+    Ok(result)
+}
+fn make_lgl(execution: &PrivateExecution, val: c_int) -> Result<Sexp<'static>, String> {
+    initialized_scalar(execution, SEXPTYPE::LGLSXP, |lease| {
+        lease.set_integer_elt(0, val)
+    })
+}
+fn make_real(execution: &PrivateExecution, val: c_double) -> Result<Sexp<'static>, String> {
+    initialized_scalar(execution, SEXPTYPE::REALSXP, |lease| {
+        lease.set_real_elt(0, val)
+    })
+}
+fn make_int(execution: &PrivateExecution, val: c_int) -> Result<Sexp<'static>, String> {
+    initialized_scalar(execution, SEXPTYPE::INTSXP, |lease| {
+        lease.set_integer_elt(0, val)
+    })
+}
+fn push_operand(stack: &mut Vec<Sexp<'static>>, value: Sexp<'static>) -> Result<(), String> {
+    stack
+        .try_reserve(1)
+        .map_err(|_| "cannot grow private bytecode stack")?;
+    stack.push(value);
+    Ok(())
+}
+fn pop_arguments(
+    stack: &mut Vec<Sexp<'static>>,
+    count: usize,
+) -> Result<Vec<Sexp<'static>>, String> {
+    let start = stack
+        .len()
+        .checked_sub(count)
+        .ok_or("private bytecode call argument stack underflow")?;
+    let mut args = Vec::new();
+    args.try_reserve_exact(count)
+        .map_err(|_| "cannot reserve private bytecode arguments")?;
+    args.extend(stack.drain(start..));
+    Ok(args)
+}
+fn argument_list(
+    execution: &PrivateExecution,
+    args: &[Sexp<'static>],
+) -> Result<Sexp<'static>, String> {
+    let mut list = execution.nil.clone();
+    for arg in args.iter().rev() {
+        list = execution
+            .factory
+            .pairlist_cell(arg, &list, &execution.nil)
+            .map_err(|e| sexp_err("private bytecode argument cell", e))?;
+        execution.require_live()?;
     }
-    let sexp =
-        unsafe { Sexp::from_raw(real) }.ok_or_else(|| "invalid real scalar pointer".to_string())?;
-    // SAFETY: this freshly allocated scalar has no borrowed payload views.
-    let mut guard = unsafe { SexpMut::from_owned(sexp) };
-    guard
-        .try_set_real_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize real scalar", err))?;
-    let sexp = guard.freeze();
-    unsafe {
-        (*real).sxpinfo.set_scalar(true);
-    }
-    Ok(sexp)
+    Ok(list)
+}
+fn language_call(
+    execution: &PrivateExecution,
+    fun: &Sexp<'static>,
+    args: &Sexp<'static>,
+) -> Result<Sexp<'static>, String> {
+    let body = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+        carval: execution.factory.link(fun).map_err(|e| e.to_string())?,
+        cdrval: execution.factory.link(args).map_err(|e| e.to_string())?,
+        tagval: execution
+            .factory
+            .link(&execution.nil)
+            .map_err(|e| e.to_string())?,
+    });
+    let call = execution
+        .factory
+        .allocate(|arena| {
+            let pointer = arena.alloc_node(SEXPTYPE::LANGSXP);
+            let heap = arena.heap_identity();
+            let node = arena.node_token(pointer)?;
+            let mut header = heap.node_snapshot(&node)?;
+            header.data = body;
+            heap.replace_node(&node, header)?;
+            Some(pointer)
+        })
+        .map_err(|e| sexp_err("private bytecode call", e))?;
+    execution.require_live()?;
+    Ok(call)
 }
 
-unsafe fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
-    let int = unsafe { with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1)) };
-    if int.is_null() {
-        return Err("failed to allocate integer scalar".to_string());
-    }
-    let sexp = unsafe { Sexp::from_raw(int) }
-        .ok_or_else(|| "invalid integer scalar pointer".to_string())?;
-    // SAFETY: this freshly allocated scalar has no borrowed payload views.
-    let mut guard = unsafe { SexpMut::from_owned(sexp) };
-    guard
-        .try_set_integer_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize integer scalar", err))?;
-    let sexp = guard.freeze();
-    unsafe {
-        (*int).sxpinfo.set_scalar(true);
-    }
-    Ok(sexp)
-}
-
-fn scalar_int(value: Sexp<'_>, context: &str) -> Result<c_int, String> {
+fn scalar_int(value: &Sexp<'_>, context: &str) -> Result<c_int, String> {
     value
         .try_integer_elt(0)
         .map_err(|err| sexp_err(context, err))
 }
 
-fn scalar_real(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
+fn scalar_real(value: &Sexp<'_>, context: &str) -> Result<c_double, String> {
     value.try_real_elt(0).map_err(|err| sexp_err(context, err))
 }
 
-fn scalar_f64_or_zero(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
+fn scalar_f64_or_zero(value: &Sexp<'_>, context: &str) -> Result<c_double, String> {
     match value.clone().typeof_() {
         SEXPTYPE::REALSXP => scalar_real(value, context),
         SEXPTYPE::INTSXP => scalar_int(value, context).map(c_double::from),
@@ -1933,7 +2002,7 @@ fn scalar_f64_or_zero(value: Sexp<'_>, context: &str) -> Result<c_double, String
     }
 }
 
-fn scalar_bool_or_false(value: Sexp<'_>, context: &str) -> Result<bool, String> {
+fn scalar_bool_or_false(value: &Sexp<'_>, context: &str) -> Result<bool, String> {
     match value.clone().typeof_() {
         SEXPTYPE::LGLSXP => value
             .try_logical_elt(0)
@@ -1945,92 +2014,322 @@ fn scalar_bool_or_false(value: Sexp<'_>, context: &str) -> Result<bool, String> 
     }
 }
 
-unsafe fn apply_binary_op<'a, FR, FI>(
-    a: Sexp<'a>,
-    b: Sexp<'a>,
+fn apply_binary_op<FR, FI>(
+    execution: &PrivateExecution,
+    a: Sexp<'static>,
+    b: Sexp<'static>,
     real_op: FR,
     int_op: FI,
-) -> Result<Sexp<'a>, String>
+) -> Result<Sexp<'static>, String>
 where
     FR: Fn(c_double, c_double) -> c_double,
     FI: Fn(c_int, c_int) -> c_int,
 {
     if a.clone().typeof_() == SEXPTYPE::REALSXP && b.clone().typeof_() == SEXPTYPE::REALSXP {
-        let av = scalar_real(a, "left real operand")?;
-        let bv = scalar_real(b, "right real operand")?;
-        unsafe { make_real(real_op(av, bv)) }
+        let av = scalar_real(&a, "left real operand")?;
+        let bv = scalar_real(&b, "right real operand")?;
+        make_real(execution, real_op(av, bv))
     } else if a.clone().typeof_() == SEXPTYPE::INTSXP && b.clone().typeof_() == SEXPTYPE::INTSXP {
-        let av = scalar_int(a, "left integer operand")?;
-        let bv = scalar_int(b, "right integer operand")?;
-        unsafe { make_int(int_op(av, bv)) }
+        let av = scalar_int(&a, "left integer operand")?;
+        let bv = scalar_int(&b, "right integer operand")?;
+        make_int(
+            execution,
+            if av == c_int::MIN || bv == c_int::MIN {
+                c_int::MIN
+            } else {
+                int_op(av, bv)
+            },
+        )
     } else {
-        let av = scalar_f64_or_zero(a, "left numeric operand")?;
-        let bv = scalar_f64_or_zero(b, "right numeric operand")?;
-        unsafe { make_real(real_op(av, bv)) }
+        let av = scalar_f64_or_zero(&a, "left numeric operand")?;
+        let bv = scalar_f64_or_zero(&b, "right numeric operand")?;
+        make_real(execution, real_op(av, bv))
     }
 }
 
-unsafe fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>, String>
+fn apply_comparison<F>(
+    execution: &PrivateExecution,
+    a: Sexp<'static>,
+    b: Sexp<'static>,
+    cmp: F,
+) -> Result<Sexp<'static>, String>
 where
     F: Fn(c_double, c_double) -> bool,
 {
     let result = if a.clone().typeof_() == SEXPTYPE::REALSXP
         && b.clone().typeof_() == SEXPTYPE::REALSXP
     {
-        let av = scalar_real(a, "left real comparison operand")?;
-        let bv = scalar_real(b, "right real comparison operand")?;
+        let av = scalar_real(&a, "left real comparison operand")?;
+        let bv = scalar_real(&b, "right real comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     } else if a.clone().typeof_() == SEXPTYPE::INTSXP && b.clone().typeof_() == SEXPTYPE::INTSXP {
-        let av = scalar_int(a, "left integer comparison operand")? as c_double;
-        let bv = scalar_int(b, "right integer comparison operand")? as c_double;
+        let av = scalar_int(&a, "left integer comparison operand")? as c_double;
+        let bv = scalar_int(&b, "right integer comparison operand")? as c_double;
         if cmp(av, bv) { 1 } else { 0 }
     } else {
-        let av = scalar_f64_or_zero(a, "left comparison operand")?;
-        let bv = scalar_f64_or_zero(b, "right comparison operand")?;
+        let av = scalar_f64_or_zero(&a, "left comparison operand")?;
+        let bv = scalar_f64_or_zero(&b, "right comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     };
-    unsafe { make_lgl(result) }
+    make_lgl(execution, result)
 }
 
-pub unsafe fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    // Never retain an R payload reference across instruction execution.
-    if code.typeof_() != SEXPTYPE::INTSXP {
-        return Err(sexp_err(
-            "invalid bytecode vector",
-            SexpError::TypeMismatch {
-                expected: "integer vector",
-                actual: code.typeof_(),
-            },
-        ));
+pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let code = code
+        .into_owned()
+        .map_err(|e| sexp_err("private bytecode code", e))?;
+    let env = env
+        .into_owned()
+        .map_err(|e| sexp_err("private bytecode environment", e))?;
+    let pin = code
+        .pin_runtime()
+        .map_err(|e| e.to_string())?
+        .ok_or("private bytecode has no runtime owner")?;
+    let factory = code.node_factory().map_err(|e| e.to_string())?;
+    factory
+        .link(&env)
+        .map_err(|e| sexp_err("private bytecode environment domain", e))?;
+    if env.typeof_() != SEXPTYPE::ENVSXP {
+        return Err("private bytecode requires an environment".into());
     }
-    let instruction_count = code.len() as usize;
+    let execution = PrivateExecution {
+        true_value: factory
+            .wrap(unsafe { crate::sexp::globals::R_True() })
+            .map_err(|e| e.to_string())?,
+        false_value: factory
+            .wrap(unsafe { crate::sexp::globals::R_False() })
+            .map_err(|e| e.to_string())?,
+        nil: factory.nil(),
+        factory,
+        pin,
+    };
+    execution.require_live()?;
+    if code.typeof_() != SEXPTYPE::INTSXP {
+        return Err("invalid bytecode vector: expected integer vector".into());
+    }
+    // Snapshot actual pool entries before any lazy instruction reader callback.
+    let constants = snapshot_constants(code.attrib())?;
+    let instruction_count = usize::try_from(code.len()).map_err(|_| "invalid bytecode length")?;
     let scratch_bytes = instruction_count
         .checked_mul(std::mem::size_of::<c_int>())
-        .ok_or_else(|| "bytecode scratch size overflow".to_string())?;
-    let _scratch = unsafe { with_arena(|arena| arena.try_reserve_transient(scratch_bytes)) }
-        .ok_or_else(|| "bytecode scratch exceeds session memory limit".to_string())?;
+        .ok_or("bytecode scratch size overflow")?;
+    let _scratch = crate::sexp::owner::StoredOwner::from_value(&code)
+        .map_err(|e| e.to_string())?
+        .with_arena(|arena| arena.try_reserve_transient(scratch_bytes))
+        .map_err(|e| e.to_string())?
+        .ok_or("bytecode scratch exceeds session memory limit")?;
     let mut bytecode = Vec::new();
     bytecode
         .try_reserve_exact(instruction_count)
-        .map_err(|_| "failed to allocate bytecode scratch".to_string())?;
+        .map_err(|_| "failed to allocate bytecode scratch")?;
     bytecode.resize(instruction_count, 0);
     code.copy_integer_into(&mut bytecode)
-        .map_err(|err| sexp_err("invalid bytecode vector", err))?;
-    let mut pc: usize = 0;
-    let mut stack: Vec<Sexp<'a>> = Vec::new();
-    let constants = code.attrib();
-    unsafe { eval_bytecode_loop(&bytecode, &mut pc, &mut stack, constants, env) }
-        .map(|(sexp, _)| sexp)
+        .map_err(|e| sexp_err("invalid bytecode vector", e))?;
+    execution.require_live()?;
+    let mut pc = 0;
+    let mut stack = Vec::new();
+    let (result, _) =
+        eval_bytecode_loop(&bytecode, &mut pc, &mut stack, &constants, env, &execution)?;
+    execution.require_live()?;
+    Ok(result)
 }
 
-unsafe fn eval_bytecode_loop<'a>(
+enum PrivateStep {
+    Complete(Sexp<'static>, ControlFlow),
+    Loop(PrivateLoop),
+}
+struct PrivateLoop {
+    origin: usize,
+    end: usize,
+    kind: PrivateLoopKind,
+}
+enum PrivateLoopKind {
+    For {
+        variable: Sexp<'static>,
+        sequence: Sexp<'static>,
+        body: usize,
+        length: usize,
+        next: usize,
+    },
+    While {
+        condition: usize,
+        body: usize,
+        testing: bool,
+    },
+    Repeat {
+        body: usize,
+    },
+}
+fn push_private_loop(frames: &mut Vec<PrivateLoop>, frame: PrivateLoop) -> Result<(), String> {
+    frames
+        .try_reserve(1)
+        .map_err(|_| "cannot grow private bytecode loop continuations")?;
+    frames.push(frame);
+    Ok(())
+}
+fn next_for_iteration(
+    frame: &mut PrivateLoop,
+    stack: &mut Vec<Sexp<'static>>,
+    env: &Sexp<'static>,
+    execution: &PrivateExecution,
+) -> Result<Option<usize>, String> {
+    let PrivateLoopKind::For {
+        variable,
+        sequence,
+        body,
+        length,
+        next,
+    } = &mut frame.kind
+    else {
+        return Err("invalid private for-loop continuation".into());
+    };
+    if *next >= *length {
+        return Ok(None);
+    }
+    execution.require_live()?;
+    let index = i64::try_from(*next).map_err(|_| "private for-loop index overflow")?;
+    let value = match sequence.typeof_() {
+        SEXPTYPE::INTSXP => make_int(
+            execution,
+            sequence.try_integer_elt(index).map_err(|e| e.to_string())?,
+        )?,
+        SEXPTYPE::REALSXP => make_real(
+            execution,
+            sequence.try_real_elt(index).map_err(|e| e.to_string())?,
+        )?,
+        _ => make_int(
+            execution,
+            c_int::try_from(*next).map_err(|_| "private for-loop scalar index overflow")?,
+        )?,
+    };
+    execution.require_live()?;
+    unsafe {
+        crate::sexp::envir::defineVar(variable.as_raw(), value.as_raw(), env.as_raw());
+    }
+    execution.require_live()?;
+    push_operand(stack, value)?;
+    *next += 1;
+    Ok(Some(*body))
+}
+
+/// Execute nested private loops with owning Rust continuations. The segment
+/// interpreter returns before another segment runs, keeping host stack usage
+/// constant even for deeply nested valid instruction graphs.
+fn eval_bytecode_loop(
     bytecode: &[c_int],
     pc: &mut usize,
-    stack: &mut Vec<Sexp<'a>>,
-    constants: Option<Sexp<'a>>,
-    env: Sexp<'a>,
-) -> Result<(Sexp<'a>, ControlFlow), String> {
+    stack: &mut Vec<Sexp<'static>>,
+    constants: &[Sexp<'static>],
+    env: Sexp<'static>,
+    execution: &PrivateExecution,
+) -> Result<(Sexp<'static>, ControlFlow), String> {
+    let mut frames: Vec<PrivateLoop> = Vec::new();
+    let mut current_pc = *pc;
+    let mut completed: Option<(Sexp<'static>, ControlFlow)> = None;
+    loop {
+        execution.require_live()?;
+        if let Some((value, control)) = completed.take() {
+            let Some(mut frame) = frames.pop() else {
+                *pc = current_pc;
+                execution.require_live()?;
+                return Ok((value, control));
+            };
+            match &mut frame.kind {
+                PrivateLoopKind::For { .. } => {
+                    if control == ControlFlow::Break {
+                        current_pc = frame.end;
+                        completed = Some((make_lgl(execution, 0)?, ControlFlow::Normal));
+                    } else if let Some(body) =
+                        next_for_iteration(&mut frame, stack, &env, execution)?
+                    {
+                        current_pc = body;
+                        push_private_loop(&mut frames, frame)?;
+                    } else {
+                        current_pc = frame.end;
+                    }
+                }
+                PrivateLoopKind::While {
+                    condition,
+                    body,
+                    testing,
+                } => {
+                    if *testing {
+                        if control != ControlFlow::Normal {
+                            completed = Some((value, control));
+                        } else if !scalar_bool_or_false(&value, "while condition")? {
+                            current_pc = frame.end;
+                            completed = Some((make_lgl(execution, 0)?, ControlFlow::Normal));
+                        } else {
+                            *testing = false;
+                            current_pc = *body;
+                            push_private_loop(&mut frames, frame)?;
+                        }
+                    } else if control == ControlFlow::Break {
+                        current_pc = frame.end;
+                        completed = Some((value, ControlFlow::Normal));
+                    } else {
+                        *testing = true;
+                        current_pc = *condition;
+                        push_private_loop(&mut frames, frame)?;
+                    }
+                }
+                PrivateLoopKind::Repeat { body } => {
+                    if control == ControlFlow::Break {
+                        current_pc = frame.end;
+                        completed = Some((value, ControlFlow::Normal));
+                    } else {
+                        current_pc = *body;
+                        push_private_loop(&mut frames, frame)?;
+                    }
+                }
+            }
+            continue;
+        }
+        match eval_bytecode_segment(
+            bytecode,
+            &mut current_pc,
+            stack,
+            constants,
+            env.clone(),
+            execution,
+        )? {
+            PrivateStep::Complete(value, control) => completed = Some((value, control)),
+            PrivateStep::Loop(mut frame) => {
+                if frames.iter().any(|active| active.origin == frame.origin) {
+                    return Err(format!(
+                        "private bytecode recursive loop target cycle at {}",
+                        frame.origin
+                    ));
+                }
+                let entry = match &frame.kind {
+                    PrivateLoopKind::For { .. } => {
+                        next_for_iteration(&mut frame, stack, &env, execution)?
+                    }
+                    PrivateLoopKind::While { condition, .. } => Some(*condition),
+                    PrivateLoopKind::Repeat { body } => Some(*body),
+                };
+                if let Some(entry) = entry {
+                    current_pc = entry;
+                    push_private_loop(&mut frames, frame)?;
+                } else {
+                    current_pc = frame.end;
+                }
+            }
+        }
+    }
+}
+
+fn eval_bytecode_segment(
+    bytecode: &[c_int],
+    pc: &mut usize,
+    stack: &mut Vec<Sexp<'static>>,
+    constants: &[Sexp<'static>],
+    env: Sexp<'static>,
+    execution: &PrivateExecution,
+) -> Result<PrivateStep, String> {
     while *pc < bytecode.len() {
+        execution.require_live()?;
+        let opcode_pc = *pc;
         let opcode = bytecode[*pc] as c_int;
         *pc += 1;
 
@@ -2039,28 +2338,33 @@ unsafe fn eval_bytecode_loop<'a>(
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on return".to_string())?;
-                return Ok((val, ControlFlow::Normal));
+                execution.require_live()?;
+                return Ok(PrivateStep::Complete(val, ControlFlow::Normal));
             }
             BCgvar | BCsvar => {
                 let idx = read_operand_index(bytecode, pc, "variable")?;
-                let sym = get_constant(constants.clone(), idx)?;
+                let sym = get_constant(constants, idx)?;
+                if sym.typeof_() != SEXPTYPE::SYMSXP {
+                    return Err("private variable constant is not a symbol".into());
+                }
                 let val = unsafe { crate::eval::eval::find_var_result(sym, env.clone()) }?
                     .ok_or_else(|| "variable not found".to_string())?;
-                stack.push(val);
+                execution.require_live()?;
+                push_operand(stack, val.into_owned().map_err(|e| e.to_string())?)?;
             }
             BCint | BCreal | BCstring => {
                 let idx = read_operand_index(bytecode, pc, "constant")?;
-                let val = get_constant(constants.clone(), idx)?;
-                stack.push(val);
+                let val = get_constant(constants, idx)?;
+                push_operand(stack, val.into_owned().map_err(|e| e.to_string())?)?;
             }
             BCtrue => {
-                stack.push(unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_True()) });
+                push_operand(stack, execution.true_value.clone())?;
             }
             BCfalse => {
-                stack.push(unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_False()) });
+                push_operand(stack, execution.false_value.clone())?;
             }
             BCnil => {
-                stack.push(unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) });
+                push_operand(stack, execution.nil.clone())?;
             }
             BCdot => {
                 return Err("'...' used in incorrect context".to_string());
@@ -2069,12 +2373,12 @@ unsafe fn eval_bytecode_loop<'a>(
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on not".to_string())?;
-                let v = if scalar_bool_or_false(val, "bytecode not operand")? {
+                let v = if scalar_bool_or_false(&val, "bytecode not operand")? {
                     1
                 } else {
                     0
                 };
-                stack.push(unsafe { make_lgl(if v != 0 { 0 } else { 1 }) }?);
+                push_operand(stack, make_lgl(execution, if v != 0 { 0 } else { 1 })?)?;
             }
             BCadd => {
                 let b = stack
@@ -2083,9 +2387,16 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on add".to_string())?;
-                stack.push(unsafe {
-                    apply_binary_op(a, b, |x, y| x + y, |x, y| x.wrapping_add(y))
-                }?);
+                push_operand(
+                    stack,
+                    apply_binary_op(
+                        execution,
+                        a,
+                        b,
+                        |x, y| x + y,
+                        |x, y| x.checked_add(y).unwrap_or(c_int::MIN),
+                    )?,
+                )?;
             }
             BCsub => {
                 let b = stack
@@ -2094,9 +2405,16 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on sub".to_string())?;
-                stack.push(unsafe {
-                    apply_binary_op(a, b, |x, y| x - y, |x, y| x.wrapping_sub(y))
-                }?);
+                push_operand(
+                    stack,
+                    apply_binary_op(
+                        execution,
+                        a,
+                        b,
+                        |x, y| x - y,
+                        |x, y| x.checked_sub(y).unwrap_or(c_int::MIN),
+                    )?,
+                )?;
             }
             BCmul => {
                 let b = stack
@@ -2105,9 +2423,16 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on mul".to_string())?;
-                stack.push(unsafe {
-                    apply_binary_op(a, b, |x, y| x * y, |x, y| x.wrapping_mul(y))
-                }?);
+                push_operand(
+                    stack,
+                    apply_binary_op(
+                        execution,
+                        a,
+                        b,
+                        |x, y| x * y,
+                        |x, y| x.checked_mul(y).unwrap_or(c_int::MIN),
+                    )?,
+                )?;
             }
             BCdiv => {
                 let b = stack
@@ -2116,7 +2441,14 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on div".to_string())?;
-                stack.push(unsafe { apply_binary_op(a, b, |x, y| x / y, |x, y| x / y) }?);
+                push_operand(
+                    stack,
+                    make_real(
+                        execution,
+                        scalar_f64_or_zero(&a, "left division operand")?
+                            / scalar_f64_or_zero(&b, "right division operand")?,
+                    )?,
+                )?;
             }
             BCmod => {
                 let b = stack
@@ -2128,30 +2460,40 @@ unsafe fn eval_bytecode_loop<'a>(
                 if a.clone().typeof_() == SEXPTYPE::REALSXP
                     && b.clone().typeof_() == SEXPTYPE::REALSXP
                 {
-                    stack.push(unsafe {
+                    push_operand(
+                        stack,
                         make_real(
-                            scalar_real(a, "left real modulo operand")?
-                                % scalar_real(b, "right real modulo operand")?,
-                        )
-                    }?);
+                            execution,
+                            scalar_real(&a, "left real modulo operand")?
+                                % scalar_real(&b, "right real modulo operand")?,
+                        )?,
+                    )?;
                 } else if a.clone().typeof_() == SEXPTYPE::INTSXP
                     && b.clone().typeof_() == SEXPTYPE::INTSXP
                 {
-                    let bv = scalar_int(b, "right integer modulo operand")?;
+                    let bv = scalar_int(&b, "right integer modulo operand")?;
                     if bv != 0 {
-                        stack.push(unsafe {
-                            make_int(scalar_int(a, "left integer modulo operand")? % bv)
-                        }?);
+                        push_operand(
+                            stack,
+                            make_int(
+                                execution,
+                                scalar_int(&a, "left integer modulo operand")?
+                                    .checked_rem(bv)
+                                    .unwrap_or(c_int::MIN),
+                            )?,
+                        )?;
                     } else {
-                        stack.push(unsafe { make_real(f64::NAN) }?);
+                        push_operand(stack, make_real(execution, f64::NAN)?)?;
                     }
                 } else {
-                    stack.push(unsafe {
+                    push_operand(
+                        stack,
                         make_real(
-                            scalar_f64_or_zero(a, "left modulo operand")?
-                                % scalar_f64_or_zero(b, "right modulo operand")?,
-                        )
-                    }?);
+                            execution,
+                            scalar_f64_or_zero(&a, "left modulo operand")?
+                                % scalar_f64_or_zero(&b, "right modulo operand")?,
+                        )?,
+                    )?;
                 }
             }
             BCpow => {
@@ -2161,42 +2503,44 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on pow".to_string())?;
-                stack.push(unsafe {
+                push_operand(
+                    stack,
                     make_real(
-                        scalar_f64_or_zero(a, "left power operand")?
-                            .powf(scalar_f64_or_zero(b, "right power operand")?),
-                    )
-                }?);
+                        execution,
+                        scalar_f64_or_zero(&a, "left power operand")?
+                            .powf(scalar_f64_or_zero(&b, "right power operand")?),
+                    )?,
+                )?;
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x == y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x == y)?)?;
             }
             BCne => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x != y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x != y)?)?;
             }
             BClt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x < y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x < y)?)?;
             }
             BCle => {
                 let b = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x <= y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x <= y)?)?;
             }
             BCgt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x > y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x > y)?)?;
             }
             BCge => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
-                stack.push(unsafe { apply_comparison(a, b, |x, y| x >= y) }?);
+                push_operand(stack, apply_comparison(execution, a, b, |x, y| x >= y)?)?;
             }
             BCand => {
                 let b = stack
@@ -2205,86 +2549,71 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on and".to_string())?;
-                stack.push(unsafe {
+                push_operand(
+                    stack,
                     make_lgl(
-                        if scalar_bool_or_false(a, "left and operand")?
-                            && scalar_bool_or_false(b, "right and operand")?
+                        execution,
+                        if scalar_bool_or_false(&a, "left and operand")?
+                            && scalar_bool_or_false(&b, "right and operand")?
                         {
                             1
                         } else {
                             0
                         },
-                    )
-                }?);
+                    )?,
+                )?;
             }
             BCor => {
                 let b = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
-                stack.push(unsafe {
+                push_operand(
+                    stack,
                     make_lgl(
-                        if scalar_bool_or_false(a, "left or operand")?
-                            || scalar_bool_or_false(b, "right or operand")?
+                        execution,
+                        if scalar_bool_or_false(&a, "left or operand")?
+                            || scalar_bool_or_false(&b, "right or operand")?
                         {
                             1
                         } else {
                             0
                         },
-                    )
-                }?);
+                    )?,
+                )?;
             }
             BCcall => {
                 let idx = read_operand_index(bytecode, pc, "call function")?;
                 let nargs = read_operand_index(bytecode, pc, "call argument count")?;
 
-                let mut args_vec = Vec::with_capacity(nargs);
-                for _ in 0..nargs {
-                    if let Some(arg) = stack.pop() {
-                        args_vec.push(arg);
-                    }
-                }
-                args_vec.reverse();
-                let fun = get_constant(constants.clone(), idx)?;
+                let args_vec = pop_arguments(stack, nargs)?;
+                let fun = get_constant(constants, idx)?;
 
                 if fun.clone().typeof_() == SEXPTYPE::CLOSXP {
-                    let mut arg_list =
-                        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
-                    for arg in args_vec.into_iter().rev() {
-                        let cell = unsafe {
-                            with_arena(|arena| {
-                                arena.cons(
-                                    arg.as_raw(),
-                                    arg_list.clone().as_raw(),
-                                    std::ptr::null_mut(),
-                                )
-                            })
-                        };
-                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
-                    }
-                    let result = unsafe {
-                        crate::eval::closure::apply_closure_safe(fun, arg_list, env.clone())
-                    }
-                    .map_err(|e| format!("closure call failed: {e}"))?;
-                    stack.push(result);
+                    let arg_list = argument_list(execution, &args_vec)?;
+                    let call = language_call(execution, &fun, &arg_list)?;
+                    let result =
+                        unsafe { crate::eval::eval::eval_lang_safe(call.clone(), env.clone()) }
+                            .map_err(|e| format!("closure call failed: {e}"))?;
+                    execution.require_live()?;
+                    push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
-                    stack.push(fun);
+                    push_operand(stack, fun)?;
                 }
             }
             BCpush => {
                 let idx = read_operand_index(bytecode, pc, "push")?;
-                stack.push(get_constant(constants.clone(), idx)?);
+                push_operand(stack, get_constant(constants, idx)?)?;
             }
             BCpop => {
-                stack.pop();
+                stack.pop().ok_or("empty stack on pop")?;
             }
             BCdup => {
-                if let Some(top) = stack.last() {
-                    stack.push(top.clone());
-                }
+                let top = stack.last().ok_or("empty stack on dup")?.clone();
+                push_operand(stack, top)?;
             }
             BCprint => {
                 if let Some(top) = stack.last() {
                     let output = if top.clone().typeof_() == SEXPTYPE::EXPRSXP {
-                        unsafe { format_expression_vector(top.clone().as_raw()) }
+                        format_expression_vector(top, execution)?
                     } else {
                         let type_name = match top.clone().typeof_() {
                             SEXPTYPE::NILSXP => "NULL",
@@ -2325,7 +2654,7 @@ unsafe fn eval_bytecode_loop<'a>(
                 let cond = stack.pop().ok_or_else(|| "empty stack on if".to_string())?;
                 let true_offset = read_jump_target(bytecode, pc, "if true")?;
                 let false_offset = read_jump_target(bytecode, pc, "if false")?;
-                if scalar_bool_or_false(cond, "if condition")? {
+                if scalar_bool_or_false(&cond, "if condition")? {
                     *pc = true_offset;
                 } else {
                     *pc = false_offset;
@@ -2340,7 +2669,7 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on fjmp".to_string())?;
                 let offset = read_jump_target(bytecode, pc, "false jump")?;
-                if !scalar_bool_or_false(cond, "false jump condition")? {
+                if !scalar_bool_or_false(&cond, "false jump condition")? {
                     *pc = offset;
                 }
             }
@@ -2349,230 +2678,117 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on tjmp".to_string())?;
                 let offset = read_jump_target(bytecode, pc, "true jump")?;
-                if scalar_bool_or_false(cond, "true jump condition")? {
+                if scalar_bool_or_false(&cond, "true jump condition")? {
                     *pc = offset;
                 }
             }
             BCfor => {
                 let var_idx = read_operand_index(bytecode, pc, "for variable")?;
                 let seq_idx = read_operand_index(bytecode, pc, "for sequence")?;
-                let body_offset = read_jump_target(bytecode, pc, "for body")?;
-                let end_offset = read_jump_target(bytecode, pc, "for end")?;
-
-                let var_sym = get_constant(constants.clone(), var_idx)?;
-                let seq_val = get_constant(constants.clone(), seq_idx)?;
-                let len = seq_val.clone().len();
-
-                for i in 0..len as usize {
-                    let idx_val = if seq_val.clone().typeof_() == SEXPTYPE::INTSXP {
-                        unsafe {
-                            make_int(
-                                seq_val
-                                    .clone()
-                                    .try_integer_elt(i as i64)
-                                    .map_err(|err| sexp_err("for-loop integer sequence", err))?,
-                            )
-                        }?
-                    } else if seq_val.clone().typeof_() == SEXPTYPE::REALSXP {
-                        unsafe {
-                            make_real(
-                                seq_val
-                                    .clone()
-                                    .try_real_elt(i as i64)
-                                    .map_err(|err| sexp_err("for-loop real sequence", err))?,
-                            )
-                        }?
-                    } else {
-                        unsafe { make_int(i as c_int) }?
-                    };
-
-                    unsafe {
-                        crate::sexp::envir::defineVar(
-                            var_sym.clone().as_raw(),
-                            idx_val.clone().as_raw(),
-                            env.clone().as_raw(),
-                        );
-                    }
-                    stack.push(idx_val);
-
-                    let mut loop_pc = body_offset;
-                    let (_, control) = unsafe {
-                        eval_bytecode_loop(
-                            bytecode,
-                            &mut loop_pc,
-                            stack,
-                            constants.clone(),
-                            env.clone(),
-                        )
-                    }?;
-
-                    if control == ControlFlow::Break {
-                        *pc = end_offset;
-                        return Ok((unsafe { make_lgl(0) }?, ControlFlow::Normal));
-                    }
+                let body = read_jump_target(bytecode, pc, "for body")?;
+                let end = read_jump_target(bytecode, pc, "for end")?;
+                let variable = get_constant(constants, var_idx)?;
+                if variable.typeof_() != SEXPTYPE::SYMSXP {
+                    return Err("private for-loop variable is not a symbol".into());
                 }
-                *pc = end_offset;
+                let sequence = get_constant(constants, seq_idx)?;
+                let length = usize::try_from(sequence.len())
+                    .map_err(|_| "invalid private for-loop length")?;
+                return Ok(PrivateStep::Loop(PrivateLoop {
+                    origin: opcode_pc,
+                    end,
+                    kind: PrivateLoopKind::For {
+                        variable,
+                        sequence,
+                        body,
+                        length,
+                        next: 0,
+                    },
+                }));
             }
             BCwhile => {
-                let cond_offset = read_jump_target(bytecode, pc, "while condition")?;
-                let body_offset = read_jump_target(bytecode, pc, "while body")?;
-                let end_offset = read_jump_target(bytecode, pc, "while end")?;
-
-                loop {
-                    let mut cond_pc = cond_offset;
-                    let (cond_result, cond_control) = unsafe {
-                        eval_bytecode_loop(
-                            bytecode,
-                            &mut cond_pc,
-                            stack,
-                            constants.clone(),
-                            env.clone(),
-                        )
-                    }?;
-                    if cond_control != ControlFlow::Normal {
-                        return Ok((cond_result, cond_control));
-                    }
-
-                    if !scalar_bool_or_false(cond_result, "while condition")? {
-                        *pc = end_offset;
-                        return Ok((unsafe { make_lgl(0) }?, ControlFlow::Normal));
-                    }
-
-                    let mut body_pc = body_offset;
-                    let (body_result, body_control) = unsafe {
-                        eval_bytecode_loop(
-                            bytecode,
-                            &mut body_pc,
-                            stack,
-                            constants.clone(),
-                            env.clone(),
-                        )
-                    }?;
-
-                    if body_control == ControlFlow::Break {
-                        *pc = end_offset;
-                        return Ok((body_result, ControlFlow::Normal));
-                    }
-                }
+                let condition = read_jump_target(bytecode, pc, "while condition")?;
+                let body = read_jump_target(bytecode, pc, "while body")?;
+                let end = read_jump_target(bytecode, pc, "while end")?;
+                return Ok(PrivateStep::Loop(PrivateLoop {
+                    origin: opcode_pc,
+                    end,
+                    kind: PrivateLoopKind::While {
+                        condition,
+                        body,
+                        testing: true,
+                    },
+                }));
             }
             BCrepeat => {
-                let body_offset = read_jump_target(bytecode, pc, "repeat body")?;
-                let end_offset = read_jump_target(bytecode, pc, "repeat end")?;
-
-                loop {
-                    let mut body_pc = body_offset;
-                    let (body_result, body_control) = unsafe {
-                        eval_bytecode_loop(
-                            bytecode,
-                            &mut body_pc,
-                            stack,
-                            constants.clone(),
-                            env.clone(),
-                        )
-                    }?;
-
-                    if body_control == ControlFlow::Break {
-                        *pc = end_offset;
-                        return Ok((body_result, ControlFlow::Normal));
-                    }
-                }
+                let body = read_jump_target(bytecode, pc, "repeat body")?;
+                let end = read_jump_target(bytecode, pc, "repeat end")?;
+                return Ok(PrivateStep::Loop(PrivateLoop {
+                    origin: opcode_pc,
+                    end,
+                    kind: PrivateLoopKind::Repeat { body },
+                }));
             }
             BCbreak => {
-                return Ok((unsafe { make_lgl(0) }?, ControlFlow::Break));
+                execution.require_live()?;
+                return Ok(PrivateStep::Complete(
+                    make_lgl(execution, 0)?,
+                    ControlFlow::Break,
+                ));
             }
             BCnext => {
-                return Ok((unsafe { make_lgl(0) }?, ControlFlow::Next));
+                execution.require_live()?;
+                return Ok(PrivateStep::Complete(
+                    make_lgl(execution, 0)?,
+                    ControlFlow::Next,
+                ));
             }
             BCspecial => {
                 let idx = read_operand_index(bytecode, pc, "special function")?;
                 let nargs = read_operand_index(bytecode, pc, "special argument count")?;
 
-                let mut args_vec = Vec::with_capacity(nargs);
-                for _ in 0..nargs {
-                    if let Some(arg) = stack.pop() {
-                        args_vec.push(arg);
-                    }
-                }
-                args_vec.reverse();
-                let fun = get_constant(constants.clone(), idx)?;
+                let args_vec = pop_arguments(stack, nargs)?;
+                let fun = get_constant(constants, idx)?;
 
                 if fun.clone().typeof_() == SEXPTYPE::SPECIALSXP
                     || fun.clone().typeof_() == SEXPTYPE::BUILTINSXP
                 {
-                    let mut arg_list =
-                        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
-                    for arg in args_vec.into_iter().rev() {
-                        let cell = unsafe {
-                            with_arena(|arena| {
-                                arena.cons(
-                                    arg.as_raw(),
-                                    arg_list.clone().as_raw(),
-                                    std::ptr::null_mut(),
-                                )
-                            })
-                        };
-                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
+                    let arg_list = argument_list(execution, &args_vec)?;
+
+                    let call_sexp = language_call(execution, &fun, &arg_list)?;
+
+                    let result = unsafe {
+                        crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
                     }
-
-                    let call = unsafe {
-                        with_arena(|arena| {
-                            arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                        })
-                    };
-                    let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
-
-                    let result =
-                        unsafe { crate::eval::eval::eval_lang_safe(call_sexp, env.clone()) }
-                            .map_err(|e| format!("special call failed: {e}"))?;
-                    stack.push(result);
+                    .map_err(|e| format!("special call failed: {e}"))?;
+                    execution.require_live()?;
+                    push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
-                    stack.push(fun);
+                    push_operand(stack, fun)?;
                 }
             }
             BCbuiltin => {
                 let idx = read_operand_index(bytecode, pc, "builtin function")?;
                 let nargs = read_operand_index(bytecode, pc, "builtin argument count")?;
 
-                let mut args_vec = Vec::with_capacity(nargs);
-                for _ in 0..nargs {
-                    if let Some(arg) = stack.pop() {
-                        args_vec.push(arg);
-                    }
-                }
-                args_vec.reverse();
-                let fun = get_constant(constants.clone(), idx)?;
+                let args_vec = pop_arguments(stack, nargs)?;
+                let fun = get_constant(constants, idx)?;
 
                 if fun.clone().typeof_() == SEXPTYPE::BUILTINSXP
                     || fun.clone().typeof_() == SEXPTYPE::SPECIALSXP
                 {
-                    let mut arg_list =
-                        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
-                    for arg in args_vec.into_iter().rev() {
-                        let cell = unsafe {
-                            with_arena(|arena| {
-                                arena.cons(
-                                    arg.as_raw(),
-                                    arg_list.clone().as_raw(),
-                                    std::ptr::null_mut(),
-                                )
-                            })
-                        };
-                        arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
+                    let arg_list = argument_list(execution, &args_vec)?;
+
+                    let call_sexp = language_call(execution, &fun, &arg_list)?;
+
+                    let result = unsafe {
+                        crate::eval::eval::eval_lang_safe(call_sexp.clone(), env.clone())
                     }
-
-                    let call = unsafe {
-                        with_arena(|arena| {
-                            arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                        })
-                    };
-                    let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
-
-                    let result =
-                        unsafe { crate::eval::eval::eval_lang_safe(call_sexp, env.clone()) }
-                            .map_err(|e| format!("builtin call failed: {e}"))?;
-                    stack.push(result);
+                    .map_err(|e| format!("builtin call failed: {e}"))?;
+                    execution.require_live()?;
+                    push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;
                 } else {
-                    stack.push(fun);
+                    push_operand(stack, fun)?;
                 }
             }
             BCneg => {
@@ -2580,16 +2796,27 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
                 if val.clone().typeof_() == SEXPTYPE::REALSXP {
-                    stack.push(unsafe { make_real(-scalar_real(val, "real negation operand")?) }?);
+                    push_operand(
+                        stack,
+                        make_real(execution, -scalar_real(&val, "real negation operand")?)?,
+                    )?;
                 } else if val.clone().typeof_() == SEXPTYPE::INTSXP {
-                    stack.push(unsafe { make_int(-scalar_int(val, "integer negation operand")?) }?);
+                    push_operand(
+                        stack,
+                        make_int(
+                            execution,
+                            scalar_int(&val, "integer negation operand")?
+                                .checked_neg()
+                                .unwrap_or(c_int::MIN),
+                        )?,
+                    )?;
                 } else {
-                    stack.push(val);
+                    push_operand(stack, val.into_owned().map_err(|e| e.to_string())?)?;
                 }
             }
             BCclosure => {
                 let idx = read_operand_index(bytecode, pc, "closure")?;
-                stack.push(get_constant(constants.clone(), idx)?);
+                push_operand(stack, get_constant(constants, idx)?)?;
             }
             _ => {
                 return Err(format!("unknown bytecode opcode: {opcode}"));
@@ -2600,16 +2827,39 @@ unsafe fn eval_bytecode_loop<'a>(
     let val = stack
         .pop()
         .ok_or_else(|| "empty stack at end of bytecode".to_string())?;
-    Ok((val, ControlFlow::Normal))
+    execution.require_live()?;
+    Ok(PrivateStep::Complete(val, ControlFlow::Normal))
 }
 
-fn get_constant(constants: Option<Sexp<'_>>, idx: usize) -> Result<Sexp<'_>, String> {
-    match constants {
-        Some(c) => c
-            .try_vector_elt(idx as i64)
-            .map_err(|err| sexp_err(&format!("constant index {idx}"), err)),
-        None => Err("no constants available".to_string()),
+fn snapshot_constants(pool: Option<Sexp<'static>>) -> Result<Vec<Sexp<'static>>, String> {
+    let Some(pool) = pool else {
+        return Ok(Vec::new());
+    };
+    if pool.typeof_() == SEXPTYPE::NILSXP {
+        return Ok(Vec::new());
     }
+    if !matches!(pool.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
+        return Err("private bytecode constant pool is not a vector".into());
+    }
+    let count = usize::try_from(pool.len()).map_err(|_| "invalid private constant pool length")?;
+    let mut constants = Vec::new();
+    constants
+        .try_reserve_exact(count)
+        .map_err(|_| "cannot reserve private bytecode constants")?;
+    for index in 0..count {
+        constants.push(
+            pool.try_vector_elt(index as i64)
+                .and_then(Sexp::into_owned)
+                .map_err(|e| sexp_err("private bytecode constant", e))?,
+        );
+    }
+    Ok(constants)
+}
+fn get_constant(constants: &[Sexp<'static>], idx: usize) -> Result<Sexp<'static>, String> {
+    constants
+        .get(idx)
+        .cloned()
+        .ok_or_else(|| format!("constant index {idx} is out of bounds"))
 }
 
 #[cfg(test)]
@@ -2617,38 +2867,271 @@ mod tests {
     use super::*;
     use crate::sexp::session::RSession;
 
-    fn nil_sexp<'a>() -> Sexp<'a> {
-        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) }
+    fn private_code(session: &RSession, words: &[c_int], constants: &[Sexp<'_>]) -> Sexp<'static> {
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let pool = factory
+                .allocate(|arena| {
+                    let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, constants.len() as i64);
+                    for (i, value) in constants.iter().enumerate() {
+                        arena.set_reference_element(ptr, i, value.as_raw())?;
+                    }
+                    Some(ptr)
+                })
+                .unwrap();
+            factory
+                .allocate(|arena| {
+                    let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, words.len() as i64);
+                    let heap = arena.heap_identity();
+                    let node = arena.node_token(ptr)?;
+                    let payload = heap.payload_lease(&node)?;
+                    for (i, word) in words.iter().enumerate() {
+                        payload.set_integer_elt(i, *word)?;
+                    }
+                    let mut header = heap.node_snapshot(&node)?;
+                    header.attrib = factory.link(&pool).ok()?;
+                    heap.replace_node(&node, header)?;
+                    Some(ptr)
+                })
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        })
+    }
+    fn run_private(
+        session: &RSession,
+        words: &[c_int],
+        constants: &[Sexp<'_>],
+    ) -> Result<Sexp<'static>, String> {
+        let code = private_code(session, words, constants);
+        session.with_active(|| {
+            eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+        })
     }
 
     #[test]
     fn eval_bytecode_rejects_truncated_operands() {
-        let _session = RSession::new_for_gc_tests();
-        let mut pc = 0;
-        let mut stack = Vec::new();
-        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush], &mut pc, &mut stack, None, nil_sexp()) }
-            .expect_err("truncated operand should return an error");
+        let session = RSession::new_for_gc_tests();
+        let err = run_private(&session, &[BCpush], &[]).unwrap_err();
         assert!(err.contains("push bytecode operand is truncated"));
     }
-
     #[test]
     fn eval_bytecode_rejects_negative_constant_indices() {
-        let _session = RSession::new_for_gc_tests();
-        let mut pc = 0;
-        let mut stack = Vec::new();
-        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush, -1], &mut pc, &mut stack, None, nil_sexp()) }
-            .expect_err("negative operand should return an error");
+        let session = RSession::new_for_gc_tests();
+        let err = run_private(&session, &[BCpush, -1], &[]).unwrap_err();
         assert!(err.contains("push bytecode operand index -1 is negative"));
+    }
+    #[test]
+    fn eval_bytecode_rejects_out_of_range_jump_targets() {
+        let session = RSession::new_for_gc_tests();
+        let err = run_private(&session, &[BCjump, 99], &[]).unwrap_err();
+        assert!(err.contains("jump bytecode jump target 99 is outside"));
+    }
+
+    fn fixture_integer(session: &RSession, value: c_int) -> Sexp<'static> {
+        session.with_active(|| {
+            session
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .allocate(|arena| {
+                    let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                    let heap = arena.heap_identity();
+                    let node = arena.node_token(pointer)?;
+                    heap.payload_lease(&node)?.set_integer_elt(0, value)?;
+                    Some(pointer)
+                })
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        })
+    }
+    fn collect_and_detach_pool(
+        session: &RSession,
+        code: &Sexp<'static>,
+    ) -> std::rc::Rc<std::cell::Cell<usize>> {
+        let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = callbacks.clone();
+        let code = code.clone();
+        session.with_active(|| {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                // Remove the only graph edge to the original constants. The
+                // executor's actual snapshots and argument cells must own them.
+                unsafe {
+                    crate::sexp::accessors::SET_ATTRIB(
+                        code.as_raw(),
+                        crate::sexp::globals::R_NilValue(),
+                    );
+                }
+                crate::sexp::gengc::full_gc();
+                observed.set(observed.get() + 1);
+            }));
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+        });
+        callbacks
     }
 
     #[test]
-    fn eval_bytecode_rejects_out_of_range_jump_targets() {
-        let _session = RSession::new_for_gc_tests();
-        let mut pc = 0;
-        let mut stack = Vec::new();
-        let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp()) }
-            .expect_err("invalid jump should return an error");
-        assert!(err.contains("jump bytecode jump target 99 is outside"));
+    fn owned_private_bytecode_stack_keeps_scalars_and_detached_constants_across_full_gc() {
+        let session = RSession::new_for_gc_tests();
+        let code = {
+            let seven = fixture_integer(&session, 7);
+            let six = fixture_integer(&session, 6);
+            private_code(
+                &session,
+                &[
+                    BCpush, 0, BCpush, 1, BCadd, BCpush, 0, BCpush, 1, BCmul, BCadd, BCreturn,
+                ],
+                &[seven, six],
+            )
+        };
+        let callbacks = collect_and_detach_pool(&session, &code);
+        let result = session
+            .with_active(|| {
+                eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+            })
+            .unwrap();
+        assert!(
+            callbacks.get() >= 3,
+            "scalar publication must actually collect"
+        );
+        session.with_active(|| session.owner_token().unwrap().full_gc().unwrap());
+        assert_eq!(result.integer_elt(0), Some(55));
+    }
+
+    #[test]
+    fn owned_private_bytecode_calls_keep_argument_cells_across_collecting_closure_builtin_and_special()
+     {
+        let mut session = RSession::new_without_default_packages();
+        let (closure, _, _) =
+            session.eval_code_with_output_capture("function(x, y) { gc(); x + y }");
+        let closure = closure.unwrap().into_owned().unwrap();
+        let code = {
+            let x = fixture_integer(&session, 17);
+            let y = fixture_integer(&session, 29);
+            private_code(
+                &session,
+                &[BCpush, 1, BCpush, 2, BCcall, 0, 2, BCreturn],
+                &[closure, x, y],
+            )
+        };
+        let callbacks = collect_and_detach_pool(&session, &code);
+        let result = session
+            .with_active(|| {
+                eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+            })
+            .unwrap();
+        assert!(callbacks.get() >= 2);
+        assert_eq!(result.integer_elt(0), Some(46));
+
+        let (list, _, _) = session.eval_code_with_output_capture("get('list', envir=baseenv())");
+        let list = list.unwrap().into_owned().unwrap();
+        let code = {
+            let x = fixture_integer(&session, 17);
+            let y = fixture_integer(&session, 29);
+            private_code(
+                &session,
+                &[BCpush, 1, BCpush, 2, BCbuiltin, 0, 2, BCreturn],
+                &[list, x, y],
+            )
+        };
+        let callbacks = collect_and_detach_pool(&session, &code);
+        let result = session
+            .with_active(|| {
+                eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+            })
+            .unwrap();
+        assert!(callbacks.get() >= 3);
+        assert_eq!(result.try_vector_elt(0).unwrap().integer_elt(0), Some(17));
+        assert_eq!(result.try_vector_elt(1).unwrap().integer_elt(0), Some(29));
+
+        let (quote, _, _) = session.eval_code_with_output_capture("get('quote', envir=baseenv())");
+        let quote = quote.unwrap().into_owned().unwrap();
+        let (symbol, _, _) = session.eval_code_with_output_capture("quote(saved_private_argument)");
+        let symbol = symbol.unwrap().into_owned().unwrap();
+        let expected_symbol = symbol.as_raw();
+        let code = private_code(
+            &session,
+            &[BCpush, 1, BCspecial, 0, 1, BCreturn],
+            &[quote, symbol],
+        );
+        let callbacks = collect_and_detach_pool(&session, &code);
+        let result = session
+            .with_active(|| {
+                eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+            })
+            .unwrap();
+        assert!(callbacks.get() >= 2);
+        assert_eq!(result.typeof_(), SEXPTYPE::SYMSXP);
+        assert_eq!(result.as_raw(), expected_symbol);
+    }
+
+    #[test]
+    fn owned_private_bytecode_rejects_argument_underflow_and_handles_integer_edges_without_panics()
+    {
+        let session = RSession::new_for_gc_tests();
+        let nil = session.with_active(|| session.owner_token().unwrap().node_factory().nil());
+        for opcode in [BCcall, BCbuiltin, BCspecial] {
+            let error = run_private(&session, &[opcode, 0, c_int::MAX, BCreturn], &[nil.clone()])
+                .unwrap_err();
+            assert!(error.contains("argument stack underflow"), "{error}");
+        }
+        let min = fixture_integer(&session, c_int::MIN);
+        let minus_one = fixture_integer(&session, -1);
+        let zero = fixture_integer(&session, 0);
+        let result = run_private(&session, &[BCpush, 0, BCneg, BCreturn], &[min.clone()]).unwrap();
+        assert_eq!(result.integer_elt(0), Some(c_int::MIN));
+        let result = run_private(
+            &session,
+            &[BCpush, 0, BCpush, 1, BCmod, BCreturn],
+            &[min, minus_one.clone()],
+        )
+        .unwrap();
+        assert_eq!(result.integer_elt(0), Some(c_int::MIN));
+        let result = run_private(
+            &session,
+            &[BCpush, 0, BCpush, 1, BCdiv, BCreturn],
+            &[minus_one, zero],
+        )
+        .unwrap();
+        assert_eq!(result.real_elt(0), Some(f64::NEG_INFINITY));
+    }
+
+    #[test]
+    fn owned_private_bytecode_rejects_self_recursive_loop_offsets() {
+        let session = RSession::new_for_gc_tests();
+        let error = run_private(&session, &[BCwhile, 0, 0, 4], &[]).unwrap_err();
+        assert!(error.contains("recursive loop target cycle"));
+        assert_eq!(
+            run_private(&session, &[BCtrue, BCreturn], &[])
+                .unwrap()
+                .logical_elt(0),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn owned_private_bytecode_supports_deep_valid_loops_with_constant_host_stack() {
+        let session = RSession::new_for_gc_tests();
+        // The innermost while has a false condition; its false result
+        // completes the enclosing condition segments outward iteratively.
+        let depth = 1024;
+        let end = depth * 4 + 2;
+        let mut words = Vec::new();
+        for index in 0..depth {
+            words.extend_from_slice(&[
+                BCwhile,
+                (index * 4 + 4) as c_int,
+                end as c_int,
+                end as c_int,
+            ]);
+        }
+        words.extend_from_slice(&[BCfalse, BCreturn]);
+        let result = run_private(&session, &words, &[]).unwrap();
+        assert_eq!(result.logical_elt(0), Some(0));
     }
 
     #[test]
