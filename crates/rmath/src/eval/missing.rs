@@ -713,11 +713,11 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             cptr = (*cptr).nextcontext;
         }
         let call = if !cptr.is_null()
-            && !(*cptr).call.is_null()
-            && (*cptr).call != R_NilValue()
-            && TYPEOF((*cptr).call) == SEXPTYPE::LANGSXP
+            && !(*cptr).call.as_raw().is_null()
+            && (*cptr).call.as_raw() != R_NilValue()
+            && TYPEOF((*cptr).call.as_raw()) == SEXPTYPE::LANGSXP
         {
-            (*cptr).call
+            (*cptr).call.as_raw()
         } else {
             let call = allocLang(1);
             SETCAR(call, op);

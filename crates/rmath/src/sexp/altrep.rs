@@ -57,6 +57,7 @@ pub trait AltrepClass: 'static {
 /// Lifetime-bound activation and allocation for a class callback.
 /// No method exposes a borrowed R buffer or a mutable RInstance reference.
 pub struct AltrepContext<'s> {
+    pin: Option<super::owner::OwnerPin>,
     owner: OwnerToken<'s>,
     object: Sexp<'s>,
     metadata: Metadata<'s>,
@@ -155,11 +156,15 @@ impl<'s> AltrepBuilder<'s> {
         let pending = InstanceStorage::create(&self.class, class.kind, self.data1, self.data2)?;
         let context = pending.context();
         let length = context.active(|| class.provider.length(&context))?;
+        if let Some(pin) = &context.pin {
+            pin.require_live()?;
+        }
         pending.finish(length)
     }
 }
 
 fn context<'s>(object: &Sexp<'s>) -> SexpResult<(AltrepContext<'s>, Rc<RegisteredClass>)> {
+    let pin = object.pin_runtime()?;
     let owner = owner(object)?;
     let data = Metadata::load(object).ok_or(failure("invalid ALTREP metadata"))?;
     let descriptor = data.descriptor()?;
@@ -169,6 +174,7 @@ fn context<'s>(object: &Sexp<'s>) -> SexpResult<(AltrepContext<'s>, Rc<Registere
     }
     Ok((
         AltrepContext {
+            pin,
             owner,
             object: object.clone(),
             metadata: data,
@@ -201,8 +207,13 @@ pub(crate) fn set_data2<'s>(object: &Sexp<'s>, value: Sexp<'s>) -> SexpResult<()
 }
 
 pub(crate) fn activate_for<T>(object: &Sexp<'_>, callback: impl FnOnce() -> T) -> SexpResult<T> {
+    let pin = object.pin_runtime()?;
     let owner = owner(object)?;
-    Ok(storage::activate(owner, callback))
+    let result = storage::activate(owner, callback);
+    if let Some(pin) = &pin {
+        pin.require_live()?;
+    }
+    Ok(result)
 }
 
 pub fn is_altrep(object: &Sexp<'_>) -> bool {
@@ -287,7 +298,11 @@ fn invoke_element<'s>(
         context.owner,
         Operation::Read(context.object.clone().as_raw() as usize, index),
     )?;
-    context.active(|| class.provider.element(context, index))
+    let result = context.active(|| class.provider.element(context, index));
+    if let Some(pin) = &context.pin {
+        pin.require_live()?;
+    }
+    result
 }
 pub(crate) fn lazy_element<'s>(
     object: &Sexp<'s>,
@@ -373,6 +388,7 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
 /// Create a dense value copy, preserving public attributes. Serialization uses
 /// this fallback when a class does not have a portable serialized state.
 pub fn materialized_copy<'s>(object: &Sexp<'s>) -> SexpResult<Sexp<'s>> {
+    let _pin = object.pin_runtime()?;
     let owner = owner(object)?;
     let output = allocate(owner, object.typeof_(), object.len())?;
     let mut output = SexpMut::try_from_checked(output)?;

@@ -335,6 +335,8 @@ pub struct RInstance {
     // Only this allocation owns a strong token. It is invalidated before any
     // owned field is destroyed; weak observers never prolong its lifetime.
     liveness: Option<Rc<()>>,
+    /// Weak capability of the sole stable session allocation; never a second runtime.
+    pub(crate) runtime_owner: Option<super::owner::WeakOwner>,
     /// Immutable ownership domain; readable while the arena is lent.
     pub(crate) heap_identity: super::heap::HeapIdentity,
     /// Arena allocator for this instance.
@@ -366,7 +368,7 @@ pub struct RInstance {
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
     pub(crate) base_wrappers: std::cell::RefCell<std::collections::HashMap<&'static str, SEXP>>,
-    pub(crate) context_stack: Vec<Box<std::cell::UnsafeCell<super::context::RCNTXT>>>,
+    pub(crate) context_stack: Vec<Rc<std::cell::UnsafeCell<super::context::RCNTXT>>>,
     /// Per-instance in-error flag.
     pub(crate) in_error: bool,
     /// Per-instance generational GC state.
@@ -553,25 +555,30 @@ pub struct RInstance {
 }
 
 impl RInstance {
-    /// Create a new, fully independent R instance.
+    /// Allocate independent runtime storage without executing R code.
     ///
-    /// This allocates three persistent environment sentinels (empty → base →
-    /// global) owned by the instance, plus an empty arena and protect stack.
+    /// Initialized interpreters are constructed by RSession, which installs
+    /// the original weak runtime authority before evaluating base bindings.
+    /// This low-level storage constructor creates the three environment
+    /// sentinels and an empty arena; it does not publish a movable interpreter.
     pub fn new() -> Self {
-        Self::new_with_base_bindings(true, crate::mainutils::paths::RuntimePathPolicy::default())
+        Self::allocate_with_path_policy(crate::mainutils::paths::RuntimePathPolicy::default())
+    }
+
+    /// Allocate session storage before its stable shared owner is installed.
+    /// Base evaluation must run only after installing that original owner.
+    pub(crate) fn allocate_for_session() -> Self {
+        Self::allocate_with_path_policy(crate::mainutils::paths::RuntimePathPolicy::default())
     }
 
     /// Real session storage without evaluating the base library. Intended for
     /// collector and ownership tests whose subject is independent of R code.
     #[cfg(test)]
     pub(crate) fn new_for_gc_tests() -> Self {
-        Self::new_with_base_bindings(false, crate::mainutils::paths::RuntimePathPolicy::for_gc_tests())
+        Self::allocate_with_path_policy(crate::mainutils::paths::RuntimePathPolicy::for_gc_tests())
     }
 
-    fn new_with_base_bindings(
-        initialize_base: bool,
-        path_policy: crate::mainutils::paths::RuntimePathPolicy,
-    ) -> Self {
+    fn allocate_with_path_policy(path_policy: crate::mainutils::paths::RuntimePathPolicy) -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
         let arena = RArena::new();
@@ -582,8 +589,9 @@ impl RInstance {
         let base_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, empty_env, nil);
         let global_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, base_env, nil);
 
-        let mut instance = RInstance {
+        RInstance {
             liveness: Some(Rc::new(())),
+            runtime_owner: None,
             heap_identity,
             arena,
             persistent_nodes,
@@ -685,37 +693,35 @@ impl RInstance {
             parallel_fork_state: crate::library::parallel::fork::ForkRuntimeState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
-        };
-
-        // Derive the raw pointer before any &mut borrow is outstanding:
-        // the thread-local current-instance alias then has a single,
-        // Miri-clean provenance chain (re-borrowing `&mut instance`
-        // across the raw-pointer window violates Stacked Borrows).
-        let instance_ptr: *mut RInstance = &raw mut instance;
-        if initialize_base {
-            Self::initialize_base_bindings_via(instance_ptr);
-            instance.initialized = true;
-        }
-        instance
-    }
-
-    /// Install core base bindings with this instance active.
-    pub fn initialize_base_bindings(&mut self) {
-        let previous = unsafe { replace_current_instance(Some(self as *mut RInstance)) };
-        unsafe {
-            super::init::initialize_base_bindings(self.base_env);
-            replace_current_instance(previous);
         }
     }
 
-    /// Raw-pointer variant used during construction: the pointer's
-    /// provenance is derived before any outstanding `&mut` borrow, keeping
-    /// the thread-local alias Miri-clean under Stacked Borrows.
-    fn initialize_base_bindings_via(instance: *mut RInstance) {
-        let previous = unsafe { replace_current_instance(Some(instance)) };
+    /// Initialize base bindings on the original stable session allocation.
+    ///
+    /// # Safety
+    /// `instance` is the original shared-cell projection with its managed weak
+    /// owner already installed. No instance or arena loan overlaps R execution.
+    pub(crate) unsafe fn initialize_base_bindings_via(instance: *mut RInstance) {
+        // The activation retains the original session allocation across base
+        // evaluation and restores ambient state even when bootstrap unwinds.
         unsafe {
-            super::init::initialize_base_bindings((*instance).base_env);
-            replace_current_instance(previous);
+            let owner = (*instance)
+                .runtime_owner
+                .as_ref()
+                .expect("base initialization requires a managed runtime owner")
+                .clone();
+            let pin = owner.pin().expect("live base initialization owner");
+            assert_eq!(
+                pin.as_ptr(),
+                instance,
+                "base initialization uses its original runtime"
+            );
+            super::session::with_instance_active(instance, || {
+                super::init::initialize_base_bindings((*instance).base_env);
+                pin.require_live()
+                    .expect("base initialization runtime was closed by a callback");
+                (*instance).initialized = true;
+            });
         }
     }
 
@@ -729,18 +735,28 @@ impl RInstance {
     ) -> SEXP {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
         header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
-            frame: persistent.link_from_projection(frame).expect("permanent environment frame"),
-            enclos: persistent.link_from_projection(enclos).expect("permanent environment parent"),
-            hashtab: persistent.link_from_projection(hashtab).expect("permanent environment hash"),
+            frame: persistent
+                .link_from_projection(frame)
+                .expect("permanent environment frame"),
+            enclos: persistent
+                .link_from_projection(enclos)
+                .expect("permanent environment parent"),
+            hashtab: persistent
+                .link_from_projection(hashtab)
+                .expect("permanent environment hash"),
         });
-        let env = persistent.allocate_header(header).expect("persistent environment allocation");
+        let env = persistent
+            .allocate_header(header)
+            .expect("persistent environment allocation");
         env_nodes.push(env);
         env
     }
 
     /// Exact allocation identity for either managed or permanent storage.
     pub(crate) fn node_token(&self, pointer: SEXP) -> Option<super::heap::CheckedNode> {
-        self.arena.node_token(pointer).or_else(|| self.persistent_nodes.token(pointer))
+        self.arena
+            .node_token(pointer)
+            .or_else(|| self.persistent_nodes.token(pointer))
     }
 
     /// An address lookup validates membership; only owned cells supply the
@@ -841,7 +857,9 @@ impl InstanceLiveness {
 /// The pointer is a live writable owner projection; no borrow of its
 /// availability field overlaps this operation.
 pub(crate) unsafe fn revoke_instance_availability(instance: *mut RInstance) {
-    unsafe { drop((*instance).liveness.take()); }
+    unsafe {
+        drop((*instance).liveness.take());
+    }
 }
 
 /// Snapshot an owner's teardown identity without borrowing its fields during
@@ -858,13 +876,46 @@ pub(crate) unsafe fn instance_liveness(instance: *mut RInstance) -> InstanceLive
 // Thread-local current instance
 // ---------------------------------------------------------------------------
 
+/// Managed ambient dispatch carries only a weak capability. Standalone
+/// translated fixtures remain an explicitly unsafe lifetime-bound boundary.
+#[derive(Clone)]
+enum CurrentRuntime {
+    Managed(super::owner::WeakOwner),
+    Borrowed {
+        pointer: *mut RInstance,
+        liveness: InstanceLiveness,
+    },
+}
+
+impl CurrentRuntime {
+    unsafe fn from_raw(pointer: *mut RInstance) -> Self {
+        match unsafe { (*pointer).runtime_owner.clone() } {
+            Some(owner) => Self::Managed(owner),
+            None => Self::Borrowed {
+                pointer,
+                liveness: unsafe { instance_liveness(pointer) },
+            },
+        }
+    }
+
+    fn projection(&self) -> Option<*mut RInstance> {
+        match self {
+            Self::Managed(owner) => owner.pin().ok().map(|pin| pin.as_ptr()),
+            Self::Borrowed { pointer, liveness } => liveness.is_live().then_some(*pointer),
+        }
+    }
+
+    fn pin(&self) -> Option<super::owner::OwnerPin> {
+        match self {
+            Self::Managed(owner) => owner.pin().ok(),
+            Self::Borrowed { .. } => None,
+        }
+    }
+}
+
 thread_local! {
-    /// Pointer to the currently active `RInstance`, if any.
-    ///
-    /// Stored as a raw pointer to avoid requiring `Sync` on `RInstance`.
-    /// The instance itself is owned by an `RSession` (via `Box<RInstance>`),
-    /// so the pointer is valid for the lifetime of that session.
-    static CURRENT_INSTANCE: RefCell<Option<*mut RInstance>> = const { RefCell::new(None) };
+    /// Availability-gated weak capability, without keeping closed sessions alive.
+    static CURRENT_INSTANCE: RefCell<Option<CurrentRuntime>> = const { RefCell::new(None) };
 
     /// Borrow depth counter for ambient `RInstance` views derived from the
     /// thread-local raw pointer. This remains a diagnostic monitor while the
@@ -921,32 +972,20 @@ where
 /// The caller must ensure that `instance` points to a valid, live `RInstance`
 /// and that it is restored or cleared before the pointed-to instance is dropped.
 pub unsafe fn set_current_instance(instance: *mut RInstance) {
-    // Expose the installed root's provenance: protect-guard drops
-    // reconstitute the owning instance from a bare address (see
-    // `protect::with_guard_owner`), and Miri validates that wildcard access
-    // against a still-live exposed tag even after sibling re-acquisitions
-    // popped their own tags.
-    let _root = instance.expose_provenance();
-    CURRENT_INSTANCE.with(|ci| {
-        *ci.borrow_mut() = Some(instance);
-    });
+    unsafe { replace_current_instance(Some(instance)) };
 }
 
-/// Replace the current thread-local R instance and return the previous value.
+/// Replace the ambient capability and return its previous live projection.
 ///
-/// This is the primitive used by scoped session activation. It only stores raw
-/// pointers; callers remain responsible for ensuring any non-null pointer stays
-/// valid while installed.
+/// # Safety
+/// Standalone pointers must remain allocated while installed. Managed session
+/// pointers install their original weak capability and reject revoked owners.
 pub unsafe fn replace_current_instance(instance: Option<*mut RInstance>) -> Option<*mut RInstance> {
-    if let Some(installed) = instance {
-        // See `set_current_instance`: exposure backs wildcard
-        // reconstitution in protect-guard drops.
-        let _root = installed.expose_provenance();
-    }
+    let replacement = instance.map(|pointer| unsafe { CurrentRuntime::from_raw(pointer) });
     CURRENT_INSTANCE.with(|ci| {
         let mut current = ci.borrow_mut();
-        let previous = *current;
-        *current = instance;
+        let previous = current.as_ref().and_then(CurrentRuntime::projection);
+        *current = replacement;
         previous
     })
 }
@@ -969,6 +1008,11 @@ pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
     CURRENT_INSTANCE.with(|ci| {
         let mut current = ci.borrow_mut();
         if current
+            .as_ref()
+            .map(|runtime| match runtime {
+                CurrentRuntime::Managed(owner) => owner.identity_ptr(),
+                CurrentRuntime::Borrowed { pointer, .. } => *pointer,
+            })
             .map(|ptr| std::ptr::eq(ptr as *const RInstance, instance))
             .unwrap_or(false)
         {
@@ -983,7 +1027,7 @@ pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
 /// Return the current raw instance pointer, if one is active.
 #[inline]
 pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
-    CURRENT_INSTANCE.with(|ci| *ci.borrow())
+    CURRENT_INSTANCE.with(|ci| ci.borrow().as_ref().and_then(CurrentRuntime::projection))
 }
 
 /// Return whether this thread currently has an active runtime instance.
@@ -992,7 +1036,7 @@ pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
 /// obtaining a raw instance pointer it will never dereference.
 #[inline]
 pub(crate) fn has_current_instance() -> bool {
-    CURRENT_INSTANCE.with(|ci| ci.borrow().is_some())
+    current_instance_ptr().is_some()
 }
 
 /// Execute a closure with a reference to the current instance, if active.
@@ -1007,8 +1051,20 @@ where
     // callback may activate another owner; no TLS RefCell borrow may survive
     // that reentry. Field lends remain governed by acquire_instance_mut's
     // depth monitor and the arena guard.
-    let current = CURRENT_INSTANCE.with(|ci| *ci.borrow());
-    current.map(|ptr| acquire_instance_mut(ptr, f))
+    let current = CURRENT_INSTANCE.with(|ci| ci.borrow().clone())?;
+    // A callback can drop its session handle. The original shared allocation
+    // stays physically owned until this operation and every cleanup finish.
+    let pin = current.pin();
+    let pointer = match &current {
+        CurrentRuntime::Managed(_) => pin.as_ref()?.as_ptr(),
+        CurrentRuntime::Borrowed { pointer, liveness } => {
+            if !liveness.is_live() {
+                return None;
+            }
+            *pointer
+        }
+    };
+    Some(acquire_instance_mut(pointer, f))
 }
 
 /// Execute a closure with the current instance.
@@ -1068,8 +1124,14 @@ mod tests {
             assert_eq!((*instance.empty_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
             assert_eq!((*instance.base_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
             assert_eq!((*instance.global_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
-            assert_eq!(crate::sexp::accessors::ENCLOS(instance.base_env), instance.empty_env);
-            assert_eq!(crate::sexp::accessors::ENCLOS(instance.global_env), instance.base_env);
+            assert_eq!(
+                crate::sexp::accessors::ENCLOS(instance.base_env),
+                instance.empty_env
+            );
+            assert_eq!(
+                crate::sexp::accessors::ENCLOS(instance.global_env),
+                instance.base_env
+            );
         }
     }
 

@@ -688,79 +688,122 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     use crate::sexp::envir::findFun;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
-    use crate::sexp::protect::protect;
     use std::os::raw::c_char;
 
     unsafe {
-        let top = super::runtime::global_context();
-        let mut cptr = top;
-
-        // Walk context stack to find the closure context for this environment
-        while !cptr.is_null() {
-            let ctx = &*cptr;
-            if (ctx.callflag & CTXT_RETURN) != 0 && ctx.cloenv == rho {
-                break;
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        let pin = crate::sexp::context::pin_context_owner_in(instance);
+        let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+        let capture = |value: SEXP| {
+            if value.is_null() {
+                None
+            } else {
+                Some(
+                    owner
+                        .sexp(value)
+                        .and_then(Sexp::into_owned)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(format!("invalid Recall value: {error}"))
+                        }),
+                )
             }
-            cptr = ctx.nextcontext;
-        }
-
-        // Get the args from the context if found
-        let recall_args = if !cptr.is_null() {
-            (*cptr).promiseargs
-        } else {
-            args
         };
-
-        // Get the sysparent (the env Recall was called from)
+        let projection = |value: &Option<Sexp<'static>>| {
+            value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw)
+        };
+        let top = super::runtime::global_context();
         if top.is_null() {
             Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
         }
-        let s = (*top).sysparent;
+        let top_cell =
+            crate::sexp::context::retain_context_in(instance, top).unwrap_or_else(|| {
+                crate::sexp::context::r_error("Recall context no longer belongs to its owner")
+            });
+        let parent = (*top_cell.get()).sysparent.owned();
+        let parent_pointer = projection(&parent);
 
-        // Walk context stack again to find the closure context for sysparent
-        let mut cptr2 = top;
-        while !cptr2.is_null() {
-            let ctx = &*cptr2;
-            if (ctx.callflag & CTXT_RETURN) != 0 && ctx.cloenv == s {
+        // Both searches finish before evaluating a function expression or
+        // active binding. Their original context cells stay physically owned.
+        let mut argument_context = None;
+        let mut function_context = None;
+        let mut current = top;
+        while !current.is_null() {
+            let cell =
+                crate::sexp::context::retain_context_in(instance, current).unwrap_or_else(|| {
+                    crate::sexp::context::r_error("Recall context no longer belongs to its owner")
+                });
+            let (flag, environment, next) = {
+                let context = &*cell.get();
+                (
+                    context.callflag,
+                    context.cloenv.as_raw(),
+                    context.nextcontext,
+                )
+            };
+            if flag & CTXT_RETURN != 0 {
+                if argument_context.is_none() && environment == rho {
+                    argument_context = Some(cell.clone());
+                }
+                if function_context.is_none() && environment == parent_pointer {
+                    function_context = Some(cell);
+                }
+            }
+            if argument_context.is_some() && function_context.is_some() {
                 break;
             }
-            cptr2 = ctx.nextcontext;
+            current = next;
         }
-
-        if cptr2.is_null() {
-            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
-        }
-
-        // Get the function from callfun, or look it up
-        let fun = {
-            let ctx = &*cptr2;
-            if !ctx.callfun.is_null() && ctx.callfun != R_NilValue() {
-                ctx.callfun
-            } else if TYPEOF(CAR(ctx.call)) == SEXPTYPE::SYMSXP {
-                findFun(CAR(ctx.call), ctx.sysparent)
-            } else {
-                Rf_eval(CAR(ctx.call), ctx.sysparent)
-            }
+        let recall_args = argument_context
+            .as_ref()
+            .map(|context| (*context.get()).promiseargs.owned())
+            .unwrap_or_else(|| capture(args));
+        let Some(function_context) = function_context else {
+            crate::mainutils::errors::errorcall_str(
+                R_NilValue(),
+                "'Recall' called from outside a closure",
+            );
         };
-
-        let _fun_guard = protect(fun);
-
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        let (source_call, function, environment) = {
+            let context = &*function_context.get();
+            (
+                context.call.owned(),
+                context.callfun.owned(),
+                context.sysparent.owned(),
+            )
+        };
+        let source = projection(&source_call);
+        let environment_pointer = projection(&environment);
+        let function_pointer = projection(&function);
+        let function = if !function_pointer.is_null() && function_pointer != R_NilValue() {
+            function
+        } else {
+            let head = CAR(source);
+            let head_owned = capture(head);
+            let head = projection(&head_owned);
+            let function = if TYPEOF(head) == SEXPTYPE::SYMSXP {
+                findFun(head, environment_pointer)
+            } else {
+                Rf_eval(head, environment_pointer)
+            };
+            crate::sexp::context::require_context_owner_live(&pin);
+            capture(function)
+        };
+        let function_pointer = projection(&function);
+        if TYPEOF(function_pointer) != SEXPTYPE::CLOSXP {
             Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
         }
-
-        let ans = applyClosure(
-            (*cptr2).call,
-            fun,
-            recall_args,
-            (*cptr2).sysparent,
+        let result = applyClosure(
+            source,
+            function_pointer,
+            projection(&recall_args),
+            environment_pointer,
             R_NilValue(),
             1,
         );
-        ans
+        crate::sexp::context::require_context_owner_live(&pin);
+        result
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,6 +811,61 @@ mod tests {
     use crate::sexp::constructors::{Rf_ScalarInteger, Rf_lang2};
     use crate::sexp::session::RSession;
     use crate::sexp::symbol::Rf_install;
+
+    #[test]
+    fn owned_recall_snapshots_survive_collecting_function_lookup_and_context_replacement() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let nil = R_NilValue();
+            let environment = session.global_env().unwrap();
+            let closure =
+                crate::mainutils::dstruct::mkCLOSXP(nil, Rf_ScalarInteger(73), environment.as_raw());
+            let closure = owner.sexp(closure).unwrap().into_owned().unwrap();
+            let identity_call = Rf_lang2(Rf_install(c"identity".as_ptr()), closure.as_raw());
+            let identity_call = owner.sexp(identity_call).unwrap().into_owned().unwrap();
+            let source = crate::sexp::constructors::Rf_cons(identity_call.as_raw(), nil);
+            crate::sexp::accessors::SET_TYPEOF(source, SEXPTYPE::LANGSXP.as_c_int());
+            let context = crate::sexp::context::Rf_begincontext_in(
+                instance,
+                crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                    | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                source,
+                environment.as_raw(),
+                environment.as_raw(),
+                None,
+                nil,
+                nil,
+            );
+            let context_cell = crate::sexp::context::retain_context_in(instance, context).unwrap();
+            drop(closure);
+            drop(identity_call);
+            let invoked = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = invoked.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(true) {
+                    return;
+                }
+                (*context_cell.get())
+                    .call
+                    .replace_from_raw_in(instance, nil);
+                (*context_cell.get())
+                    .sysparent
+                    .replace_from_raw_in(instance, nil);
+                crate::sexp::gengc::full_gc_in(instance);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = do_recall(nil, nil, nil, environment.as_raw());
+            let result = owner.sexp(result).unwrap();
+            assert!(
+                invoked.get(),
+                "function lookup must exercise a collecting callback"
+            );
+            assert_eq!(result.integer_elt(0), Some(73));
+            crate::sexp::context::Rf_endcontext_in(instance, context);
+        });
+    }
 
     #[test]
     fn eval_context_evaluates_owner_scoped_expression() {

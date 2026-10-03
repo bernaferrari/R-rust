@@ -15579,7 +15579,7 @@ unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
         let mut ctx = crate::sexp::context::R_GlobalContext();
         while !ctx.is_null() {
             if (*ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
-                let fun = (*ctx).callfun;
+                let fun = (*ctx).callfun.as_raw();
                 let mut cell = FORMALS(fun);
                 while !cell.is_null() && cell != R_NilValue() {
                     let tag = TAG(cell);
@@ -15593,7 +15593,7 @@ unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
                                     || def == R_NilValue()
                                     || def == R_MissingArg())
                                 {
-                                    return crate::eval::eval::Rf_eval(def, (*ctx).cloenv);
+                                    return crate::eval::eval::Rf_eval(def, (*ctx).cloenv.as_raw());
                                 }
                             }
                         }
@@ -15983,7 +15983,7 @@ pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
             let mut ctx = crate::sexp::context::R_GlobalContext();
             while !ctx.is_null() {
                 if (*ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
-                    let parent = (*ctx).sysparent;
+                    let parent = (*ctx).sysparent.as_raw();
                     if !parent.is_null() && parent != R_NilValue() {
                         return parent;
                     }

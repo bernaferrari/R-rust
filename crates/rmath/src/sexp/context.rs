@@ -10,6 +10,7 @@
 
 use std::os::raw::c_int;
 use std::ptr;
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use super::ffi::{SEXP, SexprecCore};
@@ -37,35 +38,98 @@ pub mod ctxt_flags {
 // RCNTXT — the execution context structure
 // ---------------------------------------------------------------------------
 
+/// The actual owning value of an execution-context field.
+///
+/// A field owns the original allocation lease. Raw SEXP readers borrow a
+/// projection from this value; the collector never reconstructs ownership by
+/// scanning or remapping its address. Replacement acquires the new lease first,
+/// so validation failure leaves the previous value intact.
+#[derive(Default, Debug)]
+pub struct ContextValue(Option<super::object::Sexp<'static>>);
+
+impl ContextValue {
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    pub fn as_raw(&self) -> SEXP {
+        self.0
+            .as_ref()
+            .map_or(ptr::null_mut(), |value| value.as_raw())
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_none()
+    }
+
+    pub(crate) fn owned(&self) -> Option<super::object::Sexp<'static>> {
+        self.0.clone()
+    }
+
+    /// Capture an already-proven raw value at the translated owner boundary.
+    /// No interpreter callback executes while constructing the field.
+    ///
+    /// # Safety
+    /// `instance` is the original live writable owner; `value` is either null
+    /// or its live initialized projection, with no overlapping payload loans.
+    pub(crate) unsafe fn from_raw_in(instance: *mut RInstance, value: SEXP) -> Self {
+        if value.is_null() {
+            return Self::empty();
+        }
+        let owner = unsafe { super::owner::OwnerToken::from_raw(instance) };
+        let value = owner
+            .sexp(value)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|error| r_error(format!("invalid context value: {error}")));
+        Self(Some(value))
+    }
+
+    /// # Safety
+    /// The owner and projection requirements of `from_raw_in` apply. The
+    /// caller excludes overlapping access to this context field.
+    pub(crate) unsafe fn replace_from_raw_in(&mut self, instance: *mut RInstance, value: SEXP) {
+        let next = unsafe { Self::from_raw_in(instance, value) };
+        *self = next;
+    }
+
+    /// # Safety
+    /// `value` is a live projection belonging to the active owner, and the
+    /// caller excludes overlapping access to this field.
+    pub(crate) unsafe fn replace_from_raw(&mut self, value: SEXP) {
+        instance::with_required_current_instance(|instance| unsafe {
+            self.replace_from_raw_in(instance, value);
+        });
+    }
+}
+
 /// R's execution context node.
 ///
 /// This is the Rust equivalent of R's `RCNTXT` struct from Defn.h.
 /// It tracks the state needed for error handling, loop control flow,
 /// and function call boundaries.
-#[repr(C)]
 pub struct RCNTXT {
     /// Context type flags (CTXT_TOPLEVEL, CTXT_FUNCTION, etc.)
     pub cstackbase: *mut u8,
     /// Type of context (function, loop, toplevel, etc.)
     pub callflag: c_int,
     /// The call being evaluated (for error reporting)
-    pub call: SEXP,
+    pub call: ContextValue,
     /// The closure/environment for function contexts
-    pub cloenv: SEXP,
-    pub sysparent: SEXP,
-    pub callfun: SEXP,
+    pub cloenv: ContextValue,
+    pub sysparent: ContextValue,
+    pub callfun: ContextValue,
     /// Function to call on exit (on.exit handlers)
     pub cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
     /// Closure being evaluated
-    pub closure: SEXP,
+    pub closure: ContextValue,
     /// Promises for arguments
-    pub promiseargs: SEXP,
+    pub promiseargs: ContextValue,
     /// Old working directory (saved on entry)
-    pub savelist: SEXP,
+    pub savelist: ContextValue,
     /// Handler for conditions
-    pub handlerstack: SEXP,
+    pub handlerstack: ContextValue,
     /// Restart stack
-    pub restartstack: SEXP,
+    pub restartstack: ContextValue,
     /// Flag: are we in the middle of a browser?
     pub browserflag: c_int,
     /// Global evaluation depth limit
@@ -77,21 +141,21 @@ pub struct RCNTXT {
     /// Flag: whether this context has been jumped to
     pub jumped: c_int,
     /// The R vector version counter (for ALTREP)
-    pub rpvec: SEXP,
+    pub rpvec: ContextValue,
     /// Vector clock
     pub rpvbase: usize,
     /// Return value
-    pub returnValue: SEXP,
+    pub returnValue: ContextValue,
     /// Number of protect entries at context entry
     pub protectCount: usize,
     /// on.exit expression list (conexit in R)
-    pub conexit: SEXP,
+    pub conexit: ContextValue,
     pub onexit_active: i32,
     /// cleanup function pointer (cend in R)
     pub cend: Option<unsafe extern "C" fn(*mut std::os::raw::c_void)>,
     /// cleanup function data (cenddata in R)
     pub cenddata: *mut std::os::raw::c_void,
-    pub srcref: SEXP,
+    pub srcref: ContextValue,
 }
 
 impl RCNTXT {
@@ -100,30 +164,30 @@ impl RCNTXT {
         RCNTXT {
             cstackbase: ptr::null_mut(),
             callflag: 0,
-            call: ptr::null_mut(),
-            cloenv: ptr::null_mut(),
-            sysparent: ptr::null_mut(),
-            callfun: ptr::null_mut(),
+            call: ContextValue::empty(),
+            cloenv: ContextValue::empty(),
+            sysparent: ContextValue::empty(),
+            callfun: ContextValue::empty(),
             cfn: None,
-            closure: ptr::null_mut(),
-            promiseargs: ptr::null_mut(),
-            savelist: ptr::null_mut(),
-            handlerstack: ptr::null_mut(),
-            restartstack: ptr::null_mut(),
+            closure: ContextValue::empty(),
+            promiseargs: ContextValue::empty(),
+            savelist: ContextValue::empty(),
+            handlerstack: ContextValue::empty(),
+            restartstack: ContextValue::empty(),
             browserflag: 0,
             evaldepth: 0,
             nextcontext: ptr::null_mut(),
             intactive: 0,
             jumped: 0,
-            rpvec: ptr::null_mut(),
+            rpvec: ContextValue::empty(),
             rpvbase: 0,
-            returnValue: ptr::null_mut(),
+            returnValue: ContextValue::empty(),
             protectCount: 0,
-            conexit: ptr::null_mut(),
+            conexit: ContextValue::empty(),
             onexit_active: 0,
             cend: None,
             cenddata: ptr::null_mut(),
-            srcref: ptr::null_mut(),
+            srcref: ContextValue::empty(),
         }
     }
 }
@@ -136,15 +200,55 @@ impl Default for RCNTXT {
 
 /// Context-pointer derivation policy (the single rule for `*mut RCNTXT`).
 ///
-/// Contexts live in instance-owned `Box<UnsafeCell<RCNTXT>>` allocations.
+/// Contexts live in original `Rc<UnsafeCell<RCNTXT>>` allocations.
 /// All pointers come from `UnsafeCell::get`, including the nextcontext chain.
 /// Re-entering the evaluator never derives a new unique reference to a live
-/// context. Popping its owning box invalidates its pointers.
+/// context. Removing stack ownership invalidates unleased pointers. Guards and callback
+/// operations retain the same original cell until their cleanup completes.
 fn stack_top_mut(instance: *mut RInstance) -> Option<*mut RCNTXT> {
     // SAFETY: `instance` is a live instance pointer from the caller; the
     // Vec access is strictly local and the derived pointer is handed to the
     // caller per the module policy.
     unsafe { (*instance).context_stack.last_mut().map(|ctx| ctx.get()) }
+}
+
+/// Retain the original context allocation before executing a callback.
+/// This is the same cell owned by the stack, not a context snapshot.
+///
+/// # Safety
+/// `instance` is a live original owner with no overlapping context-stack loan.
+pub(crate) unsafe fn retain_context_in(
+    instance: *mut RInstance,
+    context: *mut RCNTXT,
+) -> Option<Rc<std::cell::UnsafeCell<RCNTXT>>> {
+    unsafe {
+        (*instance)
+            .context_stack
+            .iter()
+            .find(|cell| cell.get() == context)
+            .cloned()
+    }
+}
+
+/// # Safety
+/// `instance` is a live original owner. This short snapshot ends before any
+/// callback executes. Standalone translated fixtures retain it by borrowing.
+pub(crate) unsafe fn pin_context_owner_in(
+    instance: *mut RInstance,
+) -> Option<super::owner::OwnerPin> {
+    let owner = unsafe { (*instance).runtime_owner.clone() };
+    owner.map(|owner| {
+        owner
+            .pin()
+            .unwrap_or_else(|error| r_error(format!("unavailable context owner: {error}")))
+    })
+}
+
+pub(crate) fn require_context_owner_live(pin: &Option<super::owner::OwnerPin>) {
+    if let Some(pin) = pin {
+        pin.require_live()
+            .unwrap_or_else(|error| r_error(format!("unavailable context owner: {error}")));
+    }
 }
 
 /// Get a reference to the current (top) context, if any.
@@ -198,24 +302,38 @@ pub unsafe fn Rf_begincontext_in(
     closure: SEXP,
     promiseargs: SEXP,
 ) -> *mut RCNTXT {
-    let ctx = Box::new(std::cell::UnsafeCell::new(RCNTXT {
+    let owner_pin = unsafe { pin_context_owner_in(instance) };
+    // Capture every input before installing the srcref symbol: symbol creation
+    // can allocate and collect, including through a reentrant GC callback.
+    let call = unsafe { ContextValue::from_raw_in(instance, call) };
+    let cloenv = unsafe { ContextValue::from_raw_in(instance, cloenv) };
+    let sysparent = unsafe { ContextValue::from_raw_in(instance, sysparent) };
+    let closure = unsafe { ContextValue::from_raw_in(instance, closure) };
+    let promiseargs = unsafe { ContextValue::from_raw_in(instance, promiseargs) };
+    let callfun = ContextValue(closure.owned());
+    let srcref = unsafe {
+        crate::sexp::attrib_core::getAttrib(
+            call.as_raw(),
+            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+        )
+    };
+    require_context_owner_live(&owner_pin);
+    let srcref = unsafe { ContextValue::from_raw_in(instance, srcref) };
+    let ctx = Rc::new(std::cell::UnsafeCell::new(RCNTXT {
         callflag,
         call,
         cloenv,
         sysparent,
         cfn,
-        callfun: closure,
+        callfun,
         closure,
         promiseargs,
-        srcref: crate::sexp::attrib_core::getAttrib(
-            call,
-            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
-        ),
+        srcref,
         ..RCNTXT::new()
     }));
 
     // P2: the short-lived reads/writes below are strictly local — pushing
-    // a Box onto the Vec allocates but never reenters the interpreter, and
+    // an Rc onto the Vec allocates but never reenters the interpreter, and
     // no ambient write occurs between them.
     let prev = unsafe {
         (*instance)
@@ -234,7 +352,7 @@ pub unsafe fn Rf_begincontext_in(
         (*ctx.get()).protectCount = (*instance).legacy_protect.len();
     }
 
-    // Publish ownership before deriving the pointer. UnsafeCell permits
+    // Publish original allocation ownership before deriving the pointer. UnsafeCell permits
     // subsequent shared stack access without revoking interior mutation.
     unsafe {
         (*instance).context_stack.push(ctx);
@@ -258,7 +376,7 @@ pub unsafe fn Rf_endcontext_in(instance: *mut RInstance, c: *mut RCNTXT) {
     // P2: strictly-local Vec access; no ambient write intervenes.
     unsafe {
         if let Some(top) = (*instance).context_stack.last() {
-            // Address-only comparison: the pop below tears the Box down, so
+            // Address-only comparison: the pop below releases stack ownership, so
             // no writable derivation is needed (or allowed) here.
             if top.get() == c {
                 (*instance).context_stack.pop();
@@ -271,6 +389,10 @@ pub unsafe fn Rf_endcontext_in(instance: *mut RInstance, c: *mut RCNTXT) {
 pub struct ContextGuard {
     instance: *mut RInstance,
     context: *mut RCNTXT,
+    // These are the original context cell and interpreter allocation, retained
+    // through callbacks and owner-bound cleanup. Context values drop first.
+    _context_owner: Rc<std::cell::UnsafeCell<RCNTXT>>,
+    _owner_pin: Option<super::owner::OwnerPin>,
 }
 
 impl ContextGuard {
@@ -309,6 +431,7 @@ pub unsafe fn begin_context_guard(
 ) -> ContextGuard {
     instance::with_required_current_instance(|instance| unsafe {
         let instance_ptr = instance;
+        let owner_pin = unsafe { pin_context_owner_in(instance) };
         let context = Rf_begincontext_in(
             instance,
             callflag,
@@ -322,6 +445,9 @@ pub unsafe fn begin_context_guard(
         ContextGuard {
             instance: instance_ptr,
             context,
+            _context_owner: unsafe { retain_context_in(instance, context) }
+                .expect("just pushed context"),
+            _owner_pin: owner_pin,
         }
     })
 }
@@ -350,7 +476,7 @@ pub unsafe fn Rf_findcontext_in(
             let c: *mut RCNTXT = ctx.get();
             let ctx_ref = &*c;
             if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
-                if cloenv.is_null() || ctx_ref.cloenv == cloenv {
+                if cloenv.is_null() || ctx_ref.cloenv.as_raw() == cloenv {
                     return c;
                 }
             }
@@ -594,7 +720,7 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
             .context_stack
             .iter()
             .rev()
-            .any(|ctx| (*ctx.get()).cloenv == target_env)
+            .any(|ctx| (*ctx.get()).cloenv.as_raw() == target_env)
     })
     .unwrap_or(false)
 }
@@ -857,7 +983,7 @@ mod tests {
         // The mutation policy in action: a caller writes a context field
         // (sysparent, as nextmethod.rs does) through the pointer handed out
         // by R_GlobalContext_in — which the module derives from the owning
-        // Vec<Box<UnsafeCell<RCNTXT>>>, through UnsafeCell::get. The write must be
+        // Vec<Rc<UnsafeCell<RCNTXT>>>, through UnsafeCell::get. The write must be
         // observable through the stack and survive later derivations.
         let session = RSession::new();
         session.with_protected(|| unsafe {
@@ -872,14 +998,15 @@ mod tests {
             );
             let global = R_GlobalContext();
             assert_eq!(global, c);
-            // Audited write site pattern: (*ctx).sysparent = value.
-            (*global).sysparent = 0x42 as SEXP;
-            assert_eq!((*global).sysparent, 0x42 as SEXP);
+            // Replacement captures the original owning allocation before publication.
+            let value = crate::sexp::constructors::Rf_ScalarInteger(42);
+            (*global).sysparent.replace_from_raw(value);
+            assert_eq!((*global).sysparent.as_raw(), value);
             // A re-derived pointer observes the same mutation (single
             // storage; no `&`-cast copy).
-            assert_eq!((*R_GlobalContext()).sysparent, 0x42 as SEXP);
+            assert_eq!((*R_GlobalContext()).sysparent.as_raw(), value);
             let found = Rf_findcontext(ctxt_flags::CTXT_FUNCTION, ptr::null_mut(), ptr::null_mut());
-            assert_eq!((*found).sysparent, 0x42 as SEXP);
+            assert_eq!((*found).sysparent.as_raw(), value);
 
             Rf_endcontext(c);
         });
@@ -887,7 +1014,7 @@ mod tests {
 
     #[test]
     fn test_context_teardown_invalidates_derived_pointers() {
-        // Policy: Rf_endcontext pops the owning Box, so every pointer
+        // Policy: Rf_endcontext releases the original owning cell, so every unleased pointer
         // derived from it is dead. The module never hands that context out
         // again: the next R_GlobalContext/findcontext derivation returns a
         // different (or null) pointer, and endcontext of a stale pointer is
@@ -923,6 +1050,244 @@ mod tests {
             assert_eq!(R_GlobalContext(), c1);
             Rf_endcontext(c1);
             assert!(R_GlobalContext().is_null());
+        });
+    }
+
+    #[test]
+    fn owned_context_fields_retain_original_allocations_through_gc_and_release_on_pop() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = owner.node_factory();
+            let values: Vec<_> = (0..13)
+                .map(|_| {
+                    factory
+                        .allocate(|arena| {
+                            Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1))
+                        })
+                        .unwrap()
+                })
+                .collect();
+            let pointers: Vec<_> = values.iter().map(|value| value.as_raw()).collect();
+            let nodes: Vec<_> = pointers
+                .iter()
+                .map(|&pointer| crate::sexp::memory::checked_projection(pointer).unwrap().1)
+                .collect();
+            let context = Rf_begincontext_in(
+                instance,
+                ctxt_flags::CTXT_FUNCTION,
+                pointers[0],
+                pointers[1],
+                pointers[2],
+                None,
+                pointers[4],
+                pointers[5],
+            );
+            // Every stored value is the original allocation. There is no raw
+            // context scanner or secondary protection ledger to rescue them.
+            (*context)
+                .callfun
+                .replace_from_raw_in(instance, pointers[3]);
+            (*context)
+                .savelist
+                .replace_from_raw_in(instance, pointers[6]);
+            (*context)
+                .handlerstack
+                .replace_from_raw_in(instance, pointers[7]);
+            (*context)
+                .restartstack
+                .replace_from_raw_in(instance, pointers[8]);
+            (*context).rpvec.replace_from_raw_in(instance, pointers[9]);
+            (*context)
+                .returnValue
+                .replace_from_raw_in(instance, pointers[10]);
+            (*context)
+                .conexit
+                .replace_from_raw_in(instance, pointers[11]);
+            (*context)
+                .srcref
+                .replace_from_raw_in(instance, pointers[12]);
+            drop(values);
+            owner.full_gc().unwrap();
+            assert!(nodes.iter().all(|node| node.is_live()));
+            let projections = [
+                (*context).call.as_raw(),
+                (*context).cloenv.as_raw(),
+                (*context).sysparent.as_raw(),
+                (*context).callfun.as_raw(),
+                (*context).closure.as_raw(),
+                (*context).promiseargs.as_raw(),
+                (*context).savelist.as_raw(),
+                (*context).handlerstack.as_raw(),
+                (*context).restartstack.as_raw(),
+                (*context).rpvec.as_raw(),
+                (*context).returnValue.as_raw(),
+                (*context).conexit.as_raw(),
+                (*context).srcref.as_raw(),
+            ];
+            assert_eq!(projections.as_slice(), pointers.as_slice());
+            Rf_endcontext_in(instance, context);
+            owner.full_gc().unwrap();
+            assert!(nodes.iter().all(|node| !node.is_live()));
+        });
+    }
+
+    #[test]
+    fn owned_context_guard_keeps_original_cell_after_stack_teardown() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let value = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let pointer = value.as_raw();
+            let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+            let guard = begin_context_guard(
+                ctxt_flags::CTXT_FUNCTION,
+                pointer,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            drop(value);
+            (*instance).context_stack.clear();
+            owner.full_gc().unwrap();
+            assert!(node.is_live());
+            assert_eq!((*guard.context()).call.as_raw(), pointer);
+            drop(guard);
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
+        });
+    }
+
+    #[test]
+    fn owned_context_cleanup_callback_can_teardown_stack_and_collect() {
+        struct CallbackData {
+            instance: *mut RInstance,
+            node: crate::sexp::heap::CheckedNode,
+            invoked: bool,
+        }
+        unsafe extern "C" fn cleanup(data: *mut std::os::raw::c_void) {
+            let data = unsafe { &mut *data.cast::<CallbackData>() };
+            unsafe {
+                (*data.instance).context_stack.clear();
+                crate::sexp::gengc::full_gc_in(data.instance);
+            }
+            data.invoked = data.node.is_live();
+        }
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let value = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let pointer = value.as_raw();
+            let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+            let context = Rf_begincontext_in(
+                instance,
+                ctxt_flags::CTXT_FUNCTION,
+                pointer,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            let mut data = CallbackData {
+                instance,
+                node: node.clone(),
+                invoked: false,
+            };
+            (*context).cend = Some(cleanup);
+            (*context).cenddata = (&mut data as *mut CallbackData).cast();
+            drop(value);
+            crate::eval::context::R_run_onexits_for_context(context);
+            assert!(
+                data.invoked,
+                "callback must observe the original retained context value"
+            );
+            assert!(R_GlobalContext_in(instance).is_null());
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
+        });
+    }
+
+    #[test]
+    fn owned_context_rejects_foreign_replacement_without_losing_current_value() {
+        let session = RSession::new_for_gc_tests();
+        let other = RSession::new_for_gc_tests();
+        let foreign = other.with_active(|| {
+            other
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1)))
+                .unwrap()
+        });
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let local = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let pointer = local.as_raw();
+            let guard = begin_context_guard(
+                ctxt_flags::CTXT_FUNCTION,
+                pointer,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            drop(local);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (*guard.context())
+                    .call
+                    .replace_from_raw_in(instance, foreign.as_raw());
+            }));
+            assert!(error.is_err());
+            owner.full_gc().unwrap();
+            assert_eq!((*guard.context()).call.as_raw(), pointer);
+            drop(guard);
+            assert!(R_GlobalContext_in(instance).is_null());
+        });
+    }
+
+    #[test]
+    fn owned_context_guard_releases_values_after_collecting_unwind() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let value = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let pointer = value.as_raw();
+            let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+            let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _guard = begin_context_guard(
+                    ctxt_flags::CTXT_FUNCTION,
+                    pointer,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                );
+                drop(value);
+                owner.full_gc().unwrap();
+                assert!(node.is_live());
+                r_error("context unwind fixture");
+            }));
+            assert!(unwind.is_err());
+            assert!(R_GlobalContext_in(instance).is_null());
+            owner.full_gc().unwrap();
+            assert!(!node.is_live());
         });
     }
 

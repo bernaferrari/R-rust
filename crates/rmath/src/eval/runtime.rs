@@ -58,17 +58,67 @@ pub(crate) fn set_visible_for_print_flag(flag: c_int) {
 #[must_use]
 pub(crate) struct VisibilityGuard {
     saved: c_int,
+    instance: *mut crate::sexp::instance::RInstance,
+    pin: Option<crate::sexp::owner::OwnerPin>,
+    availability: crate::sexp::instance::InstanceLiveness,
 }
 
 impl VisibilityGuard {
     #[inline]
     pub(crate) fn new() -> Self {
-        VisibilityGuard { saved: visible() }
+        with_required_current_instance(|instance| unsafe {
+            let pin = (*instance)
+                .runtime_owner
+                .as_ref()
+                .map(|owner| owner.pin().expect("live visibility owner"));
+            let availability = crate::sexp::instance::instance_liveness(instance);
+            VisibilityGuard {
+                saved: R_Visible_in(instance),
+                instance,
+                pin,
+                availability,
+            }
+        })
     }
 }
 
 impl Drop for VisibilityGuard {
     fn drop(&mut self) {
-        set_visible(self.saved);
+        let instance = match &self.pin {
+            Some(pin) => pin.as_ptr(),
+            None if self.availability.is_live() => self.instance,
+            None => return,
+        };
+        // Cleanup belongs to the original pinned owner even after revocation,
+        // and must not dispatch through a newer or absent ambient runtime.
+        unsafe {
+            set_R_Visible_in(instance, self.saved);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn owned_visibility_guard_restores_original_closed_owner_during_unwind() {
+        let mut session = RSession::new_for_gc_tests();
+        let guard = VisibilityGuard::new();
+        let original = guard.instance;
+        let inspection_pin = unsafe { (*original).runtime_owner.clone() }.unwrap().pin().unwrap();
+        let saved = guard.saved;
+        set_visible(1 - saved);
+        session.close();
+        drop(session);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = guard;
+            panic!("visibility unwind probe");
+        }));
+        assert!(result.is_err());
+        assert_eq!(unsafe { R_Visible_in(inspection_pin.as_ptr()) }, saved);
+        assert!(!crate::sexp::instance::has_current_instance());
     }
 }

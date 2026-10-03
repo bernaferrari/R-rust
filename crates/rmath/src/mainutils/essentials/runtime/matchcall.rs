@@ -70,7 +70,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             let mut found = std::ptr::null_mut();
             while !c.is_null() {
                 if ((*c).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
-                    && (*c).cloenv == rho
+                    && (*c).cloenv.as_raw() == rho
                 {
                     found = c;
                     break;
@@ -80,8 +80,8 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             found
         };
         let definition = if definition_arg == R_MissingArg() || definition_arg == R_NilValue() {
-            if !frame.is_null() && !(*frame).callfun.is_null() {
-                crate::mainutils::duplicate::duplicate((*frame).callfun)
+            if !frame.is_null() && !(*frame).callfun.as_raw().is_null() {
+                crate::mainutils::duplicate::duplicate((*frame).callfun.as_raw())
             } else {
                 crate::eval::context::R_sysfunction(0, top)
             }
@@ -90,10 +90,10 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         };
         let mut source = if call_arg == R_MissingArg() {
             if !frame.is_null()
-                && !(*frame).call.is_null()
-                && TYPEOF((*frame).call) == SEXPTYPE::LANGSXP
+                && !(*frame).call.as_raw().is_null()
+                && TYPEOF((*frame).call.as_raw()) == SEXPTYPE::LANGSXP
             {
-                crate::mainutils::duplicate::shallow_duplicate((*frame).call)
+                crate::mainutils::duplicate::shallow_duplicate((*frame).call.as_raw())
             } else {
                 crate::eval::context::R_syscall(0, top)
             }
@@ -126,10 +126,10 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             let mut context = top;
             while !context.is_null() {
                 if ((*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
-                    && (*context).cloenv == rho
-                    && !(*context).sysparent.is_null()
+                    && (*context).cloenv.as_raw() == rho
+                    && !(*context).sysparent.as_raw().is_null()
                 {
-                    envir = (*context).sysparent;
+                    envir = (*context).sysparent.as_raw();
                     break;
                 }
                 context = (*context).nextcontext;

@@ -51,17 +51,17 @@ unsafe fn dispatchMethod(
         // sys.call(sys.parent()) is `abc.expression(e0)`, not `abc(e0)`.
         let mut newcall = R_NilValue();
         if !cptr.is_null() {
-            newcall = crate::mainutils::duplicate::shallow_duplicate((*cptr).call);
+            newcall = crate::mainutils::duplicate::shallow_duplicate((*cptr).call.as_raw());
             if !newcall.is_null() && newcall != R_NilValue() {
                 SETCAR(newcall, method);
-                (*cptr).call = newcall;
+                (*cptr).call.replace_from_raw(newcall);
             }
         }
 
         let _newcall_guard = protect(newcall);
 
         let mut matchedarg = if !cptr.is_null() {
-            (*cptr).promiseargs
+            (*cptr).promiseargs.as_raw()
         } else {
             R_NilValue()
         };
@@ -611,7 +611,7 @@ pub unsafe fn usemethod(
             return 0;
         }
 
-        let op = (*cptr).closure;
+        let op = (*cptr).closure.as_raw();
         let klass = R_data_class2(obj);
         let _klass_guard = protect(klass);
 

@@ -266,7 +266,7 @@ unsafe fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT 
         let mut ctxt = super::runtime::global_context();
         while !ctxt.is_null()
             && !((*ctxt).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
-                && (*ctxt).cloenv == rho)
+                && (*ctxt).cloenv.as_raw() == rho)
         {
             ctxt = (*ctxt).nextcontext;
         }
@@ -327,16 +327,16 @@ pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
         let ctxt = find_function_context(rho);
         if !ctxt.is_null() {
             if is_null(expr) && add == FALSE {
-                (*ctxt).conexit = R_NilValue();
+                (*ctxt).conexit.replace_from_raw(R_NilValue());
             } else {
-                let old = (*ctxt).conexit;
+                let old = (*ctxt).conexit.as_raw();
                 if is_null(old) || add == FALSE {
-                    (*ctxt).conexit = Rf_cons(expr, R_NilValue());
+                    (*ctxt).conexit.replace_from_raw(Rf_cons(expr, R_NilValue()));
                 } else if after != FALSE {
                     let copied = crate::mainutils::duplicate::shallow_duplicate(old);
-                    (*ctxt).conexit = list_append(copied, Rf_cons(expr, R_NilValue()));
+                    (*ctxt).conexit.replace_from_raw(list_append(copied, Rf_cons(expr, R_NilValue())));
                 } else {
-                    (*ctxt).conexit = Rf_cons(expr, old);
+                    (*ctxt).conexit.replace_from_raw(Rf_cons(expr, old));
                 }
             }
         }
@@ -864,8 +864,8 @@ unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
         let _val_guard = protect(val);
         let mut here = super::runtime::global_context();
         while !here.is_null() {
-            if (*here).onexit_active != 0 && (*here).cloenv == rho {
-                (*here).returnValue = val;
+            if (*here).onexit_active != 0 && (*here).cloenv.as_raw() == rho {
+                (*here).returnValue.replace_from_raw(val);
                 return val;
             }
             here = (*here).nextcontext;

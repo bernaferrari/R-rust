@@ -61,11 +61,11 @@ pub unsafe fn get_lexical_call(rho: SEXP) -> SEXP {
             if (*c).callflag == ctxt_flags::CTXT_TOPLEVEL {
                 break;
             }
-            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == rho {
+            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv.as_raw() == rho {
                 return if (*c).call.is_null() {
                     R_NilValue()
                 } else {
-                    (*c).call
+                    (*c).call.as_raw()
                 };
             }
             c = (*c).nextcontext;
@@ -106,7 +106,7 @@ pub unsafe fn R_sysframe_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNTX
         while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
-                    return (*c).cloenv;
+                    return (*c).cloenv.as_raw();
                 }
                 n -= 1;
             }
@@ -135,7 +135,7 @@ pub unsafe fn R_syscall(n: c_int, cptr: *mut RCNTXT) -> SEXP {
         while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
-                    return shallow_duplicate((*c).call);
+                    return shallow_duplicate((*c).call.as_raw());
                 }
                 n -= 1;
             }
@@ -164,7 +164,7 @@ pub unsafe fn R_sysfunction(n: c_int, cptr: *mut RCNTXT) -> SEXP {
         while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
-                    return duplicate((*c).callfun);
+                    return duplicate((*c).callfun.as_raw());
                 }
                 n -= 1;
             }
@@ -201,7 +201,7 @@ pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNT
         while !(*c).nextcontext.is_null() && (*c).callflag & ctxt_flags::CTXT_FUNCTION == 0 {
             c = (*c).nextcontext;
         }
-        let s = (*c).sysparent;
+        let s = (*c).sysparent.as_raw();
         if s == R_GlobalEnv_in(instance) {
             return 0;
         }
@@ -216,7 +216,7 @@ pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNT
         while !c2.is_null() {
             if (*c2).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 j += 1;
-                if (*c2).cloenv == s {
+                if (*c2).cloenv.as_raw() == s {
                     target_n = j;
                 }
             }
@@ -264,7 +264,7 @@ pub unsafe fn R_findExecContext(cptr: *mut RCNTXT, envir: SEXP) -> *mut RCNTXT {
             return ptr::null_mut();
         }
         while !(*c).nextcontext.is_null() {
-            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == envir {
+            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv.as_raw() == envir {
                 return c;
             }
             c = (*c).nextcontext;
@@ -284,7 +284,7 @@ pub unsafe fn R_findParentContext(cptr: *mut RCNTXT, mut n: c_int) -> *mut RCNTX
             return ptr::null_mut();
         }
         loop {
-            c = R_findExecContext(c, (*c).sysparent);
+            c = R_findExecContext(c, (*c).sysparent.as_raw());
             if c.is_null() {
                 return ptr::null_mut();
             }
@@ -311,7 +311,7 @@ pub unsafe fn getLexicalContext_in(instance: *mut RInstance, rho: SEXP) -> *mut 
             return ptr::null_mut();
         }
         while !c.is_null() {
-            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == rho {
+            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv.as_raw() == rho {
                 return c;
             }
             c = (*c).nextcontext;
@@ -342,7 +342,7 @@ pub unsafe fn do_sys_in(
         if top.is_null() {
             return R_NilValue();
         }
-        let t = (*top).sysparent;
+        let t = (*top).sysparent.as_raw();
         let cptr = getLexicalContext_in(instance, t);
         if cptr.is_null() {
             return R_NilValue();
@@ -411,7 +411,7 @@ pub unsafe fn do_sys_in(
             }
             7 => {
                 // sys.on.exit
-                let conexit = (*cptr).conexit;
+                let conexit = (*cptr).conexit.as_raw();
                 if isNull(conexit) {
                     R_NilValue()
                 } else if isNull(CDR(conexit)) {
@@ -472,7 +472,7 @@ pub unsafe fn do_parentframe_in(
         }
         let cptr = R_findParentContext(top, n);
         if !cptr.is_null() {
-            (*cptr).sysparent
+            (*cptr).sysparent.as_raw()
         } else {
             R_GlobalEnv_in(instance)
         }
@@ -538,31 +538,43 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
         if cptr.is_null() {
             return;
         }
+        let instance = crate::sexp::instance::current_instance_ptr()
+            .unwrap_or_else(|| error("no active context owner"));
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
+        let _context_lease = crate::sexp::context::retain_context_in(instance, cptr)
+            .unwrap_or_else(|| error("context no longer belongs to the active owner"));
         if let Some(cend) = (*cptr).cend {
             (*cptr).cend = None;
             let data = (*cptr).cenddata;
             cend(data);
+            crate::sexp::context::require_context_owner_live(&owner_pin);
         }
-        let conexit = (*cptr).conexit;
+        let Some(chain) = (*cptr).conexit.owned() else {
+            return;
+        };
+        let conexit = chain.as_raw();
         if isNull(conexit) {
             return;
         }
-        (*cptr).conexit = R_NilValue();
+        (*cptr).conexit.replace_from_raw(R_NilValue());
         (*cptr).onexit_active = 1;
 
-        let rho = (*cptr).cloenv;
-        let chain_guard = crate::sexp::protect::protect(conexit);
+        let environment = (*cptr).cloenv.owned();
+        let rho = environment
+            .as_ref()
+            .map_or(ptr::null_mut(), |value| value.as_raw());
         let mut current = conexit;
         while !isNull(current) {
             let expr = CAR(current);
-            (*cptr).conexit = CDR(current);
+            (*cptr).conexit.replace_from_raw(CDR(current));
             if !isNull(expr) {
                 let _ = super::eval::Rf_eval(expr, rho);
+                crate::sexp::context::require_context_owner_live(&owner_pin);
             }
-            current = (*cptr).conexit;
+            current = (*cptr).conexit.as_raw();
         }
         (*cptr).onexit_active = 0;
-        drop(chain_guard);
+        drop(chain);
     }
 }
 
@@ -579,10 +591,14 @@ pub unsafe fn R_run_onexits_until(target: *mut RCNTXT) {
 
 pub unsafe fn R_run_onexits_until_in(instance: *mut RInstance, target: *mut RCNTXT) {
     unsafe {
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let mut c = R_GlobalContext_in(instance);
         while !c.is_null() && c != target {
+            let context_lease = crate::sexp::context::retain_context_in(instance, c)
+                .unwrap_or_else(|| error("context no longer belongs to its owner"));
             R_run_onexits_for_context(c);
-            c = (*c).nextcontext;
+            crate::sexp::context::require_context_owner_live(&owner_pin);
+            c = (*context_lease.get()).nextcontext;
         }
         if !target.is_null() && c.is_null() {
             error("bad target context--should NEVER happen if R was called correctly");
@@ -629,7 +645,7 @@ pub unsafe fn R_jumpctxt(target: *mut RCNTXT, mask: c_int, val: SEXP) -> ! {
         // so the context itself is also a GC root, matching eval.c.
         let _val_guard = crate::sexp::protect::protect(val);
         if !target.is_null() {
-            (*target).returnValue = val;
+            (*target).returnValue.replace_from_raw(val);
             (*target).jumped = 1;
         }
         let savevis = super::runtime::visible();
@@ -678,7 +694,7 @@ pub unsafe fn findcontext_jump_in(
             if flag == ctxt_flags::CTXT_TOPLEVEL {
                 break;
             }
-            let env_ok = env.is_null() || (*c).cloenv == env;
+            let env_ok = env.is_null() || (*c).cloenv.as_raw() == env;
             if loop_jump {
                 if (flag & ctxt_flags::CTXT_LOOP) != 0 && env_ok {
                     R_jumpctxt(c, mask, val);
@@ -739,7 +755,7 @@ pub unsafe fn R_GetCurrentEnv_in(instance: *mut RInstance) -> SEXP {
         let mut c = R_GlobalContext_in(instance);
         while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
-                return (*c).cloenv;
+                return (*c).cloenv.as_raw();
             }
             c = (*c).nextcontext;
         }

@@ -580,12 +580,12 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
         // environment higher up the stack, if any.
         let mut result = parent;
         if !parent.is_null() {
-            let parent_callfun = (*parent).callfun;
+            let parent_callfun = (*parent).callfun.as_raw();
             if !parent_callfun.is_null() {
                 let eval_sym = Rf_install(b"eval\0".as_ptr() as *const c_char);
                 let eval_internal = crate::sexp::accessors::INTERNAL(eval_sym);
                 if parent_callfun == eval_internal {
-                    let sysparent = (*cptr).sysparent;
+                    let sysparent = (*cptr).sysparent.as_raw();
                     result = super::context::R_findExecContext((*parent).nextcontext, sysparent);
                 }
             }
@@ -755,7 +755,7 @@ unsafe fn doprof(_sig: c_int) {
             }
 
             let callflag = (*cptr).callflag;
-            let call = (*cptr).call;
+            let call = (*cptr).call.as_raw();
 
             if (callflag & (ctxt_flags::CTXT_FUNCTION | ctxt_flags::CTXT_BUILTIN)) != 0
                 && !call.is_null()
@@ -822,7 +822,7 @@ unsafe fn doprof(_sig: c_int) {
 
                 // Line profiling for this context
                 if with_profiling_state(|state| state.line_profiling) != 0 {
-                    let srcref_val = (*cptr).srcref;
+                    let srcref_val = (*cptr).srcref.as_raw();
                     let in_bc = get_R_InBCInterpreter();
                     if srcref_val == in_bc {
                         lineprof(&mut pb, R_findBCInterpreterSrcref(cptr));

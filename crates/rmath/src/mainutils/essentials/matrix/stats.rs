@@ -123,7 +123,7 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
         let mut user_args = args;
         let mut ctx = crate::sexp::context::R_GlobalContext();
         while !ctx.is_null() {
-            let seen = (*ctx).call;
+            let seen = (*ctx).call.as_raw();
             if !seen.is_null() && TYPEOF(seen) == SEXPTYPE::LANGSXP {
                 let head = CAR(seen);
                 if TYPEOF(head) == SEXPTYPE::SYMSXP {

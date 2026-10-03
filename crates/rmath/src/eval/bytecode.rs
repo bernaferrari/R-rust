@@ -256,13 +256,20 @@ pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GnuFrameReject {
     Empty,
-    Version { version: c_int,
+    Version {
+        version: c_int,
     },
-    UnknownOpcode { opcode: c_int, offset: usize,
+    UnknownOpcode {
+        opcode: c_int,
+        offset: usize,
     },
-    RangeOverflow { opcode: c_int,
+    RangeOverflow {
+        opcode: c_int,
     },
-    Truncated { opcode: c_int, offset: usize, width: usize,
+    Truncated {
+        opcode: c_int,
+        offset: usize,
+        width: usize,
     },
 }
 
@@ -286,7 +293,10 @@ pub(crate) fn gnu_next_pc(
         });
     };
     let width = width as usize;
-    let Some(end) = opcode_pc.checked_add(1).and_then(|pc| pc.checked_add(width)) else {
+    let Some(end) = opcode_pc
+        .checked_add(1)
+        .and_then(|pc| pc.checked_add(width))
+    else {
         return Err(GnuFrameReject::RangeOverflow { opcode });
     };
     if end > len {
@@ -405,9 +415,13 @@ mod kani_proofs {
         if unknown {
             assert!(result.is_err());
         }
-        kani::cover(code.len() >= 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 0 && result.is_ok(), "reachable",
+        kani::cover(
+            code.len() >= 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 0 && result.is_ok(),
+            "reachable",
         );
-        kani::cover(code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(), "reachable",
+        kani::cover(
+            code.len() == 2 && code[0] == GNU_BC_MAX_VERSION && code[1] == 2 && result.is_err(),
+            "reachable",
         );
         kani::cover(code.is_empty() && result.is_err(), "reachable");
     }
@@ -423,7 +437,9 @@ mod kani_proofs {
         kani::assume(opcode_pc <= 8 && len <= 16);
         let width = GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
         let result = super::gnu_next_pc(opcode_pc, opcode, len);
-        let summed = opcode_pc.checked_add(1).and_then(|pc| pc.checked_add(width));
+        let summed = opcode_pc
+            .checked_add(1)
+            .and_then(|pc| pc.checked_add(width));
         match (result, summed) {
             (Ok(end), Some(expect)) => {
                 assert_eq!(end, expect);
@@ -436,9 +452,14 @@ mod kani_proofs {
             _ => assert!(false),
         }
         let unknown = super::gnu_next_pc(0, -1, 4);
-        assert!(matches!(unknown, Err(super::GnuFrameReject::UnknownOpcode { .. })));
+        assert!(matches!(
+            unknown,
+            Err(super::GnuFrameReject::UnknownOpcode { .. })
+        ));
         kani::cover(result.is_ok(), "advances");
-        kani::cover(matches!(result, Err(super::GnuFrameReject::Truncated { .. })), "truncated",
+        kani::cover(
+            matches!(result, Err(super::GnuFrameReject::Truncated { .. })),
+            "truncated",
         );
     }
 }
@@ -500,14 +521,66 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
     validate_gnu_adapter_impl(code, constant_count, None)
 }
 
+/// Native deserialization boundary. Snapshot instructions and acquire the
+/// original pool entries before lazy table readers can run callbacks.
+/// # Safety
+/// The inputs are live projections of the active interpreter on entry.
 pub unsafe fn validate_gnu_adapter_with_constants(
     code: &[c_int],
     constants: SEXP,
 ) -> Result<bool, String> {
-    unsafe {
-        let switches = super::gnu_switch::targets(code, constants)?;
-        validate_gnu_adapter_impl(code, XLENGTH(constants) as usize, Some(&switches))
+    let mut instructions = Vec::new();
+    instructions
+        .try_reserve_exact(code.len())
+        .map_err(|_| "cannot reserve bytecode validation instructions")?;
+    instructions.extend_from_slice(code);
+    let owner =
+        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
+    let pin = owner.pin().map_err(|error| error.to_string())?;
+    let pool = owner
+        .sexp(constants)
+        .and_then(Sexp::into_owned)
+        .map_err(|error| error.to_string())?;
+    if pool.typeof_() != SEXPTYPE::VECSXP {
+        return Err("GNU bytecode has no constant pool".into());
     }
+    let length = usize::try_from(pool.len()).map_err(|_| "invalid constant pool length")?;
+    let mut entries = Vec::new();
+    entries
+        .try_reserve_exact(length)
+        .map_err(|_| "cannot reserve constant pool")?;
+    for index in 0..length {
+        entries.push(
+            pool.try_vector_elt(index as i64)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let (supported, _tables) = validate_gnu_adapter_with_owned_constants(&instructions, &entries)?;
+    if let Some(pin) = &pin {
+        pin.require_live().map_err(|error| error.to_string())?;
+    }
+    Ok(supported)
+}
+
+/// Validate against the exact owning constants and frozen branch tables used
+/// by execution. A callback cannot substitute a different mutable pool here.
+pub(super) fn validate_gnu_adapter_with_owned_constants(
+    code: &[c_int],
+    constants: &[Sexp<'static>],
+) -> Result<
+    (
+        bool,
+        std::collections::BTreeMap<usize, super::gnu_switch::OwnedSwitch>,
+    ),
+    String,
+> {
+    let switches = super::gnu_switch::prepare_owned(code, constants)?;
+    let targets = switches
+        .iter()
+        .map(|(pc, table)| (*pc, table.successors()))
+        .collect();
+    let valid = validate_gnu_adapter_impl(code, constants.len(), Some(&targets))?;
+    Ok((valid, switches))
 }
 
 /// Resolve STARTFOR's end operand to the STEPFOR it owns.
@@ -572,9 +645,8 @@ fn gnu_enclosing_loop(code: &[c_int], at: usize, opcode: c_int) -> Result<(usize
     let mut open: Vec<(usize, usize)> = Vec::new();
     while pc < at && pc < code.len() {
         let op = code[pc];
-        let next = gnu_next_pc(pc, op, code.len()).map_err(|_| {
-            format!("GNU bytecode control flow reaches invalid instruction {pc}")
-        })?;
+        let next = gnu_next_pc(pc, op, code.len())
+            .map_err(|_| format!("GNU bytecode control flow reaches invalid instruction {pc}"))?;
         if op == GNU_OP_STARTLOOPCNTXT {
             let break_target = code[pc + 2] as usize;
             open.push((break_target, next));
@@ -614,15 +686,41 @@ fn validate_gnu_adapter_impl(
         let opcode = code[pc];
         pc += 1;
         match opcode {
-            GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
-            | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP
-            | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL | GNU_OP_DOTSERR
-            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
-            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
-            | GNU_OP_ISNUMERIC | GNU_OP_DOMISSING | GNU_OP_DFLTSUBSET
-            | GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 | GNU_OP_DFLTSUBSET2 | GNU_OP_SWAP
-            | GNU_OP_DUP2ND | GNU_OP_RETURNJMP | GNU_OP_DOLOOPNEXT | GNU_OP_DOLOOPBREAK => {}
+            GNU_OP_RETURN
+            | GNU_OP_INVISIBLE
+            | GNU_OP_LDNULL
+            | GNU_OP_LDTRUE
+            | GNU_OP_LDFALSE
+            | GNU_OP_POP
+            | GNU_OP_ENDFOR
+            | GNU_OP_PUSHNULLARG
+            | GNU_OP_PUSHTRUEARG
+            | GNU_OP_PUSHFALSEARG
+            | GNU_OP_PUSHARG
+            | GNU_OP_CHECKFUN
+            | GNU_OP_DUP
+            | GNU_OP_PRINTVALUE
+            | GNU_OP_SETLOOPVAL
+            | GNU_OP_DOTSERR
+            | GNU_OP_ISNULL
+            | GNU_OP_ISLOGICAL
+            | GNU_OP_ISINTEGER
+            | GNU_OP_ISDOUBLE
+            | GNU_OP_ISCOMPLEX
+            | GNU_OP_ISCHARACTER
+            | GNU_OP_ISSYMBOL
+            | GNU_OP_ISOBJECT
+            | GNU_OP_ISNUMERIC
+            | GNU_OP_DOMISSING
+            | GNU_OP_DFLTSUBSET
+            | GNU_OP_DFLTSUBASSIGN
+            | GNU_OP_DFLTSUBASSIGN2
+            | GNU_OP_DFLTSUBSET2
+            | GNU_OP_SWAP
+            | GNU_OP_DUP2ND
+            | GNU_OP_RETURNJMP
+            | GNU_OP_DOLOOPNEXT
+            | GNU_OP_DOLOOPBREAK => {}
             GNU_OP_STARTLOOPCNTXT => {
                 let isfor = code[pc];
                 let target = code[pc + 1];
@@ -642,9 +740,7 @@ fn validate_gnu_adapter_impl(
             GNU_OP_ENDLOOPCNTXT => {
                 let isfor = code[pc];
                 if isfor != 0 && isfor != 1 {
-                    return Err(format!(
-                        "GNU ENDLOOPCNTXT isfor flag {isfor} is not 0 or 1"
-                    ));
+                    return Err(format!("GNU ENDLOOPCNTXT isfor flag {isfor} is not 0 or 1"));
                 }
             }
             GNU_OP_STARTASSIGN | GNU_OP_ENDASSIGN => {
@@ -716,8 +812,13 @@ fn validate_gnu_adapter_impl(
                     }
                 }
             }
-            GNU_OP_STARTSUBSET | GNU_OP_STARTSUBSET2 | GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N
-            | GNU_OP_STARTSUBASSIGN_N | GNU_OP_STARTSUBASSIGN2_N | GNU_OP_STARTSUBASSIGN
+            GNU_OP_STARTSUBSET
+            | GNU_OP_STARTSUBSET2
+            | GNU_OP_STARTSUBSET_N
+            | GNU_OP_STARTSUBSET2_N
+            | GNU_OP_STARTSUBASSIGN_N
+            | GNU_OP_STARTSUBASSIGN2_N
+            | GNU_OP_STARTSUBASSIGN
             | GNU_OP_STARTSUBASSIGN2 => {
                 let call_index = code[pc];
                 let target = code[pc + 1];
@@ -798,15 +899,43 @@ fn validate_gnu_adapter_impl(
                     return Err(format!("GNU {name} rank {rank} is negative"));
                 }
             }
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
-            | GNU_OP_DDVAL_MISSOK | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
-            | GNU_OP_GETINTLBUILTIN | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
-            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
-            | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
-            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND | GNU_OP_OR
-            | GNU_OP_NOT | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_LOG | GNU_OP_LOGBASE
-            | GNU_OP_SETVAR | GNU_OP_SETVAR2
-            | GNU_OP_COLON | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
+            GNU_OP_LDCONST
+            | GNU_OP_GETVAR
+            | GNU_OP_GETVAR_MISSOK
+            | GNU_OP_DDVAL
+            | GNU_OP_DDVAL_MISSOK
+            | GNU_OP_GETFUN
+            | GNU_OP_GETBUILTIN
+            | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_GETGLOBFUN
+            | GNU_OP_GETSYMFUN
+            | GNU_OP_MAKEPROM
+            | GNU_OP_PUSHCONSTARG
+            | GNU_OP_UMINUS
+            | GNU_OP_UPLUS
+            | GNU_OP_ADD
+            | GNU_OP_SUB
+            | GNU_OP_MUL
+            | GNU_OP_DIV
+            | GNU_OP_EXPT
+            | GNU_OP_EQ
+            | GNU_OP_NE
+            | GNU_OP_LT
+            | GNU_OP_LE
+            | GNU_OP_GE
+            | GNU_OP_GT
+            | GNU_OP_AND
+            | GNU_OP_OR
+            | GNU_OP_NOT
+            | GNU_OP_SQRT
+            | GNU_OP_EXP
+            | GNU_OP_LOG
+            | GNU_OP_LOGBASE
+            | GNU_OP_SETVAR
+            | GNU_OP_SETVAR2
+            | GNU_OP_COLON
+            | GNU_OP_SEQALONG
+            | GNU_OP_SEQLEN => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -1006,8 +1135,8 @@ fn validate_gnu_adapter_impl(
                     ));
                 }
             }
-            GNU_OP_DODOTS | GNU_OP_VISIBLE | GNU_OP_INCLNK | GNU_OP_DECLNK
-            | GNU_OP_INCLNKSTK | GNU_OP_DECLNKSTK => {}
+            GNU_OP_DODOTS | GNU_OP_VISIBLE | GNU_OP_INCLNK | GNU_OP_DECLNK | GNU_OP_INCLNKSTK
+            | GNU_OP_DECLNKSTK => {}
             GNU_OP_DECLNK_N => {
                 let count = code[pc];
                 if count < 0 {
@@ -1174,9 +1303,6 @@ fn validate_gnu_adapter_impl(
                         "GNU DUP at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                if depth >= 64 {
-                    return Ok(false);
-                }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_POP | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL => {
@@ -1306,9 +1432,6 @@ fn validate_gnu_adapter_impl(
                     return Err(format!(
                         "GNU DOMISSING at instruction {instruction_pc} has no active call frame"
                     ));
-                }
-                if depth >= 64 {
-                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
             }
@@ -1455,11 +1578,7 @@ fn validate_gnu_adapter_impl(
                 let step_pc = gnu_for_step_from_start_target(code, raw_target)?;
                 let mut entered = loop_stack;
                 entered.push(step_pc);
-                pending.push((
-                    raw_target,
-                    depth,
-                    entered,
-                    call_stack.clone()));
+                pending.push((raw_target, depth, entered, call_stack.clone()));
             }
             GNU_OP_STEPFOR => {
                 if loop_stack.last() != Some(&instruction_pc) {
@@ -1485,9 +1604,6 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth, exited, call_stack.clone()));
             }
             GNU_OP_BASEGUARD => {
-                if depth >= 64 {
-                    return Ok(false);
-                }
                 pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 pending.push((
                     code[instruction_pc + 2] as usize,
@@ -1498,9 +1614,6 @@ fn validate_gnu_adapter_impl(
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
             | GNU_OP_DDVAL_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
-                if depth >= 64 {
-                    return Ok(false);
-                }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_DODOTS => {
@@ -1509,9 +1622,6 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
             GNU_OP_MAKECLOSURE | GNU_OP_CALLSPECIAL => {
-                if depth >= 64 {
-                    return Ok(false);
-                }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
@@ -1524,11 +1634,10 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT
-            | GNU_OP_LOG | GNU_OP_MATH1
-            | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER | GNU_OP_ISDOUBLE
-            | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL | GNU_OP_ISOBJECT
-            | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
+            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT | GNU_OP_LOG
+            | GNU_OP_MATH1 | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER
+            | GNU_OP_ISDOUBLE | GNU_OP_ISCOMPLEX | GNU_OP_ISCHARACTER | GNU_OP_ISSYMBOL
+            | GNU_OP_ISOBJECT | GNU_OP_ISNUMERIC | GNU_OP_SEQALONG | GNU_OP_SEQLEN => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
@@ -1536,13 +1645,16 @@ fn validate_gnu_adapter_impl(
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_GETINTLBUILTIN
-            | GNU_OP_GETGLOBFUN | GNU_OP_GETSYMFUN
-            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
-            | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
-                if depth >= 64 {
-                    return Ok(false);
-                }
+            GNU_OP_GETFUN
+            | GNU_OP_GETBUILTIN
+            | GNU_OP_GETINTLBUILTIN
+            | GNU_OP_GETGLOBFUN
+            | GNU_OP_GETSYMFUN
+            | GNU_OP_MAKEPROM
+            | GNU_OP_PUSHCONSTARG
+            | GNU_OP_PUSHNULLARG
+            | GNU_OP_PUSHTRUEARG
+            | GNU_OP_PUSHFALSEARG => {
                 if matches!(
                     opcode,
                     GNU_OP_GETFUN
@@ -1593,9 +1705,6 @@ fn validate_gnu_adapter_impl(
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
             GNU_OP_INCLNKSTK => {
-                if depth >= 64 {
-                    return Ok(false);
-                }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_DECLNKSTK => {
@@ -1687,9 +1796,6 @@ fn validate_gnu_adapter_impl(
                     return Err(format!(
                         "GNU DUP2ND at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
-                }
-                if depth >= 64 {
-                    return Ok(false);
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
@@ -1856,14 +1962,12 @@ where
     } else if a.clone().typeof_() == SEXPTYPE::INTSXP && b.clone().typeof_() == SEXPTYPE::INTSXP {
         let av = scalar_int(a, "left integer operand")?;
         let bv = scalar_int(b, "right integer operand")?;
-        unsafe { make_int(int_op(av, bv))
-    }
+        unsafe { make_int(int_op(av, bv)) }
     } else {
         let av = scalar_f64_or_zero(a, "left numeric operand")?;
         let bv = scalar_f64_or_zero(b, "right numeric operand")?;
-        unsafe { make_real(real_op(av, bv))
+        unsafe { make_real(real_op(av, bv)) }
     }
-}
 }
 
 unsafe fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>, String>
@@ -1885,16 +1989,19 @@ where
         let bv = scalar_f64_or_zero(b, "right comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     };
-    unsafe { make_lgl(result)
-}
+    unsafe { make_lgl(result) }
 }
 
 pub unsafe fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // Never retain an R payload reference across instruction execution.
     if code.typeof_() != SEXPTYPE::INTSXP {
-        return Err(sexp_err("invalid bytecode vector", SexpError::TypeMismatch {
-            expected: "integer vector", actual: code.typeof_(),
-        }));
+        return Err(sexp_err(
+            "invalid bytecode vector",
+            SexpError::TypeMismatch {
+                expected: "integer vector",
+                actual: code.typeof_(),
+            },
+        ));
     }
     let instruction_count = code.len() as usize;
     let scratch_bytes = instruction_count
@@ -1977,11 +2084,7 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on add".to_string())?;
                 stack.push(unsafe {
-                    apply_binary_op(
-                    a,
-                    b,
-                    |x, y| x + y,
-                    |x, y| x.wrapping_add(y))
+                    apply_binary_op(a, b, |x, y| x + y, |x, y| x.wrapping_add(y))
                 }?);
             }
             BCsub => {
@@ -1992,11 +2095,7 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on sub".to_string())?;
                 stack.push(unsafe {
-                    apply_binary_op(
-                    a,
-                    b,
-                    |x, y| x - y,
-                    |x, y| x.wrapping_sub(y))
+                    apply_binary_op(a, b, |x, y| x - y, |x, y| x.wrapping_sub(y))
                 }?);
             }
             BCmul => {
@@ -2007,11 +2106,7 @@ unsafe fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on mul".to_string())?;
                 stack.push(unsafe {
-                    apply_binary_op(
-                    a,
-                    b,
-                    |x, y| x * y,
-                    |x, y| x.wrapping_mul(y))
+                    apply_binary_op(a, b, |x, y| x * y, |x, y| x.wrapping_mul(y))
                 }?);
             }
             BCdiv => {
@@ -2035,9 +2130,9 @@ unsafe fn eval_bytecode_loop<'a>(
                 {
                     stack.push(unsafe {
                         make_real(
-                        scalar_real(a, "left real modulo operand")?
-                            % scalar_real(b, "right real modulo operand")?,
-                    )
+                            scalar_real(a, "left real modulo operand")?
+                                % scalar_real(b, "right real modulo operand")?,
+                        )
                     }?);
                 } else if a.clone().typeof_() == SEXPTYPE::INTSXP
                     && b.clone().typeof_() == SEXPTYPE::INTSXP
@@ -2045,8 +2140,7 @@ unsafe fn eval_bytecode_loop<'a>(
                     let bv = scalar_int(b, "right integer modulo operand")?;
                     if bv != 0 {
                         stack.push(unsafe {
-                            make_int(
-                            scalar_int(a, "left integer modulo operand")? % bv)
+                            make_int(scalar_int(a, "left integer modulo operand")? % bv)
                         }?);
                     } else {
                         stack.push(unsafe { make_real(f64::NAN) }?);
@@ -2054,9 +2148,9 @@ unsafe fn eval_bytecode_loop<'a>(
                 } else {
                     stack.push(unsafe {
                         make_real(
-                        scalar_f64_or_zero(a, "left modulo operand")?
-                            % scalar_f64_or_zero(b, "right modulo operand")?,
-                    )
+                            scalar_f64_or_zero(a, "left modulo operand")?
+                                % scalar_f64_or_zero(b, "right modulo operand")?,
+                        )
                     }?);
                 }
             }
@@ -2069,9 +2163,9 @@ unsafe fn eval_bytecode_loop<'a>(
                     .ok_or_else(|| "empty stack on pow".to_string())?;
                 stack.push(unsafe {
                     make_real(
-                    scalar_f64_or_zero(a, "left power operand")?
-                        .powf(scalar_f64_or_zero(b, "right power operand")?),
-                )
+                        scalar_f64_or_zero(a, "left power operand")?
+                            .powf(scalar_f64_or_zero(b, "right power operand")?),
+                    )
                 }?);
             }
             BCeq => {
@@ -2113,14 +2207,14 @@ unsafe fn eval_bytecode_loop<'a>(
                     .ok_or_else(|| "empty stack on and".to_string())?;
                 stack.push(unsafe {
                     make_lgl(
-                    if scalar_bool_or_false(a, "left and operand")?
-                        && scalar_bool_or_false(b, "right and operand")?
-                    {
-                        1
-                    } else {
-                        0
-                    },
-                )
+                        if scalar_bool_or_false(a, "left and operand")?
+                            && scalar_bool_or_false(b, "right and operand")?
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    )
                 }?);
             }
             BCor => {
@@ -2128,14 +2222,14 @@ unsafe fn eval_bytecode_loop<'a>(
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 stack.push(unsafe {
                     make_lgl(
-                    if scalar_bool_or_false(a, "left or operand")?
-                        || scalar_bool_or_false(b, "right or operand")?
-                    {
-                        1
-                    } else {
-                        0
-                    },
-                )
+                        if scalar_bool_or_false(a, "left or operand")?
+                            || scalar_bool_or_false(b, "right or operand")?
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    )
                 }?);
             }
             BCcall => {
@@ -2157,12 +2251,12 @@ unsafe fn eval_bytecode_loop<'a>(
                     for arg in args_vec.into_iter().rev() {
                         let cell = unsafe {
                             with_arena(|arena| {
-                            arena.cons(
-                                arg.as_raw(),
-                                arg_list.clone().as_raw(),
-                                std::ptr::null_mut(),
-                            )
-                        })
+                                arena.cons(
+                                    arg.as_raw(),
+                                    arg_list.clone().as_raw(),
+                                    std::ptr::null_mut(),
+                                )
+                            })
                         };
                         arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
@@ -2273,24 +2367,23 @@ unsafe fn eval_bytecode_loop<'a>(
                     let idx_val = if seq_val.clone().typeof_() == SEXPTYPE::INTSXP {
                         unsafe {
                             make_int(
-                            seq_val
-                                .clone()
-                                .try_integer_elt(i as i64)
-                                .map_err(|err| sexp_err("for-loop integer sequence", err))?,
-                        )
+                                seq_val
+                                    .clone()
+                                    .try_integer_elt(i as i64)
+                                    .map_err(|err| sexp_err("for-loop integer sequence", err))?,
+                            )
                         }?
                     } else if seq_val.clone().typeof_() == SEXPTYPE::REALSXP {
                         unsafe {
-                        make_real(
-                            seq_val
-                                .clone()
-                                .try_real_elt(i as i64)
-                                .map_err(|err| sexp_err("for-loop real sequence", err))?,
-                        )
+                            make_real(
+                                seq_val
+                                    .clone()
+                                    .try_real_elt(i as i64)
+                                    .map_err(|err| sexp_err("for-loop real sequence", err))?,
+                            )
                         }?
                     } else {
-                        unsafe {
-                        make_int(i as c_int) }?
+                        unsafe { make_int(i as c_int) }?
                     };
 
                     unsafe {
@@ -2305,12 +2398,12 @@ unsafe fn eval_bytecode_loop<'a>(
                     let mut loop_pc = body_offset;
                     let (_, control) = unsafe {
                         eval_bytecode_loop(
-                        bytecode,
-                        &mut loop_pc,
-                        stack,
-                        constants.clone(),
-                        env.clone(),
-                    )
+                            bytecode,
+                            &mut loop_pc,
+                            stack,
+                            constants.clone(),
+                            env.clone(),
+                        )
                     }?;
 
                     if control == ControlFlow::Break {
@@ -2329,12 +2422,12 @@ unsafe fn eval_bytecode_loop<'a>(
                     let mut cond_pc = cond_offset;
                     let (cond_result, cond_control) = unsafe {
                         eval_bytecode_loop(
-                        bytecode,
-                        &mut cond_pc,
-                        stack,
-                        constants.clone(),
-                        env.clone(),
-                    )
+                            bytecode,
+                            &mut cond_pc,
+                            stack,
+                            constants.clone(),
+                            env.clone(),
+                        )
                     }?;
                     if cond_control != ControlFlow::Normal {
                         return Ok((cond_result, cond_control));
@@ -2348,12 +2441,12 @@ unsafe fn eval_bytecode_loop<'a>(
                     let mut body_pc = body_offset;
                     let (body_result, body_control) = unsafe {
                         eval_bytecode_loop(
-                        bytecode,
-                        &mut body_pc,
-                        stack,
-                        constants.clone(),
-                        env.clone(),
-                    )
+                            bytecode,
+                            &mut body_pc,
+                            stack,
+                            constants.clone(),
+                            env.clone(),
+                        )
                     }?;
 
                     if body_control == ControlFlow::Break {
@@ -2370,12 +2463,12 @@ unsafe fn eval_bytecode_loop<'a>(
                     let mut body_pc = body_offset;
                     let (body_result, body_control) = unsafe {
                         eval_bytecode_loop(
-                        bytecode,
-                        &mut body_pc,
-                        stack,
-                        constants.clone(),
-                        env.clone(),
-                    )
+                            bytecode,
+                            &mut body_pc,
+                            stack,
+                            constants.clone(),
+                            env.clone(),
+                        )
                     }?;
 
                     if body_control == ControlFlow::Break {
@@ -2411,20 +2504,20 @@ unsafe fn eval_bytecode_loop<'a>(
                     for arg in args_vec.into_iter().rev() {
                         let cell = unsafe {
                             with_arena(|arena| {
-                            arena.cons(
-                                arg.as_raw(),
-                                arg_list.clone().as_raw(),
-                                std::ptr::null_mut(),
-                            )
-                        })
+                                arena.cons(
+                                    arg.as_raw(),
+                                    arg_list.clone().as_raw(),
+                                    std::ptr::null_mut(),
+                                )
+                            })
                         };
                         arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
 
                     let call = unsafe {
                         with_arena(|arena| {
-                        arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                    })
+                            arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        })
                     };
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
@@ -2457,20 +2550,20 @@ unsafe fn eval_bytecode_loop<'a>(
                     for arg in args_vec.into_iter().rev() {
                         let cell = unsafe {
                             with_arena(|arena| {
-                            arena.cons(
-                                arg.as_raw(),
-                                arg_list.clone().as_raw(),
-                                std::ptr::null_mut(),
-                            )
-                        })
+                                arena.cons(
+                                    arg.as_raw(),
+                                    arg_list.clone().as_raw(),
+                                    std::ptr::null_mut(),
+                                )
+                            })
                         };
                         arg_list = unsafe { Sexp::from_raw(cell) }.unwrap_or(arg_list);
                     }
 
                     let call = unsafe {
                         with_arena(|arena| {
-                        arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
-                    })
+                            arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        })
                     };
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
@@ -2530,7 +2623,7 @@ mod tests {
 
     #[test]
     fn eval_bytecode_rejects_truncated_operands() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         let mut pc = 0;
         let mut stack = Vec::new();
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush], &mut pc, &mut stack, None, nil_sexp()) }
@@ -2540,7 +2633,7 @@ mod tests {
 
     #[test]
     fn eval_bytecode_rejects_negative_constant_indices() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         let mut pc = 0;
         let mut stack = Vec::new();
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCpush, -1], &mut pc, &mut stack, None, nil_sexp()) }
@@ -2550,7 +2643,7 @@ mod tests {
 
     #[test]
     fn eval_bytecode_rejects_out_of_range_jump_targets() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         let mut pc = 0;
         let mut stack = Vec::new();
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp()) }
@@ -2927,7 +3020,7 @@ mod tests {
     }
 
     #[test]
-    fn gnu_dup_validator_rejects_underflow_and_stack_growth() {
+    fn gnu_dup_validator_rejects_underflow_and_unbalanced_deep_returns() {
         assert!(
             validate_gnu_adapter_stream(&[12, 5, 1], 0)
                 .unwrap_err()
@@ -2939,9 +3032,20 @@ mod tests {
         assert!(
             validate_gnu_adapter_stream(&words, 0)
                 .unwrap_err()
-                .contains("stack limit")
+                .contains("requires stack depth 1, found 65")
         );
         assert!(validate_gnu_adapter_stream(&[12, 17, 5, 4, 1], 0).unwrap());
+    }
+
+    #[test]
+    fn gnu_dup_validator_accepts_balanced_stacks_above_legacy_cutoff() {
+        // A valid straight-line stream has a statically bounded depth, even
+        // when it exceeds the former arbitrary 64-entry adapter limit.
+        let mut words = vec![GNU_BC_MAX_VERSION, GNU_OP_LDNULL];
+        words.extend(std::iter::repeat_n(GNU_OP_DUP, 256));
+        words.extend(std::iter::repeat_n(GNU_OP_POP, 256));
+        words.push(GNU_OP_RETURN);
+        assert!(validate_gnu_adapter_stream(&words, 0).unwrap());
     }
 
     #[test]
@@ -3370,7 +3474,9 @@ mod tests {
                 .unwrap_err()
                 .contains("empty stack")
         );
-        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 23, 2, 35, 98, 3, 1, 1], 3).is_err());
+        assert!(
+            validate_gnu_adapter_stream(&[12, 20, 0, 61, 1, 23, 2, 35, 98, 3, 1, 1], 3).is_err()
+        );
     }
 
     #[test]

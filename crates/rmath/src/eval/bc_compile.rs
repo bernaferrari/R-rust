@@ -8,58 +8,82 @@
 use std::os::raw::c_int;
 
 use super::bc_eval::opcodes;
+use super::bc_stack::own_operand;
 use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TAG, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::with_arena_in;
-use crate::sexp::protect::protect;
+use crate::sexp::object::{Sexp, SexpMut};
 use crate::sexp::symbol::R_DotsSymbol;
 
+fn compiler_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
 struct BytecodeCompiler {
-    consts: Vec<SEXP>,
+    consts: Vec<Sexp<'static>>,
     code: Vec<c_int>,
     stack_hint: c_int,
     /// Enclosing compile environment. Nested function() constants capture
     /// this so formals resolve in the call frame and base operators remain
     /// visible through the parent chain. GNU MAKECLOSURE rebinds this at
     /// runtime; the private dialect's LDCLOSURE uses the compile-time env.
-    rho: SEXP,
+    rho: Sexp<'static>,
     /// Symbols assigned from a compiled function() in this body. Calls to
     /// those locals are lowered like eager builtins; other user calls stay
     /// rejected so user_fun(x) remains unsupported compiler syntax.
-    compiled_local_funs: Vec<SEXP>,
+    compiled_local_funs: Vec<Sexp<'static>>,
 }
 
 impl BytecodeCompiler {
-    fn new(rho: SEXP) -> Self {
+    unsafe fn new(rho: SEXP) -> Self {
         BytecodeCompiler {
             consts: Vec::new(),
             code: Vec::new(),
             stack_hint: 8,
-            rho,
+            rho: unsafe { own_operand(rho) },
             compiled_local_funs: Vec::new(),
         }
     }
 
     unsafe fn add_const(&mut self, value: SEXP) -> c_int {
         // Bytecode constant operands skip slot 0, which stores the source expr.
-        let idx = (self.consts.len() + 1) as c_int;
+        let idx = self
+            .consts
+            .len()
+            .checked_add(1)
+            .and_then(|n| c_int::try_from(n).ok())
+            .unwrap_or_else(|| compiler_error("bytecode constant pool is too large"));
+        let value = unsafe { own_operand(value) };
+        self.consts
+            .try_reserve(1)
+            .unwrap_or_else(|_| compiler_error("cannot grow bytecode constant pool"));
         self.consts.push(value);
         idx
     }
 
     fn emit(&mut self, opcode: c_int) {
+        if self.code.len() >= c_int::MAX as usize {
+            compiler_error("bytecode instruction stream is too long");
+        }
+        self.code
+            .try_reserve(1)
+            .unwrap_or_else(|_| compiler_error("cannot grow bytecode instruction stream"));
         self.code.push(opcode);
     }
 
     fn emit_operand(&mut self, opcode: c_int, operand: c_int) {
         self.emit(opcode);
-        self.code.push(operand);
+        self.emit(operand);
     }
 
     unsafe fn compile_expr(&mut self, expr: SEXP) -> bool {
         unsafe {
+            let expr_owned = own_operand(if expr.is_null() { R_NilValue() } else { expr });
+            let expr = expr_owned.as_raw();
             if expr.is_null() || expr == R_NilValue() {
                 let idx = self.add_const(R_NilValue());
                 self.emit_operand(opcodes::OP_PUSHCONST, idx);
@@ -121,7 +145,7 @@ impl BytecodeCompiler {
             if closure.is_null() || TYPEOF(closure) != SEXPTYPE::CLOSXP {
                 return false;
             }
-            let _closure_guard = protect(closure);
+            let _closure_guard = own_operand(closure);
             if TYPEOF(BODY(closure)) != SEXPTYPE::BCODESXP && !compile_closure(closure) {
                 return false;
             }
@@ -129,7 +153,7 @@ impl BytecodeCompiler {
             if fb.is_null() {
                 return false;
             }
-            let _fb_guard = protect(fb);
+            let _fb_guard = own_operand(fb);
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(closure));
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(closure));
             let idx = self.add_const(fb);
@@ -140,7 +164,9 @@ impl BytecodeCompiler {
 
     unsafe fn compile_call(&mut self, expr: SEXP) -> bool {
         unsafe {
-            let fun = CAR(expr);
+            let fun_owned = own_operand(CAR(expr));
+
+            let fun = fun_owned.as_raw();
             if fun.is_null() {
                 return false;
             }
@@ -149,7 +175,9 @@ impl BytecodeCompiler {
                 if name.as_deref() == Some("(") {
                     // GNU inlines `(`: compile the inner expression and
                     // keep the value visible.
-                    let argument = CAR(CDR(expr));
+                    let argument_owned = own_operand(CAR(CDR(expr)));
+
+                    let argument = argument_owned.as_raw();
                     return if argument.is_null() || argument == R_NilValue() {
                         false
                     } else {
@@ -187,12 +215,19 @@ impl BytecodeCompiler {
                 let is_at = name.as_deref() == Some("@") || name.as_deref() == Some("$");
                 let mut arg_cells = Vec::new();
                 let mut cur = CDR(expr);
+                let mut seen_cur = std::collections::HashSet::new();
                 while !cur.is_null() && cur != R_NilValue() {
-                    arg_cells.push(cur);
+                    seen_cur
+                        .try_reserve(1)
+                        .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+                    if !seen_cur.insert(cur.addr()) {
+                        compiler_error("cyclic bytecode source list");
+                    }
+                    arg_cells.push(own_operand(cur));
                     cur = CDR(cur);
                 }
                 for cell in &arg_cells {
-                    if CAR(*cell) == R_DotsSymbol() {
+                    if CAR(cell.as_raw()) == R_DotsSymbol() {
                         return false;
                     }
                 }
@@ -200,22 +235,26 @@ impl BytecodeCompiler {
                 // An unsupplied argument is the R_MissingArg sentinel, not a
                 // promise (a promise makes missing() false). .Internal must
                 // see the call, not a promise of it.
-                let subset = matches!(name.as_deref(), Some("[") | Some("[<-") | Some("[[") | Some("[[<-"));
+                let subset = matches!(
+                    name.as_deref(),
+                    Some("[") | Some("[<-") | Some("[[") | Some("[[<-")
+                );
                 for (arg_index, cell) in arg_cells.iter().enumerate() {
-                    let argument = CAR(*cell);
+                    let argument_owned = own_operand(CAR(cell.as_raw()));
+
+                    let argument = argument_owned.as_raw();
                     let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
                     let missing_arg = argument == crate::sexp::globals::R_MissingArg();
                     if missing_arg || is_internal || is_missing || is_at {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     } else if (!eager || local_fun) && !constant {
-                        let code = if TYPEOF(argument) == SEXPTYPE::SYMSXP
-                            && argument != R_DotsSymbol()
-                        {
-                            symbol_getvar_bcode(argument)
-                        } else {
-                            argument
-                        };
+                        let code =
+                            if TYPEOF(argument) == SEXPTYPE::SYMSXP && argument != R_DotsSymbol() {
+                                symbol_getvar_bcode(argument)
+                            } else {
+                                argument
+                            };
                         let idx = self.add_const(code);
                         self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                     } else if !self.compile_expr(argument) {
@@ -226,7 +265,7 @@ impl BytecodeCompiler {
                     if later && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
                         self.emit(opcodes::OP_MARK_SHARED);
                     }
-                    let tag = TAG(*cell);
+                    let tag = TAG(cell.as_raw());
                     if !tag.is_null() && tag != R_NilValue() {
                         let tag_idx = self.add_const(tag);
                         self.emit_operand(opcodes::OP_SETTAG, tag_idx);
@@ -264,15 +303,12 @@ impl BytecodeCompiler {
             // Compile through a scratch closure so the nested body shares
             // the BCODESXP pipeline, then store formals/body in the
             // constant vector MAKECLOSURE consumes.
-            let scratch = crate::mainutils::dstruct::mkCLOSXP(
-                CAR(formals_cell),
-                CAR(body_cell),
-                R_BaseEnv(),
-            );
+            let scratch =
+                crate::mainutils::dstruct::mkCLOSXP(CAR(formals_cell), CAR(body_cell), R_BaseEnv());
             if scratch.is_null() {
                 return false;
             }
-            let _scratch_guard = protect(scratch);
+            let _scratch_guard = own_operand(scratch);
             if !compile_closure(scratch) {
                 return false;
             }
@@ -281,7 +317,7 @@ impl BytecodeCompiler {
                 return false;
             }
 
-            let _fb_guard = protect(fb);
+            let _fb_guard = own_operand(fb);
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(scratch));
             crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(scratch));
             let idx = self.add_const(fb);
@@ -293,12 +329,16 @@ impl BytecodeCompiler {
     unsafe fn compile_while(&mut self, expr: SEXP) -> bool {
         unsafe {
             // while (test) body
-            let test = CAR(CDR(expr));
-            let body = CAR(CDR(CDR(expr)));
+            let test_owned = own_operand(CAR(CDR(expr)));
+
+            let test = test_owned.as_raw();
+            let body_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let body = body_owned.as_raw();
             let begin_idx = self.code.len();
             self.emit(opcodes::OP_BEGINLOOP);
-            self.code.push(0); // break -> ENDLOOP
-            self.code.push(0); // next -> test
+            self.emit(0); // break -> ENDLOOP
+            self.emit(0); // next -> test
             let test_label = self.code.len() as c_int;
             if !self.compile_expr(test) {
                 return false;
@@ -326,9 +366,15 @@ impl BytecodeCompiler {
     unsafe fn compile_for(&mut self, expr: SEXP) -> bool {
         unsafe {
             // for (symbol in sequence) body
-            let symbol = CAR(CDR(expr));
-            let sequence = CAR(CDR(CDR(expr)));
-            let body = CAR(CDR(CDR(CDR(expr))));
+            let symbol_owned = own_operand(CAR(CDR(expr)));
+
+            let symbol = symbol_owned.as_raw();
+            let sequence_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let sequence = sequence_owned.as_raw();
+            let body_owned = own_operand(CAR(CDR(CDR(CDR(expr)))));
+
+            let body = body_owned.as_raw();
             if TYPEOF(symbol) != SEXPTYPE::SYMSXP || !self.compile_expr(sequence) {
                 return false;
             }
@@ -336,13 +382,13 @@ impl BytecodeCompiler {
             let symbol_idx = self.add_const(symbol);
             let start_idx = self.code.len();
             self.emit(opcodes::OP_STARTFOR);
-            self.code.push(symbol_idx);
-            self.code.push(0); // empty-sequence target, patched below
+            self.emit(symbol_idx);
+            self.emit(0); // empty-sequence target, patched below
 
             let begin_idx = self.code.len();
             self.emit(opcodes::OP_BEGINLOOP);
-            self.code.push(0); // break -> ENDLOOP
-            self.code.push(0); // next -> NEXTFOR
+            self.emit(0); // break -> ENDLOOP
+            self.emit(0); // next -> NEXTFOR
 
             let body_start = self.code.len() as c_int;
             if !self.compile_expr(body) {
@@ -365,8 +411,12 @@ impl BytecodeCompiler {
 
     unsafe fn compile_assignment(&mut self, expr: SEXP) -> bool {
         unsafe {
-            let lhs = CAR(CDR(expr));
-            let rhs = CAR(CDR(CDR(expr)));
+            let lhs_owned = own_operand(CAR(CDR(expr)));
+
+            let lhs = lhs_owned.as_raw();
+            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
                 return self.compile_subassign(expr, false);
             }
@@ -375,7 +425,7 @@ impl BytecodeCompiler {
                 return false;
             }
             if binds_compiled_fun {
-                self.compiled_local_funs.push(lhs);
+                self.compiled_local_funs.push(own_operand(lhs));
             }
             let symbol_idx = self.add_const(lhs);
             self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
@@ -388,8 +438,12 @@ impl BytecodeCompiler {
     /// is the RHS, and the symbol is written back.
     unsafe fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
         unsafe {
-            let lhs = CAR(CDR(expr));
-            let rhs = CAR(CDR(CDR(expr)));
+            let lhs_owned = own_operand(CAR(CDR(expr)));
+
+            let lhs = lhs_owned.as_raw();
+            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) != SEXPTYPE::LANGSXP {
                 return false;
             }
@@ -398,12 +452,18 @@ impl BytecodeCompiler {
                 Some("[[") => true,
                 _ => return false,
             };
-            let object = CAR(CDR(lhs));
+            let object_owned = own_operand(CAR(CDR(lhs)));
+
+            let object = object_owned.as_raw();
             let dollar = if TYPEOF(object) == SEXPTYPE::LANGSXP
                 && symbol_name_from_sexp(CAR(object)).as_deref() == Some("$")
             {
-                let base = CAR(CDR(object));
-                let tag = CAR(CDR(CDR(object)));
+                let base_owned = own_operand(CAR(CDR(object)));
+
+                let base = base_owned.as_raw();
+                let tag_owned = own_operand(CAR(CDR(CDR(object))));
+
+                let tag = tag_owned.as_raw();
                 if TYPEOF(base) != SEXPTYPE::SYMSXP || TYPEOF(tag) != SEXPTYPE::SYMSXP {
                     return false;
                 }
@@ -427,8 +487,17 @@ impl BytecodeCompiler {
             // the value the outer update writes back. Constant indexes do not.
             let mut scan = CDR(CDR(lhs));
             let mut constant_indexes = true;
+            let mut seen_scan = std::collections::HashSet::new();
             while !scan.is_null() && scan != R_NilValue() {
-                let sub = CAR(scan);
+                seen_scan
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+                if !seen_scan.insert(scan.addr()) {
+                    compiler_error("cyclic bytecode source list");
+                }
+                let sub_owned = own_operand(CAR(scan));
+
+                let sub = sub_owned.as_raw();
                 let ty = TYPEOF(sub);
                 let constant = ty == SEXPTYPE::INTSXP
                     || ty == SEXPTYPE::REALSXP
@@ -444,9 +513,19 @@ impl BytecodeCompiler {
                 self.emit(opcodes::OP_BUMP_LINK);
             }
             let mut index = CDR(CDR(lhs));
-            let mut n_index = 0;
+            let mut n_index: c_int = 0;
+            let mut seen_index = std::collections::HashSet::new();
             while !index.is_null() && index != R_NilValue() {
-                n_index += 1;
+                seen_index
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+                if !seen_index.insert(index.addr()) {
+                    compiler_error("cyclic bytecode source list");
+                }
+                let index_owned = own_operand(index);
+                n_index = n_index
+                    .checked_add(1)
+                    .unwrap_or_else(|| compiler_error("too many bytecode subscripts"));
                 if !self.compile_expr(CAR(index)) {
                     return false;
                 }
@@ -501,13 +580,16 @@ impl BytecodeCompiler {
         }
     }
 
-
     /// `<<-`: compile the value, then store into the enclosing frame via
     /// OP_SETVAR2 (eval.c SETVAR2 semantics; the value stays on the stack).
     unsafe fn compile_superassignment(&mut self, expr: SEXP) -> bool {
         unsafe {
-            let lhs = CAR(CDR(expr));
-            let rhs = CAR(CDR(CDR(expr)));
+            let lhs_owned = own_operand(CAR(CDR(expr)));
+
+            let lhs = lhs_owned.as_raw();
+            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
                 return self.compile_subassign(expr, true);
             }
@@ -522,14 +604,20 @@ impl BytecodeCompiler {
     unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
         unsafe {
             // if (test) then else ; form is lang if test then else
-            let test = CAR(CDR(expr));
-            let then_e = CAR(CDR(CDR(expr)));
+            let test_owned = own_operand(CAR(CDR(expr)));
+
+            let test = test_owned.as_raw();
+            let then_e_owned = own_operand(CAR(CDR(CDR(expr))));
+
+            let then_e = then_e_owned.as_raw();
             let else_e = if CDR(CDR(CDR(expr))).is_null() {
                 R_NilValue()
             } else {
                 CAR(CDR(CDR(CDR(expr))))
             };
 
+            let else_e_owned = own_operand(else_e);
+            let else_e = else_e_owned.as_raw();
             if !self.compile_expr(test) {
                 return false;
             }
@@ -559,8 +647,15 @@ impl BytecodeCompiler {
         unsafe {
             let mut exprs = Vec::new();
             let mut cur = CDR(expr);
+            let mut seen_cur = std::collections::HashSet::new();
             while !cur.is_null() && cur != R_NilValue() {
-                exprs.push(CAR(cur));
+                seen_cur
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+                if !seen_cur.insert(cur.addr()) {
+                    compiler_error("cyclic bytecode source list");
+                }
+                exprs.push(own_operand(CAR(cur)));
                 cur = CDR(cur);
             }
 
@@ -572,7 +667,7 @@ impl BytecodeCompiler {
 
             let last = exprs.len().saturating_sub(1);
             for (index, body) in exprs.into_iter().enumerate() {
-                if !self.compile_expr(body) {
+                if !self.compile_expr(body.as_raw()) {
                     return false;
                 }
                 if index != last {
@@ -584,7 +679,9 @@ impl BytecodeCompiler {
     }
 
     fn is_compiled_local_fun(&self, fun: SEXP) -> bool {
-        self.compiled_local_funs.contains(&fun)
+        self.compiled_local_funs
+            .iter()
+            .any(|value| value.as_raw() == fun)
     }
 
     unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {
@@ -594,59 +691,78 @@ impl BytecodeCompiler {
                 with_arena_in(inst, |arena| {
                     let consts =
                         arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
-                    let _consts_guard = crate::sexp::protect::protect(consts);
+                    let _consts_guard = own_operand(consts);
                     crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, source_expr);
                     for (index, constant) in self.consts.iter().enumerate() {
                         crate::sexp::accessors::SET_VECTOR_ELT(
                             consts,
                             (index + 1) as i64,
-                            *constant,
+                            constant.as_raw(),
                         );
                     }
                     let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
-                    let _code_guard = crate::sexp::protect::protect(code);
-                    let code_data = crate::sexp::accessors::DATAPTR(code) as *mut c_int;
+                    let mut code_mut =
+                        SexpMut::try_from_checked(own_operand(code)).expect("fresh mutable code");
                     for (index, instruction) in self.code.iter().enumerate() {
-                        *code_data.add(index) = *instruction;
+                        assert!(code_mut.set_integer_elt(index as i64, *instruction));
                     }
 
                     let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                    let _hint_guard = crate::sexp::protect::protect(stack_hint);
-                    let stack_data = crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int;
-                    *stack_data = self.stack_hint.max(4);
+                    let mut hint_mut = SexpMut::try_from_checked(own_operand(stack_hint))
+                        .expect("fresh mutable stack hint");
+                    assert!(hint_mut.set_integer_elt(0, self.stack_hint.max(4)));
 
                     let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 0, code);
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 1, consts);
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 2, stack_hint);
-                    bcode
+                    own_operand(bcode)
                 })
             })
+            .as_raw()
         }
     }
 }
 fn symbol_getvar_bcode(sym: SEXP) -> SEXP {
     unsafe {
+        let symbol_owned = own_operand(sym);
+        let sym = symbol_owned.as_raw();
         with_required_current_instance(|inst| {
             with_arena_in(inst, |arena| {
                 let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-                arena.set_reference_element(consts, 0, sym).expect("fresh constant pool slot");
-                arena.set_reference_element(consts, 1, sym).expect("fresh constant pool slot");
+                arena
+                    .set_reference_element(consts, 0, sym)
+                    .expect("fresh constant pool slot");
+                arena
+                    .set_reference_element(consts, 1, sym)
+                    .expect("fresh constant pool slot");
                 let code = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-                let code_data = crate::sexp::accessors::DATAPTR(code) as *mut c_int;
-                *code_data = opcodes::OP_GETVAR;
-                *code_data.add(1) = 1;
-                *code_data.add(2) = opcodes::OP_RETURN;
+                let mut code_mut =
+                    SexpMut::try_from_checked(own_operand(code)).expect("fresh mutable code");
+                for (index, instruction) in [opcodes::OP_GETVAR, 1, opcodes::OP_RETURN]
+                    .into_iter()
+                    .enumerate()
+                {
+                    assert!(code_mut.set_integer_elt(index as i64, instruction));
+                }
                 let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                let stack_data = crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int;
-                *stack_data = 4;
+                let mut hint_mut = SexpMut::try_from_checked(own_operand(stack_hint))
+                    .expect("fresh mutable stack hint");
+                assert!(hint_mut.set_integer_elt(0, 4));
                 let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-                arena.set_reference_element(bcode, 0, code).expect("fresh bytecode slot");
-                arena.set_reference_element(bcode, 1, consts).expect("fresh bytecode slot");
-                arena.set_reference_element(bcode, 2, stack_hint).expect("fresh bytecode slot");
-                bcode
+                arena
+                    .set_reference_element(bcode, 0, code)
+                    .expect("fresh bytecode slot");
+                arena
+                    .set_reference_element(bcode, 1, consts)
+                    .expect("fresh bytecode slot");
+                arena
+                    .set_reference_element(bcode, 2, stack_hint)
+                    .expect("fresh bytecode slot");
+                own_operand(bcode)
             })
         })
+        .as_raw()
     }
 }
 
@@ -739,18 +855,38 @@ unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
 /// complex for the minimal compiler.
 pub unsafe fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
     unsafe {
+        let source_owned = own_operand(expr);
+        let pin = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| compiler_error(error.to_string()))
+            .pin()
+            .unwrap_or_else(|error| compiler_error(error.to_string()))
+            .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
+        let expr = source_owned.as_raw();
         let mut compiler = BytecodeCompiler::new(_rho);
         if !compiler.compile_expr(expr) {
+            pin.require_live()
+                .unwrap_or_else(|error| compiler_error(error.to_string()));
             return None;
         }
-        Some(compiler.finish(expr))
+        let result = own_operand(compiler.finish(expr));
+        pin.require_live()
+            .unwrap_or_else(|error| compiler_error(error.to_string()));
+        Some(result.as_raw())
     }
 }
-
 
 /// Try to compile a closure body and install bytecode on success.
 pub unsafe fn compile_closure(fun: SEXP) -> bool {
     unsafe {
+        if fun.is_null() {
+            return false;
+        }
+        let fun_owned = own_operand(fun);
+        let pin = fun_owned
+            .pin_runtime()
+            .unwrap_or_else(|error| compiler_error(error.to_string()))
+            .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
+        let fun = fun_owned.as_raw();
         if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return false;
         }
@@ -762,7 +898,9 @@ pub unsafe fn compile_closure(fun: SEXP) -> bool {
         let Some(bcode) = compile_expr(body, cloenv) else {
             return false;
         };
-        let _guard = protect(bcode);
+        let _guard = own_operand(bcode);
+        pin.require_live()
+            .unwrap_or_else(|error| compiler_error(error.to_string()));
         SET_BODY(fun, bcode);
         true
     }
@@ -992,5 +1130,75 @@ mod tests {
                 1_000
             );
         }
+    }
+    #[test]
+    fn owned_bytecode_compiler_constants_survive_gc_and_collecting_publication() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let owner = session.owner_token().unwrap();
+            let environment = session.global_env().unwrap();
+            let mut compiler = BytecodeCompiler::new(environment.as_raw());
+            let constant = Rf_ScalarInteger(73);
+            let index = compiler.add_const(constant);
+            compiler.emit_operand(opcodes::OP_PUSHCONST, index);
+            owner.full_gc().unwrap();
+            assert_eq!(compiler.consts[0].integer_elt(0), Some(73));
+
+            let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+            let observed = callbacks.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                crate::sexp::gengc::full_gc();
+                observed.set(observed.get() + 1);
+            }));
+            session.with_active_in(|instance| {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let bytecode = own_operand(compiler.finish(R_NilValue()));
+            assert!(callbacks.get() > 0);
+            drop(compiler);
+            owner.full_gc().unwrap();
+            let value = super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw());
+            assert_eq!(*INTEGER(value), 73);
+            drop(bytecode);
+            owner.full_gc().unwrap();
+            assert!(crate::sexp::memory::checked_projection(constant).is_none());
+        });
+    }
+    #[test]
+    fn owned_bytecode_compiler_block_children_survive_source_replacement_callbacks() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let function = Rf_cons(
+                Rf_install(c"function".as_ptr()),
+                Rf_cons(R_NilValue(), Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
+            );
+            crate::sexp::accessors::SET_TYPEOF(function, SEXPTYPE::LANGSXP.as_c_int());
+            let final_value = Rf_ScalarInteger(37);
+            let block = Rf_cons(
+                Rf_install(c"{".as_ptr()),
+                Rf_cons(function, Rf_cons(final_value, R_NilValue())),
+            );
+            crate::sexp::accessors::SET_TYPEOF(block, SEXPTYPE::LANGSXP.as_c_int());
+            let source = own_operand(block);
+            let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+            let observed = callbacks.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                crate::sexp::accessors::SETCDR(source.as_raw(), R_NilValue());
+                crate::sexp::gengc::full_gc();
+                observed.set(observed.get() + 1);
+            }));
+            session.with_active_in(|instance| {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let bytecode = own_operand(compile_expr(block, R_BaseEnv()).unwrap());
+            assert!(callbacks.get() > 0);
+            let result = own_operand(super::super::bc_eval::bcEval(
+                bytecode.as_raw(),
+                R_BaseEnv(),
+            ));
+            assert_eq!(result.integer_elt(0), Some(37));
+        });
     }
 }

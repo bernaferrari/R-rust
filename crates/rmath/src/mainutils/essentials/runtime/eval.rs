@@ -139,7 +139,7 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if ctx.is_null() {
                 call
             } else {
-                let top = (*ctx).call;
+                let top = (*ctx).call.as_raw();
                 if top.is_null() || top == R_NilValue() {
                     call
                 } else {

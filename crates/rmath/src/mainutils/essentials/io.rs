@@ -408,7 +408,7 @@ pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
         let Some(context) = current_function_context() else {
             base_error("'nargs' used outside a function");
         };
-        Rf_ScalarInteger(pairlist_len((*context).promiseargs))
+        Rf_ScalarInteger(pairlist_len((*context).promiseargs.as_raw()))
     }
 }
 

@@ -320,21 +320,6 @@ fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
 }
 
 #[inline(always)]
-fn mark_context_roots(ctxt: &super::context::RCNTXT) {
-    mark_reachable(ctxt.call);
-    mark_reachable(ctxt.cloenv);
-    mark_reachable(ctxt.sysparent);
-    mark_reachable(ctxt.callfun);
-    mark_reachable(ctxt.closure);
-    mark_reachable(ctxt.promiseargs);
-    mark_reachable(ctxt.savelist);
-    mark_reachable(ctxt.handlerstack);
-    mark_reachable(ctxt.restartstack);
-    mark_reachable(ctxt.rpvec);
-    mark_reachable(ctxt.returnValue);
-    mark_reachable(ctxt.conexit);
-    mark_reachable(ctxt.srcref);
-}
 #[inline(always)]
 fn mark_checked_root_snapshot(roots: Vec<RootValue>) {
     let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
@@ -397,10 +382,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_checked_root_snapshot((*instance).root_table.checked_entries_snapshot());
         MARK_WHERE.with(|w| w.set("preserve_stack"));
         mark_checked_root_snapshot((*instance).preserve_stack.checked_entries_snapshot());
-        MARK_WHERE.with(|w| w.set("context"));
-        for ctxt in &(*instance).context_stack {
-            mark_context_roots(&*ctxt.get());
-        }
+        // Context and bytecode values own exact-generation automatic roots.
 
         MARK_WHERE.with(|w| w.set("error_state"));
         mark_reachable((*instance).error_state.warnings);
@@ -427,10 +409,6 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_reachable((*instance).eval_state.print.data.na_string_noquote);
         mark_reachable((*instance).eval_state.print.data.env);
         mark_reachable((*instance).eval_state.print.data.callArgs);
-        (*instance)
-            .eval_state
-            .bc_stack
-            .visit_roots(|obj| mark_reachable(*obj));
 
         MARK_WHERE.with(|w| w.set("symbols"));
         for &obj in (*instance).symbols.values() {
@@ -923,22 +901,6 @@ fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usize {
         .unwrap_or(addr)
 }
 
-fn update_context_roots(ctxt: &mut super::context::RCNTXT, old_to_new: &HashMap<usize, SEXP>) {
-    update_field(&mut ctxt.call, old_to_new);
-    update_field(&mut ctxt.cloenv, old_to_new);
-    update_field(&mut ctxt.sysparent, old_to_new);
-    update_field(&mut ctxt.callfun, old_to_new);
-    update_field(&mut ctxt.closure, old_to_new);
-    update_field(&mut ctxt.promiseargs, old_to_new);
-    update_field(&mut ctxt.savelist, old_to_new);
-    update_field(&mut ctxt.handlerstack, old_to_new);
-    update_field(&mut ctxt.restartstack, old_to_new);
-    update_field(&mut ctxt.rpvec, old_to_new);
-    update_field(&mut ctxt.returnValue, old_to_new);
-    update_field(&mut ctxt.conexit, old_to_new);
-    update_field(&mut ctxt.srcref, old_to_new);
-}
-
 fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
     unsafe {
         update_field(&mut (*instance).empty_env, old_to_new);
@@ -947,9 +909,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
 
         update_protect_stack_in(instance, old_to_new);
         update_preserve_stack_in(instance, old_to_new);
-        for ctxt in &mut (*instance).context_stack {
-            update_context_roots(&mut *ctxt.get(), old_to_new);
-        }
 
         update_field(&mut (*instance).error_state.warnings, old_to_new);
         update_field(&mut (*instance).error_state.handler_stack, old_to_new);
@@ -992,10 +951,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         );
         update_field(&mut (*instance).eval_state.print.data.env, old_to_new);
         update_field(&mut (*instance).eval_state.print.data.callArgs, old_to_new);
-        (*instance)
-            .eval_state
-            .bc_stack
-            .visit_roots(|obj| update_field(obj, old_to_new));
 
         for obj in (*instance).symbols.values_mut() {
             update_field(obj, old_to_new);
@@ -1279,7 +1234,7 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
                 }
             };
             for ctxt in &(*instance).context_stack {
-                walk_env((*ctxt.get()).cloenv);
+                walk_env((*ctxt.get()).cloenv.as_raw());
             }
             walk_env((*instance).global_env);
             walk_env((*instance).base_env);
@@ -3646,12 +3601,12 @@ mod tests {
                 (*inst).objects_state.deferred_default_object,
                 replacements[1]
             );
-            let mut bytecode_root = None;
-            (*inst)
-                .eval_state
-                .bc_stack
-                .visit_roots(|root| bytecode_root = Some(*root));
-            assert_eq!(bytecode_root, Some(replacements[2]));
+            let bytecode_root = Some((*inst).eval_state.bc_stack.at_owned(0).as_raw());
+            assert_eq!(
+                bytecode_root,
+                Some(roots[2]),
+                "owning bytecode entries preserve original allocation identity"
+            );
             #[cfg(not(target_arch = "wasm32"))]
             {
                 let mut http_roots = Vec::new();

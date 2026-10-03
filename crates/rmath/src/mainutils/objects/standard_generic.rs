@@ -103,7 +103,7 @@ pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> S
         let mut cptr = R_GlobalContext();
         while !cptr.is_null() {
             let cf = (*cptr).callflag;
-            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 && (*cptr).cloenv == env
+            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 && (*cptr).cloenv.as_raw() == env
             {
                 break;
             }
@@ -121,7 +121,7 @@ pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> S
         let _e_guard = protect(e);
         SETCAR(e, fun);
 
-        let value = crate::eval::eval::Rf_eval(e, (*cptr).sysparent);
+        let value = crate::eval::eval::Rf_eval(e, (*cptr).sysparent.as_raw());
         value
     }
 }
@@ -148,11 +148,11 @@ unsafe fn get_this_generic(args: SEXP) -> SEXP {
         while !cptr.is_null() {
             let cf = (*cptr).callflag;
             if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
-                && isObject((*cptr).callfun) != FALSE
+                && isObject((*cptr).callfun.as_raw()) != FALSE
             {
-                let generic = getAttrib((*cptr).callfun, sym("generic"));
+                let generic = getAttrib((*cptr).callfun.as_raw(), sym("generic"));
                 if isValidString(generic) != FALSE && Seql(fname, STRING_ELT(generic, 0)) != FALSE {
-                    return (*cptr).callfun;
+                    return (*cptr).callfun.as_raw();
                 }
             }
             cptr = (*cptr).nextcontext;

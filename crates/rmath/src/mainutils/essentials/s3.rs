@@ -264,12 +264,12 @@ pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
         let mut remaining = n;
         loop {
-            cptr = find_exec_context(cptr, (*cptr).sysparent);
+            cptr = find_exec_context(cptr, (*cptr).sysparent.as_raw());
             if cptr.is_null() {
                 return crate::sexp::globals::R_GlobalEnv();
             }
             if remaining == 1 {
-                let sysparent = (*cptr).sysparent;
+                let sysparent = (*cptr).sysparent.as_raw();
                 if sysparent.is_null() {
                     return crate::sexp::globals::R_GlobalEnv();
                 }
@@ -290,7 +290,7 @@ unsafe fn find_exec_context(
     unsafe {
         while !cptr.is_null() {
             if (*cptr).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
-                && (*cptr).cloenv == envir
+                && (*cptr).cloenv.as_raw() == envir
             {
                 return cptr;
             }
@@ -319,10 +319,10 @@ pub(crate) unsafe fn sys_query_context() -> *mut crate::sexp::context::RCNTXT {
         }
         let ctx = &*top;
         if ctx.callflag == crate::sexp::context::ctxt_flags::CTXT_RETURN
-            && ctx.sysparent.is_null()
-            && !ctx.cloenv.is_null()
+            && ctx.sysparent.as_raw().is_null()
+            && !ctx.cloenv.as_raw().is_null()
         {
-            let home = crate::eval::context::getLexicalContext(ctx.cloenv);
+            let home = crate::eval::context::getLexicalContext(ctx.cloenv.as_raw());
             if !home.is_null() {
                 return home;
             }

@@ -505,7 +505,7 @@ pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_
         let mut cptr = crate::sexp::context::R_GlobalContext();
         while !cptr.is_null() {
             let flag = (*cptr).callflag;
-            let call = (*cptr).call;
+            let call = (*cptr).call.as_raw();
             let function_frame = (flag
                 & (crate::sexp::context::ctxt_flags::CTXT_FUNCTION
                     | crate::sexp::context::ctxt_flags::CTXT_BUILTIN))

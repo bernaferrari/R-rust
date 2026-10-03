@@ -516,6 +516,7 @@ type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 struct GuardOwner {
     pointer: std::ptr::NonNull<RInstance>,
     liveness: super::instance::InstanceLiveness,
+    runtime_owner: Option<super::owner::WeakOwner>,
 }
 impl GuardOwner {
     /// Capture a weak lifetime witness while this native owner is live.
@@ -523,6 +524,7 @@ impl GuardOwner {
         Self {
             pointer: std::ptr::NonNull::new(pointer).expect("live guard owner"),
             liveness: unsafe { super::instance::instance_liveness(pointer) },
+            runtime_owner: unsafe { (*pointer).runtime_owner.clone() },
         }
     }
     fn is_live(&self) -> bool {
@@ -532,7 +534,13 @@ impl GuardOwner {
 
 fn with_guard_owner<R>(owner: &GuardOwner, f: impl FnOnce(*mut RInstance) -> R) -> R {
     assert!(owner.is_live(), "root owner has been destroyed");
-    f(owner.pointer.as_ptr())
+    let pin = owner
+        .runtime_owner
+        .as_ref()
+        .map(|owner| owner.pin().expect("live guard owner"));
+    f(pin
+        .as_ref()
+        .map_or(owner.pointer.as_ptr(), |pin| pin.as_ptr()))
 }
 
 /// How a [`ProtectGuard`] releases its protection at drop.
@@ -1289,9 +1297,16 @@ pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
 // instance, independently of the ambient thread-local session.
 fn session_owner_handle(value: &Sexp<'_>) -> Option<GuardOwner> {
     match value.owner() {
-        SexpOwner::Session(_) => value
-            .session_owner_ptr
-            .map(|pointer| unsafe { GuardOwner::new(pointer.as_ptr()) }),
+        SexpOwner::Session(_) => {
+            if let Some(owner) = &value.runtime_owner {
+                let pin = owner.pin().ok()?;
+                Some(unsafe { GuardOwner::new(pin.as_ptr()) })
+            } else {
+                value
+                    .session_owner_ptr
+                    .map(|pointer| unsafe { GuardOwner::new(pointer.as_ptr()) })
+            }
+        }
         _ => None,
     }
 }
@@ -1697,9 +1712,7 @@ mod tests {
             // outer root is the only entry left.
             with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
             outer.reprotect(second.clone());
-            with_protected_objects(|_, roots| {
-                assert_eq!(roots, &[raw_second])
-            });
+            with_protected_objects(|_, roots| assert_eq!(roots, &[raw_second]));
             assert_eq!(
                 outer.get().expect("outer root must resolve").clone(),
                 second
@@ -1790,12 +1803,7 @@ mod tests {
             assert!(guard.slot().is_active());
             with_protected_objects(|_, roots| assert_eq!(roots.len(), 1));
             guard.reprotect_sexp(second.clone());
-            with_protected_objects(|_, roots| {
-                assert_eq!(
-                    roots,
-                    &[second.clone().as_raw()]
-                )
-            });
+            with_protected_objects(|_, roots| assert_eq!(roots, &[second.clone().as_raw()]));
             drop(guard);
             with_protected_objects(|_, roots| assert_eq!(roots.len(), 0));
         });
@@ -2696,7 +2704,8 @@ mod tests {
     fn exhausted_safe_claim_returns_error_without_mutating_existing_roots() {
         let session = RSession::new_for_gc_tests();
         let value = session.global_env().unwrap();
-        let owner = value.session_owner_ptr.unwrap().as_ptr();
+        let pin = value.pin_runtime().unwrap().unwrap();
+        let owner = pin.as_ptr();
         let before = unsafe { (*owner).root_table.entries_snapshot() };
         unsafe {
             (*owner).root_table.set_next_generation_for_test(u64::MAX);

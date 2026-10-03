@@ -269,7 +269,7 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
         } else {
             globals::R_RestartToken()
         };
-        let rho = (*cptr).cloenv;
+        let rho = (*cptr).cloenv.as_raw();
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
         let _klass_guard = protect(klass);
         let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);

@@ -143,6 +143,7 @@ pub struct Sexp<'a> {
     ptr: SEXP,
     owner: SexpOwner,
     node: Option<crate::sexp::heap::CheckedNode>,
+    pub(crate) runtime_owner: Option<crate::sexp::owner::WeakOwner>,
     pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
     root: Option<std::rc::Rc<crate::sexp::heap::NodeRootLease>>,
     singleton: Option<crate::sexp::globals::SingletonLease>,
@@ -164,6 +165,7 @@ impl Clone for Sexp<'_> {
             ptr: self.ptr,
             owner: self.owner,
             node: self.node.clone(),
+            runtime_owner: self.runtime_owner.clone(),
             session_owner_ptr: self.session_owner_ptr,
             root: self.root.clone(),
             singleton: self.singleton.clone(),
@@ -286,6 +288,7 @@ impl<'a> Sexp<'a> {
                 ptr,
                 owner: SexpOwner::Unknown,
                 node: Some(node),
+                runtime_owner: None,
                 session_owner_ptr: None,
                 root: None,
                 singleton: None,
@@ -343,6 +346,7 @@ impl<'a> Sexp<'a> {
             ptr,
             owner: SexpOwner::Unknown,
             node: None,
+            runtime_owner: None,
             session_owner_ptr: None,
             root: None,
             singleton: None,
@@ -374,6 +378,7 @@ impl<'a> Sexp<'a> {
             ptr: singleton.projection(),
             owner: SexpOwner::Static,
             node: None,
+            runtime_owner: None,
             session_owner_ptr: None,
             root: None,
             singleton: Some(singleton),
@@ -418,15 +423,48 @@ impl<'a> Sexp<'a> {
         self.ptr
     }
 
-    /// Capture this value's allocation domain before execution or an arena lend.
+    /// Move the original physical leases into a lifetime-independent value.
+    /// Interpreter work retains only revocable weak authority, avoiding a
+    /// value-to-runtime strong cycle. Unchecked and borrowed arena views cannot
+    /// manufacture ownership by dropping their lifetime marker.
+    pub fn into_owned(self) -> SexpResult<Sexp<'static>> {
+        self.ensure_live()?;
+        match self.owner {
+            SexpOwner::Static if self.singleton.is_some() => {}
+            SexpOwner::Session(_) if self.root.is_some() && self.runtime_owner.is_some() => {}
+            _ => return Err(SexpError::RootUnavailable),
+        }
+        Ok(Sexp {
+            ptr: self.ptr,
+            owner: self.owner,
+            node: self.node,
+            runtime_owner: self.runtime_owner,
+            session_owner_ptr: None,
+            root: self.root,
+            singleton: self.singleton,
+            singletons: self.singletons,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    pub(crate) fn pin_runtime(&self) -> SexpResult<Option<crate::sexp::owner::OwnerPin>> {
+        self.runtime_owner
+            .as_ref()
+            .map(|owner| owner.pin())
+            .transpose()
+    }
+
+    /// Capture this value's original domain, never an ambient replacement.
     pub(crate) fn node_factory(&self) -> SexpResult<SessionNodeFactory<'a>> {
         self.ensure_live()?;
+        if let Some(owner) = &self.runtime_owner {
+            return owner.node_factory();
+        }
         let owner = self.session_owner_ptr.ok_or(SexpError::RootUnavailable)?;
         if self.node.is_none() || self.owner != SexpOwner::Session(owner.as_ptr().addr()) {
             return Err(SexpError::RootUnavailable);
         }
-        // SAFETY: checked session construction binds the owner to this handle's
-        // session lifetime. Snapshotting ends before the returned factory runs.
+        // Borrow-bound standalone translated owner; never accepted by into_owned.
         let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) };
         let factory = SessionNodeFactory::new(owner);
         factory.wrap(self.ptr)?;
@@ -510,11 +548,16 @@ impl<'a> Sexp<'a> {
         self.ensure_live()?;
         let header = self.header();
         if header.sxpinfo.alt() && header.payload.is_empty() {
-            if let Some(owner) = self.session_owner_ptr {
+            let pin = self.pin_runtime()?;
+            let pointer = pin
+                .as_ref()
+                .map(|owner| owner.as_ptr())
+                .or_else(|| self.session_owner_ptr.map(|owner| owner.as_ptr()));
+            if let Some(owner) = pointer {
                 // The owner is retained by this handle. Each callback runs after
                 // header copying, with no instance or R payload borrow alive.
                 unsafe {
-                    crate::sexp::session::with_instance_active(owner.as_ptr(), || {
+                    crate::sexp::session::with_instance_active(owner, || {
                         if super::altrep::materialize_raw(self.ptr)? {
                             return Ok(());
                         }
@@ -522,6 +565,9 @@ impl<'a> Sexp<'a> {
                         Ok(())
                     })
                 }?;
+                if let Some(pin) = &pin {
+                    pin.require_live()?;
+                }
             } else {
                 unsafe {
                     if !super::altrep::materialize_raw(self.ptr)? {
@@ -612,7 +658,8 @@ impl<'a> Sexp<'a> {
             return Ok(&[]);
         }
         let lease = self.try_payload_lease(expected, expected_name)?;
-        let len = usize::try_from(self.len()).map_err(|_| SexpError::MissingData { sexptype: expected })?;
+        let len = usize::try_from(self.len())
+            .map_err(|_| SexpError::MissingData { sexptype: expected })?;
         if len > lease.capacity() {
             return Err(SexpError::MissingData { sexptype: expected });
         }
@@ -721,11 +768,15 @@ impl<'a> Sexp<'a> {
     /// Retain a new graph edge in the checked handle's original session.
     /// Standalone arenas have no generational collector or ambient owner.
     fn remember_child(&self, child: &Sexp<'_>) -> SexpResult<()> {
-        if let Some(owner) = self.session_owner_ptr {
-            // SAFETY: the handles retain the owner and both live nodes;
+        let pin = self.pin_runtime()?;
+        let pointer = pin
+            .as_ref()
+            .map(|owner| owner.as_ptr())
+            .or_else(|| self.session_owner_ptr.map(|owner| owner.as_ptr()));
+        if let Some(owner) = pointer {
+            // SAFETY: the operation pins the owner and both live nodes;
             // check_child_owner precedes this strictly-local state update.
-            if !unsafe { crate::sexp::gengc::write_barrier_in(owner.as_ptr(), self.ptr, child.ptr) }
-            {
+            if !unsafe { crate::sexp::gengc::write_barrier_in(owner, self.ptr, child.ptr) } {
                 return Err(SexpError::AllocationFailed {
                     object: "GC write barrier",
                 });
@@ -804,6 +855,7 @@ impl<'a> Sexp<'a> {
                     ptr: projection,
                     owner: self.owner,
                     node: Some(allocation),
+                    runtime_owner: self.runtime_owner.clone(),
                     session_owner_ptr: self.session_owner_ptr,
                     root: Some(root),
                     singleton: None,

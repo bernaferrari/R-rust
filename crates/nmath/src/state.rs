@@ -49,6 +49,12 @@ pub fn replace_state(new: *mut MathState) -> Option<*mut MathState> {
     CURRENT_STATE.with(|slot| slot.borrow_mut().replace(new))
 }
 
+/// Suspend ambient numerical state without installing a null projection.
+/// Scoped runtime activation retains the returned owner through restoration.
+pub fn take_state() -> Option<*mut MathState> {
+    CURRENT_STATE.with(|slot| slot.borrow_mut().take())
+}
+
 /// Replace the current RNG state, returning the previously installed one.
 pub fn replace_rng(new: *mut crate::rng::RngState) -> Option<*mut crate::rng::RngState> {
     CURRENT_RNG.with(|slot| slot.borrow_mut().replace(new))

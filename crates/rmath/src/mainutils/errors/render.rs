@@ -48,11 +48,11 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
         // of the enclosing R call.
         while (c.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) == 0
             && !c.nextcontext.is_null()
-            && usable_call(c.call) == globals::R_NilValue()
+            && usable_call(c.call.as_raw()) == globals::R_NilValue()
         {
             c = &*c.nextcontext;
         }
-        usable_call(c.call)
+        usable_call(c.call.as_raw())
 
     }
 }
@@ -79,10 +79,10 @@ pub(super) unsafe fn findCall() -> SEXP {
                 break;
             }
             if (ctx_ref.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 {
-                return if ctx_ref.call.is_null() {
+                return if ctx_ref.call.as_raw().is_null() {
                     globals::R_NilValue()
                 } else {
-                    ctx_ref.call
+                    ctx_ref.call.as_raw()
                 };
             }
             c = ctx_ref.nextcontext;

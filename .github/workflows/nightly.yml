@@ -224,6 +224,27 @@ jobs:
               permanent_characters_are_sealed_and_cannot_replace_their_original_storage
               character_native_reads_are_const_and_mutable_projection_is_rejected
               immutable_na_character_keeps_its_const_sentinel_read
+          - subject: revocable runtime authority
+            filters: >-
+              sexp::owner::tests::
+              sexp::session::tests::managed_
+              sexp::session::tests::detached_bootstrap
+              sexp::init::tests::managed_initialization
+              eval::limits::depth_limit_tests::owned_evaluation_
+              eval::runtime::tests::owned_visibility_
+              evaluation_guards_skip_destroyed_standalone_fixture
+              evaluation_depth_overflow_preserves_original_depth
+          - subject: owning execution contexts
+            filters: >-
+              owned_context_
+              owned_traceback
+              owned_recall
+          - subject: owning bytecode operands and constants
+            filters: >-
+              owned_bytecode_
+              owned_gnu_
+              owned_switch_
+              test_bc_eval_operand_stack_survives_gc_
           - subject: graph rewrites
             filters: >-
               canonical_saved_link_rejects_same_address_reuse_without_marking_replacement

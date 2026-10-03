@@ -1171,7 +1171,7 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
         if op == R_UnboundValue() {
             let mut context = crate::sexp::context::R_GlobalContext();
             while !context.is_null() {
-                let candidate = (*context).cloenv;
+                let candidate = (*context).cloenv.as_raw();
                 if !candidate.is_null()
                     && candidate != R_NilValue()
                     && TYPEOF(candidate) == SEXPTYPE::ENVSXP

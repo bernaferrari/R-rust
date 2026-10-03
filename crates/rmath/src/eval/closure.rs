@@ -300,13 +300,13 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             }
         }
         if let BodyOutcome::Value(val) = &outcome {
-            unsafe { (*ctx).returnValue = *val; }
+            unsafe { (*ctx).returnValue.replace_from_raw(*val); }
         }
 
         // Stock endcontext (context.c) saves R_Visible before running the
         // on.exit expressions and restores it afterwards, so the visibility
         // of the body's/handler's return value travels with
-        // (*ctx).returnValue even when an on.exit expression evaluates (and
+        // the owning context return field even when an on.exit expression evaluates (and
         // would otherwise clobber the flag). Mirror that save/restore here.
         let saved_visible = super::runtime::visible();
         let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
@@ -317,13 +317,13 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             return crate::sexp::context::handle_closure_signal(payload);
         }
 
-        // Re-read through the context: a handler's gc() may have moved the
-        // value, and gengc.rs rewrote (*ctx).returnValue to the new location.
+        // Borrow the projection from the original return-value lease, which
+        // remains owned while on.exit handlers allocate or collect.
         match outcome {
             BodyOutcome::Value(_) => unsafe {
-                super::jit::handle_exec_continuation((*ctx).returnValue)
+                super::jit::handle_exec_continuation((*ctx).returnValue.as_raw())
             },
-            BodyOutcome::Returned(_) => unsafe { super::jit::handle_exec_continuation((*ctx).returnValue) },
+            BodyOutcome::Returned(_) => unsafe { super::jit::handle_exec_continuation((*ctx).returnValue.as_raw()) },
             BodyOutcome::Signal(payload) => crate::sexp::context::handle_closure_signal(payload),
         }
     }

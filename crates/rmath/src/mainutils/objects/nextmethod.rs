@@ -64,7 +64,7 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         // Methods are searched from the generic's caller, including caller-local
         // methods when the generic itself is a cached base wrapper.
-        let caller = (*cptr).sysparent;
+        let caller = (*cptr).sysparent.as_raw();
         let callenv = if !caller.is_null() && TYPEOF(caller) == SEXPTYPE::ENVSXP {
             caller
         } else {
@@ -210,12 +210,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         // closure's local env. A primitive NextMethod ran in the method
         // context so cloenv worked; the GNU wrapper does not.
         (*cptr).callflag |= crate::sexp::context::ctxt_flags::CTXT_GENERIC;
-        let sysp = if !(*cptr).sysparent.is_null()
-            && (*cptr).sysparent != R_NilValue()
+        let sysp = if !(*cptr).sysparent.as_raw().is_null()
+            && (*cptr).sysparent.as_raw() != R_NilValue()
         {
-            (*cptr).sysparent
+            (*cptr).sysparent.as_raw()
         } else {
-            (*cptr).cloenv
+            (*cptr).cloenv.as_raw()
         };
 
         // Walk the context stack to find the function context matching sysp
@@ -224,7 +224,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         while !ctx_iter.is_null() {
             let cf = (*ctx_iter).callflag;
             if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
-                && (*ctx_iter).cloenv == sysp
+                && (*ctx_iter).cloenv.as_raw() == sysp
             {
                 found_cptr = ctx_iter;
                 break;
@@ -239,7 +239,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
 
         // Duplicate the call (parity with C: use shallow_duplicate)
-        let mut newcall = crate::mainutils::duplicate::shallow_duplicate((*found_cptr).call);
+        let mut newcall = crate::mainutils::duplicate::shallow_duplicate((*found_cptr).call.as_raw());
         if newcall.is_null() || newcall == R_NilValue() {
             return R_NilValue();
         }
@@ -282,7 +282,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             defenv = R_GlobalEnv();
         }
 
-        let s_callfun = (*found_cptr).callfun;
+        let s_callfun = (*found_cptr).callfun.as_raw();
         if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP {
             if s_callfun == R_UnboundValue() {
                 std::panic::panic_any(crate::sexp::context::RError {
@@ -302,12 +302,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let formals = FORMALS(s_callfun);
         // Use patchArgsByActuals instead of raw promiseargs
         let supplied_args =
-            if (*found_cptr).promiseargs.is_null() || (*found_cptr).promiseargs == R_NilValue() {
-                CDR((*found_cptr).call)
+            if (*found_cptr).promiseargs.as_raw().is_null() || (*found_cptr).promiseargs.as_raw() == R_NilValue() {
+                CDR((*found_cptr).call.as_raw())
             } else {
-                (*found_cptr).promiseargs
+                (*found_cptr).promiseargs.as_raw()
             };
-        let mut matchedarg = patchArgsByActuals(formals, supplied_args, (*found_cptr).cloenv);
+        let mut matchedarg = patchArgsByActuals(formals, supplied_args, (*found_cptr).cloenv.as_raw());
         let mut _matchedarg_guard = protect(matchedarg);
 
         // Handle ... arguments (C: s = CADDR(args), check R_DotsSymbol)
@@ -343,12 +343,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         if generic == R_UnboundValue() {
             generic = crate::sexp::envir::R_findVarInFrame(
-                (*found_cptr).cloenv,
+                (*found_cptr).cloenv.as_raw(),
                 sym(".Generic"),
             );
         }
         if TYPEOF(generic) == SEXPTYPE::PROMSXP {
-            generic = Rf_eval(generic, (*found_cptr).cloenv);
+            generic = Rf_eval(generic, (*found_cptr).cloenv.as_raw());
         }
         if generic == R_UnboundValue() {
             if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
@@ -358,7 +358,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
         }
         if generic == R_NilValue() || generic.is_null() || generic == R_UnboundValue() {
-            let called = CAR((*found_cptr).call);
+            let called = CAR((*found_cptr).call.as_raw());
             if TYPEOF(called) == SEXPTYPE::SYMSXP {
                 let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
                     crate::sexp::accessors::PRINTNAME(called),
@@ -410,7 +410,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         if (args.is_null() || args == R_NilValue())
             && let Some(value) = simple_next_method_dispatch(
-                (*found_cptr).call,
+                (*found_cptr).call.as_raw(),
                 generic,
                 klass,
                 method,
@@ -430,7 +430,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let mut b: *const c_char = ptr::null();
         let mut method_idx: c_int = 0;
         if TYPEOF(method) == SEXPTYPE::PROMSXP {
-            method = Rf_eval(method, (*found_cptr).cloenv);
+            method = Rf_eval(method, (*found_cptr).cloenv.as_raw());
         }
         if method != R_UnboundValue() && isString(method) == FALSE {
             method = R_UnboundValue();
@@ -463,7 +463,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                 }
             }
         } else {
-            b = CHAR(PRINTNAME(CAR((*found_cptr).call)));
+            b = CHAR(PRINTNAME(CAR((*found_cptr).call.as_raw())));
         }
 
         // Find matching signature in .Class
@@ -586,7 +586,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         // Fixup sysparent (C: PR#15267 fix)
         let global_ctx = R_GlobalContext();
         if !global_ctx.is_null() {
-            (*global_ctx).sysparent = callenv;
+            (*global_ctx).sysparent.replace_from_raw(callenv);
         }
 
         let ans = applyMethod(newcall, nextfun, matchedarg, env, newvars);

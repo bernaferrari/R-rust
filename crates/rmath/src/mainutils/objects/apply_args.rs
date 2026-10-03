@@ -20,7 +20,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             return R_NilValue();
         }
 
-        let b = (*cptr).closure; // callfun
+        let b = (*cptr).closure.as_raw(); // callfun
         if TYPEOF(b) != SEXPTYPE::CLOSXP {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "generic 'function' is not a function".to_string(),
@@ -35,7 +35,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
         if !tag.is_null() && tag != R_NilValue() && tag != sym("...") {
             // Try exact match on first formal's tag name
             s = ptr::null_mut();
-            let mut b_iter = (*cptr).promiseargs;
+            let mut b_iter = (*cptr).promiseargs.as_raw();
             while !b_iter.is_null() && b_iter != R_NilValue() {
                 let b_tag = TAG(b_iter);
                 if !b_tag.is_null() && b_tag != R_NilValue() {
@@ -73,7 +73,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
             if s.is_null() {
                 // partial match
-                let mut b_iter = (*cptr).promiseargs;
+                let mut b_iter = (*cptr).promiseargs.as_raw();
                 while !b_iter.is_null() && b_iter != R_NilValue() {
                     let b_tag = TAG(b_iter);
                     if !b_tag.is_null() && b_tag != R_NilValue() && b_tag == tag {
@@ -86,7 +86,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
             if s.is_null() {
                 // first untagged argument
-                let mut b_iter = (*cptr).promiseargs;
+                let mut b_iter = (*cptr).promiseargs.as_raw();
                 while !b_iter.is_null() && b_iter != R_NilValue() {
                     let b_tag = TAG(b_iter);
                     if b_tag.is_null() || b_tag == R_NilValue() {
@@ -98,13 +98,13 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             }
 
             if s.is_null() {
-                let pa = (*cptr).promiseargs;
+                let pa = (*cptr).promiseargs.as_raw();
                 if !pa.is_null() && pa != R_NilValue() {
                     s = CAR(pa);
                 }
             }
         } else {
-            let pa = (*cptr).promiseargs;
+            let pa = (*cptr).promiseargs.as_raw();
             if !pa.is_null() && pa != R_NilValue() {
                 s = CAR(pa);
             }
@@ -113,10 +113,10 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
         if TYPEOF(s) == SEXPTYPE::PROMSXP {
             s = crate::sexp::envir::forcePromise(s);
         } else if !s.is_null() && s != R_NilValue() && s != R_MissingArg() {
-            let eval_env = if (*cptr).sysparent.is_null() || (*cptr).sysparent == R_NilValue() {
+            let eval_env = if (*cptr).sysparent.as_raw().is_null() || (*cptr).sysparent.as_raw() == R_NilValue() {
                 R_BaseEnv()
             } else {
-                (*cptr).sysparent
+                (*cptr).sysparent.as_raw()
             };
             s = Rf_eval(s, eval_env);
         }
@@ -166,11 +166,11 @@ pub(crate) unsafe fn applyMethod(
             // frame. parent.frame() inside aggregate.formula must see `data`.
             let ctx = crate::sexp::context::R_GlobalContext();
             let supplied = if !ctx.is_null()
-                && !(*ctx).sysparent.is_null()
-                && (*ctx).sysparent != R_NilValue()
-                && TYPEOF((*ctx).sysparent) == SEXPTYPE::ENVSXP
+                && !(*ctx).sysparent.as_raw().is_null()
+                && (*ctx).sysparent.as_raw() != R_NilValue()
+                && TYPEOF((*ctx).sysparent.as_raw()) == SEXPTYPE::ENVSXP
             {
-                (*ctx).sysparent
+                (*ctx).sysparent.as_raw()
             } else {
                 rho
             };

@@ -251,6 +251,9 @@ impl Drop for ToplevelExprNoGuard {
 }
 
 struct CurrentInstanceGuard {
+    /// Keep actual runtime bytes allocated through callback and restoration.
+    _active_pin: Option<super::owner::OwnerPin>,
+    _previous_pin: Option<super::owner::OwnerPin>,
     previous: Option<*mut RInstance>,
     previous_liveness: Option<super::instance::InstanceLiveness>,
     previous_rng: Option<*mut rmath_nmath::RngState>,
@@ -258,8 +261,42 @@ struct CurrentInstanceGuard {
 }
 
 impl CurrentInstanceGuard {
-    unsafe fn new(instance: *mut RInstance) -> Self {
+    /// Suspend ambient dispatch while constructing an independent runtime.
+    /// Retain the original previous allocation through bootstrap callbacks,
+    /// and restore only its still-live capability on success or unwind.
+    fn detached() -> Self {
         let previous = super::instance::current_instance_ptr();
+        let previous_pin = previous.and_then(|pointer| unsafe {
+            (*pointer)
+                .runtime_owner
+                .as_ref()
+                .and_then(|owner| owner.pin().ok())
+        });
+        let previous_liveness =
+            previous.map(|pointer| unsafe { super::instance::instance_liveness(pointer) });
+        let previous_rng = unsafe { rmath_nmath::rng::swap_rng(None) };
+        let previous_state = rmath_nmath::state::take_state();
+        unsafe { replace_current_instance(None) };
+        Self {
+            _active_pin: None,
+            _previous_pin: previous_pin,
+            previous,
+            previous_liveness,
+            previous_rng,
+            previous_state,
+        }
+    }
+
+    unsafe fn new(instance: *mut RInstance) -> Self {
+        let owner = unsafe { (*instance).runtime_owner.clone() };
+        let active_pin = owner.map(|owner| owner.pin().expect("cannot activate a closed R owner"));
+        let previous = super::instance::current_instance_ptr();
+        let previous_pin = previous.and_then(|pointer| unsafe {
+            (*pointer)
+                .runtime_owner
+                .as_ref()
+                .and_then(|owner| owner.pin().ok())
+        });
         let previous_liveness =
             previous.map(|owner| unsafe { super::instance::instance_liveness(owner) });
         unsafe { replace_current_instance(Some(instance)) };
@@ -280,6 +317,8 @@ impl CurrentInstanceGuard {
             )
         };
         CurrentInstanceGuard {
+            _active_pin: active_pin,
+            _previous_pin: previous_pin,
             previous,
             previous_liveness,
             previous_rng,
@@ -381,6 +420,8 @@ impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
 #[cfg(feature = "renderplot-device")]
 struct RenderPlotBackendGuard {
     instance: *mut RInstance,
+    pin: Option<super::owner::OwnerPin>,
+    availability: super::instance::InstanceLiveness,
     previous: Option<*mut dyn r_graphics_engine::DrawTarget>,
 }
 
@@ -390,6 +431,9 @@ impl RenderPlotBackendGuard {
         instance: *mut RInstance,
         backend: *mut (dyn r_graphics_engine::DrawTarget + 'a),
     ) -> Self {
+        let pin = unsafe { (*instance).runtime_owner.clone() }
+            .map(|owner| owner.pin().expect("live RenderPlot owner"));
+        let availability = unsafe { super::instance::instance_liveness(instance) };
         // SAFETY: lifetime-erasing the backend pointer to 'static for storage
         // in the instance slot. This is sound because the guard's Drop
         // restores the previous slot value before the caller's 'a borrow ends,
@@ -399,15 +443,25 @@ impl RenderPlotBackendGuard {
             unsafe { std::mem::transmute(backend) };
         // P2: strictly-local Cell access; no ambient write intervenes.
         let previous = unsafe { (*instance).current_renderplot_backend.replace(erased) };
-        Self { instance, previous }
+        Self {
+            instance,
+            pin,
+            availability,
+            previous,
+        }
     }
 }
 
 #[cfg(feature = "renderplot-device")]
 impl Drop for RenderPlotBackendGuard {
     fn drop(&mut self) {
+        let instance = match &self.pin {
+            Some(pin) => pin.as_ptr(),
+            None if self.availability.is_live() => self.instance,
+            None => return,
+        };
         unsafe {
-            (*self.instance).current_renderplot_backend = self.previous;
+            (*instance).current_renderplot_backend = self.previous;
         }
     }
 }
@@ -425,7 +479,10 @@ impl ProtectScope {
     fn new(instance: *mut RInstance) -> Self {
         let liveness = unsafe { super::instance::instance_liveness(instance) };
         let (legacy_depth, root_depth) = unsafe {
-            ((*instance).legacy_protect.len(), (*instance).root_table.checkpoint())
+            (
+                (*instance).legacy_protect.len(),
+                (*instance).root_table.checkpoint(),
+            )
         };
         Self {
             instance: std::ptr::NonNull::new(instance).expect("live protection owner"),
@@ -468,8 +525,8 @@ pub struct RSession {
     active: bool,
     /// Native projection of the shared interior cell owned below.
     instance: *mut RInstance,
-    /// Physical allocation authority. Created before projection and never
-    /// cloned into guards; moving a session cannot retag its instance bytes.
+    /// Physical allocation authority. Operation guards clone this original
+    /// allocation, so callbacks cannot destroy active runtime bytes.
     _instance_owner: Rc<UnsafeCell<RInstance>>,
     /// Marker that keeps sessions thread-confined at compile time.
     _thread_confined: PhantomData<Rc<()>>,
@@ -499,23 +556,36 @@ impl RSession {
     /// unit tests use this to avoid loading unrelated installed R packages.
     #[cfg(test)]
     pub(crate) fn new_without_default_packages() -> Self {
-        Self::new_with_default_packages(false)
+        Self::new_with_instance(RInstance::new_for_gc_tests(), false, true)
     }
 
     fn new_with_default_packages(attach_default_packages: bool) -> Self {
         super::context::install_r_panic_hook();
-        Self::new_with_instance(RInstance::new(), attach_default_packages)
+        Self::new_with_instance(
+            RInstance::allocate_for_session(),
+            attach_default_packages,
+            true,
+        )
     }
 
     #[cfg(test)]
     pub(crate) fn new_for_gc_tests() -> Self {
-        Self::new_with_instance(RInstance::new_for_gc_tests(), false)
+        Self::new_with_instance(RInstance::new_for_gc_tests(), false, false)
     }
 
-    fn new_with_instance(instance: RInstance, attach_default_packages: bool) -> Self {
+    fn new_with_instance(
+        instance: RInstance,
+        attach_default_packages: bool,
+        initialize_base: bool,
+    ) -> Self {
         super::context::install_r_panic_hook();
         let instance_owner = Rc::new(UnsafeCell::new(instance));
         let instance = instance_owner.get();
+        // Install the capability before bootstrap can create any values or
+        // execute callbacks. Every managed value refers to this original Rc.
+        unsafe {
+            (*instance).runtime_owner = Some(super::owner::WeakOwner::from_rc(&instance_owner));
+        }
         // Own the allocation before installing it, so initialization unwind
         // also detaches the thread-local runtime state through normal Drop.
         let session = RSession {
@@ -546,6 +616,9 @@ impl RSession {
             rmath_nmath::error::set_warning_hook(Some(
                 crate::mainutils::errors::nmath_warning_hook,
             ));
+        }
+        if initialize_base {
+            unsafe { RInstance::initialize_base_bindings_via(instance) };
         }
         if !attach_default_packages {
             return session;
@@ -610,14 +683,15 @@ impl RSession {
     /// merely constructing an Android worker session no longer changes what
     /// unrelated translated code on the same thread sees as current.
     pub(crate) fn new_detached() -> Self {
-        let previous = unsafe { replace_current_instance(None) };
-        let session = Self::new();
+        Self::construct_detached(Self::new)
+    }
+
+    fn construct_detached(constructor: impl FnOnce() -> Self) -> Self {
+        let _ambient = CurrentInstanceGuard::detached();
+        let session = constructor();
         detach_state(unsafe { &(*session.instance).math_state });
         detach_rng(unsafe { &(*session.instance).rng_state });
         clear_current_instance_if(session.instance);
-        unsafe {
-            replace_current_instance(previous);
-        }
         session
     }
 
@@ -1006,7 +1080,8 @@ impl RSession {
                     });
                 }
             };
-            let raw_spans: Vec<_> = spans.iter()
+            let raw_spans: Vec<_> = spans
+                .iter()
                 .map(|(expr, start, end)| (expr.clone().as_raw(), *start, *end))
                 .collect();
             let exprs: Vec<_> = spans.into_iter().map(|(expr, _, _)| expr).collect();
@@ -1020,12 +1095,17 @@ impl RSession {
             unsafe {
                 for (i, expr) in exprs.iter().enumerate() {
                     crate::sexp::accessors::SET_VECTOR_ELT(
-                        vec_sexp.clone().as_raw(), i as i64, expr.clone().as_raw(),
+                        vec_sexp.clone().as_raw(),
+                        i as i64,
+                        expr.clone().as_raw(),
                     );
                 }
                 if keep_source {
                     crate::mainutils::srcref::attach_srcrefs_with_spans(
-                        &raw_spans, code, "<text>", vec_sexp.clone().as_raw(),
+                        &raw_spans,
+                        code,
+                        "<text>",
+                        vec_sexp.clone().as_raw(),
                     );
                 }
             }
@@ -1054,7 +1134,11 @@ impl RSession {
                     remember_last_value(value.clone().as_raw());
                 }
                 crate::eval::parser::flush_parsed_expr_warnings(index);
-                let visible_flag = if self.inst().eval_state.visible != 0 { 1 } else { 0 };
+                let visible_flag = if self.inst().eval_state.visible != 0 {
+                    1
+                } else {
+                    0
+                };
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
                 // one. Intermediate values render through the same formatter
@@ -1187,8 +1271,7 @@ impl RSession {
                 *portable_grid = crate::mainutils::portable_grid::GridState::default();
             }
             let mut forwarding = RecordingTarget { target, recording };
-            let _backend_guard =
-                RenderPlotBackendGuard::install(instance, &mut forwarding);
+            let _backend_guard = RenderPlotBackendGuard::install(instance, &mut forwarding);
             self.inst().output_capture.borrow_mut().start();
             // Remaining parsed statements retain their automatic leases.
             let mut result: RResult<Sexp<'session>> =
@@ -1644,7 +1727,9 @@ impl RSession {
             return;
         }
         self.active = false;
-        unsafe { super::instance::revoke_instance_availability(self.instance); }
+        unsafe {
+            super::instance::revoke_instance_availability(self.instance);
+        }
         detach_state(&self.inst().math_state);
         detach_rng(&self.inst().rng_state);
         clear_current_instance_if(self.instance);
@@ -1671,7 +1756,9 @@ impl Drop for RSession {
     fn drop(&mut self) {
         // Guards and callback restoration must stop using this owner before
         // field destruction can run provider-defined Rust destructors.
-        unsafe { super::instance::revoke_instance_availability(self.instance); }
+        unsafe {
+            super::instance::revoke_instance_availability(self.instance);
+        }
         if self.active {
             detach_state(&self.inst().math_state);
             detach_rng(&self.inst().rng_state);
@@ -1692,6 +1779,112 @@ mod tests {
         current_instance_ptr, replace_current_instance, with_current_instance,
     };
     use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
+
+    #[test]
+    fn detached_bootstrap_restores_only_live_prior_owner_on_callback_and_unwind() {
+        for destroy_prior in [false, true] {
+            for inject_panic in [false, true] {
+                let mut prior = Some(RSession::new_for_gc_tests());
+                let projection = prior.as_ref().unwrap().instance;
+                let allocation = Rc::downgrade(&prior.as_ref().unwrap()._instance_owner);
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    RSession::construct_detached(|| {
+                        assert!(current_instance_ptr().is_none());
+                        if destroy_prior {
+                            drop(prior.take());
+                            assert_eq!(allocation.strong_count(), 1);
+                        }
+                        let session = RSession::new_for_gc_tests();
+                        if inject_panic {
+                            panic!("injected detached bootstrap unwind");
+                        }
+                        session
+                    })
+                }));
+                assert_eq!(result.is_err(), inject_panic);
+                assert_eq!(
+                    current_instance_ptr(),
+                    if destroy_prior {
+                        None
+                    } else {
+                        Some(projection)
+                    }
+                );
+                assert_eq!(allocation.strong_count(), if destroy_prior { 0 } else { 1 });
+                if let Ok(detached) = result {
+                    drop(detached);
+                    assert_eq!(
+                        current_instance_ptr(),
+                        if destroy_prior {
+                            None
+                        } else {
+                            Some(projection)
+                        }
+                    );
+                }
+                drop(prior);
+                assert!(current_instance_ptr().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn managed_runtime_capability_uses_original_allocation_before_bootstrap() {
+        let session = RSession::new_without_default_packages();
+        let weak = unsafe { (*session.instance).runtime_owner.clone().unwrap() };
+        let pin = weak
+            .pin()
+            .expect("managed owner installed during construction");
+        assert_eq!(pin.as_ptr(), session.instance);
+        assert!(unsafe { (*pin.as_ptr()).initialized });
+        assert_eq!(Rc::strong_count(&session._instance_owner), 2);
+        drop(pin);
+        assert_eq!(Rc::strong_count(&session._instance_owner), 1);
+    }
+
+    #[test]
+    fn managed_ambient_operation_pins_callback_dropped_owner_through_unwind() {
+        for inject_panic in [false, true] {
+            let mut session = Some(RSession::new_for_gc_tests());
+            let allocation = Rc::downgrade(&session.as_ref().unwrap()._instance_owner);
+            let pointer = session.as_ref().unwrap().instance;
+            let availability = unsafe { super::super::instance::instance_liveness(pointer) };
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                with_current_instance(|active| {
+                    assert_eq!(active, pointer);
+                    drop(session.take());
+                    assert!(!availability.is_live());
+                    assert!(current_instance_ptr().is_none());
+                    assert_eq!(allocation.strong_count(), 1);
+                    // The operation retains the original physical allocation,
+                    // while revocation prevents starting another operation.
+                    assert!(with_current_instance(|_| panic!("revoked dispatch")).is_none());
+                    assert!(unsafe { (*active).runtime_owner.is_some() });
+                    if inject_panic {
+                        panic!("injected owner drop unwind");
+                    }
+                })
+                .expect("live ambient owner");
+            }));
+            assert_eq!(result.is_err(), inject_panic);
+            assert_eq!(allocation.strong_count(), 0);
+            assert!(current_instance_ptr().is_none());
+        }
+    }
+
+    #[test]
+    fn managed_activation_pins_previous_owner_without_restoring_revoked_state() {
+        let current = RSession::new_for_gc_tests();
+        let mut previous = Some(RSession::new_for_gc_tests());
+        let allocation = Rc::downgrade(&previous.as_ref().unwrap()._instance_owner);
+        current.with_active(|| {
+            drop(previous.take());
+            assert_eq!(allocation.strong_count(), 1);
+            assert_eq!(current_instance_ptr(), Some(current.instance));
+        });
+        assert_eq!(allocation.strong_count(), 0);
+        assert!(current_instance_ptr().is_none());
+    }
 
     #[test]
     fn owned_session_projection_survives_moves_and_reentry() {
@@ -1721,13 +1914,16 @@ mod tests {
         for inject_panic in [false, true] {
             let left = RSession::new_for_gc_tests();
             let mut right = RSession::new_for_gc_tests();
-            let observer = unsafe { super::super::instance::instance_liveness(right.instance_ptr()) };
+            let observer =
+                unsafe { super::super::instance::instance_liveness(right.instance_ptr()) };
             let result = catch_unwind(AssertUnwindSafe(|| {
                 left.with_protected(|| {
                     right.close();
                     assert!(!observer.is_live());
                     assert_eq!(current_instance_ptr(), Some(left.instance_ptr()));
-                    if inject_panic { panic!("injected close callback unwind"); }
+                    if inject_panic {
+                        panic!("injected close callback unwind");
+                    }
                 });
             }));
             assert_eq!(result.is_err(), inject_panic);
@@ -1736,7 +1932,9 @@ mod tests {
             assert!(catch_unwind(AssertUnwindSafe(|| right.with_active(|| ()))).is_err());
             assert!(current_instance_ptr().is_none());
             // Detachment is idempotent and cannot disturb another owner.
-            left.with_active(|| { right.close(); });
+            left.with_active(|| {
+                right.close();
+            });
             assert!(current_instance_ptr().is_none());
         }
     }
@@ -1751,18 +1949,26 @@ mod tests {
             let mut fresh = None;
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let _scope = ProtectScope::new(pointer);
-                unsafe { super::super::protect::protect_raw_pointer(R_NilValue()); }
+                unsafe {
+                    super::super::protect::protect_raw_pointer(R_NilValue());
+                }
                 // This is a user callback's teardown/reentry pattern: the
                 // scope retains a weak witness, never the physical allocation.
                 drop(owner.take());
                 fresh = Some(RSession::new_for_gc_tests());
-                unsafe { super::super::protect::protect_raw_pointer(R_NilValue()); }
-                if inject_panic { panic!("injected scope teardown unwind"); }
+                unsafe {
+                    super::super::protect::protect_raw_pointer(R_NilValue());
+                }
+                if inject_panic {
+                    panic!("injected scope teardown unwind");
+                }
             }));
             assert_eq!(result.is_err(), inject_panic);
             assert!(!observer.is_live());
             assert_eq!(R_ProtectCount(), 1);
-            unsafe { super::super::protect::unprotect_count(1); }
+            unsafe {
+                super::super::protect::unprotect_count(1);
+            }
             drop(fresh);
         }
     }
@@ -1777,7 +1983,9 @@ mod tests {
             // Parse results already own leases before the arena lend finishes.
             super::super::gengc::full_gc();
         }));
-        unsafe { (*session.instance).gc_state.gc_pending = true; }
+        unsafe {
+            (*session.instance).gc_state.gc_pending = true;
+        }
         let (result, _, _) = session.eval_script_with_output_capture("7L; 11L; 19L");
         let result = result.expect("every parsed statement remains alive");
         assert_eq!(result.integer_elt(0), Some(19));

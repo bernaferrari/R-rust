@@ -13,28 +13,29 @@ use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use super::globals::{R_EmptyEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::{
-    RInstance, current_instance_ptr, replace_current_instance, with_required_current_instance,
+    RInstance, current_instance_ptr, with_required_current_instance,
 };
 use super::symbol::Rf_install_in;
 use std::ffi::CString;
 
-struct ScopedCurrentInstance {
-    previous: Option<*mut RInstance>,
+/// Acquire the sole original interpreter before initialization can execute R.
+/// No borrow of an instance field survives callback-capable bootstrap work.
+unsafe fn initialization_owner_pin(instance: *mut RInstance) -> super::owner::OwnerPin {
+    let owner = unsafe { (*instance).runtime_owner.clone() }.unwrap_or_else(|| {
+        super::context::r_error("initialization requires a managed runtime owner")
+    });
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    if pin.as_ptr() != instance {
+        super::context::r_error("initialization requires the original runtime allocation");
+    }
+    pin
 }
 
-impl ScopedCurrentInstance {
-    unsafe fn install(instance: *mut RInstance) -> Self {
-        let previous = unsafe { replace_current_instance(Some(instance)) };
-        Self { previous }
-    }
-}
-
-impl Drop for ScopedCurrentInstance {
-    fn drop(&mut self) {
-        unsafe {
-            replace_current_instance(self.previous);
-        }
-    }
+fn require_initialization_live(pin: &super::owner::OwnerPin) {
+    pin.require_live()
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
 
 pub fn is_initialized() -> bool {
@@ -56,12 +57,14 @@ pub unsafe fn initialize_r() {
 
 pub(crate) unsafe fn initialize_r_in(inst: *mut RInstance) {
     unsafe {
+        let pin = initialization_owner_pin(inst);
         super::context::install_r_panic_hook();
         // P1: raw place accesses — initialize_base_bindings_in reenters the
         // interpreter (symbol interning, protect pushes, builtin tables).
         if !(*inst).initialized {
             let base_env = (*inst).base_env;
             initialize_base_bindings_in(inst, base_env);
+            require_initialization_live(&pin);
             (*inst).initialized = true;
         }
     }
@@ -69,9 +72,9 @@ pub(crate) unsafe fn initialize_r_in(inst: *mut RInstance) {
 
 /// Install the core bindings needed by a base environment.
 ///
-/// This is used both by the legacy process-global initializer and by
-/// per-session `RInstance` construction. It intentionally does not mutate the
-/// process-global environment pointers.
+/// Bootstrap runs on the original managed session allocation. Scoped
+/// activation owns both the target and the previous interpreter through any
+/// callback, and restores only a previous owner that remains available.
 pub unsafe fn initialize_base_bindings(base_env: SEXP) {
     let instance = current_instance_ptr().expect(
         "mutable R runtime state requires an active RInstance for initialize_base_bindings",
@@ -83,18 +86,38 @@ pub unsafe fn initialize_base_bindings(base_env: SEXP) {
 
 pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env: SEXP) {
     unsafe {
-        let _scope = ScopedCurrentInstance::install(inst);
-
-        pre_intern_symbols_in(inst);
-        crate::eval::jit::R_init_jit_enabled_in(inst);
-
-        crate::eval::arithmetic::register_special_forms(base_env);
-        crate::mainutils::essentials::register_essentials_builtins(base_env);
-        initialize_special_environment_bindings(base_env);
-        crate::mainutils::machine::Init_R_Machine(base_env);
-        crate::mainutils::options::InitOptions();
-        initialize_base_functions(base_env);
-        initialize_primitive_metadata_in(base_env);
+        let pin = initialization_owner_pin(inst);
+        let owner = super::owner::OwnerToken::from_raw(inst);
+        let environment = owner
+            .sexp(base_env)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|error| {
+                super::context::r_error(format!("invalid initialization environment: {error}"))
+            });
+        if environment.typeof_() != SEXPTYPE::ENVSXP {
+            super::context::r_error("initialization requires a base environment");
+        }
+        let base_env = environment.as_raw();
+        super::session::with_instance_active(inst, || {
+            pre_intern_symbols_in(inst);
+            require_initialization_live(&pin);
+            crate::eval::jit::R_init_jit_enabled_in(inst);
+            require_initialization_live(&pin);
+            crate::eval::arithmetic::register_special_forms(base_env);
+            require_initialization_live(&pin);
+            crate::mainutils::essentials::register_essentials_builtins(base_env);
+            require_initialization_live(&pin);
+            initialize_special_environment_bindings(base_env);
+            require_initialization_live(&pin);
+            crate::mainutils::machine::Init_R_Machine(base_env);
+            require_initialization_live(&pin);
+            crate::mainutils::options::InitOptions();
+            require_initialization_live(&pin);
+            initialize_base_functions(base_env);
+            require_initialization_live(&pin);
+            initialize_primitive_metadata_in(base_env);
+            require_initialization_live(&pin);
+        });
     }
 }
 
@@ -3631,6 +3654,7 @@ unsafe fn pre_intern_symbols() {
 
 unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
     unsafe {
+        let pin = initialization_owner_pin(inst);
         let symbols = [
             "if",
             "else",
@@ -3749,6 +3773,7 @@ unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
         for name in &symbols {
             let c_name = CString::new(*name).expect("static R symbol name has no interior NUL");
             Rf_install_in(inst, c_name.as_ptr());
+            require_initialization_live(&pin);
         }
     }
 }
@@ -4065,35 +4090,111 @@ mod tests {
     }
 
     #[test]
-    fn test_initialization_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
-
-        shutdown_r_in(&mut left);
-        shutdown_r_in(&mut right);
-        assert!(!is_initialized_in(&mut left));
-        assert!(!is_initialized_in(&mut right));
-
+    fn managed_initialization_does_not_restore_previous_owner_dropped_by_callback() {
+        let previous = std::rc::Rc::new(std::cell::RefCell::new(Some(
+            crate::sexp::session::RSession::new_for_gc_tests(),
+        )));
+        let target = crate::sexp::session::RSession::new_for_gc_tests();
+        let fired = std::rc::Rc::new(std::cell::Cell::new(false));
+        let target_pointer = target.with_active_in(|instance| unsafe {
+            let previous = previous.clone();
+            let fired = fired.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if fired.replace(true) {
+                    return;
+                }
+                // This regression targets the first collecting callback;
+                // subsequent bootstrap allocations need ordinary GC policy.
+                (*instance).memory_state.gc_force_gap = 0;
+                (*instance).memory_state.gc_force_wait = 0;
+                let old = previous.borrow_mut().take();
+                drop(old);
+                crate::sexp::gengc::full_gc();
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            instance
+        });
+        // Make the previous owner ambient without retaining an activation
+        // guard outside initializer scope; the initializer must own its pin.
+        let previous_pointer = previous
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .with_active_in(|instance| instance);
         unsafe {
-            initialize_r_in(&mut left);
+            super::super::instance::replace_current_instance(Some(previous_pointer));
         }
-
-        assert!(is_initialized_in(&mut left));
-        assert!(!is_initialized_in(&mut right));
-        assert!(!R_GlobalEnv_in(&mut left).is_null());
-        assert!(!R_BaseEnv_in(&mut left).is_null());
-        assert!(!R_EmptyEnv_in(&mut left).is_null());
-        assert!(!R_GlobalEnv_in(&mut right).is_null());
-
-        let plus = unsafe { Rf_install_in(&mut left, c"+".as_ptr()) };
-        let left_plus = unsafe {
-            let _scope = ScopedCurrentInstance::install(&mut left as *mut RInstance);
-            crate::sexp::envir::R_findVarInFrame(left.base_env, plus)
-        };
+        unsafe {
+            initialize_r_in(target_pointer);
+        }
+        assert!(fired.get(), "bootstrap must exercise a collecting callback");
+        assert!(previous.borrow().is_none());
         assert!(
-            unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(left_plus) }
-                .is_some_and(|descriptor| descriptor.name == "+")
+            current_instance_ptr().is_none(),
+            "revoked previous owner must not be restored"
         );
-        assert!(!is_initialized_in(&mut right));
+        assert!(is_initialized_in(target_pointer));
+    }
+
+    #[test]
+    fn managed_initialization_rejects_callback_revocation_before_publication() {
+        let target = crate::sexp::session::RSession::new_for_gc_tests();
+        let fired = std::rc::Rc::new(std::cell::Cell::new(false));
+        let target_pointer = target.with_active_in(|instance| unsafe {
+            let fired = fired.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if fired.replace(true) {
+                    return;
+                }
+                super::super::instance::revoke_instance_availability(instance);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            instance
+        });
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            initialize_r_in(target_pointer);
+        }));
+        assert!(failure.is_err());
+        assert!(fired.get(), "bootstrap must exercise owner revocation");
+        assert!(!is_initialized_in(target_pointer));
+        assert!(current_instance_ptr().is_none());
+    }
+
+    #[test]
+    fn test_initialization_can_target_instance_explicitly() {
+        let left = crate::sexp::session::RSession::new_for_gc_tests();
+        let right = crate::sexp::session::RSession::new_for_gc_tests();
+        left.with_active_in(|left| {
+            right.with_active_in(|right| unsafe {
+                shutdown_r_in(left);
+                shutdown_r_in(right);
+                assert!(!is_initialized_in(left));
+                assert!(!is_initialized_in(right));
+
+                // Target the original managed left allocation while right is
+                // active. Bootstrap must restore the independent active owner.
+                initialize_r_in(left);
+                assert_eq!(current_instance_ptr(), Some(right));
+                assert!(is_initialized_in(left));
+                assert!(!is_initialized_in(right));
+                assert!(!R_GlobalEnv_in(left).is_null());
+                assert!(!R_BaseEnv_in(left).is_null());
+                assert!(!R_EmptyEnv_in(left).is_null());
+                assert!(!R_GlobalEnv_in(right).is_null());
+
+                let plus = Rf_install_in(left, c"+".as_ptr());
+                let left_plus = super::super::session::with_instance_active(left, || {
+                    crate::sexp::envir::R_findVarInFrame((*left).base_env, plus)
+                });
+                assert!(
+                    crate::eval::primitive::PrimitiveDescriptor::from_raw(left_plus)
+                        .is_some_and(|descriptor| descriptor.name == "+")
+                );
+                assert!(!is_initialized_in(right));
+                assert_eq!(current_instance_ptr(), Some(right));
+            });
+        });
     }
 }

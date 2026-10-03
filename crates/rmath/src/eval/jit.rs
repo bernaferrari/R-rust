@@ -707,11 +707,11 @@ pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
                 );
                 let ctx = crate::eval::runtime::global_context();
                 let supplied = if !ctx.is_null()
-                    && (*ctx).sysparent != std::ptr::null_mut()
-                    && (*ctx).sysparent != R_NilValue()
-                    && TYPEOF((*ctx).sysparent) == SEXPTYPE::ENVSXP
+                    && (*ctx).sysparent.as_raw() != std::ptr::null_mut()
+                    && (*ctx).sysparent.as_raw() != R_NilValue()
+                    && TYPEOF((*ctx).sysparent.as_raw()) == SEXPTYPE::ENVSXP
                 {
-                    (*ctx).sysparent
+                    (*ctx).sysparent.as_raw()
                 } else {
                     rho.as_raw()
                 };
@@ -893,14 +893,14 @@ unsafe fn get_tailcall_target(rho: SEXP, mask: c_int) -> *mut crate::sexp::conte
             if flag == crate::sexp::context::ctxt_flags::CTXT_TOPLEVEL {
                 break;
             }
-            let conexit = (*c).conexit;
+            let conexit = (*c).conexit.as_raw();
             let has_onexit = !conexit.is_null() && conexit != R_NilValue();
             if has_onexit || (*c).cend.is_some() {
                 break;
             }
-            let callfun = (*c).callfun;
+            let callfun = (*c).callfun.as_raw();
             if (flag & mask) != 0
-                && (*c).cloenv == rho
+                && (*c).cloenv.as_raw() == rho
                 && !callfun.is_null()
                 && TYPEOF(callfun) == SEXPTYPE::CLOSXP
             {

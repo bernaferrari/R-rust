@@ -228,7 +228,7 @@ pub unsafe fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe {
         let ctx = crate::sexp::context::R_GlobalContext();
         if !ctx.is_null() {
-            let value = (*ctx).returnValue;
+            let value = (*ctx).returnValue.as_raw();
             if !value.is_null() {
                 return value;
             }
@@ -369,7 +369,7 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if isNull(input) {
             let ctxt = R_GlobalContext();
             if !ctxt.is_null() {
-                (*ctxt).cloenv
+                (*ctxt).cloenv.as_raw()
             } else {
                 R_GlobalEnv()
             }
