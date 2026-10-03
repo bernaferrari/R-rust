@@ -642,8 +642,7 @@ impl NodeBody {
 pub struct SexprecCore {
     pub sxpinfo: SxpInfo,
     pub attrib: NodeLink,
-    pub gengc_next_node: *mut SexprecCore,
-    pub gengc_prev_node: *mut SexprecCore,
+    pub(crate) payload: super::payload::PayloadLink,
     pub data: NodeBody,
 }
 
@@ -659,8 +658,7 @@ impl SexprecCore {
         SexprecCore {
             sxpinfo: SxpInfo::new(sexptype),
             attrib: NodeLink::null(),
-            gengc_next_node: std::ptr::null_mut(),
-            gengc_prev_node: std::ptr::null_mut(),
+            payload: super::payload::PayloadLink::EMPTY,
             data: NodeBody::for_kind(sexptype),
         }
     }

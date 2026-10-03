@@ -58,7 +58,7 @@ fn test_self_evaluating_integer() {
         let result = crate::eval::eval::Rf_eval(val, env);
         assert!(!result.is_null());
         assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::INTSXP);
-        let data = (*result).gengc_next_node as *const c_int;
+        let data = crate::sexp::accessors::DATAPTR(result) as *const c_int;
         assert_eq!(*data, 42);
     }
 }
@@ -73,7 +73,7 @@ fn test_self_evaluating_real() {
         let result = crate::eval::eval::Rf_eval(val, env);
         assert!(!result.is_null());
         assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::REALSXP);
-        let data = (*result).gengc_next_node as *const f64;
+        let data = crate::sexp::accessors::DATAPTR(result) as *const f64;
         assert!((*data - 3.14).abs() < 1e-10);
     }
 }
@@ -99,7 +99,7 @@ fn test_self_evaluating_logical() {
         let result = crate::eval::eval::Rf_eval(val, env);
         assert!(!result.is_null());
         assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::LGLSXP);
-        let data = (*result).gengc_next_node as *const c_int;
+        let data = crate::sexp::accessors::DATAPTR(result) as *const c_int;
         assert_eq!(*data, 1);
     }
 }
@@ -123,7 +123,7 @@ fn test_eval_integer_vector() {
     unsafe {
         let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
         assert!(!vec.is_null());
-        let data = (*vec).gengc_next_node as *mut c_int;
+        let data = crate::sexp::accessors::DATAPTR(vec) as *mut c_int;
         for i in 0..5 {
             *data.add(i) = ((i + 1) * 10) as c_int;
         }
@@ -146,7 +146,7 @@ fn test_eval_real_vector() {
     unsafe {
         let vec = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         assert!(!vec.is_null());
-        let data = (*vec).gengc_next_node as *mut f64;
+        let data = crate::sexp::accessors::DATAPTR(vec) as *mut f64;
         *data = 1.1;
         *data.add(1) = 2.2;
         *data.add(2) = 3.3;
@@ -339,7 +339,7 @@ fn test_arena_alloc_and_eval() {
         let vec = Rf_allocVector(SEXPTYPE::REALSXP, 4);
         assert!(!vec.is_null());
 
-        let data = (*vec).gengc_next_node as *mut f64;
+        let data = crate::sexp::accessors::DATAPTR(vec) as *mut f64;
         for i in 0..4 {
             *data.add(i) = i as f64 * 2.0;
         }

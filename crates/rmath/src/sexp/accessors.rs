@@ -252,7 +252,10 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
                 super::altseq::materialize(x);
             }
             let uncommitted = ALTREP(x) != 0
-                && ((*x).gengc_next_node.is_null() || super::memory::vector_payload_is_pending(x));
+                && header_snapshot(x)
+                    .expect("live attribute parent")
+                    .payload
+                    .is_empty();
             if uncommitted {
                 super::altseq::keep_formula_replace_tail(x, v);
                 return;
@@ -619,59 +622,67 @@ pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
 // Vector data accessors
 // ---------------------------------------------------------------------------
 
-/// Get a pointer to the data region of a vector SEXP.
-///
-/// For vector types, the data is stored in a separate allocation
-/// tracked by the arena allocator. The data pointer is stored in
-/// the gengc_next_node field for vector types.
-///
-/// # Safety
-/// `x` must be live and belong to the active instance. No Rust payload borrow
-/// may overlap materialization. Nonempty compact expansion returns usable
-/// storage or raises `RError`; checked owner-bound access uses `Sexp` instead.
-pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return ptr::null_mut();
-        }
-        // For vector types, data pointer is stored in gengc_next_node.
-        // A compact sequence keeps that pointer null until the first request.
-        let t = header_snapshot(x)
-            .expect("checked vector header")
-            .sxpinfo
-            .type_of();
-        if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
-            if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
-                let extension = super::altrep::materialize_raw(x)
-                    .unwrap_or_else(|e| super::context::r_error(e.to_string()));
-                if !extension {
-                    super::altseq::materialize(x);
-                }
-                // Ported callers expect usable storage or an R error. A
-                // nonempty lazy vector must never yield a null data pointer.
-                if (*x).vecsxp_length() != 0 && (*x).gengc_next_node.is_null() {
-                    super::context::r_error(
-                        "cannot materialize compact vector: invalid size, memory budget or allocation failure",
-                    );
-                }
-            }
-            (*x).gengc_next_node as *mut c_void
-        } else {
-            ptr::null_mut()
-        }
+/// Retain the actual original allocation before a raw callback boundary.
+unsafe fn raw_value<'s>(
+    pointer: SEXP,
+) -> (
+    super::object::Sexp<'s>,
+    Option<std::rc::Rc<super::heap::NodeRootLease>>,
+) {
+    if let Ok(owner) = unsafe { super::owner::OwnerToken::current() }
+        && let Ok(value) = owner.sexp(pointer)
+    {
+        return (value, None);
     }
+    let value = unsafe { super::object::Sexp::try_from_raw(pointer) }
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    let root = value.allocation().ok().map(|node| {
+        node.root_lease()
+            .unwrap_or_else(|| super::context::r_error("raw payload parent unavailable"))
+    });
+    (value, root)
 }
 
-/// Set the data pointer for a vector SEXP.
-pub unsafe fn SET_DATAPTR(x: SEXP, v: *mut c_void) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
+/// Project the actual retained payload for translated native operations.
+/// # Safety
+/// Retain the original parent and exclude conflicting payload loans, mutation
+/// and callbacks for the complete use of the returned native projection.
+pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
+    if !is_valid_sexp_ptr(x) {
+        return ptr::null_mut();
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).gengc_next_node = v as SEXP;
+    let original = header_snapshot(x).expect("native payload parent");
+    if !original.has_valid_shape()
+        || matches!(original.data, NodeBody::Vector(vector) if !(0..=1_i64 << 52).contains(&vector.length))
+    {
+        super::context::r_error("invalid native payload shape");
+    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let kind = value.typeof_();
+    if !kind.is_vector_type() && kind != SEXPTYPE::CHARSXP {
+        return ptr::null_mut();
+    }
+    value
+        .materialize_compact_payload_for_raw()
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    let header = value.header();
+    if header.type_of() != kind {
+        super::context::r_error("native payload type changed during materialization");
+    }
+    let Some(lease) = header.payload_lease() else {
+        if header.body.vector().length == 0 {
+            return ptr::null_mut();
+        }
+        super::context::r_error("nonempty vector has no committed typed allocation");
+    };
+    if kind == SEXPTYPE::CHARSXP {
+        let length = usize::try_from(header.body.vector().length)
+            .unwrap_or_else(|_| super::context::r_error("invalid character length"));
+        if lease.byte_elt(length) != Some(0) {
+            super::context::r_error("character payload has no trailing NUL");
         }
     }
+    lease.native_projection().cast::<c_void>()
 }
 
 /// Get the data pointer, returning a const pointer.
@@ -683,7 +694,16 @@ pub unsafe fn ROBJ_DATAPTR(x: SEXP) -> *const c_void {
 pub unsafe fn LOGICAL(x: SEXP) -> *mut c_int {
     unsafe {
         debug_assert_sexptype(x, &[SEXPTYPE::LGLSXP]);
-        DATAPTR(x) as *mut c_int
+        let data = DATAPTR(x);
+        if ![SEXPTYPE::LGLSXP].contains(
+            &header_snapshot(x)
+                .expect("typed payload parent")
+                .sxpinfo
+                .type_of(),
+        ) {
+            super::context::r_error("native payload type mismatch");
+        }
+        data as *mut c_int
     }
 }
 
@@ -694,7 +714,16 @@ pub unsafe fn LOGICAL(x: SEXP) -> *mut c_int {
 pub unsafe fn INTEGER(x: SEXP) -> *mut c_int {
     unsafe {
         debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
-        DATAPTR(x) as *mut c_int
+        let data = DATAPTR(x);
+        if ![SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP].contains(
+            &header_snapshot(x)
+                .expect("typed payload parent")
+                .sxpinfo
+                .type_of(),
+        ) {
+            super::context::r_error("native payload type mismatch");
+        }
+        data as *mut c_int
     }
 }
 
@@ -702,7 +731,16 @@ pub unsafe fn INTEGER(x: SEXP) -> *mut c_int {
 pub unsafe fn REAL(x: SEXP) -> *mut c_double {
     unsafe {
         debug_assert_sexptype(x, &[SEXPTYPE::REALSXP]);
-        DATAPTR(x) as *mut c_double
+        let data = DATAPTR(x);
+        if ![SEXPTYPE::REALSXP].contains(
+            &header_snapshot(x)
+                .expect("typed payload parent")
+                .sxpinfo
+                .type_of(),
+        ) {
+            super::context::r_error("native payload type mismatch");
+        }
+        data as *mut c_double
     }
 }
 
@@ -710,7 +748,16 @@ pub unsafe fn REAL(x: SEXP) -> *mut c_double {
 pub unsafe fn COMPLEX(x: SEXP) -> *mut Rcomplex {
     unsafe {
         debug_assert_sexptype(x, &[SEXPTYPE::CPLXSXP]);
-        DATAPTR(x) as *mut Rcomplex
+        let data = DATAPTR(x);
+        if ![SEXPTYPE::CPLXSXP].contains(
+            &header_snapshot(x)
+                .expect("typed payload parent")
+                .sxpinfo
+                .type_of(),
+        ) {
+            super::context::r_error("native payload type mismatch");
+        }
+        data as *mut Rcomplex
     }
 }
 
@@ -718,18 +765,38 @@ pub unsafe fn COMPLEX(x: SEXP) -> *mut Rcomplex {
 pub unsafe fn RAW(x: SEXP) -> *mut super::ffi::Rbyte {
     unsafe {
         debug_assert_sexptype(x, &[SEXPTYPE::RAWSXP]);
-        DATAPTR(x) as *mut super::ffi::Rbyte
+        let data = DATAPTR(x);
+        if ![SEXPTYPE::RAWSXP].contains(
+            &header_snapshot(x)
+                .expect("typed payload parent")
+                .sxpinfo
+                .type_of(),
+        ) {
+            super::context::r_error("native payload type mismatch");
+        }
+        data as *mut super::ffi::Rbyte
     }
 }
 
 /// Get the character data of a CHARSXP.
 pub unsafe fn CHAR(x: SEXP) -> *const c_char {
-    unsafe { DATAPTR(x) as *const c_char }
+    if !is_valid_sexp_ptr(x) {
+        return ptr::null();
+    }
+    if header_snapshot(x)
+        .expect("character parent")
+        .sxpinfo
+        .type_of()
+        != SEXPTYPE::CHARSXP
+    {
+        super::context::r_error("CHAR requires a character scalar");
+    }
+    unsafe { DATAPTR(x).cast::<c_char>() }
 }
 
 /// Get a mutable pointer to the character data of a CHARSXP.
 pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
-    unsafe { DATAPTR(x) as *mut c_char }
+    unsafe { CHAR(x).cast_mut() }
 }
 
 // ---------------------------------------------------------------------------
@@ -1021,193 +1088,124 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 // Element-level accessors
 // ---------------------------------------------------------------------------
 
-/// Get the i-th logical value.
+/// Copy the bounded logical element from its original retained allocation.
 pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
-    unsafe {
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Logical(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v;
-            }
-            super::context::r_error("ALTREP element type mismatch");
-        }
-        if !is_valid_sexp_ptr(x) {
-            return NA_INTEGER;
-        }
-        let data = LOGICAL(x);
-        if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
-            return NA_INTEGER;
-        }
-        debug_assert_sexptype(x, &[SEXPTYPE::LGLSXP]);
-        *data.add(i as usize)
+    if !is_valid_sexp_ptr(x) {
+        return NA_INTEGER;
     }
+    let (value, _root) = unsafe { raw_value(x) };
+    let result = value.try_logical_elt(i as R_xlen_t);
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
-/// Set the i-th logical value.
+/// Update a bounded canonical logical cell; immutable sentinels stay unchanged.
 pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) && !LOGICAL(x).is_null() {
-            *LOGICAL(x).add(i as usize) = v;
-        }
-    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let mut value = unsafe { super::object::SexpMut::from_owned(value) };
+    value
+        .try_set_logical_elt(i as R_xlen_t, v)
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
 
-/// Get the i-th integer value.
-/// GNU `INTEGER_ELT` shares storage with `LGLSXP`.
-///
-/// This helper does not check the index, and the type test is a
-/// `debug_assert` in release builds. Callers must already hold a legal
-/// `INTSXP` or `LGLSXP` index. Checked list and string access goes through
-/// `checked_element_slot`. The safe object path is `Sexp::try_integer_elt`.
+/// Copy the bounded integer element from its original retained allocation.
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
-    unsafe {
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Integer(v)
-            | super::altrep::AltrepElement::Logical(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v;
-            }
-            super::context::r_error("ALTREP element type mismatch");
-        }
-        if !is_valid_sexp_ptr(x) {
-            return NA_INTEGER;
-        }
-        // Resolve a compact sequence before `INTEGER`, which materializes.
-        // One handle at this FFI edge; the formula walk itself is safe.
-        if let Some(sx) = super::object::Sexp::from_raw(x) {
-            match sx.read_compact_int(i as R_xlen_t, true) {
-                super::altseq::LazyRead::Ready(value) => return value,
-                super::altseq::LazyRead::OutOfRange => return NA_INTEGER,
-                super::altseq::LazyRead::Absent => {}
-            }
-        }
-        let data = INTEGER(x);
-        if data.is_null() || (data as usize) % std::mem::align_of::<c_int>() != 0 {
-            return NA_INTEGER;
-        }
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
-        *data.add(i as usize)
+    if !is_valid_sexp_ptr(x) {
+        return NA_INTEGER;
     }
+    let (value, _root) = unsafe { raw_value(x) };
+    let result = if value.typeof_() == SEXPTYPE::LGLSXP {
+        value.try_logical_elt(i as R_xlen_t)
+    } else {
+        value.try_integer_elt(i as R_xlen_t)
+    };
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
-/// Set the i-th integer value.
+/// Update a bounded canonical integer cell; immutable sentinels stay unchanged.
 pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) && !INTEGER(x).is_null() {
-            *INTEGER(x).add(i as usize) = v;
-        }
-    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let mut value = unsafe { super::object::SexpMut::from_owned(value) };
+    let result = if value.typeof_() == SEXPTYPE::LGLSXP {
+        value.try_set_logical_elt(i as R_xlen_t, v)
+    } else {
+        value.try_set_integer_elt(i as R_xlen_t, v)
+    };
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
+
+/// Copy the bounded real element from its original retained allocation.
 pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
-    unsafe {
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Real(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v;
-            }
-            super::context::r_error("ALTREP element type mismatch");
-        }
-        if !is_valid_sexp_ptr(x) {
-            return NA_REAL;
-        }
-        if let Some(sx) = super::object::Sexp::from_raw(x) {
-            match sx.read_compact_real(i as R_xlen_t, true) {
-                super::altseq::LazyRead::Ready(value) => return value,
-                super::altseq::LazyRead::OutOfRange => return NA_REAL,
-                super::altseq::LazyRead::Absent => {}
-            }
-        }
-        let data = REAL(x);
-        if data.is_null() || (data as usize) % std::mem::align_of::<c_double>() != 0 {
-            return NA_REAL;
-        }
-        debug_assert_sexptype(x, &[SEXPTYPE::REALSXP]);
-        *data.add(i as usize)
+    if !is_valid_sexp_ptr(x) {
+        return NA_REAL;
     }
+    let (value, _root) = unsafe { raw_value(x) };
+    let result = value.try_real_elt(i as R_xlen_t);
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
-/// Set the i-th real value.
+/// Update a bounded canonical real cell; immutable sentinels stay unchanged.
 pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) && !REAL(x).is_null() {
-            *REAL(x).add(i as usize) = v;
-        }
-    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let mut value = unsafe { super::object::SexpMut::from_owned(value) };
+    value
+        .try_set_real_elt(i as R_xlen_t, v)
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
 
-/// Get the i-th complex value.
+/// Copy the bounded complex element from its original retained allocation.
 pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
-    unsafe {
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Complex(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v;
-            }
-            super::context::r_error("ALTREP element type mismatch");
-        }
-        if !is_valid_sexp_ptr(x) || COMPLEX(x).is_null() {
-            return Rcomplex {
-                r: NA_REAL,
-                i: NA_REAL,
-            };
-        }
-        *COMPLEX(x).add(i as usize)
+    if !is_valid_sexp_ptr(x) {
+        return Rcomplex {
+            r: NA_REAL,
+            i: NA_REAL,
+        };
     }
+    let (value, _root) = unsafe { raw_value(x) };
+    let result = value.try_complex_elt(i as R_xlen_t);
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
-/// Set the i-th complex value.
+/// Update a bounded canonical complex cell; immutable sentinels stay unchanged.
 pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) && !COMPLEX(x).is_null() {
-            *COMPLEX(x).add(i as usize) = v;
-        }
-    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let mut value = unsafe { super::object::SexpMut::from_owned(value) };
+    value
+        .try_set_complex_elt(i as R_xlen_t, v)
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
 
-/// Get the i-th raw byte value.
+/// Copy the bounded raw element from its original retained allocation.
 pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
-    unsafe {
-        if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Raw(v) =
-                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
-            {
-                return v;
-            }
-            super::context::r_error("ALTREP element type mismatch");
-        }
-        if !is_valid_sexp_ptr(x) || RAW(x).is_null() {
-            return 0;
-        }
-        *RAW(x).add(i as usize)
+    if !is_valid_sexp_ptr(x) {
+        return 0;
     }
+    let (value, _root) = unsafe { raw_value(x) };
+    let result = value.try_raw_elt(i as R_xlen_t);
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
-/// Set the i-th raw byte value.
+/// Update a bounded canonical raw cell; immutable sentinels stay unchanged.
 pub unsafe fn SET_RAW_ELT(x: SEXP, i: c_int, v: super::ffi::Rbyte) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) && !RAW(x).is_null() {
-            *RAW(x).add(i as usize) = v;
-        }
-    }
+    let (value, _root) = unsafe { raw_value(x) };
+    let mut value = unsafe { super::object::SexpMut::from_owned(value) };
+    value
+        .try_set_raw_elt(i as R_xlen_t, v)
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
 }
 
 // ---------------------------------------------------------------------------
@@ -1717,47 +1715,50 @@ pub unsafe fn getCharCE(x: SEXP) -> c_int {
     }
 }
 #[test]
-fn reference_elements_reject_forged_lengths_and_payloads_without_reading_them() {
+fn reference_elements_reject_foreign_payloads_and_oversized_headers() {
     let mut arena = super::memory::RArena::new();
     let parent = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
     let node = arena.node_token(parent).unwrap();
-    let original = super::memory::checked_snapshot(parent, &node).unwrap();
+    let heap = node.heap_identity();
+    let original = heap.node_snapshot(&node).unwrap();
     let numeric = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
     let numeric_node = arena.node_token(numeric).unwrap();
-    let numeric_payload = super::memory::checked_snapshot(numeric, &numeric_node)
-        .unwrap()
-        .gengc_next_node;
-    for payload in [
-        original.gengc_next_node,
-        numeric_payload,
-        ptr::dangling_mut(),
-    ] {
-        let mut forged = original;
-        forged.data.vector_mut().length = 3;
-        forged.gengc_next_node = payload;
-        // SAFETY: this fixture exclusively modifies its own initialized
-        // header. Every element operation must reject the forged shape.
-        unsafe {
-            parent.write(forged);
-        }
-        for index in [0, 2] {
-            for write in [false, true] {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    if write {
-                        SET_VECTOR_ELT(parent, index, ptr::null_mut());
-                    } else {
-                        VECTOR_ELT(parent, index);
-                    }
-                }));
-                assert!(result.is_err());
-            }
-        }
-    }
-    unsafe {
-        parent.write(original);
-    }
+    let numeric_payload = heap.payload_lease(&numeric_node).unwrap();
+    let mut oversized = original;
+    oversized.data.vector_mut().length = 3;
+    assert!(heap.replace_node(&node, oversized).is_none());
+    assert!(
+        heap.publish_payload(&node, original.payload, &numeric_payload)
+            .is_none()
+    );
+    let mut foreign_arena = super::memory::RArena::new();
+    let foreign = foreign_arena.alloc_vector(SEXPTYPE::VECSXP, 3);
+    let foreign_node = foreign_arena.node_token(foreign).unwrap();
+    let foreign_payload = foreign_node
+        .heap_identity()
+        .payload_lease(&foreign_node)
+        .unwrap();
+    assert!(
+        heap.publish_payload(&node, original.payload, &foreign_payload)
+            .is_none()
+    );
+    let unchanged = heap.node_snapshot(&node).unwrap();
+    assert_eq!(unchanged.payload, original.payload);
+    assert_eq!(unchanged.data, original.data);
     assert_eq!(
-        node.heap_identity().reference_elements(&node),
-        Some(vec![ptr::null_mut()])
+        heap.reference_links(&node),
+        Some(vec![super::heap::NodeLink::NULL])
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            VECTOR_ELT(parent, 2);
+        }))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            SET_VECTOR_ELT(parent, 2, ptr::null_mut());
+        }))
+        .is_err()
     );
 }

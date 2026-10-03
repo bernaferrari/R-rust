@@ -427,12 +427,12 @@ mod tests {
             ] {
                 let flags = (*node).sxpinfo;
                 let attributes = (*node).attrib;
-                let data = (*node).gengc_next_node;
+                let data = (*node).payload;
                 let body = (*node).data;
                 let snapshot = immutable_singleton_snapshot(node).unwrap();
                 assert_eq!(snapshot.sxpinfo.type_and_flags, flags.type_and_flags);
                 assert_eq!(snapshot.attrib, attributes);
-                assert_eq!(snapshot.gengc_next_node, data);
+                assert_eq!(snapshot.payload, data);
                 // Safe snapshots agree with the genuine owned header, including
                 // the scalar logical's typed vector lengths.
                 if flags.type_of() == SEXPTYPE::LGLSXP || flags.type_of() == SEXPTYPE::CHARSXP {
@@ -467,7 +467,6 @@ mod tests {
                 SET_PRCODE(node, R_True());
                 SET_PRENV(node, R_True());
                 SET_PRIMOFFSET(node, 99);
-                SET_DATAPTR(node, std::ptr::null_mut());
                 SET_LOGICAL_ELT(node, 0, 99);
                 SET_INTEGER_ELT(node, 0, 99);
                 SET_REAL_ELT(node, 0, 99.0);
@@ -488,7 +487,7 @@ mod tests {
                 assert_eq!((*node).sxpinfo.type_and_flags, flags.type_and_flags);
                 assert_eq!((*node).sxpinfo.rcount, flags.rcount);
                 assert_eq!((*node).attrib, attributes);
-                assert_eq!((*node).gengc_next_node, data);
+                assert_eq!((*node).payload, data);
                 assert_eq!((*node).data, body);
                 assert_eq!(NAMED(node), 2);
             }
@@ -513,8 +512,8 @@ mod tests {
             ] {
                 assert_eq!((*value).sxpinfo.type_of(), kind);
             }
-            assert_eq!(*((*R_True()).gengc_next_node as *const i32), TRUE);
-            assert_eq!(*((*R_False()).gengc_next_node as *const i32), FALSE);
+            assert_eq!(*crate::sexp::accessors::LOGICAL(R_True()), TRUE);
+            assert_eq!(*crate::sexp::accessors::LOGICAL(R_False()), FALSE);
             assert_eq!(R_True(), R_True());
             assert_eq!(R_NaString(), R_NaString());
         }

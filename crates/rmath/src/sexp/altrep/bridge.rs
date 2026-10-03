@@ -79,7 +79,7 @@ pub(crate) unsafe fn lazy_raw<'s>(
     index: R_xlen_t,
 ) -> Option<SexpResult<AltrepElement<'s>>> {
     let view = unsafe { Sexp::from_raw(raw) }?;
-    if !view.header().payload.is_null() || Metadata::load(&view).is_none() {
+    if !view.header().payload.is_empty() || Metadata::load(&view).is_none() {
         return None;
     }
     let object = match unsafe { rooted_raw(raw) } {

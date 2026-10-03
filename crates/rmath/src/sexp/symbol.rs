@@ -43,8 +43,7 @@ fn intern_symbol_with_pname(
     let header = SexprecCore {
         sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
         attrib: super::heap::NodeLink::NULL,
-        gengc_next_node: ptr::null_mut(),
-        gengc_prev_node: ptr::null_mut(),
+        payload: super::payload::PayloadLink::EMPTY,
         data: NodeBody::Symbol(super::ffi::Symsxp {
             pname: persistent.link_from_projection(pname).expect("permanent symbol name"),
             value: super::heap::NodeLink::NULL,

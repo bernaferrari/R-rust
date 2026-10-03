@@ -36,7 +36,7 @@ use super::heap::{
     PageMetadata,
 };
 use super::object::Sexp;
-use super::payload::{OwnedPayload, PayloadError};
+use super::payload::{OwnedPayload, PayloadError, PayloadLease, PayloadLink};
 
 /// Byte size of one node for checking legacy projection address ranges.
 const NODE_BYTES: usize = std::mem::size_of::<SexprecCore>();
@@ -169,17 +169,10 @@ fn zeroed_vector_payload(kind: SEXPTYPE, length: R_xlen_t) -> Result<OwnedPayloa
         note_buffer_allocation_attempt();
     }
     OwnedPayload::zeroed_vector(kind, length).map_err(|error| match error {
-        PayloadError::Allocation => ArenaError::OutOfMemory,
+        PayloadError::Allocation | PayloadError::IdentityExhausted => ArenaError::OutOfMemory,
         PayloadError::InvalidLength => ArenaError::InvalidLength,
         PayloadError::InvalidVectorType => ArenaError::InvalidVectorType { sexptype: kind },
     })
-}
-
-/// One native allocation shared by a checked number of live vector headers.
-/// The arena owns the allocation; dropping its final header lease drops it.
-struct SharedBuffer {
-    allocation: OwnedPayload,
-    headers: std::num::NonZeroUsize,
 }
 
 /// Budget for arena allocations to prevent unbounded growth.
@@ -212,13 +205,24 @@ impl ArenaBudget {
     }
 }
 
-// Data buffers now use HashMap for O(1) register/take/remove (was linear scan on Vec).
-// This eliminates one source of O(n) in arena (buffer release and frequent freeing of vectors).
-// Layouts are small, HashMap overhead acceptable vs scan on many vectors.
+// Each canonical slot retains its actual typed payload lease. Allocation
+// identity is independent of native numeric projections.
 
 // ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
+
+fn empty_payload_shape(header: &SexprecCore) -> bool {
+    if !header.payload.is_empty() {
+        return false;
+    }
+    match header.data {
+        NodeBody::Vector(vector) => {
+            vector.length == 0 || (header.sxpinfo.alt() && vector.length >= 0)
+        }
+        _ => true,
+    }
+}
 
 /// Rust owns the node allocation and safe collector metadata. The `base`
 /// address is used only by the legacy projection directory; slot pointers
@@ -227,6 +231,7 @@ struct SlabPage {
     storage: NodePage<SexprecCore>,
     meta: Rc<PageMetadata>,
     _registration: NodePageRegistration,
+    payloads: RefCell<HashMap<usize, PayloadLease>>,
 }
 
 /// Canonical physical storage shared by the allocator facade and owning
@@ -235,19 +240,79 @@ struct SlabPage {
 pub(crate) struct ArenaBacking {
     node_pages: RefCell<Vec<SlabPage>>,
     page_cookies: RefCell<HashMap<u64, usize>>,
-    data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
+    identity: HeapIdentity,
+    allocated_bytes: Rc<Cell<usize>>,
+    max_bytes: Cell<usize>,
+    header_bytes: Cell<usize>,
+    transient_bytes: Rc<Cell<usize>>,
 }
 impl ArenaBacking {
-    pub(crate) fn payload_capacity_for_kind(
-        &self,
-        pointer: *mut u8,
-        kind: SEXPTYPE,
-    ) -> Option<usize> {
-        let buffers = self.data_bufs.borrow();
-        let payload = &buffers.get(&pointer)?.allocation;
-        payload.accepts_kind(kind).then(|| payload.len())
+    pub(crate) fn node_payload(&self, id: &NodeId) -> Option<PayloadLease> {
+        let pages = self.node_pages.borrow();
+        let page = pages.get(id.page())?;
+        let header = page.storage.copy_live(id)?;
+        let lease = page.payloads.borrow().get(&id.slot())?.clone();
+        lease.matches_header(&header).then_some(lease)
     }
-
+    pub(crate) fn reserve_payload_bytes(
+        &self,
+        id: &NodeId,
+        bytes: usize,
+    ) -> Option<TransientReservation> {
+        self.node_snapshot(id)?;
+        Some(
+            TransientReservation::new(
+                self.max_bytes.get(),
+                self.allocated_bytes.get(),
+                0,
+                &self.transient_bytes,
+                bytes,
+            )?
+            .for_payload(self.identity.clone(), self.allocated_bytes.clone()),
+        )
+    }
+    fn admit_payload(&self, lease: &PayloadLease) -> Option<()> {
+        if !lease.belongs_to(&self.identity) {
+            let total = self
+                .allocated_bytes
+                .get()
+                .checked_add(self.transient_bytes.get())?
+                .checked_add(lease.logical_bytes())?;
+            if self.max_bytes.get() != 0 && total > self.max_bytes.get() {
+                return None;
+            }
+        }
+        lease.bind_to_heap(&self.identity, &self.allocated_bytes)
+    }
+    pub(crate) fn publish_payload(
+        &self,
+        id: &NodeId,
+        expected: PayloadLink,
+        lease: &PayloadLease,
+    ) -> Option<()> {
+        let pages = self.node_pages.borrow();
+        let page = pages.get(id.page())?;
+        let mut header = page.storage.copy_live(id)?;
+        let mut payloads = page.payloads.borrow_mut();
+        if header.payload != expected
+            || payloads
+                .get(&id.slot())
+                .map(PayloadLease::link)
+                .unwrap_or(PayloadLink::EMPTY)
+                != expected
+        {
+            return None;
+        }
+        header.payload = lease.link();
+        if !lease.matches_header(&header) {
+            return None;
+        }
+        payloads.try_reserve(1).ok()?;
+        self.admit_payload(lease)?;
+        page.storage.replace_live(id, header).ok()?;
+        payloads.insert(id.slot(), lease.clone());
+        Some(())
+    }
     pub(crate) fn node_snapshot(&self, id: &NodeId) -> Option<SexprecCore> {
         self.node_pages
             .borrow()
@@ -272,12 +337,29 @@ impl ArenaBacking {
         if !value.has_valid_shape() {
             return None;
         }
-        self.node_pages
-            .borrow()
-            .get(id.page())?
-            .storage
-            .replace_live(id, value)
-            .ok()
+        let pages = self.node_pages.borrow();
+        let page = pages.get(id.page())?;
+        let current = page.storage.copy_live(id)?;
+        if current.sxpinfo.alt() && current.sxpinfo.type_of() != value.sxpinfo.type_of() {
+            return None;
+        }
+        if matches!(value.data, NodeBody::Vector(_)) {
+            if value.payload != current.payload {
+                return None;
+            }
+            match page.payloads.borrow().get(&id.slot()) {
+                Some(lease) if lease.matches_header(&value) => {}
+                None if empty_payload_shape(&value) => {}
+                _ => return None,
+            }
+        } else if !value.payload.is_empty() {
+            return None;
+        }
+        page.storage.replace_live(id, value).ok()?;
+        if !matches!(value.data, NodeBody::Vector(_)) {
+            page.payloads.borrow_mut().remove(&id.slot());
+        }
+        Some(())
     }
     pub(crate) fn attach_resource(&self, id: &NodeId, value: &Rc<dyn std::any::Any>) -> Option<()> {
         self.node_pages
@@ -300,57 +382,16 @@ impl ArenaBacking {
             .storage
             .take_resource(id)
     }
+}
 
-    pub(crate) fn reference_payload_lease(
-        &self,
-        pointer: *mut u8,
-    ) -> Option<super::payload::ReferencePayloadLease> {
-        self.data_bufs
-            .borrow()
-            .get(&pointer)?
-            .allocation
-            .reference_lease()
-    }
-
-    pub(crate) fn reference_payload_capacity(&self, pointer: *mut u8) -> Option<usize> {
-        self.data_bufs
-            .borrow()
-            .get(&pointer)?
-            .allocation
-            .reference_capacity()
-    }
-
-    pub(crate) fn reference_payload_elt(&self, pointer: *mut u8, index: usize) -> Option<NodeLink> {
-        self.data_bufs
-            .borrow()
-            .get(&pointer)?
-            .allocation
-            .reference_elt(index)
-    }
-
-    pub(crate) fn replace_reference_payload(
-        &self,
-        pointer: *mut u8,
-        start: usize,
-        values: &[NodeLink],
-    ) -> Option<()> {
-        self.data_bufs
-            .borrow()
-            .get(&pointer)?
-            .allocation
-            .replace_references(start, values)
-    }
-
-    pub(crate) fn copy_reference_payload(
-        &self,
-        pointer: *mut u8,
-        length: usize,
-    ) -> Option<Vec<NodeLink>> {
-        self.data_bufs
-            .borrow()
-            .get(&pointer)?
-            .allocation
-            .copy_references(length)
+impl Drop for ArenaBacking {
+    fn drop(&mut self) {
+        self.allocated_bytes.set(
+            self.allocated_bytes
+                .get()
+                .checked_sub(self.header_bytes.get())
+                .expect("header byte ledger balance"),
+        );
     }
 }
 
@@ -657,14 +698,10 @@ pub struct RArena {
     /// O(1) membership for free-list pointers.
     free_addrs: HashSet<usize>,
     /// Total bytes allocated for tracking.
-    total_bytes_allocated: usize,
+    allocated_bytes: Rc<Cell<usize>>,
     /// Bytes reserved by temporary native workspaces which live outside the
     /// arena (for example, a numerical transform's scratch Vecs).
     transient_bytes: Rc<Cell<usize>>,
-    /// Bytes promised to compact-sequence payloads queued during an arena
-    /// lend and not yet in `data_bufs`. Shared so that promise can be made
-    /// without borrowing the arena a second time.
-    pending_data_bytes: Rc<Cell<usize>>,
     /// Deferred alloc-time GC hook state (see `with_arena_in`): arena
     /// methods cannot touch instance state without aliasing the live
     /// borrow, so hooks record their firings here instead.
@@ -700,6 +737,7 @@ impl RArena {
             storage,
             meta,
             _registration: registration,
+            payloads: RefCell::new(HashMap::new()),
         });
         self.slab_page = pages.len() - 1;
         self.slab_offset = 0;
@@ -713,9 +751,32 @@ impl RArena {
     where
         F: FnOnce() -> SexprecCore,
     {
-        let header = ctor();
+        self.allocate_core_with_payload(ctor(), None)
+    }
+
+    fn allocate_core_with_payload(
+        &mut self,
+        header: SexprecCore,
+        payload: Option<PayloadLease>,
+    ) -> SEXP {
         if !header.has_valid_shape() {
             return ptr::null_mut();
+        }
+        let payload_growth = payload
+            .as_ref()
+            .filter(|lease| !lease.belongs_to(&self.heap_identity))
+            .map_or(0, PayloadLease::logical_bytes);
+        if !self.can_allocate_node_with_payload(payload_growth) {
+            return ptr::null_mut();
+        }
+        match &payload {
+            Some(lease) if lease.matches_header(&header) => {
+                if self.backing.admit_payload(lease).is_none() {
+                    return ptr::null_mut();
+                }
+            }
+            None if empty_payload_shape(&header) => {}
+            _ => return ptr::null_mut(),
         }
         while let Some(pointer) = self.free_list.pop() {
             let Some((page, slot)) = self.reusable_slot(pointer) else {
@@ -725,6 +786,12 @@ impl RArena {
                 .storage
                 .replace_inactive(slot, header)
                 .expect("reusable arena slot");
+            if let Some(lease) = payload {
+                self.backing.node_pages.borrow()[page]
+                    .payloads
+                    .borrow_mut()
+                    .insert(slot, lease);
+            }
             return self.register_new_node(ptr);
         }
         if self.slab_offset >= NODE_PAGE_SIZE {
@@ -734,8 +801,21 @@ impl RArena {
             .storage
             .replace_inactive(self.slab_offset, header)
             .expect("fresh inactive arena slot");
+        if let Some(lease) = payload {
+            self.backing.node_pages.borrow()[self.slab_page]
+                .payloads
+                .borrow_mut()
+                .insert(self.slab_offset, lease);
+        }
         self.slab_offset += 1;
         self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
+        self.backing.header_bytes.set(
+            self.backing
+                .header_bytes
+                .get()
+                .checked_add(NODE_BYTES)
+                .expect("header byte ledger overflow"),
+        );
         self.register_new_node(ptr)
     }
 
@@ -757,10 +837,16 @@ impl RArena {
     }
 
     fn with_budget_and_identity(budget: ArenaBudget, heap_identity: HeapIdentity) -> Self {
+        let allocated_bytes = Rc::new(Cell::new(0));
+        let transient_bytes = Rc::new(Cell::new(0));
         let backing = Rc::new(ArenaBacking {
             node_pages: RefCell::new(Vec::new()),
             page_cookies: RefCell::new(HashMap::new()),
-            data_bufs: RefCell::new(HashMap::new()),
+            identity: heap_identity.clone(),
+            allocated_bytes: allocated_bytes.clone(),
+            max_bytes: Cell::new(budget.max_bytes),
+            header_bytes: Cell::new(0),
+            transient_bytes: transient_bytes.clone(),
         });
         let backing_owners = heap_identity.retain_arena(backing.clone());
         let retired_resources = backing_owners.resource_drop_queue();
@@ -774,9 +860,8 @@ impl RArena {
             free_list: Vec::new(),
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
-            total_bytes_allocated: 0,
-            transient_bytes: Rc::new(Cell::new(0)),
-            pending_data_bytes: Rc::new(Cell::new(0)),
+            allocated_bytes,
+            transient_bytes,
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
             nodes_at_last_gc: 0,
@@ -857,6 +942,7 @@ impl RArena {
     /// Set a new budget. Does not retroactively reject existing allocations.
     pub fn set_budget(&mut self, budget: ArenaBudget) {
         self.budget = budget;
+        self.backing.max_bytes.set(budget.max_bytes);
         note_lend_budget(std::ptr::from_ref(self) as usize, budget.max_bytes);
     }
 
@@ -868,94 +954,48 @@ impl RArena {
     pub(crate) fn try_reserve_transient(&mut self, bytes: usize) -> Option<TransientReservation> {
         TransientReservation::new(
             self.budget.max_bytes,
-            self.total_bytes_allocated,
-            self.pending_data_bytes.get(),
+            self.allocated_bytes.get(),
+            0,
             &self.transient_bytes,
             bytes,
         )
     }
 
-    fn register_data_buffer(&mut self, allocation: OwnedPayload) {
-        let ptr = allocation.as_ptr();
-        assert!(
-            !self.backing.data_bufs.borrow().contains_key(&ptr),
-            "buffer ownership transferred twice"
-        );
-        assert!(!ptr.is_null(), "nonempty buffer ownership");
-        self.add_accounted_bytes(allocation.layout().size());
-        self.backing.data_bufs.borrow_mut().insert(
-            ptr,
-            SharedBuffer {
-                allocation,
-                headers: std::num::NonZeroUsize::new(1).unwrap(),
-            },
-        );
-    }
-
     fn add_accounted_bytes(&mut self, bytes: usize) {
-        self.total_bytes_allocated = self.total_bytes_allocated.saturating_add(bytes);
-        LEND_LEDGER.with(|slot| {
-            if let Some(ledger) = slot
-                .borrow()
-                .iter()
-                .rev()
-                .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
-            {
-                ledger.total.set(ledger.total.get().saturating_add(bytes));
-            }
-        });
+        self.allocated_bytes.set(
+            self.allocated_bytes
+                .get()
+                .checked_add(bytes)
+                .expect("arena byte ledger overflow"),
+        );
     }
-
     fn sub_accounted_bytes(&mut self, bytes: usize) {
-        self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(bytes);
-        LEND_LEDGER.with(|slot| {
-            if let Some(ledger) = slot
-                .borrow()
-                .iter()
-                .rev()
-                .find(|ledger| ledger.arena == std::ptr::from_ref(self) as usize)
-            {
-                ledger.total.set(ledger.total.get().saturating_sub(bytes));
-            }
-        });
+        self.allocated_bytes.set(
+            self.allocated_bytes
+                .get()
+                .checked_sub(bytes)
+                .expect("arena byte ledger balance"),
+        );
     }
-
-    /// Move initialized payload ownership into the arena. A rejected payload
-    /// is dropped without publishing its pointer or changing accounting.
-    fn adopt_data_buffer(&mut self, allocation: OwnedPayload) -> bool {
-        if allocation.as_ptr().is_null() || !self.can_grow_bytes_by(allocation.layout().size()) {
-            return false;
-        }
-        self.register_data_buffer(allocation);
-        true
-    }
-
     #[cfg(test)]
-    pub(crate) fn tracks_altrep_test_buffer(&self, ptr: *mut u8) -> bool {
-        self.tracks_data_buffer(ptr)
+    pub(crate) fn tracks_altrep_test_buffer(&self, pointer: *mut u8) -> bool {
+        self.backing.node_pages.borrow().iter().any(|page| {
+            page.payloads
+                .borrow()
+                .values()
+                .any(|lease| lease.native_projection() == pointer)
+        })
     }
-
-    fn tracks_data_buffer(&self, ptr: *mut u8) -> bool {
-        !ptr.is_null() && self.backing.data_bufs.borrow().contains_key(&ptr)
+    #[cfg(test)]
+    pub(crate) fn tracks_payload_link(&self, link: PayloadLink) -> bool {
+        !link.is_empty()
+            && self.backing.node_pages.borrow().iter().any(|page| {
+                page.payloads
+                    .borrow()
+                    .values()
+                    .any(|lease| lease.link() == link)
+            })
     }
-
-    fn release_data_buffer(&mut self, ptr: *mut u8) {
-        let buffer = {
-            let mut buffers = self.backing.data_bufs.borrow_mut();
-            let Some(buffer) = buffers.get_mut(&ptr) else {
-                return;
-            };
-            if let Some(remaining) = std::num::NonZeroUsize::new(buffer.headers.get() - 1) {
-                buffer.headers = remaining;
-                return;
-            }
-            buffers.remove(&ptr).expect("registered final buffer owner")
-        };
-        self.sub_accounted_bytes(buffer.allocation.layout().size());
-        // Dropping the typed owner releases its final shared allocation.
-        drop(buffer);
-    }
-
     /// Share a payload between checked live headers in this arena. No callback
     /// runs during the lend. Type, shape, ownership and publication are checked
     /// together; neither header can free storage still retained by the other.
@@ -968,42 +1008,40 @@ impl RArena {
         let error = || SexpError::Altrep {
             reason: "invalid shared vector payload",
         };
-        let source_ptr = source.clone().as_raw();
-        let target_ptr = target.clone().as_raw();
-        if source_ptr == target_ptr || !self.contains(source_ptr) || !self.contains(target_ptr) {
-            return Err(error());
-        }
-        let src = source.header();
-        let dst = target.header();
-        if !src.sxpinfo.type_of().is_vector_type()
-            || src.sxpinfo.type_of() != dst.sxpinfo.type_of()
-            || source.len() != target.len()
-            || !dst.payload.is_null()
+        let source_node = source.allocation()?;
+        let target_node = target.allocation()?;
+        if !source_node.belongs_to(&self.heap_identity)
+            || !target_node.belongs_to(&self.heap_identity)
         {
             return Err(error());
         }
-        let bytes = usize::try_from(source.len())
-            .ok()
-            .and_then(|n| n.checked_mul(sexp_elem_size(source.typeof_())))
+        let src = self
+            .backing
+            .node_snapshot(source_node.id())
             .ok_or_else(error)?;
-        if bytes == 0 {
+        let dst = self
+            .backing
+            .node_snapshot(target_node.id())
+            .ok_or_else(error)?;
+        let same_length = match (src.data, dst.data) {
+            (NodeBody::Vector(source), NodeBody::Vector(target)) => source.length == target.length,
+            _ => false,
+        };
+        if src.sxpinfo.type_of() != dst.sxpinfo.type_of() || !same_length || !dst.payload.is_empty()
+        {
+            return Err(error());
+        }
+        if empty_payload_shape(&src) && src.payload.is_empty() {
             return Ok(());
         }
-        {
-            let mut buffers = self.backing.data_bufs.borrow_mut();
-            let buffer = buffers
-                .get_mut(&(src.payload as *mut u8))
-                .ok_or_else(error)?;
-            if buffer.allocation.layout().size() < bytes {
-                return Err(error());
-            }
-            buffer.headers = buffer.headers.checked_add(1).ok_or_else(error)?;
-        }
-        // SAFETY: both rooted headers have matching shape and a tracked buffer
-        // with a newly installed ownership lease; no payload loans are present.
-        unsafe {
-            (*target_ptr).gengc_next_node = src.payload;
-        }
+        let lease = self
+            .backing
+            .node_payload(source_node.id())
+            .ok_or_else(error)?;
+        self.backing
+            .publish_payload(target_node.id(), dst.payload, &lease)
+            .ok_or_else(error)?;
+
         Ok(())
     }
 
@@ -1014,9 +1052,9 @@ impl RArena {
     fn can_grow_bytes_by(&self, bytes: usize) -> bool {
         self.budget.max_bytes == 0
             || self
-                .total_bytes_allocated
+                .allocated_bytes
+                .get()
                 .checked_add(self.transient_bytes.get())
-                .and_then(|total| total.checked_add(self.pending_data_bytes.get()))
                 .and_then(|total| total.checked_add(bytes))
                 .is_some_and(|total| total <= self.budget.max_bytes)
     }
@@ -1090,22 +1128,18 @@ impl RArena {
             let Ok(data) = zeroed_vector_payload(sexptype, length) else {
                 return ptr::null_mut();
             };
-            Some(data)
+            let Ok(lease) = PayloadLease::from_owned(data) else {
+                return ptr::null_mut();
+            };
+            Some(lease)
         } else {
             None
         };
-
-        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
-
-        if let Some(data) = data {
-            let data_ptr = data.as_ptr();
-            self.register_data_buffer(data);
-            unsafe {
-                (*node_ptr).gengc_next_node = data_ptr as SEXP;
-            }
+        let mut header = SexprecCore::new_vector(sexptype, length);
+        if let Some(lease) = &data {
+            header.payload = lease.link();
         }
-
-        node_ptr
+        self.allocate_core_with_payload(header, data)
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper.
@@ -1147,9 +1181,9 @@ impl RArena {
         // Check byte budget
         if self.budget.max_bytes > 0 {
             let new_total = self
-                .total_bytes_allocated
+                .allocated_bytes
+                .get()
                 .checked_add(self.transient_bytes.get())
-                .and_then(|total| total.checked_add(self.pending_data_bytes.get()))
                 .and_then(|total| total.checked_add(total_increase))
                 .ok_or(ArenaError::ByteBudgetExceeded {
                     limit: self.budget.max_bytes,
@@ -1169,19 +1203,21 @@ impl RArena {
         }
 
         let data = if data_bytes > 0 {
-            Some(zeroed_vector_payload(sexptype, length)?)
+            Some(
+                PayloadLease::from_owned(zeroed_vector_payload(sexptype, length)?)
+                    .map_err(|_| ArenaError::OutOfMemory)?,
+            )
         } else {
             None
         };
 
-        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
-
-        if let Some(data) = data {
-            let data_ptr = data.as_ptr();
-            self.register_data_buffer(data);
-            unsafe {
-                (*node_ptr).gengc_next_node = data_ptr as SEXP;
-            }
+        let mut header = SexprecCore::new_vector(sexptype, length);
+        if let Some(lease) = &data {
+            header.payload = lease.link();
+        }
+        let node_ptr = self.allocate_core_with_payload(header, data);
+        if node_ptr.is_null() {
+            return Err(ArenaError::OutOfMemory);
         }
 
         Ok(node_ptr)
@@ -1217,11 +1253,13 @@ impl RArena {
         let Ok(data) = OwnedPayload::characters(s) else {
             return ptr::null_mut();
         };
-        let data_ptr = data.as_ptr();
+        let Ok(data) = PayloadLease::from_owned(data) else {
+            return ptr::null_mut();
+        };
 
         // Character shape uses the same initialized vector record as the
         // character accessor; both length fields are ordinary Rust values.
-        let node_ptr = self.allocate_core_in_slab(|| {
+        let header = {
             let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
             c.data = NodeBody::Vector(super::ffi::Vecsxp {
                 length: len,
@@ -1236,15 +1274,10 @@ impl RArena {
                 gp |= 1 << 3;
             }
             c.sxpinfo.set_gp(gp);
+            c.payload = data.link();
             c
-        });
-
-        self.register_data_buffer(data);
-        unsafe {
-            (*node_ptr).gengc_next_node = data_ptr as SEXP;
-        }
-
-        node_ptr
+        };
+        self.allocate_core_with_payload(header, Some(data))
     }
 
     /// Allocate a CHARSXP and return an arena-scoped safe wrapper.
@@ -1362,14 +1395,15 @@ impl RArena {
     pub(crate) fn growth_warrants_gc(&self) -> bool {
         self.node_count().saturating_sub(self.nodes_at_last_gc) > GC_TRIGGER_THRESHOLD
             || self
-                .total_bytes_allocated
+                .allocated_bytes
+                .get()
                 .saturating_sub(self.bytes_at_last_gc)
                 > GC_BYTE_THRESHOLD
     }
 
     pub(crate) fn note_gc_completed(&mut self) {
         self.nodes_at_last_gc = self.node_count();
-        self.bytes_at_last_gc = self.total_bytes_allocated;
+        self.bytes_at_last_gc = self.allocated_bytes.get();
     }
 
     /// Return true if this pointer is one of the arena's active nodes.
@@ -1540,9 +1574,9 @@ impl RArena {
         let Some(node) = self.node_token(ptr) else {
             return;
         };
-        let Some(mut header) = self.backing.node_snapshot(node.id()) else {
+        if self.backing.node_snapshot(node.id()).is_none() {
             return;
-        };
+        }
         let Some(pointer) = self.backing.node_projection(node.id()) else {
             return;
         };
@@ -1551,18 +1585,21 @@ impl RArena {
             // lend ends, so a resource destructor may safely reenter.
             self.retired_resources.borrow_mut().push(resource);
         }
-        let data_ptr = header.gengc_next_node.cast::<u8>();
-        if !data_ptr.is_null() {
-            self.release_data_buffer(data_ptr);
-        }
-        header.gengc_next_node = ptr::null_mut();
+        // Retirement detaches the actual slot owner. A snapshot lease may
+        // still pin its bytes and accounting after this generation dies.
+        self.backing.node_pages.borrow()[node.id().page()]
+            .payloads
+            .borrow_mut()
+            .remove(&node.id().slot());
+        let mut header = SexprecCore::new(SEXPTYPE::NILSXP);
         header.attrib = NodeLink::NULL;
         header.sxpinfo.set_mark(false);
         header
             .sxpinfo
             .set_gcgen(crate::sexp::gengc::Generation::Old as u8);
-        self.backing
-            .replace_node(node.id(), header)
+        self.backing.node_pages.borrow()[node.id().page()]
+            .storage
+            .replace_live(node.id(), header)
             .expect("retiring exact live node");
         let ptr = pointer;
 
@@ -1599,15 +1636,16 @@ impl RArena {
 
     /// Get total bytes allocated by this arena.
     pub fn total_bytes_allocated(&self) -> usize {
-        self.total_bytes_allocated
+        self.allocated_bytes.get()
     }
 
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for (&ptr, buffer) in &*self.backing.data_bufs.borrow() {
-                if !ptr.is_null() {
-                    debug_assert!(buffer.allocation.layout().size() > 0);
+            for page in &*self.backing.node_pages.borrow() {
+                for (&slot, lease) in &*page.payloads.borrow() {
+                    debug_assert!(page.storage.token(slot).is_some());
+                    debug_assert!(lease.belongs_to(&self.heap_identity));
                 }
             }
             for &free_ptr in &self.free_list {
@@ -1622,10 +1660,11 @@ impl RArena {
 pub(crate) struct TransientReservation {
     counter: Rc<Cell<usize>>,
     bytes: usize,
+    payload_target: Option<(HeapIdentity, Rc<Cell<usize>>)>,
 }
 
 impl TransientReservation {
-    fn new(
+    pub(crate) fn new(
         max_bytes: usize,
         accounted: usize,
         pending: usize,
@@ -1641,7 +1680,21 @@ impl TransientReservation {
         Some(Self {
             counter: Rc::clone(counter),
             bytes,
+            payload_target: None,
         })
+    }
+    pub(crate) fn for_payload(mut self, heap: HeapIdentity, total: Rc<Cell<usize>>) -> Self {
+        self.payload_target = Some((heap, total));
+        self
+    }
+    /// Convert admission into the allocation lifetime charge before exposing
+    /// its cloneable lease to an initializer. Escaping clones stay accounted.
+    fn bind_payload(self, lease: &PayloadLease) -> Option<()> {
+        if lease.logical_bytes() != self.bytes {
+            return None;
+        }
+        let (heap, total) = self.payload_target.as_ref()?;
+        lease.bind_to_heap(heap, total)
     }
 }
 
@@ -1649,7 +1702,12 @@ impl Drop for TransientReservation {
     fn drop(&mut self) {
         // The shared counter can outlive or move independently of the arena.
         // Rc also confines this token to its creating thread.
-        self.counter.set(self.counter.get() - self.bytes);
+        self.counter.set(
+            self.counter
+                .get()
+                .checked_sub(self.bytes)
+                .expect("reservation byte ledger balance"),
+        );
     }
 }
 
@@ -1690,28 +1748,14 @@ where
 thread_local! {
     static LENT_ARENAS: std::cell::RefCell<std::collections::HashSet<usize>> =
         std::cell::RefCell::new(std::collections::HashSet::new());
-    /// Buffers attached to a vector while its arena was already lent.
-    /// `with_arena_in` registers them after the lend ends and before deferred GC.
-    static PENDING_DATA_BUFFERS: std::cell::RefCell<Vec<PendingDataBuffer>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-struct PendingDataBuffer {
-    instance: usize,
-    node: SEXP,
-    token: CheckedNode,
-    allocation: OwnedPayload,
-    /// Owned accounting lease on the arena's pending byte counter.
-    reservation: TransientReservation,
 }
 
 struct LendLedger {
     instance: usize,
     arena: usize,
     max_bytes: usize,
-    total: Cell<usize>,
+    total: Rc<Cell<usize>>,
     transient: Rc<Cell<usize>>,
-    pending: Rc<Cell<usize>>,
     fresh: Vec<(SEXP, CheckedNode)>,
 }
 
@@ -1728,9 +1772,8 @@ fn install_lend_ledger(inst: *mut super::instance::RInstance) {
             instance: inst as usize,
             arena: std::ptr::from_ref(arena) as usize,
             max_bytes: arena.budget.max_bytes,
-            total: Cell::new(arena.total_bytes_allocated),
+            total: arena.allocated_bytes.clone(),
             transient: Rc::clone(&arena.transient_bytes),
-            pending: Rc::clone(&arena.pending_data_bytes),
             fresh: Vec::new(),
         }
     };
@@ -1788,7 +1831,7 @@ pub(crate) unsafe fn reserve_transient_in(
             TransientReservation::new(
                 ledger.max_bytes,
                 ledger.total.get(),
-                ledger.pending.get(),
+                0,
                 &ledger.transient,
                 bytes,
             )
@@ -1812,40 +1855,6 @@ fn note_lend_budget(arena: usize, max_bytes: usize) {
     });
 }
 
-/// Promise `bytes` against the active lend's budget.
-///
-/// Returns none when the promise does not fit. The caller must not publish
-/// a pointer in that case: the lend's flush would otherwise free a buffer
-/// the caller is still holding.
-fn reserve_lend_bytes(
-    inst: *mut super::instance::RInstance,
-    bytes: usize,
-) -> Option<TransientReservation> {
-    LEND_LEDGER.with(|slot| {
-        let ledger_ref = slot.borrow();
-        let ledger = ledger_ref
-            .iter()
-            .rev()
-            .find(|ledger| ledger.instance == inst.addr())?;
-        if ledger.max_bytes != 0 {
-            let total = ledger
-                .total
-                .get()
-                .checked_add(ledger.transient.get())
-                .and_then(|total| total.checked_add(ledger.pending.get()))
-                .and_then(|total| total.checked_add(bytes))?;
-            if total > ledger.max_bytes {
-                return None;
-            }
-        }
-        ledger.pending.set(ledger.pending.get().checked_add(bytes)?);
-        Some(TransientReservation {
-            counter: ledger.pending.clone(),
-            bytes,
-        })
-    })
-}
-
 struct ClearLendLedger;
 impl Drop for ClearLendLedger {
     fn drop(&mut self) {
@@ -1857,11 +1866,8 @@ impl Drop for ClearLendLedger {
 
 /// Zero-fill `bytes` and attach the pointer as `node`'s vector payload.
 ///
-/// When the arena is already lent, the pointer is queued instead of
-/// re-entering [`with_arena`]. The bytes are reserved first. If the budget
-/// cannot hold them, nothing is published and this returns null. The lend's
-/// `with_arena_in` registers a published buffer before deferred collection
-/// and does not free it.
+/// Admission and publication use the original retained canonical store, even
+/// during a lend. A rejected preparation returns null without changing the header.
 ///
 /// # Safety
 /// `node` is a live vector header owned by the active instance, with no prior
@@ -1871,8 +1877,8 @@ pub(crate) unsafe fn attach_zeroed_data_buffer(node: SEXP, bytes: usize) -> *mut
 }
 
 /// Construct and initialize a typed payload before publishing it to any
-/// header, pending queue or callback. Initialization failure drops the sole
-/// owner and restores its byte reservation, leaving the lazy node unchanged.
+/// header. Initialization failure leaves the lazy header unchanged; any
+/// escaped allocation leases continue owning and accounting for their bytes.
 ///
 /// # Safety
 /// `node` is a rooted live vector in the active owner, without an existing
@@ -1884,161 +1890,65 @@ pub(crate) unsafe fn attach_initialized_data_buffer(
     bytes: usize,
     initialize: impl FnOnce(*mut u8),
 ) -> *mut u8 {
-    unsafe {
-        let Some((node, token)) = checked_projection(node) else {
-            return ptr::null_mut();
-        };
-        if bytes == 0 || !(*node).gengc_next_node.is_null() {
-            return ptr::null_mut();
-        }
-        let kind = (*node).sxpinfo.type_of();
-        let length = (*node).vecsxp_length();
-        let Ok(layout) = vector_layout(kind, length) else {
-            return ptr::null_mut();
-        };
-        if layout.size() != bytes {
-            return ptr::null_mut();
-        }
-        let Some(inst) = super::instance::current_instance_ptr() else {
-            return ptr::null_mut();
-        };
-        // Admit the whole payload before allocation or zero-fill. The guard
-        // also restores accounting if allocation or bookkeeping fails.
-        let Some(reservation) = reserve_transient_in(inst, layout.size()) else {
-            return ptr::null_mut();
-        };
-        let lent = is_arena_lent(inst);
-        if lent && !PENDING_DATA_BUFFERS.with(|queue| queue.borrow_mut().try_reserve(1).is_ok()) {
-            return ptr::null_mut();
-        }
-        let Ok(buffer) = zeroed_vector_payload(kind, length) else {
-            return ptr::null_mut();
-        };
-        let data_ptr = buffer.as_ptr();
-        initialize(data_ptr);
-        // Transfer the reservation to the lend's pending ledger, or to the
-        // arena's registered bytes. No R reentry occurs during this transfer.
-        drop(reservation);
-        if lent {
-            let Some(reservation) = reserve_lend_bytes(inst, layout.size()) else {
-                return ptr::null_mut();
-            };
-            PENDING_DATA_BUFFERS.with(|queue| {
-                queue.borrow_mut().push(PendingDataBuffer {
-                    instance: inst.addr(),
-                    node,
-                    token,
-                    allocation: buffer,
-                    reservation,
-                });
-            });
-            (*node).gengc_next_node = data_ptr as SEXP;
-            return data_ptr;
-        }
-        let adopted = with_arena(|arena| {
-            if !arena.adopt_data_buffer(buffer) {
-                return false;
-            }
-            // Publish before any deferred callback can observe or unwind
-            // ownership transferred to the arena.
-            (*node).gengc_next_node = data_ptr as SEXP;
-            true
-        });
-        if !adopted {
-            return ptr::null_mut();
-        }
-        data_ptr
+    let Some((_, token)) = checked_projection(node) else {
+        return ptr::null_mut();
+    };
+    let heap = token.heap_identity();
+    let Some(original) = heap.node_snapshot(&token) else {
+        return ptr::null_mut();
+    };
+    let Ok(layout) = vector_layout(original.sxpinfo.type_of(), original.vecsxp_length()) else {
+        return ptr::null_mut();
+    };
+    if bytes == 0 || layout.size() != bytes {
+        return ptr::null_mut();
     }
+    attach_initialized_payload(&token, |lease| {
+        initialize(lease.native_projection());
+        Some(())
+    })
+    .map_or(ptr::null_mut(), |lease| lease.native_projection())
 }
 
-/// True when `node`'s payload was attached during a lend and not yet accepted.
-pub(crate) unsafe fn vector_payload_is_pending(node: SEXP) -> bool {
-    unsafe {
-        if node.is_null() {
-            return false;
-        }
-        let ptr = (*node).gengc_next_node as *mut u8;
-        if ptr.is_null() {
-            return false;
-        }
-        PENDING_DATA_BUFFERS.with(|queue| {
-            queue.borrow().iter().any(|item| {
-                item.node == node && item.token.is_live() && item.allocation.as_ptr() == ptr
-            })
-        })
+/// Prepare the actual typed allocation, release all store loans for the
+/// initializer, then publish only into the original unchanged vector shape.
+pub(crate) fn attach_initialized_payload(
+    node: &CheckedNode,
+    initialize: impl FnOnce(&PayloadLease) -> Option<()>,
+) -> Option<PayloadLease> {
+    let heap = node.heap_identity();
+    let original = heap.node_snapshot(node)?;
+    if !original.payload.is_empty() || !original.sxpinfo.alt() {
+        return None;
     }
+    let NodeBody::Vector(vector) = original.data else {
+        return None;
+    };
+    let layout = vector_layout(original.sxpinfo.type_of(), vector.length).ok()?;
+    // Reserve via the independent ledger even during an existing arena lend.
+    let reservation = heap.reserve_payload_bytes(node, layout.size())?;
+    let lease = PayloadLease::from_owned(
+        zeroed_vector_payload(original.sxpinfo.type_of(), vector.length).ok()?,
+    )
+    .ok()?;
+    reservation.bind_payload(&lease)?;
+    initialize(&lease)?;
+    let current = heap.node_snapshot(node)?;
+    if current.sxpinfo.type_of() != original.sxpinfo.type_of()
+        || current.data != original.data
+        || current.payload != original.payload
+        || !current.sxpinfo.alt()
+    {
+        return None;
+    }
+    heap.publish_payload(node, original.payload, &lease)?;
+    Some(lease)
 }
 
-/// True when `node`'s payload is in the arena map or waiting for the lend to end.
 pub(crate) unsafe fn vector_payload_is_tracked(node: SEXP) -> bool {
-    unsafe {
-        if node.is_null() {
-            return false;
-        }
-        let ptr = (*node).gengc_next_node as *mut u8;
-        if ptr.is_null() {
-            return false;
-        }
-        if let Some(inst) = super::instance::current_instance_ptr() {
-            let queued = PENDING_DATA_BUFFERS.with(|queue| {
-                queue.borrow().iter().any(|item| {
-                    item.instance == inst as usize
-                        && item.token.is_live()
-                        && item.allocation.as_ptr() == ptr
-                })
-            });
-            if queued {
-                return true;
-            }
-            if is_arena_lent(inst) {
-                return false;
-            }
-        }
-        with_arena(|arena| arena.tracks_data_buffer(ptr))
-    }
-}
-
-fn flush_pending_data_buffers(inst: *mut super::instance::RInstance) {
-    let key = inst as usize;
-    let mine = PENDING_DATA_BUFFERS.with(|queue| {
-        let mut queue = queue.borrow_mut();
-        let mut kept = Vec::new();
-        let mut mine = Vec::new();
-        for item in queue.drain(..) {
-            if item.instance == key {
-                mine.push(item);
-            } else {
-                kept.push(item);
-            }
-        }
-        *queue = kept;
-        mine
-    });
-    // A nested `with_arena` is rejected before its lend starts, so this flush
-    // can run while the outer lend is still active. Those buffers belong to
-    // the outer lend; committing them here would free or register them early.
-    if is_arena_lent(inst) {
-        PENDING_DATA_BUFFERS.with(|queue| {
-            queue.borrow_mut().extend(mine);
-        });
-        return;
-    }
-    unsafe {
-        for item in mine {
-            let Some((node, token)) = checked_projection(item.node) else {
-                continue;
-            };
-            if token != item.token || (*node).gengc_next_node as *mut u8 != item.allocation.as_ptr()
-            {
-                continue;
-            }
-            // Transfer the accounting lease before registering the moved
-            // typed owner. Stale/replaced headers simply drop both leases.
-            drop(item.reservation);
-            (*inst).arena.register_data_buffer(item.allocation);
-            super::altseq::commit_expanded_buffer(node);
-        }
-    }
+    checked_projection(node)
+        .and_then(|(_, token)| token.heap_identity().payload_lease(&token))
+        .is_some()
 }
 
 /// Detached state releases only after every arena lend has ended.
@@ -2102,12 +2012,6 @@ impl Drop for RArena {
     }
 }
 
-struct FlushPending(*mut super::instance::RInstance);
-impl Drop for FlushPending {
-    fn drop(&mut self) {
-        flush_pending_data_buffers(self.0);
-    }
-}
 struct ArenaLend(usize);
 impl ArenaLend {
     fn new(instance: *mut super::instance::RInstance) -> Self {
@@ -2157,7 +2061,6 @@ where
             // Drop flushes after the lend ends, including when `f` unwinds,
             // and before deferred collection below. The ledger outlives the
             // flush so reserved bytes stay in step with the arena.
-            let _flush = FlushPending(inst);
             let result = {
                 let _lend = ArenaLend::new(inst);
                 f(&mut (*inst).arena)
@@ -2192,26 +2095,206 @@ where
 
 #[cfg(test)]
 mod tests {
+    fn native_payload(pointer: super::SEXP) -> *mut u8 {
+        let (_, node) = super::checked_projection(pointer).expect("fixture allocation");
+        node.heap_identity()
+            .payload_lease(&node)
+            .expect("fixture attached payload")
+            .native_projection()
+    }
+    #[test]
+    fn dense_payload_sharing_preserves_lazy_target_bookkeeping() {
+        let session = super::super::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let source = factory
+                .allocate(|arena| Some(arena.alloc_vector(super::SEXPTYPE::INTSXP, 3)))
+                .unwrap();
+            let target = factory
+                .allocate(|arena| Some(arena.alloc_vector(super::SEXPTYPE::INTSXP, 0)))
+                .unwrap();
+            let source_node = source.allocation().unwrap();
+            let target_node = target.allocation().unwrap();
+            let heap = target_node.heap_identity();
+            let mut header = heap.node_snapshot(target_node).unwrap();
+            header.sxpinfo.set_alt(true);
+            header.sxpinfo.set_gp(19);
+            heap.replace_node(target_node, header).unwrap();
+            heap.publish_lazy_length(target_node, 3).unwrap();
+            let lease = heap.payload_lease(source_node).unwrap();
+            lease.set_integer_elt(2, 81).unwrap();
+            assert_eq!(
+                heap.node_snapshot(source_node)
+                    .unwrap()
+                    .data
+                    .vector()
+                    .truelength,
+                3
+            );
+            owner
+                .with_arena(|arena| arena.share_vector_payload(&source, &target))
+                .unwrap()
+                .unwrap();
+            let current = heap.node_snapshot(target_node).unwrap();
+            assert_eq!(current.data.vector().truelength, 0);
+            assert_eq!(current.data.vector().length, 3);
+            assert_eq!(current.sxpinfo.gp(), 19);
+            assert!(current.sxpinfo.alt());
+            assert!(
+                heap.payload_lease(target_node)
+                    .unwrap()
+                    .same_allocation(&lease)
+            );
+            assert_eq!(
+                heap.payload_lease(target_node).unwrap().integer_elt(2),
+                Some(81)
+            );
+        });
+    }
+
+    #[test]
+    fn pinned_reference_snapshot_keeps_actual_bytes_charged_until_last_drop() {
+        let mut arena = super::RArena::with_budget(super::ArenaBudget::new(
+            super::NODE_BYTES + 2 * std::mem::size_of::<super::NodeLink>(),
+            0,
+        ));
+        let heap = arena.heap_identity();
+        let pointer = arena.alloc_vector(super::SEXPTYPE::VECSXP, 2);
+        let node = arena.node_token(pointer).unwrap();
+        let allocation = heap.payload_lease(&node).unwrap();
+        let references = allocation.reference_lease().unwrap();
+        let charge = arena.allocated_bytes.clone();
+        unsafe {
+            arena.free_node(pointer);
+        }
+        assert!(heap.payload_lease(&node).is_none());
+        assert!(arena.alloc_vector(super::SEXPTYPE::INTSXP, 1).is_null());
+        drop(allocation);
+        assert_eq!(
+            charge.get(),
+            super::NODE_BYTES + 2 * std::mem::size_of::<super::NodeLink>()
+        );
+        assert_eq!(references.snapshot(2), Some(vec![super::NodeLink::NULL; 2]));
+        assert!(arena.alloc_vector(super::SEXPTYPE::INTSXP, 1).is_null());
+        drop(references);
+        assert_eq!(charge.get(), super::NODE_BYTES);
+        assert!(!arena.alloc_vector(super::SEXPTYPE::INTSXP, 1).is_null());
+    }
+
+    #[test]
+    fn checked_payload_publication_rejects_foreign_wrong_storage_and_budget_bypass() {
+        let mut arena =
+            super::RArena::with_budget(super::ArenaBudget::new(super::NODE_BYTES + 12, 0));
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
+        let node = arena.node_token(parent).unwrap();
+        let mut lazy = heap.node_snapshot(&node).unwrap();
+        lazy.sxpinfo.set_alt(true);
+        heap.replace_node(&node, lazy).unwrap();
+        heap.publish_lazy_length(&node, 3).unwrap();
+        let mut foreign = super::RArena::new();
+        let other = foreign.alloc_vector(super::SEXPTYPE::INTSXP, 3);
+        let other = foreign.node_token(other).unwrap();
+        let foreign_lease = other.heap_identity().payload_lease(&other).unwrap();
+        let before = foreign.total_bytes_allocated();
+        assert!(
+            heap.publish_payload(&node, super::PayloadLink::EMPTY, &foreign_lease)
+                .is_none()
+        );
+        assert_eq!(foreign.total_bytes_allocated(), before);
+        let wrong = super::PayloadLease::zeroed(super::SEXPTYPE::REALSXP, 3).unwrap();
+        assert!(
+            heap.publish_payload(&node, super::PayloadLink::EMPTY, &wrong)
+                .is_none()
+        );
+        let oversized = super::PayloadLease::zeroed(super::SEXPTYPE::INTSXP, 4).unwrap();
+        assert!(
+            heap.publish_payload(&node, super::PayloadLink::EMPTY, &oversized)
+                .is_none()
+        );
+        assert!(!oversized.belongs_to(&heap));
+        assert_eq!(arena.total_bytes_allocated(), super::NODE_BYTES);
+        assert!(heap.node_snapshot(&node).unwrap().payload.is_empty());
+        let valid = super::PayloadLease::zeroed(super::SEXPTYPE::INTSXP, 3).unwrap();
+        heap.publish_payload(&node, super::PayloadLink::EMPTY, &valid)
+            .unwrap();
+        assert_eq!(arena.total_bytes_allocated(), super::NODE_BYTES + 12);
+        assert!(heap.payload_lease(&node).unwrap().same_allocation(&valid));
+        let mut changed_provider = heap.node_snapshot(&node).unwrap();
+        changed_provider.sxpinfo.set_type(super::SEXPTYPE::LGLSXP);
+        assert!(heap.replace_node(&node, changed_provider).is_none());
+        assert_eq!(
+            heap.node_snapshot(&node).unwrap().sxpinfo.type_of(),
+            super::SEXPTYPE::INTSXP
+        );
+    }
+
+    #[test]
+    fn original_heap_initializer_reentry_rejects_changed_shape_and_accounts_escaped_lease() {
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let pointer = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
+        let node = arena.node_token(pointer).unwrap();
+        let root = node.root_lease().unwrap();
+        let mut header = heap.node_snapshot(&node).unwrap();
+        header.sxpinfo.set_alt(true);
+        heap.replace_node(&node, header).unwrap();
+        heap.publish_lazy_length(&node, 3).unwrap();
+        let charge = arena.allocated_bytes.clone();
+        let transient = arena.transient_bytes.clone();
+        drop(arena);
+        let mut escaped = None;
+        assert!(
+            super::attach_initialized_payload(&node, |lease| {
+                escaped = Some(lease.clone());
+                lease.set_integer_elt(0, 91)?;
+                heap.publish_lazy_length(&node, 2)?;
+                Some(())
+            })
+            .is_none()
+        );
+        assert_eq!(heap.node_snapshot(&node).unwrap().vecsxp_length(), 2);
+        assert!(heap.node_snapshot(&node).unwrap().payload.is_empty());
+        assert_eq!(transient.get(), 0);
+        assert_eq!(charge.get(), super::NODE_BYTES + 12);
+        assert_eq!(escaped.as_ref().unwrap().integer_elt(0), Some(91));
+        drop(escaped);
+        assert_eq!(charge.get(), super::NODE_BYTES);
+        let lease =
+            super::attach_initialized_payload(&node, |lease| lease.set_integer_elt(1, 74)).unwrap();
+        assert_eq!(lease.integer_elt(1), Some(74));
+        assert!(heap.payload_lease(&node).unwrap().same_allocation(&lease));
+        assert_eq!(charge.get(), super::NODE_BYTES + 8);
+        drop(root);
+        assert!(!node.is_live());
+        assert_eq!(lease.integer_elt(1), Some(74));
+        drop(lease);
+        // Both the original headers and the final pinned typed allocation
+        // have been released and credited exactly once.
+        assert_eq!(charge.get(), 0);
+    }
+
     #[test]
     fn invalid_initial_shapes_preserve_arena_budget_and_reusable_slots() {
         let mut arena = super::RArena::with_budget(super::ArenaBudget::new(0, 1));
         let mut invalid = super::SexprecCore::new(super::SEXPTYPE::LISTSXP);
         invalid.data = super::NodeBody::Other;
-        let original_bytes = arena.total_bytes_allocated;
+        let original_bytes = arena.allocated_bytes.get();
         let original_offset = arena.slab_offset;
         assert!(arena.allocate_core_in_slab(|| invalid).is_null());
         assert!(arena.alloc_node(super::SEXPTYPE::FUNSXP).is_null());
         assert_eq!(arena.node_count(), 0);
-        assert_eq!(arena.total_bytes_allocated, original_bytes);
+        assert_eq!(arena.allocated_bytes.get(), original_bytes);
         assert_eq!(arena.slab_offset, original_offset);
         assert_eq!(arena.alloc_gc_torture_ticks, 0);
 
         let first = arena.alloc_node(super::SEXPTYPE::LISTSXP);
         assert!(!first.is_null());
-        let bytes = arena.total_bytes_allocated;
+        let bytes = arena.allocated_bytes.get();
         assert!(arena.alloc_node(super::SEXPTYPE::LISTSXP).is_null());
         assert_eq!(arena.node_count(), 1);
-        assert_eq!(arena.total_bytes_allocated, bytes);
+        assert_eq!(arena.allocated_bytes.get(), bytes);
         // SAFETY: this isolated header has no graph or payload users.
         unsafe {
             arena.free_node(first);
@@ -2219,7 +2302,7 @@ mod tests {
         let free_slots = arena.free_list.clone();
         assert!(arena.allocate_core_in_slab(|| invalid).is_null());
         assert_eq!(arena.free_list, free_slots);
-        assert_eq!(arena.total_bytes_allocated, bytes);
+        assert_eq!(arena.allocated_bytes.get(), bytes);
         assert_eq!(arena.alloc_node(super::SEXPTYPE::LISTSXP), first);
     }
 
@@ -2288,27 +2371,19 @@ mod tests {
             current.sxpinfo.type_and_flags,
             original.sxpinfo.type_and_flags
         );
-        assert_eq!(current.gengc_next_node, original.gengc_next_node);
+        assert_eq!(current.payload, original.payload);
 
         heap.retype_node(&node, super::SEXPTYPE::LGLSXP).unwrap();
-        assert_eq!(
-            heap.node_snapshot(&node).unwrap().gengc_next_node,
-            original.gengc_next_node
-        );
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
         heap.retype_node(&node, super::SEXPTYPE::INTSXP).unwrap();
         assert!(heap.retype_node(&node, super::SEXPTYPE::REALSXP).is_none());
         let real = arena.alloc_vector(super::SEXPTYPE::REALSXP, 2);
         let real = arena.node_token(real).unwrap();
         let mut forged_payload = original;
-        forged_payload.gengc_next_node = heap.node_snapshot(&real).unwrap().gengc_next_node;
-        // General header replacement validates semantic body shape only;
-        // physical payload publication is the separate .34 migration.
-        heap.replace_node(&node, forged_payload).unwrap();
-        assert!(heap.retype_node(&node, super::SEXPTYPE::LGLSXP).is_none());
-        assert_eq!(
-            heap.node_snapshot(&node).unwrap().gengc_next_node,
-            forged_payload.gengc_next_node
-        );
+        forged_payload.payload = heap.node_snapshot(&real).unwrap().payload;
+        // A copied ID cannot replace the canonical slot attachment.
+        assert!(heap.replace_node(&node, forged_payload).is_none());
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
         heap.replace_node(&node, original).unwrap();
 
         let references = arena.alloc_vector(super::SEXPTYPE::VECSXP, 2);
@@ -2758,14 +2833,14 @@ mod tests {
             super::RArena::with_budget(super::ArenaBudget::new(super::NODE_BYTES + bytes, 1));
         let vector = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
         assert!(!vector.is_null());
-        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + bytes);
+        assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES + bytes);
         unsafe {
             arena.free_node(vector);
         }
-        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
+        assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES);
         let numeric = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
         assert_eq!(numeric, vector);
-        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + 12);
+        assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES + 12);
     }
 
     #[test]
@@ -2841,7 +2916,14 @@ mod tests {
             Some(vec![std::ptr::null_mut(); 3])
         );
         assert!(arena.backing.node_pages.try_borrow_mut().is_ok());
-        assert!(arena.backing.data_bufs.try_borrow_mut().is_ok());
+        assert!(
+            arena
+                .backing
+                .node_pages
+                .borrow()
+                .iter()
+                .all(|page| page.payloads.try_borrow_mut().is_ok())
+        );
     }
 
     #[test]
@@ -2879,7 +2961,7 @@ mod tests {
             heap.set_reference_elt(&token, 0, super::super::heap::ReferenceChild::Null),
             Some(())
         );
-        header.gengc_next_node = std::ptr::null_mut();
+        header.payload = super::PayloadLink::EMPTY;
         replace(header);
         assert!(heap.reference_elements(&token).is_none());
         assert!(
@@ -2888,20 +2970,17 @@ mod tests {
         );
         header.data.vector_mut().length = 0;
         replace(header);
-        assert!(heap.reference_elements(&token).is_none());
+        assert_eq!(heap.reference_elements(&token), Some(Vec::new()));
         header.data.vector_mut().length = 3;
-        header.gengc_next_node = std::ptr::dangling_mut::<super::SexprecCore>();
-        replace(header);
-        assert!(heap.reference_elements(&token).is_none());
         replace(original);
         let numbers = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
         let numbers_token = arena.node_token(numbers).unwrap();
         let mut header = original;
-        header.gengc_next_node = arena
+        header.payload = arena
             .backing
             .node_snapshot(numbers_token.id())
             .unwrap()
-            .gengc_next_node;
+            .payload;
         arena.backing.node_pages.borrow()[token.id().page()]
             .storage
             .replace_live(token.id(), header)
@@ -3002,57 +3081,54 @@ mod tests {
         let vector = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
         let vector_token = arena.node_token(vector).unwrap();
         let value = vector_token.root_lease().unwrap();
-        let vector_data = super::checked_snapshot(vector, &vector_token)
-            .unwrap()
-            .gengc_next_node
-            .cast::<u8>();
         assert_eq!(
-            identity.copy_reference_payload(vector_data, 3),
+            identity.reference_elements(&vector_token),
             Some(vec![std::ptr::null_mut(); 3])
         );
-        assert!(identity.copy_reference_payload(vector_data, 4).is_none());
-        assert!(arena.backing.data_bufs.try_borrow_mut().is_ok());
+        let snapshot = identity.payload_lease(&vector_token).unwrap();
+        assert!(snapshot.copy_references(4).is_none());
+        assert!(
+            arena
+                .backing
+                .node_pages
+                .borrow()
+                .iter()
+                .all(|page| page.payloads.try_borrow_mut().is_ok())
+        );
         let integers = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
         let integer_token = arena.node_token(integers).unwrap();
-        let integer_data = super::checked_snapshot(integers, &integer_token)
-            .unwrap()
-            .gengc_next_node
-            .cast::<u8>();
-        assert!(identity.copy_reference_payload(integer_data, 3).is_none());
+        assert!(identity.reference_elements(&integer_token).is_none());
         let mut foreign = super::RArena::new();
         let foreign_vector = foreign.alloc_vector(super::SEXPTYPE::VECSXP, 3);
         let foreign_token = foreign.node_token(foreign_vector).unwrap();
-        let foreign_data = super::checked_snapshot(foreign_vector, &foreign_token)
-            .unwrap()
-            .gengc_next_node
-            .cast::<u8>();
-        assert!(identity.copy_reference_payload(foreign_data, 3).is_none());
+        assert!(identity.reference_elements(&foreign_token).is_none());
         let mut permanent =
             super::super::instance::persistent::PersistentHeap::new(identity.clone());
         let string = permanent.allocate_string(vector).unwrap();
         let string_token = permanent.token(string).unwrap();
-        let string_data = super::checked_snapshot(string, &string_token)
-            .unwrap()
-            .gengc_next_node
-            .cast::<u8>();
         assert_eq!(
-            identity.copy_reference_payload(string_data, 1),
+            identity.reference_elements(&string_token),
             Some(vec![vector])
         );
-        assert!(identity.copy_reference_payload(string_data, 2).is_none());
         drop(arena);
         drop(permanent);
         assert_eq!(
-            identity.copy_reference_payload(vector_data, 3),
+            identity.reference_elements(&vector_token),
             Some(vec![std::ptr::null_mut(); 3])
         );
         assert_eq!(
-            identity.copy_reference_payload(string_data, 1),
+            identity.reference_elements(&string_token),
             Some(vec![vector])
         );
         drop(value);
-        assert!(identity.copy_reference_payload(vector_data, 3).is_none());
-        assert!(identity.copy_reference_payload(string_data, 1).is_none());
+        assert!(identity.reference_elements(&vector_token).is_none());
+        assert!(identity.reference_elements(&string_token).is_none());
+        // A detached payload snapshot pins the original actual cells alone,
+        // without reviving a dead parent or manufacturing graph authority.
+        assert_eq!(
+            snapshot.copy_references(3),
+            Some(vec![super::NodeLink::NULL; 3])
+        );
     }
 
     #[test]
@@ -3112,7 +3188,7 @@ mod tests {
         // SAFETY: this fixture owns the live initialized real payload and no
         // payload reference or callback overlaps either raw write.
         unsafe {
-            let elements = (*vector).gengc_next_node.cast::<f64>();
+            let elements = native_payload(vector).cast::<f64>();
             elements.write(12.5);
             elements.add(1).write(-7.0);
         }
@@ -3128,11 +3204,24 @@ mod tests {
         // SAFETY: the automatic value retains the original canonical backing
         // and both typed payloads; reads copy values without returning loans.
         unsafe {
-            let elements = vector_header.gengc_next_node.cast::<f64>();
+            let vector_lease = vector_token
+                .heap_identity()
+                .payload_lease(&vector_token)
+                .unwrap();
+            assert_eq!(vector_header.payload, vector_lease.link());
+            let elements = vector_lease.native_projection().cast::<f64>();
             assert_eq!(elements.read(), 12.5);
             assert_eq!(elements.add(1).read(), -7.0);
             assert_eq!(
-                std::slice::from_raw_parts(chars_header.gengc_next_node.cast::<u8>(), 25),
+                std::slice::from_raw_parts(
+                    chars_token
+                        .heap_identity()
+                        .payload_lease(&chars_token)
+                        .unwrap()
+                        .native_projection()
+                        .cast::<u8>(),
+                    25
+                ),
                 b"allocated after the value"
             );
         }
@@ -3493,6 +3582,7 @@ mod tests {
         session.with_active(|| unsafe {
             let node = super::with_arena(|arena| arena.alloc_vector(super::SEXPTYPE::INTSXP, 0));
             let _root = super::super::protect::protect(node);
+            (*node).sxpinfo.set_alt(true);
             (*node).data = super::NodeBody::Vector(super::super::ffi::Vecsxp {
                 length: 3,
                 truelength: 3,
@@ -3505,21 +3595,26 @@ mod tests {
                         });
                     }));
                     assert!(result.is_err());
-                    assert!((*node).gengc_next_node.is_null());
+                    assert!((*node).payload.is_empty());
                 };
                 if lent {
                     super::with_arena(|arena| {
-                        let before = arena.total_bytes_allocated;
+                        let before = arena.allocated_bytes.get();
                         initialize();
-                        assert_eq!(arena.total_bytes_allocated, before);
+                        assert_eq!(arena.allocated_bytes.get(), before);
                         assert_eq!(arena.transient_bytes.get(), 0);
-                        assert_eq!(arena.pending_data_bytes.get(), 0);
-                        assert!(arena.backing.data_bufs.borrow().is_empty());
+                        assert!(
+                            arena
+                                .backing
+                                .node_pages
+                                .borrow()
+                                .iter()
+                                .all(|page| page.payloads.borrow().is_empty())
+                        );
                     });
                 } else {
                     initialize();
                 }
-                assert!(super::PENDING_DATA_BUFFERS.with(|queue| queue.borrow().is_empty()));
             }
             let data = super::attach_initialized_data_buffer(node, 12, |data| {
                 let values = std::slice::from_raw_parts_mut(data.cast::<i32>(), 3);
@@ -3534,33 +3629,37 @@ mod tests {
     }
 
     #[test]
-    fn queued_payload_cannot_attach_to_a_reused_header_generation() {
+    fn initialized_payload_cannot_attach_to_a_reused_header_generation() {
         let session = super::super::session::RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
-            let replacement = super::with_arena(|arena| {
+            super::with_arena(|arena| {
                 let node = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
-                (*node).data = super::NodeBody::Vector(super::super::ffi::Vecsxp {
-                    length: 3,
-                    truelength: 3,
-                });
                 let old = arena.node_token(node).unwrap();
-                assert!(!super::attach_zeroed_data_buffer(node, 12).is_null());
-                assert_eq!(arena.pending_data_bytes.get(), 12);
-                // The fixture has no root/graph edge or payload reference;
-                // the queue retains metadata and payload ownership, not a
-                // live header borrow. Explicit reclamation expires its ID.
-                arena.free_node(node);
-                let replacement = arena.alloc_vector(super::SEXPTYPE::REALSXP, 0);
+                let heap = old.heap_identity();
+                let mut header = heap.node_snapshot(&old).unwrap();
+                header.sxpinfo.set_alt(true);
+                heap.replace_node(&old, header).unwrap();
+                heap.publish_lazy_length(&old, 3).unwrap();
+                let mut replacement = std::ptr::null_mut();
+                let result = super::attach_initialized_payload(&old, |lease| {
+                    lease.set_integer_elt(0, 71)?;
+                    arena.free_node(node);
+                    replacement = arena.alloc_vector(super::SEXPTYPE::REALSXP, 0);
+                    Some(())
+                });
+                assert!(result.is_none());
                 assert_eq!(replacement, node);
                 assert!(!old.is_live());
-                replacement
-            });
-            assert!((*replacement).gengc_next_node.is_null());
-            assert_eq!((*replacement).sxpinfo.type_of(), super::SEXPTYPE::REALSXP);
-            super::with_arena(|arena| {
-                assert_eq!(arena.pending_data_bytes.get(), 0);
-                assert!(arena.backing.data_bufs.borrow().is_empty());
-                assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
+                let replacement_node = arena.node_token(replacement).unwrap();
+                assert!(
+                    heap.node_snapshot(&replacement_node)
+                        .unwrap()
+                        .payload
+                        .is_empty()
+                );
+                assert!(heap.payload_lease(&replacement_node).is_none());
+                assert_eq!(arena.transient_bytes.get(), 0);
+                assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES);
             });
         });
     }
@@ -3576,7 +3675,7 @@ mod tests {
         ] {
             let mut arena = super::RArena::new();
             let node = arena.alloc_vector(kind, 17);
-            let data = unsafe { (*node).gengc_next_node as *mut u8 };
+            let data = unsafe { native_payload(node) as *mut u8 };
             assert_eq!(data as usize % 8, 0);
             let mut owners = vec![arena];
             owners.reserve(64);
@@ -3636,7 +3735,7 @@ mod tests {
                     _ => unreachable!(),
                 }
             }
-            assert!(owners[0].tracks_data_buffer(data));
+            assert!(owners[0].tracks_altrep_test_buffer(data));
         }
     }
 
@@ -3660,22 +3759,22 @@ mod tests {
                 arena.alloc_vector(super::SEXPTYPE::INTSXP, 3)
             };
             assert_eq!(vector, first);
-            assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + 12);
+            assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES + 12);
             assert!(!old.is_live());
             unsafe {
                 arena.free_node(vector);
             }
-            assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
+            assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES);
         }
         let chars = arena.alloc_charsxp(b"abcdefghijklmno");
         assert_eq!(chars, first);
-        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + 16);
+        assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES + 16);
         unsafe {
             arena.free_node(chars);
         }
         let zero = arena.alloc_vector(super::SEXPTYPE::REALSXP, 0);
         assert_eq!(zero, first);
-        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
+        assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES);
         unsafe {
             arena.free_node(zero);
         }
@@ -3803,7 +3902,7 @@ mod tests {
     #[test]
     fn vector_allocation_validates_platform_length_and_layout_without_consuming_budget() {
         let mut arena = super::RArena::new();
-        let before = (arena.node_count(), arena.total_bytes_allocated);
+        let before = (arena.node_count(), arena.allocated_bytes.get());
         for kind in [super::SEXPTYPE::RAWSXP, super::SEXPTYPE::REALSXP] {
             for length in [-1, i64::MAX] {
                 assert!(arena.alloc_vector_sexp(kind, length).is_none());
@@ -3811,7 +3910,7 @@ mod tests {
                     arena.alloc_vector_checked_sexp(kind, length),
                     Err(super::ArenaError::InvalidLength)
                 ));
-                assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+                assert_eq!((arena.node_count(), arena.allocated_bytes.get()), before);
             }
         }
         #[cfg(target_pointer_width = "32")]
@@ -3825,7 +3924,7 @@ mod tests {
                 arena.alloc_vector_checked_sexp(super::SEXPTYPE::RAWSXP, length),
                 Err(super::ArenaError::InvalidLength)
             ));
-            assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+            assert_eq!((arena.node_count(), arena.allocated_bytes.get()), before);
         }
     }
 
@@ -3854,7 +3953,7 @@ mod tests {
     #[test]
     fn vector_allocation_rejects_incompatible_headers_without_consuming_budget() {
         let mut arena = super::RArena::new();
-        let before = (arena.node_count(), arena.total_bytes_allocated);
+        let before = (arena.node_count(), arena.allocated_bytes.get());
         for tag in -1..=100 {
             let kind = super::SEXPTYPE::from(tag);
             if super::sexp_elem_size(kind) != 0 {
@@ -3866,7 +3965,7 @@ mod tests {
                     arena.alloc_vector_checked_sexp(kind, length).is_err(),
                     "tag {tag}"
                 );
-                assert_eq!((arena.node_count(), arena.total_bytes_allocated), before);
+                assert_eq!((arena.node_count(), arena.allocated_bytes.get()), before);
             }
         }
     }
@@ -3975,7 +4074,7 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             assert_eq!((*ptr).vecsxp_length(), 3);
-            let data = (*ptr).gengc_next_node as *mut i32;
+            let data = native_payload(ptr) as *mut i32;
             assert_eq!(*data.add(0), 0);
             assert_eq!(*data.add(1), 0);
             assert_eq!(*data.add(2), 0);
@@ -4029,7 +4128,7 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             assert_eq!((*ptr).sxpinfo.type_of(), SEXPTYPE::CHARSXP);
-            let data = (*ptr).gengc_next_node as *const u8;
+            let data = native_payload(ptr) as *const u8;
             let s = std::ffi::CStr::from_ptr(data as *const core::ffi::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "hello");
         }
@@ -4041,7 +4140,7 @@ mod tests {
         let ptr = arena.alloc_charsxp(b"");
         assert!(!ptr.is_null());
         unsafe {
-            let data = (*ptr).gengc_next_node as *const u8;
+            let data = native_payload(ptr) as *const u8;
             let s = std::ffi::CStr::from_ptr(data as *const core::ffi::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "");
         }
@@ -4150,7 +4249,7 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         unsafe {
-            let data = (*ptr).gengc_next_node as *mut f64;
+            let data = native_payload(ptr) as *mut f64;
             *data.add(0) = 1.5;
             *data.add(1) = 2.5;
             *data.add(2) = 3.5;
@@ -4165,7 +4264,7 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         unsafe {
-            let data = (*ptr).gengc_next_node as *mut i32;
+            let data = native_payload(ptr) as *mut i32;
             *data.add(0) = 42;
             *data.add(1) = -1;
             *data.add(2) = NA_INTEGER;
@@ -4433,14 +4532,14 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
         assert!(!ptr.is_null());
         unsafe {
-            assert!(!(*ptr).gengc_next_node.is_null());
+            assert!(!(*ptr).payload.is_empty());
         }
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             arena.free_node(ptr)
         });
         unsafe {
-            assert!((*ptr).gengc_next_node.is_null());
+            assert!((*ptr).payload.is_empty());
         }
     }
 
@@ -4450,7 +4549,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::EXPRSXP, 2);
         assert!(!ptr.is_null());
         unsafe {
-            assert!(!(*ptr).gengc_next_node.is_null());
+            assert!(!(*ptr).payload.is_empty());
         }
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -4458,7 +4557,7 @@ mod tests {
         });
         assert_eq!(arena.free_count(), 1);
         unsafe {
-            assert!((*ptr).gengc_next_node.is_null());
+            assert!((*ptr).payload.is_empty());
         }
     }
 

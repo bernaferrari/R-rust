@@ -109,15 +109,13 @@ impl<'a> SexpMut<'a> {
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     #[inline]
     pub fn set_logical_elt(&mut self, i: R_xlen_t, v: c_int) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_logical_elt(i, v) }
+        self.inner.clone().set_logical_elt(i, v)
     }
 
     /// Set the i-th logical value with typed error reporting.
     #[inline]
     pub fn try_set_logical_elt(&mut self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_logical_elt(i, v) }
+        self.inner.clone().try_set_logical_elt(i, v)
     }
 
     /// Set the i-th integer value.
@@ -125,15 +123,13 @@ impl<'a> SexpMut<'a> {
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     #[inline]
     pub fn set_integer_elt(&mut self, i: R_xlen_t, v: c_int) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_integer_elt(i, v) }
+        self.inner.clone().set_integer_elt(i, v)
     }
 
     /// Set the i-th integer value with typed error reporting.
     #[inline]
     pub fn try_set_integer_elt(&mut self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_integer_elt(i, v) }
+        self.inner.clone().try_set_integer_elt(i, v)
     }
 
     /// Set the i-th real (double) value.
@@ -141,15 +137,13 @@ impl<'a> SexpMut<'a> {
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     #[inline]
     pub fn set_real_elt(&mut self, i: R_xlen_t, v: c_double) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_real_elt(i, v) }
+        self.inner.clone().set_real_elt(i, v)
     }
 
     /// Set the i-th real value with typed error reporting.
     #[inline]
     pub fn try_set_real_elt(&mut self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_real_elt(i, v) }
+        self.inner.clone().try_set_real_elt(i, v)
     }
 
     /// Set the i-th raw byte.
@@ -157,15 +151,13 @@ impl<'a> SexpMut<'a> {
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     #[inline]
     pub fn set_raw_elt(&mut self, i: R_xlen_t, v: Rbyte) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_raw_elt(i, v) }
+        self.inner.clone().set_raw_elt(i, v)
     }
 
     /// Set the i-th raw byte with typed error reporting.
     #[inline]
     pub fn try_set_raw_elt(&mut self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_raw_elt(i, v) }
+        self.inner.clone().try_set_raw_elt(i, v)
     }
 
     /// Set the i-th complex value.
@@ -173,15 +165,13 @@ impl<'a> SexpMut<'a> {
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     #[inline]
     pub fn set_complex_elt(&mut self, i: R_xlen_t, v: Rcomplex) -> bool {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().set_complex_elt(i, v) }
+        self.inner.clone().set_complex_elt(i, v)
     }
 
     /// Set the i-th complex value with typed error reporting.
     #[inline]
     pub fn try_set_complex_elt(&mut self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
-        // SAFETY: the acquisition contract excludes payload borrows.
-        unsafe { self.inner.clone().try_set_complex_elt(i, v) }
+        self.inner.clone().try_set_complex_elt(i, v)
     }
 
     /// Set the i-th string element.

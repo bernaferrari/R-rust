@@ -2,7 +2,7 @@ use std::os::raw::c_void;
 
 use super::header::NodeBody;
 use super::{Sexp, SexpError, SexpResult};
-use crate::sexp::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, Rcomplex, SEXPTYPE};
 
 #[allow(deprecated)] // deprecated Sexp set_* shims delegate to try_set_* shims
 impl<'a> Sexp<'a> {
@@ -330,7 +330,7 @@ impl<'a> Sexp<'a> {
         if vec.length == 0 {
             return Ok(expected.is_empty());
         }
-        if vec.length < 0 || header.payload.is_null() {
+        if vec.length < 0 || header.payload.is_empty() {
             return Err(SexpError::MissingData {
                 sexptype: SEXPTYPE::CHARSXP,
             });
@@ -376,7 +376,10 @@ impl<'a> Sexp<'a> {
                 sexptype: SEXPTYPE::CHARSXP,
             });
         };
-        let data = header.payload as *const u8;
+        let data = header
+            .payload_lease()
+            .map(|lease| lease.native_projection() as *const u8)
+            .unwrap_or(std::ptr::null());
         if data.is_null() {
             return Err(SexpError::MissingData {
                 sexptype: SEXPTYPE::CHARSXP,
@@ -413,8 +416,11 @@ impl<'a> Sexp<'a> {
 
     /// Copy a character scalar into owned UTF-8 text.
     pub fn try_as_string(&self) -> SexpResult<String> {
-        // SAFETY: copying invokes no R code, and self retains its allocation.
-        unsafe { self.try_as_str() }.map(str::to_owned)
+        self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
+        let bytes = self.header().char_bytes().ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::CHARSXP,
+        })?;
+        String::from_utf8(bytes).map_err(|_| SexpError::InvalidUtf8)
     }
 
     pub fn as_string(&self) -> Option<String> {
@@ -423,37 +429,31 @@ impl<'a> Sexp<'a> {
 
     // --- Complex vector accessors ---
 
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_complex_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
+        self.try_set_complex_elt(i, v).is_ok()
     }
 
     /// Set the i-th complex value with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
-        let data = self
-            .clone()
-            .try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
-            .clone()?;
-        let i = self.try_index(i)?;
-        unsafe { *data.add(i) = v };
-        Ok(())
+    pub(crate) fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::CPLXSXP, "complex vector")?;
+        self.try_index(i)?;
+        let lease = self.try_payload_lease(SEXPTYPE::CPLXSXP, "complex vector")?;
+        let index = self.try_index(i)?;
+        lease
+            .set_complex_elt(index, v)
+            .ok_or(SexpError::MissingData {
+                sexptype: SEXPTYPE::CPLXSXP,
+            })
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -608,7 +608,11 @@ impl<'a> Sexp<'a> {
     pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
             self.materialize_compact_payload()?;
-            let ptr = self.header().payload as *mut c_void;
+            let ptr = self
+                .header()
+                .payload_lease()
+                .map(|lease| lease.native_projection().cast::<c_void>())
+                .unwrap_or(std::ptr::null_mut());
             if ptr.is_null() {
                 Err(SexpError::MissingData {
                     sexptype: self.typeof_(),

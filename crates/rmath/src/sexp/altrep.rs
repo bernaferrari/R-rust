@@ -209,7 +209,7 @@ pub fn is_altrep(object: &Sexp<'_>) -> bool {
     object.header().sxpinfo.alt()
 }
 pub fn is_materialized(object: &Sexp<'_>) -> bool {
-    !object.header().payload.is_null() || object.is_empty()
+    !object.header().payload.is_empty() || object.is_empty()
 }
 pub fn altrep_class<'s>(object: &Sexp<'s>) -> Option<Sexp<'s>> {
     Metadata::load(object)?.descriptor().ok()
@@ -229,7 +229,9 @@ pub fn altrep_elt<'s>(object: &Sexp<'s>, index: R_xlen_t) -> SexpResult<AltrepEl
         return dense_element(object, index);
     }
     let (context, class) = context(object)?;
+    let storage = InstanceStorage::load(object)?;
     let value = invoke_element(&context, &*class, index)?;
+    storage.validate()?;
     validate_element(&context, value)
 }
 fn validate_element<'s>(
@@ -291,7 +293,7 @@ pub(crate) fn lazy_element<'s>(
     object: &Sexp<'s>,
     index: R_xlen_t,
 ) -> Option<SexpResult<AltrepElement<'s>>> {
-    if !object.header().payload.is_null() || Metadata::load(object).is_none() {
+    if !object.header().payload.is_empty() || Metadata::load(object).is_none() {
         return None;
     }
     Some(altrep_elt(object, index))
@@ -346,6 +348,7 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
         return Ok(());
     }
     let (context, class) = context(object)?;
+    let storage = InstanceStorage::load(object)?;
     let _operation = enter_operation(
         context.owner,
         Operation::Expand(object.clone().as_raw() as usize),
@@ -355,16 +358,15 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
     }
     let output = allocate(context.owner, object.typeof_(), object.len())?;
     let mut output = SexpMut::try_from_checked(output)?;
+    storage.validate()?;
     for i in 0..object.len() {
-        write_element(
-            &mut output,
-            i,
-            validate_element(&context, invoke_element(&context, &*class, i)?)?,
-        )?;
+        let value = invoke_element(&context, &*class, i)?;
+        storage.validate()?;
+        write_element(&mut output, i, validate_element(&context, value)?)?;
     }
     let output = output.freeze();
     // Storage installs traced cache roots and a checked buffer lease together.
-    InstanceStorage::load(object)?.publish_dense(output, class.cache)?;
+    storage.publish_dense(output, class.cache)?;
     Ok(())
 }
 

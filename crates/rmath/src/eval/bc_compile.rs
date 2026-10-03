@@ -605,14 +605,14 @@ impl BytecodeCompiler {
                     }
                     let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
                     let _code_guard = crate::sexp::protect::protect(code);
-                    let code_data = (*code).gengc_next_node as *mut c_int;
+                    let code_data = crate::sexp::accessors::DATAPTR(code) as *mut c_int;
                     for (index, instruction) in self.code.iter().enumerate() {
                         *code_data.add(index) = *instruction;
                     }
 
                     let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
                     let _hint_guard = crate::sexp::protect::protect(stack_hint);
-                    let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
+                    let stack_data = crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int;
                     *stack_data = self.stack_hint.max(4);
 
                     let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
@@ -633,12 +633,12 @@ fn symbol_getvar_bcode(sym: SEXP) -> SEXP {
                 arena.set_reference_element(consts, 0, sym).expect("fresh constant pool slot");
                 arena.set_reference_element(consts, 1, sym).expect("fresh constant pool slot");
                 let code = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-                let code_data = (*code).gengc_next_node as *mut c_int;
+                let code_data = crate::sexp::accessors::DATAPTR(code) as *mut c_int;
                 *code_data = opcodes::OP_GETVAR;
                 *code_data.add(1) = 1;
                 *code_data.add(2) = opcodes::OP_RETURN;
                 let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
+                let stack_data = crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int;
                 *stack_data = 4;
                 let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
                 arena.set_reference_element(bcode, 0, code).expect("fresh bytecode slot");

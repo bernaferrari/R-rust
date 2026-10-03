@@ -62,7 +62,7 @@ pub(super) fn snapshot_children(
         _ => {}
     }
     let vector = if super::vector_payload_has_sexp_refs(header.sxpinfo.type_of())
-        && !header.gengc_next_node.is_null()
+        && !header.payload.is_empty()
     {
         context
             .reference_links(node)
@@ -85,7 +85,7 @@ pub(super) fn rewrite_children(
     let mask = child_mask(header.sxpinfo.type_of().0, follow_weak_key);
     // Snapshot before callbacks. Neither the header Cell nor reference cells
     // remain borrowed while the visitor runs, including materialized ALTREP.
-    let vector_payload = if mask & EDGE_VECTOR != 0 && !header.gengc_next_node.is_null() {
+    let vector_payload = if mask & EDGE_VECTOR != 0 && !header.payload.is_empty() {
         Some(
             heap.reference_payload_lease(parent)
                 .expect("GC vector has an owned reference payload"),
@@ -163,7 +163,7 @@ pub(super) fn rewrite_children(
             header.vecsxp_length(),
             "GC vector length changed during visitation"
         );
-        let current_payload = if !current.gengc_next_node.is_null() {
+        let current_payload = if !current.payload.is_empty() {
             Some(
                 heap.reference_payload_lease(parent)
                     .expect("rewritten GC vector has an owned reference payload"),
@@ -236,32 +236,33 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
-    fn vector_tracing_rejects_unowned_payload_addresses_without_reading_them() {
+    fn vector_tracing_rejects_incompatible_payload_publication() {
         let mut arena = RArena::new();
         let heap = arena.heap_identity();
         let numeric = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
         let numeric_token = checked_projection(numeric).unwrap().1;
-        let numeric_payload = checked_snapshot(numeric, &numeric_token)
-            .unwrap()
-            .gengc_next_node;
+        let numeric_payload = heap.payload_lease(&numeric_token).unwrap();
         let short = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
         let short_token = checked_projection(short).unwrap().1;
-        let short_payload = checked_snapshot(short, &short_token)
-            .unwrap()
-            .gengc_next_node;
-        for payload in [std::ptr::dangling_mut(), numeric_payload, short_payload] {
-            let pointer = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-            let token = checked_projection(pointer).unwrap().1;
-            let mut header = checked_snapshot(pointer, &token).unwrap();
-            header.gengc_next_node = payload;
-            heap.replace_node(&token, header).unwrap();
+        let short_payload = heap.payload_lease(&short_token).unwrap();
+        let pointer = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+        let token = checked_projection(pointer).unwrap().1;
+        let original = heap.node_snapshot(&token).unwrap();
+        for payload in [&numeric_payload, &short_payload] {
+            assert!(
+                heap.publish_payload(&token, original.payload, payload)
+                    .is_none()
+            );
+            let unchanged = heap.node_snapshot(&token).unwrap();
+            assert_eq!(unchanged.payload, original.payload);
+            assert_eq!(unchanged.data, original.data);
             let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(heap.clone(), 41)));
             worklist.enqueue(pointer).unwrap();
             let node = worklist.next_marked().unwrap().unwrap();
-            assert!(matches!(
-                snapshot_children(&node, worklist.context()),
-                Err(TraceError::InvalidPayload(_))
-            ));
+            assert_eq!(
+                snapshot_children(&node, worklist.context()).unwrap().vector,
+                vec![NodeLink::NULL; 2]
+            );
         }
     }
 
@@ -375,7 +376,7 @@ mod tests {
             let original_payload = heap.reference_payload_lease(&token).unwrap();
             let different_payload = heap.reference_payload_lease(&other).unwrap();
             assert!(!original_payload.same_allocation(&different_payload));
-            let other_payload = heap.node_snapshot(&other).unwrap().gengc_next_node;
+            let other_payload = heap.payload_lease(&other).unwrap();
             let mut changed = false;
             let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 rewrite_children(&token, true, |link| {
@@ -389,7 +390,12 @@ mod tests {
                         header.sxpinfo.set_named(2);
                         match change {
                             Change::Shorter => header.set_vecsxp_length(1),
-                            Change::DifferentPayload => header.gengc_next_node = other_payload,
+                            Change::DifferentPayload => {
+                                heap.publish_payload(&token, header.payload, &other_payload)
+                                    .unwrap();
+                                header = heap.node_snapshot(&token).unwrap();
+                                header.sxpinfo.set_named(2);
+                            }
                             Change::DifferentBody => {
                                 let original_header = heap.node_snapshot(&token).unwrap();
                                 let mut incompatible = header;
@@ -397,14 +403,21 @@ mod tests {
                                 assert!(heap.replace_node(&token, incompatible).is_none());
                                 let unchanged = heap.node_snapshot(&token).unwrap();
                                 assert_eq!(unchanged.data, original_header.data);
-                                assert_eq!(unchanged.sxpinfo.type_and_flags, original_header.sxpinfo.type_and_flags);
+                                assert_eq!(
+                                    unchanged.sxpinfo.type_and_flags,
+                                    original_header.sxpinfo.type_and_flags
+                                );
                                 assert_eq!(unchanged.attrib, original_header.attrib);
-                                assert_eq!(unchanged.gengc_next_node, original_header.gengc_next_node);
-                                assert_eq!(heap.reference_links(&token), Some(vec![original, original]));
+                                assert_eq!(unchanged.payload, original_header.payload);
+                                assert_eq!(
+                                    heap.reference_links(&token),
+                                    Some(vec![original, original])
+                                );
                                 // A callback can publish a complete valid transition;
                                 // the pending GC transaction must still reject it.
                                 header.sxpinfo.set_type(SEXPTYPE::S4SXP);
                                 header.data = crate::sexp::ffi::NodeBody::Other;
+                                header.payload = crate::sexp::payload::PayloadLink::EMPTY;
                             }
                         }
                         heap.replace_node(&token, header).unwrap();
@@ -425,7 +438,7 @@ mod tests {
             assert_eq!(different_payload.snapshot(2), Some(vec![NodeLink::NULL; 2]));
             match change {
                 Change::Shorter => assert_eq!(current.vecsxp_length(), 1),
-                Change::DifferentPayload => assert_eq!(current.gengc_next_node, other_payload),
+                Change::DifferentPayload => assert_eq!(current.payload, other_payload.link()),
                 Change::DifferentBody => {
                     assert_eq!(current.sxpinfo.type_of(), SEXPTYPE::S4SXP);
                     assert!(matches!(current.data, crate::sexp::ffi::NodeBody::Other));

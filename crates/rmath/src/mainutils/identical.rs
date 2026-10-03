@@ -975,87 +975,32 @@ mod tests {
 
     #[test]
     fn test_compute_identical_integer_arrays() {
-        use crate::sexp::ffi::NodeBody;
-        unsafe {
-            // Create two INTSXP vectors with same data
-            let data1 = Box::new([42i32, 99i32]);
-            let data2 = Box::new([42i32, 99i32]);
-
-            let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
-            node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 2,
-                truelength: 2,
-            });
-
-            let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
-            node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 2,
-                truelength: 2,
-            });
-
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-
-            assert_eq!(R_compute_identical(x, y, 0), 1);
-        }
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut first).unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut second).unwrap();
+        // Each owning value retains the actual initialized allocation.
+        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
     }
 
     #[test]
     fn test_compute_identical_integer_arrays_differ() {
-        use crate::sexp::ffi::NodeBody;
-        unsafe {
-            let data1 = Box::new([42i32, 99i32]);
-            let data2 = Box::new([42i32, 100i32]);
-
-            let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
-            node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 2,
-                truelength: 2,
-            });
-
-            let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
-            node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 2,
-                truelength: 2,
-            });
-
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-
-            assert_eq!(R_compute_identical(x, y, 0), 0);
-        }
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut first).unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::IntVector::new(&[42, 100]).build_in(&mut second).unwrap();
+        // Each owning value retains the actual initialized allocation.
+        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
     }
 
     #[test]
     fn test_compute_identical_raw_arrays() {
-        use crate::sexp::ffi::NodeBody;
-        unsafe {
-            let data1 = Box::new([1u8, 2, 3]);
-            let data2 = Box::new([1u8, 2, 3]);
-
-            let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::RAWSXP, 3));
-            node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 3,
-                truelength: 3,
-            });
-
-            let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::RAWSXP, 3));
-            node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
-                length: 3,
-                truelength: 3,
-            });
-
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-
-            assert_eq!(R_compute_identical(x, y, 0), 1);
-        }
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::RawVector::new(&[1, 2, 3]).build_in(&mut first).unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::RawVector::new(&[1, 2, 3]).build_in(&mut second).unwrap();
+        // Each owning value retains the actual initialized allocation.
+        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
     }
 
     #[test]

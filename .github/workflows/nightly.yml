@@ -191,6 +191,22 @@ jobs:
               canonical_singleton_links_keep_two_original_banks_distinct_after_tls_close
               nonowning_cyclic_links_release_physical_storage_with_the_last_root
               reference_vector_budget_charges_actual_link_cells_and_releases_them
+          - subject: typed payload lifetimes
+            filters: >-
+              owned_payload_snapshot_survives_parent_retirement_and_slot_reuse
+              pinned_reference_snapshot_keeps_actual_bytes_charged_until_last_drop
+              checked_payload_publication_rejects_foreign_wrong_storage_and_budget_bypass
+              original_heap_initializer_reentry_rejects_changed_shape_and_accounts_escaped_lease
+              initialized_payload_cannot_attach_to_a_reused_header_generation
+              detached_permanent_payload_snapshot_pins_the_actual_cells_and_charge
+              cell_wrappers_keep_original_storage_and_immutable_leases_reject_writes
+              allocation_binding_is_unique_and_reference_lease_pins_its_charge
+              dense_payload_sharing_preserves_lazy_target_bookkeeping
+              raw_factory_rejects_unowned_headers_before_any_safe_reader
+          - subject: provider declaration publication
+            filters: >-
+              provider_declaration_replacement_rejects_length_and_element_publication
+              rejected_dense_payload_publication_keeps_provider_cache_cells_unchanged
           - subject: graph rewrites
             filters: >-
               canonical_saved_link_rejects_same_address_reuse_without_marking_replacement

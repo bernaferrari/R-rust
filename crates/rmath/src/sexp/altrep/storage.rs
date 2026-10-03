@@ -178,12 +178,23 @@ fn allocate_rooted<'s>(
     activate(owner, || factory.allocate(allocation))
 }
 
+/// A callback may mutate provider data, but cannot replace the declaration
+/// whose provider and representation were sampled for this operation.
+struct Declaration<'s> {
+    descriptor: Sexp<'s>,
+    metadata_payload: super::super::payload::PayloadLink,
+    kind: SEXPTYPE,
+    length: R_xlen_t,
+    payload: super::super::payload::PayloadLink,
+}
+
 /// Owns the roots necessary for construction or final payload publication.
 /// Provider callbacks receive handles, never this physical storage capability.
 pub(super) struct InstanceStorage<'s> {
     owner: OwnerToken<'s>,
     object: Sexp<'s>,
     metadata: Metadata<'s>,
+    declaration: Declaration<'s>,
 }
 impl<'s> InstanceStorage<'s> {
     pub(super) fn create(
@@ -206,49 +217,82 @@ impl<'s> InstanceStorage<'s> {
         let tag = intern(owner, TAG)?;
         let cell = cons(owner, metadata.slots.clone(), Sexp::nil(), tag)?;
         link_attributes(owner, &object, &cell)?;
-        // SAFETY: this fresh rooted header has a traced metadata edge and no
-        // payload. Native Length can now read data1/data2 during construction.
-        unsafe {
-            (*object.clone().as_raw()).sxpinfo.set_alt(true);
-        }
-        Ok(PendingInstance {
-            storage: Self {
-                owner,
-                object,
-                metadata,
-            },
-        })
+        // The pending header has traced metadata before Length callbacks run.
+        update_header(&object, |header| header.sxpinfo.set_alt(true))?;
+        let mut storage = Self::load(&object)?;
+        storage.declaration.descriptor = class.descriptor.clone();
+        storage.validate()?;
+        Ok(PendingInstance { storage })
     }
     pub(super) fn load(object: &Sexp<'s>) -> SexpResult<Self> {
+        let metadata = Metadata::load(object).ok_or(failure("invalid ALTREP metadata"))?;
+        let declaration = Declaration {
+            descriptor: metadata.descriptor()?,
+            metadata_payload: metadata.slots.header().payload,
+            kind: object.typeof_(),
+            length: object.len(),
+            payload: object.header().payload,
+        };
         Ok(Self {
             owner: owner(object)?,
             object: object.clone(),
-            metadata: Metadata::load(object).ok_or(failure("invalid ALTREP metadata"))?,
+            metadata,
+            declaration,
         })
     }
+    pub(super) fn validate(&self) -> SexpResult<()> {
+        let current = Metadata::load(&self.object)
+            .ok_or(failure("ALTREP declaration changed during callback"))?;
+        let heap = self.object.allocation()?.heap_identity();
+        if current.slots.link_in(&heap)? != self.metadata.slots.link_in(&heap)?
+            || current.slots.header().payload != self.declaration.metadata_payload
+            || current.descriptor()?.link_in(&heap)? != self.declaration.descriptor.link_in(&heap)?
+            || self.object.typeof_() != self.declaration.kind
+            || self.object.len() != self.declaration.length
+            || self.object.header().payload != self.declaration.payload
+        {
+            return Err(failure("ALTREP declaration changed during callback"));
+        }
+        Ok(())
+    }
     pub(super) fn publish_dense(&self, output: Sexp<'s>, policy: CachePolicy) -> SexpResult<()> {
+        self.validate()?;
         let output = self.owner.sexp(output.as_raw())?;
-        if output.typeof_() != self.object.typeof_() || output.len() != self.object.len() {
+        if output.typeof_() != self.declaration.kind || output.len() != self.declaration.length {
             return Err(failure("ALTREP cache shape mismatch"));
         }
         if super::super::memory::is_arena_lent(self.owner.as_ptr()) {
             return Err(failure("release the arena lend before materialization"));
         }
+        let parent = self.object.allocation()?;
+        let heap = parent.heap_identity();
+        let source = output.allocation()?;
+        let lease = heap.payload_lease(source).ok_or(failure("ALTREP cache payload"))?;
+        let slots = self.metadata.slots.allocation()?;
+        let cells = heap.reference_payload_lease(slots).ok_or(failure("ALTREP cache slots"))?;
+        let output_link = output.link_in(&heap)?;
+        let changes = [
+            (Slot::DenseCache.index() as usize, output_link),
+            (Slot::Data2.index() as usize, output_link),
+        ];
+        let changes = &changes[..if matches!(policy, CachePolicy::Data2) { 2 } else { 1 }];
+        // Check writability and every bound without changing any cache cell.
+        cells.replace_sparse(&[]).ok_or(failure("ALTREP immutable cache slots"))?;
+        if changes.iter().any(|(index, _)| cells.element(*index).is_none()) {
+            return Err(failure("ALTREP cache slot bounds"));
+        }
         barrier(self.owner, &self.object, &output)?;
-        self.metadata.set(Slot::DenseCache, output.clone())?;
-        if matches!(policy, CachePolicy::Data2) {
-            self.metadata.set_data2(output.clone())?;
-        }
-        // SAFETY: no callback or payload loan occurs during this short lend.
-        activate(self.owner, || unsafe {
-            super::super::memory::with_arena(|arena| {
-                arena.share_vector_payload(&output, &self.object)
-            })
-        })?;
-        // SAFETY: matching rooted headers now share an arena-owned buffer lease.
-        unsafe {
-            (*self.object.clone().as_raw()).set_vecsxp_truelength(self.object.len());
-        }
+        barrier(self.owner, &self.metadata.slots, &output)?;
+        self.validate()?;
+        // This exact heap publication performs its fallible storage admission
+        // before changing the header. It runs no R callback or deferred lend.
+        heap.publish_payload(parent, self.declaration.payload, &lease)
+            .ok_or(failure("ALTREP cache payload publication"))?;
+        let mut header = heap.node_snapshot(parent).expect("published ALTREP parent stays live");
+        header.data.vector_mut().truelength = self.declaration.length;
+        heap.replace_node(parent, header).expect("published ALTREP payload retains its valid shape");
+        // No callback or lease mutation occurs between preflight and commit.
+        cells.replace_sparse(changes).expect("preflighted ALTREP cache cells stay writable");
         Ok(())
     }
 }
@@ -269,22 +313,33 @@ impl<'s> PendingInstance<'s> {
         if length < 0 || length > (1_i64 << 52) {
             return Err(failure("invalid ALTREP length"));
         }
+        self.storage.validate()?;
         let object = self.storage.object;
         if object.len() != 0
-            || !object.header().payload.is_null()
+            || !object.header().payload.is_empty()
             || Metadata::load(&object).is_none()
         {
             return Err(failure(
                 "ALTREP construction changed its pending representation",
             ));
         }
-        // SAFETY: a pending rooted header with traced metadata has no payload
-        // yet. This consuming capability is the only logical-length setter.
-        unsafe {
-            (*object.clone().as_raw()).set_vecsxp_length(length);
-        }
+        // This consuming capability publishes the trusted lazy length.
+        update_header(&object, |header| header.data.vector_mut().length = length)?;
         Ok(object)
     }
+}
+
+#[forbid(unsafe_code)]
+fn update_header(
+    object: &Sexp<'_>,
+    edit: impl FnOnce(&mut super::super::ffi::SexprecCore),
+) -> SexpResult<()> {
+    let (_, parent) = super::super::memory::checked_projection(object.as_raw())
+        .ok_or(failure("ALTREP header parent"))?;
+    let heap = parent.heap_identity();
+    let mut header = heap.node_snapshot(&parent).ok_or(failure("ALTREP header"))?;
+    edit(&mut header);
+    heap.replace_node(&parent, header).ok_or(failure("ALTREP header publication"))
 }
 
 fn barrier(owner: OwnerToken<'_>, parent: &Sexp<'_>, child: &Sexp<'_>) -> SexpResult<()> {
@@ -323,12 +378,11 @@ pub(super) fn copy_public_attributes(source: &Sexp<'_>, target: &Sexp<'_>) -> Se
     };
     if let Some(attributes) = attributes {
         link_attributes(owner, target, &attributes)?;
-        // SAFETY: these are copied header flags on a private rooted output.
-        unsafe {
-            let raw = target.clone().as_raw();
-            (*raw).sxpinfo.set_obj(source.header().sxpinfo.obj());
-            (*raw).sxpinfo.set_gp(source.header().sxpinfo.gp());
-        }
+        let source = source.header();
+        update_header(target, |header| {
+            header.sxpinfo.set_obj(source.sxpinfo.obj());
+            header.sxpinfo.set_gp(source.sxpinfo.gp());
+        })?;
     }
     Ok(())
 }

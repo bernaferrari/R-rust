@@ -54,7 +54,7 @@ struct Singleton {
     kind: SingletonKind,
     identity_cookie: u64,
     header: Cell<SexprecCore>,
-    _logical: Option<Rc<Cell<i32>>>,
+    payload: Option<super::super::payload::PayloadLease>,
 }
 
 /// A lease owns the exact header allocation, independently of the TLS pool.
@@ -77,7 +77,12 @@ impl SingletonLease {
             SingletonKind::False => (SEXPTYPE::LGLSXP, false, Some(0)),
             SingletonKind::NaString => (SEXPTYPE::CHARSXP, false, None),
         };
-        let logical = logical.map(|value| Rc::new(Cell::new(value)));
+        let logical = logical.map(|value| {
+            let payload = super::super::payload::PayloadLease::from_integer_cells(Rc::from([Cell::new(value)]))
+                .expect("singleton payload identity");
+            payload.make_immutable();
+            payload
+        });
         let mut header = SexprecCore::new(sexptype);
         header.sxpinfo.set_mark(marked);
         header.sxpinfo.set_named(2);
@@ -93,7 +98,7 @@ impl SingletonLease {
             });
         }
         if let Some(payload) = &logical {
-            header.gengc_next_node = payload.as_ptr().cast();
+            header.payload = payload.link();
         }
         Self(Rc::new(Singleton {
             kind,
@@ -103,7 +108,7 @@ impl SingletonLease {
                 })
                 .expect("singleton identity exhausted"),
             header: Cell::new(header),
-            _logical: logical,
+            payload: logical,
         }))
     }
 
@@ -121,6 +126,10 @@ impl SingletonLease {
 
     pub(crate) fn identity_cookie(&self) -> u64 {
         self.0.identity_cookie
+    }
+
+    pub(crate) fn payload_lease(&self) -> Option<super::super::payload::PayloadLease> {
+        self.0.payload.clone()
     }
 
     pub(crate) fn snapshot(&self) -> SexprecCore {

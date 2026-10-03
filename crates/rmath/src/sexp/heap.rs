@@ -169,6 +169,10 @@ impl HeapIdentity {
     fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
+    pub(crate) fn same_domain(&self, other: &Self) -> bool {
+        self.same(other)
+    }
+
     fn retained_backing(&self) -> Option<Rc<HeapBackingOwners>> {
         self.0.backing.borrow().upgrade()
     }
@@ -217,6 +221,103 @@ impl HeapIdentity {
         let result = owners.stores.borrow().iter().find_map(|store| match store {
             PhysicalBacking::Arena(store) => store.node_snapshot(node.id()),
             PhysicalBacking::Persistent(store) => store.node_snapshot(node.id()),
+        });
+        result
+    }
+
+    /// Retain only the actual payload attached to this exact live parent.
+    /// Neither an address nor a copied link can grant element access.
+    pub(crate) fn payload_lease(&self, node: &CheckedNode) -> Option<super::payload::PayloadLease> {
+        let header = self.node_snapshot(node)?;
+        if !header.has_valid_shape() || header.payload.is_empty() {
+            return None;
+        }
+        let NodeBody::Vector(vector) = header.data else {
+            return None;
+        };
+        usize::try_from(vector.length).ok()?;
+        let owners = self.retained_backing()?;
+        let lease = owners
+            .stores
+            .borrow()
+            .iter()
+            .find_map(|store| match store {
+                PhysicalBacking::Arena(store) => store.node_payload(node.id()),
+                PhysicalBacking::Persistent(store) => store.node_payload(node.id()),
+            })?;
+        lease.matches_header(&header).then_some(lease)
+    }
+
+    /// Reserve against the original live parent's physical store and budget.
+    pub(crate) fn reserve_payload_bytes(
+        &self,
+        node: &CheckedNode,
+        bytes: usize,
+    ) -> Option<super::memory::TransientReservation> {
+        if !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.reserve_payload_bytes(node.id(), bytes),
+            PhysicalBacking::Persistent(store) => store.reserve_payload_bytes(node.id(), bytes),
+        });
+        result
+    }
+
+    /// Set a sampled lazy length only before a provider commits dense storage.
+    pub(crate) fn publish_lazy_length(
+        &self,
+        node: &CheckedNode,
+        length: super::ffi::R_xlen_t,
+    ) -> Option<()> {
+        usize::try_from(length).ok()?;
+        let mut header = self.node_snapshot(node)?;
+        if !header.has_valid_shape() || !header.sxpinfo.alt() || !header.payload.is_empty() {
+            return None;
+        }
+        let NodeBody::Vector(vector) = &mut header.data else {
+            return None;
+        };
+        vector.length = length;
+        self.replace_node(node, header)
+    }
+
+    /// Initialize unpublished lazy storage, then publish only to the same parent.
+    pub(crate) fn attach_initialized_payload(
+        &self,
+        node: &CheckedNode,
+        initialize: impl FnOnce(&super::payload::PayloadLease) -> Option<()>,
+    ) -> Option<super::payload::PayloadLease> {
+        if !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
+        super::memory::attach_initialized_payload(node, initialize)
+    }
+
+    /// Publish an actual retained allocation, preserving exact parent identity.
+    pub(crate) fn publish_payload(
+        &self,
+        node: &CheckedNode,
+        expected: super::payload::PayloadLink,
+        lease: &super::payload::PayloadLease,
+    ) -> Option<()> {
+        let header = self.node_snapshot(node)?;
+        if !header.has_valid_shape() || header.payload != expected {
+            return None;
+        }
+        let NodeBody::Vector(vector) = header.data else {
+            return None;
+        };
+        if !lease.accepts_kind(header.sxpinfo.type_of())
+            || usize::try_from(vector.length).ok()? > lease.capacity()
+        {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.publish_payload(node.id(), expected, lease),
+            PhysicalBacking::Persistent(store) => store.publish_payload(node.id(), expected, lease),
         });
         result
     }
@@ -368,26 +469,13 @@ impl HeapIdentity {
                 || (references(original) && references(kind))
             {
                 let length = usize::try_from(header.vecsxp_length()).ok()?;
-                let pointer = header.gengc_next_node.cast::<u8>();
-                if pointer.is_null() {
+                if header.payload.is_empty() {
                     if length != 0 {
                         return None;
                     }
                 } else {
-                    let owners = self.retained_backing()?;
-                    let capacity = owners
-                        .stores
-                        .borrow()
-                        .iter()
-                        .find_map(|store| match store {
-                            PhysicalBacking::Arena(store) => {
-                                store.payload_capacity_for_kind(pointer, kind)
-                            }
-                            PhysicalBacking::Persistent(store) => {
-                                store.payload_capacity_for_kind(pointer, kind)
-                            }
-                        })?;
-                    if length > capacity {
+                    let lease = self.payload_lease(node)?;
+                    if !lease.accepts_kind(kind) || length > lease.capacity() {
                         return None;
                     }
                 }
@@ -454,9 +542,11 @@ impl HeapIdentity {
         self.replace_node(parent, header)
     }
 
-    /// Header kind, exact generation and typed allocation capacity are all
-    /// checked before a graph operation can select a payload cell.
-    fn reference_payload(&self, parent: &CheckedNode) -> Option<(*mut u8, usize)> {
+    /// Exact parent identity and shape bound every canonical reference read.
+    fn reference_payload(
+        &self,
+        parent: &CheckedNode,
+    ) -> Option<(Option<super::payload::PayloadLease>, usize)> {
         let header = self.node_snapshot(parent)?;
         if !matches!(
             header.sxpinfo.type_of(),
@@ -468,37 +558,17 @@ impl HeapIdentity {
             return None;
         };
         let length = usize::try_from(vector.length).ok()?;
-        let pointer = header.gengc_next_node.cast::<u8>();
-        if length == 0 && pointer.is_null() {
-            // Ordinary empty vectors need no allocation. An ALTREP provider
-            // with no registered payload has not committed typed storage.
-            return (!header.sxpinfo.alt()).then_some((pointer, length));
+        if header.payload.is_empty() {
+            return (length == 0).then_some((None, length));
         }
-        let owners = self.retained_backing()?;
-        let capacity = owners
-            .stores
-            .borrow()
-            .iter()
-            .find_map(|store| match store {
-                PhysicalBacking::Arena(store) => store.reference_payload_capacity(pointer),
-                PhysicalBacking::Persistent(store) => store.reference_payload_capacity(pointer),
-            })?;
-        (length <= capacity).then_some((pointer, length))
+        Some((Some(self.payload_lease(parent)?), length))
     }
 
-    /// Clone the actual reference allocation after validating the exact
-    /// parent and its logical bounds. Empty/null headers have no allocation.
     pub(crate) fn reference_payload_lease(
         &self,
         parent: &CheckedNode,
     ) -> Option<super::payload::ReferencePayloadLease> {
-        let (pointer, _) = self.reference_payload(parent)?;
-        let owners = self.retained_backing()?;
-        let result = owners.stores.borrow().iter().find_map(|store| match store {
-            PhysicalBacking::Arena(store) => store.reference_payload_lease(pointer),
-            PhysicalBacking::Persistent(store) => store.reference_payload_lease(pointer),
-        });
-        result
+        self.reference_payload(parent)?.0?.reference_lease()
     }
 
     pub(crate) fn reference_link_elt(
@@ -506,24 +576,19 @@ impl HeapIdentity {
         parent: &CheckedNode,
         index: usize,
     ) -> Option<NodeLink> {
-        let (pointer, length) = self.reference_payload(parent)?;
+        let (lease, length) = self.reference_payload(parent)?;
         if index >= length {
             return None;
         }
-        let owners = self.retained_backing()?;
-        let result = owners.stores.borrow().iter().find_map(|store| match store {
-            PhysicalBacking::Arena(store) => store.reference_payload_elt(pointer, index),
-            PhysicalBacking::Persistent(store) => store.reference_payload_elt(pointer, index),
-        });
-        result
+        lease?.reference_elt(index)
     }
 
     pub(crate) fn reference_links(&self, parent: &CheckedNode) -> Option<Vec<NodeLink>> {
-        let (pointer, length) = self.reference_payload(parent)?;
+        let (lease, length) = self.reference_payload(parent)?;
         if length == 0 {
             return Some(Vec::new());
         }
-        self.copy_reference_links(pointer, length)
+        lease?.copy_references(length)
     }
     pub(crate) fn reference_elt(&self, parent: &CheckedNode, index: usize) -> Option<SEXP> {
         self.projection_of_link(self.reference_link_elt(parent, index)?)
@@ -544,15 +609,14 @@ impl HeapIdentity {
         self.replace_reference_elements(parent, index, &[child])
     }
 
-    /// Resolve every capability and bound before writing any element. Store
-    /// loans remain local, and singleton retention owns the actual referent.
+    /// Validate all capabilities and bounds before updating any retained cell.
     pub(crate) fn replace_reference_elements(
         &self,
         parent: &CheckedNode,
         start: usize,
         children: &[ReferenceChild<'_>],
     ) -> Option<()> {
-        let (pointer, length) = self.reference_payload(parent)?;
+        let (lease, length) = self.reference_payload(parent)?;
         if start.checked_add(children.len())? > length {
             return None;
         }
@@ -565,45 +629,12 @@ impl HeapIdentity {
         if children.is_empty() {
             return Some(());
         }
-        let owners = self.retained_backing()?;
-        owners
-            .stores
-            .borrow()
-            .iter()
-            .find_map(|store| match store {
-                PhysicalBacking::Arena(store) => {
-                    store.replace_reference_payload(pointer, start, &values)
-                }
-                PhysicalBacking::Persistent(store) => {
-                    store.replace_reference_payload(pointer, start, &values)
-                }
-            })?;
+        let lease = lease?;
+        // No callbacks occur between exact parent validation and Cell updates.
+        for (index, value) in (start..).zip(values) {
+            lease.set_reference_elt(index, value)?;
+        }
         Some(())
-    }
-    /// Copy exact reference links from canonical typed owners in this
-    /// exact heap domain. The supplied address only selects registered
-    /// storage; it is never dereferenced or interpreted as a byte buffer.
-    pub(crate) fn copy_reference_links(
-        &self,
-        pointer: *mut u8,
-        length: usize,
-    ) -> Option<Vec<NodeLink>> {
-        let owners = self.retained_backing()?;
-        let result = owners.stores.borrow().iter().find_map(|store| match store {
-            PhysicalBacking::Arena(store) => store.copy_reference_payload(pointer, length),
-            PhysicalBacking::Persistent(store) => store.copy_reference_payload(pointer, length),
-        });
-        result
-    }
-    pub(crate) fn copy_reference_payload(
-        &self,
-        pointer: *mut u8,
-        length: usize,
-    ) -> Option<Vec<SEXP>> {
-        self.copy_reference_links(pointer, length)?
-            .into_iter()
-            .map(|link| self.projection_of_link(link))
-            .collect()
     }
 }
 
@@ -1246,7 +1277,7 @@ mod tests {
             let node = arena.node_token(pointer).unwrap();
             let heap = node.heap_identity();
             let mut cached = heap.node_snapshot(&node).unwrap();
-            assert!(!cached.gengc_next_node.is_null());
+            assert!(!cached.payload.is_empty());
             cached.sxpinfo.set_alt(true);
             heap.replace_node(&node, cached).unwrap();
 
@@ -1263,8 +1294,7 @@ mod tests {
             );
             assert_eq!(unchanged.data, cached.data);
             assert_eq!(unchanged.attrib, cached.attrib);
-            assert_eq!(unchanged.gengc_next_node, cached.gengc_next_node);
-            assert_eq!(unchanged.gengc_prev_node, cached.gengc_prev_node);
+            assert_eq!(unchanged.payload, cached.payload);
             assert_eq!(heap.retype_node(&node, kind), Some(()));
 
             // The actual cached storage is compatible when ALTREP metadata is

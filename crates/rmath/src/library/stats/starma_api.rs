@@ -13,18 +13,12 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-use super::starma::{forecast_dimensions, forkal, karma, starma, starma_struct};
+use super::starma::{forecast_dimensions, forkal, karma, starma, StarmaModel};
 
-fn alloc_len(n: i32) -> usize {
-    if n < 1 { 1 } else { n as usize }
-}
-
-/// Owns every native buffer referenced by the Kalman state. The cell supports
-/// the existing mutable numerical entry points while Rc keeps the state alive
-/// if a construction callback closes its external pointer.
+/// Owns the canonical Rust numerical model. Operations pin this state across
+/// callbacks and borrow it only while running callback-free numerical work.
 struct StarmaState {
-    state: RefCell<starma_struct>,
-    _buffers: [Vec<f64>; 14],
+    state: RefCell<StarmaModel>,
 }
 
 #[cfg(test)]
@@ -35,8 +29,8 @@ thread_local! {
 }
 
 impl StarmaState {
-    fn new(state: starma_struct, buffers: [Vec<f64>; 14]) -> Rc<Self> {
-        let owned = Rc::new(Self { state: RefCell::new(state), _buffers: buffers });
+    fn new(state: StarmaModel) -> Rc<Self> {
+        let owned = Rc::new(Self { state: RefCell::new(state) });
         #[cfg(test)]
         LIVE_STARMA_ALLOCATIONS.with(|live| {
             let (states, buffers) = live.get();
@@ -200,86 +194,63 @@ fn starma_state(ext: SEXP) -> Rc<StarmaState> {
     state
 }
 
-fn partrans(p: i32, raw: *const f64, new: *mut f64) {
-    if p <= 0 {
-        return;
-    }
-    if p > 100 {
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: "can only transform 100 pars in arima0".to_string(),
-        });
-    }
-    let p = p as usize;
+fn transform_workspace(length: usize) -> Vec<f64> {
+    let mut values = Vec::new();
+    values.try_reserve_exact(length).unwrap_or_else(|_| starma_error("could not allocate starma transform workspace"));
+    values.resize(length, 0.0);
+    values
+}
+
+fn partrans(raw: &[f64], new: &mut [f64]) {
+    let p = raw.len();
+    if p > 100 { starma_error("can only transform 100 pars in arima0"); }
+    assert_eq!(new.len(), p);
     let mut work = [0.0f64; 100];
-    unsafe {
-        for j in 0..p {
-            let mapped = (*raw.add(j)).tanh();
-            work[j] = mapped;
-            *new.add(j) = mapped;
+    for j in 0..p {
+        let mapped = raw[j].tanh();
+        work[j] = mapped;
+        new[j] = mapped;
+    }
+    for j in 1..p {
+        let a = new[j];
+        for k in 0..j {
+            work[k] -= a * new[j - k - 1];
         }
-        for j in 1..p {
-            let a = *new.add(j);
-            for k in 0..j {
-                work[k] -= a * *new.add(j - k - 1);
-            }
-            for k in 0..j {
-                *new.add(k) = work[k];
-            }
-        }
+        new[..j].copy_from_slice(&work[..j]);
     }
 }
 
-fn invpartrans(p: i32, raw: *const f64, new: *mut f64) {
-    if p <= 0 {
-        return;
-    }
-    if p > 100 {
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: "can only transform 100 pars in arima0".to_string(),
-        });
-    }
-    let p = p as usize;
+fn invpartrans(raw: &[f64], new: &mut [f64]) {
+    let p = raw.len();
+    if p > 100 { starma_error("can only transform 100 pars in arima0"); }
+    assert_eq!(new.len(), p);
     let mut work = [0.0f64; 100];
-    unsafe {
-        for j in 0..p {
-            let value = *raw.add(j);
-            work[j] = value;
-            *new.add(j) = value;
+    work[..p].copy_from_slice(raw);
+    new.copy_from_slice(raw);
+    for j in (1..p).rev() {
+        let a = new[j];
+        let denom = 1.0 - a * a;
+        for k in 0..j {
+            work[k] = (new[k] + a * new[j - k - 1]) / denom;
         }
-        for j in (1..p).rev() {
-            let a = *new.add(j);
-            let denom = 1.0 - a * a;
-            for k in 0..j {
-                work[k] = (*new.add(k) + a * *new.add(j - k - 1)) / denom;
-            }
-            for k in 0..j {
-                *new.add(k) = work[k];
-            }
-        }
-        for j in 0..p {
-            *new.add(j) = (*new.add(j)).atanh();
-        }
+        new[..j].copy_from_slice(&work[..j]);
     }
+    for value in new { *value = value.atanh(); }
 }
 
-fn dotrans(g: &starma_struct, raw: *const f64, new: *mut f64, trans: i32) {
-    let n = (g.mp + g.mq + g.msp + g.msq + g.m) as usize;
-    unsafe {
-        for i in 0..n {
-            *new.add(i) = *raw.add(i);
-        }
-    }
-    if trans == 0 {
-        return;
-    }
-    unsafe {
-        partrans(g.mp, raw, new);
-        let mut v = g.mp as usize;
-        partrans(g.mq, raw.add(v), new.add(v));
-        v += g.mq as usize;
-        partrans(g.msp, raw.add(v), new.add(v));
-        v += g.msp as usize;
-        partrans(g.msq, raw.add(v), new.add(v));
+fn transform_orders(g: &StarmaModel) -> [usize; 4] {
+    [g.mp as usize, g.mq as usize, g.msp as usize, g.msq as usize]
+}
+
+fn dotrans(orders: [usize; 4], m: usize, raw: &[f64], new: &mut [f64], trans: i32) {
+    let n = orders.iter().sum::<usize>() + m;
+    new[..n].copy_from_slice(&raw[..n]);
+    if trans == 0 { return; }
+    let mut start = 0;
+    for order in orders {
+        let end = start + order;
+        partrans(&raw[start..end], &mut new[start..end]);
+        start = end;
     }
 }
 
@@ -306,73 +277,23 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
         let m = dimension(pm, "regression count");
         let ncond = dimension(sncond, "conditioning count");
         if ncond > n { starma_error("starma conditioning count exceeds observation count"); }
-        let ip = checked_size(i64::from(ns) * i64::from(msp) + i64::from(mp));
-        let iq = checked_size(i64::from(ns) * i64::from(msq) + i64::from(mq));
-        let ir = checked_size(i64::from(ip).max(i64::from(iq) + 1));
-        let np = checked_size(i64::from(ir) * (i64::from(ir) + 1) / 2);
-        let nrbar = checked_size((i64::from(np) * (i64::from(np) - 1) / 2).max(1));
-        let npar = checked_size(i64::from(mp) + i64::from(mq) + i64::from(msp) + i64::from(msq) + i64::from(m));
         let reg_n = checked_size(i64::from(n) * i64::from(m));
-        let reg_capacity = checked_size(i64::from(reg_n) + 1);
         require_reals(x, n, "observations");
         require_reals(xreg, reg_n, "regression input");
-        let lengths = [npar, ir, ir, ir, np, np, np, np, np, nrbar, n, n, n, reg_capacity];
-        // Completed buffers stay ordinary Rust owners even if a later
-        // allocation or initialization fails.
-        let mut buffers: [Vec<f64>; 14] = std::array::from_fn(|_| Vec::new());
-        for (buffer, length) in buffers.iter_mut().zip(lengths) {
-            let length = alloc_len(length);
-            buffer.try_reserve_exact(length).unwrap_or_else(|_| starma_error("could not allocate starma workspace"));
-            buffer.resize(length, 0.0);
+        let mut g = StarmaModel::new([mp, mq, msp, msq, ns], n, m, ncond,
+            as_i32(ptrans), as_f64(dt))
+            .unwrap_or_else(|error| starma_error(&error.to_string()));
+        // Materialization happens before state publication or any model loan.
+        if n > 0 {
+            let observations = std::slice::from_raw_parts(REAL(x), n as usize);
+            g.w[..n as usize].copy_from_slice(observations);
+            g.wkeep[..n as usize].copy_from_slice(observations);
         }
-        let g = starma_struct {
-            p: ip,
-            q: iq,
-            r: ir,
-            np,
-            nrbar,
-            n,
-            ncond,
-            m,
-            trans: as_i32(ptrans),
-            method: 0,
-            nused: 0,
-            mp,
-            mq,
-            msp,
-            msq,
-            ns,
-            delta: as_f64(dt),
-            s2: 0.0,
-            params: buffers[0].as_mut_ptr(),
-            phi: buffers[1].as_mut_ptr(),
-            theta: buffers[2].as_mut_ptr(),
-            a: buffers[3].as_mut_ptr(),
-            P: buffers[4].as_mut_ptr(),
-            V: buffers[5].as_mut_ptr(),
-            thetab: buffers[6].as_mut_ptr(),
-            xnext: buffers[7].as_mut_ptr(),
-            xrow: buffers[8].as_mut_ptr(),
-            rbar: buffers[9].as_mut_ptr(),
-            w: buffers[10].as_mut_ptr(),
-            wkeep: buffers[11].as_mut_ptr(),
-            resid: buffers[12].as_mut_ptr(),
-            reg: buffers[13].as_mut_ptr(),
-        };
-        if n > 0 && !x.is_null() && TYPEOF(x) == SEXPTYPE::REALSXP {
-            for i in 0..n as usize {
-                let value = *REAL(x).add(i);
-                *g.w.add(i) = value;
-                *g.wkeep.add(i) = value;
-            }
+        if reg_n > 0 {
+            g.reg[..reg_n as usize].copy_from_slice(
+                std::slice::from_raw_parts(REAL(xreg), reg_n as usize));
         }
-        let reg_n = reg_n as usize;
-        if reg_n > 0 && !xreg.is_null() && TYPEOF(xreg) == SEXPTYPE::REALSXP {
-            for i in 0..reg_n {
-                *g.reg.add(i) = *REAL(xreg).add(i);
-            }
-        }
-        let state = StarmaState::new(g, buffers);
+        let state = StarmaState::new(g);
         let mut publication = StarmaPublication { state, published: None };
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| std::panic::panic_any(crate::sexp::context::RError {
@@ -460,53 +381,56 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
         let ans = {
         let mut state_loan = state.state.borrow_mut();
         let g = &mut *state_loan;
-        if let Some(input) = input { dotrans(g, input.as_ptr(), g.params, g.trans); }
+        if let Some(input) = input {
+            let orders = transform_orders(g);
+            dotrans(orders, g.m as usize, &input, &mut g.params, g.trans);
+        }
         if g.ns > 0 {
             for i in 0..g.mp as usize {
-                *g.phi.add(i) = *g.params.add(i);
+                g.phi[i] = g.params[i];
             }
             for i in 0..g.mq as usize {
-                *g.theta.add(i) = *g.params.add(i + g.mp as usize);
+                g.theta[i] = g.params[i + g.mp as usize];
             }
             for i in g.mp as usize..g.p as usize {
-                *g.phi.add(i) = 0.0;
+                g.phi[i] = 0.0;
             }
             for i in g.mq as usize..g.q as usize {
-                *g.theta.add(i) = 0.0;
+                g.theta[i] = 0.0;
             }
             for j in 0..g.msp as usize {
                 let at = (j + 1) * g.ns as usize - 1;
-                *g.phi.add(at) += *g.params.add(j + (g.mp + g.mq) as usize);
+                g.phi[at] += g.params[j + (g.mp + g.mq) as usize];
                 for i in 0..g.mp as usize {
-                    *g.phi.add(at + 1 + i) -=
-                        *g.params.add(i) * *g.params.add(j + (g.mp + g.mq) as usize);
+                    g.phi[at + 1 + i] -=
+                        g.params[i] * g.params[j + (g.mp + g.mq) as usize];
                 }
             }
             for j in 0..g.msq as usize {
                 let at = (j + 1) * g.ns as usize - 1;
                 let src = j + (g.mp + g.mq + g.msp) as usize;
-                *g.theta.add(at) += *g.params.add(src);
+                g.theta[at] += g.params[src];
                 for i in 0..g.mq as usize {
-                    *g.theta.add(at + 1 + i) +=
-                        *g.params.add(i + g.mp as usize) * *g.params.add(src);
+                    g.theta[at + 1 + i] +=
+                        g.params[i + g.mp as usize] * g.params[src];
                 }
             }
         } else {
             for i in 0..g.mp as usize {
-                *g.phi.add(i) = *g.params.add(i);
+                g.phi[i] = g.params[i];
             }
             for i in 0..g.mq as usize {
-                *g.theta.add(i) = *g.params.add(i + g.mp as usize);
+                g.theta[i] = g.params[i + g.mp as usize];
             }
         }
         let streg = (g.mp + g.mq + g.msp + g.msq) as usize;
         if g.m > 0 {
             for i in 0..g.n as usize {
-                let mut tmp = *g.wkeep.add(i);
+                let mut tmp = g.wkeep[i];
                 for j in 0..g.m as usize {
-                    tmp -= *g.reg.add(i + g.n as usize * j) * *g.params.add(streg + j);
+                    tmp -= g.reg[i + g.n as usize * j] * g.params[streg + j];
                 }
-                *g.w.add(i) = tmp;
+                g.w[i] = tmp;
             }
         }
         let ans = if g.method == 1 {
@@ -515,20 +439,20 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
             let mut ssq = 0.0;
             let mut nu = 0i32;
             for i in 0..g.ncond as usize {
-                *g.resid.add(i) = 0.0;
+                g.resid[i] = 0.0;
             }
             for i in g.ncond..g.n {
                 let ii = i as usize;
-                let mut tmp = *g.w.add(ii);
+                let mut tmp = g.w[ii];
                 let lim_p = (i - g.ncond).min(p);
                 for j in 0..lim_p {
-                    tmp -= *g.phi.add(j as usize) * *g.w.add(ii - j as usize - 1);
+                    tmp -= g.phi[j as usize] * g.w[ii - j as usize - 1];
                 }
                 let lim_q = (i - g.ncond).min(q);
                 for j in 0..lim_q {
-                    tmp -= *g.theta.add(j as usize) * *g.resid.add(ii - j as usize - 1);
+                    tmp -= g.theta[j as usize] * g.resid[ii - j as usize - 1];
                 }
-                *g.resid.add(ii) = tmp;
+                g.resid[ii] = tmp;
                 if !tmp.is_nan() {
                     nu += 1;
                     ssq += tmp * tmp;
@@ -538,7 +462,7 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
             0.5 * g.s2.ln()
         } else {
             let mut ifault = 0;
-            starma(g as *mut starma_struct as *mut c_void, &mut ifault);
+            starma(g, &mut ifault);
             if ifault != 0 {
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: format!("starma error code {ifault}"),
@@ -547,7 +471,7 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
             let mut sumlog = 0.0;
             let mut ssq = 0.0;
             let mut it = 0;
-            karma(g as *mut starma_struct as *mut c_void, &mut sumlog, &mut ssq, 1, &mut it);
+            karma(g, &mut sumlog, &mut ssq, 1, &mut it);
             let used = if g.nused == 0 { 1 } else { g.nused };
             g.s2 = ssq / used as f64;
             0.5 * ((ssq / used as f64).ln() + sumlog / used as f64)
@@ -571,7 +495,7 @@ pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
         let state = starma_state(pg);
         let values = {
             let g = state.state.borrow();
-            std::slice::from_raw_parts(g.resid, g.n.max(0) as usize).to_vec()
+            g.resid[..g.n as usize].to_vec()
         };
         let res = alloc_result(SEXPTYPE::REALSXP, values.len() as _);
         let _res = protect(res);
@@ -592,6 +516,7 @@ pub unsafe extern "C-unwind" fn c_arma0_kfore(
         let dd = dimension(pd, "difference count");
         let sd = dimension(psd, "seasonal difference count");
         let il = dimension(nahead, "forecast count");
+        if il == 0 { starma_error("forkal error code 11"); }
         let (ns_value, r, n) = {
             let g = state.state.borrow();
             (g.ns, g.r, g.n)
@@ -630,7 +555,7 @@ pub unsafe extern "C-unwind" fn c_arma0_kfore(
         }
         let (forecast, variance) = {
             let state_loan = state.state.borrow();
-            forkal(&state_loan, &state._buffers, d, il, &del[1..])
+            forkal(&state_loan, d, il, &del[1..])
                 .unwrap_or_else(|error| starma_error(&error.to_string()))
         };
         // All numerical state loans end before any R result allocation or
@@ -655,16 +580,16 @@ pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
         let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
             Some(std::slice::from_raw_parts(REAL(x), n as usize).to_vec())
         } else { None };
-        let needed = { let g = state.state.borrow(); g.mp + g.mq + g.msp + g.msq + g.m };
-        if input.as_ref().is_some_and(|input| input.len() < needed as usize) {
-            starma_error("too few starma parameters");
+        let mut output = transform_workspace(n as usize);
+        if let Some(input) = input {
+            let g = state.state.borrow();
+            let needed = g.mp + g.mq + g.msp + g.msq + g.m;
+            if input.len() < needed as usize { starma_error("too few starma parameters"); }
+            dotrans(transform_orders(&g), g.m as usize, &input, &mut output, 1);
         }
         let y = alloc_result(SEXPTYPE::REALSXP, n);
         let _y = protect(y);
-        if let Some(input) = input {
-            let output = REAL(y);
-            dotrans(&state.state.borrow(), input.as_ptr(), output, 1);
-        }
+        std::ptr::copy_nonoverlapping(output.as_ptr(), REAL(y), output.len());
         y
     }
 }
@@ -676,60 +601,100 @@ pub unsafe extern "C-unwind" fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
         let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
             Some(std::slice::from_raw_parts(REAL(x), n as usize).to_vec())
         } else { None };
-        let needed = { let g = state.state.borrow(); g.mp + g.mq + g.msp + g.msq };
-        if input.as_ref().is_some_and(|input| input.len() < needed as usize) {
-            starma_error("too few starma parameters");
+        let mut output = transform_workspace(n as usize);
+        if let Some(input) = input {
+            let g = state.state.borrow();
+            let orders = transform_orders(&g);
+            let arma = orders.iter().sum::<usize>();
+            if input.len() < arma { starma_error("too few starma parameters"); }
+            let mut start = 0;
+            for order in orders {
+                let end = start + order;
+                invpartrans(&input[start..end], &mut output[start..end]);
+                start = end;
+            }
+            let end = (arma + g.m as usize).min(input.len());
+            output[arma..end].copy_from_slice(&input[arma..end]);
         }
         let y = alloc_result(SEXPTYPE::REALSXP, n);
         let _y = protect(y);
-        let Some(input) = input else { return y; };
-        let raw = input.as_ptr();
-        let new = REAL(y);
-        let g = state.state.borrow();
-        let mut v = 0usize;
-        invpartrans(g.mp, raw.add(v), new.add(v));
-        v += g.mp as usize;
-        invpartrans(g.mq, raw.add(v), new.add(v));
-        v += g.mq as usize;
-        invpartrans(g.msp, raw.add(v), new.add(v));
-        v += g.msp as usize;
-        invpartrans(g.msq, raw.add(v), new.add(v));
-        let arma = (g.mp + g.mq + g.msp + g.msq) as usize;
-        for i in arma..(arma + g.m as usize).min(n as usize) {
-            *new.add(i) = *raw.add(i);
-        }
+        std::ptr::copy_nonoverlapping(output.as_ptr(), REAL(y), output.len());
         y
     }
+}
+
+/// GNU pacf.c Gradtrans uses forward differences, with input coordinates on
+/// rows and output coefficients on columns. Its ordinary MA block intentionally
+/// retains GNU's observed row-only offset; the native oracle fixes this layout.
+fn transform_jacobian(orders: [usize; 4], m: usize, parameters: &[f64], dimension: usize) -> Vec<f64> {
+    const EPSILON: f64 = 1e-3;
+    let n = orders.iter().sum::<usize>() + m;
+    let size = dimension.checked_mul(dimension).unwrap_or_else(|| starma_error("starma dimensions are too large"));
+    let mut gradient = transform_workspace(size);
+    for i in 0..n { gradient[i + i * n] = 1.0; }
+    let mut start = 0;
+    for (block, order) in orders.into_iter().enumerate() {
+        if order > 100 { starma_error("can only transform 100 pars in arima0"); }
+        let end = start + order;
+        let mut work = transform_workspace(order);
+        work.copy_from_slice(&parameters[start..end]);
+        let mut base = transform_workspace(order);
+        let mut changed = transform_workspace(order);
+        partrans(&work, &mut base);
+        for i in 0..order {
+            work[i] += EPSILON;
+            partrans(&work, &mut changed);
+            for j in 0..order {
+                let column = if block == 1 { j } else { start + j };
+                gradient[start + i + column * n] = (changed[j] - base[j]) / EPSILON;
+            }
+            work[i] -= EPSILON;
+        }
+        start = end;
+    }
+    gradient
 }
 
 pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
     unsafe {
         let state = starma_state(pg);
-        let (n, trans) = {
-            let g = state.state.borrow();
-            ((g.mp + g.mq + g.msp + g.msq + g.m).max(0), g.trans)
+        let (orders, m) = {
+            let model = state.state.borrow();
+            (transform_orders(&model), model.m as usize)
         };
-        let y = alloc_result(SEXPTYPE::REALSXP, (n as i64) * (n as i64));
-        let _y = protect(y);
-        let dim = alloc_result(SEXPTYPE::INTSXP, 2);
-        let _dim = protect(dim);
-        *INTEGER(dim) = n;
-        *INTEGER(dim).add(1) = n;
-        crate::sexp::attrib_core::setAttrib(y, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        let a = REAL(y);
-        let nu = n as usize;
-        for i in 0..nu {
-            for j in 0..nu {
-                *a.add(i + j * nu) = if i == j { 1.0 } else { 0.0 };
-            }
+        let n = orders.iter().sum::<usize>() + m;
+        let factory = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| starma_error(&error.to_string())).node_factory();
+        let input = factory.wrap(x).unwrap_or_else(|error| starma_error(&error.to_string()));
+        if input.typeof_() != SEXPTYPE::REALSXP || input.len() < n as i64 {
+            starma_error("too few starma parameters");
         }
-        if n == 0 || x.is_null() || TYPEOF(x) != SEXPTYPE::REALSXP || trans == 0 {
-            return y;
+        let dimension = usize::try_from(input.len()).unwrap_or_else(|_| starma_error("starma dimensions are too large"));
+        let dimension_i32 = i32::try_from(dimension).unwrap_or_else(|_| starma_error("starma dimensions are too large"));
+        let mut parameters = transform_workspace(n);
+        for (index, parameter) in parameters.iter_mut().enumerate() {
+            *parameter = input.try_real_elt(index as i64)
+                .unwrap_or_else(|error| starma_error(&error.to_string()));
         }
-        // Regression coefficients are not transformed. ARMA blocks stay
-        // identity when their orders are zero, which is this call's usual case.
-        let _ = x;
-        y
+        // Gradtrans does not consult the model's trans flag in GNU. All model
+        // loans end before input materialization or any R result allocation.
+        let gradient = transform_jacobian(orders, m, &parameters, dimension);
+        let result = factory.allocate(|arena| {
+            let raw = arena.alloc_vector(SEXPTYPE::REALSXP, gradient.len() as i64);
+            if raw.is_null() { return None; }
+            std::ptr::copy_nonoverlapping(gradient.as_ptr(), REAL(raw), gradient.len());
+            Some(raw)
+        }).unwrap_or_else(|error| starma_error(&format!("could not allocate starma result: {error}")));
+        let dimensions = factory.allocate(|arena| {
+            let raw = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
+            if raw.is_null() { return None; }
+            INTEGER(raw).write(dimension_i32);
+            INTEGER(raw).add(1).write(dimension_i32);
+            Some(raw)
+        }).unwrap_or_else(|error| starma_error(&format!("could not allocate starma result: {error}")));
+        crate::sexp::attrib_core::setAttrib(result.as_raw(),
+            crate::sexp::attrib_core::R_DimSymbol(), dimensions.as_raw());
+        result.as_raw()
     }
 }
 
@@ -836,7 +801,7 @@ mod tests {
             assert_eq!(unsafe { XLENGTH(residual) }, 3);
             unsafe {
                 assert_eq!(starma_state(pointer).state.borrow().n, 3);
-                assert_eq!(*starma_state(pointer).state.borrow().w.add(2), 8.0);
+                assert_eq!(starma_state(pointer).state.borrow().w[2], 8.0);
                 c_free_starma(pointer);
                 c_free_starma(pointer); // closing a live empty header is idempotent
                 assert!((*pointer).data.extptr().address.is_null());
@@ -865,13 +830,13 @@ mod tests {
                     let owned = starma_state(pointer);
                     let state = owned.state.borrow();
                     assert_eq!((state.mp, state.n, state.m, state.method), (1, 3, 0, 0));
-                    assert_eq!(std::slice::from_raw_parts(state.w, 3), &[2.0, 4.0, 8.0]);
-                    assert_eq!(std::slice::from_raw_parts(state.wkeep, 3), &[2.0, 4.0, 8.0]);
-                    assert!(!state.params.is_null() && !state.reg.is_null());
+                    assert_eq!(&state.w[..3], &[2.0, 4.0, 8.0]);
+                    assert_eq!(&state.wkeep[..3], &[2.0, 4.0, 8.0]);
+                    assert!(!state.params.is_empty() && !state.reg.is_empty());
                 }
                 crate::sexp::gengc::full_gc();
                 assert!(token.is_live());
-                assert_eq!(unsafe { *starma_state(pointer).state.borrow().w.add(2) }, 8.0);
+                assert_eq!(starma_state(pointer).state.borrow().w[2], 8.0);
             }));
             force_callback_collections(&session);
             let pointer = unsafe { setup(&values) };
@@ -1119,8 +1084,7 @@ mod tests {
                 assert_eq!(current.sxpinfo.rcount, original.sxpinfo.rcount);
                 assert_eq!(current.data, original.data);
                 assert_eq!(current.attrib, original.attrib);
-                assert_eq!(current.gengc_next_node, original.gengc_next_node);
-                assert_eq!(current.gengc_prev_node, original.gengc_prev_node);
+                assert_eq!(current.payload, original.payload);
                 assert!(Rc::ptr_eq(&heap.resource::<StarmaState>(token).unwrap(), &state));
                 crate::sexp::gengc::full_gc();
             }));
@@ -1207,7 +1171,7 @@ mod tests {
             let before = {
                 let state = starma_state(pointer);
                 let g = state.state.borrow();
-                (g.n, g.a, g.P, g.s2, state._buffers.clone())
+                (g.n, g.a.clone(), g.P.clone(), g.s2, g.try_clone().unwrap())
             };
             let calls = Rc::new(Cell::new(0));
             let counted = calls.clone();
@@ -1240,8 +1204,8 @@ mod tests {
                     }
                     let state = starma_state(pointer);
                     let g = state.state.borrow();
-                    assert_eq!((g.n, g.a, g.P, g.s2), (before.0, before.1, before.2, before.3));
-                    assert_eq!(state._buffers, before.4);
+                    assert_eq!((g.n, &g.a, &g.P, g.s2), (before.0, &before.1, &before.2, before.3));
+                    assert_eq!(*g, before.4);
                 }
             }
             let objective = unsafe { c_arma0fa(pointer, parameters.as_raw()) };
@@ -1348,6 +1312,218 @@ mod tests {
             }
             assert_eq!(live_allocations(), baseline);
             assert!(heap.resource::<StarmaState>(&node).is_none());
+        });
+    }
+
+    #[test]
+    fn starma_owned_seasonal_regression_matches_polynomial_innovations_during_gc() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut values = inputs(&session);
+            values[0] = integer_values(&session, &[1, 1, 1, 1, 2]);
+            values[1] = real_values(&session, &[3.0, 4.0, 6.0, 10.0, 18.0]);
+            values[2] = integer_values(&session, &[5]);
+            values[3] = real_values(&session, &[1.0; 5]);
+            values[4] = integer_values(&session, &[1]);
+            let parameters = real_values(&session, &[0.5, 0.2, 0.25, 0.3, 2.0]);
+            let method = integer_values(&session, &[1]);
+            let raw = unsafe { setup(&values) };
+            let pointer = session.sexp(raw).unwrap();
+            unsafe { c_starma_method(raw, method.as_raw()); }
+            let count = Rc::new(Cell::new(0));
+            let observed = count.clone();
+            let method_raw = method.as_raw();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                crate::sexp::gengc::full_gc();
+                unsafe { c_starma_method(raw, method_raw); }
+            }));
+            force_callback_collections(&session);
+            let objective = unsafe { c_arma0fa(pointer.as_raw(), parameters.as_raw()) };
+            let objective = session.sexp(objective).unwrap();
+            let residuals = unsafe { c_get_resid(pointer.as_raw()) };
+            let residuals = session.sexp(residuals).unwrap();
+            // (1-.5 L)(1-.25 L^2) and (1+.2 L)(1+.3 L^2),
+            // after subtracting the regression mean 2 from every observation.
+            let expected = [1.0, 1.3, 2.19, 4.737, 9.5676];
+            for (actual, expected) in residuals.iter_real().zip(expected) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            let variance = expected.iter().map(|value| value * value).sum::<f64>() / 5.0;
+            assert!((objective.real_elt(0).unwrap() - 0.5 * variance.ln()).abs() < 1e-12);
+            let state = starma_state(raw);
+            let model = state.state.borrow();
+            assert_eq!(&model.phi[..3], &[0.5, 0.25, -0.125]);
+            for (actual, expected) in model.theta.iter().zip([0.2, 0.3, 0.06]) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            drop(model);
+            assert!(count.get() >= 2);
+            unsafe { c_free_starma(pointer.as_raw()); }
+        });
+    }
+
+    #[test]
+    fn starma_owned_transform_blocks_and_inverse_survive_mutating_gc_callbacks() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut values = inputs(&session);
+            values[0] = integer_values(&session, &[2, 1, 1, 1, 2]);
+            values[3] = real_values(&session, &[1.0; 3]);
+            values[4] = integer_values(&session, &[1]);
+            let coefficients = [0.25_f64.atanh(), (-0.5_f64).atanh(), 0.1_f64.atanh(),
+                0.2_f64.atanh(), (-0.3_f64).atanh(), 7.0];
+            let parameters = real_values(&session, &coefficients);
+            let trans = integer_values(&session, &[0]);
+            let raw = unsafe { setup(&values) };
+            let pointer = session.sexp(raw).unwrap();
+            let count = Rc::new(Cell::new(0));
+            let observed = count.clone();
+            let trans_raw = trans.as_raw();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                crate::sexp::gengc::full_gc();
+                unsafe { c_set_trans(raw, trans_raw); }
+            }));
+            force_callback_collections(&session);
+            let transformed = unsafe { c_dotrans(pointer.as_raw(), parameters.as_raw()) };
+            let transformed = session.sexp(transformed).unwrap();
+            // Levinson step-up for kappa=(.25,-.5): a1=.25*(1+.5), a2=-.5.
+            // The remaining order-one blocks map tanh independently; regression
+            // coefficients keep their value across both transformations.
+            for (actual, expected) in transformed.clone().iter_real().zip([0.375, -0.5, 0.1, 0.2, -0.3, 7.0]) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            let inverse = unsafe { c_invtrans(pointer.as_raw(), transformed.as_raw()) };
+            let inverse = session.sexp(inverse).unwrap();
+            for (actual, expected) in inverse.iter_real().zip(coefficients) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            assert!(count.get() >= 2);
+            unsafe { c_free_starma(pointer.as_raw()); }
+        });
+    }
+
+    #[test]
+    fn starma_jacobian_matches_pinned_gnu_mixed_blocks_with_trans_off_and_gc() {
+        // Oracle: .Call(stats:::C_Gradtrans, ptr, x), with C_setup_starma
+        // orders=c(2L,2L,1L,1L,2L), m=1L, x=c(.2,-.3,.4,-.5,.1,-.2,7).
+        // Captured from the authenticated bac583951b728e97b9786804d3b4081f0fe18df5
+        // GNU runtime; trans=0L and trans=1L produce the same native matrix.
+        let mut expected = [0.0_f64; 49];
+        for (index, value) in [
+            (0, 1.2407616157038559), (1, -0.18067802445148606),
+            (2, 1.250568580455802), (3, -0.29894804938179753),
+            (8, 0.91540332522632717), (10, 0.78681106959033187),
+            (16, 1.0), (24, 1.0), (32, 0.98996729280355356),
+            (40, 0.96123238610534845), (48, 1.0),
+        ] { expected[index] = value; }
+        for trans in [0, 1] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active(|| {
+                let mut values = inputs(&session);
+                values[0] = integer_values(&session, &[2, 2, 1, 1, 2]);
+                values[3] = real_values(&session, &[1.0; 3]);
+                values[4] = integer_values(&session, &[1]);
+                values[6] = integer_values(&session, &[trans]);
+                let parameters = real_values(&session, &[0.2, -0.3, 0.4, -0.5, 0.1, -0.2, 7.0]);
+                let changed = integer_values(&session, &[1 - trans]);
+                let raw = unsafe { setup(&values) };
+                let pointer = session.sexp(raw).unwrap();
+                let notifications = Rc::new(Cell::new(0));
+                let counted = notifications.clone();
+                let changed_raw = changed.as_raw();
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    counted.set(counted.get() + 1);
+                    crate::sexp::gengc::full_gc();
+                    unsafe { c_set_trans(raw, changed_raw); }
+                }));
+                force_callback_collections(&session);
+                let result = unsafe { c_gradtrans(pointer.as_raw(), parameters.as_raw()) };
+                let result = session.sexp(result).unwrap();
+                for (index, (actual, expected)) in result.clone().iter_real().zip(expected).enumerate() {
+                    assert!((actual - expected).abs() < 1e-10, "matrix entry {index}: {actual} vs {expected}");
+                }
+                assert_eq!(result.len(), 49);
+                let dim = unsafe { crate::sexp::attrib_core::getAttrib(result.as_raw(), crate::sexp::attrib_core::R_DimSymbol()) };
+                let dim = session.sexp(dim).unwrap();
+                assert_eq!(dim.iter_integer().collect::<Vec<_>>(), [7, 7]);
+                assert!(notifications.get() >= 2);
+                assert_eq!(starma_state(raw).state.borrow().trans, 1 - trans);
+                unsafe { c_free_starma(pointer.as_raw()); }
+            });
+        }
+    }
+
+    #[test]
+    fn starma_jacobian_rejects_short_parameters_before_output_allocation() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let values = inputs(&session);
+            let raw = unsafe { setup(&values) };
+            let pointer = session.sexp(raw).unwrap();
+            let parameters = real_values(&session, &[]);
+            let failure = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe {
+                c_gradtrans(pointer.as_raw(), parameters.as_raw());
+            })).expect_err("a short gradient input cannot be read beyond its owning vector");
+            assert_eq!(failure.downcast_ref::<crate::sexp::context::RError>().unwrap().message,
+                "too few starma parameters");
+            let valid = real_values(&session, &[0.2]);
+            let retry = unsafe { c_gradtrans(pointer.as_raw(), valid.as_raw()) };
+            let retry = session.sexp(retry).unwrap();
+            let expected = ((0.201_f64).tanh() - (0.2_f64).tanh()) / 1e-3;
+            assert!((retry.real_elt(0).unwrap() - expected).abs() < 1e-12);
+            unsafe { c_free_starma(pointer.as_raw()); }
+        });
+    }
+
+    #[test]
+    fn starma_zero_forecast_matches_gnu_error_and_preserves_retry_state() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let values = inputs(&session);
+            let raw = unsafe { setup(&values) };
+            let pointer = session.sexp(raw).unwrap();
+            let parameters = real_values(&session, &[0.5]);
+            let zero = integer_values(&session, &[0]);
+            let ahead = integer_values(&session, &[3]);
+            let objective = unsafe { c_arma0fa(pointer.as_raw(), parameters.as_raw()) };
+            let objective = session.sexp(objective).unwrap();
+            let state = starma_state(raw);
+            let before = state.state.borrow().try_clone().unwrap();
+            let notifications = Rc::new(Cell::new(0));
+            let counted = notifications.clone();
+            let method_raw = zero.as_raw();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                counted.set(counted.get() + 1);
+                crate::sexp::gengc::full_gc();
+                unsafe { c_starma_method(raw, method_raw); }
+            }));
+            force_callback_collections(&session);
+            let failure = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe {
+                c_arma0_kfore(pointer.as_raw(), zero.as_raw(), zero.as_raw(), zero.as_raw());
+            })).expect_err("GNU rejects a zero forecast horizon");
+            // Pinned GNU: .Call(stats:::C_arma0_kfore, ptr, 0L, 0L, 0L).
+            assert_eq!(failure.downcast_ref::<crate::sexp::context::RError>().unwrap().message,
+                "forkal error code 11");
+            assert_eq!(notifications.get(), 0);
+            assert_eq!(*state.state.borrow(), before);
+            let retry = unsafe { c_arma0_kfore(pointer.as_raw(), zero.as_raw(), zero.as_raw(), ahead.as_raw()) };
+            let retry = session.sexp(retry).unwrap();
+            let means = retry.try_vector_elt(0).unwrap();
+            let variances = retry.try_vector_elt(1).unwrap();
+            for (actual, expected) in means.iter_real().zip([4.0, 2.0, 1.0]) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            for (actual, expected) in variances.iter_real().zip([16.0, 20.0, 21.0]) {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+            assert_eq!(*state.state.borrow(), before);
+            let recalculated = unsafe { c_arma0fa(pointer.as_raw(), parameters.as_raw()) };
+            let recalculated = session.sexp(recalculated).unwrap();
+            assert!((recalculated.real_elt(0).unwrap() - objective.real_elt(0).unwrap()).abs() < 1e-12);
+            assert!(notifications.get() >= 4);
+            unsafe { c_free_starma(pointer.as_raw()); }
         });
     }
 

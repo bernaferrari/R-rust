@@ -544,17 +544,12 @@ fn checked_child_rejects_foreign_slot_before_header_read() {
     let right = RSession::new_for_gc_tests();
     let parent = left.sexp(alloc(&left, SEXPTYPE::VECSXP, 1)).unwrap();
     let foreign = right.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).unwrap();
-    // Inject a valid foreign identity into a typed cell, bypassing only domain
-    // validation. Readers must reject it before reading the foreign header.
-    unsafe {
-        let parent_ptr = parent.clone().as_raw();
-        let data = (*parent_ptr)
-            .gengc_next_node
-            .cast::<std::cell::Cell<crate::sexp::heap::NodeLink>>();
-        data.write(std::cell::Cell::new(
-            foreign.node.as_ref().unwrap().link().unwrap(),
-        ));
-    }
+    // Inject a foreign exact identity through the actual typed cell, bypassing
+    // domain validation only. No native payload projection is involved.
+    let lease = parent.header().payload_lease().unwrap().clone();
+    lease
+        .set_reference_elt(0, foreign.node.as_ref().unwrap().link().unwrap())
+        .unwrap();
     assert!(parent.vector_elt(0).is_none());
     assert!(
         parent
@@ -641,4 +636,42 @@ fn node_factory_rejects_foreign_and_unregistered_addresses() {
         Err(SexpError::UnownedPointer { .. })
     ));
     assert!(factory.wrap(Sexp::nil().as_raw()).unwrap().is_nil());
+}
+
+#[test]
+fn owned_payload_snapshot_survives_parent_retirement_and_slot_reuse() {
+    let mut arena = RArena::new();
+    let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
+    let original = arena.node_token(pointer).unwrap();
+    let snapshot = {
+        let value = arena.sexp(pointer).unwrap();
+        let mut mutation = SexpMut::try_from_checked(value).unwrap();
+        mutation.try_set_integer_elt(0, 41).unwrap();
+        mutation.try_set_integer_elt(1, 43).unwrap();
+        mutation.freeze().header()
+    };
+    let lease = snapshot.payload_lease().unwrap();
+    let old_bytes = arena.total_bytes_allocated();
+    // The fixture has no node handles, payload references, or graph edges.
+    unsafe {
+        arena.free_node(pointer);
+    }
+    assert!(!original.is_live());
+    assert_eq!(arena.total_bytes_allocated(), old_bytes);
+    let replacement = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
+    assert_eq!(replacement.addr(), pointer.addr());
+    let current = arena.sexp(replacement).unwrap();
+    let mut current = SexpMut::try_from_checked(current).unwrap();
+    current.try_set_integer_elt(0, 99).unwrap();
+    assert_eq!(lease.integer_elt(0), Some(41));
+    assert_eq!(lease.integer_elt(1), Some(43));
+    assert!(!lease.same_allocation(current.freeze().header().payload_lease().unwrap()));
+    assert!(original.heap_identity().payload_lease(&original).is_none());
+}
+
+#[test]
+fn raw_factory_rejects_unowned_headers_before_any_safe_reader() {
+    let mut foreign = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::NILSXP);
+    let pointer = &mut foreign as crate::sexp::ffi::SEXP;
+    assert!(unsafe { Sexp::from_raw(pointer) }.is_none());
 }

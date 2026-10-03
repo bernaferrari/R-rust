@@ -3063,7 +3063,7 @@ mod tests {
 
         let original_bits = marker as usize as u64;
         unsafe {
-            *((*vec).gengc_next_node as *mut f64) = f64::from_bits(original_bits);
+            *(crate::sexp::accessors::DATAPTR(vec) as *mut f64) = f64::from_bits(original_bits);
         }
 
         let replacement = unsafe { crate::sexp::globals::R_NilValue() };
@@ -3076,7 +3076,7 @@ mod tests {
         );
         update_object_references(&map);
 
-        let after_bits = unsafe { *((*vec).gengc_next_node as *const f64) }.to_bits();
+        let after_bits = unsafe { *(crate::sexp::accessors::DATAPTR(vec) as *const f64) }.to_bits();
         assert_eq!(after_bits, original_bits);
     }
 

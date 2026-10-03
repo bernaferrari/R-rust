@@ -14698,7 +14698,7 @@ pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let _p = protect(result);
         if n > 0 {
             let src = CHAR(ch) as *const u8;
-            let data = (*result).gengc_next_node as *mut u8;
+            let data = crate::sexp::accessors::DATAPTR(result) as *mut u8;
             std::ptr::copy_nonoverlapping(src, data, n as usize);
         }
         result

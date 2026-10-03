@@ -607,30 +607,31 @@ unsafe fn refuse_if_local_handlers() {
 
 unsafe fn install_global_handler_stack(rho: SEXP) {
     unsafe {
-        let gh = global_handlers_list();
-        let n = if gh.is_null() || gh == R_NilValue() {
-            0
-        } else {
-            XLENGTH(gh)
-        };
+        let factory = condition_entry_factory();
+        let rho = condition_entry_value(&factory, rho);
+        let gh = condition_entry_value(&factory, global_handlers_list());
+        let n = if gh.is_nil() { 0 } else { gh.len() };
         let names = if n == 0 {
-            R_NilValue()
+            factory.nil()
         } else {
-            crate::sexp::attrib_core::getAttrib(gh, crate::sexp::attrib_core::R_NamesSymbol())
+            condition_entry_value(
+                &factory,
+                crate::sexp::attrib_core::getAttrib(
+                    gh.as_raw(),
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                ),
+            )
         };
-
-        let mut stack = R_NilValue();
-        if n > 0 {
-            for i in (0..n).rev() {
-                let class_name = elt_to_string(names, i);
-                let handler = VECTOR_ELT(gh, i);
-                let entry = calling_handler_entry(&class_name, handler, rho);
-                let _e = protect(entry);
-                stack = Rf_cons(entry, stack);
-                let _s = protect(stack);
-            }
+        let mut stack = factory.nil();
+        for i in (0..n).rev() {
+            let class_name = elt_to_string(names.as_raw(), i);
+            let handler = condition_entry_value(&factory, VECTOR_ELT(gh.as_raw(), i));
+            let entry = calling_handler_entry(&factory, &class_name, handler, &rho);
+            stack = factory
+                .pairlist_cell(&entry, &stack, &factory.nil())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        set_condition_handler_stack(stack);
+        set_condition_handler_stack(stack.as_raw());
     }
 }
 
@@ -761,45 +762,92 @@ fn set_condition_handler_stack(stack: SEXP) {
     });
 }
 
-unsafe fn calling_handler_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
-    unsafe {
-        let mut entries = Vec::new();
-        while !args.is_null() && args != R_NilValue() {
-            let Some(class_name) = tag_name(args) else {
-                args = CDR(args);
-                continue;
-            };
-            let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
-            if is_function_value(handler) {
-                entries.push(calling_handler_entry(&class_name, handler, rho));
-            }
-            args = CDR(args);
-        }
+unsafe fn condition_entry_factory<'s>() -> crate::sexp::object::SessionNodeFactory<'s> {
+    crate::sexp::object::SessionNodeFactory::new(
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    )
+}
 
-        let mut stack = old_stack;
-        for entry in entries.into_iter().rev() {
-            stack = Rf_cons(entry, stack);
+fn condition_entry_value<'s>(
+    factory: &crate::sexp::object::SessionNodeFactory<'s>,
+    value: SEXP,
+) -> crate::sexp::object::Sexp<'s> {
+    factory
+        .wrap(value)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+unsafe fn calling_handler_stack_from_args(args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
+    unsafe {
+        let factory = condition_entry_factory();
+        let rho = condition_entry_value(&factory, rho);
+        let mut cursor = condition_entry_value(&factory, args);
+        let mut entries = Vec::new();
+        // The optional runtime stack starts as null before any handlers are
+        // installed; select this factory's original nil only at that boundary.
+        let mut stack = if old_stack.is_null() {
+            factory.nil()
+        } else {
+            condition_entry_value(&factory, old_stack)
+        };
+        while !cursor.is_nil() {
+            // Retain the original next cell and selected expression before a
+            // handler expression can detach either and collect its caller.
+            let next = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if let Some(class_name) = tag_name(cursor.as_raw()) {
+                let expression = cursor
+                    .try_car()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let handler = condition_entry_value(
+                    &factory,
+                    crate::eval::eval::Rf_eval(expression.as_raw(), rho.as_raw()),
+                );
+                if is_function_value(handler.as_raw()) {
+                    entries.push(calling_handler_entry(&factory, &class_name, handler, &rho));
+                }
+            }
+            cursor = next;
         }
-        stack
+        for entry in entries.into_iter().rev() {
+            stack = factory
+                .pairlist_cell(&entry, &stack, &factory.nil())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        stack.as_raw()
     }
 }
 
-unsafe fn calling_handler_entry(class_name: &str, handler: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        if entry.is_null() {
-            return R_NilValue();
-        }
-        let _entry_guard = protect(entry);
-        SET_VECTOR_ELT(
-            entry,
-            0,
-            Rf_mkString(CString::new(class_name).unwrap_or_default().as_ptr()),
-        );
-        SET_VECTOR_ELT(entry, 1, handler);
-        SET_VECTOR_ELT(entry, 2, rho);
+unsafe fn calling_handler_entry<'s>(
+    factory: &crate::sexp::object::SessionNodeFactory<'s>,
+    class_name: &str,
+    handler: crate::sexp::object::Sexp<'s>,
+    rho: &crate::sexp::object::Sexp<'s>,
+) -> crate::sexp::object::Sexp<'s> {
+    // Both signal paths share error_state.handler_stack. Use GNU's single
+    // five-slot layout and CHARSXP class, including its calling-entry bit.
+    let class = factory
+        .allocate(|arena| Some(arena.alloc_charsxp(class_name.as_bytes())))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let entry = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 5)))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut entry = crate::sexp::object::SexpMut::try_from_checked(entry)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (index, value) in [class, rho.clone(), handler, factory.nil(), factory.nil()]
+        .into_iter()
+        .enumerate()
+    {
         entry
+            .try_set_vector_elt(index as R_xlen_t, value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    unsafe {
+        crate::sexp::accessors::SETLEVELS(entry.as_raw(), TRUE);
+    }
+    entry.freeze()
 }
 thread_local! {
     static WARNING_HANDLER_RAN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -825,7 +873,7 @@ unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
             while !current.is_null() && current != R_NilValue() {
                 let entry = CAR(current);
                 if calling_handler_entry_class(entry).as_deref() == Some(class_name.as_str()) {
-                    let handler = VECTOR_ELT(entry, 1);
+                    let handler = crate::mainutils::errors::ENTRY_HANDLER(entry);
                     call_condition_handler(handler, condition, rho);
                     WARNING_HANDLER_RAN.with(|c| c.set(true));
                 }
@@ -870,14 +918,18 @@ pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP
 
 unsafe fn calling_handler_entry_class(entry: SEXP) -> Option<String> {
     unsafe {
-        if entry.is_null() || entry == R_NilValue() || TYPEOF(entry) != SEXPTYPE::VECSXP {
+        if entry.is_null()
+            || entry == R_NilValue()
+            || TYPEOF(entry) != SEXPTYPE::VECSXP
+            || XLENGTH(entry) != 5
+            || crate::mainutils::errors::IS_CALLING_ENTRY(entry) == 0
+        {
             return None;
         }
-        let class = VECTOR_ELT(entry, 0);
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        Some(elt_to_string(class, 0))
+        let class = crate::mainutils::errors::ENTRY_CLASS(entry);
+        crate::sexp::object::Sexp::from_raw(class)?
+            .try_as_string()
+            .ok()
     }
 }
 
@@ -3060,5 +3112,46 @@ mod tests {
         });
         drop(second);
         drop(first);
+    }
+}
+
+#[cfg(test)]
+mod owned_calling_handler_tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_calling_handler_entries_survive_collection_during_later_handler_construction() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+        let global = session.global_env().unwrap();
+        let expression = owner.with_arena(|arena| crate::eval::parser::parse(
+            "{ hits <- 0L; withCallingHandlers({ warning('collected'); 41L }, warning=function(w) { hits <<- hits + 1L; gc() }, simpleWarning={ gc(); function(w) { hits <<- hits + 10L; gc() } }); hits }",
+            arena, factory.clone(),
+        )).unwrap().unwrap();
+        let collections = Rc::new(Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        let (handlers, restarts) = session.with_active_in(|instance| unsafe {
+            (
+                (*instance).error_state.handler_stack,
+                (*instance).error_state.restart_stack,
+            )
+        });
+        let protections = crate::sexp::protect::R_ProtectCount();
+        let result = factory
+            .wrap(unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), global.as_raw()) })
+            .unwrap();
+        assert_eq!(result.integer_elt(0), Some(11));
+        assert!(collections.get() > 0);
+        session.with_active_in(|instance| unsafe {
+            assert_eq!((*instance).error_state.handler_stack, handlers);
+            assert_eq!((*instance).error_state.restart_stack, restarts);
+        });
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), protections);
     }
 }

@@ -6,6 +6,7 @@ use crate::sexp::{
     ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp},
     heap::{CheckedNode, HeapBackingOwners, HeapError, HeapIdentity, NodeId, NodeLink, NodePage},
     memory::{NodePageRegistration, register_node_page},
+    payload::{PayloadLease, PayloadLink},
 };
 use std::{
     cell::{Cell, RefCell},
@@ -13,22 +14,15 @@ use std::{
     rc::Rc,
 };
 
-enum PersistentPayload {
-    Bytes(Rc<[Cell<u8>]>),
-    Integers(Rc<[Cell<i32>]>),
-    Reals(Rc<[Cell<f64>]>),
-    References(Rc<[Cell<NodeLink>]>),
-}
-impl PersistentPayload {
-    fn pointer(&self) -> SEXP {
-        // The projection covers the whole shared interior-cell slice, so
-        // native span reads retain provenance across all its elements.
-        match self {
-            Self::Bytes(values) => values.as_ptr().cast_mut().cast(),
-            Self::Integers(values) => values.as_ptr().cast_mut().cast(),
-            Self::Reals(values) => values.as_ptr().cast_mut().cast(),
-            Self::References(values) => values.as_ptr().cast_mut().cast(),
+fn empty_payload_shape(header: &SexprecCore) -> bool {
+    if !header.payload.is_empty() {
+        return false;
+    }
+    match header.data {
+        NodeBody::Vector(vector) => {
+            vector.length == 0 || (header.sxpinfo.alt() && vector.length >= 0)
         }
+        _ => true,
     }
 }
 fn scalar_cells<T>(value: T) -> Result<Rc<[Cell<T>]>, HeapError> {
@@ -44,7 +38,7 @@ struct PersistentAllocation {
     header: NodePage<SexprecCore>,
     // Fixed interior cells keep a native character projection stable without
     // handing Rust ownership of the bytes to a raw allocation or header.
-    payload: Option<PersistentPayload>,
+    payload: Option<PayloadLease>,
 }
 
 /// The single physical owner of permanent headers and their payloads.
@@ -53,47 +47,65 @@ pub(crate) struct PersistentBacking {
     nodes: RefCell<HashMap<usize, PersistentAllocation>>,
     // Allocation lookup only: the existing NodePage remains the authority.
     pages: RefCell<HashMap<u64, usize>>,
-    references: RefCell<HashMap<usize, usize>>,
+    identity: HeapIdentity,
+    allocated_bytes: Rc<Cell<usize>>,
+    transient_bytes: Rc<Cell<usize>>,
 }
 impl PersistentBacking {
-    pub(crate) fn payload_capacity_for_kind(
+    pub(crate) fn reserve_payload_bytes(
         &self,
-        pointer: *mut u8,
-        kind: SEXPTYPE,
-    ) -> Option<usize> {
-        self.nodes.borrow().values().find_map(|allocation| {
-            let payload = allocation.payload.as_ref()?;
-            if payload.pointer().cast::<u8>() != pointer {
-                return None;
-            }
-            match payload {
-                PersistentPayload::Bytes(values)
-                    if matches!(kind, SEXPTYPE::RAWSXP | SEXPTYPE::CHARSXP) =>
-                {
-                    Some(values.len())
-                }
-                PersistentPayload::Integers(values)
-                    if matches!(kind, SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP) =>
-                {
-                    Some(values.len())
-                }
-                PersistentPayload::Reals(values) if kind == SEXPTYPE::REALSXP => Some(values.len()),
-                PersistentPayload::References(values)
-                    if matches!(
-                        kind,
-                        SEXPTYPE::STRSXP
-                            | SEXPTYPE::VECSXP
-                            | SEXPTYPE::EXPRSXP
-                            | SEXPTYPE::BCODESXP
-                    ) =>
-                {
-                    Some(values.len())
-                }
-                _ => None,
-            }
-        })
+        id: &NodeId,
+        bytes: usize,
+    ) -> Option<crate::sexp::memory::TransientReservation> {
+        self.node_snapshot(id)?;
+        Some(
+            crate::sexp::memory::TransientReservation::new(
+                0,
+                self.allocated_bytes.get(),
+                0,
+                &self.transient_bytes,
+                bytes,
+            )?
+            .for_payload(self.identity.clone(), self.allocated_bytes.clone()),
+        )
     }
-
+    pub(crate) fn node_payload(&self, id: &NodeId) -> Option<PayloadLease> {
+        let key = *self.pages.borrow().get(&id.page_cookie())?;
+        let nodes = self.nodes.borrow();
+        let allocation = nodes.get(&key)?;
+        let header = allocation.header.copy_live(id)?;
+        let lease = allocation.payload.as_ref()?;
+        lease.matches_header(&header).then(|| lease.clone())
+    }
+    pub(crate) fn publish_payload(
+        &self,
+        id: &NodeId,
+        expected: PayloadLink,
+        lease: &PayloadLease,
+    ) -> Option<()> {
+        let key = *self.pages.borrow().get(&id.page_cookie())?;
+        let mut nodes = self.nodes.borrow_mut();
+        let allocation = nodes.get_mut(&key)?;
+        let mut header = allocation.header.copy_live(id)?;
+        if header.payload != expected
+            || allocation
+                .payload
+                .as_ref()
+                .map(PayloadLease::link)
+                .unwrap_or(PayloadLink::EMPTY)
+                != expected
+        {
+            return None;
+        }
+        header.payload = lease.link();
+        if !lease.matches_header(&header) {
+            return None;
+        }
+        lease.bind_to_heap(&self.identity, &self.allocated_bytes)?;
+        allocation.header.replace_live(id, header).ok()?;
+        allocation.payload = Some(lease.clone());
+        Some(())
+    }
     pub(crate) fn node_snapshot(&self, id: &NodeId) -> Option<SexprecCore> {
         let key = *self.pages.borrow().get(&id.page_cookie())?;
         self.nodes.borrow().get(&key)?.header.copy_live(id)
@@ -111,24 +123,29 @@ impl PersistentBacking {
             return None;
         }
         let key = *self.pages.borrow().get(&id.page_cookie())?;
-        self.nodes
-            .borrow()
-            .get(&key)?
-            .header
-            .replace_live(id, value)
-            .ok()
-    }
-    fn with_references<T>(
-        &self,
-        pointer: *mut u8,
-        read: impl FnOnce(&[Cell<NodeLink>]) -> Option<T>,
-    ) -> Option<T> {
-        let key = *self.references.borrow().get(&(pointer as usize))?;
-        let nodes = self.nodes.borrow();
-        let PersistentPayload::References(values) = nodes.get(&key)?.payload.as_ref()? else {
+        let mut nodes = self.nodes.borrow_mut();
+        let allocation = nodes.get_mut(&key)?;
+        let current = allocation.header.copy_live(id)?;
+        if current.sxpinfo.alt() && current.sxpinfo.type_of() != value.sxpinfo.type_of() {
             return None;
-        };
-        read(values)
+        }
+        if matches!(value.data, NodeBody::Vector(_)) {
+            if value.payload != current.payload {
+                return None;
+            }
+            match &allocation.payload {
+                Some(lease) if lease.matches_header(&value) => {}
+                None if empty_payload_shape(&value) => {}
+                _ => return None,
+            }
+        } else if !value.payload.is_empty() {
+            return None;
+        }
+        allocation.header.replace_live(id, value).ok()?;
+        if !matches!(value.data, NodeBody::Vector(_)) {
+            allocation.payload = None;
+        }
+        Some(())
     }
     pub(crate) fn attach_resource(&self, id: &NodeId, value: &Rc<dyn std::any::Any>) -> Option<()> {
         self.nodes
@@ -151,55 +168,6 @@ impl PersistentBacking {
             .header
             .take_resource(id)
     }
-
-    pub(crate) fn reference_payload_lease(
-        &self,
-        pointer: *mut u8,
-    ) -> Option<crate::sexp::payload::ReferencePayloadLease> {
-        let key = *self.references.borrow().get(&(pointer as usize))?;
-        let nodes = self.nodes.borrow();
-        let PersistentPayload::References(cells) = nodes.get(&key)?.payload.as_ref()? else {
-            return None;
-        };
-        Some(crate::sexp::payload::ReferencePayloadLease::from_cells(
-            Rc::clone(cells),
-        ))
-    }
-
-    pub(crate) fn reference_payload_capacity(&self, pointer: *mut u8) -> Option<usize> {
-        self.with_references(pointer, |values| Some(values.len()))
-    }
-    pub(crate) fn reference_payload_elt(&self, pointer: *mut u8, index: usize) -> Option<NodeLink> {
-        self.with_references(pointer, |values| values.get(index).map(Cell::get))
-    }
-    pub(crate) fn replace_reference_payload(
-        &self,
-        pointer: *mut u8,
-        start: usize,
-        children: &[NodeLink],
-    ) -> Option<()> {
-        self.with_references(pointer, |values| {
-            if start.checked_add(children.len())? > values.len() {
-                return None;
-            }
-            for (cell, child) in values[start..].iter().zip(children) {
-                cell.set(*child);
-            }
-            Some(())
-        })
-    }
-    pub(crate) fn copy_reference_payload(
-        &self,
-        pointer: *mut u8,
-        length: usize,
-    ) -> Option<Vec<NodeLink>> {
-        self.with_references(pointer, |values| {
-            if length > values.len() {
-                return None;
-            }
-            Some(values.iter().take(length).map(Cell::get).collect())
-        })
-    }
 }
 
 pub(crate) struct PersistentHeap {
@@ -214,7 +182,9 @@ impl PersistentHeap {
         let backing = Rc::new(PersistentBacking {
             nodes: RefCell::new(HashMap::new()),
             pages: RefCell::new(HashMap::new()),
-            references: RefCell::new(HashMap::new()),
+            identity: identity.clone(),
+            allocated_bytes: Rc::new(Cell::new(0)),
+            transient_bytes: Rc::new(Cell::new(0)),
         });
         let owners = identity.retain_persistent(backing.clone());
         let retired_resources = owners.resource_drop_queue();
@@ -235,7 +205,7 @@ impl PersistentHeap {
     fn allocate(
         &mut self,
         header: SexprecCore,
-        payload: Option<PersistentPayload>,
+        payload: Option<PayloadLease>,
     ) -> Result<SEXP, HeapError> {
         if !header.has_valid_shape() {
             return Err(HeapError::InvalidShape);
@@ -250,16 +220,14 @@ impl PersistentHeap {
             .borrow_mut()
             .try_reserve(1)
             .map_err(|_| HeapError::Allocation)?;
-        let reference_pointer = match &payload {
-            Some(PersistentPayload::References(values)) => Some(values.as_ptr() as usize),
-            _ => None,
-        };
-        if reference_pointer.is_some() {
-            self.backing
-                .references
-                .borrow_mut()
-                .try_reserve(1)
-                .map_err(|_| HeapError::Allocation)?;
+        match &payload {
+            Some(lease) if lease.matches_header(&header) => {
+                lease
+                    .bind_to_heap(&self.identity, &self.backing.allocated_bytes)
+                    .ok_or(HeapError::InvalidShape)?;
+            }
+            None if empty_payload_shape(&header) => {}
+            _ => return Err(HeapError::InvalidShape),
         }
         let next_page = self.next_page.checked_add(1).ok_or(HeapError::Allocation)?;
         let mut initial = Some(header);
@@ -284,12 +252,6 @@ impl PersistentHeap {
             .pages
             .borrow_mut()
             .insert(page_cookie, pointer as usize);
-        if let Some(reference_pointer) = reference_pointer {
-            self.backing
-                .references
-                .borrow_mut()
-                .insert(reference_pointer, pointer as usize);
-        }
         self.next_page = next_page;
         Ok(pointer)
     }
@@ -311,17 +273,17 @@ impl PersistentHeap {
             length,
             truelength: 0,
         });
-        let payload = PersistentPayload::Bytes(cells);
-        header.gengc_next_node = payload.pointer();
+        let payload = PayloadLease::from_byte_cells(cells).map_err(|_| HeapError::Allocation)?;
+        header.payload = payload.link();
         self.allocate(header, Some(payload))
     }
     fn allocate_vector(
         &mut self,
         kind: SEXPTYPE,
-        payload: PersistentPayload,
+        payload: PayloadLease,
     ) -> Result<SEXP, HeapError> {
         let mut header = SexprecCore::new_vector(kind, 1);
-        header.gengc_next_node = payload.pointer();
+        header.payload = payload.link();
         self.allocate(header, Some(payload))
     }
     pub(crate) fn allocate_integer(
@@ -335,13 +297,15 @@ impl PersistentHeap {
             } else {
                 SEXPTYPE::INTSXP
             },
-            PersistentPayload::Integers(scalar_cells(value)?),
+            PayloadLease::from_integer_cells(scalar_cells(value)?)
+                .map_err(|_| HeapError::Allocation)?,
         )
     }
     pub(crate) fn allocate_real(&mut self, value: f64) -> Result<SEXP, HeapError> {
         self.allocate_vector(
             SEXPTYPE::REALSXP,
-            PersistentPayload::Reals(scalar_cells(value)?),
+            PayloadLease::from_real_cells(scalar_cells(value)?)
+                .map_err(|_| HeapError::Allocation)?,
         )
     }
     pub(crate) fn allocate_string(&mut self, value: SEXP) -> Result<SEXP, HeapError> {
@@ -350,7 +314,8 @@ impl PersistentHeap {
             .ok_or(HeapError::InvalidSlot)?;
         self.allocate_vector(
             SEXPTYPE::STRSXP,
-            PersistentPayload::References(scalar_cells(link)?),
+            PayloadLease::from_reference_cells(scalar_cells(link)?)
+                .map_err(|_| HeapError::Allocation)?,
         )
     }
     pub(crate) fn token(&self, pointer: SEXP) -> Option<CheckedNode> {
@@ -382,12 +347,6 @@ impl PersistentHeap {
         let Some(allocation) = self.backing.nodes.borrow_mut().remove(&(pointer as usize)) else {
             return false;
         };
-        if let Some(PersistentPayload::References(values)) = &allocation.payload {
-            self.backing
-                .references
-                .borrow_mut()
-                .remove(&(values.as_ptr() as usize));
-        }
         if let Some(token) = allocation.header.token(0) {
             self.backing
                 .pages
@@ -424,6 +383,25 @@ impl Drop for PersistentHeap {
 mod tests {
     use super::*;
     #[test]
+    fn detached_permanent_payload_snapshot_pins_the_actual_cells_and_charge() {
+        let mut permanent = PersistentHeap::new(HeapIdentity::new());
+        let heap = permanent.heap_identity();
+        let pointer = permanent.allocate_integer(63, false).unwrap();
+        let node = permanent.token(pointer).unwrap();
+        let lease = heap.payload_lease(&node).unwrap();
+        let charge = permanent.backing.allocated_bytes.clone();
+        assert_eq!(charge.get(), 4);
+        assert!(permanent.remove(pointer));
+        assert!(heap.payload_lease(&node).is_none());
+        assert_eq!(lease.integer_elt(0), Some(63));
+        assert_eq!(charge.get(), 4);
+        drop(permanent);
+        assert_eq!(lease.integer_elt(0), Some(63));
+        drop(lease);
+        assert_eq!(charge.get(), 0);
+    }
+
+    #[test]
     fn invalid_permanent_shapes_publish_nothing_and_retype_uses_actual_payload() {
         let mut permanent = PersistentHeap::new(HeapIdentity::new());
         let heap = permanent.identity.clone();
@@ -437,7 +415,7 @@ mod tests {
         assert_eq!(permanent.len(), 0);
         assert_eq!(permanent.next_page, next_page);
         assert!(permanent.backing.pages.borrow().is_empty());
-        assert!(permanent.backing.references.borrow().is_empty());
+        assert_eq!(permanent.backing.allocated_bytes.get(), 0);
 
         let pointer = permanent.allocate_integer(42, true).unwrap();
         let node = permanent.token(pointer).unwrap();
@@ -449,10 +427,7 @@ mod tests {
         assert_eq!(heap.node_snapshot(&node).unwrap().data, original.data);
         heap.retype_node(&node, SEXPTYPE::INTSXP).unwrap();
         assert!(heap.retype_node(&node, SEXPTYPE::REALSXP).is_none());
-        assert_eq!(
-            heap.node_snapshot(&node).unwrap().gengc_next_node,
-            original.gengc_next_node
-        );
+        assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
     }
 
     #[test]

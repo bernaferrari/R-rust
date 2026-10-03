@@ -189,13 +189,22 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
 }
 
 /// Allocate and initialize a scalar before allocation notifications run.
-/// The private initializer only writes its fresh payload; it cannot reenter R.
-unsafe fn scalar(sexptype: SEXPTYPE, initialize: impl FnOnce(SEXP)) -> SEXP {
+/// The initializer writes checked typed cells without lending payload bytes.
+unsafe fn scalar(
+    sexptype: SEXPTYPE,
+    initialize: impl FnOnce(&mut super::object::SexpMut<'_>) -> super::object::SexpResult<()>,
+) -> SEXP {
     unsafe {
         require_allocation(memory::with_arena(|arena| {
             let value = arena.alloc_vector(sexptype, 1);
-            if !value.is_null() {
-                initialize(value);
+            let Some(checked) = arena.sexp(value) else {
+                return ptr::null_mut();
+            };
+            let Ok(mut checked) = super::object::SexpMut::try_from_checked(checked) else {
+                return ptr::null_mut();
+            };
+            if initialize(&mut checked).is_err() {
+                return ptr::null_mut();
             }
             value
         }))
@@ -209,41 +218,22 @@ pub unsafe fn Rf_mkNAString() -> SEXP {
 
 /// Create a scalar logical value.
 pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
-    unsafe {
-        scalar(SEXPTYPE::LGLSXP, |value| {
-            (*value).gengc_next_node.cast::<c_int>().write(x)
-        })
-    }
+    unsafe { scalar(SEXPTYPE::LGLSXP, |value| value.try_set_logical_elt(0, x)) }
 }
 
 /// Create a scalar integer value.
 pub unsafe fn Rf_ScalarInteger(x: c_int) -> SEXP {
-    unsafe {
-        scalar(SEXPTYPE::INTSXP, |value| {
-            (*value).gengc_next_node.cast::<c_int>().write(x)
-        })
-    }
+    unsafe { scalar(SEXPTYPE::INTSXP, |value| value.try_set_integer_elt(0, x)) }
 }
 
 /// Create a scalar real value.
 pub unsafe fn Rf_ScalarReal(x: c_double) -> SEXP {
-    unsafe {
-        scalar(SEXPTYPE::REALSXP, |value| {
-            (*value).gengc_next_node.cast::<c_double>().write(x)
-        })
-    }
+    unsafe { scalar(SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, x)) }
 }
 
 /// Create a scalar complex value.
 pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
-    unsafe {
-        scalar(SEXPTYPE::CPLXSXP, |value| {
-            (*value)
-                .gengc_next_node
-                .cast::<super::ffi::Rcomplex>()
-                .write(x)
-        })
-    }
+    unsafe { scalar(SEXPTYPE::CPLXSXP, |value| value.try_set_complex_elt(0, x)) }
 }
 
 /// Create a scalar string from a CHARSXP.
@@ -261,14 +251,7 @@ pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
 
 /// Create a scalar raw value.
 pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
-    unsafe {
-        scalar(SEXPTYPE::RAWSXP, |value| {
-            (*value)
-                .gengc_next_node
-                .cast::<super::ffi::Rbyte>()
-                .write(x)
-        })
-    }
+    unsafe { scalar(SEXPTYPE::RAWSXP, |value| value.try_set_raw_elt(0, x)) }
 }
 
 // ---------------------------------------------------------------------------
@@ -549,7 +532,7 @@ mod tests {
             assert!(!s.is_null());
             assert_eq!((*s).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             assert_eq!((*s).vecsxp_length(), 1);
-            let data = (*s).gengc_next_node as *mut c_int;
+            let data = super::super::accessors::INTEGER(s);
             assert_eq!(*data, 42);
         }
     }
@@ -560,7 +543,7 @@ mod tests {
         unsafe {
             let s = Rf_ScalarReal(3.14);
             assert!(!s.is_null());
-            let data = (*s).gengc_next_node as *mut c_double;
+            let data = super::super::accessors::REAL(s);
             assert!((*data - 3.14).abs() < 1e-10);
         }
     }
@@ -571,7 +554,7 @@ mod tests {
         unsafe {
             let s = Rf_ScalarLogical(1);
             assert!(!s.is_null());
-            let data = (*s).gengc_next_node as *mut c_int;
+            let data = super::super::accessors::INTEGER(s);
             assert_eq!(*data, 1);
         }
     }

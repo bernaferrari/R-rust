@@ -59,6 +59,7 @@ pub use value::{SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use view::SexpView;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
+#[cfg(test)]
 use super::globals::R_NilValue;
 use super::heap::{HeapIdentity, NodeLink, ReferenceChild, ResolvedLink};
 pub(crate) use header::{LeadingScalars, NodeBody, copy_leading_scalars};
@@ -252,11 +253,39 @@ impl<'a> Sexp<'a> {
             Err(SexpError::MisalignedPointer {
                 address: ptr as usize,
             })
+        } else if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(ptr) {
+            Ok(Self::from_singleton_lease(singleton, None))
         } else {
+            let (ptr, node) =
+                crate::sexp::memory::checked_projection(ptr).ok_or(SexpError::UnownedPointer {
+                    address: ptr.addr(),
+                })?;
+            let heap = node.heap_identity();
+            let core = heap
+                .node_snapshot(&node)
+                .ok_or(SexpError::StaleAllocation)?;
+            if !core.has_valid_shape() {
+                return Err(SexpError::UnownedPointer {
+                    address: ptr.addr(),
+                });
+            }
+            if let NodeBody::Vector(vector) = core.data {
+                let length =
+                    usize::try_from(vector.length).map_err(|_| SexpError::MissingData {
+                        sexptype: core.sxpinfo.type_of(),
+                    })?;
+                if !core.payload.is_empty() && heap.payload_lease(&node).is_none()
+                    || core.payload.is_empty() && length > 0 && !core.sxpinfo.alt()
+                {
+                    return Err(SexpError::MissingData {
+                        sexptype: core.sxpinfo.type_of(),
+                    });
+                }
+            }
             Ok(Sexp {
                 ptr,
                 owner: SexpOwner::Unknown,
-                node: None,
+                node: Some(node),
                 session_owner_ptr: None,
                 root: None,
                 singleton: None,
@@ -480,7 +509,7 @@ impl<'a> Sexp<'a> {
     fn materialize_compact_payload(&self) -> SexpResult<()> {
         self.ensure_live()?;
         let header = self.header();
-        if header.sxpinfo.alt() && header.payload.is_null() {
+        if header.sxpinfo.alt() && header.payload.is_empty() {
             if let Some(owner) = self.session_owner_ptr {
                 // The owner is retained by this handle. Each callback runs after
                 // header copying, with no instance or R payload borrow alive.
@@ -495,11 +524,32 @@ impl<'a> Sexp<'a> {
                 }?;
             } else {
                 unsafe {
-                    super::altseq::materialize(self.ptr);
+                    if !super::altrep::materialize_raw(self.ptr)? {
+                        super::altseq::materialize(self.ptr);
+                    }
                 }
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn materialize_compact_payload_for_raw(&self) -> SexpResult<()> {
+        self.materialize_compact_payload()
+    }
+
+    /// Resolve the actual current typed allocation after any provider callback.
+    fn try_payload_lease(
+        &self,
+        expected: SEXPTYPE,
+        expected_name: &'static str,
+    ) -> SexpResult<crate::sexp::payload::PayloadLease> {
+        self.expect_type(expected, expected_name)?;
+        self.materialize_compact_payload()?;
+        self.expect_type(expected, expected_name)?;
+        self.header()
+            .payload_lease()
+            .cloned()
+            .ok_or(SexpError::MissingData { sexptype: expected })
     }
 
     fn try_typed_data<T>(
@@ -507,14 +557,8 @@ impl<'a> Sexp<'a> {
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*const T> {
-        self.expect_type(expected, expected_name)?;
-        self.materialize_compact_payload()?;
-        let data = self.header().payload as *const T;
-        if data.is_null() {
-            Err(SexpError::MissingData { sexptype: expected })
-        } else {
-            Ok(data)
-        }
+        let lease = self.try_payload_lease(expected, expected_name)?;
+        Ok(lease.native_projection().cast::<T>())
     }
 
     #[inline]
@@ -549,28 +593,6 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn typed_data_mut<T>(&self, expected: SEXPTYPE) -> Option<*mut T> {
-        self.try_typed_data_mut::<T>(expected, sexptype_name(expected))
-            .ok()
-    }
-
-    #[inline]
-    fn try_typed_data_mut<T>(
-        &self,
-        expected: SEXPTYPE,
-        expected_name: &'static str,
-    ) -> SexpResult<*mut T> {
-        self.expect_type(expected, expected_name)?;
-        self.materialize_compact_payload()?;
-        let data = self.header().payload as *mut T;
-        if data.is_null() {
-            Err(SexpError::MissingData { sexptype: expected })
-        } else {
-            Ok(data)
-        }
-    }
-
-    #[inline]
     unsafe fn typed_slice<T>(&self, expected: SEXPTYPE) -> Option<&'_ [T]> {
         unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
@@ -586,12 +608,17 @@ impl<'a> Sexp<'a> {
         expected_name: &'static str,
     ) -> SexpResult<&'_ [T]> {
         self.expect_type(expected, expected_name)?;
-        let len = self.clone().len() as usize;
-        if len == 0 {
+        if self.len() == 0 {
             return Ok(&[]);
         }
-        let data = self.try_typed_data::<T>(expected, expected_name)?;
-        Ok(unsafe { std::slice::from_raw_parts(data, len) })
+        let lease = self.try_payload_lease(expected, expected_name)?;
+        let len = usize::try_from(self.len()).map_err(|_| SexpError::MissingData { sexptype: expected })?;
+        if len > lease.capacity() {
+            return Err(SexpError::MissingData { sexptype: expected });
+        }
+        // The original parent's attachment retains this projection. The
+        // caller excludes all replacement/mutation for the returned borrow.
+        Ok(unsafe { std::slice::from_raw_parts(lease.native_projection().cast::<T>(), len) })
     }
 
     #[inline]

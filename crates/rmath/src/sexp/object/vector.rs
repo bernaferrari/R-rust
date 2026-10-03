@@ -19,7 +19,8 @@ impl<'a> Sexp<'a> {
     /// Get the i-th logical value with typed error reporting.
     #[inline]
     pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::LGLSXP, "logical vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::LGLSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -30,9 +31,11 @@ impl<'a> Sexp<'a> {
                 }),
             };
         }
-        let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
-        let i = self.try_index(i)?;
-        Ok(unsafe { *data.add(i) })
+        let lease = self.try_payload_lease(SEXPTYPE::LGLSXP, "logical vector")?;
+        let index = self.try_index(i)?;
+        lease.integer_elt(index).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::LGLSXP,
+        })
     }
 
     /// Get the i-th integer value with bounds checking.
@@ -51,7 +54,8 @@ impl<'a> Sexp<'a> {
     /// access still goes through [`Self::try_typed_data`] and expands them.
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::INTSXP, "integer vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::INTSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -72,11 +76,11 @@ impl<'a> Sexp<'a> {
             }
             crate::sexp::altseq::LazyRead::Absent => {}
         }
-        let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
-        let i = self.try_index(i)?;
-        // SAFETY: `try_typed_data` returned the live buffer and `i` is in range.
-        // The element is copied; no payload reference is returned.
-        Ok(unsafe { data.add(i).read() })
+        let lease = self.try_payload_lease(SEXPTYPE::INTSXP, "integer vector")?;
+        let index = self.try_index(i)?;
+        lease.integer_elt(index).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::INTSXP,
+        })
     }
 
     /// Get the i-th real (double) value with bounds checking.
@@ -94,7 +98,8 @@ impl<'a> Sexp<'a> {
     /// Compact sequences answer here, before any buffer allocation.
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::REALSXP, "real vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::REALSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -115,11 +120,11 @@ impl<'a> Sexp<'a> {
             }
             crate::sexp::altseq::LazyRead::Absent => {}
         }
-        let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
-        let i = self.try_index(i)?;
-        // SAFETY: `try_typed_data` returned the live buffer and `i` is in range.
-        // The element is copied; no payload reference is returned.
-        Ok(unsafe { data.add(i).read() })
+        let lease = self.try_payload_lease(SEXPTYPE::REALSXP, "real vector")?;
+        let index = self.try_index(i)?;
+        lease.real_elt(index).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::REALSXP,
+        })
     }
 
     /// Get the i-th raw byte with bounds checking.
@@ -134,7 +139,8 @@ impl<'a> Sexp<'a> {
     /// Get the i-th raw byte with typed error reporting.
     #[inline]
     pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::RAWSXP, "raw vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::RAWSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -145,9 +151,11 @@ impl<'a> Sexp<'a> {
                 }),
             };
         }
-        let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
-        let i = self.try_index(i)?;
-        Ok(unsafe { *data.add(i) })
+        let lease = self.try_payload_lease(SEXPTYPE::RAWSXP, "raw vector")?;
+        let index = self.try_index(i)?;
+        lease.byte_elt(index).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::RAWSXP,
+        })
     }
 
     /// Get the i-th complex value with bounds checking.
@@ -162,7 +170,8 @@ impl<'a> Sexp<'a> {
     /// Get the i-th complex value with typed error reporting.
     #[inline]
     pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::CPLXSXP, "complex vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::CPLXSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -173,9 +182,11 @@ impl<'a> Sexp<'a> {
                 }),
             };
         }
-        let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
-        let i = self.try_index(i)?;
-        Ok(unsafe { *data.add(i) })
+        let lease = self.try_payload_lease(SEXPTYPE::CPLXSXP, "complex vector")?;
+        let index = self.try_index(i)?;
+        lease.complex_elt(index).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::CPLXSXP,
+        })
     }
 
     /// Get the i-th string element (CHARSXP) with bounds checking.
@@ -190,7 +201,8 @@ impl<'a> Sexp<'a> {
     /// Get the i-th string element with typed error reporting.
     #[inline]
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        self.ensure_live()?;
+        self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::STRSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -202,9 +214,11 @@ impl<'a> Sexp<'a> {
             };
         }
         self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
-        let i = self.try_index(i)?;
+        self.try_index(i)?;
         self.materialize_compact_payload()?;
-        self.checked_child(self.reference_elt(i)?)
+        self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
+        let index = self.try_index(i)?;
+        self.checked_child(self.reference_elt(index)?)
     }
 
     /// Return the i-th string value as UTF-8 text, preserving R's `NA_STRING`.
@@ -274,6 +288,11 @@ impl<'a> Sexp<'a> {
     /// Get the i-th generic/expression vector element with typed error reporting.
     #[inline]
     pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        self.expect_any_type(
+            "generic or expression vector",
+            &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
+        )?;
+        self.try_index(i)?;
         if self.typeof_() == SEXPTYPE::VECSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -288,9 +307,14 @@ impl<'a> Sexp<'a> {
             "generic or expression vector",
             &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
         )?;
-        let i = self.try_index(i)?;
+        self.try_index(i)?;
         self.materialize_compact_payload()?;
-        self.checked_child(self.reference_elt(i)?)
+        self.expect_any_type(
+            "generic or expression vector",
+            &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
+        )?;
+        let index = self.try_index(i)?;
+        self.checked_child(self.reference_elt(index)?)
     }
 
     // --- Mutation methods ---
@@ -298,153 +322,117 @@ impl<'a> Sexp<'a> {
     /// Set the i-th logical value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_logical_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        self.try_set_logical_elt(i, v).is_ok()
     }
 
     /// Set the i-th logical value with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        let data = self
-            .clone()
-            .try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
-            .clone()?;
-        let i = self.try_index(i)?;
-        unsafe {
-            *data.add(i) = v;
-        }
-        Ok(())
+    pub(crate) fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::LGLSXP, "logical vector")?;
+        self.try_index(i)?;
+        let lease = self.try_payload_lease(SEXPTYPE::LGLSXP, "logical vector")?;
+        let index = self.try_index(i)?;
+        lease
+            .set_integer_elt(index, v)
+            .ok_or(SexpError::MissingData {
+                sexptype: SEXPTYPE::LGLSXP,
+            })
     }
 
     /// Set the i-th integer value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_integer_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        self.try_set_integer_elt(i, v).is_ok()
     }
 
     /// Set the i-th integer value with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        let data = self
-            .clone()
-            .try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector")
-            .clone()?;
-        let i = self.try_index(i)?;
-        unsafe {
-            *data.add(i) = v;
-        }
-        Ok(())
+    pub(crate) fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::INTSXP, "integer vector")?;
+        self.try_index(i)?;
+        let lease = self.try_payload_lease(SEXPTYPE::INTSXP, "integer vector")?;
+        let index = self.try_index(i)?;
+        lease
+            .set_integer_elt(index, v)
+            .ok_or(SexpError::MissingData {
+                sexptype: SEXPTYPE::INTSXP,
+            })
     }
 
     /// Set the i-th real (double) value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_real_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
+        self.try_set_real_elt(i, v).is_ok()
     }
 
     /// Set the i-th real value with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
-        let data = self
-            .clone()
-            .try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector")
-            .clone()?;
-        let i = self.try_index(i)?;
-        unsafe {
-            *data.add(i) = v;
-        }
-        Ok(())
+    pub(crate) fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::REALSXP, "real vector")?;
+        self.try_index(i)?;
+        let lease = self.try_payload_lease(SEXPTYPE::REALSXP, "real vector")?;
+        let index = self.try_index(i)?;
+        lease.set_real_elt(index, v).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::REALSXP,
+        })
     }
 
     /// Set the i-th raw byte.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
-        unsafe {
-            /* SAFETY: caller excludes borrowed payload views. */
-            self.try_set_raw_elt(i, v)
-        }
-        .is_ok()
+    pub(crate) fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
+        self.try_set_raw_elt(i, v).is_ok()
     }
 
     /// Set the i-th raw byte with typed error reporting.
-    /// # Safety
-    /// The object must remain live and have no borrowed payload references
-    /// during this write. Consuming a clone does not prove exclusivity.
+    /// Copies into a bounded cell of the actual retained allocation.
     #[doc(hidden)]
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub(crate) unsafe fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
-        let data = self
-            .clone()
-            .try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
-            .clone()?;
-        let i = self.try_index(i)?;
-        unsafe {
-            *data.add(i) = v;
-        }
-        Ok(())
+    pub(crate) fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
+        self.expect_type(SEXPTYPE::RAWSXP, "raw vector")?;
+        self.try_index(i)?;
+        let lease = self.try_payload_lease(SEXPTYPE::RAWSXP, "raw vector")?;
+        let index = self.try_index(i)?;
+        lease.set_byte_elt(index, v).ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::RAWSXP,
+        })
     }
 
     /// Set the i-th string element.
@@ -472,8 +460,10 @@ impl<'a> Sexp<'a> {
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
             .clone()?;
         self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
-        let i = self.try_index(i)?;
+        self.try_index(i)?;
         self.materialize_compact_payload()?;
+        self.expect_type(SEXPTYPE::STRSXP, "string vector")?;
+        let i = self.try_index(i)?;
         self.reference_elt(i)?;
         self.remember_child(&v)?;
         self.set_reference_elt(i, &v)
@@ -504,8 +494,13 @@ impl<'a> Sexp<'a> {
             "generic or expression vector",
             &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
         )?;
-        let i = self.try_index(i)?;
+        self.try_index(i)?;
         self.materialize_compact_payload()?;
+        self.expect_any_type(
+            "generic or expression vector",
+            &[SEXPTYPE::VECSXP, SEXPTYPE::EXPRSXP],
+        )?;
+        let i = self.try_index(i)?;
         self.reference_elt(i)?;
         self.remember_child(&v)?;
         self.set_reference_elt(i, &v)
@@ -521,9 +516,24 @@ impl<'a> Sexp<'a> {
                 actual: output.len(),
             });
         }
-        // SAFETY: copy synchronously without R callbacks; the handle retains
-        // the allocation. Safe callers cannot obtain a Rust R-payload borrow.
-        output.copy_from_slice(unsafe { self.try_as_integer_slice() }?);
+        if output.is_empty() {
+            return Ok(());
+        }
+        let lease = self.try_payload_lease(SEXPTYPE::INTSXP, "integer vector")?;
+        let current = usize::try_from(self.len()).map_err(|_| SexpError::MissingData {
+            sexptype: SEXPTYPE::INTSXP,
+        })?;
+        if current != expected {
+            return Err(SexpError::LengthMismatch {
+                expected: current,
+                actual: output.len(),
+            });
+        }
+        for (index, target) in output.iter_mut().enumerate() {
+            *target = lease.integer_elt(index).ok_or(SexpError::MissingData {
+                sexptype: SEXPTYPE::INTSXP,
+            })?;
+        }
         Ok(())
     }
 

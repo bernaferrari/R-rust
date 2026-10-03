@@ -1,27 +1,24 @@
-//! Owned copy of one node header.
-//!
-//! Checked handles copy their owning Cell after allocation validation. Only
-//! foreign native views retain an unsafe physical-header read. No header loan
-//! escapes either operation.
-
-use std::os::raw::{c_double, c_int};
+#![forbid(unsafe_code)]
+//! Copied headers retain their actual typed payload allocation.
 
 use super::Sexp;
 pub(crate) use crate::sexp::ffi::NodeBody;
-use crate::sexp::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
+use crate::sexp::ffi::{SEXPTYPE, SexprecCore, SxpInfo};
 use crate::sexp::heap::{NodeLink, ResolvedLink};
+use crate::sexp::payload::{PayloadLease, PayloadLink};
+use std::os::raw::{c_double, c_int};
 
-/// Header fields copied out of a node. Graph links preserve exact identities; payload projections are copied values.
-#[derive(Clone, Copy)]
+/// A header snapshot owns the original payload; a copied link alone is not
+/// authority to read cells, and no native payload pointer is stored here.
+#[derive(Clone)]
 pub(crate) struct HeaderSnap {
     pub sxpinfo: SxpInfo,
     pub attrib: NodeLink,
-    /// `gengc_next_node`. For vectors this is the element buffer, not a SEXP.
-    pub payload: SEXP,
+    pub payload: PayloadLink,
     pub body: NodeBody,
+    payload_lease: Option<PayloadLease>,
 }
 
-/// First two scalars of a plain integer or real buffer.
 #[derive(Clone, Copy)]
 pub(crate) enum LeadingScalars {
     Int(c_int, c_int),
@@ -29,130 +26,144 @@ pub(crate) enum LeadingScalars {
 }
 
 impl HeaderSnap {
-    #[inline]
-    pub(crate) fn type_of(self) -> SEXPTYPE {
+    pub(crate) fn type_of(&self) -> SEXPTYPE {
         self.sxpinfo.type_of()
     }
 
-    /// Byte-compare a CHARSXP payload to `expected`.
-    ///
-    /// The slice lives only for the comparison. A length mismatch or a missing
-    /// buffer is not a match.
-    pub(crate) fn char_eq(self, expected: &[u8]) -> bool {
+    fn new(core: SexprecCore, lease: Option<PayloadLease>) -> Option<Self> {
+        if !core.has_valid_shape() {
+            return None;
+        }
+        match core.data {
+            NodeBody::Vector(vector) => {
+                let length = usize::try_from(vector.length).ok()?;
+                match &lease {
+                    Some(lease) if lease.matches_header(&core) => {}
+                    None if core.payload.is_empty() && (length == 0 || core.sxpinfo.alt()) => {}
+                    _ => return None,
+                }
+            }
+            _ if core.payload.is_empty() && lease.is_none() => {}
+            _ => return None,
+        }
+        Some(Self {
+            sxpinfo: core.sxpinfo,
+            attrib: core.attrib,
+            payload: core.payload,
+            body: core.data,
+            payload_lease: lease,
+        })
+    }
+
+    pub(crate) fn payload_lease(&self) -> Option<&PayloadLease> {
+        self.payload_lease.as_ref()
+    }
+
+    pub(crate) fn char_eq(&self, expected: &[u8]) -> bool {
         if self.type_of() != SEXPTYPE::CHARSXP {
             return false;
         }
-        let NodeBody::Vector(vec) = self.body else {
+        let NodeBody::Vector(vector) = self.body else {
             return false;
         };
-        if vec.length < 0 || vec.length as usize != expected.len() {
+        if usize::try_from(vector.length).ok() != Some(expected.len()) {
             return false;
         }
         if expected.is_empty() {
             return true;
         }
-        let bytes = self.payload as *const u8;
-        if bytes.is_null() {
+        let Some(lease) = &self.payload_lease else {
             return false;
+        };
+        expected
+            .iter()
+            .enumerate()
+            .all(|(index, value)| lease.byte_elt(index) == Some(*value))
+    }
+
+    pub(crate) fn char_bytes(&self) -> Option<Vec<u8>> {
+        if self.type_of() != SEXPTYPE::CHARSXP {
+            return None;
         }
-        // SAFETY: the CHARSXP header length is the byte count, excluding the
-        // trailing NUL. The slice is dropped before this function returns.
-        unsafe { std::slice::from_raw_parts(bytes, expected.len()) == expected }
+        let NodeBody::Vector(vector) = self.body else {
+            return None;
+        };
+        let length = usize::try_from(vector.length).ok()?;
+        if length == 0 {
+            return Some(Vec::new());
+        }
+        let lease = self.payload_lease.as_ref()?;
+        (0..length).map(|index| lease.byte_elt(index)).collect()
     }
 }
 
 impl<'a> Sexp<'a> {
-    /// Copy this node's header. Does not allocate and does not borrow the node.
-    #[inline]
     pub(crate) fn header(&self) -> HeaderSnap {
         self.ensure_live()
             .expect("SEXP allocation has been reclaimed");
-        let core = if let Some(node) = &self.node {
-            crate::sexp::memory::checked_snapshot(self.ptr, node)
-                .expect("SEXP allocation has been reclaimed")
-        } else if let Some(core) = self.singleton_snapshot(self.ptr) {
-            core
-        } else if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(self.ptr) {
-            core
-        } else {
-            // Only unsafe legacy factories can produce an unregistered view.
-            // Their caller retains the original liveness/rooting contract.
-            return read_legacy_header(self.ptr);
-        };
-        snapshot_header(core)
+        if let Some(node) = &self.node {
+            let heap = node.heap_identity();
+            return HeaderSnap::new(
+                heap.node_snapshot(node).expect("live header"),
+                heap.payload_lease(node),
+            )
+            .expect("canonical header and payload must agree");
+        }
+        if let Some(singleton) = self
+            .singleton
+            .clone()
+            .or_else(|| {
+                self.singletons
+                    .as_ref()
+                    .and_then(|pool| pool.lease(self.ptr))
+            })
+            .or_else(|| crate::sexp::globals::immutable_singleton_lease(self.ptr))
+        {
+            return HeaderSnap::new(singleton.snapshot(), singleton.payload_lease())
+                .expect("immutable header and payload must agree");
+        }
+        // Unsafe raw factories may select an owned projection, but cannot
+        // turn foreign bytes into safe header or payload authority.
+        let (_, node) = crate::sexp::memory::checked_projection(self.ptr).expect("unowned header");
+        let heap = node.heap_identity();
+        HeaderSnap::new(
+            heap.node_snapshot(&node).expect("live header"),
+            heap.payload_lease(&node),
+        )
+        .expect("canonical header and payload must agree")
     }
 
-    /// Copy a graph child's header using its saved allocation identity.
-    /// No child pointer is reclassified or promoted to a new generation.
-    #[inline]
     pub(crate) fn copied_header_link(&self, link: NodeLink) -> Option<HeaderSnap> {
         self.ensure_live().ok()?;
         let parent = self.reference_node().ok()?;
-        match parent.heap_identity().resolve_link(link)? {
+        let heap = parent.heap_identity();
+        match heap.resolve_link(link)? {
             ResolvedLink::Null => None,
-            ResolvedLink::Singleton(owner) => Some(snapshot_header(owner.snapshot())),
-            ResolvedLink::Node {
-                projection,
-                allocation,
-            } => {
-                crate::sexp::memory::checked_snapshot(projection, &allocation).map(snapshot_header)
+            ResolvedLink::Singleton(lease) => {
+                HeaderSnap::new(lease.snapshot(), lease.payload_lease())
             }
+            ResolvedLink::Node { allocation, .. } => HeaderSnap::new(
+                heap.node_snapshot(&allocation)?,
+                heap.payload_lease(&allocation),
+            ),
         }
     }
 }
 
-/// Copy the first two buffer elements when `header` is an integer or real
-/// vector of length at least 2. Does not allocate or expand a sequence.
-pub(crate) fn copy_leading_scalars(header: HeaderSnap) -> Option<LeadingScalars> {
-    let NodeBody::Vector(vec) = header.body else {
+pub(crate) fn copy_leading_scalars(header: &HeaderSnap) -> Option<LeadingScalars> {
+    let NodeBody::Vector(vector) = header.body else {
         return None;
     };
-    if vec.length < 2 || header.payload.is_null() {
+    if vector.length < 2 {
         return None;
     }
-    // SAFETY: the length and type were copied from the same header. The two
-    // scalars are copied by value; no element reference is returned.
-    unsafe {
-        match header.type_of() {
-            SEXPTYPE::INTSXP => {
-                let ptr = header.payload.cast::<c_int>();
-                if (ptr as usize) % std::mem::align_of::<c_int>() != 0 {
-                    return None;
-                }
-                Some(LeadingScalars::Int(ptr.read(), ptr.add(1).read()))
-            }
-            SEXPTYPE::REALSXP => {
-                let ptr = header.payload.cast::<c_double>();
-                if (ptr as usize) % std::mem::align_of::<c_double>() != 0 {
-                    return None;
-                }
-                Some(LeadingScalars::Real(ptr.read(), ptr.add(1).read()))
-            }
-            _ => None,
-        }
-    }
-}
-
-fn read_legacy_header(ptr: SEXP) -> HeaderSnap {
-    // Prefer owned snapshots even for a legacy wrapper. Only foreign native
-    // memory uses the factory's explicit unsafe liveness contract.
-    if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
-        return snapshot_header(core);
-    }
-    if let Some((canonical, node)) = crate::sexp::memory::checked_projection(ptr) {
-        if let Some(core) = crate::sexp::memory::checked_snapshot(canonical, &node) {
-            return snapshot_header(core);
-        }
-    }
-    // SAFETY: an unsafe legacy factory promised a live initialized header.
-    snapshot_header(unsafe { ptr.read() })
-}
-
-fn snapshot_header(core: SexprecCore) -> HeaderSnap {
-    HeaderSnap {
-        sxpinfo: core.sxpinfo,
-        attrib: core.attrib,
-        payload: core.gengc_next_node,
-        body: core.data,
+    let lease = header.payload_lease.as_ref()?;
+    match header.type_of() {
+        SEXPTYPE::INTSXP => Some(LeadingScalars::Int(
+            lease.integer_elt(0)?,
+            lease.integer_elt(1)?,
+        )),
+        SEXPTYPE::REALSXP => Some(LeadingScalars::Real(lease.real_elt(0)?, lease.real_elt(1)?)),
+        _ => None,
     }
 }

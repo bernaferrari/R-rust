@@ -182,7 +182,7 @@ unsafe fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
         let state: c_int = if query_only {
             -1
         } else if TYPEOF(s) == SEXPTYPE::LGLSXP && !s.is_null() {
-            let data = (*s).gengc_next_node as *mut c_int;
+            let data = crate::sexp::accessors::DATAPTR(s) as *mut c_int;
             if !data.is_null() {
                 *data
             } else {

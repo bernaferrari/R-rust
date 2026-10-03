@@ -33,7 +33,7 @@
 //!
 //! // Using builders
 //! let ints = IntVector::new(&[1, 2, 3]).build_in(&mut arena);
-//! let reals = RealVector::seq(0.0, 1.0, 0.25).build_in(&mut arena);
+//! let reals = RealVector::seq(0.0, 1.0, 0.25).unwrap().build_in(&mut arena);
 //!
 //! // Using convenience functions
 //! let s = seq_in(&mut arena, 0.0, 2.0, 1.0);
@@ -45,7 +45,7 @@ use std::ptr;
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::{self, RArena};
-use super::object::{Sexp, SexpError, SexpResult};
+use super::object::{Sexp, SexpError, SexpMut, SexpResult};
 
 // ---------------------------------------------------------------------------
 // Builder for integer vectors
@@ -114,19 +114,13 @@ impl IntVector {
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let len = self.values.len() as R_xlen_t;
-        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, len);
-        if ptr.is_null() {
-            return None;
+        let len = R_xlen_t::try_from(self.values.len()).ok()?;
+        let value = arena.alloc_vector_sexp(SEXPTYPE::INTSXP, len)?;
+        let mut value = SexpMut::try_from_checked(value).ok()?;
+        for (index, element) in self.values.into_iter().enumerate() {
+            value.try_set_integer_elt(index as R_xlen_t, element).ok()?;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-        if data.is_null() {
-            return None;
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-        }
-        arena.sexp(ptr)
+        Some(value.freeze())
     }
 }
 
@@ -147,7 +141,7 @@ impl IntVector {
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = RealVector::new(&[1.5, 2.5, 3.5]).build_in(&mut arena);
-/// let seq = RealVector::seq(0.0, 1.0, 0.1).build_in(&mut arena);
+/// let seq = RealVector::seq(0.0, 1.0, 0.1).unwrap().build_in(&mut arena);
 /// ```
 pub struct RealVector {
     values: Vec<c_double>,
@@ -175,45 +169,36 @@ impl RealVector {
         }
     }
 
-    /// Create a sequence from start to end (inclusive) with given step.
-    ///
-    /// Returns an empty builder if step is zero. For positive steps,
-    /// values are generated while `v <= end`. For negative steps,
-    /// values are generated while `v >= end`.
-    pub fn seq(start: c_double, end: c_double, step: c_double) -> Self {
-        if step == 0.0 {
-            return RealVector { values: vec![] };
+    /// Build a finite inclusive sequence, or reject invalid input, failed
+    /// storage growth, or a step that cannot advance its floating-point value.
+    /// Opposite-direction bounds yield a valid empty sequence.
+    #[forbid(unsafe_code)]
+    pub fn seq(start: c_double, end: c_double, step: c_double) -> Option<Self> {
+        if !start.is_finite() || !end.is_finite() || !step.is_finite() || step == 0.0 {
+            return None;
         }
         let mut values = Vec::new();
-        let mut v = start;
-        if step > 0.0 {
-            while v <= end {
-                values.push(v);
-                v += step;
-            }
-        } else {
-            while v >= end {
-                values.push(v);
-                v += step;
-            }
+        let mut value = start;
+        while if step > 0.0 { value <= end } else { value >= end } {
+            R_xlen_t::try_from(values.len().checked_add(1)?).ok()?;
+            values.try_reserve(1).ok()?;
+            values.push(value);
+            if value == end { break; }
+            let next = value + step;
+            if next == value { return None; }
+            value = next;
         }
-        RealVector { values }
+        Some(RealVector { values })
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let len = self.values.len() as R_xlen_t;
-        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, len);
-        if ptr.is_null() {
-            return None;
+        let len = R_xlen_t::try_from(self.values.len()).ok()?;
+        let value = arena.alloc_vector_sexp(SEXPTYPE::REALSXP, len)?;
+        let mut value = SexpMut::try_from_checked(value).ok()?;
+        for (index, element) in self.values.into_iter().enumerate() {
+            value.try_set_real_elt(index as R_xlen_t, element).ok()?;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
-        if data.is_null() {
-            return None;
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-        }
-        arena.sexp(ptr)
+        Some(value.freeze())
     }
 }
 
@@ -254,19 +239,13 @@ impl LogicalVector {
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let len = self.values.len() as R_xlen_t;
-        let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, len);
-        if ptr.is_null() {
-            return None;
+        let len = R_xlen_t::try_from(self.values.len()).ok()?;
+        let value = arena.alloc_vector_sexp(SEXPTYPE::LGLSXP, len)?;
+        let mut value = SexpMut::try_from_checked(value).ok()?;
+        for (index, element) in self.values.into_iter().enumerate() {
+            value.try_set_logical_elt(index as R_xlen_t, element).ok()?;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-        if data.is_null() {
-            return None;
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-        }
-        arena.sexp(ptr)
+        Some(value.freeze())
     }
 }
 
@@ -302,19 +281,13 @@ impl RawVector {
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
-        let len = self.values.len() as R_xlen_t;
-        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, len);
-        if ptr.is_null() {
-            return None;
+        let len = R_xlen_t::try_from(self.values.len()).ok()?;
+        let value = arena.alloc_vector_sexp(SEXPTYPE::RAWSXP, len)?;
+        let mut value = SexpMut::try_from_checked(value).ok()?;
+        for (index, element) in self.values.into_iter().enumerate() {
+            value.try_set_raw_elt(index as R_xlen_t, element).ok()?;
         }
-        let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
-        if data.is_null() {
-            return None;
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-        }
-        arena.sexp(ptr)
+        Some(value.freeze())
     }
 }
 
@@ -548,75 +521,53 @@ pub fn seq_in<'arena>(
     end: f64,
     step: f64,
 ) -> Option<Sexp<'arena>> {
-    RealVector::seq(start, end, step).build_in(arena)
+    RealVector::seq(start, end, step)?.build_in(arena)
 }
 
 // ---------------------------------------------------------------------------
 // Safe scalar constructors
 // ---------------------------------------------------------------------------
 
+#[forbid(unsafe_code)]
+fn finish_scalar(value: Sexp<'_>) -> Option<Sexp<'_>> {
+    let node = memory::checked_node(value.clone().as_raw())?;
+    let heap = node.heap_identity();
+    let mut header = heap.node_snapshot(&node)?;
+    header.sxpinfo.set_scalar(true);
+    heap.replace_node(&node, header)?;
+    Some(value)
+}
+
+#[forbid(unsafe_code)]
 pub fn scalar_integer_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<Sexp<'arena>> {
-    let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-    if ptr.is_null() {
-        return None;
-    }
-    let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-    if data.is_null() {
-        return None;
-    }
-    unsafe { *data = x };
-    unsafe {
-        (*ptr).sxpinfo.set_scalar(true);
-    }
-    arena.sexp(ptr)
+    let value = arena.alloc_vector_sexp(SEXPTYPE::INTSXP, 1)?;
+    let mut value = SexpMut::try_from_checked(value).ok()?;
+    value.try_set_integer_elt(0, x).ok()?;
+    finish_scalar(value.freeze())
 }
 
+#[forbid(unsafe_code)]
 pub fn scalar_real_in<'arena>(arena: &'arena mut RArena, x: c_double) -> Option<Sexp<'arena>> {
-    let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
-    if ptr.is_null() {
-        return None;
-    }
-    let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
-    if data.is_null() {
-        return None;
-    }
-    unsafe { *data = x };
-    unsafe {
-        (*ptr).sxpinfo.set_scalar(true);
-    }
-    arena.sexp(ptr)
+    let value = arena.alloc_vector_sexp(SEXPTYPE::REALSXP, 1)?;
+    let mut value = SexpMut::try_from_checked(value).ok()?;
+    value.try_set_real_elt(0, x).ok()?;
+    finish_scalar(value.freeze())
 }
 
+#[forbid(unsafe_code)]
 pub fn scalar_logical_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<Sexp<'arena>> {
-    let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
-    if ptr.is_null() {
-        return None;
-    }
-    let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-    if data.is_null() {
-        return None;
-    }
-    unsafe { *data = x };
-    unsafe {
-        (*ptr).sxpinfo.set_scalar(true);
-    }
-    arena.sexp(ptr)
+    let value = arena.alloc_vector_sexp(SEXPTYPE::LGLSXP, 1)?;
+    let mut value = SexpMut::try_from_checked(value).ok()?;
+    value.try_set_logical_elt(0, x).ok()?;
+    finish_scalar(value.freeze())
 }
 
+#[forbid(unsafe_code)]
 pub fn scalar_raw_in<'arena>(arena: &'arena mut RArena, x: Rbyte) -> Option<Sexp<'arena>> {
-    let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
-    if ptr.is_null() {
-        return None;
-    }
-    let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
-    if data.is_null() {
-        return None;
-    }
-    unsafe { *data = x };
-    unsafe {
-        (*ptr).sxpinfo.set_scalar(true);
-    }
-    arena.sexp(ptr)
+    let value = arena.alloc_vector_sexp(SEXPTYPE::RAWSXP, 1)?;
+    let mut value = SexpMut::try_from_checked(value).ok()?;
+    value.try_set_raw_elt(0, x).ok()?;
+    finish_scalar(value.freeze())
 }
 
 pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Sexp<'arena>> {
@@ -639,26 +590,16 @@ pub fn scalar_bytes_in<'arena>(arena: &'arena mut RArena, bytes: &[u8]) -> Optio
     arena.sexp(ptr)
 }
 
+#[forbid(unsafe_code)]
 pub fn scalar_complex_in<'arena>(
     arena: &'arena mut RArena,
     r: c_double,
     i: c_double,
 ) -> Option<Sexp<'arena>> {
-    let ptr = arena.alloc_vector(SEXPTYPE::CPLXSXP, 1);
-    if ptr.is_null() {
-        return None;
-    }
-    let data = unsafe { (*ptr).gengc_next_node as *mut super::ffi::Rcomplex };
-    if data.is_null() {
-        return None;
-    }
-    unsafe {
-        *data = super::ffi::Rcomplex { r, i };
-    }
-    unsafe {
-        (*ptr).sxpinfo.set_scalar(true);
-    }
-    arena.sexp(ptr)
+    let value = arena.alloc_vector_sexp(SEXPTYPE::CPLXSXP, 1)?;
+    let mut value = SexpMut::try_from_checked(value).ok()?;
+    value.try_set_complex_elt(0, super::ffi::Rcomplex { r, i }).ok()?;
+    finish_scalar(value.freeze())
 }
 
 pub fn mk_char_in<'arena>(arena: &'arena mut RArena, s: &[u8]) -> Option<Sexp<'arena>> {
@@ -818,7 +759,7 @@ mod tests {
     #[test]
     fn test_real_vector_seq() {
         let mut arena = RArena::new();
-        let vec = some(RealVector::seq(0.0, 1.0, 0.25).build_in(&mut arena));
+        let vec = some(RealVector::seq(0.0, 1.0, 0.25).unwrap().build_in(&mut arena));
         assert_eq!(vec.clone().len(), 5);
         assert!((some(vec.clone().real_elt(0)) - 0.0).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(4)) - 1.0).abs() < f64::EPSILON);
@@ -955,6 +896,56 @@ mod tests {
         let mut arena = RArena::new();
         let v6 = some(seq_in(&mut arena, 0.0, 2.0, 1.0));
         assert_eq!(v6.len(), 3);
+    }
+
+    #[test]
+    fn real_sequence_builder_rejects_nonfinite_and_stalled_steps() {
+        for (start, end, step) in [
+            (f64::INFINITY, f64::INFINITY, 1.0),
+            (0.0, f64::INFINITY, 1.0),
+            (0.0, 1.0, f64::INFINITY),
+            (f64::NAN, 1.0, 1.0),
+            (0.0, f64::NAN, 1.0),
+            (0.0, 1.0, f64::NAN),
+            (0.0, 1.0, 0.0),
+            (1e16, 1e16 + 4.0, 1.0),
+            (-1e16, -1e16 - 4.0, -1.0),
+        ] {
+            assert!(RealVector::seq(start, end, step).is_none());
+        }
+        assert_eq!(RealVector::seq(0.0, 1.0, 0.25).unwrap().values,
+            [0.0, 0.25, 0.5, 0.75, 1.0]);
+        assert_eq!(RealVector::seq(1.0, 0.0, -0.25).unwrap().values,
+            [1.0, 0.75, 0.5, 0.25, 0.0]);
+        assert!(RealVector::seq(1.0, 0.0, 0.25).unwrap().values.is_empty());
+        assert_eq!(RealVector::seq(1e16, 1e16, 1.0).unwrap().values, [1e16]);
+    }
+
+    #[test]
+    fn empty_numeric_builders_return_owned_zero_length_values() {
+        let mut arena = RArena::new();
+        let value = IntVector::new(&[]).build_in(&mut arena).unwrap();
+        assert_eq!(value.typeof_(), SEXPTYPE::INTSXP);
+        assert_eq!(value.len(), 0);
+        assert!(matches!(value.try_integer_elt(0), Err(SexpError::OutOfBounds { .. })));
+
+        let mut arena = RArena::new();
+        let value = RealVector::new(&[]).build_in(&mut arena).unwrap();
+        assert_eq!(value.typeof_(), SEXPTYPE::REALSXP);
+        assert_eq!(value.len(), 0);
+        assert!(matches!(value.try_real_elt(0), Err(SexpError::OutOfBounds { .. })));
+
+        let mut arena = RArena::new();
+        let value = LogicalVector::new(&[]).build_in(&mut arena).unwrap();
+        assert_eq!(value.typeof_(), SEXPTYPE::LGLSXP);
+        assert_eq!(value.len(), 0);
+        assert!(matches!(value.try_logical_elt(0), Err(SexpError::OutOfBounds { .. })));
+
+        let mut arena = RArena::new();
+        let value = RawVector::new(&[]).build_in(&mut arena).unwrap();
+        assert_eq!(value.typeof_(), SEXPTYPE::RAWSXP);
+        assert_eq!(value.len(), 0);
+        assert!(matches!(value.try_raw_elt(0), Err(SexpError::OutOfBounds { .. })));
     }
 
     #[test]

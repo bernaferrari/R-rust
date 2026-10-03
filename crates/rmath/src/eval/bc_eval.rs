@@ -4166,7 +4166,7 @@ mod tests {
         consts: SEXP,
     ) -> SEXP {
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, instructions.len() as i64);
-        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        let code_data = unsafe { crate::sexp::accessors::DATAPTR(code) as *mut c_int };
         for (i, instruction) in instructions.iter().enumerate() {
             unsafe {
                 code_data.add(i).write(*instruction);
@@ -4174,7 +4174,7 @@ mod tests {
         }
 
         let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        let stack_data = unsafe { crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int };
         unsafe {
             *stack_data = 8;
         }
@@ -4377,7 +4377,7 @@ mod tests {
         let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
-        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        let code_data = unsafe { crate::sexp::accessors::DATAPTR(code) as *mut c_int };
         unsafe {
             code_data.add(0).write(opcodes::OP_PUSHNULL);
             code_data.add(1).write(opcodes::OP_DUP);
@@ -4386,7 +4386,7 @@ mod tests {
 
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        let stack_data = unsafe { crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int };
         unsafe {
             *stack_data = 8;
         }
@@ -4414,14 +4414,14 @@ mod tests {
         let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        let code_data = unsafe { crate::sexp::accessors::DATAPTR(code) as *mut c_int };
         unsafe {
             code_data.write(9999);
         }
 
         let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
         let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        let stack_data = unsafe { crate::sexp::accessors::DATAPTR(stack_hint) as *mut c_int };
         unsafe {
             *stack_data = 8;
         }

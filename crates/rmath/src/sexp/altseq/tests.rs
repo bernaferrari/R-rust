@@ -27,7 +27,7 @@ fn compact_payload_budget_denial_precedes_allocator_access() {
     session.with_active(|| unsafe { materialize(seq) });
     assert_eq!(memory::buffer_allocation_attempts(), before);
     unsafe {
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(ALTREP(seq), 1);
         assert_eq!(INTEGER_ELT(seq, 7), 8);
     }
@@ -47,7 +47,7 @@ fn compact_raw_payload_failure_raises_r_error_and_can_retry() {
         })
     });
     unsafe {
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(ALTREP(seq), 1);
         assert_eq!(REAL_ELT(seq, 7), 3.25);
     }
@@ -82,7 +82,7 @@ fn compact_payload_nested_lends_use_original_budget_when_refusing() {
         })
     });
     unsafe {
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(ALTREP(seq), 1);
         assert_eq!(INTEGER_ELT(seq, 7), 8);
     }
@@ -111,7 +111,7 @@ fn compact_payload_nested_lends_ignore_foreign_budget_and_commit_to_owner() {
                 let ptr = DATAPTR(seq).cast::<c_int>();
                 assert!(!ptr.is_null());
                 assert_eq!(*ptr.add(7), 24);
-                assert!(memory::vector_payload_is_pending(seq));
+                assert!(memory::vector_payload_is_tracked(seq));
             });
         });
         assert_eq!(
@@ -135,8 +135,10 @@ fn compact_empty_vector_pointer_access_stays_valid() {
     session.with_active(|| unsafe {
         assert!(DATAPTR(seq).is_null());
         assert_eq!(ALTREP(seq), 0);
-        assert_eq!(INTEGER_ELT(seq, 0), NA_INTEGER);
     });
+    assert_r_error(|| session.with_active(|| unsafe {
+        let _ = INTEGER_ELT(seq, 0);
+    }));
 }
 
 #[test]
@@ -172,7 +174,7 @@ fn compact_raw_payload_rejects_negative_header_length() {
             let _ = DATAPTR(seq);
         })
     });
-    assert!(unsafe { (*seq).gengc_next_node.is_null() });
+    assert!(unsafe { (*seq).payload.is_empty() });
 }
 
 #[test]
@@ -216,8 +218,8 @@ fn compact_comparisons_read_values_without_expansion_under_budget() {
                 ),
                 crate::sexp::globals::R_True()
             );
-            assert!((*left).gengc_next_node.is_null());
-            assert!((*right).gengc_next_node.is_null());
+            assert!((*left).payload.is_empty());
+            assert!((*right).payload.is_empty());
         });
         assert_eq!(memory::buffer_allocation_attempts(), before);
         session.with_active_in(|owner| unsafe {
@@ -247,7 +249,7 @@ fn compact_payload_rejects_header_length_that_would_truncate() {
         })
     });
     unsafe {
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(ALTREP(seq), 1);
     }
 }

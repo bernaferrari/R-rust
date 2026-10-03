@@ -103,7 +103,7 @@ fn partial_failure_and_unwind_are_retryable() {
             assert!(result.unwrap().is_err());
         }
         assert!(!is_materialized(&x));
-        assert!(x.header().payload.is_null());
+        assert!(x.header().payload.is_empty());
         state.set(0);
         s.gc();
         force_materialization(&x).unwrap();
@@ -346,7 +346,7 @@ fn expanded_cache_outlives_original_and_releases_final_buffer_lease() {
     drop(cache);
     s.with_active(|| token.full_gc().unwrap());
     assert!(!s.with_active(|| unsafe {
-        crate::sexp::memory::with_arena(|a| a.tracks_altrep_test_buffer(payload as *mut u8))
+        crate::sexp::memory::with_arena(|a| a.tracks_payload_link(payload))
     }));
 }
 #[test]
@@ -398,7 +398,7 @@ fn long_integer_sequence_rejects_unrepresentable_expansion_without_truncation() 
     assert_eq!(x.len(), 1_i64 << 32);
     assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
     assert!(force_materialization(&x).is_err());
-    assert!(x.header().payload.is_null());
+    assert!(x.header().payload.is_empty());
     assert_eq!(x.integer_elt((1_i64 << 32) - 1), Some(i32::MAX));
 }
 

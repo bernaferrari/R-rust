@@ -626,7 +626,7 @@ fn altseq_compact_integer_colon_stays_lazy_through_gc_and_hides_its_formula() {
         assert_eq!(TYPEOF(seq), INTSXP_VAL);
         assert_eq!(XLENGTH(seq), 5);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);
         assert_eq!(
@@ -638,11 +638,11 @@ fn altseq_compact_integer_colon_stays_lazy_through_gc_and_hides_its_formula() {
             crate::sexp::ffi::NA_INTEGER
         );
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         crate::sexp::gengc::full_gc();
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 2), 3);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         let shown = attribute_list(seq);
         assert!(shown.is_null() || shown == R_NilValue());
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
@@ -712,7 +712,7 @@ fn altseq_compact_real_colon_matches_plain_reals() {
             crate::sexp::ffi::NA_REAL.to_bits()
         );
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
 
         let down = seq_colon(3.5, 1.5, ptr::null_mut());
         root_global("alt_real_down", down);
@@ -728,7 +728,7 @@ fn altseq_compact_real_colon_matches_plain_reals() {
         );
         // Equality can read the formula without expanding the vector.
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         crate::sexp::gengc::full_gc();
         assert!((*REAL(seq).add(2) - 3.5).abs() < 1e-10);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
@@ -743,7 +743,7 @@ fn altseq_length_one_colon_is_a_plain_vector() {
         assert_eq!(LENGTH(seq), 1);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
         assert_eq!(*INTEGER(seq), 3);
-        assert!(!(*seq).gengc_next_node.is_null());
+        assert!(!(*seq).payload.is_empty());
     }
 }
 
@@ -774,17 +774,17 @@ fn altseq_million_step_integer_colon_does_not_allocate_its_payload() {
         root_global("alt_million", seq);
         assert_eq!(XLENGTH(seq), 1_000_000);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 999_999), 1_000_000);
         let view = crate::sexp::Sexp::from_raw(seq).unwrap();
         assert_eq!(view.integer_elt(0), Some(1));
         assert_eq!(view.integer_elt(999_999), Some(1_000_000));
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert!(!crate::sexp::memory::vector_payload_is_tracked(seq));
         crate::sexp::gengc::full_gc();
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 999_999), 1_000_000);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
     }
 }
@@ -819,7 +819,7 @@ fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
         crate::sexp::attrib_core::setAttrib(seq, sym, foo);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         let shown = attribute_list(seq);
         assert_eq!(XLENGTH(shown), 1);
         assert_eq!(attribute_name(shown), "foo");
@@ -842,7 +842,7 @@ fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
             printed.stdout
         );
         assert!(
-            (*seq).gengc_next_node.is_null(),
+            (*seq).payload.is_empty(),
             "printing allocated the payload"
         );
     }
@@ -878,12 +878,12 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert_eq!(view.integer_elt(4), Some(5));
         assert!(view.try_integer_elt(5).is_err());
         assert!(view.try_integer_elt(-1).is_err());
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
 
         let nums = crate::sexp::numeric::NumericVector::from_raw(seq).unwrap();
         assert_eq!(nums.clone().real_at(0), 1.0);
         assert_eq!(nums.real_at(4), 5.0);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
 
         let one = Rf_ScalarInteger(1);
         root_global("alt_arith_one", one);
@@ -893,7 +893,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(sum, 0), 2);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(sum, 4), 6);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert!(!formula_tag_present(sum));
 
         let real = seq_colon(1.5, 3.5, ptr::null_mut());
@@ -907,7 +907,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert_eq!(crate::sexp::accessors::REAL_ELT(real_sum, 0), 2.5);
         assert_eq!(crate::sexp::accessors::REAL_ELT(real_sum, 2), 4.5);
         assert_eq!(crate::sexp::accessors::ALTREP(real), 1);
-        assert!((*real).gengc_next_node.is_null());
+        assert!((*real).payload.is_empty());
         assert!(!formula_tag_present(real_sum));
 
         let dim = Rf_allocVector(INTSXP_VAL, 2);
@@ -916,7 +916,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         *INTEGER(dim).add(1) = 1;
         crate::sexp::attrib_core::setAttrib(seq, crate::sexp::attrib_core::R_DimSymbol(), dim);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         crate::sexp::output::start_capture();
         crate::sexp::output::Rf_PrintValue(seq);
         let printed = crate::sexp::output::stop_capture();
@@ -930,7 +930,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
             "formula leaked into matrix print: {}",
             printed.stdout
         );
-        assert!((*seq).gengc_next_node.is_null());
+        assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
 
         let plain = make_int_vec(&[8, 9]);
@@ -978,7 +978,7 @@ fn altseq_failed_allocation_keeps_the_formula() {
 
         crate::sexp::accessors::SET_ATTRIB(cleared, R_NilValue());
         assert_eq!(crate::sexp::accessors::ALTREP(cleared), 1);
-        assert!((*cleared).gengc_next_node.is_null());
+        assert!((*cleared).payload.is_empty());
         assert!(formula_tag_present(cleared));
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 15), 16);
@@ -990,13 +990,13 @@ fn altseq_failed_allocation_keeps_the_formula() {
             })).expect_err("nonempty compact payload access must raise an R error");
             assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
             assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
-            assert!((*lent).gengc_next_node.is_null());
+            assert!((*lent).payload.is_empty());
             assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
             assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 7), 8);
             assert!(!crate::sexp::memory::vector_payload_is_tracked(lent));
         });
         assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
-        assert!((*lent).gengc_next_node.is_null());
+        assert!((*lent).payload.is_empty());
         assert!(formula_tag_present(lent));
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 7), 8);
@@ -1020,8 +1020,8 @@ fn altseq_failed_allocation_keeps_the_formula() {
             crate::sexp::globals::R_True()
         );
         assert_eq!(crate::sexp::accessors::ALTREP(same_a), 1);
-        assert!((*same_a).gengc_next_node.is_null());
-        assert!((*same_b).gengc_next_node.is_null());
+        assert!((*same_a).payload.is_empty());
+        assert!((*same_b).payload.is_empty());
 
         crate::sexp::memory::with_arena(|arena| {
             arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited());
@@ -1465,7 +1465,7 @@ fn unwind_message(payload: Box<dyn std::any::Any + Send>) -> String {
 
 fn still_lazy(value: SEXP) -> bool {
     unsafe {
-        crate::sexp::accessors::ALTREP(value) == 1 && (*value).gengc_next_node.is_null()
+        crate::sexp::accessors::ALTREP(value) == 1 && (*value).payload.is_empty()
     }
 }
 

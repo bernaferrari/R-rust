@@ -20,7 +20,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_double, c_int};
 
 use super::accessors::{
-    ALTREP, ATTRIB, CDR, CHAR, PRINTNAME, SET_ALTREP, SETCDR, TAG, TYPEOF,
+    ALTREP, ATTRIB, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF,
 };
 use super::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::{self, with_arena};
@@ -63,20 +63,18 @@ impl Formula {
         }
     }
 
-    /// Write origin and step into an aligned length-2 buffer of `info_type`.
-    unsafe fn write_info(self, ptr: *mut u8) {
-        unsafe {
-            match self {
-                Formula::Int { from, step } => {
-                    let p = ptr.cast::<c_int>();
-                    *p = from;
-                    *p.add(1) = step;
-                }
-                Formula::Real { from, step } => {
-                    let p = ptr.cast::<c_double>();
-                    *p = from;
-                    *p.add(1) = step;
-                }
+    /// Initialize the checked metadata cells without projecting a raw span.
+    #[forbid(unsafe_code)]
+    fn write_info(self, value: &Sexp<'_>) -> super::object::SexpResult<()> {
+        let mut value = super::object::SexpMut::try_from_checked(value.clone())?;
+        match self {
+            Formula::Int { from, step } => {
+                value.try_set_integer_elt(0, from)?;
+                value.try_set_integer_elt(1, step)
+            }
+            Formula::Real { from, step } => {
+                value.try_set_real_elt(0, from)?;
+                value.try_set_real_elt(1, step)
             }
         }
     }
@@ -194,17 +192,29 @@ unsafe fn compact_seq_with_result<T>(
         let value = with_arena(|arena| {
             let raw = (|| {
                 let info = arena.alloc_vector(formula.info_type(), 2);
-                if info.is_null() || (*info).gengc_next_node.is_null() {
+                let Ok(info_value) = factory.wrap(info) else {
+                    return std::ptr::null_mut();
+                };
+                if formula.write_info(&info_value).is_err() {
                     return std::ptr::null_mut();
                 }
-                formula.write_info((*info).gengc_next_node as *mut u8);
                 let header = arena.alloc_vector(kind, 0);
                 if header.is_null() {
                     return std::ptr::null_mut();
                 }
-                (*header).set_vecsxp_length(len);
-                (*header).set_vecsxp_truelength(0);
-                SET_ALTREP(header, 1);
+                let Some(parent) = arena.node_token(header) else {
+                    return std::ptr::null_mut();
+                };
+                let heap = parent.heap_identity();
+                let Some(mut snapshot) = heap.node_snapshot(&parent) else {
+                    return std::ptr::null_mut();
+                };
+                snapshot.data.vector_mut().length = len;
+                snapshot.data.vector_mut().truelength = 0;
+                snapshot.sxpinfo.set_alt(true);
+                if heap.replace_node(&parent, snapshot).is_none() {
+                    return std::ptr::null_mut();
+                }
                 let cell = arena.cons(info, super::globals::R_NilValue(), tag);
                 if cell.is_null() {
                     return std::ptr::null_mut();
@@ -212,9 +222,15 @@ unsafe fn compact_seq_with_result<T>(
                 // Header and cell are both young, allocated in this lend. The
                 // write barrier would be a no-op, and it must not run while the
                 // arena borrow is live.
-                (*header).attrib = arena
+                let Some(mut snapshot) = heap.node_snapshot(&parent) else {
+                    return std::ptr::null_mut();
+                };
+                snapshot.attrib = arena
                     .link_from_projection(cell)
                     .expect("fresh compact sequence metadata");
+                if heap.replace_node(&parent, snapshot).is_none() {
+                    return std::ptr::null_mut();
+                }
                 header
             })();
             factory.wrap(raw).ok()
@@ -347,7 +363,7 @@ impl Sexp<'_> {
         if info.sxpinfo.type_of() != kind {
             return None;
         }
-        let formula = match copy_leading_scalars(info) {
+        let formula = match copy_leading_scalars(&info) {
             Some(LeadingScalars::Int(from, step)) if kind == SEXPTYPE::INTSXP => {
                 Formula::Int { from, step }
             }
@@ -359,7 +375,7 @@ impl Sexp<'_> {
         Some(CompactSeq {
             formula,
             len: vec.length,
-            payload_null: header.payload.is_null(),
+            payload_null: header.payload.is_empty(),
         })
     }
 
@@ -410,65 +426,29 @@ fn unexpanded(x: SEXP) -> Option<CompactSeq> {
     sx.compact_seq().filter(|seq| seq.payload_is_null())
 }
 
-/// Expand a compact sequence into a normal vector buffer.
-///
-/// A buffer allocated while an arena lend is active is queued and registered
-/// when that lend ends, before deferred collection. See
-/// [`memory::attach_zeroed_data_buffer`].
+/// Publish a complete typed allocation before discarding the compact formula.
 ///
 /// # Safety
-/// `x` is a live node owned by the active instance, with no overlapping Rust
-/// payload borrow. The caller keeps it rooted while using its returned storage.
+/// `x` is a live node, with no overlapping native payload loan.
 pub(crate) unsafe fn materialize(x: SEXP) {
-    unsafe {
-        if x.is_null() || ALTREP(x) == 0 {
-            return;
-        }
-        let key = x as usize;
-        if MATERIALIZE_ADDR.with(|open| open.get()) == key {
-            return;
-        }
-        if !(*x).gengc_next_node.is_null() {
-            // A lend may have filled the buffer before the arena accepted it.
-            // Finishing now would drop the formula, and a later budget refusal
-            // would then have nothing left to rebuild the values from.
-            if !memory::vector_payload_is_pending(x) {
-                finish(x);
-            }
-            return;
-        }
-        let Some(formula) = read_formula(x) else {
-            return;
-        };
-        let Ok(n) = usize::try_from((*x).vecsxp_length()) else {
-            return;
-        };
-        let prev = MATERIALIZE_ADDR.with(|open| open.replace(key));
-        let _restore = RestoreMaterializing(prev);
-        let _root = super::protect::protect(x);
-        if (*x).gengc_next_node.is_null() && n > 0 {
-            let elem = memory::sexp_elem_size((*x).sxpinfo.type_of());
-            if let Some(bytes) = n.checked_mul(elem)
-                && bytes > 0
-            {
-                memory::attach_initialized_data_buffer(x, bytes, |data| fill(data, &formula, n));
-            }
-        }
-        let committed = !(*x).gengc_next_node.is_null() && !memory::vector_payload_is_pending(x);
-        if committed || n == 0 {
-            finish(x);
-        }
+    let Some((_, parent)) = memory::checked_projection(x) else { return; };
+    let Some(_root) = parent.root_lease() else { return; };
+    let heap = parent.heap_identity();
+    let Some(header) = heap.node_snapshot(&parent) else { return; };
+    if !header.sxpinfo.alt() { return; }
+    let key = x as usize;
+    if MATERIALIZE_ADDR.with(|open| open.get()) == key { return; }
+    if !header.payload.is_empty() {
+        unsafe { finish(x); }
+        return;
     }
-}
-
-/// The arena accepted `x`'s element buffer. Drop the formula.
-pub(crate) unsafe fn commit_expanded_buffer(x: SEXP) {
-    unsafe {
-        if x.is_null() || (*x).gengc_next_node.is_null() || ALTREP(x) == 0 {
-            return;
-        }
-        finish(x);
-    }
+    let Some(formula) = (unsafe { read_formula(x) }) else { return; };
+    let Ok(n) = usize::try_from(header.vecsxp_length()) else { return; };
+    let prev = MATERIALIZE_ADDR.with(|open| open.replace(key));
+    let _restore = RestoreMaterializing(prev);
+    let committed = n == 0 || memory::attach_initialized_payload(&parent,
+        |payload| fill(payload, &formula, n)).is_some();
+    if committed { unsafe { finish(x); } }
 }
 
 /// Keep a still-lazy sequence's formula at the head of `v`.
@@ -540,34 +520,29 @@ unsafe fn read_formula(x: SEXP) -> Option<Formula> {
     unsafe { Sexp::from_raw(x) }.and_then(|sx| sx.compact_seq().map(|seq| seq.formula))
 }
 
-unsafe fn fill(ptr: *mut u8, formula: &Formula, n: usize) {
-    unsafe {
+#[forbid(unsafe_code)]
+fn fill(payload: &super::payload::PayloadLease, formula: &Formula, n: usize) -> Option<()> {
+    for i in 0..n {
         match *formula {
-            Formula::Int { .. } => {
-                let dest = ptr.cast::<c_int>();
-                for i in 0..n {
-                    *dest.add(i) = formula.int_at(i as i64);
-                }
-            }
-            Formula::Real { .. } => {
-                let dest = ptr.cast::<c_double>();
-                for i in 0..n {
-                    *dest.add(i) = formula.real_at(i as i64);
-                }
-            }
+            Formula::Int { .. } => payload.set_integer_elt(i, formula.int_at(i as i64))?,
+            Formula::Real { .. } => payload.set_real_elt(i, formula.real_at(i as i64))?,
         }
     }
+    Some(())
 }
 
 /// Clear the ALT bit and unlink the formula. The bit is cleared first so a
 /// nested `SET_ATTRIB` cannot call back into [`materialize`].
 unsafe fn finish(x: SEXP) {
     unsafe {
-        SET_ALTREP(x, 0);
-        let n = (*x).vecsxp_length();
-        if n >= 0 {
-            (*x).set_vecsxp_truelength(n);
-        }
+        let Some((_, parent)) = memory::checked_projection(x) else { return; };
+        let heap = parent.heap_identity();
+        let Some(mut header) = heap.node_snapshot(&parent) else { return; };
+        let n = header.vecsxp_length();
+        if n < 0 || (n > 0 && heap.payload_lease(&parent).is_none()) { return; }
+        header.sxpinfo.set_alt(false);
+        header.data.vector_mut().truelength = n;
+        if heap.replace_node(&parent, header).is_none() { return; }
         let cell = ATTRIB(x);
         if is_list(cell) && is_formula_tag(TAG(cell)) {
             let rest = CDR(cell);
