@@ -57,6 +57,10 @@ impl WeakOwner {
         }
     }
 
+    pub(crate) fn same_owner(&self, other: &Self) -> bool {
+        Weak::ptr_eq(&self.allocation, &other.allocation)
+    }
+
     pub(crate) fn is_live(&self) -> bool {
         self.availability.is_live() && self.allocation.strong_count() != 0
     }
@@ -83,12 +87,8 @@ impl WeakOwner {
     }
 
     pub(crate) fn node_factory<'s>(&self) -> SexpResult<super::object::SessionNodeFactory<'s>> {
-        let pin = self.pin()?;
-        // Every subsequent factory operation upgrades this same weak owner;
-        // no allocation authority is derived from a bare stored address.
-        let token = unsafe { OwnerToken::from_raw(pin.as_ptr()) };
+        self.pin()?;
         Ok(super::object::SessionNodeFactory::from_capability(
-            token,
             self.heap.clone(),
             self.availability.clone(),
             self.singletons.clone(),
@@ -113,6 +113,141 @@ impl OwnerPin {
         } else {
             Err(SexpError::RootUnavailable)
         }
+    }
+}
+
+/// Stored authority has a distinct representation for managed runtimes and
+/// explicitly borrowed native fixtures. Managed storage contains no raw token.
+#[derive(Clone)]
+pub(crate) enum StoredOwner<'session> {
+    Managed(WeakOwner),
+    Borrowed {
+        token: OwnerToken<'session>,
+        availability: super::instance::InstanceLiveness,
+    },
+}
+
+impl<'session> StoredOwner<'session> {
+    pub(crate) fn from_token(token: OwnerToken<'session>) -> Self {
+        match token.weak_owner() {
+            Some(owner) => Self::Managed(owner),
+            None => Self::Borrowed {
+                token,
+                availability: unsafe { super::instance::instance_liveness(token.as_ptr()) },
+            },
+        }
+    }
+
+    pub(crate) fn from_value(value: &Sexp<'session>) -> SexpResult<Self> {
+        if let Some(owner) = &value.runtime_owner {
+            owner.pin()?;
+            return Ok(Self::Managed(owner.clone()));
+        }
+        let pointer = value.session_owner_ptr.ok_or(SexpError::RootUnavailable)?;
+        // The borrowed view retains its explicitly proven fixture lifetime.
+        Ok(Self::from_token(unsafe {
+            OwnerToken::from_raw(pointer.as_ptr())
+        }))
+    }
+
+    pub(crate) fn into_owned(self) -> SexpResult<StoredOwner<'static>> {
+        match self {
+            Self::Managed(owner) => Ok(StoredOwner::Managed(owner)),
+            Self::Borrowed { .. } => Err(SexpError::RootUnavailable),
+        }
+    }
+
+    pub(crate) fn identity_ptr(&self) -> *mut RInstance {
+        match self {
+            Self::Managed(owner) => owner.identity_ptr(),
+            Self::Borrowed { token, .. } => token.as_ptr(),
+        }
+    }
+
+    pub(crate) fn managed(&self) -> Option<WeakOwner> {
+        match self {
+            Self::Managed(owner) => Some(owner.clone()),
+            Self::Borrowed { .. } => None,
+        }
+    }
+
+    pub(crate) fn borrowed_pointer(&self) -> Option<NonNull<RInstance>> {
+        match self {
+            Self::Managed(_) => None,
+            Self::Borrowed { token, .. } => NonNull::new(token.as_ptr()),
+        }
+    }
+
+    /// Run one operation while physically retaining the original allocation.
+    /// A raw projection grants no safe dereference authority to the closure.
+    pub(crate) fn with_projection<T>(
+        &self,
+        f: impl FnOnce(*mut RInstance) -> SexpResult<T>,
+    ) -> SexpResult<T> {
+        match self {
+            Self::Managed(owner) => {
+                let pin = owner.pin()?;
+                let result = f(pin.as_ptr());
+                pin.require_live()?;
+                result
+            }
+            Self::Borrowed {
+                token,
+                availability,
+            } => {
+                if !availability.is_live() {
+                    return Err(SexpError::RootUnavailable);
+                }
+                let result = f(token.as_ptr());
+                if !availability.is_live() {
+                    return Err(SexpError::RootUnavailable);
+                }
+                result
+            }
+        }
+    }
+
+    pub(crate) fn require_active(&self) -> SexpResult<()> {
+        self.with_projection(|pointer| {
+            if super::instance::current_instance_ptr() == Some(pointer) {
+                Ok(())
+            } else {
+                Err(SexpError::OwnerNotActive)
+            }
+        })
+    }
+
+    pub(crate) fn with_arena<T>(
+        &self,
+        f: impl FnOnce(&mut super::memory::RArena) -> T,
+    ) -> SexpResult<T> {
+        self.with_projection(|pointer| {
+            if super::instance::current_instance_ptr() != Some(pointer)
+                || super::memory::is_arena_lent(pointer)
+            {
+                return Err(SexpError::OwnerNotActive);
+            }
+            Ok(unsafe { super::memory::with_arena_in(pointer, f) })
+        })
+    }
+
+    pub(crate) fn node_factory(&self) -> SexpResult<super::object::SessionNodeFactory<'session>> {
+        match self {
+            Self::Managed(owner) => owner.node_factory(),
+            Self::Borrowed {
+                token,
+                availability,
+            } => {
+                if !availability.is_live() {
+                    return Err(SexpError::RootUnavailable);
+                }
+                Ok(token.node_factory())
+            }
+        }
+    }
+
+    pub(crate) fn sexp(&self, pointer: SEXP) -> SexpResult<Sexp<'session>> {
+        self.node_factory()?.wrap(pointer)
     }
 }
 

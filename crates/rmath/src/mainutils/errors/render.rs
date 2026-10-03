@@ -442,10 +442,8 @@ pub(super) unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
         SET_VECTOR_ELT(result, 0, cond);
         SET_VECTOR_ELT(result, 1, call);
         SET_VECTOR_ELT(result, 2, ENTRY_HANDLER(entry));
-        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler {
-            target_env: rho,
-            result,
-        });
+        let transfer = crate::sexp::context::exiting_handler_transfer(rho, result);
+        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler(transfer));
     }
 }
 

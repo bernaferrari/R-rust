@@ -207,6 +207,9 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             return R_NilValue();
         }
 
+        let instance = crate::sexp::instance::current_instance_ptr()
+            .unwrap_or_else(|| crate::sexp::context::r_error("no active closure owner"));
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let factory = super::dispatch::active_argument_factory();
         let arguments_owner = super::dispatch::argument_value(&factory, arglist);
         let environment_owner = super::dispatch::argument_value(&factory, rho);
@@ -217,8 +220,6 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         // complete bytecode object exists; an unsupported body stays source.
         let _op_guard = protect(op);
         super::jit::R_CheckJIT(op);
-
-
 
         // Upstream applyClosure_core passes the *promised* arguments
         // (`actuals = promiseArgs(arglist, rho)`) to begincontext as the
@@ -274,58 +275,85 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             crate::eval::eval::Rf_eval(body, newrho)
         }));
 
-        // A `return(v)` unwinds with RSignal::Return(v); extract the value so
-        // it can be rooted before the on.exit expressions run. Non-Return
-        // signals keep unwinding only after the handlers have run, matching
-        // upstream's ordering (on.exits run before the jump).
+        // Each outcome owns its original value independently of mutable context
+        // fields. A targeted return is consumed only by its original context cell.
         enum BodyOutcome {
-            Value(SEXP),
-            Returned(SEXP),
+            Value(Sexp<'static>),
+            Returned(crate::sexp::transfer::TransferLease),
             Signal(Box<dyn std::any::Any + Send>),
         }
-        let outcome = match result {
-            Ok(val) => BodyOutcome::Value(val),
-            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
-                Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Return(val) => BodyOutcome::Returned(val),
-                    other => BodyOutcome::Signal(Box::new(other)),
-                },
-                Err(payload) => BodyOutcome::Signal(payload),
-            },
-        };
-
-        if let BodyOutcome::Returned(val) = &outcome {
-            if unsafe { (*ctx).jumped } == 0 {
-                std::panic::panic_any(crate::sexp::context::RSignal::Return(*val));
+        fn transferred_outcome(
+            ctx: *mut crate::sexp::context::RCNTXT,
+            payload: Box<dyn std::any::Any + Send>,
+        ) -> BodyOutcome {
+            use crate::sexp::{context::RSignal, transfer::OwnedTransfer};
+            if let Some(RSignal::Return(ticket)) = payload.downcast_ref::<RSignal>() {
+                let lease = ticket
+                    .resolve()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                lease
+                    .require_live()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if matches!(lease.data(), OwnedTransfer::Return { target: Some(target), .. }
+                    if target.get() == ctx)
+                {
+                    let signal = payload
+                        .downcast::<RSignal>()
+                        .expect("resolved return signal");
+                    let RSignal::Return(ticket) = *signal else {
+                        unreachable!("resolved return signal")
+                    };
+                    return BodyOutcome::Returned(
+                        ticket.take().unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                    );
+                }
             }
+            BodyOutcome::Signal(payload)
         }
+        let outcome = match result {
+            Ok(val) => BodyOutcome::Value(crate::sexp::context::own_control_value(val)),
+            Err(payload) => transferred_outcome(ctx, payload),
+        };
         if let BodyOutcome::Value(val) = &outcome {
-            unsafe { (*ctx).returnValue.replace_from_raw(*val); }
+            (*ctx).returnValue.replace_from_raw(val.as_raw());
         }
 
-        // Stock endcontext (context.c) saves R_Visible before running the
-        // on.exit expressions and restores it afterwards, so the visibility
-        // of the body's/handler's return value travels with
-        // the owning context return field even when an on.exit expression evaluates (and
-        // would otherwise clobber the flag). Mirror that save/restore here.
+        // Preserve visibility and keep both the original context and the outcome
+        // alive while on.exit expressions allocate, collect, or replace fields.
         let saved_visible = super::runtime::visible();
-        let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::context::R_run_onexits_for_context(ctx);
         }));
         super::runtime::set_visible(saved_visible);
-        if let Err(payload) = onexit {
-            return crate::sexp::context::handle_closure_signal(payload);
-        }
-
-        // Borrow the projection from the original return-value lease, which
-        // remains owned while on.exit handlers allocate or collect.
-        match outcome {
-            BodyOutcome::Value(_) => unsafe {
-                super::jit::handle_exec_continuation((*ctx).returnValue.as_raw())
-            },
-            BodyOutcome::Returned(_) => unsafe { super::jit::handle_exec_continuation((*ctx).returnValue.as_raw()) },
-            BodyOutcome::Signal(payload) => crate::sexp::context::handle_closure_signal(payload),
-        }
+        let outcome = match onexit {
+            Ok(()) => outcome,
+            Err(payload) => transferred_outcome(ctx, payload),
+        };
+        let value = match &outcome {
+            BodyOutcome::Value(value) => value.clone(),
+            BodyOutcome::Returned(lease) => {
+                lease
+                    .require_live()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let crate::sexp::transfer::OwnedTransfer::Return { value, .. } = lease.data()
+                else {
+                    unreachable!("matched return transfer")
+                };
+                value.clone()
+            }
+            BodyOutcome::Signal(_) => {
+                let BodyOutcome::Signal(payload) = outcome else {
+                    unreachable!("unmatched signal")
+                };
+                std::panic::resume_unwind(payload)
+            }
+        };
+        crate::sexp::context::require_context_owner_live(&owner_pin);
+        let result = super::jit::handle_exec_continuation(value.as_raw());
+        crate::sexp::context::require_context_owner_live(&owner_pin);
+        result
     }
 }
 
@@ -1065,6 +1093,82 @@ mod owned_matcher_tests {
     use std::{cell::Cell, rc::Rc};
 
     #[test]
+    fn owned_closure_outcomes_survive_collecting_onexit_context_teardown() {
+        use std::cell::RefCell;
+        for final_expression in ["313L + 1L", "return(313L + 1L)"] {
+            let session = RSession::new_for_gc_tests();
+            let owner = session.owner_token().unwrap();
+            let factory = SessionNodeFactory::new(owner);
+            let global = session.global_env().unwrap();
+            let source = format!("(function() {{ on.exit(1L + 2L); {final_expression} }})()");
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(&source, arena, factory.clone()))
+                .unwrap()
+                .unwrap();
+            let changed = Rc::new(Cell::new(false));
+            let observed = changed.clone();
+            let retained_node = Rc::new(RefCell::new(None));
+            let node_observed = retained_node.clone();
+            session.with_active_in(|instance| unsafe {
+                (*instance).eval_state.jit_enabled = 0;
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if observed.get() {
+                        return;
+                    }
+                    let mut context = crate::sexp::context::R_GlobalContext_in(instance);
+                    let value = loop {
+                        if context.is_null() {
+                            return;
+                        }
+                        let value = (*context).returnValue.as_raw();
+                        if !value.is_null()
+                            && TYPEOF(value) == SEXPTYPE::INTSXP
+                            && XLENGTH(value) == 1
+                            && *crate::sexp::accessors::INTEGER(value) == 314
+                        {
+                            break value;
+                        }
+                        context = (*context).nextcontext;
+                    };
+                    observed.set(true);
+                    let node = crate::sexp::memory::checked_projection(value).unwrap().1;
+                    (*context).returnValue.replace_from_raw(R_NilValue());
+                    (*instance).context_stack.clear();
+                    crate::sexp::gengc::full_gc_in(instance);
+                    assert!(
+                        node.is_live(),
+                        "original outcome must remain owned during on.exit"
+                    );
+                    *node_observed.borrow_mut() = Some(node);
+                }));
+            });
+            let value = session.with_active(|| {
+                factory
+                    .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
+                    .unwrap()
+            });
+            assert!(
+                changed.get(),
+                "cleanup must allocate after capturing the result"
+            );
+            assert_eq!(value.integer_elt(0).unwrap(), 314);
+            assert!(retained_node.borrow().as_ref().unwrap().is_live());
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 0;
+                crate::sexp::gengc::full_gc_in(instance);
+                assert!((*instance).context_stack.is_empty());
+            });
+            drop(value);
+            session.with_active_in(|instance| unsafe {
+                crate::sexp::gengc::full_gc_in(instance);
+            });
+            assert!(!retained_node.borrow().as_ref().unwrap().is_live());
+        }
+    }
+
+    #[test]
     fn owned_matcher_retains_cells_detached_by_reentrant_gc_callbacks() {
         let session = RSession::new_for_gc_tests();
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
@@ -1156,9 +1260,11 @@ mod owned_matcher_tests {
                 .unwrap()
         };
         let function_expression = parse("function(alpha) alpha");
-        let function = factory
-            .wrap(unsafe { Rf_eval(function_expression.as_raw(), global.as_raw()) })
-            .unwrap();
+        let function = session.with_active(|| {
+            factory
+                .wrap(unsafe { Rf_eval(function_expression.as_raw(), global.as_raw()) })
+                .unwrap()
+        });
         let selected = factory
             .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(37) })
             .unwrap();
@@ -1238,9 +1344,11 @@ mod owned_matcher_tests {
         set_warn(0);
         let before_protection = crate::sexp::protect::R_ProtectCount();
         let before_runtime = runtime_state();
-        let first = factory
-            .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
-            .unwrap();
+        let first = session.with_active(|| {
+            factory
+                .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
+                .unwrap()
+        });
         assert_eq!(first.integer_elt(0).unwrap(), 37);
         assert_eq!(handled_count(), 1);
         assert!(notifications.get() > 0);
@@ -1250,8 +1358,8 @@ mod owned_matcher_tests {
 
         set_warn(2);
         let collections_before_error = notifications.get();
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            Rf_eval(expression.as_raw(), global.as_raw())
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.with_active(|| unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
         }));
         let payload = error.expect_err("warn=2 must unwind after the collecting calling handler");
         let message = if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
@@ -1275,9 +1383,11 @@ mod owned_matcher_tests {
 
         set_warn(0);
         let collections_before_retry = notifications.get();
-        let retry = factory
-            .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
-            .unwrap();
+        let retry = session.with_active(|| {
+            factory
+                .wrap(unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
+                .unwrap()
+        });
         crate::sexp::gengc::full_gc();
         assert_eq!(retry.integer_elt(0).unwrap(), 37);
         assert_eq!(first.integer_elt(0).unwrap(), 37);

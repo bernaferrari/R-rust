@@ -116,6 +116,13 @@ jobs:
               owned_tailcall_arguments
               owned_bind_
               owned_matcher_
+          - subject: owning nonlocal transfers
+            filter: >-
+              sexp::transfer::tests
+              owned_jump_transfer_retains_value_and_target
+              owned_closure_outcomes_survive_collecting_onexit
+              owned_exiting_handler_result_survives
+              owned_restart_transfer_tests
           - subject: conditions
             filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
           - subject: ALTREP arithmetic

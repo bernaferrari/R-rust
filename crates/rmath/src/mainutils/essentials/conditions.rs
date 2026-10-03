@@ -891,23 +891,30 @@ unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
 /// intact is required for class-selective handlers and `inherits()` checks.
 pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
     unsafe {
-        let old_stack = restart_stack();
-        let restart = restart_entry("muffleWarning", R_NilValue(), R_NilValue());
-        let _restart_guard = protect(restart);
-        let new_stack = Rf_cons(restart, old_stack);
-        let _stack_guard = protect(new_stack);
-        set_restart_stack(new_stack);
+        let scope = ScopedRestartStack::capture();
+        let condition = restart_owned(condition);
+        let rho = restart_owned(rho);
+        let restart = restart_owned(restart_entry("muffleWarning", R_NilValue(), R_NilValue()));
+        let new_stack = restart_owned(Rf_cons(restart.as_raw(), scope.previous().as_raw()));
+        set_restart_stack(new_stack.as_raw());
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            signal_calling_handlers(condition, rho)
+            signal_calling_handlers(condition.as_raw(), rho.as_raw())
         }));
-        set_restart_stack(old_stack);
+        scope.restore();
+        scope.require_live();
 
         match result {
             Ok(()) => false,
             Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
                 Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Restart(jump) if jump.target == restart => true,
+                    crate::sexp::context::RSignal::Restart(ticket)
+                        if restart_ticket_matches(&ticket, restart.as_raw()) =>
+                    {
+                        consume_matching_restart(ticket);
+                        scope.require_live();
+                        true
+                    }
                     other => std::panic::panic_any(other),
                 },
                 Err(payload) => std::panic::resume_unwind(payload),
@@ -1065,51 +1072,167 @@ unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
     }
 }
 
+/// Native condition adapter: retain the original physical value and revocable
+/// runtime capability before any allocation, callback, or non-local transfer.
+unsafe fn restart_owned(value: SEXP) -> crate::sexp::object::Sexp<'static> {
+    let factory = unsafe { condition_entry_factory() };
+    condition_entry_value(&factory, value)
+        .into_owned()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+struct ScopedRestartStack {
+    pin: crate::sexp::owner::OwnerPin,
+    previous: Option<crate::sexp::object::Sexp<'static>>,
+    nil: crate::sexp::object::Sexp<'static>,
+}
+
+impl ScopedRestartStack {
+    unsafe fn capture() -> Self {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            .unwrap_or_else(|| crate::sexp::context::r_error("restart requires a runtime owner"));
+        let pointer = unsafe { (*pin.as_ptr()).error_state.restart_stack };
+        let previous = if pointer.is_null() {
+            None
+        } else {
+            Some(unsafe { restart_owned(pointer) })
+        };
+        let nil = owner
+            .node_factory()
+            .nil()
+            .into_owned()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        Self { pin, previous, nil }
+    }
+
+    fn previous(&self) -> crate::sexp::object::Sexp<'static> {
+        self.previous.clone().unwrap_or_else(|| self.nil.clone())
+    }
+
+    fn restore(&self) {
+        // Cleanup retains the original physical runtime even after revocation.
+        unsafe {
+            (*self.pin.as_ptr()).error_state.restart_stack = self
+                .previous
+                .as_ref()
+                .map_or(std::ptr::null_mut(), |value| value.as_raw());
+        }
+    }
+
+    fn require_live(&self) {
+        self.pin
+            .require_live()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+}
+
+impl Drop for ScopedRestartStack {
+    fn drop(&mut self) {
+        self.restore();
+    }
+}
+
+fn restart_ticket_matches(ticket: &crate::sexp::transfer::TransferTicket, target: SEXP) -> bool {
+    let lease = ticket
+        .resolve()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    lease
+        .require_live()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    match lease.data() {
+        crate::sexp::transfer::OwnedTransfer::Restart { target: value, .. } => {
+            value.as_raw() == target
+        }
+        _ => false,
+    }
+}
+
+fn consume_matching_restart(ticket: crate::sexp::transfer::TransferTicket) {
+    let lease = ticket
+        .take()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    lease
+        .require_live()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+}
+
 unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let target_owned = restart_owned(restart);
+        let args_owned = restart_owned(args);
+        let restart = target_owned.as_raw();
+        let args = args_owned.as_raw();
         if restart_name(restart).as_deref() == Some("abort")
             && restart_field(restart, "exit", 1) == R_NilValue()
         {
             std::panic::panic_any(crate::sexp::context::RSignal::Abort);
         }
+        std::panic::panic_any(crate::sexp::context::RSignal::Restart(
+            crate::sexp::context::restart_transfer(restart, args),
+        ));
     }
-    std::panic::panic_any(crate::sexp::context::RSignal::Restart(unsafe {
-        crate::sexp::context::RestartJump::new(restart, args)
-    }));
 }
 
-unsafe fn call_function_with_args(handler: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+unsafe fn call_function_with_args(
+    handler: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> crate::sexp::object::Sexp<'static> {
     unsafe {
-        let _handler_guard = protect(handler);
-        let _args_guard = protect(args);
-        // GNU withRestarts uses do.call with enquoted argument values.
-        // Symbols and language objects must remain data, not execute again.
+        let handler = restart_owned(handler);
+        let rho = restart_owned(rho);
+        let mut cursor = restart_owned(args);
+        let factory = condition_entry_factory();
+        // Snapshot actual selected values/tags before callbacks can replace args.
         let mut entries = Vec::new();
-        let mut entry = args;
-        while !entry.is_null() && entry != R_NilValue() {
-            entries.push(entry);
-            entry = CDR(entry);
+        let mut seen = std::collections::HashSet::new();
+        while !cursor.is_nil() {
+            seen.try_reserve(1).unwrap_or_else(|_| {
+                crate::sexp::context::r_error("cannot track restart arguments")
+            });
+            if !seen.insert(cursor.as_raw().addr()) {
+                crate::sexp::context::r_error("cyclic restart arguments");
+            }
+            let value = cursor
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let tag = cursor
+                .try_tag()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            entries.try_reserve(1).unwrap_or_else(|_| {
+                crate::sexp::context::r_error("cannot reserve restart arguments")
+            });
+            entries.push((value, tag));
+            cursor = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        let mut quoted = R_NilValue();
-        let mut guards = Vec::new();
-        for entry in entries.into_iter().rev() {
-            let value = Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"quote".as_ptr()),
-                CAR(entry),
-            );
-            guards.push(protect(value));
-            quoted = Rf_cons(value, quoted);
-            guards.push(protect(quoted));
-            SETTAG(quoted, TAG(entry));
+        let mut quoted = factory.nil();
+        for (value, tag) in entries.into_iter().rev() {
+            let value = restart_owned(Rf_lang2(Rf_install(c"quote".as_ptr()), value.as_raw()));
+            quoted = factory
+                .pairlist_cell(&value, &quoted, &tag)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        let call = Rf_lang2(handler, R_NilValue());
-        SETCDR(call, quoted);
-        let _call_guard = protect(call);
-        if TYPEOF(handler) == SEXPTYPE::CLOSXP {
-            crate::eval::closure::applyClosure(call, handler, quoted, rho, R_NilValue(), TRUE)
+        let call = restart_owned(Rf_lang2(handler.as_raw(), R_NilValue()));
+        SETCDR(call.as_raw(), quoted.as_raw());
+        let result = if handler.typeof_() == SEXPTYPE::CLOSXP {
+            crate::eval::closure::applyClosure(
+                call.as_raw(),
+                handler.as_raw(),
+                quoted.as_raw(),
+                rho.as_raw(),
+                R_NilValue(),
+                TRUE,
+            )
         } else {
-            crate::eval::eval::Rf_eval(call, rho)
-        }
+            crate::eval::eval::Rf_eval(call.as_raw(), rho.as_raw())
+        };
+        restart_owned(result)
     }
 }
 
@@ -1127,38 +1250,80 @@ fn set_restart_stack(stack: SEXP) {
 
 unsafe fn restart_stack_as_list() -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            .unwrap_or_else(|| crate::sexp::context::r_error("restart requires a runtime owner"));
+        let stack = restart_stack();
+        let mut cursor = if stack.is_null() {
+            owner.node_factory().nil().into_owned().unwrap()
+        } else {
+            restart_owned(stack)
+        };
         let mut restarts = Vec::new();
-        let mut current = restart_stack();
-        while !current.is_null() && current != R_NilValue() {
-            restarts.push(CAR(current));
-            current = CDR(current);
+        let mut seen = std::collections::HashSet::new();
+        while !cursor.is_nil() {
+            seen.try_reserve(1)
+                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot track restart stack"));
+            if !seen.insert(cursor.as_raw().addr()) {
+                crate::sexp::context::r_error("cyclic restart stack");
+            }
+            restarts
+                .try_reserve(1)
+                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot reserve restarts"));
+            restarts.push(
+                cursor
+                    .try_car()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            );
+            cursor = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-
-        let abort = abort_restart_entry();
-        let _abort_guard = protect(abort);
-        restarts.push(abort);
-
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
+        restarts.push(restart_owned(abort_restart_entry()));
+        let factory = condition_entry_factory();
+        let result = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t))
+            })
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for (index, value) in restarts.iter().enumerate() {
+            SET_VECTOR_ELT(result.as_raw(), index as R_xlen_t, value.as_raw());
         }
-        let _result_guard = protect(result);
-        for (i, restart) in restarts.iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, *restart);
-        }
-        result
+        pin.require_live()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result.as_raw()
     }
 }
 
 unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
     unsafe {
-        let mut current = restart_stack();
-        while !current.is_null() && current != R_NilValue() {
-            let restart = CAR(current);
-            if restart_name(restart).as_deref() == Some(name) {
-                return Some(restart);
+        let factory = condition_entry_factory();
+        let stack = restart_stack();
+        let mut cursor = if stack.is_null() {
+            factory.nil()
+        } else {
+            condition_entry_value(&factory, stack)
+        };
+        let mut seen = std::collections::HashSet::new();
+        while !cursor.is_nil() {
+            seen.try_reserve(1)
+                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot track restart stack"));
+            if !seen.insert(cursor.as_raw().addr()) {
+                crate::sexp::context::r_error("cyclic restart stack");
             }
-            current = CDR(current);
+            let entry = cursor
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let next = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if restart_name(entry.as_raw()).as_deref() == Some(name) {
+                return Some(entry.as_raw());
+            }
+            cursor = next;
         }
         if name == "abort" {
             Some(abort_restart_entry())
@@ -1170,13 +1335,29 @@ unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
 
 unsafe fn find_restart_by_object(needle: SEXP) -> Option<SEXP> {
     unsafe {
-        let mut current = restart_stack();
-        while !current.is_null() && current != R_NilValue() {
-            let restart = CAR(current);
-            if restart == needle {
-                return Some(restart);
+        let factory = condition_entry_factory();
+        let stack = restart_stack();
+        let mut cursor = if stack.is_null() {
+            factory.nil()
+        } else {
+            condition_entry_value(&factory, stack)
+        };
+        let mut seen = std::collections::HashSet::new();
+        while !cursor.is_nil() {
+            seen.try_reserve(1)
+                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot track restart stack"));
+            if !seen.insert(cursor.as_raw().addr()) {
+                crate::sexp::context::r_error("cyclic restart stack");
             }
-            current = CDR(current);
+            let entry = cursor
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if entry.as_raw() == needle {
+                return Some(entry.as_raw());
+            }
+            cursor = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         None
     }
@@ -1204,7 +1385,14 @@ unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_
         if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
+        let restart_owned = restart_owned(restart);
+        let restart = restart_owned.as_raw();
         let names = crate::sexp::attrib_core::getAttrib(restart, Rf_install(c"names".as_ptr()));
+        let names_owned = if names.is_null() {
+            None
+        } else {
+            Some(condition_entry_value(&condition_entry_factory(), names))
+        };
         if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
             let limit = XLENGTH(names).min(XLENGTH(restart));
             for index in 0..limit {
@@ -1223,11 +1411,15 @@ unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_
 
 unsafe fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
     unsafe {
+        let handler_owned = restart_owned(handler);
+        let exit_owned = restart_owned(exit);
+        let handler = handler_owned.as_raw();
+        let exit = exit_owned.as_raw();
         let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         if restart.is_null() {
             return R_NilValue();
         }
-        let _restart_guard = protect(restart);
+        let _restart_guard = restart_owned(restart);
         SET_VECTOR_ELT(
             restart,
             0,
@@ -1247,7 +1439,12 @@ unsafe fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
             "test".to_string(),
             "interactive".to_string(),
         ]);
-        crate::sexp::attrib_core::setAttrib(restart, Rf_install(c"names".as_ptr()), names);
+        let names_owned = restart_owned(names);
+        crate::sexp::attrib_core::setAttrib(
+            restart,
+            Rf_install(c"names".as_ptr()),
+            names_owned.as_raw(),
+        );
         crate::sexp::attrib_core::setAttrib(
             restart,
             Rf_install(c"class".as_ptr()),
@@ -1263,7 +1460,7 @@ unsafe fn abort_restart_entry() -> SEXP {
         if restart.is_null() {
             return R_NilValue();
         }
-        let _restart_guard = protect(restart);
+        let _restart_guard = restart_owned(restart);
         SET_VECTOR_ELT(
             restart,
             0,
@@ -1531,21 +1728,28 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             simple_condition(&message, &["simpleMessage", "message", "condition"])
         };
         let classes = condition_classes(condition);
-        let old_stack = restart_stack();
-        let restart = restart_entry("muffleMessage", R_NilValue(), R_NilValue());
-        let _restart_guard = protect(restart);
-        let new_stack = Rf_cons(restart, old_stack);
-        let _stack_guard = protect(new_stack);
-        set_restart_stack(new_stack);
+        let scope = ScopedRestartStack::capture();
+        let condition_owned = restart_owned(condition);
+        let rho_owned = restart_owned(rho);
+        let restart = restart_owned(restart_entry("muffleMessage", R_NilValue(), R_NilValue()));
+        let new_stack = restart_owned(Rf_cons(restart.as_raw(), scope.previous().as_raw()));
+        set_restart_stack(new_stack.as_raw());
         let signaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            signal_calling_handlers(condition, rho);
+            signal_calling_handlers(condition_owned.as_raw(), rho_owned.as_raw());
         }));
-        set_restart_stack(old_stack);
+        scope.restore();
+        scope.require_live();
         let muffled = match signaled {
             Ok(()) => false,
             Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
                 Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Restart(jump) if jump.target == restart => true,
+                    crate::sexp::context::RSignal::Restart(ticket)
+                        if restart_ticket_matches(&ticket, restart.as_raw()) =>
+                    {
+                        consume_matching_restart(ticket);
+                        scope.require_live();
+                        true
+                    }
                     other => std::panic::panic_any(other),
                 },
                 Err(payload) => std::panic::resume_unwind(payload),
@@ -2791,50 +2995,111 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 /// R's `withRestarts(expr, ...)` — evaluate an expression with dynamic restarts.
 pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let expr = CAR(args);
-        if expr.is_null() || expr == R_NilValue() {
-            return R_NilValue();
+        let scope = ScopedRestartStack::capture();
+        let args = restart_owned(args);
+        let expr = args
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let rho = restart_owned(rho);
+        if expr.is_nil() {
+            return scope.nil.as_raw();
         }
-
-        let old_stack = restart_stack();
-        let _old_stack_guard = protect(old_stack);
-        let new_stack = restart_stack_from_args(CDR(args), rho, old_stack);
-        let _stack_guard = protect(new_stack);
-        set_restart_stack(new_stack);
-
-        let mut active_stack = new_stack;
+        let previous = scope.previous();
+        let specifications = args
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut active_stack =
+            restart_stack_from_args(specifications.as_raw(), rho.as_raw(), previous.as_raw());
+        set_restart_stack(active_stack.as_raw());
         let mut result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::eval::eval::Rf_eval(expr, rho)
+            restart_owned(crate::eval::eval::Rf_eval(expr.as_raw(), rho.as_raw()))
         }));
         loop {
-            set_restart_stack(old_stack);
+            scope.restore();
             match result {
-                Ok(value) => return value,
+                Ok(value) => {
+                    scope.require_live();
+                    return value.as_raw();
+                }
                 Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
-                        crate::sexp::context::RSignal::Restart(jump) => {
-                            let mut entry = active_stack;
-                            while entry != old_stack && !entry.is_null() && entry != R_NilValue() {
-                                if CAR(entry) == jump.target {
+                        crate::sexp::context::RSignal::Restart(ticket) => {
+                            let transfer = ticket.resolve().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            transfer.require_live().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            let target = match transfer.data() {
+                                crate::sexp::transfer::OwnedTransfer::Restart {
+                                    target, ..
+                                } => target.clone(),
+                                _ => crate::sexp::context::r_error("invalid restart transfer kind"),
+                            };
+                            let mut entry = active_stack.clone();
+                            let mut seen = std::collections::HashSet::new();
+                            while entry.as_raw() != previous.as_raw() && !entry.is_nil() {
+                                seen.try_reserve(1).unwrap_or_else(|_| {
+                                    crate::sexp::context::r_error("cannot track restart stack")
+                                });
+                                if !seen.insert(entry.as_raw().addr()) {
+                                    crate::sexp::context::r_error("cyclic restart stack");
+                                }
+                                if entry
+                                    .try_car()
+                                    .unwrap_or_else(|error| {
+                                        crate::sexp::context::r_error(error.to_string())
+                                    })
+                                    .as_raw()
+                                    == target.as_raw()
+                                {
                                     break;
                                 }
-                                entry = CDR(entry);
+                                entry = entry.try_cdr().unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
                             }
-                            if entry == old_stack || entry.is_null() || entry == R_NilValue() {
-                                std::panic::panic_any(crate::sexp::context::RSignal::Restart(jump));
+                            if entry.as_raw() == previous.as_raw() || entry.is_nil() {
+                                drop(transfer);
+                                std::panic::panic_any(crate::sexp::context::RSignal::Restart(
+                                    ticket,
+                                ));
                             }
-                            // Multiple specs have nested dynamic extents in GNU:
-                            // earlier specs disappear; later specs remain available
-                            // and can themselves be invoked by this handler.
-                            active_stack = CDR(entry);
-                            set_restart_stack(active_stack);
+                            drop(transfer);
+                            let transfer = ticket.take().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            transfer.require_live().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            active_stack = entry.try_cdr().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            set_restart_stack(active_stack.as_raw());
                             result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                let handler = restart_handler(jump.target);
-                                if is_function_value(handler) {
-                                    call_function_with_args(handler, jump.args, rho)
+                                let (target, args) = match transfer.data() {
+                                    crate::sexp::transfer::OwnedTransfer::Restart {
+                                        target,
+                                        args,
+                                    } => (target, args),
+                                    _ => crate::sexp::context::r_error(
+                                        "invalid restart transfer kind",
+                                    ),
+                                };
+                                let handler = restart_owned(restart_handler(target.as_raw()));
+                                let value = if is_function_value(handler.as_raw()) {
+                                    call_function_with_args(
+                                        handler.as_raw(),
+                                        args.as_raw(),
+                                        rho.as_raw(),
+                                    )
                                 } else {
-                                    R_NilValue()
-                                }
+                                    scope.nil.clone()
+                                };
+                                transfer.require_live().unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
+                                value
                             }));
                         }
                         other => std::panic::panic_any(other),
@@ -2846,29 +3111,56 @@ pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
-unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
+unsafe fn restart_stack_from_args(
+    args: SEXP,
+    rho: SEXP,
+    old_stack: SEXP,
+) -> crate::sexp::object::Sexp<'static> {
     unsafe {
+        let factory = condition_entry_factory();
+        let rho = restart_owned(rho);
+        let mut cursor = restart_owned(args);
         let mut entries = Vec::new();
-        let mut guards = Vec::new();
-        while !args.is_null() && args != R_NilValue() {
-            let Some(name) = tag_name(args) else {
-                args = CDR(args);
-                continue;
-            };
-            let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
-            let _handler_guard = protect(handler);
-            let exit = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
-            let _exit_guard = protect(exit);
-            let entry = restart_entry(&name, handler, exit);
-            guards.push(protect(entry));
-            entries.push(entry);
-            args = CDR(args);
+        let mut seen = std::collections::HashSet::new();
+        while !cursor.is_nil() {
+            seen.try_reserve(1).unwrap_or_else(|_| {
+                crate::sexp::context::r_error("cannot track restart specifications")
+            });
+            if !seen.insert(cursor.as_raw().addr()) {
+                crate::sexp::context::r_error("cyclic restart specifications");
+            }
+            let next = cursor
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if let Some(name) = tag_name(cursor.as_raw()) {
+                let expr = cursor
+                    .try_car()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let handler =
+                    restart_owned(crate::eval::eval::Rf_eval(expr.as_raw(), rho.as_raw()));
+                let exit = restart_owned(crate::sexp::memory_ext::NewEnvironment(
+                    R_NilValue(),
+                    rho.as_raw(),
+                    R_NilValue(),
+                ));
+                entries.try_reserve(1).unwrap_or_else(|_| {
+                    crate::sexp::context::r_error("cannot reserve restart specifications")
+                });
+                entries.push(restart_owned(restart_entry(
+                    &name,
+                    handler.as_raw(),
+                    exit.as_raw(),
+                )));
+            }
+            cursor = next;
         }
-
-        let mut stack = old_stack;
+        let mut stack = restart_owned(old_stack);
         for entry in entries.into_iter().rev() {
-            stack = Rf_cons(entry, stack);
-            guards.push(protect(stack));
+            stack = factory
+                .pairlist_cell(&entry, &stack, &factory.nil())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .into_owned()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         stack
     }
@@ -3153,5 +3445,72 @@ mod owned_calling_handler_tests {
             assert_eq!((*instance).error_state.restart_stack, restarts);
         });
         assert_eq!(crate::sexp::protect::R_ProtectCount(), protections);
+    }
+}
+
+#[cfg(test)]
+mod owned_restart_transfer_tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    fn assert_true(session: &mut crate::sexp::session::RSession, script: &str) {
+        let (result, _, _) = session.eval_code_with_output_capture(script);
+        let result = result.unwrap_or_else(|error| panic!("{script}: {error}"));
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
+    fn owned_restart_tickets_preserve_nested_rethrow_and_multiple_restart_routing() {
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        assert_true(
+            &mut session,
+            "identical(withRestarts(withRestarts(invokeRestart('outer',41L),inner=function(x)stop('wrong restart')),outer=function(x){gc();x+1L}),42L)",
+        );
+        assert_true(
+            &mut session,
+            "identical(withRestarts(invokeRestart('first',3L),first=function(x)invokeRestart('second',x+1L),second=function(y){gc();y+4L}),8L)",
+        );
+        assert_true(
+            &mut session,
+            "withRestarts(invokeRestart('data',quote(answer)),data=function(x){gc();identical(x,quote(answer))})",
+        );
+        assert_true(
+            &mut session,
+            "identical(withCallingHandlers({warning('muffled');message('muffled');9L},warning=function(w)invokeRestart('muffleWarning'),message=function(m)invokeRestart('muffleMessage')),9L)",
+        );
+    }
+
+    #[test]
+    fn owned_restart_handler_keeps_transferred_arguments_after_stack_replacement_and_gc() {
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        // The real handler changes this flag only after its transfer is caught
+        // and removed from the installed dynamic restart stack.
+        assert_true(&mut session, "entered_restart_handler<-FALSE;TRUE");
+        let (global, flag) = session.with_active(|| unsafe {
+            (
+                restart_owned(crate::sexp::globals::R_GlobalEnv()),
+                restart_owned(Rf_install(c"entered_restart_handler".as_ptr())),
+            )
+        });
+        let collections = Rc::new(Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| unsafe {
+            let entered = crate::sexp::envir::R_findVarInFrame(global.as_raw(), flag.as_raw());
+            if !entered.is_null() && entered != R_UnboundValue() && LOGICAL_ELT(entered, 0) == TRUE
+            {
+                set_restart_stack(R_NilValue());
+                crate::sexp::gengc::full_gc();
+                observed.set(observed.get() + 1);
+            }
+        }));
+        assert_true(
+            &mut session,
+            "withRestarts(invokeRestart('collect',list(quote(answer),c(17L,29L))),collect=function(x){entered_restart_handler<<-TRUE;gc();identical(x[[1L]],quote(answer))&&identical(x[[2L]],c(17L,29L))})",
+        );
+        assert!(collections.get() > 0);
+        assert_true(
+            &mut session,
+            "entered_restart_handler<-FALSE;identical(1L+1L,2L)",
+        );
     }
 }

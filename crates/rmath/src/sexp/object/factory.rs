@@ -8,8 +8,7 @@ use crate::sexp::{ffi::SEXP, heap::HeapIdentity, instance::InstanceLiveness, own
 /// instance. The session lifetime and counted root retain every returned node.
 #[derive(Clone)]
 pub(crate) struct SessionNodeFactory<'session> {
-    owner: OwnerToken<'session>,
-    runtime_owner: Option<crate::sexp::owner::WeakOwner>,
+    owner: crate::sexp::owner::StoredOwner<'session>,
     heap: HeapIdentity,
     availability: InstanceLiveness,
     singletons: crate::sexp::globals::SingletonPoolLease,
@@ -26,8 +25,7 @@ impl<'session> SessionNodeFactory<'session> {
         availability: InstanceLiveness,
     ) -> Self {
         Self {
-            owner,
-            runtime_owner: owner.weak_owner(),
+            owner: crate::sexp::owner::StoredOwner::from_token(owner),
             heap,
             availability,
             singletons: crate::sexp::globals::immutable_singleton_pool(),
@@ -35,33 +33,20 @@ impl<'session> SessionNodeFactory<'session> {
     }
 
     pub(crate) fn from_capability(
-        owner: OwnerToken<'session>,
         heap: HeapIdentity,
         availability: InstanceLiveness,
         singletons: crate::sexp::globals::SingletonPoolLease,
         runtime_owner: crate::sexp::owner::WeakOwner,
     ) -> Self {
         Self {
-            owner,
-            runtime_owner: Some(runtime_owner),
+            owner: crate::sexp::owner::StoredOwner::Managed(runtime_owner),
             heap,
             availability,
             singletons,
         }
     }
 
-    fn pin(&self) -> SexpResult<Option<crate::sexp::owner::OwnerPin>> {
-        self.runtime_owner
-            .as_ref()
-            .map(|owner| owner.pin())
-            .transpose()
-    }
-
     pub(crate) fn require_active(&self) -> SexpResult<()> {
-        let _pin = self.pin()?;
-        if !self.availability.is_live() {
-            return Err(SexpError::RootUnavailable);
-        }
         self.owner.require_active()
     }
 
@@ -175,15 +160,11 @@ impl<'session> SessionNodeFactory<'session> {
         if !self.availability.is_live() {
             return Err(SexpError::RootUnavailable);
         }
-        let pin = self.pin()?;
         let result = self.owner.with_arena(|arena| {
             let pointer =
                 allocation(arena).ok_or(SexpError::AllocationFailed { object: "R value" })?;
             self.wrap(pointer)
         })??;
-        if let Some(pin) = &pin {
-            pin.require_live()?;
-        }
         Ok(result)
     }
 
@@ -208,14 +189,10 @@ impl<'session> SessionNodeFactory<'session> {
         let root = node.root_lease().ok_or(SexpError::RootUnavailable)?;
         Ok(Sexp {
             ptr: pointer,
-            owner: SexpOwner::Session(self.owner.as_ptr().addr()),
+            owner: SexpOwner::Session(self.owner.identity_ptr().addr()),
             node: Some(node),
-            runtime_owner: self.runtime_owner.clone(),
-            session_owner_ptr: if self.runtime_owner.is_some() {
-                None
-            } else {
-                std::ptr::NonNull::new(self.owner.as_ptr())
-            },
+            runtime_owner: self.owner.managed(),
+            session_owner_ptr: self.owner.borrowed_pointer(),
             root: Some(root),
             singleton: None,
             singletons: Some(self.singletons.clone()),

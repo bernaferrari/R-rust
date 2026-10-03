@@ -640,10 +640,22 @@ pub const JUMP_BREAK: c_int = 2;
 /// (`Break`/`Next`/`Return`/`Jump`) instead of `RError("jump_to_context")`.
 pub unsafe fn R_jumpctxt(target: *mut RCNTXT, mask: c_int, val: SEXP) -> ! {
     unsafe {
-        // The value must remain rooted while on.exit/cend handlers allocate or
-        // collect. Store it in the destination context before running cleanup
-        // so the context itself is also a GC root, matching eval.c.
-        let _val_guard = crate::sexp::protect::protect(val);
+        // Capture the actual value and original target cell before cleanup can
+        // replace context fields, detach the stack, or collect the heap.
+        let transfer = if mask == JUMP_BREAK || mask == JUMP_NEXT {
+            None
+        } else if (mask & ctxt_flags::CTXT_FUNCTION) != 0
+            || (mask & ctxt_flags::CTXT_RETURN) != 0
+            || (mask & ctxt_flags::CTXT_BROWSER) != 0
+        {
+            Some(crate::sexp::context::RSignal::Return(
+                crate::sexp::context::return_transfer(target, val),
+            ))
+        } else {
+            Some(crate::sexp::context::RSignal::Jump(
+                crate::sexp::context::jump_transfer(target, mask, val),
+            ))
+        };
         if !target.is_null() {
             (*target).returnValue.replace_from_raw(val);
             (*target).jumped = 1;
@@ -658,17 +670,17 @@ pub unsafe fn R_jumpctxt(target: *mut RCNTXT, mask: c_int, val: SEXP) -> ! {
         if mask == JUMP_NEXT {
             std::panic::panic_any(crate::sexp::context::RSignal::Next);
         }
-        if (mask & ctxt_flags::CTXT_FUNCTION) != 0
-            || (mask & ctxt_flags::CTXT_RETURN) != 0
-            || (mask & ctxt_flags::CTXT_BROWSER) != 0
-        {
-            std::panic::panic_any(crate::sexp::context::RSignal::Return(val));
-        }
-        std::panic::panic_any(crate::sexp::context::RSignal::Jump {
-            target,
-            mask,
-            value: val,
-        });
+        let transfer = transfer.expect("value-bearing context transfer");
+        let ticket = match &transfer {
+            crate::sexp::context::RSignal::Return(ticket)
+            | crate::sexp::context::RSignal::Jump(ticket) => ticket,
+            _ => unreachable!("value-bearing context transfer"),
+        };
+        ticket
+            .resolve()
+            .and_then(|lease| lease.require_live())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        std::panic::panic_any(transfer);
     }
 }
 
@@ -724,14 +736,21 @@ pub unsafe fn findcontext_jump_in(
 // ---------------------------------------------------------------------------
 
 pub fn R_jump_to_top() {
+    let transfer = unsafe {
+        crate::sexp::context::jump_transfer(
+            ptr::null_mut(),
+            ctxt_flags::CTXT_TOPLEVEL,
+            R_NilValue(),
+        )
+    };
     unsafe {
         R_run_onexits_until(ptr::null_mut());
     }
-    std::panic::panic_any(crate::sexp::context::RSignal::Jump {
-        target: ptr::null_mut(),
-        mask: ctxt_flags::CTXT_TOPLEVEL,
-        value: unsafe { R_NilValue() },
-    });
+    transfer
+        .resolve()
+        .and_then(|lease| lease.require_live())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    std::panic::panic_any(crate::sexp::context::RSignal::Jump(transfer));
 }
 
 // ---------------------------------------------------------------------------
@@ -768,5 +787,105 @@ unsafe fn context_or_top_in(instance: *mut RInstance, cptr: *mut RCNTXT) -> *mut
         unsafe { R_GlobalContext_in(instance) }
     } else {
         cptr
+    }
+}
+
+#[cfg(test)]
+mod owned_transfer_tests {
+    use super::*;
+    use crate::sexp::{context::RSignal, session::RSession, transfer::OwnedTransfer};
+
+    #[test]
+    fn owned_jump_transfer_retains_value_and_target_through_collecting_cleanup() {
+        struct Cleanup {
+            instance: *mut RInstance,
+            target: *mut RCNTXT,
+            called: bool,
+        }
+        unsafe extern "C" fn cleanup(data: *mut std::ffi::c_void) {
+            let data = unsafe { &mut *data.cast::<Cleanup>() };
+            unsafe {
+                (*data.target).returnValue.replace_from_raw(R_NilValue());
+                (*data.instance).context_stack.clear();
+                crate::sexp::gengc::full_gc_in(data.instance);
+            }
+            data.called = true;
+        }
+        for mask in [ctxt_flags::CTXT_RETURN, ctxt_flags::CTXT_GENERIC] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active_in(|instance| unsafe {
+                let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+                let value = owner
+                    .node_factory()
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                    .unwrap();
+                let pointer = value.as_raw();
+                *INTEGER(pointer) = 87;
+                let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+                let target = crate::sexp::context::Rf_begincontext_in(
+                    instance,
+                    mask,
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                    None,
+                    R_NilValue(),
+                    R_NilValue(),
+                );
+                let original = crate::sexp::context::retain_context_in(instance, target).unwrap();
+                let intermediate = crate::sexp::context::Rf_begincontext_in(
+                    instance,
+                    ctxt_flags::CTXT_FUNCTION,
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                    None,
+                    R_NilValue(),
+                    R_NilValue(),
+                );
+                let mut data = Cleanup {
+                    instance,
+                    target,
+                    called: false,
+                };
+                (*intermediate).cend = Some(cleanup);
+                (*intermediate).cenddata = (&mut data as *mut Cleanup).cast();
+                drop(value);
+                let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    R_jumpctxt(target, mask, pointer)
+                }))
+                .expect_err("targeted transfer must unwind");
+                assert!(data.called);
+                assert!(node.is_live());
+                let signal = payload
+                    .downcast::<RSignal>()
+                    .expect("owned transfer signal");
+                let ticket = match *signal {
+                    RSignal::Return(ticket) | RSignal::Jump(ticket) => ticket,
+                    other => panic!("unexpected signal: {other:?}"),
+                };
+                let lease = ticket.take().unwrap();
+                match lease.data() {
+                    OwnedTransfer::Return {
+                        target: Some(target),
+                        value,
+                    }
+                    | OwnedTransfer::Jump {
+                        target: Some(target),
+                        value,
+                        ..
+                    } => {
+                        assert!(std::rc::Rc::ptr_eq(target, &original));
+                        assert_eq!(value.integer_elt(0).unwrap(), 87);
+                    }
+                    _ => panic!("unexpected transfer"),
+                }
+                lease.require_live().unwrap();
+                drop(lease);
+                drop(original);
+                owner.full_gc().unwrap();
+                assert!(!node.is_live(), "consumed transfer must release its value");
+            });
+        }
     }
 }

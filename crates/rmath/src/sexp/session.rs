@@ -143,18 +143,30 @@ where
                 // Top-level return(value) is likewise an R-level error
                 // (upstream: "no function to return from, jumping to
                 // top level"), never an escaping panic.
-                RSignal::Return(_) => Err(REvalError {
-                    message: "no function to return from, jumping to top level".to_string(),
-                }),
+                RSignal::Return(ticket) => {
+                    ticket.discard();
+                    Err(REvalError {
+                        message: "no function to return from, jumping to top level".to_string(),
+                    })
+                }
                 RSignal::Abort => Err(REvalError {
                     message: "execution aborted".to_string(),
                 }),
                 // Restart requests own thread-confined GC guards. Even an
                 // invalid transfer must be consumed while this session is active,
                 // never exposed as a movable panic payload to safe host code.
-                RSignal::Restart(_) => Err(REvalError {
-                    message: "restart not on stack".to_string(),
-                }),
+                RSignal::Restart(ticket) => {
+                    ticket.discard();
+                    Err(REvalError {
+                        message: "restart not on stack".to_string(),
+                    })
+                }
+                RSignal::Jump(ticket) | RSignal::ExitingHandler(ticket) => {
+                    ticket.discard();
+                    Err(REvalError {
+                        message: "unhandled nonlocal evaluation transfer".to_string(),
+                    })
+                }
                 other => std::panic::panic_any(other),
             },
             Err(payload) => match payload.downcast::<RError>() {
@@ -251,6 +263,7 @@ impl Drop for ToplevelExprNoGuard {
 }
 
 struct CurrentInstanceGuard {
+    transfer_scope: Option<super::transfer::TransferScopeGuard>,
     /// Keep actual runtime bytes allocated through callback and restoration.
     _active_pin: Option<super::owner::OwnerPin>,
     _previous_pin: Option<super::owner::OwnerPin>,
@@ -278,6 +291,7 @@ impl CurrentInstanceGuard {
         let previous_state = rmath_nmath::state::take_state();
         unsafe { replace_current_instance(None) };
         Self {
+            transfer_scope: None,
             _active_pin: None,
             _previous_pin: previous_pin,
             previous,
@@ -289,7 +303,9 @@ impl CurrentInstanceGuard {
 
     unsafe fn new(instance: *mut RInstance) -> Self {
         let owner = unsafe { (*instance).runtime_owner.clone() };
-        let active_pin = owner.map(|owner| owner.pin().expect("cannot activate a closed R owner"));
+        let active_pin = owner
+            .clone()
+            .map(|owner| owner.pin().expect("cannot activate a closed R owner"));
         let previous = super::instance::current_instance_ptr();
         let previous_pin = previous.and_then(|pointer| unsafe {
             (*pointer)
@@ -316,14 +332,20 @@ impl CurrentInstanceGuard {
                 &mut (*instance).math_state as *mut rmath_nmath::MathState,
             )
         };
-        CurrentInstanceGuard {
+        let mut guard = CurrentInstanceGuard {
+            transfer_scope: None,
             _active_pin: active_pin,
             _previous_pin: previous_pin,
             previous,
             previous_liveness,
             previous_rng,
             previous_state,
-        }
+        };
+        guard.transfer_scope = owner.map(|owner| {
+            super::transfer::TransferScopeGuard::enter(owner)
+                .expect("cannot enter closed transfer scope")
+        });
+        guard
     }
 }
 
@@ -342,6 +364,7 @@ pub(crate) unsafe fn with_instance_active<T>(instance: *mut RInstance, f: impl F
 
 impl Drop for CurrentInstanceGuard {
     fn drop(&mut self) {
+        drop(self.transfer_scope.take());
         // Callback code can destroy an ambient owner stored in thread-local
         // user state. Never reinstall any of that owner's now dangling state.
         let previous_alive = self

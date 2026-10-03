@@ -542,83 +542,96 @@ pub fn r_error(msg: impl Into<String>) -> ! {
 // RSignal — discriminated control flow signals
 // ---------------------------------------------------------------------------
 
-/// Discriminated R evaluation signal.
-///
-/// A restart transfer owns GC roots until its matching dynamic frame catches it.
-/// Handler evaluation happens there, after intervening cleanup has unwound.
-pub struct RestartJump {
-    pub target: SEXP,
-    pub args: SEXP,
-    _roots: [super::protect::ProtectGuard<'static>; 2],
-}
+pub use super::transfer::TransferTicket;
 
-impl RestartJump {
-    pub(crate) unsafe fn new(target: SEXP, args: SEXP) -> Self {
-        Self {
-            target,
-            args,
-            _roots: [unsafe { super::protect::protect(target) }, unsafe {
-                super::protect::protect(args)
-            }],
-        }
-    }
-}
-
-impl std::fmt::Debug for RestartJump {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RestartJump")
-            .field("target", &self.target)
-            .finish_non_exhaustive()
-    }
-}
-
-/// Replaces the undifferentiated `RError` panic payload for control flow.
-/// Each variant represents a distinct R control flow mechanism.
+/// Nonlocal evaluation signals carry Send-only tickets. Their actual values
+/// and original context allocations stay in owning, thread-confined storage.
 #[derive(Debug)]
 pub enum RSignal {
-    Error {
-        message: String,
-    },
+    Error { message: String },
     Break,
     Next,
-    Return(SEXP),
-    /// Warning condition unwinding into an enclosing tryCatch(...)
-    /// exiting handler (port equivalent of upstream's vwarningcall
-    /// unwinding through R_HandlerStack).  Only the message text crosses
-    /// the unwind boundary; the catcher rebuilds the condition object.
-    Warning {
-        message: String,
-    },
-    Message {
-        message: String,
-    },
-    /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
-    Restart(RestartJump),
-    /// Abort to the embedding boundary without entering R error handlers.
+    Return(TransferTicket),
+    Warning { message: String },
+    Message { message: String },
+    Restart(TransferTicket),
     Abort,
-    /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).
-    /// Carries the target environment to match against context stack entries,
-    /// and the result vector containing [cond, call, handler].
-    ExitingHandler {
-        target_env: SEXP,
-        result: SEXP,
-    },
-    /// Generic non-local jump from `R_jumpctxt` when the mask is not a plain
-    /// break/next/return. Catchers that do not recognise the mask re-panic.
-    Jump {
-        /// The exact RCNTXT selected by `findcontext`; this prevents an
-        /// unrelated catch frame from consuming an intermediate jump.
-        target: *mut RCNTXT,
-        mask: i32,
-        value: SEXP,
-    },
+    ExitingHandler(TransferTicket),
+    Jump(TransferTicket),
 }
 
-// Required by Rust's panic transport, not permission to move interpreter
-// objects between threads. Signals are caught inside the active session;
-// safe evaluation also consumes unmatched restart requests before returning
-// to the host, so their owned GC guards cannot escape the owning instance.
-unsafe impl Send for RSignal {}
+/// Capture a native projection in the original active transfer scope.
+/// # Safety
+/// The projection is initialized and no payload loan overlaps this operation.
+pub(crate) unsafe fn own_control_value(value: SEXP) -> super::object::Sexp<'static> {
+    let owner =
+        unsafe { super::owner::OwnerToken::current() }.unwrap_or_else(|e| r_error(e.to_string()));
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|e| r_error(e.to_string()))
+        .unwrap_or_else(|| r_error("owning control values require a managed runtime"));
+    let result = owner
+        .sexp(value)
+        .and_then(|v| v.into_owned())
+        .unwrap_or_else(|e| r_error(e.to_string()));
+    pin.require_live()
+        .unwrap_or_else(|e| r_error(e.to_string()));
+    result
+}
+
+/// # Safety
+/// A nonnull target identifies an original live context in the active owner.
+unsafe fn transfer_target(target: *mut RCNTXT) -> Option<Rc<std::cell::UnsafeCell<RCNTXT>>> {
+    if target.is_null() {
+        return None;
+    }
+    let pin = super::transfer::active_owner_pin().unwrap_or_else(|e| r_error(e.to_string()));
+    Some(
+        unsafe { retain_context_in(pin.as_ptr(), target) }
+            .unwrap_or_else(|| r_error("nonlocal transfer target is no longer owned")),
+    )
+}
+
+/// # Safety
+/// Target and value meet the checked native projection contracts above.
+pub(crate) unsafe fn return_transfer(target: *mut RCNTXT, value: SEXP) -> TransferTicket {
+    let data = super::transfer::OwnedTransfer::Return {
+        target: unsafe { transfer_target(target) },
+        value: unsafe { own_control_value(value) },
+    };
+    super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
+}
+
+/// # Safety
+/// Target and value meet the checked native projection contracts above.
+pub(crate) unsafe fn jump_transfer(target: *mut RCNTXT, mask: i32, value: SEXP) -> TransferTicket {
+    let data = super::transfer::OwnedTransfer::Jump {
+        target: unsafe { transfer_target(target) },
+        mask,
+        value: unsafe { own_control_value(value) },
+    };
+    super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
+}
+
+/// # Safety
+/// Both values are initialized projections of the active original owner.
+pub(crate) unsafe fn exiting_handler_transfer(target_env: SEXP, result: SEXP) -> TransferTicket {
+    let data = super::transfer::OwnedTransfer::ExitingHandler {
+        target_env: unsafe { own_control_value(target_env) },
+        result: unsafe { own_control_value(result) },
+    };
+    super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
+}
+
+/// # Safety
+/// Both values are initialized projections of the active original owner.
+pub(crate) unsafe fn restart_transfer(target: SEXP, args: SEXP) -> TransferTicket {
+    let data = super::transfer::OwnedTransfer::Restart {
+        target: unsafe { own_control_value(target) },
+        args: unsafe { own_control_value(args) },
+    };
+    super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
+}
 
 static R_PANIC_HOOK: OnceLock<()> = OnceLock::new();
 
@@ -698,7 +711,16 @@ pub fn handle_loop_signal(payload: Box<dyn std::any::Any + Send>) -> LoopAction 
 pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
     match payload.downcast::<RSignal>() {
         Ok(signal) => match *signal {
-            RSignal::Return(val) => val,
+            RSignal::Return(ticket) => {
+                let lease = ticket.take().unwrap_or_else(|e| r_error(e.to_string()));
+                lease
+                    .require_live()
+                    .unwrap_or_else(|e| r_error(e.to_string()));
+                let super::transfer::OwnedTransfer::Return { value, .. } = lease.data() else {
+                    r_error("incorrect return transfer kind")
+                };
+                value.as_raw()
+            }
             other => std::panic::panic_any(other),
         },
         Err(payload) => match payload.downcast::<RError>() {
@@ -723,54 +745,6 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
             .any(|ctx| (*ctx.get()).cloenv.as_raw() == target_env)
     })
     .unwrap_or(false)
-}
-
-#[cfg(test)]
-mod jump_signal_tests {
-    use super::{RSignal, handle_closure_signal, handle_loop_signal};
-
-    #[test]
-    fn generic_jump_is_not_consumed_by_closure_handler() {
-        let target = std::ptr::NonNull::<super::RCNTXT>::dangling().as_ptr();
-        let payload = Box::new(RSignal::Jump {
-            target,
-            mask: 0x4000,
-            value: std::ptr::null_mut(),
-        });
-        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            handle_closure_signal(payload)
-        }));
-        let payload = unwind.expect_err("generic jump must propagate");
-        let signal = payload
-            .downcast::<RSignal>()
-            .expect("propagated payload must remain RSignal");
-        match *signal {
-            RSignal::Jump {
-                target: actual,
-                mask,
-                ..
-            } => {
-                assert_eq!(actual, target);
-                assert_eq!(mask, 0x4000);
-            }
-            other => panic!("unexpected signal: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn generic_jump_is_not_consumed_by_loop_handler() {
-        let payload = Box::new(RSignal::Jump {
-            target: std::ptr::null_mut(),
-            mask: 2,
-            value: std::ptr::null_mut(),
-        });
-        let unwind =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle_loop_signal(payload)));
-        assert!(
-            unwind.is_err(),
-            "generic jump must not become loop control flow"
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -479,6 +479,63 @@ pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char
 // tryCatch support (simplified)
 // ---------------------------------------------------------------------------
 
+// Resolve outside the transfer store borrow and retain the canonical owning
+// payload through result publication. Unmatched transfers preserve their ticket.
+fn take_matching_exiting_handler(
+    payload: Box<dyn std::any::Any + Send>,
+) -> Result<crate::sexp::transfer::TransferLease, Box<dyn std::any::Any + Send>> {
+    use crate::sexp::{context::RSignal, transfer::OwnedTransfer};
+    if let Some(RSignal::ExitingHandler(ticket)) = payload.downcast_ref::<RSignal>() {
+        let lease = ticket
+            .resolve()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        lease
+            .require_live()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let OwnedTransfer::ExitingHandler { target_env, .. } = lease.data() else {
+            crate::sexp::context::r_error("invalid exiting-handler transfer")
+        };
+        if crate::sexp::context::context_env_exists(target_env.as_raw()) {
+            let signal = payload
+                .downcast::<RSignal>()
+                .expect("resolved exiting handler");
+            let RSignal::ExitingHandler(ticket) = *signal else {
+                unreachable!("resolved exiting handler")
+            };
+            return Ok(ticket
+                .take()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())));
+        }
+    }
+    Err(payload)
+}
+
+fn is_nonlocal_transfer(payload: &(dyn std::any::Any + Send)) -> bool {
+    use crate::sexp::context::RSignal;
+    matches!(
+        payload.downcast_ref::<RSignal>(),
+        Some(
+            RSignal::Return(_)
+                | RSignal::Jump(_)
+                | RSignal::ExitingHandler(_)
+                | RSignal::Restart(_)
+                | RSignal::Break
+                | RSignal::Next
+                | RSignal::Abort
+        )
+    )
+}
+
+fn exiting_handler_result(lease: &crate::sexp::transfer::TransferLease) -> SEXP {
+    lease
+        .require_live()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let crate::sexp::transfer::OwnedTransfer::ExitingHandler { result, .. } = lease.data() else {
+        crate::sexp::context::r_error("invalid exiting-handler transfer")
+    };
+    result.as_raw()
+}
+
 /// R_tryCatchError — C-level tryCatch for error conditions.
 pub unsafe fn R_tryCatchError(
     body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
@@ -487,6 +544,9 @@ pub unsafe fn R_tryCatchError(
     hdata: *mut c_void,
 ) -> SEXP {
     unsafe {
+        let instance = crate::sexp::instance::current_instance_ptr()
+            .unwrap_or_else(|| crate::sexp::context::r_error("no active condition owner"));
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
         let _klass_guard = protect(klass);
         let handler_fn = if handler.is_some() {
@@ -517,61 +577,30 @@ pub unsafe fn R_tryCatchError(
             }
         }));
 
-        set_handler_stack(old_stack);
+        // Cleanup uses the pinned original runtime, even if a callback revoked it.
+        (*instance).error_state.handler_stack = old_stack;
+        crate::sexp::context::require_context_owner_live(&owner_pin);
 
         match result {
             Ok(val) => val,
             Err(payload) => {
-                // Check for ExitingHandler signal — targeted context jump.
-                // If our context stack has the target environment, consume the signal
-                // and return the result vector. Otherwise re-panic to continue unwinding.
-                if let Some(signal) = payload.downcast_ref::<crate::sexp::context::RSignal>() {
-                    match signal {
-                        crate::sexp::context::RSignal::ExitingHandler { target_env, result } => {
-                            let target = *target_env;
-                            let res = *result;
-                            if crate::sexp::context::context_env_exists(target) {
-                                res
-                            } else {
-                                std::panic::panic_any(
-                                    crate::sexp::context::RSignal::ExitingHandler {
-                                        target_env: target,
-                                        result: res,
-                                    },
-                                );
-                            }
-                        }
-                        _ => {
-                            if handler.is_some() {
-                                let cond = crate::sexp::constructors::Rf_allocVector(
-                                    SEXPTYPE::STRSXP.as_c_int(),
-                                    1,
-                                );
-                                if !cond.is_null() {
-                                    let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
-                                    crate::sexp::accessors::SET_STRING_ELT(cond, 0, msg);
-                                }
-                                if let Some(h) = handler {
-                                    h(cond, hdata)
-                                } else {
-                                    globals::R_NilValue()
-                                }
-                            } else {
-                                std::panic::resume_unwind(payload)
-                            }
-                        }
-                    }
-                } else if handler.is_some() {
-                    let cond = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
-                    if !cond.is_null() {
-                        let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
-                        crate::sexp::accessors::SET_STRING_ELT(cond, 0, msg);
-                    }
-                    if let Some(h) = handler {
-                        h(cond, hdata)
-                    } else {
-                        globals::R_NilValue()
-                    }
+                let payload = match take_matching_exiting_handler(payload) {
+                    Ok(lease) => return exiting_handler_result(&lease),
+                    Err(payload) => payload,
+                };
+                if is_nonlocal_transfer(payload.as_ref()) {
+                    std::panic::resume_unwind(payload);
+                }
+                if let Some(h) = handler {
+                    let condition = crate::sexp::context::own_control_value(
+                        crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1),
+                    );
+                    let message =
+                        crate::sexp::context::own_control_value(Rf_mkChar(c"error".as_ptr()));
+                    crate::sexp::accessors::SET_STRING_ELT(condition.as_raw(), 0, message.as_raw());
+                    let result = h(condition.as_raw(), hdata);
+                    crate::sexp::context::require_context_owner_live(&owner_pin);
+                    result
                 } else {
                     std::panic::resume_unwind(payload)
                 }
@@ -1009,6 +1038,9 @@ pub unsafe fn R_tryCatch(
     hdata: *mut c_void,
 ) -> SEXP {
     unsafe {
+        let instance = crate::sexp::instance::current_instance_ptr()
+            .unwrap_or_else(|| crate::sexp::context::r_error("no active condition owner"));
+        let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if let Some(f) = body {
                 f(bdata)
@@ -1016,23 +1048,17 @@ pub unsafe fn R_tryCatch(
                 globals::R_NilValue()
             }
         })) {
-            Ok(result) => result,
+            Ok(result) => {
+                crate::sexp::context::require_context_owner_live(&owner_pin);
+                result
+            }
             Err(panic_payload) => {
-                // ExitingHandler: targeted context jump — pass through unless we are the target
-                if let Some(signal) = panic_payload.downcast_ref::<crate::sexp::context::RSignal>()
-                    && let crate::sexp::context::RSignal::ExitingHandler { target_env, result } =
-                        signal
-                {
-                    let target = *target_env;
-                    let res = *result;
-                    if crate::sexp::context::context_env_exists(target) {
-                        return res;
-                    } else {
-                        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler {
-                            target_env: target,
-                            result: res,
-                        });
-                    }
+                let panic_payload = match take_matching_exiting_handler(panic_payload) {
+                    Ok(lease) => return exiting_handler_result(&lease),
+                    Err(payload) => payload,
+                };
+                if is_nonlocal_transfer(panic_payload.as_ref()) {
+                    std::panic::resume_unwind(panic_payload);
                 }
                 // Try to extract the error condition
                 let cond = if let Some(ref e) = panic_payload.downcast_ref::<RError>() {
@@ -1054,8 +1080,11 @@ pub unsafe fn R_tryCatch(
                         b"unknown error\0".as_ptr() as *const c_char,
                     )
                 };
+                let condition = crate::sexp::context::own_control_value(cond);
                 if let Some(f) = handler {
-                    f(hdata, cond)
+                    let result = f(hdata, condition.as_raw());
+                    crate::sexp::context::require_context_owner_live(&owner_pin);
+                    result
                 } else {
                     globals::R_NilValue()
                 }
@@ -1111,6 +1140,102 @@ mod condition_construction_tests {
     use super::*;
     use crate::sexp::{object::SessionNodeFactory, session::RSession};
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_exiting_handler_result_survives_detachment_collection_and_rethrow() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = SessionNodeFactory::new(owner);
+            let nil = globals::R_NilValue();
+            let environment = factory
+                .wrap(crate::sexp::memory_ext::NewEnvironment(
+                    nil,
+                    nil,
+                    globals::R_GlobalEnv(),
+                ))
+                .unwrap();
+            let result = factory.wrap(Rf_allocVector(SEXPTYPE::VECSXP, 3)).unwrap();
+            let condition = factory
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(91))
+                .unwrap();
+            let entry = factory
+                .wrap(mkHandlerEntry(
+                    nil,
+                    nil,
+                    nil,
+                    environment.as_raw(),
+                    result.as_raw(),
+                    0,
+                ))
+                .unwrap();
+            let result_node = crate::sexp::memory::checked_projection(result.as_raw())
+                .unwrap()
+                .1;
+            let environment_node = crate::sexp::memory::checked_projection(environment.as_raw())
+                .unwrap()
+                .1;
+            let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                gotoExitingHandler(condition.as_raw(), nil, entry.as_raw())
+            }))
+            .expect_err("exiting handler must unwind");
+            drop(entry);
+            drop(result);
+            drop(condition);
+            drop(environment);
+            (*instance).error_state.handler_stack = nil;
+            (*instance).context_stack.clear();
+            owner.full_gc().unwrap();
+            assert!(result_node.is_live());
+            assert!(environment_node.is_live());
+            let payload = match take_matching_exiting_handler(payload) {
+                Err(payload) => payload,
+                Ok(_) => panic!("no matching context must preserve the transfer"),
+            };
+            let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                std::panic::resume_unwind(payload)
+            }))
+            .expect_err("unmatched ticket must keep unwinding");
+            owner.full_gc().unwrap();
+            let crate::sexp::context::RSignal::ExitingHandler(ticket) = payload
+                .downcast_ref::<crate::sexp::context::RSignal>()
+                .unwrap()
+            else {
+                panic!("same exiting-handler signal required")
+            };
+            let snapshot = ticket.resolve().unwrap();
+            let crate::sexp::transfer::OwnedTransfer::ExitingHandler { target_env, .. } =
+                snapshot.data()
+            else {
+                panic!("same exiting-handler transfer required")
+            };
+            let context = crate::sexp::context::Rf_begincontext_in(
+                instance,
+                crate::sexp::context::ctxt_flags::CTXT_FUNCTION,
+                nil,
+                target_env.as_raw(),
+                nil,
+                None,
+                nil,
+                nil,
+            );
+            drop(snapshot);
+            let lease = take_matching_exiting_handler(payload).unwrap();
+            // Even a matched handler's context can disappear before publication.
+            crate::sexp::context::Rf_endcontext_in(instance, context);
+            owner.full_gc().unwrap();
+            let result = factory.wrap(exiting_handler_result(&lease)).unwrap();
+            assert_eq!(
+                result.try_vector_elt(0).unwrap().integer_elt(0).unwrap(),
+                91
+            );
+            drop(result);
+            drop(lease);
+            owner.full_gc().unwrap();
+            assert!(!result_node.is_live());
+            assert!(!environment_node.is_live());
+        });
+    }
 
     #[test]
     fn bounded_condition_text_survives_each_allocation_and_reentrant_gc() {
