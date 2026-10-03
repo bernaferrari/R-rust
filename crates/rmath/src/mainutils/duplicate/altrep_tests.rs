@@ -26,12 +26,6 @@ fn lazy<'s>(session: &'s RSession, name: &str) -> Sexp<'s> {
     AltrepBuilder::new(class).build().unwrap()
 }
 
-fn scalar(session: &RSession, value: i32) -> Sexp<'_> {
-    session
-        .sexp(unsafe { crate::sexp::constructors::Rf_ScalarInteger(value) })
-        .unwrap()
-}
-
 fn public_attribute<'s>(session: &'s RSession, value: &Sexp<'s>) -> Sexp<'s> {
     let attributes = session
         .sexp(unsafe { Rf_cons(value.clone().as_raw(), R_NilValue()) })
@@ -55,7 +49,7 @@ unsafe fn attach(object: &Sexp<'_>, attributes: &Sexp<'_>) {
 }
 
 #[test]
-fn legacy_duplicate_attributes_copy_deep_or_shallow_and_root_callback_results() {
+fn class_duplicates_copy_public_attributes_deep_or_shallow_across_gc() {
     for deep in [0, 1] {
         let session = RSession::new_for_gc_tests();
         let source = lazy(&session, "attribute-source");
@@ -76,13 +70,14 @@ fn legacy_duplicate_attributes_copy_deep_or_shallow_and_root_callback_results() 
             SET_OBJECT(source.clone().as_raw(), 1);
             SET_S4_OBJECT(source.clone().as_raw());
         }
-        // Deliberately return an unrooted freshly allocated callback result.
-        // Deep copying the nested lazy attribute collects while copying it.
-        let result = unsafe { crate::sexp::constructors::Rf_ScalarInteger(18) };
-        unsafe { altrep_duplicate_attributes(result, source.clone().as_raw(), deep) };
-        let result = session.sexp(result).unwrap();
+        let descriptor = altrep::altrep_class(&source).unwrap();
+        assert!(!altrep::is_materialized(&source));
+        let result = session
+            .sexp(unsafe { duplicate1(source.as_raw(), deep) })
+            .unwrap();
         session.gc();
-        assert_eq!(result.integer_elt(0), Some(18));
+        assert_eq!(result.integer_elt(0), Some(73));
+        assert!(!altrep::is_altrep(&result));
         let copied_attributes = result.attrib().unwrap();
         assert_ne!(copied_attributes, attributes);
         let copied_container = copied_attributes.car().unwrap();
@@ -99,60 +94,12 @@ fn legacy_duplicate_attributes_copy_deep_or_shallow_and_root_callback_results() 
             assert_eq!(OBJECT(result.clone().as_raw()), 1);
             assert_ne!(IS_S4_OBJECT(result.clone().as_raw()), 0);
         }
-        assert!(!altrep::is_materialized(&source));
+        // Ordinary atomic duplication requests DATAPTR to copy the values.
+        // Expansion retains the source's class and public attribute chain.
+        assert!(altrep::is_materialized(&source));
+        assert!(altrep::is_altrep(&source));
+        assert_eq!(altrep::altrep_class(&source).unwrap(), descriptor);
+        assert_eq!(source.attrib().unwrap().cdr().unwrap(), attributes);
+        assert_eq!(source.try_integer_elt(0).unwrap(), 73);
     }
-}
-
-#[test]
-fn legacy_duplicate_attributes_preserve_target_lazy_metadata() {
-    let session = RSession::new_for_gc_tests();
-    let source = lazy(&session, "source");
-    let target = lazy(&session, "target");
-    let source_data = scalar(&session, 91);
-    let target_data = scalar(&session, 27);
-    altrep::set_data1(&source, source_data).unwrap();
-    altrep::set_data1(&target, target_data.clone()).unwrap();
-    let attributes = public_attribute(&session, &scalar(&session, 7));
-    unsafe {
-        attach(&source, &attributes);
-        altrep_duplicate_attributes(target.clone().as_raw(), source.clone().as_raw(), 1);
-    }
-    session.gc();
-    assert_eq!(altrep::data1(&target).unwrap(), target_data);
-    assert!(!altrep::is_materialized(&target));
-    assert_eq!(
-        target
-            .attrib()
-            .unwrap()
-            .cdr()
-            .unwrap()
-            .car()
-            .unwrap()
-            .integer_elt(0),
-        Some(7)
-    );
-    assert_eq!(target.integer_elt(0), Some(73));
-}
-
-#[test]
-fn legacy_duplicate_attributes_clear_public_state_and_leave_same_object_unchanged() {
-    let session = RSession::new_for_gc_tests();
-    let source = lazy(&session, "source");
-    let target = lazy(&session, "target");
-    let attributes = public_attribute(&session, &scalar(&session, 9));
-    unsafe {
-        attach(&target, &attributes);
-        SET_OBJECT(target.clone().as_raw(), 1);
-        SET_S4_OBJECT(target.clone().as_raw());
-        altrep_duplicate_attributes(target.clone().as_raw(), target.clone().as_raw(), 1);
-    }
-    assert_eq!(target.attrib().unwrap().cdr().unwrap(), attributes);
-    unsafe {
-        altrep_duplicate_attributes(target.clone().as_raw(), source.clone().as_raw(), 1);
-        assert_eq!(OBJECT(target.clone().as_raw()), 0);
-        assert_eq!(IS_S4_OBJECT(target.clone().as_raw()), 0);
-    }
-    assert!(target.attrib().unwrap().cdr().unwrap().is_nil());
-    assert!(!altrep::is_materialized(&target));
-    assert_eq!(target.integer_elt(0), Some(73));
 }

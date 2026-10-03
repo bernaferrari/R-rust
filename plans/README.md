@@ -55,7 +55,7 @@ Keep compatibility work on the majority of engineering time. Verification owns t
 - **Inductive loop and function contracts on the first harness.** Kani has them (`-Z loop-contracts`, `-Z function-contracts`) and they are still experimental. Use them only after a bounded harness is green and its unwind assertions stay enabled. `#[kani::loop_decreases]` is optional total-correctness, not the default.
 - **A second root-table implementation written for the prover.** Proofs call production `RootTable` methods.
 - **Turning verification on by switching `panic = abort`.** Production Wasm and the session boundary require unwind. Proofs cover explicit `Result` or pure functions. Unwind is tested, not proved, until Kani supports it.
-- **Replacing the non-moving collector, enabling ALTREP, or splitting `rmath` into new crates as part of this effort.** Closed decisions. ALTREP stays off (`scripts/check_altrep_disabled.sh`). A detached `kani/` package is allowed only if plan 001 cannot invoke Kani without editing the workspace toolchain pin.
+- **Splitting `rmath` into new crates as part of the verification plans.** A detached `kani/` package is allowed only if plan 001 cannot invoke Kani without editing the workspace toolchain pin. The current engine heap migration makes safe Rust ALTREP unconditional and removes its native callback adapter; the earlier decision to leave ALTREP disabled has been superseded by that work.
 
 ## Later work
 

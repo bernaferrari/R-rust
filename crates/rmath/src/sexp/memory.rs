@@ -855,7 +855,7 @@ impl RArena {
         true
     }
 
-    #[cfg(all(test, feature = "altrep"))]
+    #[cfg(test)]
     pub(crate) fn tracks_altrep_test_buffer(&self, ptr: *mut u8) -> bool {
         self.tracks_data_buffer(ptr)
     }
@@ -884,7 +884,6 @@ impl RArena {
     /// Share a payload between checked live headers in this arena. No callback
     /// runs during the lend. Type, shape, ownership and publication are checked
     /// together; neither header can free storage still retained by the other.
-    #[cfg(feature = "altrep")]
     pub(crate) fn share_vector_payload(
         &mut self,
         source: &Sexp<'_>,

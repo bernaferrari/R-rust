@@ -1089,13 +1089,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
         }
 
         // TLS (CAD4R)
-        let sTLS = unsafe { *(args as *const SEXP).add(4) };
-        let mut tls: *const c_char = b"\0".as_ptr() as *const c_char;
-        if TYPEOF(sTLS) == SEXPTYPE::STRSXP && LENGTH(sTLS) == 1 {
-            tls = translateChar(STRING_ELT(sTLS, 0));
-        } else {
-            Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
-        }
+        let tls = curl_header_tls(args);
 
         let hnd = curl_easy_init();
         if hnd.is_null() {
@@ -1566,6 +1560,17 @@ unsafe fn CAD4R(args: SEXP) -> SEXP {
     unsafe { CDR(CDR(CDR(CDR(args)))) }
 }
 
+/// Validate the fifth curlGetHeaders argument before curl handle creation.
+unsafe fn curl_header_tls(args: SEXP) -> *const c_char {
+    unsafe {
+        let tls = CAR(CAD4R(args));
+        if TYPEOF(tls) != SEXPTYPE::STRSXP || LENGTH(tls) != 1 {
+            Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
+        }
+        translateChar(STRING_ELT(tls, 0))
+    }
+}
+
 /// isString - check if SEXP is a character vector
 unsafe fn isString(x: SEXP) -> c_int {
     unsafe { if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 } }
@@ -1578,6 +1583,35 @@ mod tests {
     use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
 
     use super::*;
+
+    #[test]
+    fn curl_header_tls_rejects_non_string_fifth_pairlist_value() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().expect("live session owner");
+            let values = [
+                session.sexp(unsafe { Rf_mkString(c"https://unused.invalid".as_ptr()) })
+                    .expect("owned URL"),
+                session.sexp(unsafe { Rf_ScalarLogical(0) }).expect("owned redirect"),
+                session.sexp(unsafe { Rf_ScalarLogical(1) }).expect("owned verify"),
+                session.sexp(unsafe { Rf_ScalarInteger(1) }).expect("owned timeout"),
+                session.sexp(unsafe { Rf_ScalarInteger(42) }).expect("owned invalid TLS"),
+            ];
+            let mut arguments = crate::sexp::object::PairlistBuilder::new_in(owner);
+            for value in values {
+                arguments.push(value, None).expect("owned argument cell");
+            }
+            let arguments = arguments.finish().expect("five-argument pairlist");
+            assert_eq!(unsafe { Rf_length(arguments.as_raw()) }, 5);
+
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                curl_header_tls(arguments.as_raw())
+            }));
+            let payload = result.expect_err("non-string fifth TLS argument must fail");
+            let error = payload.downcast::<crate::sexp::context::RError>().expect("R TLS error");
+            assert_eq!(error.message, "invalid 'TLS' argument");
+        });
+    }
 
     #[test]
     fn libcurl_runtime_state_is_session_local() {

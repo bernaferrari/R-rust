@@ -20,7 +20,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::LGLSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -53,7 +52,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::INTSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -97,7 +95,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::REALSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -138,7 +135,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::RAWSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -167,7 +163,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::CPLXSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -196,7 +191,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
         self.ensure_live()?;
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::STRSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -280,7 +274,6 @@ impl<'a> Sexp<'a> {
     /// Get the i-th generic/expression vector element with typed error reporting.
     #[inline]
     pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        #[cfg(feature = "altrep")]
         if self.typeof_() == SEXPTYPE::VECSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -676,7 +669,7 @@ impl<'a> Sexp<'a> {
     }
 }
 
-#[cfg(all(test, feature = "altrep"))]
+#[cfg(test)]
 mod altrep_borrow_tests {
     use super::*;
     use crate::sexp::{

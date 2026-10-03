@@ -249,11 +249,15 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
 
 /// NAMED link accounting is independent of root ownership. Restore the
 /// temporary sharing metadata on both normal return and an R error unwind.
-struct NamedArguments<'a> {
+pub(super) struct NamedArguments<'a> {
     values: Vec<Sexp<'a>>,
 }
 impl<'a> NamedArguments<'a> {
-    fn retain(&mut self, value: &Sexp<'a>) {
+    pub(super) fn new() -> Self {
+        Self { values: Vec::new() }
+    }
+
+    pub(super) fn retain(&mut self, value: &Sexp<'a>) {
         unsafe {
             bump_named_link(value.as_raw());
         }
@@ -391,10 +395,13 @@ unsafe fn evalArgs<'a>(
         };
         evalList(args, rho, call, -1)
     } else {
-        let raw = unsafe { evalListKeepMissing(args, rho) };
-        factory
-            .wrap(raw)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+        let args = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let rho = factory
+            .wrap(rho)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        evalListKeepMissing(args, rho)
     }
 }
 
@@ -1122,87 +1129,74 @@ pub unsafe fn DispatchGroup(
 ///
 /// Ported from R's `evalListKeepMissing()` in eval.c.
 /// Iterative (not recursive) to avoid protection stack growth.
-pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
-    use crate::sexp::ffi::SEXPTYPE;
-    use crate::sexp::symbol::R_DotsSymbol;
-
-    unsafe {
-        let mut head: SEXP = R_NilValue();
-        let mut tail: SEXP = ptr::null_mut();
-        let mut head_guard = None;
-        let mut bumped: Vec<SEXP> = Vec::new();
-        let mut remaining = el;
-        while !remaining.is_null() && remaining != R_NilValue() {
-            let mut val: SEXP;
-
-            if CAR(remaining) == R_DotsSymbol() {
-                // Handle ... expansion
-                let h = R_findVarInFrame(rho, CAR(remaining));
-                let _h_guard = protect(h);
-                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
-                    let mut dh = h;
-                    while !dh.is_null() && dh != R_NilValue() {
-                        if CAR(dh) == R_MissingArg() {
-                            val = R_MissingArg();
-                        } else {
-                            val = Rf_eval(CAR(dh), rho);
-                            bump_named_link(val);
-                            bumped.push(val);
-                        }
-                        // The value is reachable only from this local until
-                        // its cell is linked into the protected head chain.
-                        let _val_guard = protect(val);
-                        let ev = CONS_NR(val, R_NilValue());
-                        if head == R_NilValue() {
-                            head = ev;
-                            head_guard = Some(protect(head));
-                        } else {
-                            SETCDR(tail, ev);
-                        }
-                        // Copy tag from dots element
-                        if TAG(dh) != R_NilValue() {
-                            SETTAG(ev, TAG(dh));
-                        }
-                        tail = ev;
-                        dh = CDR(dh);
-                    }
-                } else if h != R_MissingArg() {
-                    crate::mainutils::errors::Rf_error(
-                        b"'...' used in an incorrect context\0".as_ptr() as *const c_char,
-                    );
+pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
+    let factory = rho
+        .node_factory()
+        .or_else(|_| el.node_factory())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    let mut remaining = factory
+        .wrap(el.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+    let mut result = PairlistBuilder::from_factory(factory.clone());
+    let mut bumped = NamedArguments::new();
+    while !remaining.is_nil() {
+        let expr = remaining
+            .try_car()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        if expr.as_raw() == unsafe { R_DotsSymbol() } {
+            let mut dots = factory
+                .wrap(unsafe { R_findVarInFrame(rho.as_raw(), expr.as_raw()) })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            if dots.typeof_() == SEXPTYPE::DOTSXP || dots.is_nil() {
+                while !dots.is_nil() {
+                    let expr = dots
+                        .try_car()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    let value = if expr.as_raw() == unsafe { R_MissingArg() } {
+                        expr
+                    } else {
+                        let value = factory
+                            .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(&error.to_string())
+                            });
+                        bumped.retain(&value);
+                        value
+                    };
+                    result
+                        .push(value, dots.tag())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    dots = dots
+                        .try_cdr()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
                 }
-            } else {
-                // Regular argument
-                if CAR(remaining) == R_MissingArg() {
-                    val = R_MissingArg();
-                } else {
-                    val = Rf_eval(CAR(remaining), rho);
-                    bump_named_link(val);
-                    bumped.push(val);
-                }
-                // The value is reachable only from this local until its cell
-                // is linked into the protected head chain.
-                let _val_guard = protect(val);
-                let ev = CONS_NR(val, R_NilValue());
-                if head == R_NilValue() {
-                    head = ev;
-                    head_guard = Some(protect(head));
-                } else {
-                    SETCDR(tail, ev);
-                }
-                // Copy tag from original element
-                if TAG(remaining) != R_NilValue() {
-                    SETTAG(ev, TAG(remaining));
-                }
-                tail = ev;
+            } else if dots.as_raw() != unsafe { R_MissingArg() } {
+                crate::sexp::context::r_error("'...' used in an incorrect context");
             }
-            remaining = CDR(remaining);
+        } else {
+            let value = if expr.as_raw() == unsafe { R_MissingArg() } {
+                expr
+            } else {
+                let value = factory
+                    .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                bumped.retain(&value);
+                value
+            };
+            result
+                .push(value, remaining.tag())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
         }
-        for val in bumped {
-            drop_named_link(val);
-        }
-        head
+        remaining = remaining
+            .try_cdr()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
     }
+    result
+        .finish()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
 }
 
 #[cfg(test)]
@@ -1210,6 +1204,118 @@ mod owned_argument_tests {
     use super::*;
     use crate::sexp::{object::PairlistIter, session::RSession};
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_keep_missing_preserves_dots_and_tags_through_reentrant_gc() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let call = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "list(first=11L + 1L, absent=, ..., last=33L + 3L)",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let dots_source = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "list(dot_missing=, dot_value=22L + 2L)",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let mut dots_builder = PairlistBuilder::from_factory(factory.clone());
+        for cell in PairlistIter::new(dots_source.try_cdr().unwrap()) {
+            dots_builder
+                .push(cell.try_car().unwrap(), cell.tag())
+                .unwrap();
+        }
+        let dots = dots_builder.finish_as_type(SEXPTYPE::DOTSXP).unwrap();
+        let environment = session.global_env().unwrap();
+        unsafe {
+            crate::sexp::envir::defineVar(R_DotsSymbol(), dots.as_raw(), environment.as_raw());
+        }
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let before_roots = crate::sexp::protect::R_ProtectCount();
+        let evaluated = evalListKeepMissing(call.try_cdr().unwrap(), environment);
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        drop(call);
+        drop(dots_source);
+        drop(dots);
+        crate::sexp::gengc::full_gc();
+        let cells: Vec<_> = PairlistIter::new(evaluated).collect();
+        let values: Vec<_> = cells.iter().map(|cell| cell.try_car().unwrap()).collect();
+        assert_eq!(values.len(), 5);
+        assert_eq!(values[0].integer_elt(0).unwrap(), 12);
+        assert_eq!(values[1].as_raw(), unsafe { R_MissingArg() });
+        assert_eq!(values[2].as_raw(), unsafe { R_MissingArg() });
+        assert_eq!(values[3].integer_elt(0).unwrap(), 24);
+        assert_eq!(values[4].integer_elt(0).unwrap(), 36);
+        let tags: Vec<_> = cells
+            .iter()
+            .map(|cell| {
+                cell.try_tag()
+                    .unwrap()
+                    .try_printname()
+                    .unwrap()
+                    .try_as_string()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            tags,
+            ["first", "absent", "dot_missing", "dot_value", "last"]
+        );
+        assert!(notifications.get() >= 5);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
+    }
+
+    #[test]
+    fn keep_missing_argument_error_restores_named_links_without_manual_roots() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let call = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "list(11L, preserved=, missing_after_preserved_arguments)",
+                    arena,
+                    factory,
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let args = call.try_cdr().unwrap();
+        let first = args.try_car().unwrap();
+        let before_named = unsafe { crate::sexp::accessors::NAMED(first.as_raw()) };
+        let before_roots = crate::sexp::protect::R_ProtectCount();
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            evalListKeepMissing(args, session.global_env().unwrap())
+        }));
+        assert!(error.is_err());
+        assert_eq!(
+            unsafe { crate::sexp::accessors::NAMED(first.as_raw()) },
+            before_named
+        );
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
+    }
 
     #[test]
     fn owned_argument_list_survives_each_allocation_and_reentrant_gc() {

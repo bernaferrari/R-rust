@@ -469,7 +469,6 @@ impl<'a> Sexp<'a> {
                 // header copying, with no instance or R payload borrow alive.
                 unsafe {
                     crate::sexp::session::with_instance_active(owner.as_ptr(), || {
-                        #[cfg(feature = "altrep")]
                         if super::altrep::materialize_raw(self.ptr)? {
                             return Ok(());
                         }

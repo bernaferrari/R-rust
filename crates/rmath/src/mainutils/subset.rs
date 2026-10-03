@@ -1563,36 +1563,65 @@ unsafe fn R_DispatchOrEvalSP(
 ) -> c_int {
     unsafe {
         use crate::eval::dispatch::{DispatchOrEval, evalListKeepMissing};
-        use crate::sexp::memory_ext::{CONS_NR, R_mkEVPROMISE};
+        use crate::eval::eval::Rf_eval;
+        use crate::sexp::memory_ext::R_mkEVPROMISE;
+        use crate::sexp::object::SessionNodeFactory;
         use crate::sexp::symbol::R_DotsSymbol;
 
-        let mut prom: SEXP = ptr::null_mut();
-        let mut args_work = args;
-        let mut x = R_NilValue();
-        let mut x_guard = None;
+        let factory = SessionNodeFactory::new(
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+        );
+        let args_owner = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let rho_owner = factory
+            .wrap(rho)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        let mut args_work = args_owner.clone();
 
-        if args != R_NilValue() && CAR(args) != R_DotsSymbol() {
-            x = Rf_eval(CAR(args), rho);
-            x_guard = Some(protect(x));
-            if !isObject(x) {
-                let rest = evalListKeepMissing(CDR(args), rho);
-                let _pr = protect(rest);
+        if !args_owner.is_nil() && CAR(args) != R_DotsSymbol() {
+            let expression = args_owner
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            let tail = args_owner
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            let x = factory
+                .wrap(Rf_eval(expression.as_raw(), rho_owner.as_raw()))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            if !isObject(x.as_raw()) {
+                let rest = evalListKeepMissing(tail, rho_owner.clone());
                 if !ans.is_null() {
-                    *ans = CONS_NR(x, rest);
+                    let nil = factory.nil();
+                    let evaluated = factory
+                        .allocate(|arena| Some(arena.cons(x.as_raw(), rest.as_raw(), nil.as_raw())))
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    *ans = evaluated.as_raw();
                 }
-                return 0; // FALSE — fall through with evaluated args
+                return 0;
             }
-            // Object: build EVPROMISE for first arg and try S3/S4 dispatch
-            prom = R_mkEVPROMISE(CAR(args), x);
-            args_work = CONS_NR(prom, CDR(args));
+            let promise = factory
+                .wrap(R_mkEVPROMISE(expression.as_raw(), x.as_raw()))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            let nil = factory.nil();
+            args_work = factory
+                .allocate(|arena| Some(arena.cons(promise.as_raw(), tail.as_raw(), nil.as_raw())))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
         }
 
-        let _pa = protect(args_work);
-        let disp = DispatchOrEval(call, op, generic, args_work, rho, ans, 0, 0);
-        // DispatchOrEval already evaluated the argument list when no method matched.
-        let _ = x_guard;
-        let _ = prom;
-        disp
+        // The owned prefix retains its promise and evaluated value throughout
+        // method lookup, fallback argument evaluation and method application.
+        DispatchOrEval(
+            call,
+            op,
+            generic,
+            args_work.as_raw(),
+            rho_owner.as_raw(),
+            ans,
+            0,
+            0,
+        )
     }
 }
 

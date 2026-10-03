@@ -13,8 +13,6 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::*;
-#[cfg(feature = "altrep")]
-use crate::sexp::constructors::Rf_isVector;
 use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -43,18 +41,6 @@ const GROWABLE_BIT_MASK: u16 = 1 << 5;
 // ---------------------------------------------------------------------------
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
-
-#[cfg(feature = "altrep-native")]
-unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {
-    unsafe {
-        crate::mainutils::altrep::R_altrep_duplicate(s, deep)
-    }
-}
-
-#[cfg(feature = "altrep")]
-unsafe fn R_tryWrap(x: SEXP) -> SEXP {
-    x
-}
 
 unsafe fn DispatchGroup(
     _s: SEXP,
@@ -230,13 +216,6 @@ unsafe fn GROWABLE_BIT_SET(x: SEXP) -> c_int {
     }
 }
 
-/// Check ALTREP bit (same as R's ALTREP() macro on the sxpinfo alt flag).
-#[inline]
-#[cfg(feature = "altrep")]
-unsafe fn ALTREP_CHECK(x: SEXP) -> c_int {
-    unsafe { ALTREP(x) }
-}
-
 /// Raise a typed error for SEXPTYPEs this port cannot duplicate/copy yet.
 unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
     unsafe {
@@ -358,7 +337,6 @@ unsafe fn COPY_TRUELENGTH(to: SEXP, from: SEXP) {
 unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
     unsafe {
         let mut a = ATTRIB(from);
-        #[cfg(feature = "altrep")]
         if crate::sexp::altrep::has_extension_raw(from) {
             // Ordinary duplicates copy values and public attributes, not a
             // descriptor/payload belonging to the source's lazy class.
@@ -374,72 +352,6 @@ unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
             }
         }
     }
-}
-
-/// Apply GNU's default DuplicateEX attribute policy to a legacy ALTREP
-/// Duplicate result. The caller activates the source owner before calling.
-///
-/// # Safety
-/// Both objects must be live in the active owner, with no outstanding payload
-/// loans. Recursive attribute callbacks must uphold their native contracts.
-#[cfg(feature = "altrep-native")]
-pub(crate) unsafe fn altrep_duplicate_attributes(to: SEXP, from: SEXP, deep: c_int) {
-    if to == from || to.is_null() {
-        return;
-    }
-    let fail = |error: crate::sexp::object::SexpError| {
-        crate::sexp::context::r_error(error.to_string())
-    };
-    // A newly returned callback object must survive allocations and collection
-    // while its source's attributes are recursively copied.
-    let source = unsafe { crate::sexp::altrep::rooted_raw(from) }.unwrap_or_else(fail);
-    let target = unsafe { crate::sexp::altrep::rooted_raw(to) }.unwrap_or_else(fail);
-    unsafe {
-        let source_attributes = if crate::sexp::altrep::has_extension_raw(from) {
-            CDR(ATTRIB(from))
-        } else {
-            ATTRIB(from)
-        };
-        let target_is_extension = crate::sexp::altrep::has_extension_raw(to);
-        let target_attributes = if target_is_extension {
-            CDR(ATTRIB(to))
-        } else {
-            ATTRIB(to)
-        };
-        let has_source_attributes =
-            !source_attributes.is_null() && source_attributes != R_NilValue();
-        if has_source_attributes {
-            let attributes_source =
-                crate::sexp::altrep::rooted_raw(source_attributes).unwrap_or_else(fail);
-            let attributes = crate::sexp::altrep::rooted_raw(duplicate1(
-                attributes_source.clone().as_raw(),
-                deep,
-            ))
-            .unwrap_or_else(fail);
-            if crate::sexp::altrep::has_extension_raw(to) {
-                // SET_ATTRIB materializes an extension. Preserve its private
-                // traced class/data head and replace only the public tail.
-                SETCDR(ATTRIB(to), attributes.clone().as_raw());
-            } else {
-                SET_ATTRIB(to, attributes.clone().as_raw());
-            }
-            SET_OBJECT(to, OBJECT(from));
-            if IS_S4_OBJECT(from) != 0 {
-                SET_S4_OBJECT(to);
-            } else {
-                UNSET_S4_OBJECT(to);
-            }
-        } else if !target_attributes.is_null() && target_attributes != R_NilValue() {
-            if target_is_extension {
-                SETCDR(ATTRIB(to), R_NilValue());
-            } else {
-                SET_ATTRIB(to, R_NilValue());
-            }
-            SET_OBJECT(to, 0);
-            UNSET_S4_OBJECT(to);
-        }
-    }
-    drop((target, source));
 }
 
 /// Copy tag from `from` to `to`, if it is non-nil.
@@ -578,21 +490,10 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 
         // Retain a Rust recursion guard throughout the default copy too.
         // Pointer-valued class elements can legitimately refer to their parent.
-        #[cfg(feature = "altrep")]
         let class_copy_source = if crate::sexp::altrep::has_extension_raw(s) {
             Some(crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())))
         } else { None };
-        #[cfg(feature = "altrep")]
         let _class_copy_guard = class_copy_source.as_ref().map(|source| crate::sexp::altrep::duplication_guard(source).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())));
-
-        // ALTREP: try native class-specific duplicate when the alt bit is set
-        #[cfg(feature = "altrep-native")]
-        if ALTREP_CHECK(s) != 0 {
-            let ans = ALTREP_DUPLICATE_EX(s, deep);
-            if !ans.is_null() {
-                return ans;
-            }
-        }
 
         let mut t: SEXP = ptr::null_mut();
 
@@ -1431,32 +1332,12 @@ pub unsafe fn xfillVectorMatrixWithRecycle(
 // duplicate_attr: duplicate before attribute modification
 // ---------------------------------------------------------------------------
 
-/// Threshold for trying ALTREP wrapping (stub: always falls through).
-#[cfg(feature = "altrep")]
-const WRAP_THRESHOLD: R_xlen_t = 64;
-
-/// Internal: duplicate for attribute modification.
-///
-/// For large vectors, tries ALTREP wrapping first (stub: always falls through).
-/// Falls back to `duplicate` or `shallow_duplicate`.
+/// Duplicate before attribute modification using ordinary deep or shallow
+/// value and public-attribute copying.
 unsafe fn duplicate_attr(x: SEXP, deep: c_int) -> SEXP {
     unsafe {
         if x.is_null() {
             return x;
-        }
-        // Check if vector and large enough
-        #[cfg(feature = "altrep")]
-        if Rf_isVector(x) != 0 && XLENGTH(x) >= WRAP_THRESHOLD {
-            let val = R_tryWrap(x);
-            if !val.is_null() && val != x {
-                if deep != 0 {
-                    let attr = ATTRIB(val);
-                    if !attr.is_null() && attr != R_NilValue() {
-                        SET_ATTRIB(val, duplicate(attr));
-                    }
-                }
-                return val;
-            }
         }
         if deep != 0 {
             duplicate(x)
@@ -1480,7 +1361,7 @@ pub unsafe fn R_duplicate_attr(x: SEXP) -> SEXP {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[cfg(all(test, feature = "altrep-native"))]
+#[cfg(test)]
 #[path = "duplicate/altrep_tests.rs"]
 mod altrep_tests;
 

@@ -1681,7 +1681,7 @@ fn c_persist_hook_unserialize_with_restore_returns_replacement() {
 
 #[test]
 fn gnu_compact_intseq_altrep_unserializes_to_sequence() {
-    let _session = crate::sexp::session::RSession::new();
+    let _session = crate::sexp::session::RSession::new_for_gc_tests();
     // serialize(1947:1962, NULL, xdr=TRUE, version=3) from GNU R 4.7.0-dev
     let bytes: [u8; 133] = [
         88, 10, 0, 0, 0, 3, 0, 4, 7, 0, 0, 3, 5, 0, 0, 0, 0, 5, 85, 84, 70, 45, 56, 0, 0, 0, 238,
@@ -1707,7 +1707,7 @@ fn gnu_compact_intseq_altrep_unserializes_to_sequence() {
 
 #[test]
 fn gnu_deferred_string_altrep_unserializes_to_character() {
-    let _session = crate::sexp::session::RSession::new();
+    let _session = crate::sexp::session::RSession::new_for_gc_tests();
     // serialize(as.character(1:8), NULL, xdr=TRUE, version=3) from GNU R 4.7.0-dev
     let bytes: [u8; 216] = [
         88, 10, 0, 0, 0, 3, 0, 4, 7, 0, 0, 3, 5, 0, 0, 0, 0, 5, 85, 84, 70, 45, 56, 0, 0, 0, 238,
@@ -1733,5 +1733,4 @@ fn gnu_deferred_string_altrep_unserializes_to_character() {
         }
     }
 }
-
 

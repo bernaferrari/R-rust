@@ -19,8 +19,53 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{R_PreserveObject, protect, protect_with_index_raw};
+use crate::sexp::protect::{R_PreserveObject, protect};
 use crate::sexp::symbol::Rf_install;
+use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp, SexpMut, SexpResult};
+use crate::sexp::owner::OwnerToken;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OptionsInitialization {
+    Uninitialized,
+    Initializing,
+    Initialized,
+}
+
+/// Only this owner-local phase is borrowed, and only between callbacks.
+struct OptionsInitializationGuard {
+    owner: *mut crate::sexp::instance::RInstance,
+    availability: crate::sexp::instance::InstanceLiveness,
+}
+
+impl OptionsInitializationGuard {
+    unsafe fn begin(owner: *mut crate::sexp::instance::RInstance) -> Option<Self> {
+        unsafe {
+            if (*owner).options_initialization != OptionsInitialization::Uninitialized {
+                return None;
+            }
+            let availability = crate::sexp::instance::instance_liveness(owner);
+            (*owner).options_initialization = OptionsInitialization::Initializing;
+            Some(Self { owner, availability })
+        }
+    }
+}
+
+impl Drop for OptionsInitializationGuard {
+    fn drop(&mut self) {
+        if self.availability.is_live() {
+            // No R call occurs between this availability check and field access.
+            unsafe {
+                if (*self.owner).options_initialization == OptionsInitialization::Initializing {
+                    (*self.owner).options_initialization = OptionsInitialization::Uninitialized;
+                }
+            }
+        }
+    }
+}
+
+fn require_options<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| std::panic::panic_any(RError { message: error.to_string() }))
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -532,48 +577,39 @@ pub(crate) unsafe fn logical_option_enabled(name: &CStr) -> bool {
 /// Reconstructs from the HashMap for FFI compatibility.
 /// The C code stores options as SYMVALUE(install(".Options")), a dotted-pair list.
 pub unsafe fn R_Options() -> SEXP {
-    unsafe {
-        let nil = R_NilValue();
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let n = (*inst).options.len();
-            if n == 0 {
-                return nil;
-            }
-            let mut keys: Vec<String> = (*inst).options.keys().cloned().collect();
-            keys.sort();
-
-            let mut result: SEXP = nil;
-            let mut result_guard: Option<crate::sexp::protect::IndexedProtectGuard> = None;
-            for key in keys.iter().rev() {
-                let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                let val = *(*inst).options.get(key.as_str()).unwrap_or(&nil);
-                let cell = Rf_cons(val, result);
-                SETTAG(cell, tag);
-                result = cell;
-                if let Some(guard) = result_guard.as_mut() {
-                    guard.reprotect_raw(result);
-                } else {
-                    result_guard = Some(protect_with_index_raw(result, "R_Options"));
-                }
-            }
-            result
-        })
-    }
+    let owner = require_options(unsafe { OwnerToken::current() });
+    require_options(options_pairlist(&owner.node_factory())).as_raw()
 }
 
-/// Rebuild the language-level `.Options` binding from the canonical
-/// per-session option table.
-///
-/// GNU R exposes its internal options pairlist through a base-environment
-/// binding. This port keeps the canonical state in a `HashMap`, so the binding
-/// is a snapshot which must be refreshed after each mutation.
-unsafe fn refresh_options_binding() {
-    unsafe {
-        let options = R_Options();
-        let _options_guard = protect(options);
-        defineVar(options_symbol(), options, R_BaseEnv());
+fn options_pairlist<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>> {
+    factory.require_active()?;
+    // Snapshot the field before wrapping, interning names, or allocating cells.
+    let entries: Vec<(String, SEXP)> = crate::sexp::instance::with_required_current_instance(
+        |owner| unsafe {
+            (*owner).options.iter().map(|(name, value)| (name.clone(), *value)).collect()
+        },
+    );
+    let mut entries = entries.into_iter()
+        .map(|(name, raw)| factory.wrap(raw).map(|value| (name, value)))
+        .collect::<SexpResult<Vec<_>>>()?;
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut result = PairlistBuilder::from_factory(factory.clone());
+    for (name, value) in entries {
+        let name = CString::new(name).unwrap_or_default();
+        let tag = factory.wrap(unsafe { Rf_install(name.as_ptr()) })?;
+        result.push(value, Some(tag))?;
     }
+    result.finish()
+}
+
+/// Refresh the base `.Options` snapshot while its complete graph is owned.
+unsafe fn refresh_options_binding() {
+    let owner = require_options(unsafe { OwnerToken::current() });
+    let factory = owner.node_factory();
+    let options = require_options(options_pairlist(&factory));
+    let symbol = require_options(factory.wrap(options_symbol()));
+    require_options(factory.require_active());
+    unsafe { defineVar(symbol.as_raw(), options.as_raw(), R_BaseEnv()); }
 }
 
 /// Find a tagged item in the options (equivalent to C's FindTaggedItem).
@@ -774,152 +810,153 @@ pub unsafe fn Rf_GetOptionDeviceAsk() -> Rboolean {
 // Initialize default options
 // ---------------------------------------------------------------------------
 
-/// Populate an options HashMap with default R option values.
-unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
-    unsafe {
-        // Options are per-session GC roots, so allocate their values in the
-        // owning session arena. Process-lifetime `persistent_*` allocations
-        // are neither necessary here nor accepted by the owner-checked
-        // embedding API when `.Options$name` returns one of these values.
-        let pi = Rf_ScalarInteger;
-        let pl = Rf_ScalarLogical;
-        let pm = Rf_mkString;
+/// Build each scalar completely inside its allocation lend and root it before
+/// deferred GC. The initializer receives only the fresh scalar capability.
+fn option_scalar<'s>(
+    factory: &SessionNodeFactory<'s>,
+    kind: SEXPTYPE,
+    initialize: impl FnOnce(&mut SexpMut<'_>) -> SexpResult<()>,
+) -> SexpResult<Sexp<'s>> {
+    factory.allocate(|arena| {
+        let value = arena.alloc_vector_sexp(kind, 1)?;
+        let mut value = SexpMut::try_from_checked(value).ok()?;
+        initialize(&mut value).ok()?;
+        Some(value.freeze().as_raw())
+    })
+}
 
-        let val = pm(c"> ".as_ptr());
-        options.insert("prompt".to_string(), val);
+fn set_option_names<'s>(
+    factory: &SessionNodeFactory<'s>,
+    value: &Sexp<'s>,
+    names: Sexp<'s>,
+) -> SexpResult<()> {
+    let tag = factory.wrap(unsafe { R_NamesSymbol() })?;
+    let mut attributes = PairlistBuilder::from_factory(factory.clone());
+    attributes.push(names, Some(tag))?;
+    let attributes = attributes.finish()?;
+    factory.require_active()?;
+    unsafe { SET_ATTRIB(value.as_raw(), attributes.as_raw()); }
+    Ok(())
+}
 
-        let val = pm(c"+ ".as_ptr());
-        options.insert("continue".to_string(), val);
+/// Detached owning defaults stay alive across every allocation and callback.
+fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<String, Sexp<'s>>> {
+    let mut options = HashMap::new();
+    let pi = |value| option_scalar(factory, SEXPTYPE::INTSXP, |scalar| scalar.try_set_integer_elt(0, value));
+    let pl = |value| option_scalar(factory, SEXPTYPE::LGLSXP, |scalar| scalar.try_set_logical_elt(0, value));
+    let pm = |text: &str| factory.strings(&[text]);
+    let val = pm("> ")?;
+    options.insert("prompt".to_string(), val);
 
-        options.insert("expressions".to_string(), pi(5000));
-        options.insert("width".to_string(), pi(80));
-        options.insert("deparse.cutoff".to_string(), pi(60));
-        options.insert("digits".to_string(), pi(7));
-        options.insert("na.action".to_string(), pm(c"na.omit".as_ptr()));
-        options.insert("device".to_string(), pm(c"pdf".as_ptr()));
-        options.insert("show.coef.Pvalues".to_string(), pl(TRUE));
-        options.insert("show.signif.stars".to_string(), pl(TRUE));
-        options.insert("echo".to_string(), pl(TRUE));
-        options.insert("quiet".to_string(), pl(FALSE));
-        options.insert("verbose".to_string(), pl(FALSE));
-        options.insert("check.bounds".to_string(), pl(FALSE));
-        options.insert("keep.source".to_string(), pl(FALSE));
-        options.insert("keep.source.pkgs".to_string(), pl(FALSE));
-        options.insert("keep.parse.data".to_string(), pl(TRUE));
-        options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
-        options.insert("example.ask".to_string(), pm(c"default".as_ptr()));
-        options.insert("demo.ask".to_string(), pm(c"default".as_ptr()));
+    let val = pm("+ ")?;
+    options.insert("continue".to_string(), val);
 
-        options.insert("warning.length".to_string(), pi(1000));
-        options.insert("nwarnings".to_string(), pi(50));
+    options.insert("expressions".to_string(), pi(5000)?);
+    options.insert("width".to_string(), pi(80)?);
+    options.insert("deparse.cutoff".to_string(), pi(60)?);
+    options.insert("digits".to_string(), pi(7)?);
+    options.insert("na.action".to_string(), pm("na.omit")?);
+    options.insert("device".to_string(), pm("pdf")?);
+    options.insert("show.coef.Pvalues".to_string(), pl(TRUE)?);
+    options.insert("show.signif.stars".to_string(), pl(TRUE)?);
+    options.insert("echo".to_string(), pl(TRUE)?);
+    options.insert("quiet".to_string(), pl(FALSE)?);
+    options.insert("verbose".to_string(), pl(FALSE)?);
+    options.insert("check.bounds".to_string(), pl(FALSE)?);
+    options.insert("keep.source".to_string(), pl(FALSE)?);
+    options.insert("keep.source.pkgs".to_string(), pl(FALSE)?);
+    options.insert("keep.parse.data".to_string(), pl(TRUE)?);
+    options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE)?);
+    options.insert("example.ask".to_string(), pm("default")?);
+    options.insert("demo.ask".to_string(), pm("default")?);
 
-        let val = pm(c".".as_ptr());
-        options.insert("OutDec".to_string(), val);
+    options.insert("warning.length".to_string(), pi(1000)?);
+    options.insert("nwarnings".to_string(), pi(50)?);
 
-        options.insert("CBoundsCheck".to_string(), pl(FALSE));
+    let val = pm(".")?;
+    options.insert("OutDec".to_string(), val);
 
-        let val = pm(c"default".as_ptr());
-        options.insert("matprod".to_string(), val);
+    options.insert("CBoundsCheck".to_string(), pl(FALSE)?);
 
-        options.insert("PCRE_study".to_string(), pl(TRUE));
-        options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
-        options.insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
-        options.insert("max.contour.segments".to_string(), pi(25000));
-        options.insert("warnPartialMatchDollar".to_string(), pl(FALSE));
-        options.insert("warnPartialMatchArgs".to_string(), pl(FALSE));
-        options.insert("warnPartialMatchAttr".to_string(), pl(FALSE));
-        options.insert("showWarnCalls".to_string(), pl(FALSE));
-        options.insert("showErrorCalls".to_string(), pl(FALSE));
-        options.insert("showNCalls".to_string(), pi(50));
-        options.insert("browserNLdisabled".to_string(), pl(FALSE));
-        options.insert("warn".to_string(), pi(0));
-        options.insert("max.print".to_string(), pi(99999));
-        options.insert("show.error.messages".to_string(), pl(TRUE));
-        options.insert("scipen".to_string(), pi(0));
-        options.insert("height".to_string(), pi(60));
-        options.insert("add.smooth".to_string(), pl(TRUE));
-        options.insert("ts.eps".to_string(), Rf_ScalarReal(1e-5));
-        let contrasts = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(contrasts, 0, Rf_mkChar(c"contr.treatment".as_ptr()));
-        SET_STRING_ELT(contrasts, 1, Rf_mkChar(c"contr.poly".as_ptr()));
-        let cnames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(cnames, 0, Rf_mkChar(c"unordered".as_ptr()));
-        SET_STRING_ELT(cnames, 1, Rf_mkChar(c"ordered".as_ptr()));
-        setAttrib(contrasts, R_NamesSymbol(), cnames);
-        options.insert("contrasts".to_string(), contrasts);
-        options.insert("pkgType".to_string(), pm(c"source".as_ptr()));
+    let val = pm("default")?;
+    options.insert("matprod".to_string(), val);
 
-
-    }
+    options.insert("PCRE_study".to_string(), pl(TRUE)?);
+    options.insert("PCRE_use_JIT".to_string(), pl(TRUE)?);
+    options.insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL)?);
+    options.insert("max.contour.segments".to_string(), pi(25000)?);
+    options.insert("warnPartialMatchDollar".to_string(), pl(FALSE)?);
+    options.insert("warnPartialMatchArgs".to_string(), pl(FALSE)?);
+    options.insert("warnPartialMatchAttr".to_string(), pl(FALSE)?);
+    options.insert("showWarnCalls".to_string(), pl(FALSE)?);
+    options.insert("showErrorCalls".to_string(), pl(FALSE)?);
+    options.insert("showNCalls".to_string(), pi(50)?);
+    options.insert("browserNLdisabled".to_string(), pl(FALSE)?);
+    options.insert("warn".to_string(), pi(0)?);
+    options.insert("max.print".to_string(), pi(99999)?);
+    options.insert("show.error.messages".to_string(), pl(TRUE)?);
+    options.insert("scipen".to_string(), pi(0)?);
+    options.insert("height".to_string(), pi(60)?);
+    options.insert("add.smooth".to_string(), pl(TRUE)?);
+    options.insert("ts.eps".to_string(), option_scalar(factory, SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, 1e-5))?);
+    let contrasts = factory.strings(&["contr.treatment", "contr.poly"])?;
+    let cnames = factory.strings(&["unordered", "ordered"])?;
+    set_option_names(factory, &contrasts, cnames)?;
+    options.insert("contrasts".to_string(), contrasts);
+    options.insert("pkgType".to_string(), pm("source")?);
+    Ok(options)
 }
 
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
+    let owner = require_options(unsafe { OwnerToken::current() });
+    let Some(_initialization) = (unsafe { OptionsInitializationGuard::begin(owner.as_ptr()) }) else {
+        return;
+    };
+    let factory = owner.node_factory();
+    let defaults = require_options(populate_options(&factory));
+    require_options(factory.require_active());
+    // Each value remains owned by defaults through both binding publications.
+    // Reentrant mutations made while defaults were built take precedence.
     unsafe {
-        let initialized_now = crate::sexp::instance::with_required_current_instance(|inst| {
-            if (*inst).options_initialized {
-                return false;
-            }
-            populate_options(&mut (*inst).options);
-            (*inst).options_initialized = true;
-            true
-        });
-        if initialized_now {
-            refresh_options_binding();
-            define_platform_binding();
+        let options = &mut (*owner.as_ptr()).options;
+        for (name, value) in &defaults {
+            options.entry(name.clone()).or_insert_with(|| value.as_raw());
         }
     }
+    unsafe { refresh_options_binding(); }
+    require_options(define_platform_binding(&factory));
+    require_options(factory.require_active());
+    unsafe { (*owner.as_ptr()).options_initialization = OptionsInitialization::Initialized; }
 }
 
-/// Define the base-env `.Platform` list (upstream platform.c). Embedded
-/// sessions report a Unix-ish, non-GUI, source-package platform; terminal
-/// detection packages (crayon & friends) read $GUI/$OS.type at load.
-unsafe fn define_platform_binding() {
-    unsafe {
-        let fields: [(&str, &str); 9] = [
-            ("OS.type", "unix"),
-            ("file.sep", "/"),
-            ("dynlib.ext", ".so"),
-            ("GUI", "unknown"),
-            (
-                "endian",
-                if cfg!(target_endian = "little") {
-                    "little"
-                } else {
-                    "big"
-                },
-            ),
-            ("type", "unix"),
-            ("pkgType", "source"),
-            ("path.sep", ":"),
-            ("r_arch", ""),
-        ];
-        let plat = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as i64);
-        if plat.is_null() {
-            return;
-        }
-        let _plat_guard = protect(plat);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, fields.len() as i64);
-        let _names_guard = protect(names);
-        for (i, (key, value)) in fields.iter().enumerate() {
-            SET_STRING_ELT(
-                names,
-                i as i64,
-                Rf_mkChar(std::ffi::CString::new(*key).unwrap().as_ptr()),
-            );
-            SET_VECTOR_ELT(
-                plat,
-                i as i64,
-                Rf_mkString(std::ffi::CString::new(*value).unwrap().as_ptr()),
-            );
-        }
-        setAttrib(plat, R_NamesSymbol(), names);
-        defineVar(
-            Rf_install(std::ffi::CString::new(".Platform").unwrap().as_ptr()),
-            plat,
-            R_BaseEnv(),
-        );
+/// Build the base `.Platform` list without borrowing any interpreter field.
+fn define_platform_binding(factory: &SessionNodeFactory<'_>) -> SexpResult<()> {
+    let fields: [(&str, &str); 9] = [
+        ("OS.type", "unix"),
+        ("file.sep", "/"),
+        ("dynlib.ext", ".so"),
+        ("GUI", "unknown"),
+        ("endian", if cfg!(target_endian = "little") { "little" } else { "big" }),
+        ("type", "unix"),
+        ("pkgType", "source"),
+        ("path.sep", ":"),
+        ("r_arch", ""),
+    ];
+    let platform = factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, fields.len() as _)))?;
+    let mut platform = SexpMut::try_from_checked(platform)?;
+    for (index, (_, text)) in fields.iter().enumerate() {
+        let value = factory.strings(&[text])?;
+        platform.try_set_vector_elt(index as _, value)?;
     }
+    let platform = platform.freeze();
+    let keys: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
+    let names = factory.strings(&keys)?;
+    set_option_names(factory, &platform, names)?;
+    let symbol = factory.wrap(unsafe { Rf_install(c".Platform".as_ptr()) })?;
+    factory.require_active()?;
+    unsafe { defineVar(symbol.as_raw(), platform.as_raw(), R_BaseEnv()); }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,6 +1576,85 @@ mod tests {
     use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
     use crate::sexp::protect::{R_ProtectCount, protect_n};
 
+    #[test]
+    fn options_initialization_retains_defaults_through_reentrant_gc() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let calls = Rc::new(Cell::new(0));
+        session.with_active(|| unsafe {
+            let observed = calls.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                let previous = observed.get();
+                observed.set(previous + 1);
+                InitOptions();
+                if previous == 0 {
+                    // A genuine nested mutation must survive default publication.
+                    R_SetOptionWidth(123);
+                }
+                crate::sexp::gengc::full_gc();
+            }));
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            InitOptions();
+            crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            assert!(calls.get() >= 45, "each default allocation must notify");
+            assert_eq!(GetOptionWidth(), 123);
+            assert_eq!(GetOptionDigits(), 7);
+            assert_eq!(GetOptionCutoff(), 60);
+            assert_eq!(R_ShowWarningOption(), 0);
+            assert_eq!(asInteger(GetOptionByName("expressions")), 5000);
+            assert_eq!(asInteger(GetOptionByName("max.print")), 99999);
+            let owner = session.owner_token().unwrap();
+            assert_eq!((*owner.as_ptr()).options.len(), 45);
+            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Initialized);
+
+            let prompt = session.sexp(GetOptionByName("prompt")).unwrap();
+            assert_eq!(prompt.try_string_value_elt(0).unwrap().as_deref(), Some("> "));
+            let contrasts = session.sexp(GetOptionByName("contrasts")).unwrap();
+            assert_eq!(contrasts.try_string_value_elt(0).unwrap().as_deref(), Some("contr.treatment"));
+            assert_eq!(contrasts.try_string_value_elt(1).unwrap().as_deref(), Some("contr.poly"));
+            let names = session.sexp(getAttrib(contrasts.as_raw(), R_NamesSymbol())).unwrap();
+            assert_eq!(names.try_string_value_elt(0).unwrap().as_deref(), Some("unordered"));
+            assert_eq!(names.try_string_value_elt(1).unwrap().as_deref(), Some("ordered"));
+
+            let binding = crate::sexp::envir::R_findVarInFrame(R_BaseEnv(), options_symbol());
+            assert_eq!(Rf_length(binding), 45);
+            let platform = session.sexp(crate::sexp::envir::R_findVarInFrame(
+                R_BaseEnv(), Rf_install(c".Platform".as_ptr()),
+            )).unwrap();
+            assert_eq!(platform.len(), 9);
+            assert_eq!(platform.try_vector_elt(0).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("unix"));
+            assert_eq!(platform.try_vector_elt(3).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("unknown"));
+            crate::sexp::gengc::full_gc();
+            assert_eq!(GetOptionWidth(), 123);
+            assert!(contrasts.is_live());
+            assert!(platform.is_live());
+        });
+    }
+
+    #[test]
+    fn options_initialization_can_retry_after_callback_unwind() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let once = Rc::new(Cell::new(true));
+        session.with_active(|| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if once.replace(false) {
+                    panic!("injected options initialization callback failure");
+                }
+            }));
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| InitOptions()));
+            crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            assert!(result.is_err());
+            let owner = session.owner_token().unwrap();
+            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Uninitialized);
+            InitOptions();
+            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Initialized);
+            assert_eq!(GetOptionWidth(), 80);
+            assert_eq!(GetOptionDigits(), 7);
+        });
+    }
+
     fn reset_protect_stack() {
         crate::sexp::instance::with_current_instance(|_| {
             let n = R_ProtectCount();
@@ -1615,11 +1731,17 @@ mod tests {
     fn test_fixup_scipen() {
         let _guard = ProtectStackGuard::new();
         unsafe {
+            // GNU R FixupScipen preserves values in -9..9999 and maps NA to 0:
+            // https://svn.r-project.org/R/trunk/src/main/options.c
+            assert_eq!(fixup_scipen(-10), -9);
+            assert_eq!(fixup_scipen(-9), -9);
+            assert_eq!(fixup_scipen(-1), -1);
             assert_eq!(fixup_scipen(0), 0);
             assert_eq!(fixup_scipen(50), 50);
-            assert_eq!(fixup_scipen(-1), 0);
-            assert_eq!(fixup_scipen(51), 50);
-            assert_eq!(fixup_scipen(c_int::MIN), 0);
+            assert_eq!(fixup_scipen(51), 51);
+            assert_eq!(fixup_scipen(9999), 9999);
+            assert_eq!(fixup_scipen(10000), 9999);
+            assert_eq!(fixup_scipen(NA_INTEGER), 0);
         }
     }
 
@@ -1706,8 +1828,8 @@ mod tests {
     #[test]
     fn test_options_are_session_local_on_same_thread() {
         let _guard = ProtectStackGuard::new();
-        let left = crate::sexp::session::RSession::new();
-        let right = crate::sexp::session::RSession::new();
+        let left = crate::sexp::session::RSession::new_without_default_packages();
+        let right = crate::sexp::session::RSession::new_without_default_packages();
 
         left.with_active(|| unsafe {
             InitOptions();
@@ -1732,7 +1854,7 @@ mod tests {
 
     #[test]
     fn test_options_accepts_unnamed_list_restore() {
-        let mut session = crate::sexp::session::RSession::new();
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
         let (result, output, _) = session.eval_code_with_output_capture(
             "old <- options(keep.parse.data = FALSE); \
              options(old); \

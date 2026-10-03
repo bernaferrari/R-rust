@@ -272,50 +272,61 @@ pub unsafe fn R_makeErrorCondition(
             CStr::from_ptr(format).to_str().unwrap_or("")
         };
 
-        let nelem = nextra + 2;
-        let cond = Rf_allocVector(SEXPTYPE::VECSXP, nelem);
-
-        // Element 0: message
-        SET_VECTOR_ELT(cond, 0, Rf_mkString(fmt.as_ptr() as *const c_char));
-        // Element 1: call
-        SET_VECTOR_ELT(cond, 1, call);
-
-        // Names attribute
-        let names = Rf_allocVector(SEXPTYPE::STRSXP, nelem);
-        setAttrib_wrap(cond, R_NamesSymbol(), names);
-        SET_STRING_ELT(
-            names,
-            0,
-            Rf_mkChar(b"message\x00".as_ptr() as *const c_char),
-        );
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"call\x00".as_ptr() as *const c_char));
-
-        // Class attribute
-        let nclass = if sub.is_empty() { 3 } else { 4 };
-        let klass = Rf_allocVector(SEXPTYPE::STRSXP, nclass);
-        setAttrib_wrap(cond, R_ClassSymbol(), klass);
-
-        if sub.is_empty() {
-            SET_STRING_ELT(klass, 0, Rf_mkChar(class.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(b"error\x00".as_ptr() as *const c_char));
-            SET_STRING_ELT(
-                klass,
-                2,
-                Rf_mkChar(b"condition\x00".as_ptr() as *const c_char),
-            );
-        } else {
-            SET_STRING_ELT(klass, 0, Rf_mkChar(sub.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(class.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 2, Rf_mkChar(b"error\x00".as_ptr() as *const c_char));
-            SET_STRING_ELT(
-                klass,
-                3,
-                Rf_mkChar(b"condition\x00".as_ptr() as *const c_char),
-            );
-        }
-
-        cond
+        make_condition(call, class, sub, nextra, fmt, "error")
     }
+}
+
+/// The raw attribute bridge remains here until graph edges use checked links.
+/// Text and vector construction use bounded Rust inputs and owning roots.
+unsafe fn make_condition(
+    call: SEXP,
+    class: &str,
+    subclass: &str,
+    extra: c_int,
+    message: &str,
+    category: &str,
+) -> SEXP {
+    use crate::sexp::object::{SessionNodeFactory, SexpError, SexpMut, SexpResult};
+
+    let build = || -> SexpResult<crate::sexp::object::Sexp<'_>> {
+        // SAFETY: the translated condition entry retains the active owner.
+        let factory =
+            SessionNodeFactory::new(unsafe { crate::sexp::owner::OwnerToken::current() }?);
+        let call = if call.is_null() {
+            factory.nil()
+        } else {
+            factory.wrap(call)?
+        };
+        let length = extra.checked_add(2).filter(|length| *length >= 2).ok_or(
+            SexpError::AllocationFailed {
+                object: "condition",
+            },
+        )?;
+        let condition =
+            factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, length.into())))?;
+        let mut condition = SexpMut::try_from_checked(condition)?;
+        let message = factory.strings(&[message])?;
+        condition.try_set_vector_elt(0, message)?;
+        condition.try_set_vector_elt(1, call)?;
+        let names =
+            factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, length.into())))?;
+        let mut names = SexpMut::try_from_checked(names)?;
+        names.try_set_string_elt(0, factory.character("message")?)?;
+        names.try_set_string_elt(1, factory.character("call")?)?;
+        // SAFETY: both objects remain checked and rooted through allocation.
+        unsafe { setAttrib_wrap(condition.as_raw(), R_NamesSymbol(), names.as_raw()) };
+        let classes = if subclass.is_empty() {
+            factory.strings(&[class, category, "condition"])?
+        } else {
+            factory.strings(&[subclass, class, category, "condition"])?
+        };
+        // SAFETY: both objects remain checked and rooted through allocation.
+        unsafe { setAttrib_wrap(condition.as_raw(), R_ClassSymbol(), classes.as_raw()) };
+        Ok(condition.freeze())
+    };
+    build()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+        .as_raw()
 }
 
 /// R_signalErrorCondition — signal an error condition.
@@ -727,55 +738,7 @@ pub unsafe fn R_makeWarningCondition(
             CStr::from_ptr(format).to_str().unwrap_or("")
         };
 
-        let nelem = nextra + 2;
-        let cond = Rf_allocVector(SEXPTYPE::VECSXP, nelem);
-
-        // Element 0: message
-        SET_VECTOR_ELT(cond, 0, Rf_mkString(fmt.as_ptr() as *const c_char));
-        // Element 1: call
-        SET_VECTOR_ELT(
-            cond,
-            1,
-            if call.is_null() {
-                globals::R_NilValue()
-            } else {
-                call
-            },
-        );
-
-        // Names attribute
-        let names = Rf_allocVector(SEXPTYPE::STRSXP, nelem);
-        setAttrib_wrap(cond, R_NamesSymbol(), names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"message\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"call\0".as_ptr() as *const c_char));
-
-        // Class attribute: with a subclass,
-        // [subclass, class, "warning", "condition"]; without,
-        // [class, "warning", "condition"].
-        let nclass = if sub.is_empty() { 3 } else { 4 };
-        let klass = Rf_allocVector(SEXPTYPE::STRSXP, nclass);
-        setAttrib_wrap(cond, R_ClassSymbol(), klass);
-
-        if sub.is_empty() {
-            SET_STRING_ELT(klass, 0, Rf_mkChar(class.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(
-                klass,
-                2,
-                Rf_mkChar(b"condition\0".as_ptr() as *const c_char),
-            );
-        } else {
-            SET_STRING_ELT(klass, 0, Rf_mkChar(sub.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(class.as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 2, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(
-                klass,
-                3,
-                Rf_mkChar(b"condition\0".as_ptr() as *const c_char),
-            );
-        }
-
-        cond
+        make_condition(call, class, sub, nextra, fmt, "warning")
     }
 }
 
@@ -1140,5 +1103,80 @@ pub unsafe fn R_withCallingErrorHandler(
 
         set_handler_stack(old_stack);
         val
+    }
+}
+
+#[cfg(test)]
+mod condition_construction_tests {
+    use super::*;
+    use crate::sexp::{object::SessionNodeFactory, session::RSession};
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn bounded_condition_text_survives_each_allocation_and_reentrant_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let call = session.global_env().unwrap();
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let before = crate::sexp::protect::R_ProtectCount();
+        // Each view ends before another non-NUL byte: C string scanning is invalid.
+        let text = String::from("__bounded message!!");
+        let message = &text[2..17];
+        for (category, subclass) in [("error", "specificError"), ("warning", "")] {
+            let condition = factory
+                .wrap(unsafe {
+                    make_condition(call.as_raw(), "customClass", subclass, 2, message, category)
+                })
+                .unwrap();
+            crate::sexp::gengc::full_gc();
+            assert_eq!(condition.len(), 4);
+            assert_eq!(
+                condition
+                    .try_vector_elt(0)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap(),
+                Some(message.to_owned())
+            );
+            assert_eq!(condition.try_vector_elt(1).unwrap().as_raw(), call.as_raw());
+            let names = factory
+                .wrap(unsafe { getAttrib_wrap(condition.as_raw(), R_NamesSymbol()) })
+                .unwrap();
+            assert_eq!(
+                names.try_string_value_elt(0).unwrap(),
+                Some("message".to_owned())
+            );
+            assert_eq!(
+                names.try_string_value_elt(1).unwrap(),
+                Some("call".to_owned())
+            );
+            let classes = factory
+                .wrap(unsafe { getAttrib_wrap(condition.as_raw(), R_ClassSymbol()) })
+                .unwrap();
+            let mut expected = Vec::new();
+            if !subclass.is_empty() {
+                expected.push(subclass);
+            }
+            expected.extend(["customClass", category, "condition"]);
+            assert_eq!(classes.len() as usize, expected.len());
+            for (index, expected) in expected.into_iter().enumerate() {
+                assert_eq!(
+                    classes.try_string_value_elt(index as _).unwrap(),
+                    Some(expected.to_owned())
+                );
+            }
+        }
+        session.with_active_in(|instance| unsafe { (*instance).memory_state.gc_force_gap = 0 });
+        assert!(notifications.get() >= 10);
+        assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
     }
 }

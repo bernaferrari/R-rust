@@ -134,7 +134,6 @@ pub(crate) unsafe fn compact_real_seq(from: c_double, step: c_double, n: usize) 
 /// # Safety
 /// Same owner and payload-loan requirements as `compact_int_seq`; the caller
 /// must retain that original owner until the returned guard has been dropped.
-#[cfg(feature = "altrep")]
 pub(crate) unsafe fn compact_int_seq_protected(
     from: c_int,
     step: c_int,
@@ -150,7 +149,6 @@ pub(crate) unsafe fn compact_int_seq_protected(
 /// # Safety
 /// Same owner and payload-loan requirements as `compact_real_seq`; the caller
 /// must retain that original owner until the returned guard has been dropped.
-#[cfg(feature = "altrep")]
 pub(crate) unsafe fn compact_real_seq_protected(
     from: c_double,
     step: c_double,

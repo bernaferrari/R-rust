@@ -13,7 +13,7 @@ use crate::sexp::accessors::{
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::object::Sexp;
+use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -307,48 +307,48 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             let call_args = CDDR(lhs);
-            let slot_subs;
             let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
-            let evaluated_subs = if raw_subscript {
-                call_args
+            let factory = SessionNodeFactory::new(
+                crate::sexp::owner::OwnerToken::current()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+            );
+            // Keep the evaluated subscript chain owned throughout conversion,
+            // replacement-call allocation and the final writeback.
+            let slot_subs = if raw_subscript {
+                None
             } else {
-                // The fetched value is an argument of the replacement call.
-                // GNU evalList holds a temporary link on it while later
-                // arguments (the subscripts) run, so `x[{x[2] <<- 3; 1}] <<- 2`
-                // duplicates instead of mutating the value that will be
-                // written back.
-                let named = if target_expr.is_null() {
-                    3
-                } else {
-                    NAMED(target_expr)
-                };
-                if named < 3 {
-                    crate::sexp::accessors::SET_NAMED(target_expr, named + 1);
-                }
-                slot_subs = super::dispatch::evalListKeepMissing(call_args, rho);
-                if named < 3 {
-                    let now = NAMED(target_expr);
-                    if now > 0 && now < 3 {
-                        crate::sexp::accessors::SET_NAMED(target_expr, now - 1);
-                    }
-                }
-                let _subs_guard = protect(slot_subs);
-                let mut cell = slot_subs;
+                let target = factory
+                    .wrap(target_expr)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                let mut target_links = super::dispatch::NamedArguments::new();
+                target_links.retain(&target);
+                let call_args = factory
+                    .wrap(call_args)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                let environment = factory
+                    .wrap(rho)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                Some(super::dispatch::evalListKeepMissing(call_args, environment))
+            };
+            let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
+            if slot_subs.is_some() {
+                let mut cell = evaluated_subs;
                 while !cell.is_null() && cell != R_NilValue() {
                     let sub = CAR(cell);
                     if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
                         let name = crate::sexp::accessors::PRINTNAME(sub);
                         if !name.is_null() && name != R_NilValue() {
-                            let s = crate::sexp::constructors::Rf_mkString(
-                                crate::sexp::accessors::CHAR(name),
-                            );
-                            crate::sexp::accessors::SETCAR(cell, s);
+                            let value = factory
+                                .wrap(crate::sexp::constructors::Rf_mkString(
+                                    crate::sexp::accessors::CHAR(name),
+                                ))
+                                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                            crate::sexp::accessors::SETCAR(cell, value.as_raw());
                         }
                     }
                     cell = CDR(cell);
                 }
-                slot_subs
-            };
+            }
 
             let result = if symbol_name(func_sym).as_deref() == Some("[")
                 && let Some(result) =

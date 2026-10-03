@@ -196,68 +196,63 @@ fn test_eval_null_via_safe() {
     assert_eq!(must(result).typeof_(), SEXPTYPE::NILSXP);
 }
 
-#[cfg(feature = "altrep-native")]
 #[test]
 fn test_altrep_compact_intseq() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let seq = crate::mainutils::altrep::R_compact_intseq(1, 5);
-        assert!(!seq.is_null());
-
-        let elt = crate::mainutils::altrep::ALTINTEGER_ELT(seq, 0);
-        assert_eq!(elt, 1);
-
-        let elt2 = crate::mainutils::altrep::ALTINTEGER_ELT(seq, 4);
-        assert_eq!(elt2, 5);
-    }
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    let sequence = session.compact_integer_sequence(1, 1, 5).unwrap();
+    assert_eq!(sequence.try_integer_elt(0).unwrap(), 1);
+    assert_eq!(sequence.try_integer_elt(4).unwrap(), 5);
 }
 
-#[cfg(feature = "altrep-native")]
 #[test]
 fn test_altrep_compact_realseq() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let seq = crate::mainutils::altrep::R_compact_realseq(0.0, 1.0, 5);
-        assert!(!seq.is_null());
-
-        let elt = crate::mainutils::altrep::ALTREAL_ELT(seq, 0);
-        assert!((elt - 0.0).abs() < 1e-10);
-
-        let elt2 = crate::mainutils::altrep::ALTREAL_ELT(seq, 4);
-        assert!((elt2 - 4.0).abs() < 1e-10);
-    }
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    let sequence = session.compact_real_sequence(0.0, 1.0, 5).unwrap();
+    assert_eq!(sequence.try_real_elt(0).unwrap(), 0.0);
+    assert_eq!(sequence.try_real_elt(4).unwrap(), 4.0);
 }
 
-#[cfg(feature = "altrep-native")]
 #[test]
-fn test_altrep_new_altrep_data_roundtrip() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        unsafe extern "C" fn length(_x: SEXP) -> i64 {
-            1
+fn test_altrep_builder_data_roundtrip() {
+    use crate::sexp::SexpResult;
+    use crate::sexp::altrep::{self, AltrepBuilder, AltrepClass, AltrepContext, AltrepElement};
+    struct Roundtrip;
+    impl AltrepClass for Roundtrip {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::INTSXP
         }
-        let class_sym = crate::mainutils::altrep::R_make_altinteger_class(
-            c"roundtrip".as_ptr(),
-            c"test".as_ptr(),
-            std::ptr::null_mut(),
-        );
-        crate::mainutils::altrep::R_set_altrep_length_method(class_sym, Some(length));
-        let data1 = Rf_ScalarInteger(100);
-        let data2 = Rf_ScalarReal(3.14);
-        let altrep = crate::mainutils::altrep::R_new_altrep(class_sym, data1, data2);
-        assert!(!altrep.is_null());
-
-        let d1 = crate::mainutils::altrep::R_altrep_data1(altrep);
-        assert!(!d1.is_null());
-        let d2 = crate::mainutils::altrep::R_altrep_data2(altrep);
-        assert!(!d2.is_null());
-
-        let d1_val = Sexp::from_raw_unchecked(d1);
-        assert_eq!(d1_val.integer_elt(0), Some(100));
-
-        let d2_val = Sexp::from_raw_unchecked(d2);
-        assert!((some(d2_val.real_elt(0)) - 3.14).abs() < 1e-10);
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(1)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            _: i64,
+        ) -> SexpResult<AltrepElement<'s>> {
+            Ok(AltrepElement::Integer(context.data1()?.try_integer_elt(0)?))
+        }
     }
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    let class = session
+        .register_altrep_class("roundtrip", Roundtrip)
+        .unwrap();
+    let first = session.sexp(unsafe { Rf_ScalarInteger(100) }).unwrap();
+    let second = session.sexp(unsafe { Rf_ScalarReal(3.14) }).unwrap();
+    let value = AltrepBuilder::new(class)
+        .data1(first)
+        .data2(second)
+        .build()
+        .unwrap();
+    session.gc();
+    assert_eq!(
+        altrep::data1(&value).unwrap().try_integer_elt(0).unwrap(),
+        100
+    );
+    assert_eq!(
+        altrep::data2(&value).unwrap().try_real_elt(0).unwrap(),
+        3.14
+    );
+    assert_eq!(value.try_integer_elt(0).unwrap(), 100);
 }
 
 #[test]

@@ -12,7 +12,6 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub(crate) mod accessors;
-#[cfg(feature = "altrep")]
 pub mod altrep;
 pub(crate) mod altseq;
 pub mod attrib_core;
@@ -46,7 +45,6 @@ pub use ffi::{
     Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SxpInfo, Symsxp, TRUE, Vecsxp,
 };
 
-#[cfg(feature = "altrep")]
 #[allow(unused_imports)]
 pub use altrep::{
     AltrepBuilder, AltrepClass, AltrepClassHandle, AltrepContext, AltrepElement, DeferredClass,
@@ -69,23 +67,11 @@ pub use object::{
 #[allow(unused_imports)]
 pub use session::{CancellationToken, RSession};
 
-/// Default-build guards for the ALTREP cargo feature.
-///
-/// `sexp::altrep` stays behind `altrep`; the native adapter modules require
-/// the separate `altrep-native` feature. Compact sequences in [`altseq`] may set the
-/// ALT bit; they are ordinary vectors whose formula is a traced attribute.
-/// These tests pin the feature gate and that a plain vector still survives
-/// collection with the ALT bit clear.
-#[cfg(all(test, not(feature = "altrep")))]
-mod no_altrep_guards {
+#[cfg(test)]
+mod vector_gc_tests {
     use crate::sexp::accessors::ALTREP;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::memory::with_arena;
-
-    #[test]
-    fn altrep_feature_is_off_in_default_build() {
-        assert!(!cfg!(feature = "altrep"));
-    }
 
     /// A plain VECSXP holding a REALSXP survives a full collection with the ALT
     /// bit clear. Compact sequences are a separate path and are not built here.
@@ -93,7 +79,7 @@ mod no_altrep_guards {
     fn plain_vector_survives_full_gc_with_alt_bit_clear() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let sym =
-            unsafe { crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _) };
+            unsafe { crate::sexp::symbol::Rf_install(b"plain_vector_probe\0".as_ptr() as *const _) };
         let outer = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2))

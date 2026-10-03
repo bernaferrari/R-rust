@@ -265,101 +265,61 @@ comparison reads compact elements without requesting expansion. Empty
 vectors retain their existing pointer convention. Expansion converts logical
 lengths with `usize::try_from` to reject 32-bit truncation.
 
-The opt-in `altrep` feature provides rooted Rust classes for integer, real,
-logical, raw, complex, string and list vectors without compiling the native
-callback adapter. The separate `altrep-native` feature includes `altrep` and
-opts into that unsafe Rust adapter. Neither feature is enabled by default.
-A class descriptor is an
-interned symbol; data1, data2 and the private expanded cache occupy a traced
-VECSXP in an internal attribute. They never occupy a numeric buffer or hold a
-native Rust pointer. Class methods receive `AltrepContext` and return copied
-scalars or rooted elements. Tables are session-owned `Rc` values, copied out
-before invocation; callbacks can allocate, collect and reenter R without a live
-instance, arena, method-table or payload borrow. Rust-owned operation guards
-reject recursive element/expansion calls and serialization/duplication cycles,
-then reset after errors or unwinds.
+Rooted Rust ALTREP classes are part of every build, including WebAssembly,
+embedded builds with default features disabled, and the Kani configuration.
+Integer, real, logical, raw, complex, string and list vectors share the checked
+provider interface. A class descriptor is an interned symbol; data1, data2 and
+the private expanded cache occupy a traced VECSXP in an internal attribute.
+Class methods receive `AltrepContext` and return copied scalars or rooted
+elements. Session-owned `Rc` class records are copied out before invocation,
+so providers can allocate, collect and reenter R without a live instance,
+arena, method-table or payload borrow. Owned operation guards reject recursive
+element/expansion calls and serialization/duplication cycles, then reset after
+errors or unwinds.
 
 Expansion builds a rooted private vector and publishes only completed values.
 `OwnedBuffer` owns registered allocations through RAII; checked header leases
 allow the original and its expanded cache to share storage. Collection releases
 only the final lease and accounts the allocation once. Cache handles may
-outlive the original vector. Pointer writes and checked writes see the same
-expanded values; borrowed string access expands before returning a loan so its
-parent actually traces the child. Native pointer-element reads retain returned
-children in a sparse, traced cache. Repeat and deferred classes use traced data;
-deferred evaluation validates and roots a result before caching it. Class type
-and cache policy are sampled once at registration under the original owner;
-changing provider state cannot change the registered representation. Logical
-length is assigned by a consuming construction handle and stays immutable.
-Sequence, repeat and deferred-evaluation providers and session compact-sequence
-helpers are available through the Rust `altrep` interface; they do not require
-native callback registration.
+outlive the original vector. Checked writes and translated pointer writes see
+the same expanded values; borrowed string access expands before returning a
+loan so its parent traces the child. Translated pointer-element reads retain
+returned children in a sparse traced cache. Repeat and deferred classes use
+traced data; deferred evaluation validates and roots a result before caching
+it. Class type and cache policy are sampled once at registration under the
+original owner; changing provider state cannot change the registered
+representation. Logical length stays immutable after construction. Sequence,
+repeat and deferred-evaluation providers and session compact-sequence helpers
+use this Rust interface.
 
 The Rust dispatch module rejects `unsafe` code; built-in class providers and
-the registry forbid it. `altrep/registry.rs` owns one class record including
-Rust callback guards, with optional native methods compiled only under
-`altrep-native`. Runtime state has an owned
-`Rc` lease with checked `RefCell` borrows; class handles retain their immutable
-record directly. Registering, looking up or dropping a guard does not mutably
-borrow an interpreter field, and a Rust state lease remains valid even after
-its interpreter arena is destroyed. The raw bridge clones that lease through
-one short, documented field read. `altrep/storage.rs` owns typed metadata fields,
-traced edges and buffer publication; only a pending instance can set length.
-`altrep/bridge.rs` adapts rooted handles to translated R execution and documents
-the contracts for raw callers. Only storage and bridge modules contain audited unsafe
-operations; providers receive no mutable interpreter or payload references.
-Context data reads return checked, independently rooted handles to current
-metadata, so a cache write is visible during the same callback and throughout
-bulk expansion. They propagate root-allocation failure with `SexpResult`;
-providers use `context.data1()?` and `context.data2()?`. This changes the opt-in
-Rust provider interface from the earlier snapshot getters.
+the registry forbid it. `altrep/registry.rs` owns immutable class records and
+callback guards. Runtime state has an owned `Rc` lease with checked `RefCell`
+borrows; class handles retain their record directly. Registering, looking up
+or dropping a guard does not mutably borrow an interpreter field. The raw
+bridge clones that state through one short documented field read.
+`altrep/storage.rs` owns typed metadata fields, traced edges and buffer
+publication; only a pending instance can set length. `altrep/bridge.rs` adapts
+rooted handles to translated R execution. Storage and bridge modules contain
+the audited unsafe operations; providers receive no mutable interpreter or
+payload references. Context data reads return independently rooted handles
+to current metadata, so cache writes are visible during the same callback and
+throughout expansion. Errors propagate through `SexpResult`.
 
-The safe Rust provider interface enforces ownership through lifetime-bound
-handles, checked child insertion and rooted construction. Its copied results
-and callback guards avoid lending mutable interpreter state or payloads
-across user code. Audited raw storage and translated execution boundaries
-remain necessary, and native callback registration still requires an explicit
-unsafe contract.
+Serialization preserves R's portable object format. Known GNU compact
+sequence, deferred-string and wrapper states remain readable. Safe classes
+serialize as dense values with public attributes; ordinary deep and shallow
+duplication also copies values and public attributes while excluding private
+class metadata. Fresh copies remain rooted while child providers can collect.
+The GNU C-shaped class handles, native method-registration tables and
+Length/Elt/Duplicate/Inspect/Coerce callback adapter have been removed. Class
+registration and construction use the checked Rust provider API.
 
-Serialization falls back to dense values with public attributes, and ordinary
-duplication excludes internal class metadata. Under `altrep-native`, the
-optional native Length/Elt, duplicate,
-inspect and coerce adapters validate and root inputs and results, ending table
-borrows before calling C code. Native class constructors return the GNU-shaped
-`#[repr(C)] R_altrep_class_t` with a `SEXP ptr` field. Canonical `Length`,
-`Duplicate`, `DuplicateEX`, `Coerce` and `Inspect` setters coexist with the
-earlier Rust adapter names. `R_altrep_inherits` compares the registered class
-descriptor. Inspect accepts GNU's vector-print limit and subtree callback in
-addition to indentation and depth. These signatures and default dispatch
-policies follow the pinned GNU sources in
-`../r-source-trunk/original-r/src/include/R_ext/Altrep.h` and
-`../r-source-trunk/original-r/src/main/altrep.c` (upstream
-[header](https://svn.r-project.org/R/trunk/src/include/R_ext/Altrep.h) and
-[dispatch implementation](https://svn.r-project.org/R/trunk/src/main/altrep.c)).
-
-A registered `DuplicateEX` callback takes precedence, including when it
-returns NULL to decline. A legacy `Duplicate` callback instead receives GNU's
-default attribute policy: a distinct returned object gets deep or shallow
-public attributes and object/S4 flags; a same-object return is left alone.
-This policy preserves a returned lazy object's own class/data metadata.
-Source attributes, callback results and copied attributes stay rooted across
-recursive copying. Newly constructed pairlist and vector copies are rooted
-while child callbacks can collect.
-
-Native callbacks retain their unsafe contract and require the explicit
-`altrep-native` opt-in. Matching these Rust adapter
-signatures does not establish exported GNU C symbols or binary compatibility
-with compiled packages. Foreign data-pointer storage ownership, optional
-region/sortedness/No_NA/summary/subset methods and their interpreter dispatch,
-custom serialized state and named-class restoration, and DLL unload/reload
-lifetimes remain unfinished under `rport-876g5`. The feature stays opt-in;
-defaults are unchanged. Default compact sequences remain available without it.
 Native and strict-provenance Miri gates exercise allocation denial, collection,
-aliasing and recovery; each milestone records the tests actually run.
-The nightly Rust-class gate checks and tests `altrep` independently. Separate
-native-adapter Miri jobs enable `altrep-native` on native and 32-bit targets,
-covering canonical callbacks, duplicate defaults, allocation-time roots,
-notification reentry and owner teardown with a 90-minute budget per job.
+aliasing, reentrancy and recovery. The nightly Rust-class gate runs without
+feature switches on native and 32-bit targets, alongside compact-vector,
+shared-buffer, notification and owner-teardown tests. Each milestone records
+the validation actually run.
 
 GraphApp buffers reject size overflow before allocating or reallocating and
 align their payloads for object pointers, including platforms where C long is

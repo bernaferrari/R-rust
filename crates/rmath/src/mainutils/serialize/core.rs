@@ -1234,7 +1234,6 @@ pub unsafe fn WriteItemInternal(
 ) {
     unsafe {
         let _item_guard = protect(s);
-        #[cfg(feature = "altrep")]
         {
             if crate::sexp::altrep::has_extension_raw(s) {
                 let object = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));

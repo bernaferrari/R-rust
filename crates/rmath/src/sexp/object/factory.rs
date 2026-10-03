@@ -43,6 +43,30 @@ impl<'session> SessionNodeFactory<'session> {
         Sexp::from_singleton(self.singletons.nil(), self.singletons.clone())
     }
 
+    /// Copy bounded Rust text without requiring a trailing NUL byte.
+    pub(crate) fn character(&self, text: &str) -> SexpResult<Sexp<'session>> {
+        self.allocate(|arena| Some(arena.alloc_charsxp(text.as_bytes())))
+    }
+
+    /// Build an owning character vector, retaining it and each child across GC.
+    pub(crate) fn strings(&self, text: &[&str]) -> SexpResult<Sexp<'session>> {
+        let length = text
+            .len()
+            .try_into()
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "character vector",
+            })?;
+        let vector = self.allocate(|arena| {
+            Some(arena.alloc_vector(crate::sexp::ffi::SEXPTYPE::STRSXP, length))
+        })?;
+        let mut vector = super::SexpMut::try_from_checked(vector)?;
+        for (index, text) in text.iter().enumerate() {
+            let character = self.character(text)?;
+            vector.try_set_string_elt(index as _, character)?;
+        }
+        Ok(vector.freeze())
+    }
+
     /// Install the root before the arena lend ends, so deferred collection or
     /// notifications retain the newly allocated value throughout reentry.
     pub(crate) fn allocate(

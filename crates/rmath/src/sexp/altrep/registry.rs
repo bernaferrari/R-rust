@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Immutable class configuration and callback leases. No interpreter field
-//! borrow survives a call into provider or native code.
+//! borrow survives a call into provider code.
 use super::*;
 use std::{
     cell::RefCell,
@@ -49,8 +49,6 @@ pub(super) enum CachePolicy {
     Private,
     Data2,
 }
-#[cfg(feature = "altrep-native")]
-type NativeMethods = Rc<RefCell<crate::mainutils::altrep::NativeMethods>>;
 
 /// Configuration is sampled before insertion, under the original owner.
 /// It cannot drift even when a provider uses interior mutability.
@@ -58,8 +56,6 @@ pub(super) struct RegisteredClass {
     pub(super) kind: VectorKind,
     pub(super) cache: CachePolicy,
     pub(super) provider: Rc<dyn AltrepClass>,
-    #[cfg(feature = "altrep-native")]
-    native: Option<NativeMethods>,
 }
 #[derive(Clone, Default)]
 pub(crate) struct AltrepRuntimeState {
@@ -112,29 +108,6 @@ pub(super) fn register<'s>(
     name: &str,
     provider: Rc<dyn AltrepClass>,
 ) -> SexpResult<AltrepClassHandle<'s>> {
-    register_record(
-        owner,
-        name,
-        provider,
-        #[cfg(feature = "altrep-native")]
-        None,
-    )
-}
-#[cfg(feature = "altrep-native")]
-pub(crate) fn register_native<'s>(
-    owner: OwnerToken<'s>,
-    name: &str,
-    provider: Rc<dyn AltrepClass>,
-    methods: NativeMethods,
-) -> SexpResult<AltrepClassHandle<'s>> {
-    register_record(owner, name, provider, Some(methods))
-}
-fn register_record<'s>(
-    owner: OwnerToken<'s>,
-    name: &str,
-    provider: Rc<dyn AltrepClass>,
-    #[cfg(feature = "altrep-native")] native: Option<NativeMethods>,
-) -> SexpResult<AltrepClassHandle<'s>> {
     let kind = storage::activate(owner, || VectorKind::from_sexp(provider.vector_type()))?;
     let cache = storage::activate(owner, || {
         if provider.cache_in_data2() {
@@ -151,8 +124,6 @@ fn register_record<'s>(
         kind,
         cache,
         provider,
-        #[cfg(feature = "altrep-native")]
-        native,
     });
     bridge::runtime(owner).insert(key, class.clone())?;
     Ok(AltrepClassHandle {
@@ -178,17 +149,6 @@ pub(crate) fn class_handle<'s>(
         record,
     })
 }
-#[cfg(feature = "altrep-native")]
-pub(crate) fn native_methods_for_class(class: &AltrepClassHandle<'_>) -> Option<NativeMethods> {
-    class.record.native.clone()
-}
-#[cfg(feature = "altrep-native")]
-pub(crate) fn native_methods(object: &Sexp<'_>) -> Option<NativeMethods> {
-    let owner = storage::owner(object).ok()?;
-    let descriptor = storage::Metadata::load(object)?.descriptor().ok()?;
-    lookup(owner, descriptor.as_raw())?.native.clone()
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Operation {
     Read(usize, i64),

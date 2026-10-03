@@ -386,7 +386,6 @@ pub struct RInstance {
     /// Per-instance dotcode/native-call runtime policy cache.
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
     /// Per-instance ALTREP class-method registry.
-    #[cfg(feature = "altrep")]
     pub(crate) altrep_state: crate::sexp::altrep::AltrepRuntimeState,
     /// Per-instance serialization lazy-load cache and read-depth state.
     pub(crate) serialize_state: crate::mainutils::serialize::SerializeRuntimeState,
@@ -444,8 +443,8 @@ pub struct RInstance {
     pub(crate) output_capture: RefCell<super::output::OutputCaptureState>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
-    /// Whether the instance options have been initialized with defaults.
-    pub options_initialized: bool,
+    /// Defaults are published through one explicit, reentry-safe phase.
+    pub(crate) options_initialization: crate::mainutils::options::OptionsInitialization,
     /// Per-instance environment hash side tables.
     pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
     /// Initial table size of hashed environments, keyed by environment address.
@@ -609,7 +608,6 @@ impl RInstance {
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
             objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
-            #[cfg(feature = "altrep")]
             altrep_state: crate::sexp::altrep::AltrepRuntimeState::default(),
             serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
@@ -640,7 +638,7 @@ impl RInstance {
             random_state: crate::mainutils::random::RNGState::new(),
             output_capture: RefCell::new(super::output::OutputCaptureState::default()),
             options: HashMap::new(),
-            options_initialized: false,
+            options_initialization: crate::mainutils::options::OptionsInitialization::Uninitialized,
             env_hash_tables: hashbrown::HashMap::new(),
             env_hash_sizes: hashbrown::HashMap::new(),
             locked_environments: HashSet::new(),

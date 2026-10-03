@@ -262,8 +262,7 @@ fn test_mkHandlerEntry() {
 
 #[test]
 fn test_r_makeErrorCondition() {
-    let _session = crate::sexp::session::RSession::new();
-    let _session = RSession::new();
+    let _session = RSession::new_for_gc_tests();
 
     unsafe {
         let cond = R_makeErrorCondition(
@@ -281,8 +280,7 @@ fn test_r_makeErrorCondition() {
 
 #[test]
 fn test_r_makeErrorCondition_with_subclass() {
-    let _session = crate::sexp::session::RSession::new();
-    let _session = RSession::new();
+    let _session = RSession::new_for_gc_tests();
 
     unsafe {
         let cond = R_makeErrorCondition(
@@ -448,8 +446,7 @@ fn test_format_varargs_to_buf_null_ap() {
 
 #[test]
 fn test_r_make_warning_condition() {
-    let _session = crate::sexp::session::RSession::new();
-    let _session = RSession::new();
+    let _session = RSession::new_for_gc_tests();
 
     unsafe {
         let cond = R_makeWarningCondition(

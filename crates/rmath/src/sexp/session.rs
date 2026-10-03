@@ -1137,12 +1137,23 @@ impl RSession {
             );
         }
 
+        // Capture the original owner's narrow writable fields before parser
+        // handles borrow the session. This session borrow retains the owner
+        // throughout evaluation and backend-guard cleanup; no field loan
+        // crosses a parser, evaluator or drawing callback.
+        let instance = self.instance;
+        let (graphics_recording, portable_grid) = unsafe {
+            (
+                std::ptr::addr_of_mut!((*instance).graphics_recording),
+                std::ptr::addr_of_mut!((*instance).portable_grid),
+            )
+        };
         let expressions = {
             let _guard = self.activate();
             // SAFETY: this active session scopes parsing to its arena; no R callback runs.
             let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             unsafe {
-                super::memory::with_arena_in(self.instance, |arena| {
+                super::memory::with_arena_in(instance, |arena| {
                     crate::eval::parser::parse_expressions(code, arena, factory)
                 })
             }
@@ -1172,13 +1183,12 @@ impl RSession {
                 r_graphics_engine::Scene::new(width, height),
             ));
             unsafe {
-                (*self.instance).graphics_recording = Some(recording.clone());
-                (*self.instance).portable_grid =
-                    crate::mainutils::portable_grid::GridState::default();
+                *graphics_recording = Some(recording.clone());
+                *portable_grid = crate::mainutils::portable_grid::GridState::default();
             }
             let mut forwarding = RecordingTarget { target, recording };
             let _backend_guard =
-                RenderPlotBackendGuard::install(self.instance_ptr(), &mut forwarding);
+                RenderPlotBackendGuard::install(instance, &mut forwarding);
             self.inst().output_capture.borrow_mut().start();
             // Remaining parsed statements retain their automatic leases.
             let mut result: RResult<Sexp<'session>> =
@@ -1784,6 +1794,91 @@ mod tests {
             super::super::gengc::full_gc();
             assert_eq!(result.integer_elt(0), Some(23));
         });
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    #[test]
+    fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_error() {
+        use r_graphics_engine::{DrawTarget, Scene};
+
+        // Both concrete backends outlive the session's temporary raw slots.
+        let mut previous = Scene::new(64, 48);
+        let mut target = Scene::new(96, 72);
+        let previous_backend: *mut dyn DrawTarget = &mut previous;
+        let backend: *mut dyn DrawTarget = &mut target;
+        let mut session = RSession::new_for_gc_tests();
+        let instance = session.instance_ptr();
+        let notifications = Rc::new(std::cell::Cell::new(0));
+        let observed = notifications.clone();
+        super::super::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            super::super::gengc::full_gc();
+        }));
+        // SAFETY: this fixture owns the instance and both backend objects for
+        // the entire test. No interpreter field or payload loan is retained.
+        unsafe {
+            (*instance).current_renderplot_backend = Some(previous_backend);
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        }
+
+        let value = session.eval_script_with_output_capture_then_renderplot(
+            "7L + 1L; 11L + 2L; 19L + 3L",
+            backend,
+            |result, _, _| {
+                let value = result.expect("all parsed statements survive allocation GC");
+                unsafe {
+                    assert!(!std::ptr::eq(
+                        (*instance).current_renderplot_backend.unwrap(),
+                        previous_backend,
+                    ));
+                    super::super::gengc::full_gc_in(instance);
+                }
+                assert_eq!(value.try_integer_elt(0).unwrap(), 22);
+                value
+            },
+        );
+        unsafe {
+            assert!(std::ptr::eq(
+                (*instance).current_renderplot_backend.unwrap(),
+                previous_backend,
+            ));
+            super::super::gengc::full_gc_in(instance);
+        }
+        assert_eq!(value.try_integer_elt(0).unwrap(), 22);
+        assert!(notifications.get() >= 3);
+        drop(value);
+
+        let error = session.eval_script_with_output_capture_then_renderplot(
+            "31L + 1L; undefined_renderplot_gc_symbol; 37L + 1L",
+            backend,
+            |result, _, _| result.expect_err("undefined symbol must propagate"),
+        );
+        assert!(error.message.contains("undefined_renderplot_gc_symbol"));
+        unsafe {
+            assert!(std::ptr::eq(
+                (*instance).current_renderplot_backend.unwrap(),
+                previous_backend,
+            ));
+        }
+
+        session.eval_script_with_output_capture_then_renderplot(
+            "41L + 1L; 43L + 1L; 47L + 1L",
+            backend,
+            |result, _, _| {
+                let value = result.expect("renderplot evaluation recovers after error");
+                unsafe { super::super::gengc::full_gc_in(instance) };
+                assert_eq!(value.try_integer_elt(0).unwrap(), 48);
+            },
+        );
+        unsafe {
+            assert!(std::ptr::eq(
+                (*instance).current_renderplot_backend.unwrap(),
+                previous_backend,
+            ));
+            (*instance).memory_state.gc_force_gap = 0;
+            (*instance).current_renderplot_backend = None;
+        }
     }
 
     #[test]
