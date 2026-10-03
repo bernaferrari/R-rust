@@ -20,13 +20,13 @@
  */
 
 use core::ffi::{c_double, c_int, c_void};
-use std::alloc::{Layout, alloc, dealloc};
 
 use crate::sexp::ffi::{ISNAN, NA_REAL};
 
 /// Mirror of the C `starma_struct` from ts.h.
 /// Layout must match the C struct exactly for FFI compatibility.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct starma_struct {
     pub p: c_int,
     pub q: c_int,
@@ -164,10 +164,10 @@ pub unsafe fn starma(g: *mut c_void, ifault: *mut c_int) {
         if r != k {
             *ifault = 5;
         }
-        if np != r * (r + 1) / 2 {
+        if i64::from(np) != i64::from(r) * (i64::from(r) + 1) / 2 {
             *ifault = 6;
         }
-        if nrbar != np * (np - 1) / 2 {
+        if i64::from(nrbar) != i64::from(np) * (i64::from(np) - 1) / 2 {
             *ifault = 7;
         }
         if r == 1 {
@@ -462,340 +462,346 @@ unsafe fn quick_recur(
     }
 }
 
-/// Finite sample prediction from ARIMA processes (AS182).
-pub unsafe fn forkal(
-    g: *mut c_void,
-    d: c_int,
-    il: c_int,
-    delta: *mut f64,
-    y: *mut f64,
-    amse: *mut f64,
-    ifault: *mut c_int,
-) {
-    unsafe {
-        let G = &mut *(g as *mut starma_struct);
-        let p = G.p;
-        let q = G.q;
-        let r = G.r;
-        let n = G.n;
-        let np = G.np;
-        let phi = G.phi;
-        let V = G.V;
-        let w = G.w;
-        let xrow = G.xrow;
+/// Errors at the owned AS182 workspace boundary, before any native state changes.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ForecastError {
+    Dimensions,
+    History,
+    PackedOverflow,
+    Allocation,
+    MissingHistory,
+    Kernel(i32),
+}
 
-        let rd = r + d;
-        let rz = rd * (rd + 1) / 2;
-        let mut phii: c_double;
-        let mut phij: c_double;
-        let mut sigma2: c_double;
-        let mut a1: c_double;
-        let mut aa: c_double;
-        let ams: c_double;
-        let mut tmp: c_double;
-        let i: c_int;
-        let j: c_int;
-        let mut k: c_int;
-        let l: c_int;
-        let mut nu: c_int = 0;
-        let mut k1: c_int;
-        let i45: c_int;
-        let mut jj: c_int;
-        let mut kk: c_int;
-        let mut lk: c_int;
-        let mut ll: c_int;
-        let nt: c_int;
-        let mut kk1: c_int;
-        let mut lk1: c_int;
-        let mut ind: c_int;
-        let jkl: c_int;
-        let mut kkk: c_int;
-        let mut ind1: c_int;
-        let mut ind2: c_int;
+impl std::fmt::Display for ForecastError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dimensions => f.write_str("invalid starma forecast dimensions"),
+            Self::History => f.write_str("starma differences require more observations"),
+            Self::PackedOverflow => f.write_str("starma forecast dimensions are too large"),
+            Self::Allocation => f.write_str("could not allocate starma forecast workspace"),
+            Self::MissingHistory => f.write_str("missing value in starma forecast history"),
+            Self::Kernel(code) => write!(f, "forkal error code {code}"),
+        }
+    }
+}
 
-        /* Allocate temporary storage */
-        let store_layout = Layout::array::<c_double>(rd as usize)
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
-        let store = alloc(store_layout) as *mut c_double;
-        if store.is_null() {
-            std::alloc::handle_alloc_error(store_layout);
-        }
+/// Bound every remaining signed packed-index product before allocation.
+pub(super) fn forecast_dimensions(r: i32, n: i32, d: i32) -> Result<(i32, i32), ForecastError> {
+    if r < 1 || d < 0 || n < 1 { return Err(ForecastError::Dimensions); }
+    if d >= n { return Err(ForecastError::History); }
+    let rd = i64::from(r) + i64::from(d);
+    let product = rd.checked_mul(rd + 1).ok_or(ForecastError::PackedOverflow)?;
+    if product > i64::from(i32::MAX) { return Err(ForecastError::PackedOverflow); }
+    Ok((rd as i32, (product / 2) as i32))
+}
 
-        /* Allocate new a and P arrays */
-        let a_layout = Layout::array::<c_double>(rd as usize)
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
-        let new_a = alloc(a_layout) as *mut c_double;
-        if new_a.is_null() {
-            dealloc(store as *mut u8, store_layout);
-            std::alloc::handle_alloc_error(a_layout);
-        }
-        std::ptr::write_bytes(new_a, 0, rd as usize);
+fn forecast_zeros(length: usize) -> Result<Vec<f64>, ForecastError> {
+    let mut values = Vec::new();
+    values.try_reserve_exact(length).map_err(|_| ForecastError::Allocation)?;
+    values.resize(length, 0.0);
+    Ok(values)
+}
 
-        let p_layout = Layout::array::<c_double>(rz as usize)
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
-        let new_p = alloc(p_layout) as *mut c_double;
-        if new_p.is_null() {
-            dealloc(new_a as *mut u8, a_layout);
-            dealloc(store as *mut u8, store_layout);
-            std::alloc::handle_alloc_error(p_layout);
-        }
-        std::ptr::write_bytes(new_p, 0, rz as usize);
+/// Finite sample prediction (AS182), using isolated initialized Rust workspaces.
+/// The fitted buffers, observation count and native pointers remain unchanged on
+/// success, allocation failure, numerical error and unwind. The recurrence follows
+/// https://raw.githubusercontent.com/r-devel/r-svn/master/src/library/stats/src/starma.c
+pub(super) fn forkal(
+    source: &starma_struct,
+    source_buffers: &[Vec<f64>; 14],
+    d: i32,
+    il: i32,
+    delta: &[f64],
+) -> Result<(Vec<f64>, Vec<f64>), ForecastError> {
+    let (rd, rz) = forecast_dimensions(source.r, source.n, d)?;
+    if il < 0 || delta.len() != d as usize || source.p < 0 || source.q < 0
+        || i64::from(source.r) != i64::from(source.p).max(i64::from(source.q) + 1)
+        || i64::from(source.np) != i64::from(source.r) * (i64::from(source.r) + 1) / 2
+        || source.nrbar < 1
+        || (source.r > 1 && i64::from(source.nrbar) != i64::from(source.np) * (i64::from(source.np) - 1) / 2)
+    { return Err(ForecastError::Dimensions); }
+    if source.p == 0 && source.q == 0 { return Err(ForecastError::Kernel(4)); }
+    let required = [0, source.r, source.r, source.r, source.np, source.np,
+        source.np, source.np, source.np, source.nrbar, source.n, source.n, source.n, 0];
+    if source_buffers.iter().zip(required).any(|(buffer, length)| buffer.len() < length as usize) {
+        return Err(ForecastError::Dimensions);
+    }
+    let mut workspaces: [Vec<f64>; 14] = std::array::from_fn(|_| Vec::new());
+    for (copy, original) in workspaces.iter_mut().zip(source_buffers) {
+        copy.try_reserve_exact(original.len()).map_err(|_| ForecastError::Allocation)?;
+        copy.extend_from_slice(original);
+    }
+    workspaces[3] = forecast_zeros(rd as usize)?;
+    workspaces[4] = forecast_zeros(rz as usize)?;
+    let [mut params, mut phi, mut theta, mut a, mut P, mut V, mut thetab,
+        mut xnext, mut xrow, mut rbar, mut w, mut wkeep, mut resid, mut reg] = workspaces;
+    let mut G = *source;
+    macro_rules! bind_workspaces {
+        () => {{
+            G.params = params.as_mut_ptr(); G.phi = phi.as_mut_ptr(); G.theta = theta.as_mut_ptr();
+            G.a = a.as_mut_ptr(); G.P = P.as_mut_ptr(); G.V = V.as_mut_ptr();
+            G.thetab = thetab.as_mut_ptr(); G.xnext = xnext.as_mut_ptr(); G.xrow = xrow.as_mut_ptr();
+            G.rbar = rbar.as_mut_ptr(); G.w = w.as_mut_ptr(); G.wkeep = wkeep.as_mut_ptr();
+            G.resid = resid.as_mut_ptr(); G.reg = reg.as_mut_ptr();
+        }};
+    }
+    let mut store = forecast_zeros(rd as usize)?;
+    let mut y = forecast_zeros(il as usize)?;
+    let mut amse = forecast_zeros(il as usize)?;
+    if il == 0 { return Ok((y, amse)); }
+    let mut ifault = 0;
+    let p = G.p;
+    let r = G.r;
+    let n = G.n;
+    let np = G.np;
 
-        G.a = new_a;
-        G.P = new_p;
-        let a = G.a;
-        let P = G.P;
+    let mut phii: c_double;
+    let mut phij: c_double;
+    let mut sigma2: c_double;
+    let mut a1: c_double;
+    let mut aa: c_double;
+    let mut tmp: c_double;
+    let mut k: c_int;
+    let mut nu: c_int = 0;
+    let mut k1: c_int;
+    let i45: c_int;
+    let mut jj: c_int;
+    let mut kk: c_int;
+    let mut lk: c_int;
+    let mut ll: c_int;
+    let nt: c_int;
+    let mut kk1: c_int;
+    let mut lk1: c_int;
+    let mut ind: c_int;
+    let jkl: c_int;
+    let mut kkk: c_int;
+    let mut ind1: c_int;
+    let mut ind2: c_int;
 
-        /* check for input faults. */
-        *ifault = 0;
-        if p < 0 {
-            *ifault = 1;
-        }
-        if q < 0 {
-            *ifault += 2;
-        }
-        if p * p + q * q == 0 {
-            *ifault = 4;
-        }
-        let rmax = if q + 1 < p { p } else { q + 1 };
-        if r != rmax {
-            *ifault = 5;
-        }
-        if np != r * (r + 1) / 2 {
-            *ifault = 6;
-        }
-        if d < 0 {
-            *ifault = 8;
-        }
-        if il < 1 {
-            *ifault = 11;
-        }
-        if *ifault != 0 {
-            dealloc(store as *mut u8, store_layout);
-            return;
-        }
+    /* Find initial likelihood conditions. */
+    if r == 1 {
+        a[0] = 0.0;
+        V[0] = 1.0;
+        P[0] = 1.0 / (1.0 - phi[0] * phi[0]);
+    } else {
+        bind_workspaces!();
+        unsafe { starma((&mut G as *mut starma_struct).cast::<c_void>(), &mut ifault); }
+        if ifault != 0 { return Err(ForecastError::Kernel(ifault)); }
+    }
 
-        /* Find initial likelihood conditions. */
-        if r == 1 {
-            *a.add(0) = 0.0;
-            *V.add(0) = 1.0;
-            *P.add(0) = 1.0 / (1.0 - *phi.add(0) * *phi.add(0));
-        } else {
-            starma(g, ifault);
+    // GNU R stats/src/starma.c stores w[n-j-2], including its one-observation
+    // offset. forecast_dimensions validates the history this indexing needs.
+    /* Calculate data transformations */
+    nt = n - d;
+    if d > 0 {
+        for j in 0..d {
+            store[j as usize] = w[(n - j - 2) as usize];
+            if ISNAN(store[j as usize]) {
+                return Err(ForecastError::MissingHistory);
+            }
         }
+        for i in 0..nt {
+            aa = 0.0;
+            for k in 0..d {
+                aa -= delta[k as usize] * w[(d + i - k - 1) as usize];
+            }
+            w[i as usize] = w[(i + d) as usize] + aa;
+        }
+    }
 
-        /* Calculate data transformations */
-        nt = n - d;
+    /* Evaluate likelihood to obtain final Kalman filter conditions */
+    {
+        let mut sumlog = 0.0_f64;
+        let mut ssq_val = 0.0_f64;
+        let mut nit_val: c_int = 0;
+        G.n = nt;
+        bind_workspaces!();
+        unsafe { karma((&mut G as *mut starma_struct).cast::<c_void>(), &mut sumlog, &mut ssq_val, 1, &mut nit_val); }
+    }
+
+    /* Calculate m.l.e. of sigma squared */
+    sigma2 = 0.0;
+    for j in 0..nt {
+        let tmp = resid[j as usize];
+        if !ISNAN(tmp) {
+            nu += 1;
+            sigma2 += tmp * tmp;
+        }
+    }
+    sigma2 /= nu as c_double;
+
+    /* reset the initial a and P when differencing occurs */
+    if d > 0 {
+        for i in 0..np {
+            xrow[i as usize] = P[i as usize];
+        }
+        for i in 0..rz {
+            P[i as usize] = 0.0;
+        }
+        ind = 0;
+        for j in 0..r {
+            k = j * (rd + 1) - j * (j + 1) / 2;
+            for i in j..r {
+                P[k as usize] = xrow[ind as usize];
+                ind += 1;
+                k += 1;
+            }
+        }
+        for j in 0..d {
+            a[(r + j) as usize] = store[j as usize];
+        }
+    }
+
+    i45 = 2 * rd + 1;
+    jkl = r * (2 * d + r + 1) / 2;
+
+    for l in 0..il {
+        /* predict a */
+        a1 = a[0];
+        for i in 0..r - 1 {
+            a[i as usize] = a[(i + 1) as usize];
+        }
+        a[(r - 1) as usize] = 0.0;
+        for j in 0..p {
+            a[j as usize] += phi[j as usize] * a1;
+        }
         if d > 0 {
             for j in 0..d {
-                *store.add(j as usize) = *w.add((n - j - 2) as usize);
-                if ISNAN(*store.add(j as usize)) {
-                    eprintln!("missing value in last {} observations", d);
-                    dealloc(store as *mut u8, store_layout);
-                    return;
-                }
+                a1 += delta[j as usize] * a[(r + j) as usize];
             }
-            for i in 0..nt {
-                aa = 0.0;
-                for k in 0..d {
-                    aa -= *delta.add(k as usize) * *w.add((d + i - k - 1) as usize);
-                }
-                *w.add(i as usize) = *w.add((i + d) as usize) + aa;
+            for i in (r + 1..rd).rev() {
+                a[i as usize] = a[(i - 1) as usize];
             }
+            a[r as usize] = a1;
         }
 
-        /* Evaluate likelihood to obtain final Kalman filter conditions */
-        {
-            let mut sumlog = 0.0_f64;
-            let mut ssq_val = 0.0_f64;
-            let mut nit_val: c_int = 0;
-            G.n = nt;
-            karma(g, &mut sumlog, &mut ssq_val, 1, &mut nit_val);
-        }
-
-        /* Calculate m.l.e. of sigma squared */
-        sigma2 = 0.0;
-        for j in 0..nt {
-            let tmp = *G.resid.add(j as usize);
-            if !ISNAN(tmp) {
-                nu += 1;
-                sigma2 += tmp * tmp;
-            }
-        }
-        sigma2 /= nu as c_double;
-
-        /* reset the initial a and P when differencing occurs */
+        /* predict P */
         if d > 0 {
-            for i in 0..np {
-                *xrow.add(i as usize) = *P.add(i as usize);
+            for i in 0..d {
+                store[i as usize] = 0.0;
+                for j in 0..d {
+                    ll = if i > j { i } else { j };
+                    k = if i < j { i } else { j };
+                    jj = jkl + (ll - k) + k * (2 * d + 2 - k - 1) / 2;
+                    store[i as usize] += delta[j as usize] * P[jj as usize];
+                }
             }
-            for i in 0..rz {
-                *P.add(i as usize) = 0.0;
+            if d > 1 {
+                for j in 0..d - 1 {
+                    jj = d - j - 1;
+                    lk = (jj - 1) * (2 * d + 2 - jj) / 2 + jkl;
+                    lk1 = jj * (2 * d + 1 - jj) / 2 + jkl;
+                    for i in 0..=j {
+                        P[lk1 as usize] = P[lk as usize];
+                        lk1 += 1;
+                        lk += 1;
+                    }
+                }
+                for j in 0..d - 1 {
+                    P[(jkl + j + 1) as usize] =
+                        store[j as usize] + P[(r + j) as usize];
+                }
             }
-            ind = 0;
+            P[jkl as usize] = P[0];
+            for i in 0..d {
+                P[jkl as usize] += delta[i as usize]
+                    * (store[i as usize] + 2.0 * P[(r + i) as usize]);
+            }
+            for i in 0..d {
+                store[i as usize] = P[(r + i) as usize];
+            }
             for j in 0..r {
-                k = j * (rd + 1) - j * (j + 1) / 2;
-                for i in j..r {
-                    *P.add(k as usize) = *xrow.add(ind as usize);
-                    ind += 1;
+                kk1 = (j + 1) * (2 * rd - j - 2) / 2 + r;
+                k1 = j * (2 * rd - j - 1) / 2 + r;
+                for i in 0..d {
+                    kk = kk1 + i;
+                    k = k1 + i;
+                    P[k as usize] = phi[j as usize] * store[i as usize];
+                    if j < r - 1 {
+                        P[k as usize] += P[kk as usize];
+                    }
+                }
+            }
+
+            for j in 0..r {
+                store[j as usize] = 0.0;
+                kkk = (j + 1) * (i45 - j - 1) / 2 - d;
+                for i in 0..d {
+                    store[j as usize] += delta[i as usize] * P[kkk as usize];
+                    kkk += 1;
+                }
+            }
+            for j in 0..r {
+                k = (j + 1) * (rd + 1) - (j + 1) * (j + 2) / 2;
+                for i in 0..d - 1 {
+                    k -= 1;
+                    P[k as usize] = P[(k - 1) as usize];
+                }
+            }
+            for j in 0..r {
+                k = j * (2 * rd - j - 1) / 2 + r;
+                P[k as usize] = store[j as usize] + phi[j as usize] * P[0];
+                if j < r - 1 {
+                    P[k as usize] += P[(j + 1) as usize];
+                }
+            }
+        }
+        for i in 0..r {
+            store[i as usize] = P[i as usize];
+        }
+
+        ind = 0;
+        let dt_val = P[0];
+        for j in 0..r {
+            phij = phi[j as usize];
+            let phijdt = phij * dt_val;
+            ind2 = j * (2 * rd - j + 1) / 2 - 1;
+            ind1 = (j + 1) * (i45 - j - 1) / 2 - 1;
+            for i in j..r {
+                ind2 += 1;
+                phii = phi[i as usize];
+                P[ind2 as usize] = V[ind as usize] + phii * phijdt;
+                if j < r - 1 {
+                    P[ind2 as usize] += store[(j + 1) as usize] * phii;
+                }
+                if i < r - 1 {
+                    ind1 += 1;
+                    P[ind2 as usize] +=
+                        store[(i + 1) as usize] * phij + P[ind1 as usize];
+                }
+                ind += 1;
+            }
+        }
+
+        /* predict y */
+        y[l as usize] = a[0];
+        for j in 0..d {
+            y[l as usize] += a[(r + j) as usize] * delta[j as usize];
+        }
+
+        /* calculate m.s.e. of y */
+        let mut ams_val = P[0];
+        if d > 0 {
+            for j in 0..d {
+                k = r * (i45 - r) / 2 + j * (2 * d + 1 - j) / 2;
+                tmp = delta[j as usize];
+                ams_val +=
+                    2.0 * tmp * P[(r + j) as usize] + P[k as usize] * tmp * tmp;
+            }
+            for j in 0..d - 1 {
+                k = r * (i45 - r) / 2 + 1 + j * (2 * d + 1 - j) / 2;
+                for i in j + 1..d {
+                    ams_val += 2.0
+                        * delta[i as usize]
+                        * delta[j as usize]
+                        * P[k as usize];
                     k += 1;
                 }
             }
-            for j in 0..d {
-                *a.add((r + j) as usize) = *store.add(j as usize);
-            }
         }
-
-        i45 = 2 * rd + 1;
-        jkl = r * (2 * d + r + 1) / 2;
-
-        for l in 0..il {
-            /* predict a */
-            a1 = *a.add(0);
-            for i in 0..r - 1 {
-                *a.add(i as usize) = *a.add((i + 1) as usize);
-            }
-            *a.add((r - 1) as usize) = 0.0;
-            for j in 0..p {
-                *a.add(j as usize) += *phi.add(j as usize) * a1;
-            }
-            if d > 0 {
-                for j in 0..d {
-                    a1 += *delta.add(j as usize) * *a.add((r + j) as usize);
-                }
-                for i in (r + 1..rd).rev() {
-                    *a.add(i as usize) = *a.add((i - 1) as usize);
-                }
-                *a.add(r as usize) = a1;
-            }
-
-            /* predict P */
-            if d > 0 {
-                for i in 0..d {
-                    *store.add(i as usize) = 0.0;
-                    for j in 0..d {
-                        ll = if i > j { i } else { j };
-                        k = if i < j { i } else { j };
-                        jj = jkl + (ll - k) + k * (2 * d + 2 - k - 1) / 2;
-                        *store.add(i as usize) += *delta.add(j as usize) * *P.add(jj as usize);
-                    }
-                }
-                if d > 1 {
-                    for j in 0..d - 1 {
-                        jj = d - j - 1;
-                        lk = (jj - 1) * (2 * d + 2 - jj) / 2 + jkl;
-                        lk1 = jj * (2 * d + 1 - jj) / 2 + jkl;
-                        for i in 0..=j {
-                            *P.add(lk1 as usize) = *P.add(lk as usize);
-                            lk1 += 1;
-                            lk += 1;
-                        }
-                    }
-                    for j in 0..d - 1 {
-                        *P.add((jkl + j + 1) as usize) =
-                            *store.add(j as usize) + *P.add((r + j) as usize);
-                    }
-                }
-                *P.add(jkl as usize) = *P.add(0);
-                for i in 0..d {
-                    *P.add(jkl as usize) += *delta.add(i as usize)
-                        * (*store.add(i as usize) + 2.0 * *P.add((r + i) as usize));
-                }
-                for i in 0..d {
-                    *store.add(i as usize) = *P.add((r + i) as usize);
-                }
-                for j in 0..r {
-                    kk1 = (j + 1) * (2 * rd - j - 2) / 2 + r;
-                    k1 = j * (2 * rd - j - 1) / 2 + r;
-                    for i in 0..d {
-                        kk = kk1 + i;
-                        k = k1 + i;
-                        *P.add(k as usize) = *phi.add(j as usize) * *store.add(i as usize);
-                        if j < r - 1 {
-                            *P.add(k as usize) += *P.add(kk as usize);
-                        }
-                    }
-                }
-
-                for j in 0..r {
-                    *store.add(j as usize) = 0.0;
-                    kkk = (j + 1) * (i45 - j - 1) / 2 - d;
-                    for i in 0..d {
-                        *store.add(j as usize) += *delta.add(i as usize) * *P.add(kkk as usize);
-                        kkk += 1;
-                    }
-                }
-                for j in 0..r {
-                    k = (j + 1) * (rd + 1) - (j + 1) * (j + 2) / 2;
-                    for i in 0..d - 1 {
-                        k -= 1;
-                        *P.add(k as usize) = *P.add((k - 1) as usize);
-                    }
-                }
-                for j in 0..r {
-                    k = j * (2 * rd - j - 1) / 2 + r;
-                    *P.add(k as usize) = *store.add(j as usize) + *phi.add(j as usize) * *P.add(0);
-                    if j < r - 1 {
-                        *P.add(k as usize) += *P.add((j + 1) as usize);
-                    }
-                }
-            }
-            for i in 0..r {
-                *store.add(i as usize) = *P.add(i as usize);
-            }
-
-            ind = 0;
-            let dt_val = *P.add(0);
-            for j in 0..r {
-                phij = *phi.add(j as usize);
-                let phijdt = phij * dt_val;
-                ind2 = j * (2 * rd - j + 1) / 2 - 1;
-                ind1 = (j + 1) * (i45 - j - 1) / 2 - 1;
-                for i in j..r {
-                    ind2 += 1;
-                    phii = *phi.add(i as usize);
-                    *P.add(ind2 as usize) = *V.add(ind as usize) + phii * phijdt;
-                    if j < r - 1 {
-                        *P.add(ind2 as usize) += *store.add((j + 1) as usize) * phii;
-                    }
-                    if i < r - 1 {
-                        ind1 += 1;
-                        *P.add(ind2 as usize) +=
-                            *store.add((i + 1) as usize) * phij + *P.add(ind1 as usize);
-                    }
-                    ind += 1;
-                }
-            }
-
-            /* predict y */
-            *y.add(l as usize) = *a.add(0);
-            for j in 0..d {
-                *y.add(l as usize) += *a.add((r + j) as usize) * *delta.add(j as usize);
-            }
-
-            /* calculate m.s.e. of y */
-            let mut ams_val = *P.add(0);
-            if d > 0 {
-                for j in 0..d {
-                    k = r * (i45 - r) / 2 + j * (2 * d + 1 - j) / 2;
-                    tmp = *delta.add(j as usize);
-                    ams_val +=
-                        2.0 * tmp * *P.add((r + j) as usize) + *P.add(k as usize) * tmp * tmp;
-                }
-                for j in 0..d - 1 {
-                    k = r * (i45 - r) / 2 + 1 + j * (2 * d + 1 - j) / 2;
-                    for i in j + 1..d {
-                        ams_val += 2.0
-                            * *delta.add(i as usize)
-                            * *delta.add(j as usize)
-                            * *P.add(k as usize);
-                        k += 1;
-                    }
-                }
-            }
-            *amse.add(l as usize) = ams_val * sigma2;
-        }
-
-        dealloc(store as *mut u8, store_layout);
+        amse[l as usize] = ams_val * sigma2;
     }
+
+    Ok((y, amse))
 }

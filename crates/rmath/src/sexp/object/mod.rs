@@ -60,6 +60,7 @@ use view::SexpView;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
+use super::heap::{HeapIdentity, NodeLink, ReferenceChild, ResolvedLink};
 pub(crate) use header::{LeadingScalars, NodeBody, copy_leading_scalars};
 use value::sexptype_name;
 
@@ -333,6 +334,13 @@ impl<'a> Sexp<'a> {
         singleton: crate::sexp::globals::SingletonLease,
         pool: crate::sexp::globals::SingletonPoolLease,
     ) -> Self {
+        Self::from_singleton_lease(singleton, Some(pool))
+    }
+
+    fn from_singleton_lease(
+        singleton: crate::sexp::globals::SingletonLease,
+        pool: Option<crate::sexp::globals::SingletonPoolLease>,
+    ) -> Self {
         Sexp {
             ptr: singleton.projection(),
             owner: SexpOwner::Static,
@@ -340,7 +348,7 @@ impl<'a> Sexp<'a> {
             session_owner_ptr: None,
             root: None,
             singleton: Some(singleton),
-            singletons: Some(pool),
+            singletons: pool,
             _marker: std::marker::PhantomData,
         }
     }
@@ -408,6 +416,15 @@ impl<'a> Sexp<'a> {
         } else {
             Err(SexpError::StaleAllocation)
         }
+    }
+
+    /// Borrow the original checked allocation without recapturing its address.
+    /// Immutable sentinels and unchecked native views have no allocation token.
+    pub(crate) fn allocation(&self) -> SexpResult<&crate::sexp::heap::CheckedNode> {
+        self.ensure_live()?;
+        self.node.as_ref().ok_or(SexpError::UnownedPointer {
+            address: self.ptr.addr(),
+        })
     }
 
     /// Return the owner provenance attached to this handle.
@@ -600,10 +617,10 @@ impl<'a> Sexp<'a> {
             })
     }
 
-    fn reference_elt(&self, index: usize) -> SexpResult<SEXP> {
+    fn reference_elt(&self, index: usize) -> SexpResult<NodeLink> {
         let node = self.reference_node()?;
         node.heap_identity()
-            .reference_elt(&node, index)
+            .reference_link_elt(&node, index)
             .ok_or(SexpError::MissingData {
                 sexptype: self.typeof_(),
             })
@@ -626,7 +643,7 @@ impl<'a> Sexp<'a> {
             .or_else(|| heap.retained_singleton(child.ptr))
             .or_else(|| {
                 (self.owner == SexpOwner::Unknown)
-                    .then(|| crate::sexp::globals::immutable_singleton_pool().lease(child.ptr))
+                    .then(|| crate::sexp::globals::immutable_singleton_lease(child.ptr))
                     .flatten()
             })
         {
@@ -651,7 +668,11 @@ impl<'a> Sexp<'a> {
         self.ensure_live()?;
         child.ensure_live()?;
         let ptr = child.clone().as_raw();
-        let valid = if self.singleton_projection(ptr).is_some() {
+        let valid = if child.singleton.is_some() && self.node.is_some() {
+            // The typed edge setter retains this actual lease, including a
+            // bank that closed before the parent was allocated.
+            true
+        } else if self.singleton_projection(ptr).is_some() {
             true
         } else if self.owner == SexpOwner::Unknown {
             // Unsafe raw factories establish graph ownership in their contract.
@@ -690,54 +711,79 @@ impl<'a> Sexp<'a> {
         Ok(())
     }
 
-    fn optional_child(&self, ptr: SEXP) -> Option<Sexp<'a>> {
-        if ptr.is_null() {
+    /// Capture this handle's original capability as an edge in `heap`.
+    /// Singleton links retain the actual lease, including an earlier bank.
+    pub(crate) fn link_in(&self, heap: &HeapIdentity) -> SexpResult<NodeLink> {
+        self.ensure_live()?;
+        let node;
+        let singleton;
+        let child = if let Some(value) = &self.singleton {
+            ReferenceChild::Singleton(value)
+        } else if let Some(value) = &self.node {
+            ReferenceChild::Node(value)
+        } else if let Some(value) = self
+            .singletons
+            .as_ref()
+            .and_then(|pool| pool.lease(self.ptr))
+            .or_else(|| heap.retained_singleton(self.ptr))
+            .or_else(|| crate::sexp::globals::immutable_singleton_lease(self.ptr))
+        {
+            singleton = value;
+            ReferenceChild::Singleton(&singleton)
+        } else {
+            node = self.reference_node()?;
+            ReferenceChild::Node(&node)
+        };
+        heap.capture_child(child).ok_or(SexpError::UnownedPointer {
+            address: self.ptr.addr(),
+        })
+    }
+
+    fn optional_child(&self, link: NodeLink) -> Option<Sexp<'a>> {
+        if link.is_null() {
             None
         } else {
-            self.checked_child(ptr).ok()
+            self.checked_child(link).ok()
         }
     }
 
     #[inline]
-    fn checked_child(&self, ptr: SEXP) -> SexpResult<Sexp<'a>> {
+    fn checked_child(&self, link: NodeLink) -> SexpResult<Sexp<'a>> {
         self.ensure_live()?;
-        if ptr.is_null() {
-            if let Some(pool) = &self.singletons {
-                Ok(Self::from_singleton(pool.nil(), pool.clone()))
+        if link.is_null() {
+            return Ok(if let Some(pool) = &self.singletons {
+                Self::from_singleton(pool.nil(), pool.clone())
             } else {
-                Ok(Sexp::nil())
-            }
-        } else if let Some(singleton) = self
-            .singletons
-            .as_ref()
-            .and_then(|pool| pool.lease(ptr))
-            .or_else(|| {
-                self.node
-                    .as_ref()
-                    .and_then(|node| node.heap_identity().retained_singleton(ptr))
-            })
+                Sexp::nil()
+            });
+        }
+        let parent = self.reference_node()?;
+        match parent
+            .heap_identity()
+            .resolve_link(link)
+            .ok_or(SexpError::StaleAllocation)?
         {
-            Ok(Self::from_singleton(
+            ResolvedLink::Null => unreachable!("non-null link resolved as null"),
+            ResolvedLink::Singleton(singleton) => Ok(Self::from_singleton_lease(
                 singleton,
-                self.singletons.clone().expect("retained sentinel bank"),
-            ))
-        } else {
-            // SAFETY: the parent factory established graph liveness for this lifetime.
-            let mut child = unsafe { Sexp::try_from_raw(ptr) }?;
-            if let Some(parent_node) = &self.node {
-                let (canonical, node) = crate::sexp::memory::checked_projection(ptr)
-                    .filter(|(_, node)| parent_node.same_heap(node))
-                    .ok_or(SexpError::UnownedPointer {
-                        address: ptr as usize,
-                    })?;
-                child.ptr = canonical;
-                child.root = Some(node.root_lease().ok_or(SexpError::RootUnavailable)?);
-                child.node = Some(node);
+                self.singletons.clone(),
+            )),
+            ResolvedLink::Node {
+                projection,
+                allocation,
+            } => {
+                let root = allocation.root_lease().ok_or(SexpError::RootUnavailable)?;
+                Ok(Self {
+                    ptr: projection,
+                    owner: self.owner,
+                    node: Some(allocation),
+                    session_owner_ptr: self.session_owner_ptr,
+                    root: Some(root),
+                    singleton: None,
+                    singletons: self.singletons.clone(),
+                    _marker: std::marker::PhantomData,
+                })
             }
-            child.owner = self.owner;
-            child.session_owner_ptr = self.session_owner_ptr;
-            child.singletons = self.singletons.clone();
-            Ok(child)
         }
     }
 
@@ -1710,89 +1756,39 @@ mod tests {
 
     #[test]
     fn test_to_owned_value_preserves_core_metadata() {
-        let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        let mut arena = RArena::new();
-        let vector = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
-        });
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            vector.clone().try_set_integer_elt(0, 10)
-        }
-        .expect("set integer");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            vector.clone().try_set_integer_elt(1, 20)
-        }
-        .expect("set integer");
-
-        let names = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2))
-        });
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            names
-                .clone()
-                .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a"))))
-        }
-        .expect("set name");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            names
-                .clone()
-                .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b"))))
-        }
-        .expect("set name");
-
-        let dim = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2))
-        });
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            dim.clone().try_set_integer_elt(0, 1)
-        }
-        .expect("set dim");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            dim.clone().try_set_integer_elt(1, 2)
-        }
-        .expect("set dim");
-
-        let class = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1))
-        });
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            class
-                .clone()
-                .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix"))))
-        }
-        .expect("set class");
-
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let class_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(class.as_raw(), nil, unsafe {
-                crate::sexp::symbol::Rf_install(c"class".as_ptr())
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let vector = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let mut vector = SexpMut::try_from_checked(vector).unwrap();
+        vector.try_set_integer_elt(0, 10).unwrap();
+        vector.try_set_integer_elt(1, 20).unwrap();
+        let vector = vector.freeze();
+        let names = factory.strings(&["a", "b"]).unwrap();
+        let dim = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let mut dim = SexpMut::try_from_checked(dim).unwrap();
+        dim.try_set_integer_elt(0, 1).unwrap();
+        dim.try_set_integer_elt(1, 2).unwrap();
+        let dim = dim.freeze();
+        let class = factory.strings(&["matrix"]).unwrap();
+        let tags = session.with_active(|| unsafe {
+            [c"names", c"dim", c"class"].map(|name| {
+                factory
+                    .wrap(crate::sexp::symbol::Rf_install(name.as_ptr()))
+                    .unwrap()
             })
-        };
-        let dim_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(dim.as_raw(), class_cell, unsafe {
-                crate::sexp::symbol::Rf_install(c"dim".as_ptr())
-            })
-        };
-        let names_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(names.as_raw(), dim_cell, unsafe {
-                crate::sexp::symbol::Rf_install(c"names".as_ptr())
-            })
-        };
-        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
+        });
+        let mut attributes = pairlist::PairlistBuilder::from_factory(factory);
+        for (value, tag) in [names, dim, class].into_iter().zip(tags) {
+            attributes.push(value, Some(tag)).unwrap();
+        }
+        let attributes = attributes.finish().unwrap();
+        session.with_active(|| unsafe {
+            crate::sexp::accessors::SET_ATTRIB(vector.as_raw(), attributes.as_raw());
+        });
 
         let value = vector.clone().to_owned_value().expect("owned value");
         let SexpValue::Attributed { value, metadata } = value else {
@@ -1923,29 +1919,27 @@ mod tests {
 
     #[test]
     fn test_pairlist_argument_helpers() {
-        let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        let mut arena = RArena::new();
-        let first_value = arena.alloc_node(SEXPTYPE::INTSXP);
-        let second_value = arena.alloc_node(SEXPTYPE::REALSXP);
-        let na_rm = unsafe { crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()) };
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let second_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(second_value, nil, nil)
-        };
-        let first_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(first_value, second_cell, na_rm)
-        };
-
-        let first = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(first_cell)
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let first = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::INTSXP)))
+            .unwrap();
+        let second = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::REALSXP)))
+            .unwrap();
+        let first_value = first.as_raw();
+        let second_value = second.as_raw();
+        let na_rm = session.with_active(|| unsafe {
+            factory
+                .wrap(crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()))
+                .unwrap()
         });
-        let second = some(unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            Sexp::from_raw(second_cell)
-        });
+        let mut list = pairlist::PairlistBuilder::from_factory(factory);
+        list.push(first, Some(na_rm)).unwrap();
+        list.push(second, None).unwrap();
+        let first = list.finish().unwrap();
+        let second = first.try_next_pairlist_cell().unwrap().unwrap();
+        let second_cell = second.as_raw();
 
         assert_eq!(
             first.clone().try_pairlist_arg(0).unwrap().as_raw(),
@@ -1995,9 +1989,9 @@ mod tests {
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
         unsafe {
-            (*closure).data.closure_mut().formals = formals;
-            (*closure).data.closure_mut().body = body;
-            (*closure).data.closure_mut().env = env;
+            crate::sexp::accessors::SET_FORMALS(closure, formals);
+            crate::sexp::accessors::SET_BODY(closure, body);
+            crate::sexp::accessors::SET_CLOENV(closure, env);
         }
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -2016,9 +2010,9 @@ mod tests {
         let enclos = arena.alloc_node(SEXPTYPE::ENVSXP);
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.environment_mut().frame = frame;
-            (*env).data.environment_mut().enclos = enclos;
-            (*env).data.environment_mut().hashtab = ptr::null_mut();
+            crate::sexp::accessors::SET_FRAME(env, frame);
+            crate::sexp::accessors::SET_ENCLOS(env, enclos);
+            crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
         }
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -2301,13 +2295,6 @@ mod tests {
         assert!(sexp2.is_bytecode());
 
         let ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-        unsafe {
-            *(*ext).data.extptr_mut() = [
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            ];
-        }
         let sexp3 = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             Sexp::from_raw(ext)

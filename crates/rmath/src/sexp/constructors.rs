@@ -276,7 +276,7 @@ pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Check if an SEXP is NULL. Re-export from accessors.
-pub(crate) use super::accessors::Rf_isNull;
+pub(crate) use crate::sexp::accessors::Rf_isNull;
 
 /// Get the length of an SEXP.
 pub unsafe fn Rf_length(x: SEXP) -> c_int {
@@ -291,29 +291,29 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
             let mut current = x;
             while !current.is_null() && current != R_NilValue() {
                 count += 1;
-                current = (*current).data.list().cdrval;
+                current = crate::sexp::accessors::CDR(current);
             }
             count
         } else if t == SEXPTYPE::ENVSXP {
             let mut count = 0i32;
             let mut walk = |mut frame: SEXP| {
                 while !frame.is_null() && frame != R_NilValue() {
-                    let tag = (*frame).data.list().tagval;
+                    let tag = crate::sexp::accessors::TAG(frame);
                     if !tag.is_null() && tag != R_NilValue() {
                         count += 1;
                     }
-                    frame = (*frame).data.list().cdrval;
+                    frame = crate::sexp::accessors::CDR(frame);
                 }
             };
-            walk((*x).data.environment().frame);
-            let hashtab = (*x).data.environment().hashtab;
+            walk(crate::sexp::accessors::FRAME(x));
+            let hashtab = crate::sexp::accessors::HASHTAB(x);
             if !hashtab.is_null()
                 && hashtab != R_NilValue()
                 && (*hashtab).sxpinfo.type_of() == SEXPTYPE::VECSXP
             {
-                let n = super::accessors::XLENGTH(hashtab);
+                let n = crate::sexp::accessors::XLENGTH(hashtab);
                 for i in 0..n {
-                    walk(super::accessors::VECTOR_ELT(hashtab, i));
+                    walk(crate::sexp::accessors::VECTOR_ELT(hashtab, i));
                 }
             }
             count
@@ -329,7 +329,7 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
                 | SEXPTYPE::EXPRSXP
                 | SEXPTYPE::RAWSXP
         ) {
-            super::accessors::LENGTH(x)
+            crate::sexp::accessors::LENGTH(x)
         } else {
             1
         }
@@ -469,8 +469,8 @@ mod tests {
                 for _ in 0..3 {
                     assert!(!cell.is_null());
                     assert_ne!(cell, R_NilValue());
-                    assert!((*cell).data.list().carval.is_null());
-                    cell = (*cell).data.list().cdrval;
+                    assert!(crate::sexp::accessors::CAR(cell).is_null());
+                    cell = crate::sexp::accessors::CDR(cell);
                 }
                 assert_eq!(cell, R_NilValue());
             }
@@ -585,8 +585,8 @@ mod tests {
             let cell = Rf_cons(car, cdr);
             assert!(!cell.is_null());
             assert_eq!((*cell).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
-            assert_eq!((*cell).data.list().carval, car);
-            assert_eq!((*cell).data.list().cdrval, cdr);
+            assert_eq!(crate::sexp::accessors::CAR(cell), car);
+            assert_eq!(crate::sexp::accessors::CDR(cell), cdr);
         }
     }
 

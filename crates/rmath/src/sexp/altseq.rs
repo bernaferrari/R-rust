@@ -129,8 +129,9 @@ pub(crate) unsafe fn compact_real_seq(from: c_double, step: c_double, n: usize) 
     unsafe { compact_seq(SEXPTYPE::REALSXP, n, Formula::Real { from, step }) }
 }
 
-/// Checked callers retain this temporary root until they have installed
-/// their own session-bound lease. It is created before deferred GC callbacks.
+/// Checked callers retain this compatibility root until they install their
+/// session-bound lease. An owning heap lease bridges all deferred callbacks;
+/// the compatibility guard is captured only after the arena lend ends.
 /// # Safety
 /// Same owner and payload-loan requirements as `compact_int_seq`; the caller
 /// must retain that original owner until the returned guard has been dropped.
@@ -172,8 +173,16 @@ unsafe fn compact_seq_with_result<T>(
     finish: impl FnOnce(SEXP) -> T,
 ) -> T {
     unsafe {
+        // Capture the allocation domain before lending the arena. Wrapping a
+        // fresh node uses only checked heap metadata while that lend is live.
+        let owner = super::owner::OwnerToken::current()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        let factory = super::object::SessionNodeFactory::new(owner);
         if n == 0 {
-            return with_arena(|arena| finish(arena.alloc_vector(kind, 0)));
+            let value = factory
+                .allocate(|arena| Some(arena.alloc_vector(kind, 0)))
+                .ok();
+            return finish(value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw));
         }
         let Ok(len) = R_xlen_t::try_from(n) else {
             return finish(std::ptr::null_mut());
@@ -182,7 +191,7 @@ unsafe fn compact_seq_with_result<T>(
         if tag.is_null() {
             return finish(std::ptr::null_mut());
         }
-        with_arena(|arena| {
+        let value = with_arena(|arena| {
             let raw = (|| {
                 let info = arena.alloc_vector(formula.info_type(), 2);
                 if info.is_null() || (*info).gengc_next_node.is_null() {
@@ -203,11 +212,17 @@ unsafe fn compact_seq_with_result<T>(
                 // Header and cell are both young, allocated in this lend. The
                 // write barrier would be a no-op, and it must not run while the
                 // arena borrow is live.
-                (*header).attrib = cell;
+                (*header).attrib = arena
+                    .link_from_projection(cell)
+                    .expect("fresh compact sequence metadata");
                 header
             })();
-            finish(raw)
-        })
+            factory.wrap(raw).ok()
+        });
+        // Semantic callbacks have finished and the exclusive arena borrow is
+        // gone. Keep the automatic root live while compatibility callers
+        // acquire their own root; never borrow the whole owner inside a lend.
+        finish(value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw))
     }
 }
 
@@ -310,25 +325,25 @@ impl Sexp<'_> {
         let NodeBody::Vector(vec) = header.body else {
             return None;
         };
-        let cell = self.copied_header(header.attrib)?;
+        let cell = self.copied_header_link(header.attrib)?;
         if cell.sxpinfo.type_of() != SEXPTYPE::LISTSXP {
             return None;
         }
         let NodeBody::List(list) = cell.body else {
             return None;
         };
-        let tag = self.copied_header(list.tagval)?;
+        let tag = self.copied_header_link(list.tagval)?;
         if tag.sxpinfo.type_of() != SEXPTYPE::SYMSXP {
             return None;
         }
         let NodeBody::Symbol(sym) = tag.body else {
             return None;
         };
-        let pname = self.copied_header(sym.pname)?;
+        let pname = self.copied_header_link(sym.pname)?;
         if !pname.char_eq(ALTSEQ_TAG_NAME.to_bytes()) {
             return None;
         }
-        let info = self.copied_header(list.carval)?;
+        let info = self.copied_header_link(list.carval)?;
         if info.sxpinfo.type_of() != kind {
             return None;
         }
@@ -468,9 +483,19 @@ pub(crate) unsafe fn keep_formula_replace_tail(x: SEXP, v: SEXP) {
             SETCDR(cell, rest);
             return;
         }
-        super::gengc::attrib_write_barrier(x, rest);
-        (*x).attrib = rest;
+        replace_metadata_tail(x, rest);
     }
+}
+
+/// Publish a captured attribute identity without materializing this ALT header.
+unsafe fn replace_metadata_tail(x: SEXP, rest: SEXP) {
+    let (_, parent) = memory::checked_projection(x).expect("checked compact sequence");
+    let heap = parent.heap_identity();
+    let link = heap.link_from_projection(rest).expect("compact sequence attribute child");
+    super::gengc::attrib_write_barrier(x, rest);
+    let mut header = heap.node_snapshot(&parent).expect("live compact sequence header");
+    header.attrib = link;
+    heap.replace_node(&parent, header).expect("compact sequence attribute publication");
 }
 
 /// Drop every `.InternalAltSeq` cell from an attribute list.
@@ -546,8 +571,7 @@ unsafe fn finish(x: SEXP) {
         let cell = ATTRIB(x);
         if is_list(cell) && is_formula_tag(TAG(cell)) {
             let rest = CDR(cell);
-            super::gengc::attrib_write_barrier(x, rest);
-            (*x).attrib = rest;
+            replace_metadata_tail(x, rest);
         }
     }
 }

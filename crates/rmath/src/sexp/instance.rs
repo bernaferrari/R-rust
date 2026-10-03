@@ -731,7 +731,11 @@ impl RInstance {
         hashtab: SEXP,
     ) -> SEXP {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
-        header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp { frame, enclos, hashtab });
+        header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
+            frame: persistent.link_from_projection(frame).expect("permanent environment frame"),
+            enclos: persistent.link_from_projection(enclos).expect("permanent environment parent"),
+            hashtab: persistent.link_from_projection(hashtab).expect("permanent environment hash"),
+        });
         let env = persistent.allocate_header(header).expect("persistent environment allocation");
         env_nodes.push(env);
         env
@@ -1067,8 +1071,8 @@ mod tests {
             assert_eq!((*instance.empty_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
             assert_eq!((*instance.base_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
             assert_eq!((*instance.global_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
-            assert_eq!((*instance.base_env).data.environment().enclos, instance.empty_env);
-            assert_eq!((*instance.global_env).data.environment().enclos, instance.base_env);
+            assert_eq!(crate::sexp::accessors::ENCLOS(instance.base_env), instance.empty_env);
+            assert_eq!(crate::sexp::accessors::ENCLOS(instance.global_env), instance.base_env);
         }
     }
 

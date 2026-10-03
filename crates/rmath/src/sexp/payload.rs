@@ -1,25 +1,25 @@
 #![forbid(unsafe_code)]
-//! Typed, initialized vector storage with stable legacy projections.
+//! Typed, initialized vector storage with stable numeric projections.
 //!
-//! Alignment comes from typed chunks containing only contiguous elements.
+//! Numeric alignment comes from typed chunks; graph references are exact
+//! nonowning NodeLinks in their own aligned cells, never a pointer array.
 //! The owning Rc is established before a raw pointer can be projected, so
 //! transferring the owner cannot uniquely retag already published bytes.
 
 use std::{alloc::Layout, cell::Cell, rc::Rc};
 
-use super::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use super::ffi::{R_xlen_t, Rcomplex, SEXPTYPE};
+use super::heap::NodeLink;
 
 #[repr(C, align(8))]
 struct Chunk<T, const N: usize> {
     values: [Cell<T>; N],
 }
 
-const POINTERS_PER_CHUNK: usize = 8 / std::mem::size_of::<SEXP>();
 type ByteChunk = Chunk<u8, 8>;
 type IntegerChunk = Chunk<i32, 2>;
 type RealChunk = Chunk<f64, 1>;
 type ComplexChunk = Chunk<Rcomplex, 1>;
-type PointerChunk = Chunk<SEXP, POINTERS_PER_CHUNK>;
 
 // Pointer arithmetic in the legacy bridge requires no padding between
 // adjacent chunks. These are type/layout checks, not allocator assumptions.
@@ -28,9 +28,6 @@ const _: () = {
     assert!(std::mem::size_of::<IntegerChunk>() == 2 * std::mem::size_of::<i32>());
     assert!(std::mem::size_of::<RealChunk>() == std::mem::size_of::<f64>());
     assert!(std::mem::size_of::<ComplexChunk>() == std::mem::size_of::<Rcomplex>());
-    assert!(
-        std::mem::size_of::<PointerChunk>() == POINTERS_PER_CHUNK * std::mem::size_of::<SEXP>()
-    );
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,7 +42,46 @@ enum Storage {
     Integers(Rc<[IntegerChunk]>),
     Reals(Rc<[RealChunk]>),
     Complex(Rc<[ComplexChunk]>),
-    References(Rc<[PointerChunk]>),
+    References(Rc<[Cell<NodeLink>]>),
+}
+
+/// A lease of the original canonical reference cells. Keeping this Rc alive
+/// prevents allocator address reuse while a copied visitor is detached.
+/// It is neither a rebuilt payload nor a second source of graph authority.
+#[derive(Clone)]
+pub(crate) struct ReferencePayloadLease(Rc<[Cell<NodeLink>]>);
+
+impl ReferencePayloadLease {
+    pub(crate) fn from_cells(cells: Rc<[Cell<NodeLink>]>) -> Self {
+        Self(cells)
+    }
+
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+
+    pub(crate) fn element(&self, index: usize) -> Option<NodeLink> {
+        self.0.get(index).map(Cell::get)
+    }
+
+    pub(crate) fn snapshot(&self, length: usize) -> Option<Vec<NodeLink>> {
+        if length > self.0.len() {
+            return None;
+        }
+        Some(self.0.iter().take(length).map(Cell::get).collect())
+    }
+
+    /// All bounds are checked before touching any canonical cell. Callers
+    /// validate parent identity, original values and replacement links first.
+    pub(crate) fn replace_sparse(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
+        if changes.iter().any(|(index, _)| *index >= self.0.len()) {
+            return None;
+        }
+        for (index, link) in changes {
+            self.0[*index].set(*link);
+        }
+        Some(())
+    }
 }
 
 /// Canonical ownership of one vector's initialized typed allocation.
@@ -112,9 +148,14 @@ impl OwnedPayload {
                 (Storage::Complex(chunks(length, Rcomplex::default)?), layout)
             }
             SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP => {
-                let layout = logical_layout(length, std::mem::size_of::<SEXP>())?;
+                let layout = logical_layout(length, std::mem::size_of::<NodeLink>())?;
+                let mut values = Vec::new();
+                values
+                    .try_reserve_exact(length)
+                    .map_err(|_| PayloadError::Allocation)?;
+                values.resize_with(length, || Cell::new(NodeLink::NULL));
                 (
-                    Storage::References(chunks(length, std::ptr::null_mut)?),
+                    Storage::References(Rc::from(values.into_boxed_slice())),
                     layout,
                 )
             }
@@ -157,21 +198,20 @@ impl OwnedPayload {
         matches!(self.storage, Storage::References(_)).then_some(self.length)
     }
 
-    pub(crate) fn reference_elt(&self, index: usize) -> Option<SEXP> {
+    pub(crate) fn reference_elt(&self, index: usize) -> Option<NodeLink> {
         let Storage::References(chunks) = &self.storage else {
             return None;
         };
-        (index < self.length)
-            .then(|| chunks[index / POINTERS_PER_CHUNK].values[index % POINTERS_PER_CHUNK].get())
+        (index < self.length).then(|| chunks[index].get())
     }
 
-    pub(crate) fn set_reference_elt(&self, index: usize, value: SEXP) -> Option<()> {
+    pub(crate) fn set_reference_elt(&self, index: usize, value: NodeLink) -> Option<()> {
         self.replace_references(index, &[value])
     }
 
     /// Check the entire range before writing any cell, including arithmetic
     /// overflow and the logical end of the final alignment chunk.
-    pub(crate) fn replace_references(&self, start: usize, values: &[SEXP]) -> Option<()> {
+    pub(crate) fn replace_references(&self, start: usize, values: &[NodeLink]) -> Option<()> {
         let Storage::References(chunks) = &self.storage else {
             return None;
         };
@@ -179,27 +219,28 @@ impl OwnedPayload {
             return None;
         }
         for (index, value) in (start..).zip(values.iter().copied()) {
-            chunks[index / POINTERS_PER_CHUNK].values[index % POINTERS_PER_CHUNK].set(value);
+            chunks[index].set(value);
         }
         Some(())
     }
 
+    pub(crate) fn reference_lease(&self) -> Option<ReferencePayloadLease> {
+        let Storage::References(cells) = &self.storage else {
+            return None;
+        };
+        Some(ReferencePayloadLease::from_cells(Rc::clone(cells)))
+    }
+
     /// Copy graph edges from the actual typed cells. Header lengths cannot
     /// expose alignment padding or reinterpret a numeric/scratch allocation.
-    pub(crate) fn copy_references(&self, length: usize) -> Option<Vec<SEXP>> {
+    pub(crate) fn copy_references(&self, length: usize) -> Option<Vec<NodeLink>> {
         let Storage::References(chunks) = &self.storage else {
             return None;
         };
         if length > self.length {
             return None;
         }
-        Some(
-            chunks
-                .iter()
-                .flat_map(|chunk| chunk.values.iter().map(Cell::get))
-                .take(length)
-                .collect(),
-        )
+        Some(chunks.iter().take(length).map(Cell::get).collect())
     }
 
     /// The projection spans the entire chunk slice, preserving provenance for
@@ -226,7 +267,10 @@ mod tests {
     #[test]
     fn reference_cell_writes_are_typed_bounded_and_atomic_on_failure() {
         let payload = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 3).unwrap();
-        let first = std::ptr::dangling_mut::<super::super::ffi::SexprecCore>();
+        let heap = super::super::heap::HeapIdentity::new();
+        let page = super::super::heap::NodePage::try_new(heap, 0, 1, || ()).unwrap();
+        page.metadata().activate(0, false).unwrap();
+        let first = page.token(0).unwrap().link().unwrap();
         payload.set_reference_elt(2, first).unwrap();
         assert_eq!(payload.reference_elt(2), Some(first));
         assert!(payload.reference_elt(3).is_none());
@@ -235,7 +279,7 @@ mod tests {
         assert!(payload.replace_references(usize::MAX, &[first]).is_none());
         assert_eq!(
             payload.copy_references(3),
-            Some(vec![std::ptr::null_mut(), std::ptr::null_mut(), first])
+            Some(vec![NodeLink::NULL, NodeLink::NULL, first])
         );
         payload.replace_references(3, &[]).unwrap();
         assert!(payload.replace_references(4, &[]).is_none());
@@ -275,6 +319,37 @@ mod tests {
                 .copy_references(1)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn reference_lease_retains_original_cells_and_distinguishes_equal_capacity_allocations() {
+        let original = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 2).unwrap();
+        let lease = original.reference_lease().unwrap();
+        let weak = Rc::downgrade(&lease.0);
+        let same = original.reference_lease().unwrap();
+        let different = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 2)
+            .unwrap()
+            .reference_lease()
+            .unwrap();
+        assert!(lease.same_allocation(&same));
+        assert!(!lease.same_allocation(&different));
+        drop(original);
+        drop(same);
+        assert!(weak.upgrade().is_some());
+        assert_eq!(lease.snapshot(2), Some(vec![NodeLink::NULL; 2]));
+        let page =
+            super::super::heap::NodePage::try_new(super::super::heap::HeapIdentity::new(), 0, 1, || ())
+                .unwrap();
+        page.metadata().activate(0, false).unwrap();
+        let nonnull = page.token(0).unwrap().link().unwrap();
+        assert!(
+            lease
+                .replace_sparse(&[(0, nonnull), (2, NodeLink::NULL)])
+                .is_none()
+        );
+        assert_eq!(lease.snapshot(2), Some(vec![NodeLink::NULL; 2]));
+        drop(lease);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]
@@ -318,11 +393,9 @@ mod tests {
                             .iter()
                             .all(|cell| cell.get() == Rcomplex::default())
                     })),
-                    Storage::References(values) => assert!(
-                        values
-                            .iter()
-                            .all(|chunk| chunk.values.iter().all(|cell| cell.get().is_null()))
-                    ),
+                    Storage::References(values) => {
+                        assert!(values.iter().all(|cell| cell.get().is_null()))
+                    }
                 }
             }
         }

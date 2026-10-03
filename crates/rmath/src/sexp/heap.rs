@@ -6,14 +6,88 @@
 //! IDs never keep a dead node alive and cannot select a reused or foreign slot.
 
 use super::{
-    ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore},
-    globals::SingletonLease,
+    ffi::{EdgeField, NodeBody, SEXP, SEXPTYPE, SexprecCore},
+    globals::{SingletonKind, SingletonLease},
 };
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
+    collections::HashMap,
     hash::{Hash, Hasher},
     rc::{Rc, Weak},
+    sync::atomic::{AtomicU32, Ordering},
 };
+
+/// Exact, nonowning graph identity. Zero heap/page identify null or an
+/// original immutable lease; managed nodes use nonzero heap/page cookies.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(align(8))]
+pub(crate) struct NodeLink {
+    heap_cookie: u32,
+    slot: u32,
+    page_cookie: u64,
+    generation: u64,
+}
+impl NodeLink {
+    pub(crate) const NULL: Self = Self {
+        heap_cookie: 0,
+        slot: 0,
+        page_cookie: 0,
+        generation: 0,
+    };
+    pub(crate) const fn null() -> Self {
+        Self::NULL
+    }
+    pub(crate) fn is_null(self) -> bool {
+        self == Self::NULL
+    }
+    pub(crate) fn page_cookie(self) -> u64 {
+        self.page_cookie
+    }
+    fn singleton(kind: SingletonKind, cookie: u64) -> Option<Self> {
+        (cookie != 0).then_some(Self {
+            heap_cookie: 0,
+            slot: kind.link_tag(),
+            page_cookie: 0,
+            generation: cookie,
+        })
+    }
+    fn singleton_identity(self) -> Option<(SingletonKind, u64)> {
+        if self.heap_cookie != 0 || self.page_cookie != 0 || self.generation == 0 {
+            return None;
+        }
+        Some((SingletonKind::from_link_tag(self.slot)?, self.generation))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum ResolvedLink {
+    Null,
+    Node {
+        projection: SEXP,
+        allocation: CheckedNode,
+    },
+    Singleton(SingletonLease),
+}
+
+static NEXT_HEAP_COOKIE: AtomicU32 = AtomicU32::new(1);
+fn issue_heap_cookie(counter: &AtomicU32) -> Option<u32> {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            if next == 0 { None } else { next.checked_add(1) }
+        })
+        .ok()
+        .filter(|cookie| *cookie != 0)
+}
+fn issue_page_cookie(counter: &Cell<u64>) -> Option<u64> {
+    let next = counter.get();
+    let successor = next.checked_add(1)?;
+    if next == 0 {
+        return None;
+    }
+    counter.set(successor);
+    Some(next)
+}
 
 /// Child identities are captured by their caller, never refreshed from an
 /// address while a graph edge is being written.
@@ -27,6 +101,8 @@ pub(crate) enum ReferenceChild<'a> {
 /// The shared domain retains physical storage through one ownership bag.
 /// Only the weak link lives here: pages contain this identity themselves.
 struct HeapState {
+    cookie: u32,
+    next_page_cookie: Cell<u64>,
     backing: RefCell<Weak<HeapBackingOwners>>,
 }
 
@@ -48,12 +124,22 @@ impl std::fmt::Debug for PhysicalBacking {
     }
 }
 
+/// A temporary retirement queue, not a registry of attached ownership.
+pub(crate) type RetiredResources = Rc<RefCell<Vec<Rc<dyn Any>>>>;
+
 /// Facades and automatic values share this bag, so values also retain any
 /// physical stores subsequently added to their heap domain. Stores contain
 /// only a HeapIdentity with a weak bag link, never a strong link back here.
 pub(crate) struct HeapBackingOwners {
     stores: RefCell<Vec<PhysicalBacking>>,
     singletons: RefCell<Vec<SingletonLease>>,
+    retired_resources: RetiredResources,
+}
+impl HeapBackingOwners {
+    /// Transient detached resources only; attached state remains on NodePage.
+    pub(crate) fn resource_drop_queue(&self) -> RetiredResources {
+        self.retired_resources.clone()
+    }
 }
 impl std::fmt::Debug for HeapBackingOwners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -75,6 +161,8 @@ impl std::fmt::Debug for HeapIdentity {
 impl HeapIdentity {
     pub(crate) fn new() -> Self {
         Self(Rc::new(HeapState {
+            cookie: issue_heap_cookie(&NEXT_HEAP_COOKIE).expect("heap identity space exhausted"),
+            next_page_cookie: Cell::new(1),
             backing: RefCell::new(Weak::new()),
         }))
     }
@@ -89,6 +177,7 @@ impl HeapIdentity {
             let owners = Rc::new(HeapBackingOwners {
                 stores: RefCell::new(Vec::new()),
                 singletons: RefCell::new(Vec::new()),
+                retired_resources: Rc::new(RefCell::new(Vec::new())),
             });
             *self.0.backing.borrow_mut() = Rc::downgrade(&owners);
             owners
@@ -120,7 +209,7 @@ impl HeapIdentity {
         result
     }
 
-    fn node_snapshot(&self, node: &CheckedNode) -> Option<SexprecCore> {
+    pub(crate) fn node_snapshot(&self, node: &CheckedNode) -> Option<SexprecCore> {
         if !node.belongs_to(self) || !node.is_live() {
             return None;
         }
@@ -132,7 +221,7 @@ impl HeapIdentity {
         result
     }
 
-    fn node_projection(&self, node: &CheckedNode) -> Option<SEXP> {
+    pub(crate) fn node_projection(&self, node: &CheckedNode) -> Option<SEXP> {
         if !node.belongs_to(self) || !node.is_live() {
             return None;
         }
@@ -142,6 +231,163 @@ impl HeapIdentity {
             PhysicalBacking::Persistent(store) => store.node_projection(node.id()),
         });
         result
+    }
+
+    /// A producer boundary may capture a current projection once. Readers
+    /// and collectors resolve saved links instead of calling this bridge.
+    pub(crate) fn link_from_projection(&self, pointer: SEXP) -> Option<NodeLink> {
+        if pointer.is_null() {
+            return Some(NodeLink::NULL);
+        }
+        if let Some(node) = super::memory::checked_node(pointer) {
+            return self.capture_child(ReferenceChild::Node(&node));
+        }
+        let singleton = self
+            .retained_singleton(pointer)
+            .or_else(|| super::globals::immutable_singleton_lease(pointer))?;
+        self.capture_child(ReferenceChild::Singleton(&singleton))
+    }
+    fn validate_child(&self, child: ReferenceChild<'_>) -> Option<NodeLink> {
+        match child {
+            ReferenceChild::Null => Some(NodeLink::NULL),
+            ReferenceChild::Node(node) => {
+                self.node_projection(node)?;
+                node.link()
+            }
+            ReferenceChild::Singleton(lease) => {
+                NodeLink::singleton(lease.kind(), lease.identity_cookie())
+            }
+        }
+    }
+    fn retain_children(&self, children: &[ReferenceChild<'_>]) -> Option<()> {
+        if !children
+            .iter()
+            .any(|child| matches!(child, ReferenceChild::Singleton(_)))
+        {
+            return Some(());
+        }
+        let owners = self.retained_backing()?;
+        let mut retained = owners.singletons.borrow_mut();
+        for child in children {
+            if let ReferenceChild::Singleton(lease) = child {
+                if !retained.iter().any(|owned| {
+                    owned.kind() == lease.kind()
+                        && owned.identity_cookie() == lease.identity_cookie()
+                }) {
+                    retained.push((*lease).clone());
+                }
+            }
+        }
+        Some(())
+    }
+    pub(crate) fn capture_child(&self, child: ReferenceChild<'_>) -> Option<NodeLink> {
+        let link = self.validate_child(child)?;
+        self.retain_children(&[child])?;
+        Some(link)
+    }
+    pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<ResolvedLink> {
+        if link.is_null() {
+            return Some(ResolvedLink::Null);
+        }
+        let owners = self.retained_backing()?;
+        if let Some((kind, cookie)) = link.singleton_identity() {
+            let lease = owners
+                .singletons
+                .borrow()
+                .iter()
+                .find(|lease| lease.kind() == kind && lease.identity_cookie() == cookie)
+                .cloned()?;
+            return Some(ResolvedLink::Singleton(lease));
+        }
+        if link.heap_cookie != self.0.cookie || link.page_cookie == 0 || link.generation == 0 {
+            return None;
+        }
+        let (projection, allocation) =
+            owners
+                .stores
+                .borrow()
+                .iter()
+                .find_map(|store| match store {
+                    PhysicalBacking::Arena(store) => store.resolve_link(link),
+                    PhysicalBacking::Persistent(store) => store.resolve_link(link),
+                })?;
+        Some(ResolvedLink::Node {
+            projection,
+            allocation,
+        })
+    }
+    pub(crate) fn projection_of_link(&self, link: NodeLink) -> Option<SEXP> {
+        match self.resolve_link(link)? {
+            ResolvedLink::Null => Some(std::ptr::null_mut()),
+            ResolvedLink::Node { projection, .. } => Some(projection),
+            ResolvedLink::Singleton(lease) => Some(lease.projection()),
+        }
+    }
+    pub(crate) fn replace_node(&self, node: &CheckedNode, value: SexprecCore) -> Option<()> {
+        if !node.belongs_to(self) || !node.is_live() {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.replace_node(node.id(), value),
+            PhysicalBacking::Persistent(store) => store.replace_node(node.id(), value),
+        });
+        result
+    }
+    /// Own native state at the exact canonical external-pointer allocation.
+    /// State must not retain owning values or this heap, which would form cycles.
+    /// Existing attachments are rejected without replacing or dropping them.
+    pub(crate) fn attach_resource(&self, node: &CheckedNode, value: Rc<dyn Any>) -> Option<()> {
+        if self.node_snapshot(node)?.sxpinfo.type_of() != SEXPTYPE::EXTPTRSXP {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.attach_resource(node.id(), &value),
+            PhysicalBacking::Persistent(store) => store.attach_resource(node.id(), &value),
+        });
+        result
+    }
+    pub(crate) fn resource_erased(&self, node: &CheckedNode) -> Option<Rc<dyn Any>> {
+        if self.node_snapshot(node)?.sxpinfo.type_of() != SEXPTYPE::EXTPTRSXP {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.resource(node.id()),
+            PhysicalBacking::Persistent(store) => store.resource(node.id()),
+        });
+        result
+    }
+    pub(crate) fn resource<T: Any>(&self, node: &CheckedNode) -> Option<Rc<T>> {
+        self.resource_erased(node)?.downcast().ok()
+    }
+    pub(crate) fn take_resource(&self, node: &CheckedNode) -> Option<Rc<dyn Any>> {
+        // Cleanup follows the original live allocation, even if a callback
+        // changes its semantic type or body before publication completes.
+        self.node_snapshot(node)?;
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.take_resource(node.id()),
+            PhysicalBacking::Persistent(store) => store.take_resource(node.id()),
+        });
+        result
+    }
+
+    pub(crate) fn edge(&self, parent: &CheckedNode, field: EdgeField) -> Option<NodeLink> {
+        self.node_snapshot(parent)?.edge(field)
+    }
+    pub(crate) fn set_edge(
+        &self,
+        parent: &CheckedNode,
+        field: EdgeField,
+        child: ReferenceChild<'_>,
+    ) -> Option<()> {
+        let mut header = self.node_snapshot(parent)?;
+        header.edge(field)?;
+        let link = self.capture_child(child)?;
+        header.set_edge(field, link)?;
+        self.replace_node(parent, header)
     }
 
     /// Header kind, exact generation and typed allocation capacity are all
@@ -176,7 +422,26 @@ impl HeapIdentity {
         (length <= capacity).then_some((pointer, length))
     }
 
-    pub(crate) fn reference_elt(&self, parent: &CheckedNode, index: usize) -> Option<SEXP> {
+    /// Clone the actual reference allocation after validating the exact
+    /// parent and its logical bounds. Empty/null headers have no allocation.
+    pub(crate) fn reference_payload_lease(
+        &self,
+        parent: &CheckedNode,
+    ) -> Option<super::payload::ReferencePayloadLease> {
+        let (pointer, _) = self.reference_payload(parent)?;
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.reference_payload_lease(pointer),
+            PhysicalBacking::Persistent(store) => store.reference_payload_lease(pointer),
+        });
+        result
+    }
+
+    pub(crate) fn reference_link_elt(
+        &self,
+        parent: &CheckedNode,
+        index: usize,
+    ) -> Option<NodeLink> {
         let (pointer, length) = self.reference_payload(parent)?;
         if index >= length {
             return None;
@@ -189,12 +454,21 @@ impl HeapIdentity {
         result
     }
 
-    pub(crate) fn reference_elements(&self, parent: &CheckedNode) -> Option<Vec<SEXP>> {
+    pub(crate) fn reference_links(&self, parent: &CheckedNode) -> Option<Vec<NodeLink>> {
         let (pointer, length) = self.reference_payload(parent)?;
         if length == 0 {
             return Some(Vec::new());
         }
-        self.copy_reference_payload(pointer, length)
+        self.copy_reference_links(pointer, length)
+    }
+    pub(crate) fn reference_elt(&self, parent: &CheckedNode, index: usize) -> Option<SEXP> {
+        self.projection_of_link(self.reference_link_elt(parent, index)?)
+    }
+    pub(crate) fn reference_elements(&self, parent: &CheckedNode) -> Option<Vec<SEXP>> {
+        self.reference_links(parent)?
+            .into_iter()
+            .map(|link| self.projection_of_link(link))
+            .collect()
     }
 
     pub(crate) fn set_reference_elt(
@@ -220,12 +494,10 @@ impl HeapIdentity {
         }
         let values = children
             .iter()
-            .map(|child| match child {
-                ReferenceChild::Null => Some(std::ptr::null_mut()),
-                ReferenceChild::Node(node) => self.node_projection(node),
-                ReferenceChild::Singleton(lease) => Some(lease.projection()),
-            })
+            .copied()
+            .map(|child| self.validate_child(child))
             .collect::<Option<Vec<_>>>()?;
+        self.retain_children(children)?;
         if children.is_empty() {
             return Some(());
         }
@@ -242,27 +514,16 @@ impl HeapIdentity {
                     store.replace_reference_payload(pointer, start, &values)
                 }
             })?;
-        let mut retained = owners.singletons.borrow_mut();
-        for child in children {
-            if let ReferenceChild::Singleton(lease) = child {
-                if !retained
-                    .iter()
-                    .any(|owned| owned.projection() == lease.projection())
-                {
-                    retained.push((*lease).clone());
-                }
-            }
-        }
         Some(())
     }
-    /// Copy pointer-vector elements from canonical typed owners in this
+    /// Copy exact reference links from canonical typed owners in this
     /// exact heap domain. The supplied address only selects registered
     /// storage; it is never dereferenced or interpreted as a byte buffer.
-    pub(crate) fn copy_reference_payload(
+    pub(crate) fn copy_reference_links(
         &self,
         pointer: *mut u8,
         length: usize,
-    ) -> Option<Vec<super::ffi::SEXP>> {
+    ) -> Option<Vec<NodeLink>> {
         let owners = self.retained_backing()?;
         let result = owners.stores.borrow().iter().find_map(|store| match store {
             PhysicalBacking::Arena(store) => store.copy_reference_payload(pointer, length),
@@ -270,13 +531,23 @@ impl HeapIdentity {
         });
         result
     }
+    pub(crate) fn copy_reference_payload(
+        &self,
+        pointer: *mut u8,
+        length: usize,
+    ) -> Option<Vec<SEXP>> {
+        self.copy_reference_links(pointer, length)?
+            .into_iter()
+            .map(|link| self.projection_of_link(link))
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct NodeId {
     heap: HeapIdentity,
     page: usize,
-    page_identity: Rc<()>,
+    page_cookie: u64,
     slot: usize,
     generation: u64,
 }
@@ -284,15 +555,26 @@ impl NodeId {
     pub(crate) fn page(&self) -> usize {
         self.page
     }
+    pub(crate) fn page_cookie(&self) -> u64 {
+        self.page_cookie
+    }
     pub(crate) fn slot(&self) -> usize {
         self.slot
+    }
+    pub(crate) fn link(&self) -> NodeLink {
+        NodeLink {
+            heap_cookie: self.heap.0.cookie,
+            slot: u32::try_from(self.slot).expect("checked page slot fits link"),
+            page_cookie: self.page_cookie,
+            generation: self.generation,
+        }
     }
 }
 impl PartialEq for NodeId {
     fn eq(&self, other: &Self) -> bool {
         self.heap.same(&other.heap)
             && self.page == other.page
-            && Rc::ptr_eq(&self.page_identity, &other.page_identity)
+            && self.page_cookie == other.page_cookie
             && self.slot == other.slot
             && self.generation == other.generation
     }
@@ -302,7 +584,7 @@ impl Hash for NodeId {
     fn hash<H: Hasher>(&self, state: &mut H) {
         std::ptr::hash(Rc::as_ptr(&self.heap.0), state);
         self.page.hash(state);
-        std::ptr::hash(Rc::as_ptr(&self.page_identity), state);
+        self.page_cookie.hash(state);
         self.slot.hash(state);
         self.generation.hash(state);
     }
@@ -344,6 +626,9 @@ impl CheckedNode {
     }
     pub(crate) fn id(&self) -> &NodeId {
         &self.id
+    }
+    pub(crate) fn link(&self) -> Option<NodeLink> {
+        self.is_live().then(|| self.id.link())
     }
     pub(crate) fn heap_identity(&self) -> HeapIdentity {
         self.id.heap.clone()
@@ -392,6 +677,7 @@ pub(crate) enum HeapError {
     InvalidSlot,
     LiveSlot,
     RetiredSlot,
+    IdentityExhausted,
 }
 
 fn cells<T>(len: usize, mut initial: impl FnMut() -> T) -> Result<Box<[Cell<T>]>, HeapError> {
@@ -407,7 +693,7 @@ fn cells<T>(len: usize, mut initial: impl FnMut() -> T) -> Result<Box<[Cell<T>]>
 pub(crate) struct PageMetadata {
     heap: HeapIdentity,
     page: usize,
-    identity: Rc<()>,
+    cookie: u64,
     slots: usize,
     retired: Cell<bool>,
     live: Box<[Cell<u64>]>,
@@ -423,11 +709,16 @@ impl PageMetadata {
         page: usize,
         slots: usize,
     ) -> Result<Self, HeapError> {
+        if slots > u32::MAX as usize {
+            return Err(HeapError::Allocation);
+        }
+        let cookie =
+            issue_page_cookie(&heap.0.next_page_cookie).ok_or(HeapError::IdentityExhausted)?;
         let words = slots.checked_add(63).ok_or(HeapError::Allocation)? / 64;
         Ok(Self {
             heap,
             page,
-            identity: Rc::new(()),
+            cookie,
             slots,
             retired: Cell::new(false),
             live: cells(words, || 0)?,
@@ -440,6 +731,22 @@ impl PageMetadata {
     }
     pub(crate) fn page(&self) -> usize {
         self.page
+    }
+    pub(crate) fn cookie(&self) -> u64 {
+        self.cookie
+    }
+    fn id_from_link(&self, link: NodeLink) -> Option<NodeId> {
+        if link.heap_cookie != self.heap.0.cookie || link.page_cookie != self.cookie {
+            return None;
+        }
+        let id = NodeId {
+            heap: self.heap.clone(),
+            page: self.page,
+            page_cookie: self.cookie,
+            slot: link.slot as usize,
+            generation: link.generation,
+        };
+        self.validates(&id).then_some(id)
     }
     pub(crate) fn slots(&self) -> usize {
         self.slots
@@ -507,7 +814,7 @@ impl PageMetadata {
         Ok(NodeId {
             heap: self.heap.clone(),
             page: self.page,
-            page_identity: self.identity.clone(),
+            page_cookie: self.cookie,
             slot,
             generation,
         })
@@ -516,7 +823,7 @@ impl PageMetadata {
         self.is_live(slot).then(|| NodeId {
             heap: self.heap.clone(),
             page: self.page,
-            page_identity: self.identity.clone(),
+            page_cookie: self.cookie,
             slot,
             generation: self.generations[slot].get(),
         })
@@ -524,7 +831,7 @@ impl PageMetadata {
     pub(crate) fn validates(&self, id: &NodeId) -> bool {
         self.heap.same(&id.heap)
             && self.page == id.page
-            && Rc::ptr_eq(&self.identity, &id.page_identity)
+            && self.cookie == id.page_cookie
             && self.is_live(id.slot)
             && self.generations[id.slot].get() == id.generation
     }
@@ -688,6 +995,11 @@ impl PageMetadata {
     }
 }
 
+struct AttachedResource {
+    generation: u64,
+    value: Rc<dyn Any>,
+}
+
 /// Owned pages expose only interior cells. Forming an arena reference never
 /// forms an exclusive reference over previously projected legacy node bytes.
 pub(crate) struct NodePage<T> {
@@ -695,6 +1007,7 @@ pub(crate) struct NodePage<T> {
     // projected. A movable Box would retag these bytes uniquely on each move.
     values: Rc<[Cell<T>]>,
     metadata: Rc<PageMetadata>,
+    resources: RefCell<HashMap<usize, AttachedResource>>,
 }
 
 /// A projection directory retains metadata and a weak reference to the one
@@ -729,7 +1042,7 @@ impl<T> NodeProjection<T> {
         let id = NodeId {
             heap: self.metadata.heap.clone(),
             page: self.metadata.page,
-            page_identity: self.metadata.identity.clone(),
+            page_cookie: self.metadata.cookie,
             slot,
             generation,
         };
@@ -763,8 +1076,45 @@ impl<T> NodePage<T> {
         Ok(Self {
             values: Rc::from(cells(slots, initial)?),
             metadata,
+            resources: RefCell::new(HashMap::new()),
         })
     }
+    pub(crate) fn attach_resource(&self, id: &NodeId, value: &Rc<dyn Any>) -> Option<()> {
+        if !self.metadata.validates(id) {
+            return None;
+        }
+        let mut resources = self.resources.borrow_mut();
+        if resources.contains_key(&id.slot) {
+            return None;
+        }
+        resources.insert(
+            id.slot,
+            AttachedResource {
+                generation: id.generation,
+                value: value.clone(),
+            },
+        );
+        Some(())
+    }
+    pub(crate) fn resource(&self, id: &NodeId) -> Option<Rc<dyn Any>> {
+        if !self.metadata.validates(id) {
+            return None;
+        }
+        let resources = self.resources.borrow();
+        let resource = resources.get(&id.slot)?;
+        (resource.generation == id.generation).then(|| resource.value.clone())
+    }
+    pub(crate) fn take_resource(&self, id: &NodeId) -> Option<Rc<dyn Any>> {
+        if !self.metadata.validates(id) {
+            return None;
+        }
+        let mut resources = self.resources.borrow_mut();
+        if resources.get(&id.slot)?.generation != id.generation {
+            return None;
+        }
+        resources.remove(&id.slot).map(|resource| resource.value)
+    }
+
     pub(crate) fn metadata(&self) -> Rc<PageMetadata> {
         self.metadata.clone()
     }
@@ -774,6 +1124,11 @@ impl<T> NodePage<T> {
             metadata: self.metadata.clone(),
         }
     }
+    pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<(*mut T, CheckedNode)> {
+        let id = self.metadata.id_from_link(link)?;
+        let token = CheckedNode::new(self.metadata.clone(), id)?;
+        Some((self.values.get(token.id.slot)?.as_ptr(), token))
+    }
     pub(crate) fn token(&self, slot: usize) -> Option<CheckedNode> {
         CheckedNode::new(self.metadata.clone(), self.metadata.current_id(slot)?)
     }
@@ -781,7 +1136,7 @@ impl<T> NodePage<T> {
         self.values.get(slot).map(Cell::as_ptr)
     }
     pub(crate) fn replace_inactive(&self, slot: usize, value: T) -> Result<*mut T, HeapError> {
-        if !self.metadata.reusable(slot) {
+        if !self.metadata.reusable(slot) || self.resources.borrow().contains_key(&slot) {
             return Err(HeapError::RetiredSlot);
         }
         let cell = self.values.get(slot).ok_or(HeapError::InvalidSlot)?;
@@ -817,6 +1172,49 @@ impl<T: Copy> NodePage<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cookies_exhaust_without_wrapping_or_issuing_reserved_zero() {
+        let heap_counter = AtomicU32::new(u32::MAX - 1);
+        assert_eq!(issue_heap_cookie(&heap_counter), Some(u32::MAX - 1));
+        assert_eq!(issue_heap_cookie(&heap_counter), None);
+        assert_eq!(heap_counter.load(Ordering::Relaxed), u32::MAX);
+        let reserved = AtomicU32::new(0);
+        assert_eq!(issue_heap_cookie(&reserved), None);
+        assert_eq!(reserved.load(Ordering::Relaxed), 0);
+        let page_counter = Cell::new(u64::MAX - 1);
+        assert_eq!(issue_page_cookie(&page_counter), Some(u64::MAX - 1));
+        assert_eq!(issue_page_cookie(&page_counter), None);
+        assert_eq!(page_counter.get(), u64::MAX);
+        let reserved = Cell::new(0);
+        assert_eq!(issue_page_cookie(&reserved), None);
+        assert_eq!(reserved.get(), 0);
+    }
+
+    #[test]
+    fn link_identity_rejects_recreated_page_ordinal_and_generation_reuse() {
+        let heap = HeapIdentity::new();
+        let first = NodePage::try_new(heap.clone(), 0, 1, || 7).unwrap();
+        let id = first.metadata().activate(0, false).unwrap();
+        let old = first.token(0).unwrap().link().unwrap();
+        assert_eq!(first.resolve_link(old).unwrap().1.link(), Some(old));
+        assert!(first.metadata().release(&id));
+        first.replace_inactive(0, 8).unwrap();
+        first.metadata().activate(0, false).unwrap();
+        let next = first.token(0).unwrap().link().unwrap();
+        assert_ne!(old, next);
+        assert!(first.resolve_link(old).is_none());
+        assert!(first.resolve_link(next).is_some());
+        drop(first);
+        let second = NodePage::try_new(heap.clone(), 0, 1, || 9).unwrap();
+        second.metadata().activate(0, false).unwrap();
+        let recreated = second.token(0).unwrap().link().unwrap();
+        assert_ne!(next.page_cookie(), recreated.page_cookie());
+        assert!(second.resolve_link(next).is_none());
+        // Metadata-only pages never create a second physical heap authority.
+        assert!(heap.resolve_link(recreated).is_none());
+        assert_eq!(std::mem::size_of::<NodeLink>(), 24);
+        assert_eq!(std::mem::align_of::<NodeLink>(), 8);
+    }
     #[test]
     fn live_replacement_rejects_stale_and_foreign_exact_allocations() {
         let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();

@@ -39,6 +39,10 @@ impl<'session> SessionNodeFactory<'session> {
         self.owner.require_active()
     }
 
+    pub(crate) fn link(&self, value: &Sexp<'_>) -> SexpResult<crate::sexp::heap::NodeLink> {
+        value.link_in(&self.heap)
+    }
+
     pub(crate) fn nil(&self) -> Sexp<'session> {
         Sexp::from_singleton(self.singletons.nil(), self.singletons.clone())
     }
@@ -89,6 +93,12 @@ impl<'session> SessionNodeFactory<'session> {
         }
         if let Some(singleton) = self.singletons.lease(pointer) {
             return Ok(Sexp::from_singleton(singleton, self.singletons.clone()));
+        }
+        if let Some(singleton) = self.heap.retained_singleton(pointer) {
+            return Ok(Sexp::from_singleton_lease(
+                singleton,
+                Some(self.singletons.clone()),
+            ));
         }
         let (pointer, node) = crate::sexp::memory::checked_projection(pointer)
             .filter(|(_, node)| node.belongs_to(&self.heap))

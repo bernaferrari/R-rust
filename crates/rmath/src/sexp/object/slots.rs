@@ -407,7 +407,8 @@ impl<'a> Sexp<'a> {
         std::str::from_utf8(unsafe {
             /* SAFETY: caller retains the handle and excludes payload mutation. */
             self.try_as_bytes()
-        }?).map_err(|_| SexpError::InvalidUtf8)
+        }?)
+        .map_err(|_| SexpError::InvalidUtf8)
     }
 
     /// Copy a character scalar into owned UTF-8 text.
@@ -505,7 +506,7 @@ impl<'a> Sexp<'a> {
 
     pub fn extptr_ptr(&self) -> Option<*mut c_void> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => Some(slot[0]),
+            NodeBody::ExtPtr(slot) => Some(slot.address),
             _ => None,
         }
     }
@@ -515,7 +516,7 @@ impl<'a> Sexp<'a> {
     /// A null external pointer payload is a valid R value and is returned as-is.
     pub fn try_extptr_ptr(&self) -> SexpResult<*mut c_void> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => Ok(slot[0]),
+            NodeBody::ExtPtr(slot) => Ok(slot.address),
             _ => Err(SexpError::TypeMismatch {
                 expected: "external pointer",
                 actual: self.typeof_(),
@@ -525,7 +526,7 @@ impl<'a> Sexp<'a> {
 
     pub fn extptr_tag(&self) -> Option<Sexp<'a>> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => self.optional_child(slot[1] as SEXP),
+            NodeBody::ExtPtr(slot) => self.optional_child(slot.tag),
             _ => None,
         }
     }
@@ -533,7 +534,7 @@ impl<'a> Sexp<'a> {
     /// Get the external pointer tag with typed error reporting.
     pub fn try_extptr_tag(&self) -> SexpResult<Sexp<'a>> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => self.checked_child(slot[1] as SEXP),
+            NodeBody::ExtPtr(slot) => self.checked_child(slot.tag),
             _ => Err(SexpError::TypeMismatch {
                 expected: "external pointer",
                 actual: self.typeof_(),
@@ -543,7 +544,7 @@ impl<'a> Sexp<'a> {
 
     pub fn extprot(&self) -> Option<Sexp<'a>> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => self.optional_child(slot[2] as SEXP),
+            NodeBody::ExtPtr(slot) => self.optional_child(slot.protected),
             _ => None,
         }
     }
@@ -551,7 +552,7 @@ impl<'a> Sexp<'a> {
     /// Get the external pointer protected value with typed error reporting.
     pub fn try_extprot(&self) -> SexpResult<Sexp<'a>> {
         match self.header().body {
-            NodeBody::ExtPtr(slot) => self.checked_child(slot[2] as SEXP),
+            NodeBody::ExtPtr(slot) => self.checked_child(slot.protected),
             _ => Err(SexpError::TypeMismatch {
                 expected: "external pointer",
                 actual: self.typeof_(),

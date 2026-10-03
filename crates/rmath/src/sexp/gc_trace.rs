@@ -4,7 +4,7 @@
 
 use crate::sexp::{
     ffi::{SEXP, SexprecCore},
-    heap::{CheckedNode, HeapIdentity},
+    heap::{CheckedNode, HeapIdentity, NodeLink, ResolvedLink},
     memory,
     session::immutable_singleton_projection,
 };
@@ -17,6 +17,7 @@ pub(super) enum TraceError {
     StaleAllocation(usize),
     ProjectionMismatch(usize),
     InvalidPayload(usize),
+    InvalidLink(NodeLink),
 }
 
 pub(super) struct TraceContext {
@@ -29,16 +30,36 @@ impl TraceContext {
         Self { heap, epoch }
     }
 
-    pub(super) fn copy_reference_payload(
-        &self,
-        pointer: *mut u8,
-        length: usize,
-    ) -> Option<Vec<SEXP>> {
-        self.heap.copy_reference_payload(pointer, length)
+    pub(super) fn reference_links(&self, node: &TraceNode) -> Option<Vec<NodeLink>> {
+        self.heap.reference_links(&node.token)
+    }
+
+    fn project_link(&self, link: NodeLink) -> Result<Option<TraceNode>, TraceError> {
+        match self
+            .heap
+            .resolve_link(link)
+            .ok_or(TraceError::InvalidLink(link))?
+        {
+            ResolvedLink::Null | ResolvedLink::Singleton(_) => Ok(None),
+            ResolvedLink::Node {
+                projection,
+                allocation,
+            } => {
+                let node = TraceNode {
+                    projection,
+                    token: allocation,
+                };
+                node.validate(self)?;
+                Ok(Some(node))
+            }
+        }
     }
 
     fn project(&self, candidate: SEXP) -> Result<Option<TraceNode>, TraceError> {
-        if candidate.is_null() || immutable_singleton_projection(candidate).is_some() {
+        if candidate.is_null()
+            || self.heap.retained_singleton(candidate).is_some()
+            || immutable_singleton_projection(candidate).is_some()
+        {
             return Ok(None);
         }
         // Address membership cannot rehabilitate the caller's pointer tag.
@@ -104,8 +125,17 @@ impl TraceWorklist {
         Ok(())
     }
 
+    /// Canonical graph edges retain the saved generation. Resolution never
+    /// refreshes an edge from the allocation currently occupying an address.
+    pub(super) fn enqueue_link(&mut self, link: NodeLink) -> Result<(), TraceError> {
+        if let Some(node) = self.context.project_link(link)? {
+            self.pending.push(node);
+        }
+        Ok(())
+    }
+
     /// Root storage retains its original allocation token across collections.
-    /// Check that token before resolving the current occupant of the address.
+    /// Project that exact token from its owning store before comparing addresses.
     pub(super) fn enqueue_checked(
         &mut self,
         candidate: SEXP,
@@ -117,9 +147,12 @@ impl TraceWorklist {
         if !token.is_live() {
             return Err(TraceError::StaleAllocation(candidate as usize));
         }
-        let (projection, current) = memory::checked_projection(candidate)
+        let projection = self
+            .context
+            .heap
+            .node_projection(&token)
             .ok_or(TraceError::UnownedProjection(candidate as usize))?;
-        if token != current {
+        if projection.addr() != candidate.addr() {
             return Err(TraceError::ProjectionMismatch(candidate as usize));
         }
         self.pending.push(TraceNode { projection, token });
@@ -232,16 +265,19 @@ mod tests {
 
     #[test]
     fn checked_root_cannot_pair_another_nodes_projection_with_its_token() {
-        let heap = HeapIdentity::new();
-        let (first, _first_registration, _) = registered_page(heap.clone());
-        let (second, _second_registration, second_pointer) = registered_page(heap.clone());
-        let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(heap, 10)));
+        let mut arena = memory::RArena::new();
+        let first = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let second = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let first_token = memory::checked_projection(first).unwrap().1;
+        let second_token = memory::checked_projection(second).unwrap().1;
+        let mut worklist =
+            TraceWorklist::new(Rc::new(TraceContext::new(arena.heap_identity(), 10)));
         assert_eq!(
-            worklist.enqueue_checked(second_pointer, first.token(0).unwrap()),
-            Err(TraceError::ProjectionMismatch(second_pointer as usize))
+            worklist.enqueue_checked(second, first_token.clone()),
+            Err(TraceError::ProjectionMismatch(second as usize))
         );
-        assert_eq!(first.metadata().epoch(0), Some(0));
-        assert_eq!(second.metadata().epoch(0), Some(0));
+        assert_eq!(first_token.mark(10), Some(false));
+        assert_eq!(second_token.mark(10), Some(false));
     }
 
     #[test]
@@ -266,6 +302,32 @@ mod tests {
         worklist.enqueue(pointer).unwrap();
         assert!(worklist.next_marked().unwrap().is_some());
         assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn canonical_saved_link_rejects_same_address_reuse_without_marking_replacement() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let child = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap();
+        let original = memory::checked_projection(child).unwrap().1;
+        let saved = original.link().unwrap();
+        super::super::full_gc();
+        assert!(!original.is_live());
+        let replacement = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap();
+        assert_eq!(child.addr(), replacement.addr());
+        let current = memory::checked_projection(replacement).unwrap().1;
+        assert_ne!(saved, current.link().unwrap());
+        let mut worklist =
+            TraceWorklist::new(Rc::new(TraceContext::new(current.heap_identity(), 23)));
+        assert_eq!(
+            worklist.enqueue_link(saved),
+            Err(TraceError::InvalidLink(saved))
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+        assert_eq!(current.mark(23), Some(false));
     }
 
     #[test]

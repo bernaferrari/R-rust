@@ -111,6 +111,11 @@ impl<'a> PairlistBuilder<'a> {
         value: Sexp<'a>,
         tag: Option<Sexp<'a>>,
     ) -> SexpResult<Sexp<'a>> {
+        // Retain each exact capability before the raw producer boundary.
+        self.factory.link(&value)?;
+        if let Some(tag) = &tag {
+            self.factory.link(tag)?;
+        }
         let value = self.factory.wrap(value.as_raw())?;
         let tag = tag.map(|tag| self.factory.wrap(tag.as_raw())).transpose()?;
         let nil = self.factory.nil();

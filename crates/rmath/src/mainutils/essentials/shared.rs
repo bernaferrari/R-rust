@@ -1445,17 +1445,7 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return;
         }
-        let body = crate::sexp::accessors::BODY(fun);
-        let _body = protect(body);
-        if TYPEOF(body) == SEXPTYPE::BCODESXP {
-            let source = crate::eval::bc_eval::BCODE_EXPR(body);
-            if !source.is_null()
-                && source != crate::sexp::globals::R_NilValue()
-                && TYPEOF(source) == SEXPTYPE::LANGSXP
-            {
-                crate::sexp::accessors::SET_BODY(fun, source);
-            }
-        }
+        let _source_body = methods_metadata_source_body(fun);
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
         let call = crate::sexp::constructors::Rf_lang3(fun, attach_env, attach);
@@ -1463,7 +1453,6 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv())
         }));
-        crate::sexp::accessors::SET_BODY(fun, body);
     }
 }
 
@@ -1591,6 +1580,96 @@ for (sig in c("matrix", "array")) {
     }
 }
 
+/// Retain the exact compiled body while evaluating its stored R expression.
+/// Only cacheMetaData uses this fallback. Its invocation must also suspend
+/// JIT compilation: applyClosure checks JIT before reading BODY and otherwise
+/// recompiles this temporary source immediately. Arguments and environments
+/// remain unchanged; the owner's prior JIT setting is restored after the call.
+struct MethodsMetadataSourceBody<'s> {
+    function: crate::sexp::object::Sexp<'s>,
+    original: crate::sexp::object::Sexp<'s>,
+    allocation: crate::sexp::heap::CheckedNode,
+    owner: crate::sexp::owner::OwnerToken<'s>,
+    availability: crate::sexp::instance::InstanceLiveness,
+    jit_enabled: i32,
+}
+
+impl Drop for MethodsMetadataSourceBody<'_> {
+    fn drop(&mut self) {
+        let original = self.original.allocation()
+            .expect("compiled body has an allocation");
+        if self.availability.is_live() {
+            // Both nodes remain owned; no storage loan or callback crosses the
+            // barrier. Teardown still restores the retained canonical body.
+            unsafe {
+                if !crate::sexp::gengc::write_barrier_in(
+                    self.owner.as_ptr(),
+                    self.function.as_raw(),
+                    self.original.as_raw(),
+                ) {
+                    std::alloc::handle_alloc_error(std::alloc::Layout::new::<SEXP>());
+                }
+            }
+        }
+        self.allocation
+            .heap_identity()
+            .set_edge(
+                &self.allocation,
+                crate::sexp::ffi::EdgeField::ClosureBody,
+                crate::sexp::heap::ReferenceChild::Node(original),
+            )
+            .expect("owned methods closure retains its original body");
+        if self.availability.is_live()
+            && crate::eval::jit::get_R_jit_enabled_in(self.owner.as_ptr()) == 0
+        {
+            // Preserve an explicit callback change to a different JIT level.
+            crate::eval::jit::set_R_jit_enabled_in(self.owner.as_ptr(), self.jit_enabled);
+        }
+    }
+}
+
+unsafe fn methods_metadata_source_body<'s>(fun: SEXP) -> Option<MethodsMetadataSourceBody<'s>> {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current().ok()?;
+        let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+        let function = factory.wrap(fun).ok()?;
+        let original = function.try_body().ok()?;
+        if !original.is_bytecode() {
+            return None;
+        }
+        let source = factory
+            .wrap(crate::eval::bc_eval::BCODE_EXPR(original.as_raw()))
+            .ok()?;
+        if source.typeof_() != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        let allocation = function.allocation().ok()?.clone();
+        let source_allocation = source.allocation().ok()?;
+        let guard = MethodsMetadataSourceBody {
+            function,
+            original,
+            allocation,
+            owner,
+            availability: crate::sexp::instance::instance_liveness(owner.as_ptr()),
+            jit_enabled: crate::eval::jit::get_R_jit_enabled_in(owner.as_ptr()),
+        };
+        if !crate::sexp::gengc::write_barrier_in(
+            owner.as_ptr(),
+            guard.function.as_raw(),
+            source.as_raw(),
+        ) {
+            std::alloc::handle_alloc_error(std::alloc::Layout::new::<SEXP>());
+        }
+        guard.allocation.heap_identity().set_edge(
+            &guard.allocation,
+            crate::sexp::ffi::EdgeField::ClosureBody,
+            crate::sexp::heap::ReferenceChild::Node(source_allocation),
+        )?;
+        crate::eval::jit::set_R_jit_enabled_in(owner.as_ptr(), 0);
+        Some(guard)
+    }
+}
+
 unsafe fn eval_methods_ns_fun(
     ns: SEXP,
     name: &std::ffi::CStr,
@@ -1608,6 +1687,9 @@ unsafe fn eval_methods_ns_fun(
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return;
         }
+        let _source_body = if name == c"cacheMetaData" {
+            methods_metadata_source_body(fun)
+        } else { None };
         let call = if let Some(attach) = attach {
             crate::sexp::constructors::Rf_lang3(fun, where_env, attach)
         } else {
@@ -4633,5 +4715,139 @@ pub(crate) fn elt_real_safe(x: SEXP, i: R_xlen_t) -> f64 {
         } else {
             NA_REAL
         }
+    }
+}
+
+#[cfg(test)]
+mod methods_startup_tests {
+    use super::*;
+
+    #[test]
+    fn methods_source_guard_prevents_recompilation_at_actual_closure_entry() {
+        use std::{cell::Cell, rc::Rc};
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        let (allocation, _function_root) = {
+            let (result, _, _) = session.eval_script_with_output_capture("function() { 1L }");
+            let function = result.unwrap();
+            let allocation = function.allocation().unwrap().clone();
+            let root = allocation.root_lease().unwrap();
+            (allocation, root)
+        };
+        session.with_active(|| unsafe {
+            crate::eval::jit::set_R_jit_enabled(3);
+            let owner = session.owner_token().unwrap();
+            let function = owner.node_factory().wrap(
+                allocation.heap_identity().node_projection(&allocation).unwrap()
+            ).unwrap();
+            crate::eval::jit::set_R_min_jit_score_in(owner.as_ptr(), 0);
+            assert!(crate::eval::jit::R_cmpfun(function.as_raw()));
+            let original = function.try_body().unwrap();
+            assert!(original.is_bytecode());
+            let seen = Rc::new(Cell::new(0));
+            let observed = seen.clone();
+            let inspected = function.allocation().unwrap().clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                let heap = inspected.heap_identity();
+                let body = heap.node_snapshot(&inspected).unwrap().data.closure().body;
+                let Some(crate::sexp::heap::ResolvedLink::Node { allocation, .. }) = heap.resolve_link(body) else {
+                    panic!("metadata source body must retain its exact language allocation");
+                };
+                assert_eq!(heap.node_snapshot(&allocation).unwrap().sxpinfo.type_of(), SEXPTYPE::LANGSXP);
+                assert_eq!(crate::eval::jit::get_R_jit_enabled(), 0);
+            }));
+            {
+                let _source = methods_metadata_source_body(function.as_raw()).unwrap();
+                (*owner.as_ptr()).memory_state.gc_force_gap = 1;
+                (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+                let mut call = crate::sexp::object::PairlistBuilder::new_in(owner);
+                call.push(function.clone(), None).unwrap();
+                let call = call.finish_as_type(SEXPTYPE::LANGSXP).unwrap();
+                let raw = crate::eval::eval::Rf_eval(call.as_raw(), crate::sexp::globals::R_GlobalEnv());
+                let result = owner.node_factory().wrap(raw).unwrap();
+                assert_eq!(result.try_integer_elt(0).unwrap(), 1);
+                assert_eq!(function.try_body().unwrap().typeof_(), SEXPTYPE::LANGSXP);
+                assert!(seen.get() > 0);
+            }
+            assert_eq!(function.try_body().unwrap(), original);
+            assert_eq!(crate::eval::jit::get_R_jit_enabled(), 3);
+            // The same guard restores state during unwind and preserves a
+            // callback's explicit change rather than overwriting it.
+            let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _source = methods_metadata_source_body(function.as_raw()).unwrap();
+                crate::sexp::context::r_error("source guard unwind");
+            }));
+            assert!(failed.is_err());
+            assert_eq!(function.try_body().unwrap(), original);
+            assert_eq!(crate::eval::jit::get_R_jit_enabled(), 3);
+            {
+                let _source = methods_metadata_source_body(function.as_raw()).unwrap();
+                crate::eval::jit::set_R_jit_enabled(2);
+            }
+            assert_eq!(function.try_body().unwrap(), original);
+            assert_eq!(crate::eval::jit::get_R_jit_enabled(), 2);
+        });
+    }
+
+    #[test]
+    fn default_methods_startup_populates_metadata_and_restores_compiled_body() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            "c(methods:::.isMethodsDispatchOn(),
+               !is.null(methods::getClassDef('envRefClass')),
+               !is.null(methods:::.getClassesFromCache('envRefClass')),
+               is.environment(methods::getClassDef('envRefClass')@refMethods))",
+        );
+        let metadata = result.unwrap_or_else(|error| {
+            panic!("default methods metadata failed: {error:?}; output: {output:?}")
+        });
+        assert_eq!(metadata.len(), 4);
+        for index in 0..4 {
+            assert_eq!(metadata.try_logical_elt(index).unwrap(), TRUE);
+        }
+        drop(metadata);
+        session.with_active(|| unsafe {
+            let ns = cached_namespace_by_name("methods").expect("default methods namespace loaded");
+            let raw =
+                crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c"cacheMetaData".as_ptr()));
+            let raw = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(raw)
+            } else {
+                raw
+            };
+            let factory =
+                crate::sexp::object::SessionNodeFactory::new(session.owner_token().unwrap());
+            let function = factory.wrap(raw).unwrap();
+            // Successful default startup must have restored the installed
+            // bytecode, rather than permanently replacing the package image.
+            let original = function.try_body().unwrap();
+            assert!(original.is_bytecode());
+            let original_link = factory.link(&original).unwrap();
+            let before = crate::sexp::protect::R_ProtectCount();
+            let jit_before = crate::eval::jit::get_R_jit_enabled();
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _source_body = methods_metadata_source_body(function.as_raw())
+                    .expect("compiled cacheMetaData has its stored language expression");
+                assert_eq!(function.try_body().unwrap().typeof_(), SEXPTYPE::LANGSXP);
+                assert_eq!(crate::eval::jit::get_R_jit_enabled(), 0);
+                assert_eq!(crate::eval::jit::R_CheckJIT(function.as_raw()), crate::sexp::ffi::FALSE);
+                crate::sexp::gengc::full_gc();
+                assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+                crate::sexp::context::r_error("metadata evaluation unwind regression");
+            }))
+            .expect_err("injected R error must unwind through body restoration");
+            assert!(
+                failure
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
+            let restored = function.try_body().unwrap();
+            assert_eq!(restored, original);
+            assert_eq!(factory.link(&restored).unwrap(), original_link);
+            assert_eq!(crate::eval::jit::get_R_jit_enabled(), jit_before);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+            crate::sexp::gengc::full_gc();
+            assert!(function.try_body().unwrap().is_bytecode());
+        });
     }
 }

@@ -79,15 +79,16 @@
 //! internals still require careful auditing; do not document new
 //! invariants here unless they are enforced by code and regression tests.
 
+#[cfg(test)]
+use std::ptr;
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
     rc::Rc,
 };
-#[cfg(test)]
-use std::ptr;
 
-use super::ffi::{SEXP, SEXPTYPE};
+use super::ffi::{EdgeField, SEXP, SEXPTYPE};
+use super::heap::NodeLink;
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
@@ -271,89 +272,10 @@ fn child_mask(type_code: i32, follow_weak_key: bool) -> u32 {
     body | EDGE_ATTRIB | vector
 }
 
-unsafe fn each_child(obj: SEXP, follow_weak_key: bool, mut visit: impl FnMut(&mut SEXP)) {
-    unsafe {
-        let mask = child_mask((*obj).sxpinfo.type_of().0, follow_weak_key);
-        if mask & EDGE_PNAME != 0 {
-            visit(&mut (*obj).data.symbol_mut().pname);
-        }
-        if mask & EDGE_SYM_VALUE != 0 {
-            visit(&mut (*obj).data.symbol_mut().value);
-        }
-        if mask & EDGE_INTERNAL != 0 {
-            visit(&mut (*obj).data.symbol_mut().internal);
-        }
-        if mask & EDGE_CAR != 0 {
-            visit(&mut (*obj).data.list_mut().carval);
-        }
-        if mask & EDGE_CDR != 0 {
-            visit(&mut (*obj).data.list_mut().cdrval);
-        }
-        if mask & EDGE_TAG != 0 {
-            visit(&mut (*obj).data.list_mut().tagval);
-        }
-        if mask & EDGE_FORMALS != 0 {
-            visit(&mut (*obj).data.closure_mut().formals);
-        }
-        if mask & EDGE_BODY != 0 {
-            visit(&mut (*obj).data.closure_mut().body);
-        }
-        if mask & EDGE_CLOENV != 0 {
-            visit(&mut (*obj).data.closure_mut().env);
-        }
-        if mask & EDGE_FRAME != 0 {
-            visit(&mut (*obj).data.environment_mut().frame);
-        }
-        if mask & EDGE_ENCLOS != 0 {
-            visit(&mut (*obj).data.environment_mut().enclos);
-        }
-        if mask & EDGE_HASHTAB != 0 {
-            visit(&mut (*obj).data.environment_mut().hashtab);
-        }
-        if mask & EDGE_PROM_VALUE != 0 {
-            visit(&mut (*obj).data.promise_mut().value);
-        }
-        if mask & EDGE_PROM_EXPR != 0 {
-            visit(&mut (*obj).data.promise_mut().expr);
-        }
-        if mask & EDGE_PROM_ENV != 0 {
-            visit(&mut (*obj).data.promise_mut().env);
-        }
-        if mask & EDGE_EXT_TAG != 0 {
-            let mut tag = (*obj).data.extptr()[1] as SEXP;
-            visit(&mut tag);
-            (*obj).data.extptr_mut()[1] = tag as *mut std::ffi::c_void;
-        }
-        if mask & EDGE_EXT_PROT != 0 {
-            let mut prot = (*obj).data.extptr()[2] as SEXP;
-            visit(&mut prot);
-            (*obj).data.extptr_mut()[2] = prot as *mut std::ffi::c_void;
-        }
-        if mask & EDGE_VECTOR != 0 && !(*obj).gengc_next_node.is_null() {
-            let (_, parent) = super::memory::checked_projection(obj)
-                .expect("GC vector belongs to checked storage");
-            let heap = parent.heap_identity();
-            let children = heap.reference_elements(&parent)
-                .expect("GC vector has an owned reference payload");
-            let singletons = super::globals::immutable_singleton_pool();
-            for (index, mut child) in children.into_iter().enumerate() {
-                visit(&mut child);
-                let updated = if child.is_null() {
-                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Null)
-                } else if let Some(singleton) = heap.retained_singleton(child).or_else(|| singletons.lease(child)) {
-                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Singleton(&singleton))
-                } else {
-                    let (_, child) = super::memory::checked_projection(child)
-                        .expect("rewritten GC edge names a live allocation");
-                    heap.set_reference_elt(&parent, index, super::heap::ReferenceChild::Node(&child))
-                };
-                updated.expect("rewritten GC vector edge belongs to its heap");
-            }
-        }
-        if mask & EDGE_ATTRIB != 0 {
-            visit(&mut (*obj).attrib);
-        }
-    }
+fn each_child(obj: SEXP, follow_weak_key: bool, visit: impl FnMut(&mut NodeLink)) {
+    let (_, parent) =
+        super::memory::checked_projection(obj).expect("GC parent belongs to checked storage");
+    gc_trace_bridge::rewrite_children(&parent, follow_weak_key, visit);
 }
 
 #[inline(always)]
@@ -389,11 +311,10 @@ fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
         // SAFETY: GC is quiescent and the owner remains live through marking.
         // Published payloads retain their native span invariants. The bridge
         // revalidates the token, copies edges, and lends no mutable fields.
-        let children = trace_result(unsafe {
-            gc_trace_bridge::snapshot_children(&node, pending.context())
-        });
+        let children =
+            trace_result(unsafe { gc_trace_bridge::snapshot_children(&node, pending.context()) });
         for child in children.into_edges() {
-            trace_result(pending.enqueue(child));
+            trace_result(pending.enqueue_link(child));
         }
     }
 }
@@ -419,7 +340,10 @@ fn mark_checked_root_snapshot(roots: Vec<RootValue>) {
     let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
     for root in roots {
         match root {
-            RootValue::Checked { projection, allocation } => {
+            RootValue::Checked {
+                projection,
+                allocation,
+            } => {
                 trace_result(pending.enqueue_checked(projection, allocation));
             }
             RootValue::Static { projection } => {
@@ -447,14 +371,20 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         let identity = &(*instance).heap_identity;
         let fresh = super::memory::fresh_allocation_roots(identity)
             .into_iter()
-            .map(|(projection, allocation)| RootValue::Checked { projection, allocation })
+            .map(|(projection, allocation)| RootValue::Checked {
+                projection,
+                allocation,
+            })
             .collect();
         MARK_WHERE.with(|w| w.set("fresh_allocations"));
         mark_checked_root_snapshot(fresh);
 
         let automatic = super::memory::automatic_roots(identity)
             .into_iter()
-            .map(|(projection, allocation)| RootValue::Checked { projection, allocation })
+            .map(|(projection, allocation)| RootValue::Checked {
+                projection,
+                allocation,
+            })
             .collect();
         MARK_WHERE.with(|w| w.set("automatic_handles"));
         mark_checked_root_snapshot(automatic);
@@ -467,12 +397,12 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_checked_root_snapshot((*instance).root_table.checked_entries_snapshot());
         MARK_WHERE.with(|w| w.set("preserve_stack"));
         mark_checked_root_snapshot((*instance).preserve_stack.checked_entries_snapshot());
-            MARK_WHERE.with(|w| w.set("context"));
+        MARK_WHERE.with(|w| w.set("context"));
         for ctxt in &(*instance).context_stack {
             mark_context_roots(&*ctxt.get());
         }
 
-            MARK_WHERE.with(|w| w.set("error_state"));
+        MARK_WHERE.with(|w| w.set("error_state"));
         mark_reachable((*instance).error_state.warnings);
         mark_reachable((*instance).error_state.handler_stack);
         mark_reachable((*instance).error_state.global_calling_handlers);
@@ -658,9 +588,9 @@ impl RememberedSet {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.entries.iter().filter_map(|(projection, allocation)| {
-            allocation.is_live().then_some(*projection)
-        })
+        self.entries
+            .iter()
+            .filter_map(|(projection, allocation)| allocation.is_live().then_some(*projection))
     }
 
     #[allow(clippy::len_without_is_empty)]
@@ -677,7 +607,8 @@ impl RememberedSet {
                 return false;
             }
             if let Some(&replacement) = old_to_new.get(&(*projection as usize)) {
-                let Some((canonical, current)) = super::memory::checked_projection(replacement) else {
+                let Some((canonical, current)) = super::memory::checked_projection(replacement)
+                else {
                     return false;
                 };
                 if !allocation.same_heap(&current) {
@@ -700,15 +631,22 @@ impl RememberedSet {
 
     fn rebuild_membership(&mut self) {
         self.members.clear();
-        self.members.extend(self.entries.iter().map(|(_, allocation)| allocation.id().clone()));
+        self.members.extend(
+            self.entries
+                .iter()
+                .map(|(_, allocation)| allocation.id().clone()),
+        );
     }
 
     fn checked_roots(&self) -> Vec<RootValue> {
-        self.entries.iter().filter(|(_, allocation)| allocation.is_live())
+        self.entries
+            .iter()
+            .filter(|(_, allocation)| allocation.is_live())
             .map(|(projection, allocation)| RootValue::Checked {
                 projection: *projection,
                 allocation: allocation.clone(),
-            }).collect()
+            })
+            .collect()
     }
 }
 
@@ -777,7 +715,9 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
         return;
     }
 
-    let Some(instance) = instance::current_instance_ptr() else { return; };
+    let Some(instance) = instance::current_instance_ptr() else {
+        return;
+    };
     // Inputs are address lookups only; the checked barrier copies canonical
     // cells after validating both allocation identities and their owner.
     if !unsafe { write_barrier_in(instance, parent, child) } {
@@ -804,7 +744,11 @@ fn checked_barrier_pair(
     }
     let parent_header = super::memory::checked_snapshot(parent, &parent_id)?;
     let child_header = super::memory::checked_snapshot(child, &child_id)?;
-    Some((parent, parent_header.sxpinfo.gcgen(), child_header.sxpinfo.gcgen()))
+    Some((
+        parent,
+        parent_header.sxpinfo.gcgen(),
+        child_header.sxpinfo.gcgen(),
+    ))
 }
 
 /// Record an old-to-young edge in the original owner's remembered set.
@@ -828,7 +772,8 @@ pub(crate) unsafe fn write_barrier_in(
     {
         return true;
     }
-    let Some((parent, parent_gen, child_gen)) = checked_barrier_pair(instance, parent, child) else {
+    let Some((parent, parent_gen, child_gen)) = checked_barrier_pair(instance, parent, child)
+    else {
         return false;
     };
     if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
@@ -924,38 +869,58 @@ fn update_remembered_set_in(instance: *mut instance::RInstance, old_to_new: &Has
     }
 }
 
-fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
+fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<NodeLink, NodeLink>) {
     if obj.is_null() || super::globals::immutable_singleton_projection(obj).is_some() {
         return;
     }
-    unsafe {
-        // Update follows the weak key; mark does not.
-        each_child(obj, true, |slot| update_field(slot, old_to_new));
-    }
+    each_child(obj, true, |slot| {
+        if let Some(&replacement) = old_to_new.get(slot) {
+            *slot = replacement;
+        }
+    });
 }
 
-fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
-    (unsafe {
-        /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-        with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.active_nodes().collect();
-        for &obj in &nodes {
-            update_references_in_object(obj, old_to_new);
-        }
-        })
+#[cfg(test)]
+fn update_object_references(old_to_new: &HashMap<NodeLink, NodeLink>) {
+    instance::with_required_current_instance(|owner| {
+        update_object_references_in(owner, old_to_new);
     });
 }
 
 fn update_object_references_in(
     instance: *mut instance::RInstance,
-    old_to_new: &HashMap<usize, SEXP>,
+    old_to_new: &HashMap<NodeLink, NodeLink>,
 ) {
-    unsafe {
-        let nodes: Vec<SEXP> = (*instance).arena.active_nodes().collect();
-        for &obj in &nodes {
-            update_references_in_object(obj, old_to_new);
-        }
+    // End the arena/persistent registry loan before any link visitor runs.
+    let nodes: Vec<SEXP> = unsafe { (*instance).arena.active_nodes().collect() };
+    let permanent: Vec<SEXP> = unsafe { (*instance).persistent_nodes.projections().collect() };
+    for obj in nodes.into_iter().chain(permanent) {
+        update_references_in_object(obj, old_to_new);
     }
+}
+
+fn sweep_link_remap(
+    instance: *mut instance::RInstance,
+    freed: &[SEXP],
+    nil: SEXP,
+) -> HashMap<NodeLink, NodeLink> {
+    let heap = unsafe { (*instance).heap_identity.clone() };
+    let nil = heap
+        .link_from_projection(nil)
+        .expect("collector retains canonical nil");
+    freed
+        .iter()
+        .map(|&projection| {
+            let token = unsafe { (*instance).arena.node_token(projection) }
+                .expect("swept node remains live before deactivation");
+            (
+                token
+                    .link()
+                    .expect("swept node has an exact allocation link"),
+                nil,
+            )
+        })
+        .collect()
 }
 
 fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usize {
@@ -1043,13 +1008,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         for obj in (*instance).symbols.values_mut() {
             update_field(obj, old_to_new);
         }
-        // All permanent owned headers participate, including records absent
-        // from compatibility projection lists. End the map borrow before
-        // rewriting any physical graph fields.
-        let permanent_nodes: Vec<_> = (*instance).persistent_nodes.projections().collect();
-        for node in permanent_nodes {
-            update_references_in_object(node, old_to_new);
-        }
         for obj in &mut (*instance).names_state.ddval_symbols {
             update_field(obj, old_to_new);
         }
@@ -1098,7 +1056,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         for clos in &mut (*instance).unwrap_methods_closures {
             update_field(clos, old_to_new);
         }
-
 
         // The binding tables are keyed by raw node addresses. Entries whose keyed
         // node was reclaimed this cycle must be dropped before `free_node` puts
@@ -1150,11 +1107,15 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
     }
 }
 
-fn update_all_references_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+fn update_all_references_in(
+    instance: *mut instance::RInstance,
+    old_to_new: &HashMap<usize, SEXP>,
+    old_links: &HashMap<NodeLink, NodeLink>,
+) {
     unsafe {
         update_instance_roots_in(instance, old_to_new);
         update_remembered_set_in(instance, old_to_new);
-        update_object_references_in(instance, old_to_new);
+        update_object_references_in(instance, old_links);
     }
 }
 
@@ -1187,6 +1148,10 @@ where
             return (0, 0);
         }
 
+        // Native Rust resources detached by sweep may have destructors that
+        // reenter R. Release them after tracing, arena lends, and collection
+        // bookkeeping have ended, including when collection unwinds.
+        let _resource_drops = super::memory::resource_drop_guard_in(instance);
         (*instance).gc_state.in_progress = true;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             verify_gc_invariants_in(instance);
@@ -1229,7 +1194,6 @@ where
 pub(crate) unsafe fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe { run_gc_cycle_in(instance, do_minor_gc_in) }
 }
-
 
 /// Deferred alloc-time GC processing (see `memory::with_arena_in`).
 ///
@@ -1319,14 +1283,14 @@ fn sync_env_hash_tables_from_frames(instance: *mut instance::RInstance) {
                 if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
                     continue;
                 }
-                let mut frame = (*env).data.environment().frame;
+                let mut frame = super::accessors::FRAME(env);
                 while !frame.is_null() && (*frame).sxpinfo.type_of() != SEXPTYPE::NILSXP {
-                    let tag = (*frame).data.list().tagval;
-                    let val = (*frame).data.list().carval;
+                    let tag = super::accessors::TAG(frame);
+                    let val = super::accessors::CAR(frame);
                     if !tag.is_null() {
                         super::env_hash::hash_insert_in(instance, env, tag, val);
                     }
-                    frame = (*frame).data.list().cdrval;
+                    frame = super::accessors::CDR(frame);
                 }
             }
         }
@@ -1343,16 +1307,16 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
                     if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
                         break;
                     }
-                    let mut frame = (*env).data.environment().frame;
+                    let mut frame = super::accessors::FRAME(env);
                     while !frame.is_null() && (*frame).sxpinfo.type_of() != SEXPTYPE::NILSXP {
                         values.push(frame);
-                        let val = (*frame).data.list().carval;
+                        let val = super::accessors::CAR(frame);
                         if !val.is_null() {
                             values.push(val);
                         }
-                        frame = (*frame).data.list().cdrval;
+                        frame = super::accessors::CDR(frame);
                     }
-                    env = (*env).data.environment().enclos;
+                    env = super::accessors::ENCLOS(env);
                 }
             };
             for ctxt in &(*instance).context_stack {
@@ -1558,7 +1522,8 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-            update_all_references_in(instance, &old_to_nil);
+            let old_links = sweep_link_remap(instance, &to_free, nil);
+            update_all_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1701,7 +1666,8 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-            update_all_references_in(instance, &old_to_nil);
+            let old_links = sweep_link_remap(instance, &to_free, nil);
+            update_all_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1713,10 +1679,7 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
         // collection, reachable young nodes were not promoted, so live
         // old-to-young edges still exist). Drop only entries whose old parent
         // was reclaimed this cycle.
-        (*instance)
-            .gc_state
-            .remembered_set
-            .retain_live(&freed_set);
+        (*instance).gc_state.remembered_set.retain_live(&freed_set);
 
         (0, freed_count)
     }
@@ -1766,7 +1729,8 @@ fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-            update_all_references_in(instance, &old_to_nil);
+            let old_links = sweep_link_remap(instance, &to_free, nil);
+            update_all_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1824,7 +1788,7 @@ pub fn force_compact() {
     (unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         with_arena_for_gc(|arena| {
-        normalize_free_list(arena);
+            normalize_free_list(arena);
         })
     });
 }
@@ -1871,6 +1835,54 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    #[test]
+    fn collected_node_resources_reenter_only_after_collection_and_arena_lends_end() {
+        use std::{cell::Cell, rc::Rc};
+        struct ReentrantDrop(Rc<Cell<usize>>);
+        impl Drop for ReentrantDrop {
+            fn drop(&mut self) {
+                instance::with_required_current_instance(|owner| unsafe {
+                    assert!(!(*owner).gc_state.in_progress);
+                    assert!(!super::super::memory::is_arena_lent(owner));
+                });
+                // SAFETY: the enclosing session is live throughout collection
+                // and this destructor; its exclusive arena lend has ended.
+                let owner = unsafe { super::super::owner::OwnerToken::current().unwrap() };
+                let value = owner
+                    .node_factory()
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                    .unwrap();
+                full_gc();
+                assert!(value.is_live());
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        let session = RSession::new_for_gc_tests();
+        let drops = Rc::new(Cell::new(0));
+        let value = session
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .allocate(|arena| {
+                let pointer = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+                let token = arena.node_token(pointer)?;
+                arena
+                    .heap_identity()
+                    .attach_resource(&token, Rc::new(ReentrantDrop(drops.clone())))?;
+                Some(pointer)
+            })
+            .unwrap();
+        let original = super::super::memory::checked_projection(value.as_raw())
+            .unwrap()
+            .1;
+        drop(value);
+        session.gc();
+        assert!(!original.is_live());
+        assert_eq!(drops.get(), 1);
+        session.gc();
+        assert_eq!(drops.get(), 1);
+    }
 
     /// Persistent environment sentinels live outside the arena, so sweep
     /// never resets their mark bits. Before `clear_persistent_node_marks_in`
@@ -1922,7 +1934,8 @@ mod tests {
             (unsafe {
                 /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                 with_arena(|arena| arena.contains(found))
-            }));
+            })
+        );
         assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(found) }, 42);
 
         // The quiescent path has no force-protect preamble; with the fix the
@@ -1945,8 +1958,12 @@ mod tests {
             // Base bootstrap inserts heap-owned Autoloads (and a full session
             // inserts package environments) into this chain. They were freed
             // with the old arena; keep only the persistent sentinels.
-            (*crate::sexp::globals::R_GlobalEnv()).data.environment_mut().enclos =
-                crate::sexp::globals::R_BaseEnv();
+            (*crate::sexp::globals::R_GlobalEnv())
+                .data
+                .environment_mut()
+                .enclos = arena
+                .link_from_projection(crate::sexp::globals::R_BaseEnv())
+                .unwrap();
         }
         instance::with_required_current_instance(|instance| unsafe {
             // Test-harness bulk reset via raw place accesses: BOTH
@@ -2020,25 +2037,27 @@ mod tests {
             for node in discarded {
                 assert!((*instance).persistent_nodes.remove(node));
             }
-            (*instance).env_nodes.retain(|node| sentinels.contains(node));
+            (*instance)
+                .env_nodes
+                .retain(|node| sentinels.contains(node));
         });
         for (env, enclos) in [
             (unsafe { crate::sexp::globals::R_EmptyEnv() }, nil),
-            (
-                unsafe { crate::sexp::globals::R_BaseEnv() },
-                unsafe { crate::sexp::globals::R_EmptyEnv() },
-            ),
-            (
-                unsafe { crate::sexp::globals::R_GlobalEnv() },
-                unsafe { crate::sexp::globals::R_BaseEnv() },
-            ),
+            (unsafe { crate::sexp::globals::R_BaseEnv() }, unsafe {
+                crate::sexp::globals::R_EmptyEnv()
+            }),
+            (unsafe { crate::sexp::globals::R_GlobalEnv() }, unsafe {
+                crate::sexp::globals::R_BaseEnv()
+            }),
         ] {
             if !env.is_null() {
                 unsafe {
-                    (*env).attrib = nil;
-                    (*env).data.environment_mut().frame = nil;
-                    (*env).data.environment_mut().hashtab = nil;
-                    (*env).data.environment_mut().enclos = enclos;
+                    (*env).attrib = arena.link_from_projection(nil).unwrap();
+                    (*env).data.environment_mut().frame = arena.link_from_projection(nil).unwrap();
+                    (*env).data.environment_mut().hashtab =
+                        arena.link_from_projection(nil).unwrap();
+                    (*env).data.environment_mut().enclos =
+                        arena.link_from_projection(enclos).unwrap();
                 }
             }
         }
@@ -2052,25 +2071,25 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            assert!(arena.contains(unsafe { (*global).data.environment().enclos }));
-            let discarded = arena.alloc_node(SEXPTYPE::LISTSXP);
-            let arena_token = arena.node_token(discarded).unwrap();
-            let (sentinel_token, permanent_token) =
-                instance::with_required_current_instance(|inst| unsafe {
-                    let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::PROMSXP);
-                    header.attrib = discarded;
-                    let permanent = (*inst).persistent_nodes.allocate_header(header).unwrap();
-                    (
-                        (*inst).persistent_nodes.token(global).unwrap(),
-                        (*inst).persistent_nodes.token(permanent).unwrap(),
-                    )
-                });
-            assert!(arena_token.same_heap(&sentinel_token));
-            reset_gc_test_arena(arena);
-            assert_eq!(unsafe { (*global).data.environment().enclos }, base);
-            assert!(!arena_token.is_live());
-            assert!(!permanent_token.is_live());
-            assert!(sentinel_token.is_live());
+                assert!(arena.contains(unsafe { super::super::accessors::ENCLOS(global) }));
+                let discarded = arena.alloc_node(SEXPTYPE::LISTSXP);
+                let arena_token = arena.node_token(discarded).unwrap();
+                let (sentinel_token, permanent_token) =
+                    instance::with_required_current_instance(|inst| unsafe {
+                        let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::PROMSXP);
+                        header.attrib = arena.link_from_projection(discarded).unwrap();
+                        let permanent = (*inst).persistent_nodes.allocate_header(header).unwrap();
+                        (
+                            (*inst).persistent_nodes.token(global).unwrap(),
+                            (*inst).persistent_nodes.token(permanent).unwrap(),
+                        )
+                    });
+                assert!(arena_token.same_heap(&sentinel_token));
+                reset_gc_test_arena(arena);
+                assert_eq!(unsafe { super::super::accessors::ENCLOS(global) }, base);
+                assert!(!arena_token.is_live());
+                assert!(!permanent_token.is_live());
+                assert!(sentinel_token.is_live());
             })
         });
         instance::with_required_current_instance(|inst| unsafe {
@@ -2107,17 +2126,20 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
-            let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
+                let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
+                let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
 
-            unsafe {
-                (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
-            }
+                unsafe {
+                    (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
+                }
 
-            write_barrier(old_obj, young_obj);
+                write_barrier(old_obj, young_obj);
 
-            assert_eq!(with_gc_state(|state| state.remembered_set.len()), previous + 1);
+                assert_eq!(
+                    with_gc_state(|state| state.remembered_set.len()),
+                    previous + 1
+                );
             })
         });
     }
@@ -2138,7 +2160,8 @@ mod tests {
         }
 
         let old_root = unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(left), old) }.unwrap();
-        let right_root = unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(right), right_obj) }.unwrap();
+        let right_root =
+            unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(right), right_obj) }.unwrap();
         left.legacy_protect.push(old_root.clone(), "test");
         let (projection, allocation) = super::super::memory::checked_projection(old).unwrap();
         left.root_table.claim(
@@ -2162,14 +2185,20 @@ mod tests {
             .with_entries(|entries| assert_eq!(entries[0], new));
         left.root_table
             .with_entries(|entries| assert_eq!(entries[0], new));
-        assert_eq!(left.preserve_stack.entries_snapshot().last().copied(), Some(new));
+        assert_eq!(
+            left.preserve_stack.entries_snapshot().last().copied(),
+            Some(new)
+        );
         assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
         assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
 
         right
             .legacy_protect
             .with_entries(|entries| assert_eq!(entries[0], right_obj));
-        assert_eq!(right.preserve_stack.entries_snapshot().last().copied(), Some(right_obj));
+        assert_eq!(
+            right.preserve_stack.entries_snapshot().last().copied(),
+            Some(right_obj)
+        );
         assert!(
             right
                 .gc_state
@@ -2186,7 +2215,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
             })
         });
         let (promoted, freed) = minor_gc();
@@ -2201,9 +2230,9 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            arena.alloc_node(SEXPTYPE::INTSXP);
-            arena.alloc_node(SEXPTYPE::REALSXP);
+                reset_gc_test_arena(arena);
+                arena.alloc_node(SEXPTYPE::INTSXP);
+                arena.alloc_node(SEXPTYPE::REALSXP);
             })
         });
         let (promoted, freed) = minor_gc();
@@ -2218,13 +2247,13 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
-            let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
-            unsafe {
-                (*obj1).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*obj2).sxpinfo.set_gcgen(Generation::Old as u8);
-            }
+                reset_gc_test_arena(arena);
+                let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
+                let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
+                unsafe {
+                    (*obj1).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*obj2).sxpinfo.set_gcgen(Generation::Old as u8);
+                }
             })
         });
         let (promoted, freed) = minor_gc();
@@ -2239,13 +2268,13 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            let old_obj = arena.alloc_node(SEXPTYPE::INTSXP);
-            let young_obj = arena.alloc_node(SEXPTYPE::REALSXP);
-            unsafe {
-                (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
-            }
+                reset_gc_test_arena(arena);
+                let old_obj = arena.alloc_node(SEXPTYPE::INTSXP);
+                let young_obj = arena.alloc_node(SEXPTYPE::REALSXP);
+                unsafe {
+                    (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
+                }
             })
         });
         let (promoted, freed) = minor_gc();
@@ -2260,12 +2289,12 @@ mod tests {
         let value_raw = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-            unsafe {
-                *(crate::sexp::accessors::INTEGER(value)) = 123;
-            }
-            value
-        })
+                let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                unsafe {
+                    *(crate::sexp::accessors::INTEGER(value)) = 123;
+                }
+                value
+            })
         };
         let value = session.sexp(value_raw).expect("value belongs to session");
         assert!(session.define_var("kept_by_global_env", value));
@@ -2273,8 +2302,8 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            let garbage = arena.alloc_node(SEXPTYPE::REALSXP);
-            assert!(!garbage.is_null());
+                let garbage = arena.alloc_node(SEXPTYPE::REALSXP);
+                assert!(!garbage.is_null());
             })
         });
         let (_, freed) = minor_gc();
@@ -2282,9 +2311,9 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            for _ in 0..256 {
-                assert!(!arena.alloc_node(SEXPTYPE::REALSXP).is_null());
-            }
+                for _ in 0..256 {
+                    assert!(!arena.alloc_node(SEXPTYPE::REALSXP).is_null());
+                }
             })
         });
 
@@ -2317,8 +2346,8 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            arena.alloc_node(SEXPTYPE::INTSXP);
+                reset_gc_test_arena(arena);
+                arena.alloc_node(SEXPTYPE::INTSXP);
             })
         });
         minor_gc();
@@ -2341,8 +2370,8 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            arena.alloc_node(SEXPTYPE::INTSXP);
+                reset_gc_test_arena(arena);
+                arena.alloc_node(SEXPTYPE::INTSXP);
             })
         });
         minor_gc();
@@ -2383,13 +2412,17 @@ mod tests {
     fn remembered_identity_does_not_root_a_reused_generation() {
         let mut arena = RArena::new();
         let original = arena.alloc_node(SEXPTYPE::LISTSXP);
-        unsafe { (*original).sxpinfo.set_gcgen(Generation::Old as u8); }
+        unsafe {
+            (*original).sxpinfo.set_gcgen(Generation::Old as u8);
+        }
         let original_id = arena.node_token(original).unwrap();
         let mut remembered = RememberedSet::default();
         // Address-only inputs must recover the canonical cell's provenance.
         remembered.add(std::ptr::without_provenance_mut(original.addr()));
         assert_eq!(remembered.len(), 1);
-        unsafe { arena.free_node(original); }
+        unsafe {
+            arena.free_node(original);
+        }
         let replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
         assert_eq!(replacement, original);
         assert!(!original_id.is_live());
@@ -2402,7 +2435,9 @@ mod tests {
         ));
         mark_checked_root_snapshot(remembered.checked_roots());
         assert!(!super::super::memory::arena_node_marked(replacement));
-        unsafe { (*replacement).sxpinfo.set_gcgen(Generation::Old as u8); }
+        unsafe {
+            (*replacement).sxpinfo.set_gcgen(Generation::Old as u8);
+        }
         remembered.add(replacement);
         assert_eq!(remembered.iter().count(), 1);
         remembered.remap(&HashMap::new());
@@ -2437,7 +2472,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
             })
         });
         let (promoted, freed) = full_gc();
@@ -2452,12 +2487,12 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            let obj = arena.alloc_node(SEXPTYPE::INTSXP);
-            unsafe {
-                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-            }
-        })
+                reset_gc_test_arena(arena);
+                let obj = arena.alloc_node(SEXPTYPE::INTSXP);
+                unsafe {
+                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                }
+            })
         });
 
         let (promoted, freed) = full_gc();
@@ -2466,8 +2501,8 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            assert_eq!(arena.node_count(), 0);
-            assert_eq!(arena.free_count(), 1);
+                assert_eq!(arena.node_count(), 0);
+                assert_eq!(arena.free_count(), 1);
             })
         });
     }
@@ -2482,13 +2517,13 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-            unsafe {
-                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                *(crate::sexp::accessors::INTEGER(obj)) = 42;
-            }
-            std::mem::forget(protect(obj));
+                reset_gc_test_arena(arena);
+                obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                unsafe {
+                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    *(crate::sexp::accessors::INTEGER(obj)) = 42;
+                }
+                std::mem::forget(protect(obj));
             })
         });
 
@@ -2515,14 +2550,14 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-            unsafe {
-                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                *(crate::sexp::accessors::INTEGER(obj)) = 99;
-            }
-            std::mem::forget(protect(obj));
-            arena.set_budget(ArenaBudget::new(1, 0));
+                reset_gc_test_arena(arena);
+                obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                unsafe {
+                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    *(crate::sexp::accessors::INTEGER(obj)) = 99;
+                }
+                std::mem::forget(protect(obj));
+                arena.set_budget(ArenaBudget::new(1, 0));
             })
         });
 
@@ -2538,7 +2573,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            assert!(arena.contains(obj));
+                assert!(arena.contains(obj));
             })
         });
     }
@@ -2568,19 +2603,19 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            for i in 0..N {
-                let v = arena.alloc_vector(SEXPTYPE::REALSXP, LEN as i64);
-                unsafe {
-                    let data = crate::sexp::accessors::REAL(v);
-                    for j in 0..LEN {
-                        *data.add(j) = (i as f64) * 1000.0 + j as f64;
+                reset_gc_test_arena(arena);
+                for i in 0..N {
+                    let v = arena.alloc_vector(SEXPTYPE::REALSXP, LEN as i64);
+                    unsafe {
+                        let data = crate::sexp::accessors::REAL(v);
+                        for j in 0..LEN {
+                            *data.add(j) = (i as f64) * 1000.0 + j as f64;
+                        }
+                        std::mem::forget(protect(v));
                     }
-                    std::mem::forget(protect(v));
+                    keepers.push(v);
                 }
-                keepers.push(v);
-            }
-        })
+            })
         });
 
         // Churn unprotected garbage and collect repeatedly; prove real work
@@ -2590,9 +2625,9 @@ mod tests {
             (unsafe {
                 /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                 with_arena(|arena| {
-                for _ in 0..200 {
-                    let _ = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-                }
+                    for _ in 0..200 {
+                        let _ = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
+                    }
                 })
             });
             let (_promoted, freed) = full_gc();
@@ -2625,15 +2660,19 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            tag = arena.alloc_node(SEXPTYPE::INTSXP);
-            prot = arena.alloc_node(SEXPTYPE::REALSXP);
-            ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-            unsafe {
-                (*ext).sxpinfo.set_gcgen(Generation::Old as u8);
-                *(*ext).data.extptr_mut() = [payload, prot as *mut _, tag as *mut _];
-            }
-            std::mem::forget(protect(ext));
+                reset_gc_test_arena(arena);
+                tag = arena.alloc_node(SEXPTYPE::INTSXP);
+                prot = arena.alloc_node(SEXPTYPE::REALSXP);
+                ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+                unsafe {
+                    (*ext).sxpinfo.set_gcgen(Generation::Old as u8);
+                    *(*ext).data.extptr_mut() = crate::sexp::ffi::ExtPtrBody {
+                        address: payload,
+                        protected: arena.link_from_projection(prot).unwrap(),
+                        tag: arena.link_from_projection(tag).unwrap(),
+                    };
+                }
+                std::mem::forget(protect(ext));
             })
         });
 
@@ -2644,9 +2683,9 @@ mod tests {
         assert_eq!(protected_ext, ext);
         unsafe {
             assert_eq!((*protected_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
-            assert_eq!((*protected_ext).data.extptr()[0], payload);
-            let linked_prot = (*protected_ext).data.extptr()[1] as SEXP;
-            let linked_tag = (*protected_ext).data.extptr()[2] as SEXP;
+            assert_eq!((*protected_ext).data.extptr().address, payload);
+            let linked_prot = crate::mainutils::memory_main::R_ExternalPtrProtected(protected_ext);
+            let linked_tag = crate::mainutils::memory_main::R_ExternalPtrTag(protected_ext);
             assert_eq!(linked_prot, prot);
             assert_eq!(linked_tag, tag);
             assert_eq!((*linked_prot).sxpinfo.type_of(), SEXPTYPE::REALSXP);
@@ -2673,20 +2712,20 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            key = arena.alloc_node(SEXPTYPE::INTSXP);
-            value = arena.alloc_node(SEXPTYPE::REALSXP);
-            finalizer = arena.alloc_node(SEXPTYPE::LISTSXP);
-            weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-            unsafe {
-                for obj in [key, value, finalizer, weak] {
-                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                reset_gc_test_arena(arena);
+                key = arena.alloc_node(SEXPTYPE::INTSXP);
+                value = arena.alloc_node(SEXPTYPE::REALSXP);
+                finalizer = arena.alloc_node(SEXPTYPE::LISTSXP);
+                weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+                unsafe {
+                    for obj in [key, value, finalizer, weak] {
+                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    }
+                    (*weak).data.list_mut().carval = arena.link_from_projection(key).unwrap();
+                    (*weak).data.list_mut().cdrval = arena.link_from_projection(value).unwrap();
+                    (*weak).data.list_mut().tagval = arena.link_from_projection(finalizer).unwrap();
                 }
-                (*weak).data.list_mut().carval = key;
-                (*weak).data.list_mut().cdrval = value;
-                (*weak).data.list_mut().tagval = finalizer;
-            }
-            std::mem::forget(protect(weak));
+                std::mem::forget(protect(weak));
             })
         });
 
@@ -2698,11 +2737,11 @@ mod tests {
         unsafe {
             assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
             assert_eq!(
-                (*protected_weak).data.list().carval,
+                super::super::accessors::CAR(protected_weak),
                 crate::sexp::globals::R_NilValue()
             );
-            let linked_value = (*protected_weak).data.list().cdrval;
-            let linked_finalizer = (*protected_weak).data.list().tagval;
+            let linked_value = super::super::accessors::CDR(protected_weak);
+            let linked_finalizer = super::super::accessors::TAG(protected_weak);
             assert_eq!(linked_value, value);
             assert_eq!(linked_finalizer, finalizer);
             assert_eq!((*linked_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
@@ -2729,20 +2768,22 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            key = arena.alloc_node(SEXPTYPE::INTSXP);
-            value = arena.alloc_node(SEXPTYPE::REALSXP);
-            weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-            unsafe {
-                for obj in [key, value, weak] {
-                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                reset_gc_test_arena(arena);
+                key = arena.alloc_node(SEXPTYPE::INTSXP);
+                value = arena.alloc_node(SEXPTYPE::REALSXP);
+                weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+                unsafe {
+                    for obj in [key, value, weak] {
+                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    }
+                    (*weak).data.list_mut().carval = arena.link_from_projection(key).unwrap();
+                    (*weak).data.list_mut().cdrval = arena.link_from_projection(value).unwrap();
+                    (*weak).data.list_mut().tagval = arena
+                        .link_from_projection(crate::sexp::globals::R_NilValue())
+                        .unwrap();
                 }
-                (*weak).data.list_mut().carval = key;
-                (*weak).data.list_mut().cdrval = value;
-                (*weak).data.list_mut().tagval = crate::sexp::globals::R_NilValue();
-            }
-            std::mem::forget(protect(weak));
-            std::mem::forget(protect(key));
+                std::mem::forget(protect(weak));
+                std::mem::forget(protect(key));
             })
         });
 
@@ -2755,8 +2796,8 @@ mod tests {
         assert_eq!(protected_key, key);
         unsafe {
             assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
-            let linked_key = (*protected_weak).data.list().carval;
-            let linked_value = (*protected_weak).data.list().cdrval;
+            let linked_key = super::super::accessors::CAR(protected_weak);
+            let linked_value = super::super::accessors::CDR(protected_weak);
             assert_eq!(linked_key, protected_key);
             assert_eq!(linked_key, key);
             assert_eq!(linked_value, value);
@@ -2778,9 +2819,9 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            arena.alloc_node(SEXPTYPE::INTSXP);
-            arena.alloc_node(SEXPTYPE::REALSXP);
+                reset_gc_test_arena(arena);
+                arena.alloc_node(SEXPTYPE::INTSXP);
+                arena.alloc_node(SEXPTYPE::REALSXP);
             })
         });
         minor_gc();
@@ -2899,13 +2940,13 @@ mod tests {
             (unsafe {
                 /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                 with_arena(|arena| {
-                reset_gc_test_arena(arena);
-                let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
-                let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
-                unsafe {
-                    (*obj1).sxpinfo.set_gcgen(Generation::Young as u8);
-                    (*obj2).sxpinfo.set_gcgen(Generation::Young as u8);
-                }
+                    reset_gc_test_arena(arena);
+                    let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
+                    let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
+                    unsafe {
+                        (*obj1).sxpinfo.set_gcgen(Generation::Young as u8);
+                        (*obj2).sxpinfo.set_gcgen(Generation::Young as u8);
+                    }
                 })
             });
             let (promoted, freed) = minor_gc();
@@ -2923,12 +2964,12 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            let obj = arena.alloc_node(SEXPTYPE::INTSXP);
-            unsafe {
-                (*obj).sxpinfo.set_gcgen(Generation::Young as u8);
-            }
-            std::mem::forget(protect(obj));
+                reset_gc_test_arena(arena);
+                let obj = arena.alloc_node(SEXPTYPE::INTSXP);
+                unsafe {
+                    (*obj).sxpinfo.set_gcgen(Generation::Young as u8);
+                }
+                std::mem::forget(protect(obj));
             })
         });
         let (promoted, freed) = minor_gc();
@@ -2943,7 +2984,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
             })
         });
         let result = compact_if_needed(0.0);
@@ -2957,7 +2998,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
             })
         });
         let ratio = get_fragmentation_ratio();
@@ -2971,7 +3012,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
             })
         });
         force_compact();
@@ -2984,9 +3025,9 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            arena.alloc_vector(SEXPTYPE::REALSXP, 2);
-        })
+                reset_gc_test_arena(arena);
+                arena.alloc_vector(SEXPTYPE::REALSXP, 2);
+            })
         });
 
         let (_, freed1) = minor_gc();
@@ -3014,9 +3055,9 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            marker = arena.alloc_node(SEXPTYPE::LISTSXP);
-            vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+                reset_gc_test_arena(arena);
+                marker = arena.alloc_node(SEXPTYPE::LISTSXP);
+                vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
             })
         });
 
@@ -3025,9 +3066,14 @@ mod tests {
             *((*vec).gengc_next_node as *mut f64) = f64::from_bits(original_bits);
         }
 
-        let replacement = 0x1234usize as SEXP;
+        let replacement = unsafe { crate::sexp::globals::R_NilValue() };
         let mut map = HashMap::new();
-        map.insert(marker as usize, replacement);
+        let (_, marker_token) = super::super::memory::checked_projection(marker).unwrap();
+        let heap = marker_token.heap_identity();
+        map.insert(
+            marker_token.link().unwrap(),
+            heap.link_from_projection(replacement).unwrap(),
+        );
         update_object_references(&map);
 
         let after_bits = unsafe { *((*vec).gengc_next_node as *const f64) }.to_bits();
@@ -3044,20 +3090,107 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
-            marker = arena.alloc_node(SEXPTYPE::LISTSXP);
-            vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
-            replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
-            arena.set_reference_element(vec, 0, marker).expect("fixture reference slot");
+                reset_gc_test_arena(arena);
+                marker = arena.alloc_node(SEXPTYPE::LISTSXP);
+                vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+                replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+                arena
+                    .set_reference_element(vec, 0, marker)
+                    .expect("fixture reference slot");
             })
         });
         let mut map = HashMap::new();
-        map.insert(marker as usize, replacement);
+        let (_, marker_token) = super::super::memory::checked_projection(marker).unwrap();
+        let heap = marker_token.heap_identity();
+        map.insert(
+            marker_token.link().unwrap(),
+            heap.link_from_projection(replacement).unwrap(),
+        );
         update_object_references(&map);
 
         let (_, node) = super::super::memory::checked_projection(vec).expect("fixture vector");
-        let after_ptr = node.heap_identity().reference_elt(&node, 0).expect("fixture reference slot");
+        let after_ptr = node
+            .heap_identity()
+            .reference_elt(&node, 0)
+            .expect("fixture reference slot");
         assert_eq!(after_ptr, replacement);
+    }
+
+    #[test]
+    fn graph_rewrite_distinguishes_recycled_allocation_generations() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let (parent, vector, replacement, old_link, nil_link) = unsafe {
+                with_arena(|arena| {
+                    let old = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    let old_link = arena.link_from_projection(old).unwrap();
+                    let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    (*parent).data.list_mut().carval = old_link;
+                    let vector = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+                    arena.set_reference_element(vector, 0, old).unwrap();
+                    arena.free_node(old);
+                    let replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    assert_eq!(replacement, old);
+                    let current_link = arena.link_from_projection(replacement).unwrap();
+                    assert_ne!(current_link, old_link);
+                    (*parent).data.list_mut().cdrval = current_link;
+                    arena.set_reference_element(vector, 1, replacement).unwrap();
+                    let nil_link = arena
+                        .link_from_projection(crate::sexp::globals::R_NilValue())
+                        .unwrap();
+                    (parent, vector, replacement, old_link, nil_link)
+                })
+            };
+            let map = HashMap::from([(old_link, nil_link)]);
+            update_references_in_object(parent, &map);
+            update_references_in_object(vector, &map);
+            unsafe {
+                assert_eq!(
+                    super::super::accessors::CAR(parent),
+                    crate::sexp::globals::R_NilValue()
+                );
+                assert_eq!(super::super::accessors::CDR(parent), replacement);
+                assert_eq!(
+                    super::super::accessors::VECTOR_ELT(vector, 0),
+                    crate::sexp::globals::R_NilValue()
+                );
+                assert_eq!(super::super::accessors::VECTOR_ELT(vector, 1), replacement);
+            }
+        });
+    }
+
+    #[test]
+    fn copied_child_visitors_preserve_reentrant_header_updates() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let (parent, child_link, replacement_link) = unsafe {
+                with_arena(|arena| {
+                    let child = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    let replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    let child_link = arena.link_from_projection(child).unwrap();
+                    (*parent).data.list_mut().carval = child_link;
+                    (
+                        parent,
+                        child_link,
+                        arena.link_from_projection(replacement).unwrap(),
+                    )
+                })
+            };
+            let (_, token) = super::super::memory::checked_projection(parent).unwrap();
+            let heap = token.heap_identity();
+            each_child(parent, true, |link| {
+                if *link == child_link {
+                    let mut header = heap.node_snapshot(&token).unwrap();
+                    header.sxpinfo.set_named(2);
+                    heap.replace_node(&token, header).unwrap();
+                    *link = replacement_link;
+                }
+            });
+            let header = heap.node_snapshot(&token).unwrap();
+            assert_eq!(header.sxpinfo.named(), 2);
+            assert_eq!(header.data.list().carval, replacement_link);
+        });
     }
 
     #[test]
@@ -3074,11 +3207,11 @@ mod tests {
                         let value = arena.alloc_node(SEXPTYPE::REALSXP);
                         let nil = crate::sexp::globals::R_NilValue();
                         let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::WEAKREFSXP);
-                        header.attrib = nil;
+                        header.attrib = arena.link_from_projection(nil).unwrap();
                         header.data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-                            carval: key,
-                            cdrval: value,
-                            tagval: nil,
+                            carval: arena.link_from_projection(key).unwrap(),
+                            cdrval: arena.link_from_projection(value).unwrap(),
+                            tagval: arena.link_from_projection(nil).unwrap(),
                         });
                         instance::with_required_current_instance(|owner| {
                             let weak = (*owner).persistent_nodes.allocate_header(header).unwrap();
@@ -3100,14 +3233,20 @@ mod tests {
                         assert!(!arena.contains(key));
                         assert!(arena.contains(value));
                     });
-                    assert_eq!((*weak).data.list().carval, crate::sexp::globals::R_NilValue());
-                    assert_eq!((*weak).data.list().cdrval, value);
+                    assert_eq!(
+                        super::super::accessors::CAR(weak),
+                        crate::sexp::globals::R_NilValue()
+                    );
+                    assert_eq!(super::super::accessors::CDR(weak), value);
                 }
                 full_gc();
                 // SAFETY: the next cycle must retain the strong value and
                 // leave the already-cleared weak key as immutable nil.
                 unsafe {
-                    assert_eq!((*weak).data.list().carval, crate::sexp::globals::R_NilValue());
+                    assert_eq!(
+                        super::super::accessors::CAR(weak),
+                        crate::sexp::globals::R_NilValue()
+                    );
                     assert!(with_arena(|arena| arena.contains(value)));
                 }
             });
@@ -3115,30 +3254,36 @@ mod tests {
     }
 
     #[test]
-    fn checked_gc_rejects_unknown_child_before_dereference_and_restores_scope() {
+    fn checked_gc_rejects_stale_child_before_dereference_and_restores_scope() {
         let session = RSession::new_for_gc_tests();
         session.with_active(|| {
-            // SAFETY: the fixture owns the active session. The malformed edge
-            // is never dereferenced; it must fail allocation lookup first.
+            // The saved generation is invalidated before its physical slot is
+            // reused. The graph must not silently capture the replacement.
             let (node, _root) = unsafe {
                 with_arena(|arena| {
+                    let old = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    let old_link = arena.link_from_projection(old).unwrap();
+                    arena.free_node(old);
+                    let replacement = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    assert_eq!(replacement, old);
                     let node = arena.alloc_node(SEXPTYPE::LISTSXP);
-                    (*node).data.list_mut().carval = std::ptr::without_provenance_mut(0x1_0000);
+                    (*node).data.list_mut().carval = old_link;
                     let root = crate::sexp::protect::protect(node);
                     (node, root)
                 })
             };
             let failure = std::panic::catch_unwind(full_gc)
-                .expect_err("unknown graph edge must fail before header access");
-            let message = failure.downcast_ref::<String>().expect("GC failure message");
-            assert!(message.contains("UnownedProjection"), "{message}");
-            // SAFETY: the failed mark cycle performs no sweeping; the root
-            // still owns this header. Restore its valid edge before retrying.
+                .expect_err("stale graph generation must fail before header access");
+            let message = failure
+                .downcast_ref::<String>()
+                .expect("GC failure message");
+            assert!(message.contains("InvalidLink"), "{message}");
+            // The failed mark cycle performs no sweeping. Restore the actual
+            // live root before retrying the collection scope.
             unsafe {
-                (*node).data.list_mut().carval = crate::sexp::globals::R_NilValue();
+                super::super::accessors::SETCAR(node, crate::sexp::globals::R_NilValue());
             }
             full_gc();
-            // SAFETY: the restored collection scope retains this live root.
             assert!(unsafe { with_arena(|arena| arena.contains(node)) });
         });
     }
@@ -3149,25 +3294,25 @@ mod tests {
         let (head, tail) = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            let mut head = unsafe { crate::sexp::globals::R_NilValue() };
-            let mut tail = head;
-            let depth = if cfg!(miri) { 256 } else { 30_000 };
-            for i in 0..depth {
-                let node = arena.alloc_node(SEXPTYPE::LISTSXP);
+                let mut head = unsafe { crate::sexp::globals::R_NilValue() };
+                let mut tail = head;
+                let depth = if cfg!(miri) { 256 } else { 30_000 };
+                for i in 0..depth {
+                    let node = arena.alloc_node(SEXPTYPE::LISTSXP);
+                    unsafe {
+                        (*node).data.list_mut().cdrval = arena.link_from_projection(head).unwrap();
+                    }
+                    if i == 0 {
+                        tail = node;
+                    }
+                    head = node;
+                }
+                // A back-edge also verifies that marking terminates on cycles.
                 unsafe {
-                    (*node).data.list_mut().cdrval = head;
+                    super::super::accessors::SETCAR(tail, head);
                 }
-                if i == 0 {
-                    tail = node;
-                }
-                head = node;
-            }
-            // A back-edge also verifies that marking terminates on cycles.
-            unsafe {
-                (*tail).data.list_mut().carval = head;
-            }
-            (head, tail)
-        })
+                (head, tail)
+            })
         };
         let _root = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -3177,11 +3322,11 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            assert!(arena.active_nodes().any(|node| node == tail));
+                assert!(arena.active_nodes().any(|node| node == tail));
             })
         });
         unsafe {
-            assert_eq!((*tail).data.list().carval, head);
+            assert_eq!(super::super::accessors::CAR(tail), head);
         }
     }
 
@@ -3192,40 +3337,40 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
 
-            let sym_a = arena.alloc_node(SEXPTYPE::SYMSXP);
-            let sym_b = arena.alloc_node(SEXPTYPE::SYMSXP);
-            let one = arena.alloc_node(SEXPTYPE::INTSXP);
-            let two = arena.alloc_node(SEXPTYPE::INTSXP);
-            let tail = arena.alloc_node(SEXPTYPE::DOTSXP);
-            let head = arena.alloc_node(SEXPTYPE::DOTSXP);
-            let nil = unsafe { crate::sexp::globals::R_NilValue() };
-            unsafe {
-                (*tail).data.list_mut().tagval = sym_b;
-                (*tail).data.list_mut().carval = two;
-                (*tail).data.list_mut().cdrval = nil;
-                (*head).data.list_mut().tagval = sym_a;
-                (*head).data.list_mut().carval = one;
-                (*head).data.list_mut().cdrval = tail;
-            }
+                let sym_a = arena.alloc_node(SEXPTYPE::SYMSXP);
+                let sym_b = arena.alloc_node(SEXPTYPE::SYMSXP);
+                let one = arena.alloc_node(SEXPTYPE::INTSXP);
+                let two = arena.alloc_node(SEXPTYPE::INTSXP);
+                let tail = arena.alloc_node(SEXPTYPE::DOTSXP);
+                let head = arena.alloc_node(SEXPTYPE::DOTSXP);
+                let nil = unsafe { crate::sexp::globals::R_NilValue() };
+                unsafe {
+                    (*tail).data.list_mut().tagval = arena.link_from_projection(sym_b).unwrap();
+                    (*tail).data.list_mut().carval = arena.link_from_projection(two).unwrap();
+                    (*tail).data.list_mut().cdrval = arena.link_from_projection(nil).unwrap();
+                    (*head).data.list_mut().tagval = arena.link_from_projection(sym_a).unwrap();
+                    (*head).data.list_mut().carval = arena.link_from_projection(one).unwrap();
+                    (*head).data.list_mut().cdrval = arena.link_from_projection(tail).unwrap();
+                }
 
-            // Only the chain head is rooted; the cells beyond it are reachable
-            // exclusively through the DOTSXP tracing arm.
-            instance::with_required_current_instance(|inst| {
-                push_protect_in(inst, head);
-            });
+                // Only the chain head is rooted; the cells beyond it are reachable
+                // exclusively through the DOTSXP tracing arm.
+                instance::with_required_current_instance(|inst| {
+                    push_protect_in(inst, head);
+                });
 
-            minor_gc();
+                minor_gc();
 
-            let active: Vec<SEXP> = arena.active_nodes().collect();
-            assert!(active.contains(&tail), "DOTSXP tail cell was swept");
-            assert!(active.contains(&one), "DOTSXP car value was swept");
-            assert!(active.contains(&two), "DOTSXP tail car value was swept");
-            unsafe {
-                assert_eq!((*head).data.list().cdrval, tail);
-                assert_eq!((*tail).data.list().carval, two);
-            }
+                let active: Vec<SEXP> = arena.active_nodes().collect();
+                assert!(active.contains(&tail), "DOTSXP tail cell was swept");
+                assert!(active.contains(&one), "DOTSXP car value was swept");
+                assert!(active.contains(&two), "DOTSXP tail car value was swept");
+                unsafe {
+                    assert_eq!(super::super::accessors::CDR(head), tail);
+                    assert_eq!(super::super::accessors::CAR(tail), two);
+                }
             })
         });
     }
@@ -3237,41 +3382,41 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
 
-            let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
-            let child = arena.alloc_node(SEXPTYPE::INTSXP);
-            let nil = unsafe { crate::sexp::globals::R_NilValue() };
-            unsafe {
-                (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*parent).data.list_mut().carval = child;
-                (*parent).data.list_mut().cdrval = nil;
-                (*parent).data.list_mut().tagval = nil;
-                (*child).sxpinfo.set_gcgen(Generation::Young as u8);
-            }
+                let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
+                let child = arena.alloc_node(SEXPTYPE::INTSXP);
+                let nil = unsafe { crate::sexp::globals::R_NilValue() };
+                unsafe {
+                    (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*parent).data.list_mut().carval = arena.link_from_projection(child).unwrap();
+                    (*parent).data.list_mut().cdrval = arena.link_from_projection(nil).unwrap();
+                    (*parent).data.list_mut().tagval = arena.link_from_projection(nil).unwrap();
+                    (*child).sxpinfo.set_gcgen(Generation::Young as u8);
+                }
 
-            // The parent is intentionally not rooted anywhere else: the
-            // remembered set is the only path that must keep the young child
-            // alive through a minor collection.
-            write_barrier(parent, child);
-            unsafe {
+                // The parent is intentionally not rooted anywhere else: the
+                // remembered set is the only path that must keep the young child
+                // alive through a minor collection.
+                write_barrier(parent, child);
+                unsafe {
+                    assert!(
+                        !(*parent).sxpinfo.mark(),
+                        "write_barrier must not borrow the mark bit for membership"
+                    );
+                }
+                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+
+                minor_gc();
+
+                let active: Vec<SEXP> = arena.active_nodes().collect();
                 assert!(
-                    !(*parent).sxpinfo.mark(),
-                    "write_barrier must not borrow the mark bit for membership"
+                    active.contains(&child),
+                    "young child of a remembered old parent was swept"
                 );
-            }
-            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
-
-            minor_gc();
-
-            let active: Vec<SEXP> = arena.active_nodes().collect();
-            assert!(
-                active.contains(&child),
-                "young child of a remembered old parent was swept"
-            );
-            unsafe {
-                assert_eq!((*parent).data.list().carval, child);
-            }
+                unsafe {
+                    assert_eq!(super::super::accessors::CAR(parent), child);
+                }
             })
         });
     }
@@ -3283,40 +3428,40 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            reset_gc_test_arena(arena);
+                reset_gc_test_arena(arena);
 
-            use crate::sexp::accessors::{SET_VECTOR_ELT, VECTOR_ELT};
-            let parent = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
-            let child = arena.alloc_node(SEXPTYPE::STRSXP);
-            unsafe {
-                (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*child).sxpinfo.set_gcgen(Generation::Young as u8);
-                SET_VECTOR_ELT(parent, 0, child);
-            }
+                use crate::sexp::accessors::{SET_VECTOR_ELT, VECTOR_ELT};
+                let parent = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+                let child = arena.alloc_node(SEXPTYPE::STRSXP);
+                unsafe {
+                    (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*child).sxpinfo.set_gcgen(Generation::Young as u8);
+                    SET_VECTOR_ELT(parent, 0, child);
+                }
 
-            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
-            unsafe {
-                SET_VECTOR_ELT(parent, 0, child);
-            }
-            assert_eq!(
-                with_gc_state(|state| state.remembered_set.len()),
-                1,
-                "duplicate barrier calls must deduplicate"
-            );
-            unsafe {
-                assert!(!(*parent).sxpinfo.mark());
-            }
+                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+                unsafe {
+                    SET_VECTOR_ELT(parent, 0, child);
+                }
+                assert_eq!(
+                    with_gc_state(|state| state.remembered_set.len()),
+                    1,
+                    "duplicate barrier calls must deduplicate"
+                );
+                unsafe {
+                    assert!(!(*parent).sxpinfo.mark());
+                }
 
-            minor_gc();
+                minor_gc();
 
-            let active: Vec<SEXP> = arena.active_nodes().collect();
-            assert!(
-                active.contains(&child),
-                "young element of a remembered old vector was swept"
-            );
-            unsafe {
-                assert_eq!(VECTOR_ELT(parent, 0), child);
-            }
+                let active: Vec<SEXP> = arena.active_nodes().collect();
+                assert!(
+                    active.contains(&child),
+                    "young element of a remembered old vector was swept"
+                );
+                unsafe {
+                    assert_eq!(VECTOR_ELT(parent, 0), child);
+                }
             })
         });
     }
@@ -3350,13 +3495,13 @@ mod tests {
         unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            let env = arena.alloc_node(SEXPTYPE::ENVSXP);
-            unsafe {
-                (*env).data.environment_mut().frame = crate::sexp::globals::R_NilValue();
-                (*env).data.environment_mut().enclos = crate::sexp::globals::R_NilValue();
-            }
-            env
-        })
+                let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+                unsafe {
+                    super::super::accessors::SET_FRAME(env, crate::sexp::globals::R_NilValue());
+                    super::super::accessors::SET_ENCLOS(env, crate::sexp::globals::R_NilValue());
+                }
+                env
+            })
         }
     }
 
@@ -3376,7 +3521,7 @@ mod tests {
         }
         let namespace = make_detached_env();
         unsafe {
-            (*namespace).data.environment_mut().frame = payload;
+            super::super::accessors::SET_FRAME(namespace, payload);
         }
         instance::with_required_current_instance(|inst| unsafe {
             (*inst).package_namespace_cache.insert(
@@ -3484,10 +3629,10 @@ mod tests {
         let roots = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            (0..=NAMESPACE_ROOT)
-                .map(|_| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
-                .collect::<Vec<_>>()
-        })
+                (0..=NAMESPACE_ROOT)
+                    .map(|_| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+                    .collect::<Vec<_>>()
+            })
         };
 
         instance::with_required_current_instance(|inst| unsafe {
@@ -3503,7 +3648,9 @@ mod tests {
             }
             (*inst).package_namespace_cache.insert(
                 "rootProbePkg".to_string(),
-                (std::path::PathBuf::from("/root-probe"), roots[NAMESPACE_ROOT],
+                (
+                    std::path::PathBuf::from("/root-probe"),
+                    roots[NAMESPACE_ROOT],
                 ),
             );
         });
@@ -3522,10 +3669,10 @@ mod tests {
         let replacements = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            (0..roots.len())
-                .map(|_| arena.alloc_vector(SEXPTYPE::REALSXP, 1))
-                .collect::<Vec<_>>()
-        })
+                (0..roots.len())
+                    .map(|_| arena.alloc_vector(SEXPTYPE::REALSXP, 1))
+                    .collect::<Vec<_>>()
+            })
         };
         let remap = roots
             .iter()
@@ -3601,10 +3748,12 @@ mod tests {
         // this cycle reclaims it and the side-table entry must go with it.
         let env_addr = env as usize;
         full_gc();
-        assert!(!(unsafe {
+        assert!(
+            !(unsafe {
                 /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                 with_arena(|arena| arena.contains(env))
-            }));
+            })
+        );
         instance::with_required_current_instance(|inst| unsafe {
             assert!(
                 !(*inst)
@@ -3655,10 +3804,12 @@ mod tests {
                 with_arena(|arena| arena.contains(live_env))
             })
         );
-        assert!(!(unsafe {
+        assert!(
+            !(unsafe {
                 /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                 with_arena(|arena| arena.contains(dead_env))
-            }));
+            })
+        );
         assert!(crate::sexp::envir::environment_is_locked_raw(live_env));
         assert!(crate::sexp::envir::binding_is_locked_raw(live_env, sym));
         instance::with_required_current_instance(|inst| unsafe {
@@ -3723,10 +3874,10 @@ mod tests {
                 (unsafe {
                     /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                     with_arena(|arena| {
-                    let scratch = arena.alloc_vector(SEXPTYPE::INTSXP, 8);
-                    unsafe {
-                        *crate::sexp::accessors::INTEGER(scratch) = round as i32;
-                    }
+                        let scratch = arena.alloc_vector(SEXPTYPE::INTSXP, 8);
+                        unsafe {
+                            *crate::sexp::accessors::INTEGER(scratch) = round as i32;
+                        }
                     })
                 });
             }
@@ -3752,7 +3903,8 @@ mod tests {
                 (unsafe {
                     /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                     with_arena(|arena| arena.contains(fun))
-                }));
+                })
+            );
             // rooted holds only even i, so enumerate index i maps to
             // original loop value 2*i.
             assert_eq!(
@@ -3764,10 +3916,12 @@ mod tests {
         // Transient envs were reclaimed without leaving stale entries that a
         // recycled address could alias.
         for &env in &transient {
-            assert!(!(unsafe {
+            assert!(
+                !(unsafe {
                     /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
                     with_arena(|arena| arena.contains(env))
-                }));
+                })
+            );
             instance::with_required_current_instance(|inst| unsafe {
                 assert!(
                     !(*inst)
@@ -3867,9 +4021,7 @@ mod tests {
 
 #[cfg(kani)]
 mod kani_proofs {
-    use super::{
-        EDGE_ATTRIB, EDGE_CAR, EDGE_CDR, EDGE_PNAME, EDGE_VECTOR, child_mask,
-    };
+    use super::{EDGE_ATTRIB, EDGE_CAR, EDGE_CDR, EDGE_PNAME, EDGE_VECTOR, child_mask};
 
     #[kani::proof]
     fn child_mask_matches_roles() {
@@ -3948,7 +4100,10 @@ mod kani_proofs {
         }
         assert!(seen[root as usize]);
         kani::cover(seen[0] && seen[1] && seen[2] && seen[3], "all reachable");
-        kani::cover(seen[root as usize] && !seen[((root as usize) + 1) % 4], "partial");
+        kani::cover(
+            seen[root as usize] && !seen[((root as usize) + 1) % 4],
+            "partial",
+        );
     }
 }
 

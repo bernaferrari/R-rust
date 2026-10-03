@@ -683,26 +683,24 @@ pub fn lang2_in<'arena>(
     car: Sexp<'_>,
     arg: Sexp<'_>,
 ) -> Option<Sexp<'arena>> {
-    if !arena.accepts_child(&car) || !arena.accepts_child(&arg) {
-        return None;
-    }
+    let heap = arena.heap_identity();
+    let car = car.link_in(&heap).ok()?;
+    let arg = arg.link_in(&heap).ok()?;
+    let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
     let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if cdr.is_null() {
-        return None;
-    }
+    if cdr.is_null() { return None; }
     unsafe {
-        (*cdr).data.list_mut().carval = arg.clone().as_raw();
-        (*cdr).data.list_mut().cdrval = R_NilValue();
-        (*cdr).data.list_mut().tagval = ptr::null_mut();
+        (*cdr).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+            carval: arg, cdrval: nil, tagval: crate::sexp::heap::NodeLink::NULL,
+        });
     }
+    let cdr = arena.link_from_projection(cdr)?;
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if head.is_null() {
-        return None;
-    }
+    if head.is_null() { return None; }
     unsafe {
-        (*head).data.list_mut().carval = car.as_raw();
-        (*head).data.list_mut().cdrval = cdr;
-        (*head).data.list_mut().tagval = ptr::null_mut();
+        (*head).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+            carval: car, cdrval: cdr, tagval: crate::sexp::heap::NodeLink::NULL,
+        });
     }
     arena.sexp(head)
 }
@@ -713,35 +711,33 @@ pub fn lang3_in<'arena>(
     arg1: Sexp<'_>,
     arg2: Sexp<'_>,
 ) -> Option<Sexp<'arena>> {
-    if !arena.accepts_child(&car) || !arena.accepts_child(&arg1) || !arena.accepts_child(&arg2) {
-        return None;
-    }
+    let heap = arena.heap_identity();
+    let car = car.link_in(&heap).ok()?;
+    let arg1 = arg1.link_in(&heap).ok()?;
+    let arg2 = arg2.link_in(&heap).ok()?;
+    let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
     let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if c2.is_null() {
-        return None;
-    }
+    if c2.is_null() { return None; }
     unsafe {
-        (*c2).data.list_mut().carval = arg2.clone().as_raw();
-        (*c2).data.list_mut().cdrval = R_NilValue();
-        (*c2).data.list_mut().tagval = ptr::null_mut();
+        (*c2).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+            carval: arg2, cdrval: nil, tagval: crate::sexp::heap::NodeLink::NULL,
+        });
     }
+    let c2 = arena.link_from_projection(c2)?;
     let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if c1.is_null() {
-        return None;
-    }
+    if c1.is_null() { return None; }
     unsafe {
-        (*c1).data.list_mut().carval = arg1.clone().as_raw();
-        (*c1).data.list_mut().cdrval = c2;
-        (*c1).data.list_mut().tagval = ptr::null_mut();
+        (*c1).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+            carval: arg1, cdrval: c2, tagval: crate::sexp::heap::NodeLink::NULL,
+        });
     }
+    let c1 = arena.link_from_projection(c1)?;
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if head.is_null() {
-        return None;
-    }
+    if head.is_null() { return None; }
     unsafe {
-        (*head).data.list_mut().carval = car.as_raw();
-        (*head).data.list_mut().cdrval = c1;
-        (*head).data.list_mut().tagval = ptr::null_mut();
+        (*head).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+            carval: car, cdrval: c1, tagval: crate::sexp::heap::NodeLink::NULL,
+        });
     }
     arena.sexp(head)
 }

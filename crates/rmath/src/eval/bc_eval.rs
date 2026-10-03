@@ -4189,9 +4189,9 @@ mod tests {
     fn empty_env(arena: &mut crate::sexp::memory::RArena) -> SEXP {
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.environment_mut().frame = R_NilValue();
-            (*env).data.environment_mut().enclos = R_NilValue();
-            (*env).data.environment_mut().hashtab = ptr::null_mut();
+            crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+            crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+            crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
         }
         env
     }
@@ -4398,9 +4398,9 @@ mod tests {
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.environment_mut().frame = R_NilValue();
-            (*env).data.environment_mut().enclos = R_NilValue();
-            (*env).data.environment_mut().hashtab = ptr::null_mut();
+            crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+            crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+            crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
         }
 
         let result = unsafe { bcEval(bcode, env) };
@@ -4433,9 +4433,9 @@ mod tests {
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.environment_mut().frame = R_NilValue();
-            (*env).data.environment_mut().enclos = R_NilValue();
-            (*env).data.environment_mut().hashtab = ptr::null_mut();
+            crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+            crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+            crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
         }
 
         let err = assert_r_error(|| unsafe {
@@ -4457,7 +4457,7 @@ mod tests {
         let parent = empty_env(&mut arena);
         let child = empty_env(&mut arena);
         unsafe {
-            (*child).data.environment_mut().enclos = parent;
+            crate::sexp::accessors::SET_ENCLOS(child, parent);
         }
 
         let sym = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
@@ -4597,14 +4597,14 @@ mod tests {
         // bytecode frame is suspended mid-OP_CALL.
         let gc_closure = session.with_active(|| unsafe {
             let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
-            (*clos).data.closure_mut().formals = R_NilValue();
+            crate::sexp::accessors::SET_FORMALS(clos, R_NilValue());
             let body = Rf_cons(
                 crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
                 R_NilValue(),
             );
             (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            (*clos).data.closure_mut().body = body;
-            (*clos).data.closure_mut().env = crate::sexp::globals::R_BaseEnv();
+            crate::sexp::accessors::SET_BODY(clos, body);
+            crate::sexp::accessors::SET_CLOENV(clos, crate::sexp::globals::R_BaseEnv());
             clos
         });
         let _callee_guard = unsafe {

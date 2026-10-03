@@ -25,15 +25,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ptr::{self};
 use std::rc::Rc;
 
-/// Size of each slab page for SexprecCore nodes. Larger pages reduce allocator overhead
-/// and improve cache locality vs one Box per node. Chose 4096 as balance ( ~256KB per page
-/// assuming ~64B SexprecCore).
+/// Each page contains 4096 canonical headers, balancing allocation frequency
+/// and locality. Its byte footprint follows the actual SexprecCore layout.
 const NODE_PAGE_SIZE: usize = 4096;
 const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 
 use super::ffi::{NodeBody, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
 use super::heap::{
-    CheckedNode, HeapBackingOwners, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata,
+    CheckedNode, HeapBackingOwners, HeapIdentity, NodeId, NodeLink, NodePage, NodeProjection,
+    PageMetadata,
 };
 use super::object::Sexp;
 use super::payload::{OwnedPayload, PayloadError};
@@ -52,7 +52,7 @@ pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
         SEXPTYPE::REALSXP => std::mem::size_of::<f64>(),
         SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
         SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP => {
-            std::mem::size_of::<SEXP>()
+            std::mem::size_of::<NodeLink>()
         }
         SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
         _ => 0,
@@ -234,6 +234,7 @@ struct SlabPage {
 /// and deferred collection always run after those loans have ended.
 pub(crate) struct ArenaBacking {
     node_pages: RefCell<Vec<SlabPage>>,
+    page_cookies: RefCell<HashMap<u64, usize>>,
     data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
 }
 impl ArenaBacking {
@@ -249,6 +250,55 @@ impl ArenaBacking {
         self.node_pages.borrow().get(id.page())?.storage.resolve(id)
     }
 
+    pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<(SEXP, CheckedNode)> {
+        let page = *self.page_cookies.borrow().get(&link.page_cookie())?;
+        self.node_pages
+            .borrow()
+            .get(page)?
+            .storage
+            .resolve_link(link)
+    }
+    pub(crate) fn replace_node(&self, id: &NodeId, value: SexprecCore) -> Option<()> {
+        self.node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .replace_live(id, value)
+            .ok()
+    }
+    pub(crate) fn attach_resource(&self, id: &NodeId, value: &Rc<dyn std::any::Any>) -> Option<()> {
+        self.node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .attach_resource(id, value)
+    }
+    pub(crate) fn resource(&self, id: &NodeId) -> Option<Rc<dyn std::any::Any>> {
+        self.node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .resource(id)
+    }
+    pub(crate) fn take_resource(&self, id: &NodeId) -> Option<Rc<dyn std::any::Any>> {
+        self.node_pages
+            .borrow()
+            .get(id.page())?
+            .storage
+            .take_resource(id)
+    }
+
+    pub(crate) fn reference_payload_lease(
+        &self,
+        pointer: *mut u8,
+    ) -> Option<super::payload::ReferencePayloadLease> {
+        self.data_bufs
+            .borrow()
+            .get(&pointer)?
+            .allocation
+            .reference_lease()
+    }
+
     pub(crate) fn reference_payload_capacity(&self, pointer: *mut u8) -> Option<usize> {
         self.data_bufs
             .borrow()
@@ -257,7 +307,7 @@ impl ArenaBacking {
             .reference_capacity()
     }
 
-    pub(crate) fn reference_payload_elt(&self, pointer: *mut u8, index: usize) -> Option<SEXP> {
+    pub(crate) fn reference_payload_elt(&self, pointer: *mut u8, index: usize) -> Option<NodeLink> {
         self.data_bufs
             .borrow()
             .get(&pointer)?
@@ -269,7 +319,7 @@ impl ArenaBacking {
         &self,
         pointer: *mut u8,
         start: usize,
-        values: &[SEXP],
+        values: &[NodeLink],
     ) -> Option<()> {
         self.data_bufs
             .borrow()
@@ -282,7 +332,7 @@ impl ArenaBacking {
         &self,
         pointer: *mut u8,
         length: usize,
-    ) -> Option<Vec<SEXP>> {
+    ) -> Option<Vec<NodeLink>> {
         self.data_bufs
             .borrow()
             .get(&pointer)?
@@ -580,6 +630,7 @@ pub struct RArena {
     /// Owned pages of interior cells keep legacy header projections stable.
     /// Node identities and collector metadata are independent of raw headers.
     backing: Rc<ArenaBacking>,
+    retired_resources: crate::sexp::heap::RetiredResources,
     _backing_owners: Rc<HeapBackingOwners>,
     heap_identity: HeapIdentity,
     /// Current page index for allocation (last page usually).
@@ -626,6 +677,10 @@ impl RArena {
         )
         .expect("arena node page allocation failed");
         let meta = storage.metadata();
+        self.backing
+            .page_cookies
+            .borrow_mut()
+            .insert(meta.cookie(), meta.page());
         let registration = register_node_page(&storage);
         let mut pages = self.backing.node_pages.borrow_mut();
         pages.push(SlabPage {
@@ -687,12 +742,15 @@ impl RArena {
     fn with_budget_and_identity(budget: ArenaBudget, heap_identity: HeapIdentity) -> Self {
         let backing = Rc::new(ArenaBacking {
             node_pages: RefCell::new(Vec::new()),
+            page_cookies: RefCell::new(HashMap::new()),
             data_bufs: RefCell::new(HashMap::new()),
         });
         let backing_owners = heap_identity.retain_arena(backing.clone());
+        let retired_resources = backing_owners.resource_drop_queue();
         let mut a = RArena {
             backing,
             _backing_owners: backing_owners,
+            retired_resources,
             heap_identity,
             slab_page: 0,
             slab_offset: NODE_PAGE_SIZE,
@@ -1181,16 +1239,30 @@ impl RArena {
     /// Each non-null child is initialized and remains live in this owner
     /// (or immutable storage) for the lifetime of the resulting graph.
     pub(crate) unsafe fn cons(&mut self, car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
-        let ptr = self.alloc_node(SEXPTYPE::LISTSXP);
-        if ptr.is_null() {
+        let Some(car) = self.link_from_projection(car) else {
             return ptr::null_mut();
+        };
+        let Some(cdr) = self.link_from_projection(cdr) else {
+            return ptr::null_mut();
+        };
+        let Some(tag) = self.link_from_projection(tag) else {
+            return ptr::null_mut();
+        };
+        let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
+        header.data.list_mut().carval = car;
+        header.data.list_mut().cdrval = cdr;
+        header.data.list_mut().tagval = tag;
+        let pointer = self.alloc_node(SEXPTYPE::LISTSXP);
+        if pointer.is_null() {
+            return pointer;
         }
-        unsafe {
-            (*ptr).data.list_mut().carval = car;
-            (*ptr).data.list_mut().cdrval = cdr;
-            (*ptr).data.list_mut().tagval = tag;
-        }
-        ptr
+        let parent = self
+            .node_token(pointer)
+            .expect("fresh canonical cons allocation");
+        self.heap_identity
+            .replace_node(&parent, header)
+            .expect("fresh cons header remains live");
+        pointer
     }
 
     /// Check a graph child before storing it in this arena.
@@ -1288,6 +1360,9 @@ impl RArena {
         self.active_addrs.contains(&(ptr as usize))
     }
 
+    pub(crate) fn link_from_projection(&self, pointer: SEXP) -> Option<NodeLink> {
+        self.heap_identity.link_from_projection(pointer)
+    }
     pub(crate) fn heap_identity(&self) -> HeapIdentity {
         self.heap_identity.clone()
     }
@@ -1442,18 +1517,34 @@ impl RArena {
             return;
         }
 
-        unsafe {
-            let data_ptr = (*ptr).gengc_next_node as *mut u8;
-            if !data_ptr.is_null() {
-                self.release_data_buffer(data_ptr);
-            }
-            (*ptr).gengc_next_node = ptr::null_mut();
-            (*ptr).attrib = ptr::null_mut();
-            (*ptr).sxpinfo.set_mark(false);
-            (*ptr)
-                .sxpinfo
-                .set_gcgen(crate::sexp::gengc::Generation::Old as u8);
+        let Some(node) = self.node_token(ptr) else {
+            return;
+        };
+        let Some(mut header) = self.backing.node_snapshot(node.id()) else {
+            return;
+        };
+        let Some(pointer) = self.backing.node_projection(node.id()) else {
+            return;
+        };
+        if let Some(resource) = self.backing.take_resource(node.id()) {
+            // Detach before retiring the generation; release after this arena
+            // lend ends, so a resource destructor may safely reenter.
+            self.retired_resources.borrow_mut().push(resource);
         }
+        let data_ptr = header.gengc_next_node.cast::<u8>();
+        if !data_ptr.is_null() {
+            self.release_data_buffer(data_ptr);
+        }
+        header.gengc_next_node = ptr::null_mut();
+        header.attrib = NodeLink::NULL;
+        header.sxpinfo.set_mark(false);
+        header
+            .sxpinfo
+            .set_gcgen(crate::sexp::gengc::Generation::Old as u8);
+        self.backing
+            .replace_node(node.id(), header)
+            .expect("retiring exact live node");
+        let ptr = pointer;
 
         self.free_list.push(ptr);
         self.track_node_freed(ptr);
@@ -1930,6 +2021,67 @@ fn flush_pending_data_buffers(inst: *mut super::instance::RInstance) {
     }
 }
 
+/// Detached state releases only after every arena lend has ended.
+/// The guard owns the queue independently of the runtime pointer.
+pub(crate) struct ResourceDropGuard {
+    queue: Option<crate::sexp::heap::RetiredResources>,
+    instance: Option<usize>,
+}
+impl ResourceDropGuard {
+    pub(crate) fn standalone(queue: crate::sexp::heap::RetiredResources) -> Self {
+        Self {
+            queue: Some(queue),
+            instance: None,
+        }
+    }
+}
+impl Drop for ResourceDropGuard {
+    fn drop(&mut self) {
+        if self
+            .instance
+            .is_some_and(|key| LENT_ARENAS.with(|lent| lent.borrow().contains(&key)))
+        {
+            return;
+        }
+        let Some(queue) = &self.queue else {
+            return;
+        };
+        loop {
+            let detached = std::mem::take(&mut *queue.borrow_mut());
+            if detached.is_empty() {
+                break;
+            }
+            drop(detached);
+        }
+    }
+}
+/// Capture before a GC/arena operation; Drop must outlive the exclusive lend.
+/// # Safety
+/// The owner is live and its arena is not mutably lent during capture.
+pub(crate) unsafe fn resource_drop_guard_in(
+    inst: *mut super::instance::RInstance,
+) -> ResourceDropGuard {
+    let queue = if is_arena_lent(inst) {
+        None
+    } else {
+        // SAFETY: copy this field before any exclusive arena loan is formed.
+        Some(unsafe { (&*ptr::addr_of!((*inst).arena.retired_resources)).clone() })
+    };
+    ResourceDropGuard {
+        queue,
+        instance: Some(inst.addr()),
+    }
+}
+impl Drop for RArena {
+    fn drop(&mut self) {
+        let guard = ResourceDropGuard {
+            queue: Some(self.retired_resources.clone()),
+            instance: None,
+        };
+        drop(guard);
+    }
+}
+
 struct FlushPending(*mut super::instance::RInstance);
 impl Drop for FlushPending {
     fn drop(&mut self) {
@@ -1978,6 +2130,9 @@ where
         let liveness = super::instance::instance_liveness(inst);
         install_lend_ledger(inst);
         let _clear_ledger = ClearLendLedger;
+        // Declared after the ledger so fresh result roots remain installed
+        // through resource-destructor reentry, including unwind.
+        let _resource_drops = resource_drop_guard_in(inst);
         let result = {
             // Drop flushes after the lend ends, including when `f` unwinds,
             // and before deferred collection below. The ledger outlives the
@@ -2017,6 +2172,434 @@ where
 
 #[cfg(test)]
 mod tests {
+    struct NativeResourceSpy {
+        drops: std::rc::Rc<std::cell::Cell<usize>>,
+        callback: Option<Box<dyn Fn()>>,
+    }
+    impl Drop for NativeResourceSpy {
+        fn drop(&mut self) {
+            self.drops.set(self.drops.get() + 1);
+            if let Some(callback) = &self.callback {
+                callback();
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_resources_reject_foreign_types_and_retired_generations() {
+        let mut arena = super::RArena::new();
+        let mut foreign = super::RArena::new();
+        let heap = arena.heap_identity();
+        let pointer = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+        let node = arena.node_token(pointer).unwrap();
+        let wrong_kind = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP);
+        let wrong_kind = arena.node_token(wrong_kind).unwrap();
+        let foreign_pointer = foreign.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+        let foreign = foreign.node_token(foreign_pointer).unwrap();
+        let state = std::rc::Rc::new(String::from("canonical state"));
+        assert!(heap.attach_resource(&wrong_kind, state.clone()).is_none());
+        assert!(heap.attach_resource(&foreign, state.clone()).is_none());
+        heap.attach_resource(&node, state.clone()).unwrap();
+        assert!(
+            heap.attach_resource(&node, std::rc::Rc::new(7_u32))
+                .is_none()
+        );
+        assert!(heap.resource::<u32>(&node).is_none());
+        assert!(std::rc::Rc::ptr_eq(
+            &state,
+            &heap.resource::<String>(&node).unwrap()
+        ));
+        let erased = heap.take_resource(&node).unwrap();
+        assert!(heap.resource::<String>(&node).is_none());
+        assert!(std::rc::Rc::ptr_eq(
+            &state,
+            &erased.downcast::<String>().unwrap()
+        ));
+        heap.attach_resource(&node, state.clone()).unwrap();
+        let address_only = std::ptr::without_provenance_mut(pointer.addr());
+        // SAFETY: no graph/payload reference uses this allocation; only its
+        // checked identity remains to verify exact retirement.
+        unsafe {
+            arena.free_node(address_only);
+        }
+        assert!(!node.is_live());
+        assert!(heap.resource::<String>(&node).is_none());
+        assert!(heap.take_resource(&node).is_none());
+        let replacement = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+        assert_eq!(pointer.addr(), replacement.addr());
+        let fresh = arena.node_token(replacement).unwrap();
+        assert!(heap.resource::<String>(&fresh).is_none());
+        assert!(heap.attach_resource(&node, state.clone()).is_none());
+        heap.attach_resource(&fresh, state.clone()).unwrap();
+        assert!(heap.resource::<String>(&fresh).is_some());
+    }
+
+    #[test]
+    fn resource_cleanup_uses_exact_identity_after_type_or_body_mutation() {
+        use crate::sexp::ffi::{SEXPTYPE, SexprecCore};
+
+        for replace_body in [false, true] {
+            let mut arena = super::RArena::new();
+            let foreign = super::RArena::new();
+            let heap = arena.heap_identity();
+            let pointer = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            let node = arena.node_token(pointer).unwrap();
+            let drops = std::rc::Rc::new(std::cell::Cell::new(0));
+            let state = std::rc::Rc::new(NativeResourceSpy {
+                drops: drops.clone(),
+                callback: None,
+            });
+            let original = std::rc::Rc::downgrade(&state);
+            heap.attach_resource(&node, state).unwrap();
+
+            let changed = if replace_body {
+                SexprecCore::new(SEXPTYPE::LISTSXP)
+            } else {
+                let mut header = heap.node_snapshot(&node).unwrap();
+                header.sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                header
+            };
+            heap.replace_node(&node, changed).unwrap();
+            assert!(heap.resource_erased(&node).is_none());
+            assert!(
+                heap.attach_resource(&node, std::rc::Rc::new(7_u32))
+                    .is_none()
+            );
+            assert!(foreign.heap_identity().take_resource(&node).is_none());
+            assert_eq!(drops.get(), 0);
+
+            let detached = heap.take_resource(&node).unwrap();
+            let detached = detached.downcast::<NativeResourceSpy>().unwrap();
+            assert!(std::rc::Rc::ptr_eq(
+                &original.upgrade().unwrap(),
+                &detached
+            ));
+            assert!(heap.take_resource(&node).is_none());
+            assert_eq!(drops.get(), 0);
+            drop(detached);
+            assert_eq!(drops.get(), 1);
+            assert!(original.upgrade().is_none());
+
+            // SAFETY: no graph or payload reference uses this allocation.
+            unsafe {
+                arena.free_node(pointer);
+            }
+            let replacement = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            assert_eq!(pointer.addr(), replacement.addr());
+            let fresh = arena.node_token(replacement).unwrap();
+            heap.attach_resource(
+                &fresh,
+                std::rc::Rc::new(NativeResourceSpy {
+                    drops: drops.clone(),
+                    callback: None,
+                }),
+            )
+            .unwrap();
+            assert!(!node.is_live());
+            assert!(heap.take_resource(&node).is_none());
+            assert!(heap.resource::<NativeResourceSpy>(&fresh).is_some());
+            assert_eq!(drops.get(), 1);
+            drop(heap.take_resource(&fresh).unwrap());
+            assert_eq!(drops.get(), 2);
+        }
+    }
+
+    #[test]
+    fn retired_resources_reenter_only_after_normal_or_unwinding_arena_lends() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let drops = std::rc::Rc::new(std::cell::Cell::new(0));
+        let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+        for unwind in [false, true] {
+            let expected = drops.get() + 1;
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.with_active_in(|owner| unsafe {
+                    super::with_arena_in(owner, |arena| {
+                        let pointer = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+                        let node = arena.node_token(pointer).unwrap();
+                        let callbacks = callbacks.clone();
+                        let state = std::rc::Rc::new(NativeResourceSpy {
+                            drops: drops.clone(),
+                            callback: Some(Box::new(move || {
+                                assert!(!super::is_arena_lent(owner));
+                                // SAFETY: the enclosing session remains live.
+                                // The resource guard releases the old lend first.
+                                super::with_arena_in(owner, |arena| {
+                                    arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP);
+                                });
+                                callbacks.set(callbacks.get() + 1);
+                            })),
+                        });
+                        node.heap_identity().attach_resource(&node, state).unwrap();
+                        arena.free_node(pointer);
+                        assert_eq!(drops.get(), expected - 1);
+                        if unwind {
+                            panic!("resource unwind fixture");
+                        }
+                    });
+                });
+            }));
+            assert_eq!(outcome.is_err(), unwind);
+            assert_eq!(drops.get(), expected);
+            assert_eq!(callbacks.get(), expected);
+        }
+    }
+
+    #[test]
+    fn permanent_resource_removal_defers_release_and_preserves_typed_borrowers() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let drops = std::rc::Rc::new(std::cell::Cell::new(0));
+        session.with_active_in(|owner| unsafe {
+            let pointer = (*owner)
+                .persistent_nodes
+                .allocate_header(crate::sexp::ffi::SexprecCore::new(
+                    crate::sexp::ffi::SEXPTYPE::EXTPTRSXP,
+                ))
+                .unwrap();
+            let heap = (*owner).heap_identity.clone();
+            let node = super::checked_projection(pointer).unwrap().1;
+            heap.attach_resource(
+                &node,
+                std::rc::Rc::new(NativeResourceSpy {
+                    drops: drops.clone(),
+                    callback: Some(Box::new(move || {
+                        assert!(!super::is_arena_lent(owner));
+                        super::with_arena_in(owner, |arena| {
+                            arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP);
+                        });
+                    })),
+                }),
+            )
+            .unwrap();
+            let borrower = heap.resource::<NativeResourceSpy>(&node).unwrap();
+            super::with_arena_in(owner, |_| {
+                // Only the disjoint persistent facade is lent here. Removal
+                // detaches its state into the same post-arena-lend queue.
+                assert!((*owner).persistent_nodes.remove(pointer));
+                assert_eq!(drops.get(), 0);
+                assert!(!node.is_live());
+                assert!(heap.resource::<NativeResourceSpy>(&node).is_none());
+            });
+            assert_eq!(drops.get(), 0, "typed borrower independently owns state");
+            drop(borrower);
+            assert_eq!(drops.get(), 1);
+            let fresh = (*owner)
+                .persistent_nodes
+                .allocate_header(crate::sexp::ffi::SexprecCore::new(
+                    crate::sexp::ffi::SEXPTYPE::EXTPTRSXP,
+                ))
+                .unwrap();
+            let fresh = super::checked_projection(fresh).unwrap().1;
+            assert_ne!(node.link(), fresh.link());
+            assert!(heap.resource::<NativeResourceSpy>(&fresh).is_none());
+        });
+    }
+
+    #[test]
+    fn canonical_resource_lives_until_final_physical_page_owner_drops() {
+        let drops = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (heap, node, root) = {
+            let mut arena = super::RArena::new();
+            let pointer = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+            let node = arena.node_token(pointer).unwrap();
+            let heap = arena.heap_identity();
+            heap.attach_resource(
+                &node,
+                std::rc::Rc::new(NativeResourceSpy {
+                    drops: drops.clone(),
+                    callback: None,
+                }),
+            )
+            .unwrap();
+            let root = node.root_lease().unwrap();
+            (heap, node, root)
+        };
+        assert_eq!(drops.get(), 0);
+        assert!(heap.resource::<NativeResourceSpy>(&node).is_some());
+        drop(root);
+        assert_eq!(drops.get(), 1);
+        assert!(!node.is_live());
+        assert!(heap.resource::<NativeResourceSpy>(&node).is_none());
+    }
+
+    #[test]
+    fn standalone_arena_teardown_releases_detached_resources_once() {
+        let drops = std::rc::Rc::new(std::cell::Cell::new(0));
+        {
+            let mut arena = super::RArena::new();
+            let pointer = arena.alloc_node(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+            let node = arena.node_token(pointer).unwrap();
+            node.heap_identity()
+                .attach_resource(
+                    &node,
+                    std::rc::Rc::new(NativeResourceSpy {
+                        drops: drops.clone(),
+                        callback: None,
+                    }),
+                )
+                .unwrap();
+            unsafe {
+                arena.free_node(pointer);
+            }
+            assert_eq!(drops.get(), 0);
+        }
+        assert_eq!(drops.get(), 1);
+    }
+
+    #[test]
+    fn canonical_scalar_and_attribute_links_never_refresh_reused_child_addresses() {
+        use super::super::{ffi::EdgeField, heap::ReferenceChild};
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let parent_token = arena.node_token(parent).unwrap();
+        let child = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let child_token = arena.node_token(child).unwrap();
+        let original = child_token.link().unwrap();
+        for field in [EdgeField::ListCar, EdgeField::Attribute] {
+            heap.set_edge(&parent_token, field, ReferenceChild::Node(&child_token))
+                .unwrap();
+            assert_eq!(heap.edge(&parent_token, field), Some(original));
+        }
+        assert!(
+            heap.set_edge(&parent_token, EdgeField::SymbolName, ReferenceChild::Null)
+                .is_none()
+        );
+        let mut foreign = super::RArena::new();
+        let foreign_child = foreign.alloc_node(super::SEXPTYPE::LISTSXP);
+        let foreign_token = foreign.node_token(foreign_child).unwrap();
+        assert!(
+            heap.set_edge(
+                &parent_token,
+                EdgeField::Attribute,
+                ReferenceChild::Node(&foreign_token)
+            )
+            .is_none()
+        );
+        unsafe {
+            arena.free_node(child);
+        }
+        let replacement = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        assert_eq!(replacement, child);
+        let replacement_link = arena.node_token(replacement).unwrap().link().unwrap();
+        assert_ne!(original, replacement_link);
+        for field in [EdgeField::ListCar, EdgeField::Attribute] {
+            assert_eq!(heap.edge(&parent_token, field), Some(original));
+            assert!(
+                heap.projection_of_link(heap.edge(&parent_token, field).unwrap())
+                    .is_none()
+            );
+            assert!(
+                heap.set_edge(&parent_token, field, ReferenceChild::Node(&child_token))
+                    .is_none()
+            );
+        }
+        assert_eq!(heap.projection_of_link(replacement_link), Some(replacement));
+    }
+
+    #[test]
+    fn canonical_singleton_links_keep_two_original_banks_distinct_after_tls_close() {
+        use super::super::{
+            globals,
+            heap::{ReferenceChild, ResolvedLink},
+        };
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let parent = arena.alloc_vector(super::SEXPTYPE::VECSXP, 2);
+        let token = arena.node_token(parent).unwrap();
+        let root = token.root_lease().unwrap();
+        let first_pool = globals::immutable_singleton_pool();
+        let first = first_pool.nil();
+        let first_pointer = first.projection();
+        let first_cookie = first.identity_cookie();
+        heap.set_reference_elt(&token, 0, ReferenceChild::Singleton(&first))
+            .unwrap();
+        globals::close_immutable_singletons_for_test();
+        let second_pool = globals::immutable_singleton_pool();
+        let second = second_pool.nil();
+        let second_pointer = second.projection();
+        let second_cookie = second.identity_cookie();
+        heap.set_reference_elt(&token, 1, ReferenceChild::Singleton(&second))
+            .unwrap();
+        let links = heap.reference_links(&token).unwrap();
+        assert_ne!(links[0], links[1]);
+        assert_ne!(first_cookie, second_cookie);
+        globals::close_immutable_singletons_for_test();
+        drop(first);
+        drop(second);
+        drop(first_pool);
+        drop(second_pool);
+        drop(arena);
+        for (link, cookie, pointer) in [
+            (links[0], first_cookie, first_pointer),
+            (links[1], second_cookie, second_pointer),
+        ] {
+            let ResolvedLink::Singleton(lease) = heap.resolve_link(link).unwrap() else {
+                panic!("original singleton lease expected");
+            };
+            assert_eq!(lease.identity_cookie(), cookie);
+            assert_eq!(lease.projection(), pointer);
+            assert_eq!(lease.kind(), globals::SingletonKind::Nil);
+        }
+        assert_eq!(
+            heap.reference_elements(&token),
+            Some(vec![first_pointer, second_pointer])
+        );
+        drop(root);
+        assert!(heap.resolve_link(links[0]).is_none());
+        assert!(heap.resolve_link(links[1]).is_none());
+    }
+
+    #[test]
+    fn nonowning_cyclic_links_release_physical_storage_with_the_last_root() {
+        use super::super::{ffi::EdgeField, heap::ReferenceChild};
+        let mut arena = super::RArena::new();
+        let heap = arena.heap_identity();
+        let first = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let first_token = arena.node_token(first).unwrap();
+        let second = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+        let second_token = arena.node_token(second).unwrap();
+        heap.set_edge(
+            &first_token,
+            EdgeField::ListCdr,
+            ReferenceChild::Node(&second_token),
+        )
+        .unwrap();
+        heap.set_edge(
+            &second_token,
+            EdgeField::ListCdr,
+            ReferenceChild::Node(&first_token),
+        )
+        .unwrap();
+        let root = first_token.root_lease().unwrap();
+        let storage = std::rc::Rc::downgrade(&arena.backing);
+        let first_link = first_token.link().unwrap();
+        drop(arena);
+        assert!(storage.upgrade().is_some());
+        assert_eq!(heap.projection_of_link(first_link), Some(first));
+        drop(root);
+        assert!(storage.upgrade().is_none());
+        assert!(!first_token.is_live());
+        assert!(!second_token.is_live());
+        assert!(heap.resolve_link(first_link).is_none());
+    }
+
+    #[test]
+    fn reference_vector_budget_charges_actual_link_cells_and_releases_them() {
+        let bytes = 3 * std::mem::size_of::<super::NodeLink>();
+        let mut arena =
+            super::RArena::with_budget(super::ArenaBudget::new(super::NODE_BYTES + bytes, 1));
+        let vector = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        assert!(!vector.is_null());
+        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + bytes);
+        unsafe {
+            arena.free_node(vector);
+        }
+        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES);
+        let numeric = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
+        assert_eq!(numeric, vector);
+        assert_eq!(arena.total_bytes_allocated, super::NODE_BYTES + 12);
+    }
+
     #[test]
     fn checked_reference_writes_reject_foreign_stale_children_and_parent_reuse() {
         use super::super::heap::ReferenceChild;
@@ -2068,7 +2651,12 @@ mod tests {
             heap.set_reference_elt(&parent_token, 0, ReferenceChild::Node(&child_token))
                 .is_none()
         );
-        assert_eq!(heap.reference_elements(&parent_token), Some(expected));
+        assert!(heap.reference_elements(&parent_token).is_none());
+        assert_eq!(
+            heap.reference_link_elt(&parent_token, 1),
+            Some(child_token.id().link())
+        );
+        assert!(heap.resolve_link(child_token.id().link()).is_none());
         unsafe {
             arena.free_node(parent);
         }
@@ -2398,9 +2986,13 @@ mod tests {
         let child_token = later.node_token(child).unwrap();
         // SAFETY: both initialized nodes belong to this same heap domain;
         // this fixture installs the nonowning edge before facade teardown.
-        unsafe {
-            (*parent).data.list_mut().carval = child;
-        }
+        identity
+            .set_edge(
+                &parent_token,
+                super::super::ffi::EdgeField::ListCar,
+                super::super::heap::ReferenceChild::Node(&child_token),
+            )
+            .unwrap();
         let original_owner = std::rc::Rc::downgrade(&original.backing);
         let later_owner = std::rc::Rc::downgrade(&later.backing);
         drop(original);
@@ -2416,7 +3008,10 @@ mod tests {
         let header = super::checked_snapshot(parent, &parent_token).unwrap();
         // SAFETY: the parent header type is LISTSXP and the retained child
         // projection is precisely the one installed above.
-        assert_eq!(header.data.list().carval, child);
+        assert_eq!(
+            identity.projection_of_link(header.data.list().carval),
+            Some(child)
+        );
         drop(value);
         assert!(original_owner.upgrade().is_none());
         assert!(later_owner.upgrade().is_none());
@@ -2853,10 +3448,22 @@ mod tests {
                         assert_eq!(values[16], super::Rcomplex { r: 16.0, i: -16.0 });
                     }
                     super::SEXPTYPE::VECSXP => {
-                        let values = std::slice::from_raw_parts_mut(data.cast::<super::SEXP>(), 17);
-                        assert!(values.iter().all(|value| value.is_null()));
-                        values[16] = node;
-                        assert_eq!(values[16], node);
+                        let arena = &owners[0];
+                        let token = arena.node_token(node).unwrap();
+                        let heap = arena.heap_identity();
+                        assert!(
+                            heap.reference_links(&token)
+                                .unwrap()
+                                .iter()
+                                .all(|link| link.is_null())
+                        );
+                        heap.set_reference_elt(
+                            &token,
+                            16,
+                            super::super::heap::ReferenceChild::Node(&token),
+                        )
+                        .unwrap();
+                        assert_eq!(heap.reference_elt(&token, 16), Some(node));
                     }
                     _ => unreachable!(),
                 }
@@ -3284,8 +3891,18 @@ mod tests {
         assert!(!cell.is_null());
         unsafe {
             assert_eq!((*cell).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
-            assert_eq!((*cell).data.list().carval, car);
-            assert_eq!((*cell).data.list().cdrval, cdr);
+            assert_eq!(
+                arena
+                    .heap_identity()
+                    .projection_of_link((*cell).data.list().carval),
+                Some(car)
+            );
+            assert_eq!(
+                arena
+                    .heap_identity()
+                    .projection_of_link((*cell).data.list().cdrval),
+                Some(cdr)
+            );
             assert!((*cell).data.list().tagval.is_null());
         }
     }
@@ -3298,12 +3915,21 @@ mod tests {
         unsafe {
             assert_eq!((*list).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
             assert!((*list).data.list().carval.is_null());
-            let cdr1 = (*list).data.list().cdrval;
+            let cdr1 = arena
+                .heap_identity()
+                .projection_of_link((*list).data.list().cdrval)
+                .unwrap();
             assert!(!cdr1.is_null());
-            let cdr2 = (*cdr1).data.list().cdrval;
+            let cdr2 = arena
+                .heap_identity()
+                .projection_of_link((*cdr1).data.list().cdrval)
+                .unwrap();
             assert!(!cdr2.is_null());
             assert_eq!(
-                (*cdr2).data.list().cdrval,
+                arena
+                    .heap_identity()
+                    .projection_of_link((*cdr2).data.list().cdrval)
+                    .unwrap(),
                 crate::sexp::globals::R_NilValue()
             );
         }
@@ -3341,11 +3967,11 @@ mod tests {
         assert_eq!(sexp_elem_size(SEXPTYPE::RAWSXP), 1);
         assert_eq!(
             sexp_elem_size(SEXPTYPE::STRSXP),
-            std::mem::size_of::<*mut SexprecCore>()
+            std::mem::size_of::<super::NodeLink>()
         );
         assert_eq!(
             sexp_elem_size(SEXPTYPE::VECSXP),
-            std::mem::size_of::<*mut SexprecCore>()
+            std::mem::size_of::<super::NodeLink>()
         );
         assert_eq!(sexp_elem_size(SEXPTYPE::NILSXP), 0);
         assert_eq!(sexp_elem_size(SEXPTYPE::SYMSXP), 0);

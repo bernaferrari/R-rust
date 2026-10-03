@@ -1,14 +1,16 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! SEXP accessor functions with C FFI compatibility.
+//! Translated evaluator projections over owned headers and saved graph IDs.
 //!
-//! These replace the stub implementations in mainutils/inlined.rs
-//! with real implementations that read from SexprecCore.
+//! Header reads copy checked cells; mutations replace a validated generation.
+//! Graph projections resolve each original link in its parent's heap domain.
 
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use super::ffi::{NA_INTEGER, NA_REAL, NodeBody, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
+use super::ffi::{
+    EdgeField, NA_INTEGER, NA_REAL, NodeBody, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore,
+};
 
 #[inline]
 fn is_valid_sexp_ptr(x: SEXP) -> bool {
@@ -19,14 +21,63 @@ fn is_valid_sexp_ptr(x: SEXP) -> bool {
     (addr & (std::mem::align_of::<SexprecCore>() - 1)) == 0
 }
 
+/// A raw header read recognizes only an owned allocation or an actual
+/// immutable lease. No alignment check grants dereference authority.
+fn immutable_lease(pointer: SEXP) -> Option<super::globals::SingletonLease> {
+    super::globals::immutable_singleton_lease(pointer).or_else(|| {
+        let owner = super::instance::current_instance_ptr()?;
+        // SAFETY: the installed owner is live at this raw runtime boundary.
+        // Copy only its immutable heap identity; no field loan or callback escapes.
+        let heap = unsafe { (&*ptr::addr_of!((*owner).heap_identity)).clone() };
+        heap.retained_singleton(pointer)
+    })
+}
+
+fn header_snapshot(pointer: SEXP) -> Option<SexprecCore> {
+    if !is_valid_sexp_ptr(pointer) {
+        return None;
+    }
+    if let Some(singleton) = immutable_lease(pointer) {
+        return Some(singleton.snapshot());
+    }
+    let (projection, node) = super::memory::checked_projection(pointer)
+        .unwrap_or_else(|| super::context::r_error("unowned header read"));
+    Some(
+        super::memory::checked_snapshot(projection, &node)
+            .unwrap_or_else(|| super::context::r_error("stale header read")),
+    )
+}
+
+fn mutate_header(pointer: SEXP, update: impl FnOnce(&mut SexprecCore)) {
+    if pointer.is_null() || immutable_lease(pointer).is_some() {
+        return;
+    }
+    let (projection, node) = super::memory::checked_projection(pointer)
+        .unwrap_or_else(|| super::context::r_error("unowned header write"));
+    let mut header = super::memory::checked_snapshot(projection, &node)
+        .unwrap_or_else(|| super::context::r_error("stale header write"));
+    update(&mut header);
+    node.heap_identity()
+        .replace_node(&node, header)
+        .unwrap_or_else(|| super::context::r_error("stale header write"));
+}
+
 #[inline]
 fn debug_assert_sexptype(x: SEXP, expected: &[SEXPTYPE]) {
     debug_assert!(is_valid_sexp_ptr(x), "invalid SEXP pointer");
     debug_assert!(
-        expected.contains(&unsafe { (*x).sxpinfo.type_of() }),
+        expected.contains(
+            &header_snapshot(x)
+                .expect("checked debug header")
+                .sxpinfo
+                .type_of()
+        ),
         "SEXPTYPE mismatch: expected one of {:?}, got {:?}",
         expected,
-        unsafe { (*x).sxpinfo.type_of() }
+        header_snapshot(x)
+            .expect("checked debug header")
+            .sxpinfo
+            .type_of()
     );
 }
 
@@ -54,12 +105,7 @@ fn debug_assert_vector_type(x: SEXP, expected: SEXPTYPE) {
 
 /// Get the SEXPTYPE tag of an SEXP.
 pub unsafe fn TYPEOF(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0; // NILSXP
-        }
-        (*x).sxpinfo.type_of().0
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.type_of().0)
 }
 
 /// Get the length of a vector SEXP.
@@ -80,10 +126,10 @@ pub unsafe fn LENGTH(x: SEXP) -> c_int {
 /// Get the extended length of a vector SEXP (64-bit).
 pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
-        if !is_valid_sexp_ptr(x) {
+        let Some(header) = header_snapshot(x) else {
             return 0;
-        }
-        match (*x).sxpinfo.type_of() {
+        };
+        match header.sxpinfo.type_of() {
             SEXPTYPE::NILSXP => 0,
             SEXPTYPE::CHARSXP
             | SEXPTYPE::LGLSXP
@@ -93,12 +139,11 @@ pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
             | SEXPTYPE::STRSXP
             | SEXPTYPE::VECSXP
             | SEXPTYPE::EXPRSXP
-            | SEXPTYPE::RAWSXP => (*x).vecsxp_length(),
+            | SEXPTYPE::RAWSXP => header.vecsxp_length(),
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                let nil = crate::sexp::globals::R_NilValue();
                 let mut n: R_xlen_t = 0;
                 let mut p = x;
-                while !p.is_null() && p != nil {
+                while !p.is_null() && TYPEOF(p) != SEXPTYPE::NILSXP {
                     n += 1;
                     p = CDR(p);
                 }
@@ -111,42 +156,65 @@ pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
 
 /// Get the true length (allocated capacity) of a vector SEXP.
 pub unsafe fn TRUELENGTH(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).vecsxp_truelength() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.vecsxp_truelength() as c_int)
 }
 
 /// Set the true length of a vector SEXP.
 pub unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
+    mutate_header(x, |header| header.set_vecsxp_truelength(v as R_xlen_t));
+}
+
+/// Resolve a saved edge using the original parent's allocation domain.
+/// Raw projections stop at this boundary; canonical headers contain identities.
+fn graph_edge(pointer: SEXP, field: EdgeField) -> SEXP {
+    if !is_valid_sexp_ptr(pointer) {
+        return ptr::null_mut();
+    }
+    if immutable_lease(pointer).is_some() {
+        return ptr::null_mut();
+    }
+    let (_, node) = super::memory::checked_projection(pointer)
+        .unwrap_or_else(|| super::context::r_error("unowned graph parent"));
+    let heap = node.heap_identity();
+    let link = heap
+        .edge(&node, field)
+        .unwrap_or_else(|| super::context::r_error("invalid graph field"));
+    heap.projection_of_link(link)
+        .unwrap_or_else(|| super::context::r_error("stale or foreign graph child"))
+}
+
+fn graph_set_edge(pointer: SEXP, field: EdgeField, child: SEXP) {
+    if pointer.is_null() || immutable_lease(pointer).is_some() {
         return;
     }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).set_vecsxp_truelength(v as R_xlen_t);
-        }
-    }
+    let (pointer, node) = super::memory::checked_projection(pointer)
+        .unwrap_or_else(|| super::context::r_error("unowned graph parent"));
+    let value = ReferenceValue::capture_in(&node, child);
+    node.heap_identity()
+        .set_edge(&node, field, value.capability())
+        .unwrap_or_else(|| super::context::r_error("invalid graph edge"));
+    super::gengc::write_barrier(pointer, child);
 }
 
 /// Get the attributes of an SEXP.
 pub unsafe fn ATTRIB(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).attrib
-        }
-    }
+    graph_edge(x, EdgeField::Attribute)
 }
 
 /// Set the attributes of an SEXP.
 pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
+    if x.is_null() {
+        return;
+    }
     if super::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
+    let (x, node) = super::memory::checked_projection(x)
+        .unwrap_or_else(|| super::context::r_error("unowned attribute parent"));
+    let _root = node
+        .root_lease()
+        .unwrap_or_else(|| super::context::r_error("attribute parent is unavailable"));
+    let _value = ReferenceValue::capture_in(&node, v);
     unsafe {
         if is_valid_sexp_ptr(x) {
             // Materialize before replacing the list. The formula cell is what
@@ -158,7 +226,7 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
                     .unwrap_or_else(|e| super::context::r_error(e.to_string()))
                 {
                     // The buffer now owns the values, so metadata can be removed.
-                    (*x).sxpinfo.set_alt(false);
+                    mutate_header(x, |header| header.sxpinfo.set_alt(false));
                 }
                 super::altseq::materialize(x);
             }
@@ -169,32 +237,19 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
                 return;
             }
             let v = super::altseq::without_formula_cells(v);
-            super::gengc::attrib_write_barrier(x, v);
-            (*x).attrib = v;
+            graph_set_edge(x, EdgeField::Attribute, v);
         }
     }
 }
 
 /// Check if an SEXP has the OBJECT flag set.
 pub unsafe fn OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).sxpinfo.obj() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.obj() as c_int)
 }
 
 /// Set the OBJECT flag on an SEXP.
 pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).sxpinfo.set_obj(v != 0);
-        }
-    }
+    mutate_header(x, |header| header.sxpinfo.set_obj(v != 0));
 }
 
 /// S4 object bit (gp bit 4), matching Rinternals.h `SET_S4_OBJECT`/`IS_S4_OBJECT`.
@@ -202,167 +257,86 @@ pub const S4_OBJECT_MASK: u16 = 1 << 4;
 
 /// Set the S4 object bit (gp bit 4).
 pub unsafe fn SET_S4_OBJECT(x: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            let gp = (*x).sxpinfo.gp() | S4_OBJECT_MASK;
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
+    mutate_header(x, |header| {
+        header.sxpinfo.set_gp(header.sxpinfo.gp() | S4_OBJECT_MASK)
+    });
 }
 
 /// Unset the S4 object bit (gp bit 4).
 pub unsafe fn UNSET_S4_OBJECT(x: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            let gp = (*x).sxpinfo.gp() & !S4_OBJECT_MASK;
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
+    mutate_header(x, |header| {
+        header.sxpinfo.set_gp(header.sxpinfo.gp() & !S4_OBJECT_MASK)
+    });
 }
 
 /// Get the namedness level (0, 1, or 2).
 pub unsafe fn NAMED(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).sxpinfo.named() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.named() as c_int)
 }
 
 /// Set the namedness level.
 pub unsafe fn SET_NAMED(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).sxpinfo.set_named(v as u8);
-        }
-    }
+    mutate_header(x, |header| header.sxpinfo.set_named(v as u8));
 }
 
 /// Get the LEVELS (gp[0..1]) field.
 pub unsafe fn LEVELS(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        ((*x).sxpinfo.gp() & 0x03) as c_int
-    }
+    header_snapshot(x).map_or(0, |header| (header.sxpinfo.gp() & 0x03) as c_int)
 }
 
 /// Set the LEVELS field.
 pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            let gp = ((*x).sxpinfo.gp() & !0x03) | ((v as u16) & 0x03);
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
+    mutate_header(x, |header| {
+        header
+            .sxpinfo
+            .set_gp((header.sxpinfo.gp() & !0x03) | ((v as u16) & 0x03))
+    });
 }
 
 /// GNU `MISSING(x)` — gp bit 2 on a pairlist binding cell.
 pub unsafe fn MISSING(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (((*x).sxpinfo.gp() & 0x04) != 0) as c_int
-    }
+    header_snapshot(x).map_or(0, |header| ((header.sxpinfo.gp() & 0x04) != 0) as c_int)
 }
 
 /// GNU `SET_MISSING(x, v)` — mark an unmatched formal on its frame cell.
 pub unsafe fn SET_MISSING(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return;
-        }
-        let gp = if v != 0 {
-            (*x).sxpinfo.gp() | 0x04
+    mutate_header(x, |header| {
+        header.sxpinfo.set_gp(if v != 0 {
+            header.sxpinfo.gp() | 0x04
         } else {
-            (*x).sxpinfo.gp() & !0x04
-        };
-        (*x).sxpinfo.set_gp(gp);
-    }
+            header.sxpinfo.gp() & !0x04
+        })
+    });
 }
 
 /// Get the scalar flag.
 pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).sxpinfo.scalar() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.scalar() as c_int)
 }
 
 /// Set the scalar flag.
 pub unsafe fn SET_SCALAR(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).sxpinfo.set_scalar(v != 0);
-        }
-    }
+    mutate_header(x, |header| header.sxpinfo.set_scalar(v != 0));
 }
 
 /// Check the ALT flag.
 pub unsafe fn ALTREP(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).sxpinfo.alt() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.alt() as c_int)
 }
 
 /// Set the ALT flag.
 pub unsafe fn SET_ALTREP(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).sxpinfo.set_alt(v != 0);
-        }
-    }
+    mutate_header(x, |header| header.sxpinfo.set_alt(v != 0));
 }
 
 /// Get the mark bit (for GC).
 pub unsafe fn MARK(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).sxpinfo.mark() as c_int
-    }
+    header_snapshot(x).map_or(0, |header| header.sxpinfo.mark() as c_int)
 }
 
 /// Set the mark bit.
 pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).sxpinfo.set_mark(v != 0);
-        }
-    }
+    mutate_header(x, |header| header.sxpinfo.set_mark(v != 0));
 }
 
 /// Get the type (same as TYPEOF but as a macro name).
@@ -381,83 +355,53 @@ pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
 
 /// Get the CAR of a cons cell.
 pub unsafe fn CAR(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
-            super::globals::immutable_singleton_projection(x).unwrap_or(x)
-        } else {
-            debug_assert_list_like(x);
-            (*x).data.list().carval
-        }
+    if !is_valid_sexp_ptr(x) {
+        return ptr::null_mut();
     }
+    // SAFETY: raw callers retain a live header. Nil has no graph body.
+    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
+        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
+    }
+    graph_edge(x, EdgeField::ListCar)
 }
 
 /// Get the CDR of a cons cell.
 pub unsafe fn CDR(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
-            super::globals::immutable_singleton_projection(x).unwrap_or(x)
-        } else {
-            debug_assert_list_like(x);
-            (*x).data.list().cdrval
-        }
+    if !is_valid_sexp_ptr(x) {
+        return ptr::null_mut();
     }
+    // SAFETY: raw callers retain a live header. Nil has no graph body.
+    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
+        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
+    }
+    graph_edge(x, EdgeField::ListCdr)
 }
 
 /// Get the TAG of a cons cell.
 pub unsafe fn TAG(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
-            super::globals::immutable_singleton_projection(x).unwrap_or(x)
-        } else {
-            debug_assert_list_like(x);
-            (*x).data.list().tagval
-        }
+    if !is_valid_sexp_ptr(x) {
+        return ptr::null_mut();
     }
+    // SAFETY: raw callers retain a live header. Nil has no graph body.
+    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
+        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
+    }
+    graph_edge(x, EdgeField::ListTag)
 }
 
 /// Set the CAR of a cons cell.
 pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 0, y);
-            (*x).data.list_mut().carval = y;
-        }
-    }
+    graph_set_edge(x, EdgeField::ListCar, y);
 }
 
 /// Set the CDR of a cons cell.
 pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 1, y);
-            (*x).data.list_mut().cdrval = y;
-        }
-    }
+    graph_set_edge(x, EdgeField::ListCdr, y);
 }
 
 /// Set the TAG of a cons cell.
 pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 2, y);
-            (*x).data.list_mut().tagval = y;
-        }
-    }
+    graph_set_edge(x, EdgeField::ListTag, y);
 }
 
 /// Get the CAR of the CDR (CADR) — second element of a list.
@@ -506,71 +450,32 @@ pub unsafe fn CAD5R(x: SEXP) -> SEXP {
 
 /// Get the print name (CHARSXP) of a symbol.
 pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.symbol().pname
-        }
-    }
+    graph_edge(x, EdgeField::SymbolName)
 }
 
 /// Get the value of a symbol.
 pub unsafe fn SYMVALUE(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.symbol().value
-        }
-    }
+    graph_edge(x, EdgeField::SymbolValue)
 }
 
 /// Get the internal value of a symbol.
 pub unsafe fn INTERNAL(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.symbol().internal
-        }
-    }
+    graph_edge(x, EdgeField::SymbolInternal)
 }
 
 /// Set the print name of a symbol.
 pub unsafe fn SET_PRINTNAME(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.symbol_mut().pname = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::SymbolName, v);
 }
 
 /// Set the value of a symbol.
 pub unsafe fn SET_SYMVALUE(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.symbol_mut().value = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::SymbolValue, v);
 }
 
 /// Set the internal value of a symbol.
 pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.symbol_mut().internal = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::SymbolInternal, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -579,71 +484,32 @@ pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
 
 /// Get the formals of a closure.
 pub unsafe fn FORMALS(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.closure().formals
-        }
-    }
+    graph_edge(x, EdgeField::ClosureFormals)
 }
 
 /// Get the body of a closure.
 pub unsafe fn BODY(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.closure().body
-        }
-    }
+    graph_edge(x, EdgeField::ClosureBody)
 }
 
 /// Get the environment of a closure.
 pub unsafe fn CLOENV(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.closure().env
-        }
-    }
+    graph_edge(x, EdgeField::ClosureEnvironment)
 }
 
 /// Set the formals of a closure.
 pub unsafe fn SET_FORMALS(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.closure_mut().formals = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::ClosureFormals, v);
 }
 
 /// Set the body of a closure.
 pub unsafe fn SET_BODY(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.closure_mut().body = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::ClosureBody, v);
 }
 
 /// Set the environment of a closure.
 pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.closure_mut().env = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::ClosureEnvironment, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -652,74 +518,32 @@ pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
 
 /// Get the frame of an environment.
 pub unsafe fn FRAME(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.environment().frame
-        }
-    }
+    graph_edge(x, EdgeField::EnvironmentFrame)
 }
 
 /// Get the enclosing environment.
 pub unsafe fn ENCLOS(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.environment().enclos
-        }
-    }
+    graph_edge(x, EdgeField::EnvironmentEnclosure)
 }
 
 /// Get the hash table of an environment.
 pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.environment().hashtab
-        }
-    }
+    graph_edge(x, EdgeField::EnvironmentHashTable)
 }
 
 /// Set the frame of an environment.
 pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 0, v);
-            (*x).data.environment_mut().frame = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::EnvironmentFrame, v);
 }
 
 /// Set the enclosing environment.
 pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 1, v);
-            (*x).data.environment_mut().enclos = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::EnvironmentEnclosure, v);
 }
 
 /// Set the hash table of an environment.
 pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 2, v);
-            (*x).data.environment_mut().hashtab = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::EnvironmentHashTable, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -728,72 +552,32 @@ pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
 
 /// Get the value of a promise.
 pub unsafe fn PRVALUE(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.promise().value
-        }
-    }
+    graph_edge(x, EdgeField::PromiseValue)
 }
 
 /// Get the expression of a promise.
 pub unsafe fn PRCODE(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.promise().expr
-        }
-    }
+    graph_edge(x, EdgeField::PromiseExpression)
 }
 
 /// Get the environment of a promise.
 pub unsafe fn PRENV(x: SEXP) -> SEXP {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            ptr::null_mut()
-        } else {
-            (*x).data.promise().env
-        }
-    }
+    graph_edge(x, EdgeField::PromiseEnvironment)
 }
 
 /// Set the value of a promise.
 pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            super::gengc::list_write_barrier(x, 0, v);
-            (*x).data.promise_mut().value = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::PromiseValue, v);
 }
 
 /// Set the expression of a promise.
 pub unsafe fn SET_PRCODE(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.promise_mut().expr = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::PromiseExpression, v);
 }
 
 /// Set the environment of a promise.
 pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.promise_mut().env = v;
-        }
-    }
+    graph_set_edge(x, EdgeField::PromiseEnvironment, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -802,24 +586,12 @@ pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
 
 /// Get the offset of a primitive function.
 pub unsafe fn PRIMOFFSET(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        (*x).data.primitive().offset
-    }
+    header_snapshot(x).map_or(0, |header| header.data.primitive().offset)
 }
 
 /// Set the offset of a primitive function.
 pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            (*x).data.primitive_mut().offset = v;
-        }
-    }
+    mutate_header(x, |header| header.data.primitive_mut().offset = v);
 }
 
 // ---------------------------------------------------------------------------
@@ -843,7 +615,10 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         }
         // For vector types, data pointer is stored in gengc_next_node.
         // A compact sequence keeps that pointer null until the first request.
-        let t = (*x).sxpinfo.type_of();
+        let t = header_snapshot(x)
+            .expect("checked vector header")
+            .sxpinfo
+            .type_of();
         if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
             if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
                 let extension = super::altrep::materialize_raw(x)
@@ -1054,15 +829,22 @@ impl ReferenceValue {
         if pointer.is_null() {
             return Self::Null;
         }
-        let heap = slot.node.heap_identity();
+        Self::capture_in(&slot.node, pointer)
+    }
+
+    fn capture_in(parent: &super::heap::CheckedNode, pointer: SEXP) -> Self {
+        if pointer.is_null() {
+            return Self::Null;
+        }
+        let heap = parent.heap_identity();
         if let Some(singleton) = heap
             .retained_singleton(pointer)
-            .or_else(|| super::globals::immutable_singleton_pool().lease(pointer))
+            .or_else(|| super::globals::immutable_singleton_lease(pointer))
         {
             return Self::Singleton(singleton);
         }
         let (_, node) = super::memory::checked_projection(pointer)
-            .filter(|(_, node)| slot.node.same_heap(node))
+            .filter(|(_, node)| parent.same_heap(node))
             .unwrap_or_else(|| super::context::r_error("unowned reference-vector child"));
         let root = node
             .root_lease()
@@ -1506,17 +1288,16 @@ mod tests {
 
     #[test]
     fn string_setter_rejects_out_of_bounds_before_writing() {
-        let mut slots: [SEXP; 1] = [ptr::null_mut(); 1];
-        let mut node = SexprecCore::new_vector(SEXPTYPE::STRSXP, 1);
-        node.gengc_next_node = slots.as_mut_ptr().cast();
+        let mut arena = super::super::memory::RArena::new();
+        let node = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            SET_STRING_ELT(&mut node, 1, ptr::null_mut());
+            SET_STRING_ELT(node, 1, ptr::null_mut());
         }));
         assert!(
             result.is_err(),
             "out-of-range string write must be rejected"
         );
-        assert!(slots[0].is_null());
+        assert!(unsafe { STRING_ELT(node, 0) }.is_null());
     }
 
     #[test]
@@ -1548,54 +1329,50 @@ mod tests {
 
     #[test]
     fn element_access_checks_indices_and_tags_before_reading_or_writing() {
-        let mut slots: [SEXP; 1] = [ptr::null_mut(); 1];
-        let mut node = SexprecCore::new_vector(SEXPTYPE::STRSXP, 1);
-        node.gengc_next_node = slots.as_mut_ptr().cast();
+        let mut arena = super::super::memory::RArena::new();
+        let node = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
         for index in [-1, 1, i64::MAX] {
             for operation in 0..4 {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                     match operation {
                         0 => {
-                            STRING_ELT(&mut node, index);
+                            STRING_ELT(node, index);
                         }
                         1 => {
-                            VECTOR_ELT(&mut node, index);
+                            VECTOR_ELT(node, index);
                         }
-                        2 => SET_STRING_ELT(&mut node, index, ptr::null_mut()),
-                        _ => SET_VECTOR_ELT(&mut node, index, ptr::null_mut()),
+                        2 => SET_STRING_ELT(node, index, ptr::null_mut()),
+                        _ => SET_VECTOR_ELT(node, index, ptr::null_mut()),
                     }
                 }));
                 assert!(result.is_err());
             }
         }
         for tag in [SEXPTYPE::REALSXP, SEXPTYPE::LISTSXP] {
-            node.sxpinfo.set_type(tag);
+            let node = arena.alloc_node(tag);
             for operation in 0..4 {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                     match operation {
                         0 => {
-                            STRING_ELT(&mut node, 0);
+                            STRING_ELT(node, 0);
                         }
                         1 => {
-                            VECTOR_ELT(&mut node, 0);
+                            VECTOR_ELT(node, 0);
                         }
-                        2 => SET_STRING_ELT(&mut node, 0, ptr::null_mut()),
-                        _ => SET_VECTOR_ELT(&mut node, 0, ptr::null_mut()),
+                        2 => SET_STRING_ELT(node, 0, ptr::null_mut()),
+                        _ => SET_VECTOR_ELT(node, 0, ptr::null_mut()),
                     }
                 }));
                 assert!(result.is_err());
             }
         }
-        assert!(slots[0].is_null());
+        assert!(unsafe { STRING_ELT(node, 0) }.is_null());
     }
 
-    fn make_test_vector() -> SexprecCore {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::REALSXP, 3);
-        node.data = NodeBody::Vector(Vecsxp {
-            length: 3,
-            truelength: 3,
-        });
-        node
+    fn make_test_vector() -> (super::super::memory::RArena, SEXP) {
+        let mut arena = super::super::memory::RArena::new();
+        let node = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+        (arena, node)
     }
 
     #[test]
@@ -1607,18 +1384,18 @@ mod tests {
 
     #[test]
     fn test_typeof_vector() {
-        let node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            assert_eq!(TYPEOF(&node as *const _ as SEXP), 14); // REALSXP
+            assert_eq!(TYPEOF(node), 14); // REALSXP
         }
     }
 
     #[test]
     fn test_length_vector() {
-        let node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            assert_eq!(LENGTH(&node as *const _ as SEXP), 3);
-            assert_eq!(XLENGTH(&node as *const _ as SEXP), 3);
+            assert_eq!(LENGTH(node), 3);
+            assert_eq!(XLENGTH(node), 3);
         }
     }
 
@@ -1639,18 +1416,18 @@ mod tests {
 
     #[test]
     fn test_isnull() {
-        let node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
             assert_eq!(Rf_isNull(ptr::null_mut()), 1);
-            assert_eq!(Rf_isNull(&node as *const _ as SEXP), 0);
+            assert_eq!(Rf_isNull(node), 0);
         }
     }
 
     #[test]
     fn test_set_attrib() {
-        let mut node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            let ptr = &mut node as *mut _ as SEXP;
+            let ptr = node;
             assert!(ATTRIB(ptr).is_null());
             SET_ATTRIB(ptr, ptr); // self-referential for test
             assert_eq!(ATTRIB(ptr), ptr);
@@ -1660,9 +1437,9 @@ mod tests {
 
     #[test]
     fn test_named() {
-        let mut node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            let ptr = &mut node as *mut _ as SEXP;
+            let ptr = node;
             assert_eq!(NAMED(ptr), 0);
             SET_NAMED(ptr, 2);
             assert_eq!(NAMED(ptr), 2);
@@ -1671,9 +1448,9 @@ mod tests {
 
     #[test]
     fn test_object_flag() {
-        let mut node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            let ptr = &mut node as *mut _ as SEXP;
+            let ptr = node;
             assert_eq!(OBJECT(ptr), 0);
             SET_OBJECT(ptr, 1);
             assert_eq!(OBJECT(ptr), 1);
@@ -1682,9 +1459,9 @@ mod tests {
 
     #[test]
     fn test_set_truelength() {
-        let mut node = make_test_vector();
+        let (_arena, node) = make_test_vector();
         unsafe {
-            let ptr = &mut node as *mut _ as SEXP;
+            let ptr = node;
             assert_eq!(TRUELENGTH(ptr), 3);
             SET_TRUELENGTH(ptr, 10);
             assert_eq!(TRUELENGTH(ptr), 10);
@@ -1702,12 +1479,11 @@ mod tests {
 
     #[test]
     fn test_integer_accepts_logical_storage() {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
-        let mut data = [1_i32];
-        node.gengc_next_node = data.as_mut_ptr() as SEXP;
-
+        let mut arena = super::super::memory::RArena::new();
+        let node = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
         unsafe {
-            assert_eq!(*INTEGER(&mut node as *mut _ as SEXP), 1);
+            INTEGER(node).write(1);
+            assert_eq!(*INTEGER(node), 1);
         }
     }
 
@@ -1744,69 +1520,52 @@ const IS_ASCII_MASK: u16 = 1 << 6; // 0x40
 
 /// IS_ASCII: check if CHARSXP has ASCII encoding marker.
 pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    if (gp & IS_ASCII_MASK) != 0 { 1 } else { 0 }
+    header_snapshot(x).map_or(0, |header| {
+        ((header.sxpinfo.gp() & IS_ASCII_MASK) != 0) as c_int
+    })
 }
 
 /// IS_UTF8: check if CHARSXP has UTF-8 encoding marker.
 pub unsafe fn IS_UTF8(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    if (gp & UTF8_MASK) != 0 { 1 } else { 0 }
+    header_snapshot(x).map_or(0, |header| {
+        ((header.sxpinfo.gp() & UTF8_MASK) != 0) as c_int
+    })
 }
 
 /// IS_BYTES: check if CHARSXP has bytes encoding marker.
 pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    if (gp & BYTES_MASK) != 0 { 1 } else { 0 }
+    header_snapshot(x).map_or(0, |header| {
+        ((header.sxpinfo.gp() & BYTES_MASK) != 0) as c_int
+    })
 }
 
 /// IS_LATIN1: check if CHARSXP has Latin-1 encoding marker.
 pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    if (gp & LATIN1_MASK) != 0 { 1 } else { 0 }
+    header_snapshot(x).map_or(0, |header| {
+        ((header.sxpinfo.gp() & LATIN1_MASK) != 0) as c_int
+    })
 }
 
 /// Set exactly one of UTF-8 / latin1 / bytes, or clear all (native/unknown).
 pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
-    if super::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    if !is_valid_sexp_ptr(x) {
-        return;
-    }
-    unsafe {
-        let mut gp = (*x).sxpinfo.gp();
-        gp &= !(UTF8_MASK | LATIN1_MASK | BYTES_MASK);
+    mutate_header(x, |header| {
+        let mut gp = header.sxpinfo.gp() & !(UTF8_MASK | LATIN1_MASK | BYTES_MASK);
         match kind {
             "UTF-8" => gp |= UTF8_MASK,
             "latin1" => gp |= LATIN1_MASK,
             "bytes" => gp |= BYTES_MASK,
             _ => {}
         }
-        (*x).sxpinfo.set_gp(gp);
-    }
+        header.sxpinfo.set_gp(gp);
+    });
 }
 
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
 pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    (gp & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int
+    header_snapshot(x).map_or(0, |header| {
+        (header.sxpinfo.gp() & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int
+    })
 }
 
 /// translateChar: return the CHAR pointer for a CHARSXP.
@@ -1865,25 +1624,16 @@ pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
 /// getCharCE: return the character encoding of a CHARSXP.
 /// Returns CE_NATIVE (0) for native, CE_UTF8 (2) for UTF-8, etc.
 pub unsafe fn getCharCE(x: SEXP) -> c_int {
-    if !is_valid_sexp_ptr(x) {
-        return 0;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    if (gp & UTF8_MASK) != 0 {
+    let gp = header_snapshot(x).map_or(0, |header| header.sxpinfo.gp());
+    if gp & UTF8_MASK != 0 {
         2
-    }
-    // CE_UTF8
-    else if (gp & LATIN1_MASK) != 0 {
+    } else if gp & LATIN1_MASK != 0 {
         3
-    }
-    // CE_LATIN1
-    else if (gp & BYTES_MASK) != 0 {
+    } else if gp & BYTES_MASK != 0 {
         4
-    }
-    // CE_BYTES
-    else {
+    } else {
         0
-    } // CE_NATIVE
+    }
 }
 #[test]
 fn reference_elements_reject_forged_lengths_and_payloads_without_reading_them() {

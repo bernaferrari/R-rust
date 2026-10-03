@@ -9,12 +9,13 @@ use std::os::raw::{c_double, c_int};
 use super::Sexp;
 pub(crate) use crate::sexp::ffi::NodeBody;
 use crate::sexp::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
+use crate::sexp::heap::{NodeLink, ResolvedLink};
 
-/// Header fields copied out of a node. Every pointer here is a value, not a borrow.
+/// Header fields copied out of a node. Graph links preserve exact identities; payload projections are copied values.
 #[derive(Clone, Copy)]
 pub(crate) struct HeaderSnap {
     pub sxpinfo: SxpInfo,
-    pub attrib: SEXP,
+    pub attrib: NodeLink,
     /// `gengc_next_node`. For vectors this is the element buffer, not a SEXP.
     pub payload: SEXP,
     pub body: NodeBody,
@@ -81,38 +82,21 @@ impl<'a> Sexp<'a> {
         snapshot_header(core)
     }
 
-    /// Copy the header of a pointer just loaded from a live node in this graph.
-    ///
-    /// Null, misaligned, and non-canonical addresses yield `None`. This does
-    /// not mint a child handle and does not protect, so it does not allocate.
+    /// Copy a graph child's header using its saved allocation identity.
+    /// No child pointer is reclassified or promoted to a new generation.
     #[inline]
-    pub(crate) fn copied_header(&self, ptr: SEXP) -> Option<HeaderSnap> {
-        if !self.is_live() || !canonical_node(ptr) {
-            return None;
-        }
-        let ptr = if let Some(parent_node) = &self.node {
-            if let Some(canonical) = self.singleton_projection(ptr) {
-                canonical
-            } else {
-                let (canonical, node) = crate::sexp::memory::checked_projection(ptr)?;
-                if !parent_node.same_heap(&node) {
-                    return None;
-                }
-                canonical
+    pub(crate) fn copied_header_link(&self, link: NodeLink) -> Option<HeaderSnap> {
+        self.ensure_live().ok()?;
+        let parent = self.reference_node().ok()?;
+        match parent.heap_identity().resolve_link(link)? {
+            ResolvedLink::Null => None,
+            ResolvedLink::Singleton(owner) => Some(snapshot_header(owner.snapshot())),
+            ResolvedLink::Node {
+                projection,
+                allocation,
+            } => {
+                crate::sexp::memory::checked_snapshot(projection, &allocation).map(snapshot_header)
             }
-        } else {
-            ptr
-        };
-        if let Some(core) = self.singleton_snapshot(ptr) {
-            Some(snapshot_header(core))
-        } else if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
-            Some(snapshot_header(core))
-        } else if let Some((canonical, node)) = crate::sexp::memory::checked_projection(ptr) {
-            crate::sexp::memory::checked_snapshot(canonical, &node).map(snapshot_header)
-        } else if self.node.is_none() && self.owner == super::SexpOwner::Unknown {
-            Some(read_legacy_header(ptr))
-        } else {
-            None
         }
     }
 }
@@ -147,11 +131,6 @@ pub(crate) fn copy_leading_scalars(header: HeaderSnap) -> Option<LeadingScalars>
             _ => None,
         }
     }
-}
-
-fn canonical_node(ptr: SEXP) -> bool {
-    let addr = ptr as usize;
-    addr >= 0x1000 && addr % std::mem::align_of::<SexprecCore>() == 0
 }
 
 fn read_legacy_header(ptr: SEXP) -> HeaderSnap {

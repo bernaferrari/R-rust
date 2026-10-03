@@ -589,13 +589,25 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
         if !is_valid_r_finalizer(fin) {
             error("finalizer must be a function or NULL");
         }
-        let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::WEAKREFSXP);
-        if s.is_null() {
-            error("could not allocate weak reference");
-        }
-        (*s).data.list_mut().carval = key;
-        (*s).data.list_mut().cdrval = val;
-        (*s).data.list_mut().tagval = fin;
+        let owner = crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error_| error(&error_.to_string()));
+        let factory = owner.node_factory();
+        // Inputs must stay alive until the finalizer is registered, including
+        // the weak key during allocation callbacks before registration.
+        let _inputs: Vec<_> = [key, val, fin].into_iter().filter(|raw| !raw.is_null())
+            .map(|raw| factory.wrap(raw).unwrap_or_else(|error_| error(&error_.to_string())))
+            .collect();
+        let result = factory.allocate(|arena| {
+            let key = arena.link_from_projection(key)?;
+            let val = arena.link_from_projection(val)?;
+            let fin = arena.link_from_projection(fin)?;
+            let node = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+            if node.is_null() { return None; }
+            (*node).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+                carval: key, cdrval: val, tagval: fin,
+            });
+            Some(node)
+        }).unwrap_or_else(|error_| error(&error_.to_string()));
+        let s = result.as_raw();
         if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
             register_r_finalizer(key, fin, _onexit != 0);
         }
@@ -619,7 +631,7 @@ pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
             return R_NilValue();
         }
         validate_weak_ref_object(w);
-        (*w).data.list().carval
+        CAR(w)
     }
 }
 
@@ -629,7 +641,7 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
             return R_NilValue();
         }
         validate_weak_ref_object(w);
-        (*w).data.list().cdrval
+        CDR(w)
     }
 }
 
@@ -904,25 +916,42 @@ fn mark_exit_finalizers_ready() {
 // ---------------------------------------------------------------------------
 // External pointer management
 //
-// In R's C code, EXTPTRSXP uses the listsxp union layout:
-//   EXTPTR_PTR(s)  = s->u.listsxp.carval  = extptr[0]  (void*)
-//   EXTPTR_PROT(s) = CDR(s)               = extptr[1]  (SEXP)
-//   EXTPTR_TAG(s)  = TAG(s)               = extptr[2]  (SEXP)
+// The opaque native address is independent from the protected value and tag.
+// Graph children carry exact heap links; clearing the address keeps both links.
 // ---------------------------------------------------------------------------
+
+fn external_pointer_child(s: SEXP, field: crate::sexp::ffi::EdgeField) -> SEXP {
+    let (_, parent) = crate::sexp::memory::checked_projection(s).expect("checked external pointer");
+    let heap = parent.heap_identity();
+    let link = heap.edge(&parent, field).expect("external pointer graph field");
+    heap.projection_of_link(link).expect("live external pointer child")
+}
+
+fn set_external_pointer_child(s: SEXP, field: crate::sexp::ffi::EdgeField, child: SEXP) {
+    let (_, parent) = crate::sexp::memory::checked_projection(s).expect("checked external pointer");
+    let heap = parent.heap_identity();
+    let link = heap.link_from_projection(child).expect("external pointer child belongs to its heap");
+    crate::sexp::gengc::write_barrier(s, child);
+    let mut header = heap.node_snapshot(&parent).expect("live external pointer");
+    header.set_edge(field, link).expect("external pointer graph field");
+    heap.replace_node(&parent, header).expect("external pointer child publication");
+}
 
 /// Create an external pointer.
 ///
 /// This is the equivalent of R's `R_MakeExternalPtr()`.
 pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
     unsafe {
-        let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
-        if s.is_null() {
-            error("could not allocate external pointer");
-        }
-        (*s).data.extptr_mut()[0] = p;
-        (*s).data.extptr_mut()[1] = prot as *mut c_void;
-        (*s).data.extptr_mut()[2] = tag as *mut c_void;
-        s
+        crate::sexp::memory::with_arena(|arena| {
+            let protected = arena.link_from_projection(prot).expect("external pointer protected child");
+            let tag = arena.link_from_projection(tag).expect("external pointer tag child");
+            let node = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            if node.is_null() { error("could not allocate external pointer"); }
+            (*node).data = crate::sexp::ffi::NodeBody::ExtPtr(crate::sexp::ffi::ExtPtrBody {
+                address: p, protected, tag,
+            });
+            node
+        })
     }
 }
 
@@ -934,7 +963,7 @@ pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
         if s.is_null() {
             return ptr::null_mut();
         }
-        (*s).data.extptr()[0]
+        (*s).data.extptr().address
     }
 }
 
@@ -946,7 +975,7 @@ pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
         if s.is_null() {
             return R_NilValue();
         }
-        (*s).data.extptr()[2] as SEXP
+        external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalTag)
     }
 }
 
@@ -958,7 +987,7 @@ pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
         if s.is_null() {
             return R_NilValue();
         }
-        (*s).data.extptr()[1] as SEXP
+        external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalProtected)
     }
 }
 
@@ -968,7 +997,7 @@ pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
 pub unsafe fn R_ClearExternalPtr(s: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr_mut()[0] = ptr::null_mut();
+            (*s).data.extptr_mut().address = ptr::null_mut();
         }
     }
 }
@@ -979,7 +1008,7 @@ pub unsafe fn R_ClearExternalPtr(s: SEXP) {
 pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr_mut()[0] = p;
+            (*s).data.extptr_mut().address = p;
         }
     }
 }
@@ -990,7 +1019,7 @@ pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
 pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr_mut()[2] = tag as *mut c_void;
+            set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalTag, tag);
         }
     }
 }
@@ -1001,7 +1030,7 @@ pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
 pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr_mut()[1] = p as *mut c_void;
+            set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalProtected, p);
         }
     }
 }

@@ -86,7 +86,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
 
-        let frame = (*env).data.environment().frame;
+        let frame = crate::sexp::accessors::FRAME(env);
         let mut chain = frame;
 
         for &name in registry::ALL_FNS {
@@ -112,7 +112,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
                 continue;
             }
             let cell = Rf_cons(prim, chain);
-            (*cell).data.list_mut().tagval = sym;
+            crate::sexp::accessors::SETTAG(cell, sym);
             chain = cell;
         }
         {
@@ -128,7 +128,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         let pi_value = Rf_ScalarReal(std::f64::consts::PI);
         let _pi_value_guard = protect(pi_value);
         let pi_cell = Rf_cons(pi_value, chain);
-        (*pi_cell).data.list_mut().tagval = pi_sym;
+        crate::sexp::accessors::SETTAG(pi_cell, pi_sym);
         chain = pi_cell;
 
         let letters_value = static_string_vector(&[
@@ -137,7 +137,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         ]);
         let _letters_guard = protect(letters_value);
         let letters_cell = Rf_cons(letters_value, chain);
-        (*letters_cell).data.list_mut().tagval = Rf_install(c"letters".as_ptr());
+        crate::sexp::accessors::SETTAG(letters_cell, Rf_install(c"letters".as_ptr()));
         chain = letters_cell;
 
         let letters_upper_value = static_string_vector(&[
@@ -146,7 +146,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         ]);
         let _letters_upper_guard = protect(letters_upper_value);
         let letters_upper_cell = Rf_cons(letters_upper_value, chain);
-        (*letters_upper_cell).data.list_mut().tagval = Rf_install(c"LETTERS".as_ptr());
+        crate::sexp::accessors::SETTAG(letters_upper_cell, Rf_install(c"LETTERS".as_ptr()));
         chain = letters_upper_cell;
 
         let padjust_methods = static_string_vector(&[
@@ -161,7 +161,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         ]);
         let _padjust_guard = protect(padjust_methods);
         let padjust_cell = Rf_cons(padjust_methods, chain);
-        (*padjust_cell).data.list_mut().tagval = Rf_install(c"p.adjust.methods".as_ptr());
+        crate::sexp::accessors::SETTAG(padjust_cell, Rf_install(c"p.adjust.methods".as_ptr()));
         chain = padjust_cell;
 
         let month_abb = static_string_vector(&[
@@ -169,7 +169,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         ]);
         let _month_abb_guard = protect(month_abb);
         let month_abb_cell = Rf_cons(month_abb, chain);
-        (*month_abb_cell).data.list_mut().tagval = Rf_install(c"month.abb".as_ptr());
+        crate::sexp::accessors::SETTAG(month_abb_cell, Rf_install(c"month.abb".as_ptr()));
         chain = month_abb_cell;
 
         let month_name = static_string_vector(&[
@@ -188,7 +188,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         ]);
         let _month_name_guard = protect(month_name);
         let month_name_cell = Rf_cons(month_name, chain);
-        (*month_name_cell).data.list_mut().tagval = Rf_install(c"month.name".as_ptr());
+        crate::sexp::accessors::SETTAG(month_name_cell, Rf_install(c"month.name".as_ptr()));
         chain = month_name_cell;
 
         let version_value = do_R_version(
@@ -201,7 +201,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         for name in ["R.version", "version"] {
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(version_value, chain);
-            (*cell).data.list_mut().tagval = sym;
+            crate::sexp::accessors::SETTAG(cell, sym);
             chain = cell;
         }
 
@@ -214,7 +214,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         let _version_string_guard = protect(version_string);
         let sym = Rf_install(c"R.version.string".as_ptr());
         let cell = Rf_cons(version_string, chain);
-        (*cell).data.list_mut().tagval = sym;
+        crate::sexp::accessors::SETTAG(cell, sym);
         chain = cell;
         SET_FRAME(env, chain);
         // GNU base defines Recall as a closure. Its wrapper frame carries

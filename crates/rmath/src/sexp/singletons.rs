@@ -5,10 +5,11 @@ use super::super::ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SingletonKind {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SingletonKind {
     Nil,
     Unbound,
     Missing,
@@ -18,8 +19,40 @@ enum SingletonKind {
     NaString,
 }
 
+impl SingletonKind {
+    pub(crate) fn link_tag(self) -> u32 {
+        match self {
+            Self::Nil => 1,
+            Self::Unbound => 2,
+            Self::Missing => 3,
+            Self::Restart => 4,
+            Self::True => 5,
+            Self::False => 6,
+            Self::NaString => 7,
+        }
+    }
+
+    pub(crate) fn from_link_tag(tag: u32) -> Option<Self> {
+        Some(match tag {
+            1 => Self::Nil,
+            2 => Self::Unbound,
+            3 => Self::Missing,
+            4 => Self::Restart,
+            5 => Self::True,
+            6 => Self::False,
+            7 => Self::NaString,
+            _ => return None,
+        })
+    }
+}
+
+// Identity allocation alone is shared across threads. Headers and payloads
+// remain genuine thread-confined Rc cells; no address or payload is encoded.
+static NEXT_IDENTITY_COOKIE: AtomicU64 = AtomicU64::new(1);
+
 struct Singleton {
     kind: SingletonKind,
+    identity_cookie: u64,
     header: Cell<SexprecCore>,
     _logical: Option<Rc<Cell<i32>>>,
 }
@@ -64,6 +97,11 @@ impl SingletonLease {
         }
         Self(Rc::new(Singleton {
             kind,
+            identity_cookie: NEXT_IDENTITY_COOKIE
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                    next.checked_add(1)
+                })
+                .expect("singleton identity exhausted"),
             header: Cell::new(header),
             _logical: logical,
         }))
@@ -75,6 +113,14 @@ impl SingletonLease {
 
     pub(crate) fn is_na_string(&self) -> bool {
         self.0.kind == SingletonKind::NaString
+    }
+
+    pub(crate) fn kind(&self) -> SingletonKind {
+        self.0.kind
+    }
+
+    pub(crate) fn identity_cookie(&self) -> u64 {
+        self.0.identity_cookie
     }
 
     pub(crate) fn snapshot(&self) -> SexprecCore {
@@ -174,6 +220,10 @@ pub(super) fn na_string() -> SEXP {
 
 pub(super) fn current_na_string_projection() -> Option<SEXP> {
     current_pool().map(|pool| pool.na_string_projection())
+}
+
+pub(super) fn lease(candidate: SEXP) -> Option<SingletonLease> {
+    current_pool()?.lease(candidate)
 }
 
 pub(super) fn canonical_projection(candidate: SEXP) -> Option<SEXP> {

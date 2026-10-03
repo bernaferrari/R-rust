@@ -4056,9 +4056,9 @@ mod tests {
             let base = R_BaseEnv();
             let empty = R_EmptyEnv();
 
-            assert_eq!((*global).data.environment().enclos, base);
-            assert_eq!((*base).data.environment().enclos, empty);
-            assert_eq!((*empty).data.environment().enclos, R_NilValue());
+            assert_eq!(crate::sexp::accessors::ENCLOS(global), base);
+            assert_eq!(crate::sexp::accessors::ENCLOS(base), empty);
+            assert_eq!(crate::sexp::accessors::ENCLOS(empty), R_NilValue());
 
             shutdown_r();
         }

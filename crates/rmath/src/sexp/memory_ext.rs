@@ -31,9 +31,9 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
             if !env.is_null() {
-                (*env).data.environment_mut().frame = frame;
-                (*env).data.environment_mut().enclos = enclos;
-                (*env).data.environment_mut().hashtab = hashtab;
+                crate::sexp::accessors::SET_FRAME(env, frame);
+                crate::sexp::accessors::SET_ENCLOS(env, enclos);
+                crate::sexp::accessors::SET_HASHTAB(env, hashtab);
             }
             env
         })
@@ -44,9 +44,9 @@ pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP)
     super::instance::with_required_current_instance(|owner| unsafe {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
         header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
-            frame,
-            enclos,
-            hashtab,
+            frame: (*owner).persistent_nodes.link_from_projection(frame).expect("environment frame belongs to its heap"),
+            enclos: (*owner).persistent_nodes.link_from_projection(enclos).expect("environment enclosure belongs to its heap"),
+            hashtab: (*owner).persistent_nodes.link_from_projection(hashtab).expect("environment table belongs to its heap"),
         });
         let value = (*owner)
             .persistent_nodes
@@ -69,9 +69,9 @@ pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
-                (*prom).data.promise_mut().value = R_UnboundValue();
-                (*prom).data.promise_mut().expr = expr;
-                (*prom).data.promise_mut().env = env;
+                crate::sexp::accessors::SET_PRVALUE(prom, R_UnboundValue());
+                crate::sexp::accessors::SET_PRCODE(prom, expr);
+                crate::sexp::accessors::SET_PRENV(prom, env);
             }
             prom
         })
@@ -86,9 +86,9 @@ pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
-                (*prom).data.promise_mut().value = value;
-                (*prom).data.promise_mut().expr = expr;
-                (*prom).data.promise_mut().env = R_NilValue();
+                crate::sexp::accessors::SET_PRVALUE(prom, value);
+                crate::sexp::accessors::SET_PRCODE(prom, expr);
+                crate::sexp::accessors::SET_PRENV(prom, R_NilValue());
                 // Set gp bits for EVPROMISE
                 (*prom).sxpinfo.set_gp(1); // PRSEEN flag
             }
@@ -113,9 +113,9 @@ pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let p = allocSExp(SEXPTYPE::PROMSXP);
         if !p.is_null() {
-            (*p).data.promise_mut().value = R_UnboundValue();
-            (*p).data.promise_mut().expr = expr;
-            (*p).data.promise_mut().env = env;
+            crate::sexp::accessors::SET_PRVALUE(p, R_UnboundValue());
+            crate::sexp::accessors::SET_PRCODE(p, expr);
+            crate::sexp::accessors::SET_PRENV(p, env);
         }
         p
     }
@@ -151,9 +151,9 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
 pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP) -> SEXP {
     let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
     header.data = super::ffi::NodeBody::List(super::ffi::Listsxp {
-        carval: car,
-        cdrval: cdr,
-        tagval: ptr::null_mut(),
+        carval: unsafe { (*instance).persistent_nodes.link_from_projection(car) }.expect("cons child belongs to its heap"),
+        cdrval: unsafe { (*instance).persistent_nodes.link_from_projection(cdr) }.expect("cons tail belongs to its heap"),
+        tagval: super::heap::NodeLink::null(),
     });
     let ptr = unsafe { (*instance).persistent_nodes.allocate_header(header) }
         .unwrap_or_else(|_| crate::sexp::context::r_error("persistent cons allocation"));
@@ -294,7 +294,7 @@ pub unsafe fn allocLang(n: c_int) -> SEXP {
             let mut current = list;
             while !current.is_null() && current != R_NilValue() {
                 (*current).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                current = (*current).data.list().cdrval;
+                current = crate::sexp::accessors::CDR(current);
             }
         }
         list
@@ -571,7 +571,7 @@ mod tests {
             let prom = mkPROMISE(expr, R_NilValue());
             assert!(!prom.is_null());
             assert_eq!((*prom).sxpinfo.type_of(), SEXPTYPE::PROMSXP);
-            assert_eq!((*prom).data.promise().expr, expr);
+            assert_eq!(crate::sexp::accessors::PRCODE(prom), expr);
         }
     }
 

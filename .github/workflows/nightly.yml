@@ -98,9 +98,23 @@ jobs:
           cargo +nightly miri test -p rmath --lib sexp::session::gc_owner_teardown_tests
 
   miri-owned-evaluation:
-    name: Miri (owning arguments, conditions and options)
+    name: Miri (owning ${{ matrix.subject }})
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - subject: arguments
+            filter: owned_argument_tests
+          - subject: conditions
+            filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
+          - subject: option defaults
+            filter: options_initialization_retains_defaults_through_reentrant_gc
+          - subject: option retry
+            filter: options_initialization_can_retry_after_callback_unwind
+          - subject: scoped source evaluation
+            filter: methods_source_guard_prevents_recompilation_at_actual_closure_entry
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -112,9 +126,68 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
         run: >-
           cargo +nightly miri test -p rmath --lib -- --test-threads=1
-          owned_argument_tests
-          bounded_condition_text_survives_each_allocation_and_reentrant_gc
-          options_initialization_
+          ${{ matrix.filter }}
+
+  miri-checked-graph:
+    name: Miri (checked ${{ matrix.subject }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - subject: graph identities
+            filters: >-
+              cookies_exhaust_without_wrapping_or_issuing_reserved_zero
+              link_identity_rejects_recreated_page_ordinal_and_generation_reuse
+              canonical_scalar_and_attribute_links_never_refresh_reused_child_addresses
+              canonical_singleton_links_keep_two_original_banks_distinct_after_tls_close
+              nonowning_cyclic_links_release_physical_storage_with_the_last_root
+              reference_vector_budget_charges_actual_link_cells_and_releases_them
+          - subject: graph rewrites
+            filters: >-
+              canonical_saved_link_rejects_same_address_reuse_without_marking_replacement
+              copied_canonical_edges_keep_the_original_generation_after_slot_reuse
+              copied_child_rewrites_reject_foreign_links_before_any_field_is_published
+              graph_rewrite_distinguishes_recycled_allocation_generations
+              copied_child_visitors_preserve_reentrant_header_updates
+              parent_shape_changes_reject_all_rewrites_and_preserve_callback_state
+              selected_scalar_conflict_rejects_earlier_pending_rewrite
+              selected_reference_conflict_rejects_pending_attribute_rewrite
+              sparse_reference_rewrites_preserve_unselected_cells_flags_and_scalar_edges
+              reference_lease_retains_original_cells_and_distinguishes_equal_capacity_allocations
+          - subject: external pointer copies
+            filters: >-
+              deep_external_pointer_duplicate_roots_result_through_collecting_providers
+              shallow_external_pointer_duplicate_roots_shared_children_through_reentrant_gc
+              external_pointer_duplicates_share_native_resource_before_callbacks
+          - subject: native resource lifetimes
+            filters: >-
+              canonical_resources_reject_foreign_types_and_retired_generations
+              retired_resources_reenter_only_after_normal_or_unwinding_arena_lends
+              permanent_resource_removal_defers_release_and_preserves_typed_borrowers
+              canonical_resource_lives_until_final_physical_page_owner_drops
+              standalone_arena_teardown_releases_detached_resources_once
+              resource_cleanup_uses_exact_identity_after_type_or_body_mutation
+              collected_node_resources_reenter_only_after_collection_and_arena_lends_end
+          - subject: native numerical state
+            filters: library::stats::starma_api::tests
+          - subject: compact vector publication
+            filters: >-
+              checked_classification_and_materialization_respect_existing_arena_lends
+              compact_sequence_automatic_roots_precede_post_lend_compatibility_guards
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Reject stale identities and overlapping owner loans
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-strict-provenance
+        run: >-
+          cargo +nightly miri test -p rmath --lib -- --test-threads=1
+          ${{ matrix.filters }}
 
   miri-modules:
     name: Miri (session-constructing modules)

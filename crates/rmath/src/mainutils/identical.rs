@@ -672,14 +672,14 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
         } else if t == SEXPTYPE::PROMSXP {
             let ex = unsafe {
                 crate::mainutils::coerce::substitute(
-                    (*x).data.promise().expr,
-                    (*x).data.promise().env,
+                    crate::sexp::accessors::PRCODE(x),
+                    crate::sexp::accessors::PRENV(x),
                 )
             };
             let ey = unsafe {
                 crate::mainutils::coerce::substitute(
-                    (*y).data.promise().expr,
-                    (*y).data.promise().env,
+                    crate::sexp::accessors::PRCODE(y),
+                    crate::sexp::accessors::PRENV(y),
                 )
             };
             return R_compute_identical(ex, ey, flags);

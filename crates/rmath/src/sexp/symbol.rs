@@ -42,13 +42,13 @@ fn intern_symbol_with_pname(
     if pname.is_null() { return ptr::null_mut(); }
     let header = SexprecCore {
         sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
-        attrib: ptr::null_mut(),
+        attrib: super::heap::NodeLink::NULL,
         gengc_next_node: ptr::null_mut(),
         gengc_prev_node: ptr::null_mut(),
         data: NodeBody::Symbol(super::ffi::Symsxp {
-            pname,
-            value: ptr::null_mut(),
-            internal: ptr::null_mut(),
+            pname: persistent.link_from_projection(pname).expect("permanent symbol name"),
+            value: super::heap::NodeLink::NULL,
+            internal: super::heap::NodeLink::NULL,
         }),
     };
     let sexp = persistent.allocate_header(header).unwrap_or(ptr::null_mut());

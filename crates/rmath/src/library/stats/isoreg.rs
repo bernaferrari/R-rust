@@ -79,7 +79,7 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
             }
             // Fresh vectors have no existing attributes or old-generation
             // edges. Publish the complete owned graph before ending the lend.
-            (*ans).attrib = attribute;
+            (*ans).attrib = arena.link_from_projection(attribute).expect("fresh names attribute");
             ans
         });
         if ans.is_null() {

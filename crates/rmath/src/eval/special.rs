@@ -762,9 +762,9 @@ unsafe fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
         let _clos = crate::sexp::protect::protect(clos);
         if !clos.is_null() {
-            (*clos).data.closure_mut().formals = formals;
-            (*clos).data.closure_mut().body = body;
-            (*clos).data.closure_mut().env = rho;
+            crate::sexp::accessors::SET_FORMALS(clos, formals);
+            crate::sexp::accessors::SET_BODY(clos, body);
+            crate::sexp::accessors::SET_CLOENV(clos, rho);
         }
         let mut sr = CADDR(args);
         if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP {

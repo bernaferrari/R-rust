@@ -5,12 +5,11 @@
 //! These are immutable thread-confined sentinel values used throughout R. Mutable runtime environments are session-owned and reached
 //! through the active `RInstance`, not through process-global fallback slots.
 
-
 use super::ffi::SEXP;
 #[path = "singletons.rs"]
 mod singletons;
-pub(crate) use singletons::{SingletonLease, SingletonPoolLease};
 use super::instance::{RInstance, with_required_current_instance};
+pub(crate) use singletons::{SingletonKind, SingletonLease, SingletonPoolLease};
 
 // ---------------------------------------------------------------------------
 // Immutable sentinel projections. Rc leases own their stable Rust cells.
@@ -18,6 +17,10 @@ use super::instance::{RInstance, with_required_current_instance};
 
 pub(crate) fn immutable_singleton_projection(pointer: SEXP) -> Option<SEXP> {
     singletons::canonical_projection(pointer)
+}
+
+pub(crate) fn immutable_singleton_lease(pointer: SEXP) -> Option<SingletonLease> {
+    singletons::lease(pointer)
 }
 
 pub(crate) fn immutable_singleton_snapshot(pointer: SEXP) -> Option<super::ffi::SexprecCore> {
@@ -39,13 +42,21 @@ pub(crate) fn close_immutable_singletons_for_test() {
 }
 
 /// Get a pointer to R_NilValue.
-pub unsafe fn R_NilValue() -> SEXP { singletons::nil() }
+pub unsafe fn R_NilValue() -> SEXP {
+    singletons::nil()
+}
 /// Get a pointer to R_UnboundValue.
-pub unsafe fn R_UnboundValue() -> SEXP { singletons::unbound() }
+pub unsafe fn R_UnboundValue() -> SEXP {
+    singletons::unbound()
+}
 /// Get a pointer to R_MissingArg.
-pub unsafe fn R_MissingArg() -> SEXP { singletons::missing() }
+pub unsafe fn R_MissingArg() -> SEXP {
+    singletons::missing()
+}
 /// Get a pointer to R_RestartToken.
-pub unsafe fn R_RestartToken() -> SEXP { singletons::restart() }
+pub unsafe fn R_RestartToken() -> SEXP {
+    singletons::restart()
+}
 
 // ---------------------------------------------------------------------------
 // Global environment accessor functions
@@ -227,11 +238,17 @@ pub unsafe fn R_BraceSymbol_fn() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get a pointer to the immutable logical TRUE scalar.
-pub unsafe fn R_True() -> SEXP { singletons::logical(true) }
+pub unsafe fn R_True() -> SEXP {
+    singletons::logical(true)
+}
 /// Get a pointer to the immutable logical FALSE scalar.
-pub unsafe fn R_False() -> SEXP { singletons::logical(false) }
+pub unsafe fn R_False() -> SEXP {
+    singletons::logical(false)
+}
 /// Get a pointer to the immutable NA_STRING character sentinel.
-pub unsafe fn R_NaString() -> SEXP { singletons::na_string() }
+pub unsafe fn R_NaString() -> SEXP {
+    singletons::na_string()
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -246,9 +263,7 @@ mod tests {
     #[test]
     fn singleton_handles_retain_headers_and_payloads_after_pool_close() {
         let nil = crate::sexp::object::Sexp::nil();
-        let logical = unsafe {
-            crate::sexp::object::Sexp::from_static_raw_unchecked(R_True())
-        };
+        let logical = unsafe { crate::sexp::object::Sexp::from_static_raw_unchecked(R_True()) };
         let pointer = logical.clone().as_raw();
         let pool = immutable_singleton_pool();
         let address_only = std::ptr::without_provenance_mut(pointer.addr());
@@ -261,14 +276,42 @@ mod tests {
     }
 
     #[test]
+    fn saved_singleton_links_keep_each_original_bank_identity() {
+        let old = unsafe { crate::sexp::object::Sexp::from_static_raw_unchecked(R_True()) };
+        let old_lease = immutable_singleton_lease(old.as_raw()).unwrap();
+        singletons::close_pool_for_test();
+        let new = unsafe { crate::sexp::object::Sexp::from_static_raw_unchecked(R_True()) };
+        let new_lease = immutable_singleton_lease(new.as_raw()).unwrap();
+        assert_eq!(old_lease.kind(), new_lease.kind());
+        assert_ne!(old_lease.identity_cookie(), new_lease.identity_cookie());
+        let mut arena = crate::sexp::memory::RArena::new();
+        let vector_ptr = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+        let vector = arena.sexp(vector_ptr).unwrap();
+        let mut mutation = crate::sexp::object::SexpMut::try_from_checked(vector).unwrap();
+        mutation.try_set_vector_elt(0, old.clone()).unwrap();
+        mutation.try_set_vector_elt(1, new.clone()).unwrap();
+        let vector = mutation.freeze();
+        drop(old_lease);
+        drop(new_lease);
+        drop(old);
+        drop(new);
+        singletons::close_pool_for_test();
+        let first = vector.vector_elt(0).unwrap();
+        let second = vector.vector_elt(1).unwrap();
+        assert_ne!(first.as_raw(), second.as_raw());
+        assert_eq!(first.logical_elt(0), Some(TRUE));
+        assert_eq!(second.logical_elt(0), Some(TRUE));
+    }
+
+    #[test]
     fn checked_graph_children_retain_the_original_singleton_bank() {
         let nil = unsafe { R_NilValue() };
         let logical = unsafe { R_True() };
         let mut arena = crate::sexp::memory::RArena::new();
         let node = arena.alloc_node(SEXPTYPE::LISTSXP);
         unsafe {
-            (*node).data.list_mut().carval = logical;
-            (*node).data.list_mut().cdrval = nil;
+            crate::sexp::accessors::SETCAR(node, logical);
+            crate::sexp::accessors::SETCDR(node, nil);
         }
         let parent = crate::sexp::object::Sexp::from_arena_raw(node, &arena).unwrap();
         singletons::close_pool_for_test();
@@ -295,32 +338,44 @@ mod tests {
         assert!(strings.try_string_elt(0).unwrap().is_na_string());
         assert!(!strings.try_string_elt(1).unwrap().is_na_string());
         assert_eq!(strings.try_string_value_elt(0).unwrap(), None);
-        assert_eq!(strings.try_string_value_elt(1).unwrap(), Some("NA".to_owned()));
+        assert_eq!(
+            strings.try_string_value_elt(1).unwrap(),
+            Some("NA".to_owned())
+        );
         assert!(immutable_na_string_projection().is_none());
     }
 
     #[test]
     fn singleton_identity_is_stable_and_confined_to_its_thread() {
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
-        let threads: Vec<_> = (0..2).map(|_| {
-            let barrier = barrier.clone();
-            std::thread::spawn(move || {
-                let value = crate::sexp::object::Sexp::nil();
-                let pointer = value.clone().as_raw();
-                assert_eq!(unsafe { R_NilValue() }, pointer);
-                assert!(value.is_nil());
-                barrier.wait();
-                pointer.addr()
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let value = crate::sexp::object::Sexp::nil();
+                    let pointer = value.clone().as_raw();
+                    assert_eq!(unsafe { R_NilValue() }, pointer);
+                    assert!(value.is_nil());
+                    barrier.wait();
+                    pointer.addr()
+                })
             })
-        }).collect();
-        let pointers: Vec<_> = threads.into_iter().map(|thread| thread.join().unwrap()).collect();
+            .collect();
+        let pointers: Vec<_> = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
         assert_ne!(pointers[0], pointers[1]);
     }
 
     #[test]
     fn static_handles_read_owned_snapshots_during_tls_teardown() {
         struct EarlierHolder {
-            values: Option<(crate::sexp::object::Sexp<'static>, crate::sexp::object::Sexp<'static>, crate::sexp::object::Sexp<'static>)>,
+            values: Option<(
+                crate::sexp::object::Sexp<'static>,
+                crate::sexp::object::Sexp<'static>,
+                crate::sexp::object::Sexp<'static>,
+            )>,
             report: Option<std::sync::Arc<std::sync::Mutex<bool>>>,
         }
         impl Drop for EarlierHolder {
@@ -344,18 +399,16 @@ mod tests {
             // Initialized first, this holder drops after the singleton TLS pool.
             HOLDER.with(|_| ());
             let nil = crate::sexp::object::Sexp::nil();
-            let logical = unsafe {
-                crate::sexp::object::Sexp::from_static_raw_unchecked(R_True())
-            };
-            let na = unsafe {
-                crate::sexp::object::Sexp::from_static_raw_unchecked(R_NaString())
-            };
+            let logical = unsafe { crate::sexp::object::Sexp::from_static_raw_unchecked(R_True()) };
+            let na = unsafe { crate::sexp::object::Sexp::from_static_raw_unchecked(R_NaString()) };
             HOLDER.with(|holder| {
                 let mut holder = holder.borrow_mut();
                 holder.values = Some((nil, logical, na));
                 holder.report = Some(observed);
             });
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         assert!(*report.lock().unwrap());
     }
 
@@ -363,7 +416,15 @@ mod tests {
     fn shared_singletons_remain_immutable() {
         use crate::sexp::accessors::*;
         unsafe {
-            for node in [R_NilValue(), R_UnboundValue(), R_MissingArg(), R_RestartToken(), R_NaString(), R_True(), R_False()] {
+            for node in [
+                R_NilValue(),
+                R_UnboundValue(),
+                R_MissingArg(),
+                R_RestartToken(),
+                R_NaString(),
+                R_True(),
+                R_False(),
+            ] {
                 let flags = (*node).sxpinfo;
                 let attributes = (*node).attrib;
                 let data = (*node).gengc_next_node;
@@ -376,7 +437,10 @@ mod tests {
                 // the scalar logical's typed vector lengths.
                 if flags.type_of() == SEXPTYPE::LGLSXP || flags.type_of() == SEXPTYPE::CHARSXP {
                     assert_eq!(snapshot.data.vector().length, (*node).data.vector().length);
-                    assert_eq!(snapshot.data.vector().truelength, (*node).data.vector().truelength);
+                    assert_eq!(
+                        snapshot.data.vector().truelength,
+                        (*node).data.vector().truelength
+                    );
                 }
                 SET_NAMED(node, 0);
                 SET_OBJECT(node, 1);
@@ -409,12 +473,18 @@ mod tests {
                 SET_REAL_ELT(node, 0, 99.0);
                 SET_COMPLEX_ELT(node, 0, Rcomplex { r: 99.0, i: 99.0 });
                 SET_RAW_ELT(node, 0, 99);
-                assert!(std::panic::catch_unwind(|| {
-                    SET_STRING_ELT(node, 0, R_NaString());
-                }).is_err());
-                assert!(std::panic::catch_unwind(|| {
-                    SET_VECTOR_ELT(node, 0, R_True());
-                }).is_err());
+                assert!(
+                    std::panic::catch_unwind(|| {
+                        SET_STRING_ELT(node, 0, R_NaString());
+                    })
+                    .is_err()
+                );
+                assert!(
+                    std::panic::catch_unwind(|| {
+                        SET_VECTOR_ELT(node, 0, R_True());
+                    })
+                    .is_err()
+                );
                 assert_eq!((*node).sxpinfo.type_and_flags, flags.type_and_flags);
                 assert_eq!((*node).sxpinfo.rcount, flags.rcount);
                 assert_eq!((*node).attrib, attributes);
@@ -515,8 +585,8 @@ mod tests {
 
     #[test]
     fn test_environment_accessors_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let left_saved = R_GlobalEnv_in(&mut left);
         let right_saved = R_GlobalEnv_in(&mut right);
 
@@ -532,8 +602,8 @@ mod tests {
 
     #[test]
     fn test_ambient_environment_wrapper_uses_current_instance_only() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let left_saved = R_GlobalEnv_in(&mut left);
         let right_saved = R_GlobalEnv_in(&mut right);
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
@@ -560,8 +630,8 @@ mod tests {
 
     #[test]
     fn test_eval_flags_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let mut left = RInstance::new_for_gc_tests();
+        let mut right = RInstance::new_for_gc_tests();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
         // Direct access to the installed instance goes through the pointer
         // recorded at install time: a fresh `&mut left` would retag the

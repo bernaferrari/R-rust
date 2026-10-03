@@ -3480,13 +3480,13 @@ pub unsafe fn register_special_forms(env: SEXP) {
         ];
 
 
-        let frame = (*env).data.environment().frame;
+        let frame = crate::sexp::accessors::FRAME(env);
         let mut chain = frame;
         for op_name in special_forms {
             let prim = super::primitive::make_primitive_binding(op_name, SEXPTYPE::SPECIALSXP);
             let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);
-            (*cell).data.list_mut().tagval = sym;
+            SETTAG(cell, sym);
             chain = cell;
         }
         SET_FRAME(env, chain);

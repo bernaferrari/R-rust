@@ -36,8 +36,8 @@ fn graph() -> (Graph, ProtectGuard<'static>) {
             SETCDR(cycle, cycle);
             SET_VECTOR_ELT(child, 0, value);
             SET_VECTOR_ELT(child, 1, cycle);
-            (*key).data.extptr_mut()[1] = child.cast();
-            (*key).data.extptr_mut()[2] = cycle.cast();
+            crate::mainutils::memory_main::R_SetExternalPtrProtected(key, child);
+            crate::mainutils::memory_main::R_SetExternalPtrTag(key, cycle);
             // Root before ending the lend, including any deferred callbacks.
             let root = crate::sexp::protect::protect(key);
             (

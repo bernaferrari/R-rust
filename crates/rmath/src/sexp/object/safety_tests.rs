@@ -430,22 +430,137 @@ fn checked_handle_rejects_reclaimed_and_reused_allocation() {
 }
 
 #[test]
+fn checked_children_do_not_adopt_reused_slots() {
+    let session = RSession::new_for_gc_tests();
+    let child_ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
+    let child = session.sexp(child_ptr).unwrap();
+    let vector = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
+    let cell_ptr = session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| {
+            arena.cons(
+                child_ptr,
+                crate::sexp::globals::R_NilValue(),
+                crate::sexp::globals::R_NilValue(),
+            )
+        })
+    });
+    let cell = session.sexp(cell_ptr).unwrap();
+    SexpMut::try_from_checked(vector.clone())
+        .unwrap()
+        .try_set_vector_elt(0, child.clone())
+        .unwrap();
+    let saved = vector.reference_elt(0).unwrap();
+    // Force actual slot retirement at the allocator seam. The canonical
+    // parent edges retain their old generation even when storage is reused.
+    session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.free_node(child_ptr));
+    });
+    let replacement_ptr = session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.alloc_node(SEXPTYPE::REALSXP))
+    });
+    assert_eq!(child_ptr, replacement_ptr);
+    let replacement = session.sexp(replacement_ptr).unwrap();
+    assert!(replacement.is_live());
+    assert!(matches!(cell.try_car(), Err(SexpError::StaleAllocation)));
+    assert!(matches!(
+        vector.try_vector_elt(0),
+        Err(SexpError::StaleAllocation)
+    ));
+    assert!(vector.copied_header_link(saved).is_none());
+    let raw_read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        crate::sexp::accessors::CAR(cell.as_raw())
+    }));
+    assert!(
+        raw_read.is_err(),
+        "raw projections must reject a stale saved edge"
+    );
+}
+
+#[test]
+fn raw_flags_cannot_mutate_retained_singletons_from_a_closed_bank() {
+    use crate::sexp::accessors::*;
+    let session = RSession::new_for_gc_tests();
+    let logical = unsafe { Sexp::from_static_raw_unchecked(crate::sexp::globals::R_True()) };
+    let missing = unsafe { Sexp::from_static_raw_unchecked(crate::sexp::globals::R_NaString()) };
+    let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 2)).unwrap();
+    let mut mutation = SexpMut::try_from_checked(parent).unwrap();
+    mutation.try_set_vector_elt(0, logical.clone()).unwrap();
+    mutation.try_set_vector_elt(1, missing.clone()).unwrap();
+    let parent = mutation.freeze();
+    let before = logical.header();
+    let missing_before = missing.header();
+    crate::sexp::globals::close_immutable_singletons_for_test();
+    let assert_logical_unchanged = || {
+        let after = logical.header();
+        assert_eq!(after.sxpinfo.type_and_flags, before.sxpinfo.type_and_flags);
+        assert_eq!(after.sxpinfo.rcount, before.sxpinfo.rcount);
+        assert_eq!(after.body, before.body);
+        assert_eq!(after.attrib, before.attrib);
+        assert_eq!(after.payload, before.payload);
+        assert_eq!(logical.logical_elt(0), Some(1));
+    };
+    // Void raw setters reject an immutable target by leaving it untouched.
+    // A retained lease keeps the original header and payload observable.
+    unsafe {
+        SET_NAMED(logical.as_raw(), 0);
+    }
+    assert_logical_unchanged();
+    session.with_active(|| unsafe {
+        assert_eq!(TYPEOF(logical.as_raw()), SEXPTYPE::LGLSXP.0);
+        assert_eq!(NAMED(logical.as_raw()), 2);
+        for (write, value) in [
+            (SET_OBJECT as unsafe fn(_, _), 1),
+            (SET_NAMED, 0),
+            (SET_ALTREP, 1),
+            (SET_MARK, 1),
+            (SETLEVELS, 3),
+            (SET_MISSING, 1),
+        ] {
+            write(logical.as_raw(), value);
+            assert_logical_unchanged();
+        }
+        SET_S4_OBJECT(logical.as_raw());
+        assert_logical_unchanged();
+        mark_charsxp_encoding(missing.as_raw(), "UTF-8");
+        let after = missing.header();
+        assert_eq!(
+            after.sxpinfo.type_and_flags,
+            missing_before.sxpinfo.type_and_flags
+        );
+        assert_eq!(after.sxpinfo.rcount, missing_before.sxpinfo.rcount);
+        assert_eq!(after.body, missing_before.body);
+        assert_eq!(after.attrib, missing_before.attrib);
+        assert_eq!(after.payload, missing_before.payload);
+        assert_eq!(getCharCE(missing.as_raw()), 0);
+    });
+    assert!(parent.vector_elt(1).unwrap().is_na_string());
+    full_gc(&session);
+    assert_eq!(parent.vector_elt(0).unwrap().logical_elt(0), Some(1));
+}
+
+#[test]
 fn checked_child_rejects_foreign_slot_before_header_read() {
     let left = RSession::new_for_gc_tests();
     let right = RSession::new_for_gc_tests();
     let parent = left.sexp(alloc(&left, SEXPTYPE::VECSXP, 1)).unwrap();
     let foreign = right.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).unwrap();
-    // A translated-code write bypasses the checked write barrier. The Rust
-    // projection must still reject this graph edge before reading its header.
+    // Inject a valid foreign identity into a typed cell, bypassing only domain
+    // validation. Readers must reject it before reading the foreign header.
     unsafe {
         let parent_ptr = parent.clone().as_raw();
         let data = (*parent_ptr)
             .gengc_next_node
-            .cast::<crate::sexp::ffi::SEXP>();
-        data.write(foreign.clone().as_raw());
+            .cast::<std::cell::Cell<crate::sexp::heap::NodeLink>>();
+        data.write(std::cell::Cell::new(
+            foreign.node.as_ref().unwrap().link().unwrap(),
+        ));
     }
     assert!(parent.vector_elt(0).is_none());
-    assert!(parent.copied_header(foreign.as_raw()).is_none());
+    assert!(
+        parent
+            .copied_header_link(foreign.node.as_ref().unwrap().link().unwrap())
+            .is_none()
+    );
 }
 
 #[test]
@@ -469,21 +584,19 @@ fn checked_factories_recover_owned_provenance_from_address_only_inputs() {
         SEXPTYPE::NILSXP
     );
     let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
-    // Legacy graph writes may carry an address without provenance. Checked
-    // child reads rederive a projection from the owned allocation.
+    // The raw entry captures a checked identity once. Child reads then resolve
+    // that saved token rather than reclassifying an element address.
     unsafe {
-        let ptr = parent.clone().as_raw();
-        (*ptr)
-            .gengc_next_node
-            .cast::<crate::sexp::ffi::SEXP>()
-            .write(std::ptr::without_provenance_mut::<SexprecCore>(
-                arena_ptr.addr(),
-            ));
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            parent.as_raw(),
+            0,
+            std::ptr::without_provenance_mut::<SexprecCore>(arena_ptr.addr()),
+        );
     }
     assert_eq!(parent.vector_elt(0).unwrap().integer_elt(0), Some(51));
     assert!(
         parent
-            .copied_header(std::ptr::without_provenance_mut(arena_ptr.addr()))
+            .copied_header_link(parent.reference_elt(0).unwrap())
             .is_some()
     );
     let mut arena = RArena::new();

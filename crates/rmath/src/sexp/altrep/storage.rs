@@ -45,7 +45,7 @@ impl<'s> Metadata<'s> {
         let super::super::object::NodeBody::Symbol(symbol) = tag.header().body else {
             return None;
         };
-        if !tag.copied_header(symbol.pname)?.char_eq(TAG.to_bytes()) {
+        if !tag.copied_header_link(symbol.pname)?.char_eq(TAG.to_bytes()) {
             return None;
         }
         let slots = cell.car()?;
@@ -306,11 +306,13 @@ fn link_attributes(
     attributes: &Sexp<'_>,
 ) -> SexpResult<()> {
     barrier(owner, object, attributes)?;
-    // SAFETY: root and barrier precede publication; no payload is borrowed.
-    unsafe {
-        (*object.clone().as_raw()).attrib = attributes.clone().as_raw();
-    }
-    Ok(())
+    let (_, parent) = super::super::memory::checked_projection(object.as_raw())
+        .ok_or(failure("ALTREP attribute parent"))?;
+    let heap = parent.heap_identity();
+    let link = attributes.link_in(&heap)?;
+    let mut header = heap.node_snapshot(&parent).ok_or(failure("ALTREP attribute header"))?;
+    header.attrib = link;
+    heap.replace_node(&parent, header).ok_or(failure("ALTREP attribute publication"))
 }
 pub(super) fn copy_public_attributes(source: &Sexp<'_>, target: &Sexp<'_>) -> SexpResult<()> {
     let owner = owner(target)?;

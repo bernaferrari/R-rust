@@ -18,8 +18,8 @@ and explicit embedding boundaries.
 
    `RInstance` owns mutable interpreter state: arena, environments, protect
    stack, preserve stack, RNG state, caches, output capture, path policy,
-   graphics state, and evaluator control state. `RArena` owns allocation and
-   Checked `Sexp<'a>` factories validate membership and retain the owner.
+   graphics state, and evaluator control state. `RArena` owns allocation.
+   Checked `Sexp<'a>` factories validate membership and retain physical storage.
    Legacy raw factories are unsafe and require manual liveness/rooting proofs.
 
 3. **Rust runtime layer**
@@ -75,25 +75,56 @@ allocation identity and a byte-reservation lease, so recycling the header
 cannot attach an old buffer to its replacement. Compact sequences fill a
 private payload before publishing it to a header or a callback.
 
-Process sentinels use `OnceLock`-owned atomic interior cells with native layout
-assertions. Rust supplies their thread-safety traits without an unsafe assertion
-for `SexprecCore`. Their canonical projections never escape into generic
-metadata or element mutation: those setters leave shared sentinels unchanged.
+Immutable sentinels use thread-confined, owned `Rc<Cell<SexprecCore>>` banks.
+Handles and graph edges retain the original sentinel lease and its unique
+identity, including after closing a session and creating a new bank. Generic
+header and element setters leave these immutable nodes unchanged.
 
-`sexp/heap.rs` and `sexp/persistent.rs` forbid unsafe code. Each allocation has
-an opaque identity comprising heap, page identity, slot, and generation. Slot
+`sexp/heap.rs`, `sexp/persistent.rs`, `sexp/payload.rs`, `sexp/ffi.rs`, and the
+collector trace modules forbid unsafe code. Each allocation has an opaque
+identity comprising heap cookie, page cookie, slot, and generation. Slot
 release invalidates its old identity before reuse; generation exhaustion retires
 the slot. Dropping a page invalidates surviving metadata tokens without retaining
 its header bytes. Collector occupancy, age, and epoch metadata use owned cells.
 The legacy pointer directory indexes exact live page ranges without reading a
 candidate pointer's header.
 
+Canonical headers use a copied `NodeBody` enum. Attributes, scalar graph edges,
+and reference-vector cells store nonowning `NodeLink` identities instead of
+raw `SEXP` addresses. Reference cells are actual `Cell<NodeLink>` allocations;
+their physical budgets use the link's 24-byte size. Resolution selects the
+original canonical page and validates its saved generation before projecting
+any bytes. Graph cycles carry no strong backing or root leases. Cookie
+exhaustion rejects new identities instead of wrapping.
+
 Raw `SEXP` pointers remain projections of those same physical headers during
-the engine migration. Header unions, legacy payload views, graph fields,
-evaluator access, and native compatibility still have audited unsafe paths.
+the engine migration. Runtime/context roots, numerical payload projections,
+evaluator access, and raw owner capabilities still have unsafe paths. These
+remaining migrations are separate from the canonical graph representation.
 Rust ownership of pages alone does not make those operations safe. Shared
 backing storage is essential: moving a boxed page after publishing raw pointers
 invalidates their aliasing provenance even when the bytes do not move.
+
+### Native Rust resources
+
+An external-pointer node can own a typed `Rc` resource in its actual physical
+page. Attachment and lookup validate the original allocation and node kind;
+cleanup authenticates the saved allocation even if a callback changes its
+kind or body. An opaque address cannot authenticate the Rust type. Duplicating
+an external pointer shares its resource across independent node lifetimes.
+Collected or explicitly removed nodes detach their resources before storage
+reuse. A temporary retirement queue releases destructors after arena lends,
+tracing, and collection bookkeeping end, including unwind. Final physical
+page teardown releases remaining attached resources. Resource types must not
+retain owning R values or runtime/heap owners, which would form ownership cycles.
+
+STARMA owns its initialized numerical buffers with Rust vectors and borrows
+mutable state through `RefCell`. Forecasts use separate owned workspaces and
+bounded indexed recurrence, preserving the fitted buffers and observation
+count across success, errors, and repeated calls. Dimension and packed-size
+arithmetic is checked before allocation. Two existing numerical kernels still
+use temporary raw projections into those owned workspaces; removing those
+remaining kernel boundaries is separate work.
 
 ### Protect stack (`sexp/protect.rs`)
 
@@ -220,19 +251,21 @@ retain their stated owner-lifetime contracts.
 
 ### Allocation admission and graph writes
 
-Vector factories validate the type's union layout, convert the length with
+Vector factories validate the supported node family, convert the length with
 `usize::try_from`, and validate the complete allocation layout before changing
 the arena. Non-vector headers require their dedicated constructors; the GNU
 compatibility bridge dispatches `LISTSXP` and `LANGSXP` to real node chains.
 Unpublished vector and character payloads have RAII owners until the arena
 adopts them.
 
-Checked ALTREP factories install a temporary managed root before ending the
+Checked ALTREP factories install an automatic allocation root before ending the
 allocation's arena lend. Deferred collection can notify user callbacks as the
 lend ends; rooting only after the factory returned allowed a nested full
 collection to reclaim the fresh node first. Vector, string, metadata cons-cell
 and checked compact-sequence construction now retain that temporary root
 through notifications until the returned session handle owns its root lease.
+Compact-sequence compatibility guards are acquired only after the arena lend
+ends; they never borrow the entire runtime from inside an exclusive arena loan.
 
 `R_alloc` buffers retain both their raw allocation and a reservation against
 their original session's byte budget. Watermark resets and instance teardown

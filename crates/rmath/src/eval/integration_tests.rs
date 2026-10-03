@@ -41,9 +41,9 @@ fn make_test_env() -> SEXP {
         if env.is_null() {
             return R_NilValue();
         }
-        (*env).data.environment_mut().frame = R_NilValue();
-        (*env).data.environment_mut().enclos = R_NilValue();
-        (*env).data.environment_mut().hashtab = R_NilValue();
+        crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+        crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+        crate::sexp::accessors::SET_HASHTAB(env, R_NilValue());
         env
     }
 }

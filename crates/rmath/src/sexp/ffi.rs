@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Runtime scalar types and canonical initialized Rust object records.
@@ -6,6 +7,8 @@
 //! checked Rust enum body and do not require a native SEXPREC layout.
 
 use std::os::raw::{c_double, c_int, c_void};
+
+use super::heap::NodeLink;
 
 // ---------------------------------------------------------------------------
 // Primitive type aliases (centralized from duplicates)
@@ -331,48 +334,43 @@ pub struct Primsxp {
 }
 
 /// Symbol data.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Symsxp {
-    pub pname: *mut SexprecCore,
-    pub value: *mut SexprecCore,
-    pub internal: *mut SexprecCore,
+    pub pname: NodeLink,
+    pub value: NodeLink,
+    pub internal: NodeLink,
 }
 
 /// List/cons cell data (LISTSXP and LANGSXP).
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Listsxp {
-    pub carval: *mut SexprecCore,
-    pub cdrval: *mut SexprecCore,
-    pub tagval: *mut SexprecCore,
+    pub carval: NodeLink,
+    pub cdrval: NodeLink,
+    pub tagval: NodeLink,
 }
 
 /// Environment data.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Envsxp {
-    pub frame: *mut SexprecCore,
-    pub enclos: *mut SexprecCore,
-    pub hashtab: *mut SexprecCore,
+    pub frame: NodeLink,
+    pub enclos: NodeLink,
+    pub hashtab: NodeLink,
 }
 
 /// Closure data.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Closxp {
-    pub formals: *mut SexprecCore,
-    pub body: *mut SexprecCore,
-    pub env: *mut SexprecCore,
+    pub formals: NodeLink,
+    pub body: NodeLink,
+    pub env: NodeLink,
 }
 
 /// Promise data.
-#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Promsxp {
-    pub value: *mut SexprecCore,
-    pub expr: *mut SexprecCore,
-    pub env: *mut SexprecCore,
+    pub value: NodeLink,
+    pub expr: NodeLink,
+    pub env: NodeLink,
 }
 
 /// Vector data header (length and true length).
@@ -383,13 +381,44 @@ pub struct Vecsxp {
     pub truelength: R_xlen_t,
 }
 
+/// An external address is opaque; only its protected value and tag are graph edges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExtPtrBody {
+    pub address: *mut c_void,
+    pub protected: NodeLink,
+    pub tag: NodeLink,
+}
+
+/// Semantic fields accepted by copied-header graph operations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EdgeField {
+    Attribute,
+    ListCar,
+    ListCdr,
+    ListTag,
+    SymbolName,
+    SymbolValue,
+    SymbolInternal,
+    ClosureFormals,
+    ClosureBody,
+    ClosureEnvironment,
+    EnvironmentFrame,
+    EnvironmentEnclosure,
+    EnvironmentHashTable,
+    PromiseValue,
+    PromiseExpression,
+    PromiseEnvironment,
+    ExternalProtected,
+    ExternalTag,
+}
+
 // ---------------------------------------------------------------------------
 // Canonical typed node bodies
 // ---------------------------------------------------------------------------
 
 /// Canonical initialized type-specific storage. The Rust enum discriminant
 /// selects the data arm; a mismatched accessor fails safely instead of
-/// reinterpreting header bytes. Graph fields remain nonowning projections.
+/// reinterpreting header bytes. Graph fields retain nonowning, exact allocation identities.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NodeBody {
     Vector(Vecsxp),
@@ -399,7 +428,7 @@ pub enum NodeBody {
     Environment(Envsxp),
     Promise(Promsxp),
     Primitive(Primsxp),
-    ExtPtr([*mut c_void; 3]),
+    ExtPtr(ExtPtrBody),
     #[default]
     Other,
 }
@@ -407,7 +436,7 @@ pub enum NodeBody {
 impl NodeBody {
     /// Initialize the arm used by this object's semantic type family.
     pub fn for_kind(kind: SEXPTYPE) -> Self {
-        let null = std::ptr::null_mut();
+        let null = NodeLink::null();
         match kind {
             SEXPTYPE::CHARSXP
             | SEXPTYPE::LGLSXP
@@ -447,7 +476,11 @@ impl NodeBody {
                 env: null,
             }),
             SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP => Self::Primitive(Primsxp { offset: 0 }),
-            SEXPTYPE::EXTPTRSXP => Self::ExtPtr([std::ptr::null_mut(); 3]),
+            SEXPTYPE::EXTPTRSXP => Self::ExtPtr(ExtPtrBody {
+                address: std::ptr::null_mut(),
+                protected: null,
+                tag: null,
+            }),
             _ => Self::Other,
         }
     }
@@ -565,7 +598,7 @@ impl NodeBody {
     }
 
     #[inline]
-    pub fn extptr(&self) -> [*mut c_void; 3] {
+    pub fn extptr(&self) -> ExtPtrBody {
         match self {
             Self::ExtPtr(value) => *value,
             _ => panic!("expected extptr body"),
@@ -573,7 +606,7 @@ impl NodeBody {
     }
 
     #[inline]
-    pub fn extptr_mut(&mut self) -> &mut [*mut c_void; 3] {
+    pub fn extptr_mut(&mut self) -> &mut ExtPtrBody {
         match self {
             Self::ExtPtr(value) => value,
             _ => panic!("expected extptr body"),
@@ -593,7 +626,7 @@ impl NodeBody {
 #[derive(Clone, Copy)]
 pub struct SexprecCore {
     pub sxpinfo: SxpInfo,
-    pub attrib: *mut SexprecCore,
+    pub attrib: NodeLink,
     pub gengc_next_node: *mut SexprecCore,
     pub gengc_prev_node: *mut SexprecCore,
     pub data: NodeBody,
@@ -604,11 +637,62 @@ impl SexprecCore {
     pub fn new(sexptype: SEXPTYPE) -> Self {
         SexprecCore {
             sxpinfo: SxpInfo::new(sexptype),
-            attrib: std::ptr::null_mut(),
+            attrib: NodeLink::null(),
             gengc_next_node: std::ptr::null_mut(),
             gengc_prev_node: std::ptr::null_mut(),
             data: NodeBody::for_kind(sexptype),
         }
+    }
+
+    /// Copy a semantic edge without interpreting a mismatched body family.
+    pub(crate) fn edge(&self, field: EdgeField) -> Option<NodeLink> {
+        match (field, self.data) {
+            (EdgeField::Attribute, _) => Some(self.attrib),
+            (EdgeField::ListCar, NodeBody::List(body)) => Some(body.carval),
+            (EdgeField::ListCdr, NodeBody::List(body)) => Some(body.cdrval),
+            (EdgeField::ListTag, NodeBody::List(body)) => Some(body.tagval),
+            (EdgeField::SymbolName, NodeBody::Symbol(body)) => Some(body.pname),
+            (EdgeField::SymbolValue, NodeBody::Symbol(body)) => Some(body.value),
+            (EdgeField::SymbolInternal, NodeBody::Symbol(body)) => Some(body.internal),
+            (EdgeField::ClosureFormals, NodeBody::Closure(body)) => Some(body.formals),
+            (EdgeField::ClosureBody, NodeBody::Closure(body)) => Some(body.body),
+            (EdgeField::ClosureEnvironment, NodeBody::Closure(body)) => Some(body.env),
+            (EdgeField::EnvironmentFrame, NodeBody::Environment(body)) => Some(body.frame),
+            (EdgeField::EnvironmentEnclosure, NodeBody::Environment(body)) => Some(body.enclos),
+            (EdgeField::EnvironmentHashTable, NodeBody::Environment(body)) => Some(body.hashtab),
+            (EdgeField::PromiseValue, NodeBody::Promise(body)) => Some(body.value),
+            (EdgeField::PromiseExpression, NodeBody::Promise(body)) => Some(body.expr),
+            (EdgeField::PromiseEnvironment, NodeBody::Promise(body)) => Some(body.env),
+            (EdgeField::ExternalProtected, NodeBody::ExtPtr(body)) => Some(body.protected),
+            (EdgeField::ExternalTag, NodeBody::ExtPtr(body)) => Some(body.tag),
+            _ => None,
+        }
+    }
+
+    /// Replace a semantic edge in a detached header snapshot.
+    pub(crate) fn set_edge(&mut self, field: EdgeField, value: NodeLink) -> Option<()> {
+        match (field, &mut self.data) {
+            (EdgeField::Attribute, _) => self.attrib = value,
+            (EdgeField::ListCar, NodeBody::List(body)) => body.carval = value,
+            (EdgeField::ListCdr, NodeBody::List(body)) => body.cdrval = value,
+            (EdgeField::ListTag, NodeBody::List(body)) => body.tagval = value,
+            (EdgeField::SymbolName, NodeBody::Symbol(body)) => body.pname = value,
+            (EdgeField::SymbolValue, NodeBody::Symbol(body)) => body.value = value,
+            (EdgeField::SymbolInternal, NodeBody::Symbol(body)) => body.internal = value,
+            (EdgeField::ClosureFormals, NodeBody::Closure(body)) => body.formals = value,
+            (EdgeField::ClosureBody, NodeBody::Closure(body)) => body.body = value,
+            (EdgeField::ClosureEnvironment, NodeBody::Closure(body)) => body.env = value,
+            (EdgeField::EnvironmentFrame, NodeBody::Environment(body)) => body.frame = value,
+            (EdgeField::EnvironmentEnclosure, NodeBody::Environment(body)) => body.enclos = value,
+            (EdgeField::EnvironmentHashTable, NodeBody::Environment(body)) => body.hashtab = value,
+            (EdgeField::PromiseValue, NodeBody::Promise(body)) => body.value = value,
+            (EdgeField::PromiseExpression, NodeBody::Promise(body)) => body.expr = value,
+            (EdgeField::PromiseEnvironment, NodeBody::Promise(body)) => body.env = value,
+            (EdgeField::ExternalProtected, NodeBody::ExtPtr(body)) => body.protected = value,
+            (EdgeField::ExternalTag, NodeBody::ExtPtr(body)) => body.tag = value,
+            _ => return None,
+        }
+        Some(())
     }
 
     /// Create a new vector SexprecCore with length.
@@ -813,13 +897,9 @@ mod tests {
         for kind in [SEXPTYPE::BUILTINSXP, SEXPTYPE::SPECIALSXP] {
             assert_eq!(SexprecCore::new(kind).data.primitive().offset, 0);
         }
-        assert!(
-            SexprecCore::new(SEXPTYPE::EXTPTRSXP)
-                .data
-                .extptr()
-                .iter()
-                .all(|pointer| pointer.is_null())
-        );
+        let external = SexprecCore::new(SEXPTYPE::EXTPTRSXP).data.extptr();
+        assert!(external.address.is_null());
+        assert!(external.protected.is_null() && external.tag.is_null());
         for kind in [
             SEXPTYPE::NILSXP,
             SEXPTYPE::ANYSXP,
