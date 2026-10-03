@@ -182,7 +182,7 @@ unsafe fn PROMISE_IS_EVALUATED(x: SEXP) -> c_int {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
             return FALSE;
         }
-        let val = (*x).data.promsxp.value;
+        let val = (*x).data.promise().value;
         if val.is_null() || val == R_NilValue() {
             FALSE
         } else {
@@ -197,7 +197,7 @@ unsafe fn PRVALUE(x: SEXP) -> SEXP {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
             return R_NilValue();
         }
-        (*x).data.promsxp.value
+        (*x).data.promise().value
     }
 }
 

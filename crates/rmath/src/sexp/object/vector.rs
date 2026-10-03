@@ -2,7 +2,6 @@ use std::os::raw::{c_double, c_int};
 
 use super::{Sexp, SexpError, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NaString;
 
 #[allow(deprecated)] // deprecated Sexp set_* shims delegate to try_set_* shims
 impl<'a> Sexp<'a> {
@@ -227,7 +226,7 @@ impl<'a> Sexp<'a> {
         // borrowed string view escapes, make it a traced child of this parent.
         self.materialize_compact_payload()?;
         let chars = self.try_string_elt(i)?;
-        if chars.clone().as_raw() == unsafe { R_NaString() } {
+        if chars.is_na_string() {
             Ok(None)
         } else {
             // SAFETY: this borrow is tied to the parent vector. Its root
@@ -257,7 +256,7 @@ impl<'a> Sexp<'a> {
     /// Copy a string element, preserving `NA_character_` as `None`.
     pub fn try_string_value_elt(&self, i: R_xlen_t) -> SexpResult<Option<String>> {
         let chars = self.try_string_elt(i)?;
-        if chars.clone().as_raw() == unsafe { R_NaString() } {
+        if chars.is_na_string() {
             Ok(None)
         } else {
             chars.try_as_string().map(Some)

@@ -12,7 +12,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use super::accessors::{CHAR, PRINTNAME, TYPEOF};
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, NodeBody};
 use super::instance::RInstance;
 
 // ---------------------------------------------------------------------------
@@ -45,13 +45,11 @@ fn intern_symbol_with_pname(
         attrib: ptr::null_mut(),
         gengc_next_node: ptr::null_mut(),
         gengc_prev_node: ptr::null_mut(),
-        data: SexprecData {
-            symsxp: super::ffi::Symsxp {
-                pname,
-                value: ptr::null_mut(),
-                internal: ptr::null_mut(),
-            },
-        },
+        data: NodeBody::Symbol(super::ffi::Symsxp {
+            pname,
+            value: ptr::null_mut(),
+            internal: ptr::null_mut(),
+        }),
     };
     let sexp = persistent.allocate_header(header).unwrap_or(ptr::null_mut());
     if !sexp.is_null() {

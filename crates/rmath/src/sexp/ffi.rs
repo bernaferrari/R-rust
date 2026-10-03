@@ -1,10 +1,9 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! FFI-compatible raw type definitions matching R's C memory layout.
+//! Runtime scalar types and canonical initialized Rust object records.
 //!
-//! These types use `#[repr(C)]` and are designed to be ABI-compatible
-//! with R's SEXPREC structures. Centralizes types that were previously
-//! duplicated across 8+ files in mainutils/.
+//! Language type tags retain their numeric encoding. Object headers use a
+//! checked Rust enum body and do not require a native SEXPREC layout.
 
 use std::os::raw::{c_double, c_int, c_void};
 
@@ -34,7 +33,6 @@ pub const NA_REAL: c_double = f64::from_bits(R_NA_BIT_PATTERN);
 pub fn is_na_real(x: f64) -> bool {
     x.is_nan() && (x.to_bits() as u32) == R_NA_PAYLOAD
 }
-
 
 /// R's boolean type (0 = FALSE, 1 = TRUE, NA_LOGICAL = NA).
 pub type Rboolean = c_int;
@@ -78,7 +76,7 @@ pub struct Rcomplex {
 
 /// R's SEXPTYPE -- the type tag for all R objects.
 ///
-/// Values must match R's C definitions exactly for ABI compatibility.
+/// Values retain R's language and serialization type-tag encoding.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SEXPTYPE(pub c_int);
@@ -312,26 +310,29 @@ impl SxpInfo {
         // changes on stack temporaries are not slab nodes; the note is a no-op
         // when this address is not inside an arena page.
         if prev != next {
-            let node = self as *mut SxpInfo as *mut SexprecCore;
+            let node = std::ptr::from_mut(self)
+                .cast::<u8>()
+                .wrapping_byte_sub(std::mem::offset_of!(SexprecCore, sxpinfo))
+                .cast::<SexprecCore>();
             crate::sexp::memory::note_slab_generation(node, next);
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Union member structs (type-specific data)
+// Type-specific initialized data records
 // ---------------------------------------------------------------------------
 
 /// Primitive function data (offset into function table).
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Primsxp {
     pub offset: c_int,
 }
 
 /// Symbol data.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Symsxp {
     pub pname: *mut SexprecCore,
     pub value: *mut SexprecCore,
@@ -340,7 +341,7 @@ pub struct Symsxp {
 
 /// List/cons cell data (LISTSXP and LANGSXP).
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Listsxp {
     pub carval: *mut SexprecCore,
     pub cdrval: *mut SexprecCore,
@@ -349,7 +350,7 @@ pub struct Listsxp {
 
 /// Environment data.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Envsxp {
     pub frame: *mut SexprecCore,
     pub enclos: *mut SexprecCore,
@@ -358,7 +359,7 @@ pub struct Envsxp {
 
 /// Closure data.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Closxp {
     pub formals: *mut SexprecCore,
     pub body: *mut SexprecCore,
@@ -367,7 +368,7 @@ pub struct Closxp {
 
 /// Promise data.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Promsxp {
     pub value: *mut SexprecCore,
     pub expr: *mut SexprecCore,
@@ -376,43 +377,206 @@ pub struct Promsxp {
 
 /// Vector data header (length and true length).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Vecsxp {
     pub length: R_xlen_t,
     pub truelength: R_xlen_t,
 }
 
 // ---------------------------------------------------------------------------
-// SexprecData union
+// Canonical typed node bodies
 // ---------------------------------------------------------------------------
 
-/// Union storage for type-specific data.
-///
-/// Uses the largest variant for sizing. The actual interpretation
-/// depends on the SEXPTYPE in the SxpInfo header.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub union SexprecData {
-    pub primsxp: Primsxp,
-    pub symsxp: Symsxp,
-    pub listsxp: Listsxp,
-    pub envsxp: Envsxp,
-    pub closxp: Closxp,
-    pub promsxp: Promsxp,
-    pub vecsxp: Vecsxp,
-    /// For CHARSXP: offset to inline char data or length.
-    pub charsxp_truelen: R_xlen_t,
-    /// For EXTPTRSXP: pointer, tag, and protection info.
-    pub extptr: [*mut c_void; 3],
+/// Canonical initialized type-specific storage. The Rust enum discriminant
+/// selects the data arm; a mismatched accessor fails safely instead of
+/// reinterpreting header bytes. Graph fields remain nonowning projections.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NodeBody {
+    Vector(Vecsxp),
+    List(Listsxp),
+    Symbol(Symsxp),
+    Closure(Closxp),
+    Environment(Envsxp),
+    Promise(Promsxp),
+    Primitive(Primsxp),
+    ExtPtr([*mut c_void; 3]),
+    #[default]
+    Other,
 }
 
-impl Default for SexprecData {
-    fn default() -> Self {
-        SexprecData {
-            // Initialize through the largest pointer-shaped scalar variant so
-            // every byte in the union starts as zero. Vector constructors then
-            // overwrite `vecsxp` with the requested length.
-            extptr: [std::ptr::null_mut(); 3],
+impl NodeBody {
+    /// Initialize the arm used by this object's semantic type family.
+    pub fn for_kind(kind: SEXPTYPE) -> Self {
+        let null = std::ptr::null_mut();
+        match kind {
+            SEXPTYPE::CHARSXP
+            | SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::VECSXP
+            | SEXPTYPE::EXPRSXP
+            | SEXPTYPE::BCODESXP
+            | SEXPTYPE::RAWSXP => Self::Vector(Vecsxp::default()),
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP | SEXPTYPE::WEAKREFSXP => {
+                Self::List(Listsxp {
+                    carval: null,
+                    cdrval: null,
+                    tagval: null,
+                })
+            }
+            SEXPTYPE::SYMSXP => Self::Symbol(Symsxp {
+                pname: null,
+                value: null,
+                internal: null,
+            }),
+            SEXPTYPE::CLOSXP => Self::Closure(Closxp {
+                formals: null,
+                body: null,
+                env: null,
+            }),
+            SEXPTYPE::ENVSXP => Self::Environment(Envsxp {
+                frame: null,
+                enclos: null,
+                hashtab: null,
+            }),
+            SEXPTYPE::PROMSXP => Self::Promise(Promsxp {
+                value: null,
+                expr: null,
+                env: null,
+            }),
+            SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP => Self::Primitive(Primsxp { offset: 0 }),
+            SEXPTYPE::EXTPTRSXP => Self::ExtPtr([std::ptr::null_mut(); 3]),
+            _ => Self::Other,
+        }
+    }
+
+    #[inline]
+    pub fn vector(&self) -> Vecsxp {
+        match self {
+            Self::Vector(value) => *value,
+            _ => panic!("expected vector body"),
+        }
+    }
+
+    #[inline]
+    pub fn vector_mut(&mut self) -> &mut Vecsxp {
+        match self {
+            Self::Vector(value) => value,
+            _ => panic!("expected vector body"),
+        }
+    }
+
+    #[inline]
+    pub fn list(&self) -> Listsxp {
+        match self {
+            Self::List(value) => *value,
+            _ => panic!("expected list body"),
+        }
+    }
+
+    #[inline]
+    pub fn list_mut(&mut self) -> &mut Listsxp {
+        match self {
+            Self::List(value) => value,
+            _ => panic!("expected list body"),
+        }
+    }
+
+    #[inline]
+    pub fn symbol(&self) -> Symsxp {
+        match self {
+            Self::Symbol(value) => *value,
+            _ => panic!("expected symbol body"),
+        }
+    }
+
+    #[inline]
+    pub fn symbol_mut(&mut self) -> &mut Symsxp {
+        match self {
+            Self::Symbol(value) => value,
+            _ => panic!("expected symbol body"),
+        }
+    }
+
+    #[inline]
+    pub fn closure(&self) -> Closxp {
+        match self {
+            Self::Closure(value) => *value,
+            _ => panic!("expected closure body"),
+        }
+    }
+
+    #[inline]
+    pub fn closure_mut(&mut self) -> &mut Closxp {
+        match self {
+            Self::Closure(value) => value,
+            _ => panic!("expected closure body"),
+        }
+    }
+
+    #[inline]
+    pub fn environment(&self) -> Envsxp {
+        match self {
+            Self::Environment(value) => *value,
+            _ => panic!("expected environment body"),
+        }
+    }
+
+    #[inline]
+    pub fn environment_mut(&mut self) -> &mut Envsxp {
+        match self {
+            Self::Environment(value) => value,
+            _ => panic!("expected environment body"),
+        }
+    }
+
+    #[inline]
+    pub fn promise(&self) -> Promsxp {
+        match self {
+            Self::Promise(value) => *value,
+            _ => panic!("expected promise body"),
+        }
+    }
+
+    #[inline]
+    pub fn promise_mut(&mut self) -> &mut Promsxp {
+        match self {
+            Self::Promise(value) => value,
+            _ => panic!("expected promise body"),
+        }
+    }
+
+    #[inline]
+    pub fn primitive(&self) -> Primsxp {
+        match self {
+            Self::Primitive(value) => *value,
+            _ => panic!("expected primitive body"),
+        }
+    }
+
+    #[inline]
+    pub fn primitive_mut(&mut self) -> &mut Primsxp {
+        match self {
+            Self::Primitive(value) => value,
+            _ => panic!("expected primitive body"),
+        }
+    }
+
+    #[inline]
+    pub fn extptr(&self) -> [*mut c_void; 3] {
+        match self {
+            Self::ExtPtr(value) => *value,
+            _ => panic!("expected extptr body"),
+        }
+    }
+
+    #[inline]
+    pub fn extptr_mut(&mut self) -> &mut [*mut c_void; 3] {
+        match self {
+            Self::ExtPtr(value) => value,
+            _ => panic!("expected extptr body"),
         }
     }
 }
@@ -423,19 +587,16 @@ impl Default for SexprecData {
 
 /// The core SEXPREC structure -- the fundamental R object.
 ///
-/// This is the unified scalar/vector node. For scalar types (SYMSXP,
-/// LISTSXP, CLOSXP, etc.), the `data` union holds type-specific pointers.
-/// For vector types, `data.vecsxp` holds length/truelength, and the
-/// actual element data is stored in a separate allocation referenced
-/// by the arena allocator.
-#[repr(C)]
+/// This is the unified scalar/vector node. Its canonical Rust body owns
+/// an initialized type-specific record, independent of any native layout.
+/// Vector records hold their shape; the heap owns their typed element bytes.
 #[derive(Clone, Copy)]
 pub struct SexprecCore {
     pub sxpinfo: SxpInfo,
     pub attrib: *mut SexprecCore,
     pub gengc_next_node: *mut SexprecCore,
     pub gengc_prev_node: *mut SexprecCore,
-    pub data: SexprecData,
+    pub data: NodeBody,
 }
 
 impl SexprecCore {
@@ -446,18 +607,16 @@ impl SexprecCore {
             attrib: std::ptr::null_mut(),
             gengc_next_node: std::ptr::null_mut(),
             gengc_prev_node: std::ptr::null_mut(),
-            data: SexprecData::default(),
+            data: NodeBody::for_kind(sexptype),
         }
     }
 
     /// Create a new vector SexprecCore with length.
     pub fn new_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> Self {
         let mut node = Self::new(sexptype);
-        node.data = SexprecData {
-            vecsxp: Vecsxp {
-                length,
-                truelength: length,
-            },
+        *node.data.vector_mut() = Vecsxp {
+            length,
+            truelength: length,
         };
         node
     }
@@ -605,10 +764,149 @@ mod tests {
     fn test_sexprec_new_vector() {
         let node = SexprecCore::new_vector(SEXPTYPE::REALSXP, 10);
         assert_eq!(node.sxpinfo.type_of(), SEXPTYPE::REALSXP);
-        unsafe {
-            assert_eq!(node.data.vecsxp.length, 10);
-            assert_eq!(node.data.vecsxp.truelength, 10);
+        assert_eq!(node.data.vector().length, 10);
+        assert_eq!(node.data.vector().truelength, 10);
+    }
+
+    #[test]
+    fn canonical_body_construction_selects_initialized_type_families() {
+        for kind in [
+            SEXPTYPE::CHARSXP,
+            SEXPTYPE::LGLSXP,
+            SEXPTYPE::INTSXP,
+            SEXPTYPE::REALSXP,
+            SEXPTYPE::CPLXSXP,
+            SEXPTYPE::STRSXP,
+            SEXPTYPE::VECSXP,
+            SEXPTYPE::EXPRSXP,
+            SEXPTYPE::BCODESXP,
+            SEXPTYPE::RAWSXP,
+        ] {
+            let header = SexprecCore::new(kind);
+            assert_eq!(header.sxpinfo.type_of(), kind);
+            assert_eq!(header.data.vector().length, 0);
+            assert_eq!(header.data.vector().truelength, 0);
         }
+        for kind in [
+            SEXPTYPE::LISTSXP,
+            SEXPTYPE::LANGSXP,
+            SEXPTYPE::DOTSXP,
+            SEXPTYPE::WEAKREFSXP,
+        ] {
+            let value = SexprecCore::new(kind).data.list();
+            assert!(value.carval.is_null());
+            assert!(value.cdrval.is_null());
+            assert!(value.tagval.is_null());
+        }
+        let symbol = SexprecCore::new(SEXPTYPE::SYMSXP).data.symbol();
+        assert!(symbol.pname.is_null() && symbol.value.is_null() && symbol.internal.is_null());
+        let closure = SexprecCore::new(SEXPTYPE::CLOSXP).data.closure();
+        assert!(closure.formals.is_null() && closure.body.is_null() && closure.env.is_null());
+        let environment = SexprecCore::new(SEXPTYPE::ENVSXP).data.environment();
+        assert!(
+            environment.frame.is_null()
+                && environment.enclos.is_null()
+                && environment.hashtab.is_null()
+        );
+        let promise = SexprecCore::new(SEXPTYPE::PROMSXP).data.promise();
+        assert!(promise.value.is_null() && promise.expr.is_null() && promise.env.is_null());
+        for kind in [SEXPTYPE::BUILTINSXP, SEXPTYPE::SPECIALSXP] {
+            assert_eq!(SexprecCore::new(kind).data.primitive().offset, 0);
+        }
+        assert!(
+            SexprecCore::new(SEXPTYPE::EXTPTRSXP)
+                .data
+                .extptr()
+                .iter()
+                .all(|pointer| pointer.is_null())
+        );
+        for kind in [
+            SEXPTYPE::NILSXP,
+            SEXPTYPE::ANYSXP,
+            SEXPTYPE::OBJSXP,
+            SEXPTYPE::FUNSXP,
+            SEXPTYPE(31),
+        ] {
+            assert!(matches!(SexprecCore::new(kind).data, NodeBody::Other));
+        }
+    }
+
+    #[test]
+    fn wrong_body_projections_fail_safely_without_mutating_the_arm() {
+        let copied: [fn(&NodeBody); 8] = [
+            |body| {
+                let _ = body.vector();
+            },
+            |body| {
+                let _ = body.list();
+            },
+            |body| {
+                let _ = body.symbol();
+            },
+            |body| {
+                let _ = body.closure();
+            },
+            |body| {
+                let _ = body.environment();
+            },
+            |body| {
+                let _ = body.promise();
+            },
+            |body| {
+                let _ = body.primitive();
+            },
+            |body| {
+                let _ = body.extptr();
+            },
+        ];
+        for projection in copied {
+            assert!(std::panic::catch_unwind(|| projection(&NodeBody::Other)).is_err());
+        }
+        let mutable: [fn(&mut NodeBody); 8] = [
+            |body| {
+                let _ = body.vector_mut();
+            },
+            |body| {
+                let _ = body.list_mut();
+            },
+            |body| {
+                let _ = body.symbol_mut();
+            },
+            |body| {
+                let _ = body.closure_mut();
+            },
+            |body| {
+                let _ = body.environment_mut();
+            },
+            |body| {
+                let _ = body.promise_mut();
+            },
+            |body| {
+                let _ = body.primitive_mut();
+            },
+            |body| {
+                let _ = body.extptr_mut();
+            },
+        ];
+        for projection in mutable {
+            let mut body = NodeBody::Other;
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| projection(&mut body)));
+            assert!(result.is_err());
+            assert!(matches!(body, NodeBody::Other));
+        }
+        let mut vector = NodeBody::for_kind(SEXPTYPE::REALSXP);
+        let copied = vector.vector();
+        vector.vector_mut().length = 7;
+        assert_eq!(copied.length, 0);
+        assert_eq!(vector.vector().length, 7);
+        assert!(std::panic::catch_unwind(|| vector.list()).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected vector body")]
+    fn vector_header_constructor_rejects_nonvector_type_families() {
+        let _ = SexprecCore::new_vector(SEXPTYPE::SYMSXP, 1);
     }
 
     #[test]

@@ -1134,7 +1134,7 @@ pub unsafe fn BCODE_CONSTS(x: SEXP) -> SEXP {
 /// The marker is an owned internal payload slot, never a guessed opcode.
 pub unsafe fn BCODE_IS_GNU(x: SEXP) -> bool {
     unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP || (*x).data.vecsxp.length < 4 {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP || (*x).data.vector().length < 4 {
             return false;
         }
         let marker = VECTOR_ELT(x, 3);
@@ -1151,7 +1151,7 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP {
             return R_NilValue();
         }
-        if BCODE_IS_GNU(x) && (*x).data.vecsxp.length >= 5 {
+        if BCODE_IS_GNU(x) && (*x).data.vector().length >= 5 {
             let source = VECTOR_ELT(x, 4);
             if !source.is_null() {
                 return source;
@@ -4185,9 +4185,9 @@ mod tests {
     fn empty_env(arena: &mut crate::sexp::memory::RArena) -> SEXP {
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.envsxp.frame = R_NilValue();
-            (*env).data.envsxp.enclos = R_NilValue();
-            (*env).data.envsxp.hashtab = ptr::null_mut();
+            (*env).data.environment_mut().frame = R_NilValue();
+            (*env).data.environment_mut().enclos = R_NilValue();
+            (*env).data.environment_mut().hashtab = ptr::null_mut();
         }
         env
     }
@@ -4397,9 +4397,9 @@ mod tests {
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.envsxp.frame = R_NilValue();
-            (*env).data.envsxp.enclos = R_NilValue();
-            (*env).data.envsxp.hashtab = ptr::null_mut();
+            (*env).data.environment_mut().frame = R_NilValue();
+            (*env).data.environment_mut().enclos = R_NilValue();
+            (*env).data.environment_mut().hashtab = ptr::null_mut();
         }
 
         let result = unsafe { bcEval(bcode, env) };
@@ -4435,9 +4435,9 @@ mod tests {
 
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.envsxp.frame = R_NilValue();
-            (*env).data.envsxp.enclos = R_NilValue();
-            (*env).data.envsxp.hashtab = ptr::null_mut();
+            (*env).data.environment_mut().frame = R_NilValue();
+            (*env).data.environment_mut().enclos = R_NilValue();
+            (*env).data.environment_mut().hashtab = ptr::null_mut();
         }
 
         let err = assert_r_error(|| unsafe {
@@ -4459,7 +4459,7 @@ mod tests {
         let parent = empty_env(&mut arena);
         let child = empty_env(&mut arena);
         unsafe {
-            (*child).data.envsxp.enclos = parent;
+            (*child).data.environment_mut().enclos = parent;
         }
 
         let sym = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
@@ -4602,14 +4602,14 @@ mod tests {
         // bytecode frame is suspended mid-OP_CALL.
         let gc_closure = session.with_active(|| unsafe {
             let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
-            (*clos).data.closxp.formals = R_NilValue();
+            (*clos).data.closure_mut().formals = R_NilValue();
             let body = Rf_cons(
                 crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
                 R_NilValue(),
             );
             (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            (*clos).data.closxp.body = body;
-            (*clos).data.closxp.env = crate::sexp::globals::R_BaseEnv();
+            (*clos).data.closure_mut().body = body;
+            (*clos).data.closure_mut().env = crate::sexp::globals::R_BaseEnv();
             clos
         });
         let _callee_guard = unsafe {

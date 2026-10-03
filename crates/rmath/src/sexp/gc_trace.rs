@@ -29,6 +29,14 @@ impl TraceContext {
         Self { heap, epoch }
     }
 
+    pub(super) fn copy_reference_payload(
+        &self,
+        pointer: *mut u8,
+        length: usize,
+    ) -> Option<Vec<SEXP>> {
+        self.heap.copy_reference_payload(pointer, length)
+    }
+
     fn project(&self, candidate: SEXP) -> Result<Option<TraceNode>, TraceError> {
         if candidate.is_null() || immutable_singleton_projection(candidate).is_some() {
             return Ok(None);

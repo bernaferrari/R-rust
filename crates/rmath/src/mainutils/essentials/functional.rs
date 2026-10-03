@@ -2174,7 +2174,7 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut has_names = false;
         current = args;
         while !current.is_null() && current != R_NilValue() {
-            let tag = (*current).data.listsxp.tagval;
+            let tag = (*current).data.list().tagval;
             if !tag.is_null() && tag != R_NilValue() {
                 let pname = crate::sexp::accessors::PRINTNAME(tag);
                 if !pname.is_null() {

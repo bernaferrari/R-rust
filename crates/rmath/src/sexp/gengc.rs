@@ -275,59 +275,59 @@ unsafe fn each_child(obj: SEXP, follow_weak_key: bool, mut visit: impl FnMut(&mu
     unsafe {
         let mask = child_mask((*obj).sxpinfo.type_of().0, follow_weak_key);
         if mask & EDGE_PNAME != 0 {
-            visit(&mut (*obj).data.symsxp.pname);
+            visit(&mut (*obj).data.symbol_mut().pname);
         }
         if mask & EDGE_SYM_VALUE != 0 {
-            visit(&mut (*obj).data.symsxp.value);
+            visit(&mut (*obj).data.symbol_mut().value);
         }
         if mask & EDGE_INTERNAL != 0 {
-            visit(&mut (*obj).data.symsxp.internal);
+            visit(&mut (*obj).data.symbol_mut().internal);
         }
         if mask & EDGE_CAR != 0 {
-            visit(&mut (*obj).data.listsxp.carval);
+            visit(&mut (*obj).data.list_mut().carval);
         }
         if mask & EDGE_CDR != 0 {
-            visit(&mut (*obj).data.listsxp.cdrval);
+            visit(&mut (*obj).data.list_mut().cdrval);
         }
         if mask & EDGE_TAG != 0 {
-            visit(&mut (*obj).data.listsxp.tagval);
+            visit(&mut (*obj).data.list_mut().tagval);
         }
         if mask & EDGE_FORMALS != 0 {
-            visit(&mut (*obj).data.closxp.formals);
+            visit(&mut (*obj).data.closure_mut().formals);
         }
         if mask & EDGE_BODY != 0 {
-            visit(&mut (*obj).data.closxp.body);
+            visit(&mut (*obj).data.closure_mut().body);
         }
         if mask & EDGE_CLOENV != 0 {
-            visit(&mut (*obj).data.closxp.env);
+            visit(&mut (*obj).data.closure_mut().env);
         }
         if mask & EDGE_FRAME != 0 {
-            visit(&mut (*obj).data.envsxp.frame);
+            visit(&mut (*obj).data.environment_mut().frame);
         }
         if mask & EDGE_ENCLOS != 0 {
-            visit(&mut (*obj).data.envsxp.enclos);
+            visit(&mut (*obj).data.environment_mut().enclos);
         }
         if mask & EDGE_HASHTAB != 0 {
-            visit(&mut (*obj).data.envsxp.hashtab);
+            visit(&mut (*obj).data.environment_mut().hashtab);
         }
         if mask & EDGE_PROM_VALUE != 0 {
-            visit(&mut (*obj).data.promsxp.value);
+            visit(&mut (*obj).data.promise_mut().value);
         }
         if mask & EDGE_PROM_EXPR != 0 {
-            visit(&mut (*obj).data.promsxp.expr);
+            visit(&mut (*obj).data.promise_mut().expr);
         }
         if mask & EDGE_PROM_ENV != 0 {
-            visit(&mut (*obj).data.promsxp.env);
+            visit(&mut (*obj).data.promise_mut().env);
         }
         if mask & EDGE_EXT_TAG != 0 {
-            let mut tag = (*obj).data.extptr[1] as SEXP;
+            let mut tag = (*obj).data.extptr()[1] as SEXP;
             visit(&mut tag);
-            (*obj).data.extptr[1] = tag as *mut std::ffi::c_void;
+            (*obj).data.extptr_mut()[1] = tag as *mut std::ffi::c_void;
         }
         if mask & EDGE_EXT_PROT != 0 {
-            let mut prot = (*obj).data.extptr[2] as SEXP;
+            let mut prot = (*obj).data.extptr()[2] as SEXP;
             visit(&mut prot);
-            (*obj).data.extptr[2] = prot as *mut std::ffi::c_void;
+            (*obj).data.extptr_mut()[2] = prot as *mut std::ffi::c_void;
         }
         if mask & EDGE_VECTOR != 0 {
             let len = (*obj).vecsxp_length();
@@ -1307,14 +1307,14 @@ fn sync_env_hash_tables_from_frames(instance: *mut instance::RInstance) {
                 if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
                     continue;
                 }
-                let mut frame = (*env).data.envsxp.frame;
-                while !frame.is_null() {
-                    let tag = (*frame).data.listsxp.tagval;
-                    let val = (*frame).data.listsxp.carval;
+                let mut frame = (*env).data.environment().frame;
+                while !frame.is_null() && (*frame).sxpinfo.type_of() != SEXPTYPE::NILSXP {
+                    let tag = (*frame).data.list().tagval;
+                    let val = (*frame).data.list().carval;
                     if !tag.is_null() {
                         super::env_hash::hash_insert_in(instance, env, tag, val);
                     }
-                    frame = (*frame).data.listsxp.cdrval;
+                    frame = (*frame).data.list().cdrval;
                 }
             }
         }
@@ -1331,16 +1331,16 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
                     if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
                         break;
                     }
-                    let mut frame = (*env).data.envsxp.frame;
-                    while !frame.is_null() {
+                    let mut frame = (*env).data.environment().frame;
+                    while !frame.is_null() && (*frame).sxpinfo.type_of() != SEXPTYPE::NILSXP {
                         values.push(frame);
-                        let val = (*frame).data.listsxp.carval;
+                        let val = (*frame).data.list().carval;
                         if !val.is_null() {
                             values.push(val);
                         }
-                        frame = (*frame).data.listsxp.cdrval;
+                        frame = (*frame).data.list().cdrval;
                     }
-                    env = (*env).data.envsxp.enclos;
+                    env = (*env).data.environment().enclos;
                 }
             };
             for ctxt in &(*instance).context_stack {
@@ -1933,7 +1933,7 @@ mod tests {
             // Base bootstrap inserts heap-owned Autoloads (and a full session
             // inserts package environments) into this chain. They were freed
             // with the old arena; keep only the persistent sentinels.
-            (*crate::sexp::globals::R_GlobalEnv()).data.envsxp.enclos =
+            (*crate::sexp::globals::R_GlobalEnv()).data.environment_mut().enclos =
                 crate::sexp::globals::R_BaseEnv();
         }
         instance::with_required_current_instance(|instance| unsafe {
@@ -2024,9 +2024,9 @@ mod tests {
             if !env.is_null() {
                 unsafe {
                     (*env).attrib = nil;
-                    (*env).data.envsxp.frame = nil;
-                    (*env).data.envsxp.hashtab = nil;
-                    (*env).data.envsxp.enclos = enclos;
+                    (*env).data.environment_mut().frame = nil;
+                    (*env).data.environment_mut().hashtab = nil;
+                    (*env).data.environment_mut().enclos = enclos;
                 }
             }
         }
@@ -2040,7 +2040,7 @@ mod tests {
         (unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| {
-            assert!(arena.contains(unsafe { (*global).data.envsxp.enclos }));
+            assert!(arena.contains(unsafe { (*global).data.environment().enclos }));
             let discarded = arena.alloc_node(SEXPTYPE::LISTSXP);
             let arena_token = arena.node_token(discarded).unwrap();
             let (sentinel_token, permanent_token) =
@@ -2055,7 +2055,7 @@ mod tests {
                 });
             assert!(arena_token.same_heap(&sentinel_token));
             reset_gc_test_arena(arena);
-            assert_eq!(unsafe { (*global).data.envsxp.enclos }, base);
+            assert_eq!(unsafe { (*global).data.environment().enclos }, base);
             assert!(!arena_token.is_live());
             assert!(!permanent_token.is_live());
             assert!(sentinel_token.is_live());
@@ -2619,7 +2619,7 @@ mod tests {
             ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
             unsafe {
                 (*ext).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*ext).data.extptr = [payload, prot as *mut _, tag as *mut _];
+                *(*ext).data.extptr_mut() = [payload, prot as *mut _, tag as *mut _];
             }
             std::mem::forget(protect(ext));
             })
@@ -2632,9 +2632,9 @@ mod tests {
         assert_eq!(protected_ext, ext);
         unsafe {
             assert_eq!((*protected_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
-            assert_eq!((*protected_ext).data.extptr[0], payload);
-            let linked_prot = (*protected_ext).data.extptr[1] as SEXP;
-            let linked_tag = (*protected_ext).data.extptr[2] as SEXP;
+            assert_eq!((*protected_ext).data.extptr()[0], payload);
+            let linked_prot = (*protected_ext).data.extptr()[1] as SEXP;
+            let linked_tag = (*protected_ext).data.extptr()[2] as SEXP;
             assert_eq!(linked_prot, prot);
             assert_eq!(linked_tag, tag);
             assert_eq!((*linked_prot).sxpinfo.type_of(), SEXPTYPE::REALSXP);
@@ -2670,9 +2670,9 @@ mod tests {
                 for obj in [key, value, finalizer, weak] {
                     (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
                 }
-                (*weak).data.listsxp.carval = key;
-                (*weak).data.listsxp.cdrval = value;
-                (*weak).data.listsxp.tagval = finalizer;
+                (*weak).data.list_mut().carval = key;
+                (*weak).data.list_mut().cdrval = value;
+                (*weak).data.list_mut().tagval = finalizer;
             }
             std::mem::forget(protect(weak));
             })
@@ -2686,11 +2686,11 @@ mod tests {
         unsafe {
             assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
             assert_eq!(
-                (*protected_weak).data.listsxp.carval,
+                (*protected_weak).data.list().carval,
                 crate::sexp::globals::R_NilValue()
             );
-            let linked_value = (*protected_weak).data.listsxp.cdrval;
-            let linked_finalizer = (*protected_weak).data.listsxp.tagval;
+            let linked_value = (*protected_weak).data.list().cdrval;
+            let linked_finalizer = (*protected_weak).data.list().tagval;
             assert_eq!(linked_value, value);
             assert_eq!(linked_finalizer, finalizer);
             assert_eq!((*linked_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
@@ -2725,9 +2725,9 @@ mod tests {
                 for obj in [key, value, weak] {
                     (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
                 }
-                (*weak).data.listsxp.carval = key;
-                (*weak).data.listsxp.cdrval = value;
-                (*weak).data.listsxp.tagval = crate::sexp::globals::R_NilValue();
+                (*weak).data.list_mut().carval = key;
+                (*weak).data.list_mut().cdrval = value;
+                (*weak).data.list_mut().tagval = crate::sexp::globals::R_NilValue();
             }
             std::mem::forget(protect(weak));
             std::mem::forget(protect(key));
@@ -2743,8 +2743,8 @@ mod tests {
         assert_eq!(protected_key, key);
         unsafe {
             assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
-            let linked_key = (*protected_weak).data.listsxp.carval;
-            let linked_value = (*protected_weak).data.listsxp.cdrval;
+            let linked_key = (*protected_weak).data.list().carval;
+            let linked_value = (*protected_weak).data.list().cdrval;
             assert_eq!(linked_key, protected_key);
             assert_eq!(linked_key, key);
             assert_eq!(linked_value, value);
@@ -3065,13 +3065,11 @@ mod tests {
                         let nil = crate::sexp::globals::R_NilValue();
                         let mut header = crate::sexp::ffi::SexprecCore::new(SEXPTYPE::WEAKREFSXP);
                         header.attrib = nil;
-                        header.data = crate::sexp::ffi::SexprecData {
-                            listsxp: crate::sexp::ffi::Listsxp {
-                                carval: key,
-                                cdrval: value,
-                                tagval: nil,
-                            },
-                        };
+                        header.data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+                            carval: key,
+                            cdrval: value,
+                            tagval: nil,
+                        });
                         instance::with_required_current_instance(|owner| {
                             let weak = (*owner).persistent_nodes.allocate_header(header).unwrap();
                             let token = (*owner).persistent_nodes.token(weak).unwrap();
@@ -3092,14 +3090,14 @@ mod tests {
                         assert!(!arena.contains(key));
                         assert!(arena.contains(value));
                     });
-                    assert_eq!((*weak).data.listsxp.carval, crate::sexp::globals::R_NilValue());
-                    assert_eq!((*weak).data.listsxp.cdrval, value);
+                    assert_eq!((*weak).data.list().carval, crate::sexp::globals::R_NilValue());
+                    assert_eq!((*weak).data.list().cdrval, value);
                 }
                 full_gc();
                 // SAFETY: the next cycle must retain the strong value and
                 // leave the already-cleared weak key as immutable nil.
                 unsafe {
-                    assert_eq!((*weak).data.listsxp.carval, crate::sexp::globals::R_NilValue());
+                    assert_eq!((*weak).data.list().carval, crate::sexp::globals::R_NilValue());
                     assert!(with_arena(|arena| arena.contains(value)));
                 }
             });
@@ -3115,7 +3113,7 @@ mod tests {
             let (node, _root) = unsafe {
                 with_arena(|arena| {
                     let node = arena.alloc_node(SEXPTYPE::LISTSXP);
-                    (*node).data.listsxp.carval = std::ptr::without_provenance_mut(0x1_0000);
+                    (*node).data.list_mut().carval = std::ptr::without_provenance_mut(0x1_0000);
                     let root = crate::sexp::protect::protect(node);
                     (node, root)
                 })
@@ -3127,7 +3125,7 @@ mod tests {
             // SAFETY: the failed mark cycle performs no sweeping; the root
             // still owns this header. Restore its valid edge before retrying.
             unsafe {
-                (*node).data.listsxp.carval = crate::sexp::globals::R_NilValue();
+                (*node).data.list_mut().carval = crate::sexp::globals::R_NilValue();
             }
             full_gc();
             // SAFETY: the restored collection scope retains this live root.
@@ -3147,7 +3145,7 @@ mod tests {
             for i in 0..depth {
                 let node = arena.alloc_node(SEXPTYPE::LISTSXP);
                 unsafe {
-                    (*node).data.listsxp.cdrval = head;
+                    (*node).data.list_mut().cdrval = head;
                 }
                 if i == 0 {
                     tail = node;
@@ -3156,7 +3154,7 @@ mod tests {
             }
             // A back-edge also verifies that marking terminates on cycles.
             unsafe {
-                (*tail).data.listsxp.carval = head;
+                (*tail).data.list_mut().carval = head;
             }
             (head, tail)
         })
@@ -3173,7 +3171,7 @@ mod tests {
             })
         });
         unsafe {
-            assert_eq!((*tail).data.listsxp.carval, head);
+            assert_eq!((*tail).data.list().carval, head);
         }
     }
 
@@ -3194,12 +3192,12 @@ mod tests {
             let head = arena.alloc_node(SEXPTYPE::DOTSXP);
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
             unsafe {
-                (*tail).data.listsxp.tagval = sym_b;
-                (*tail).data.listsxp.carval = two;
-                (*tail).data.listsxp.cdrval = nil;
-                (*head).data.listsxp.tagval = sym_a;
-                (*head).data.listsxp.carval = one;
-                (*head).data.listsxp.cdrval = tail;
+                (*tail).data.list_mut().tagval = sym_b;
+                (*tail).data.list_mut().carval = two;
+                (*tail).data.list_mut().cdrval = nil;
+                (*head).data.list_mut().tagval = sym_a;
+                (*head).data.list_mut().carval = one;
+                (*head).data.list_mut().cdrval = tail;
             }
 
             // Only the chain head is rooted; the cells beyond it are reachable
@@ -3215,8 +3213,8 @@ mod tests {
             assert!(active.contains(&one), "DOTSXP car value was swept");
             assert!(active.contains(&two), "DOTSXP tail car value was swept");
             unsafe {
-                assert_eq!((*head).data.listsxp.cdrval, tail);
-                assert_eq!((*tail).data.listsxp.carval, two);
+                assert_eq!((*head).data.list().cdrval, tail);
+                assert_eq!((*tail).data.list().carval, two);
             }
             })
         });
@@ -3236,9 +3234,9 @@ mod tests {
             let nil = unsafe { crate::sexp::globals::R_NilValue() };
             unsafe {
                 (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
-                (*parent).data.listsxp.carval = child;
-                (*parent).data.listsxp.cdrval = nil;
-                (*parent).data.listsxp.tagval = nil;
+                (*parent).data.list_mut().carval = child;
+                (*parent).data.list_mut().cdrval = nil;
+                (*parent).data.list_mut().tagval = nil;
                 (*child).sxpinfo.set_gcgen(Generation::Young as u8);
             }
 
@@ -3262,7 +3260,7 @@ mod tests {
                 "young child of a remembered old parent was swept"
             );
             unsafe {
-                assert_eq!((*parent).data.listsxp.carval, child);
+                assert_eq!((*parent).data.list().carval, child);
             }
             })
         });
@@ -3344,8 +3342,8 @@ mod tests {
             with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
             unsafe {
-                (*env).data.envsxp.frame = crate::sexp::globals::R_NilValue();
-                (*env).data.envsxp.enclos = crate::sexp::globals::R_NilValue();
+                (*env).data.environment_mut().frame = crate::sexp::globals::R_NilValue();
+                (*env).data.environment_mut().enclos = crate::sexp::globals::R_NilValue();
             }
             env
         })
@@ -3368,7 +3366,7 @@ mod tests {
         }
         let namespace = make_detached_env();
         unsafe {
-            (*namespace).data.envsxp.frame = payload;
+            (*namespace).data.environment_mut().frame = payload;
         }
         instance::with_required_current_instance(|inst| unsafe {
             (*inst).package_namespace_cache.insert(

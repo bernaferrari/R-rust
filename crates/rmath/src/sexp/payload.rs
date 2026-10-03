@@ -153,6 +153,24 @@ impl OwnedPayload {
         self.length
     }
 
+    /// Copy graph edges from the actual typed cells. Header lengths cannot
+    /// expose alignment padding or reinterpret a numeric/scratch allocation.
+    pub(crate) fn copy_references(&self, length: usize) -> Option<Vec<SEXP>> {
+        let Storage::References(chunks) = &self.storage else {
+            return None;
+        };
+        if length > self.length {
+            return None;
+        }
+        Some(
+            chunks
+                .iter()
+                .flat_map(|chunk| chunk.values.iter().map(Cell::get))
+                .take(length)
+                .collect(),
+        )
+    }
+
     /// The projection spans the entire chunk slice, preserving provenance for
     /// legacy pointer arithmetic across all elements. No pointer is derived
     /// from a reference to only the first element's Cell.
@@ -173,6 +191,33 @@ impl OwnedPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graph_snapshots_check_actual_storage_type_and_logical_bounds() {
+        for length in [0, 1, 3, 8, 9] {
+            let payload = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, length).unwrap();
+            assert_eq!(
+                payload.copy_references(length as usize).unwrap().len(),
+                length as usize
+            );
+            assert!(payload.copy_references(length as usize + 1).is_none());
+            assert_eq!(payload.copy_references(0), Some(Vec::new()));
+        }
+        for kind in [SEXPTYPE::INTSXP, SEXPTYPE::REALSXP, SEXPTYPE::RAWSXP] {
+            assert!(
+                OwnedPayload::zeroed_vector(kind, 8)
+                    .unwrap()
+                    .copy_references(1)
+                    .is_none()
+            );
+        }
+        assert!(
+            OwnedPayload::zeroed_bytes(64)
+                .unwrap()
+                .copy_references(1)
+                .is_none()
+        );
+    }
 
     #[test]
     fn typed_payloads_preserve_alignment_lengths_and_zero_initialization() {

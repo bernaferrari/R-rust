@@ -75,7 +75,7 @@ fn starma_from(ext: SEXP) -> *mut starma_struct {
                 message: "bad starma pointer".to_string(),
             });
         }
-        let ptr = (*ext).data.extptr[0] as *mut starma_struct;
+        let ptr = (*ext).data.extptr()[0] as *mut starma_struct;
         if ptr.is_null() {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "bad starma pointer".to_string(),
@@ -244,7 +244,7 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
         }
         let leaked = Box::into_raw(Box::new(g));
         let node = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::EXTPTRSXP));
-        (*node).data.extptr = [
+        *(*node).data.extptr_mut() = [
             leaked as *mut c_void,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -271,7 +271,7 @@ pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
         free_zeros(owned.wkeep, owned.n);
         free_zeros(owned.resid, owned.n);
         free_zeros(owned.reg, 1 + owned.n * owned.m);
-        (*pg).data.extptr[0] = std::ptr::null_mut();
+        (*pg).data.extptr_mut()[0] = std::ptr::null_mut();
         R_NilValue()
     }
 }

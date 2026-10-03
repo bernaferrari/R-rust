@@ -99,7 +99,7 @@ unsafe fn matches_expectation(raw: SEXP, expected: Expected) -> bool {
                     {
                         return false;
                     }
-                    cell = (*canonical).data.listsxp.cdrval;
+                    cell = (*canonical).data.list().cdrval;
                 }
                 cell == R_NilValue()
             }

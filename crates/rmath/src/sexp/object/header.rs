@@ -4,12 +4,11 @@
 //! foreign native views retain an unsafe physical-header read. No header loan
 //! escapes either operation.
 
-use std::os::raw::{c_double, c_int, c_void};
+use std::os::raw::{c_double, c_int};
 
 use super::Sexp;
-use crate::sexp::ffi::{
-    Closxp, Envsxp, Listsxp, Primsxp, Promsxp, SEXP, SEXPTYPE, SexprecCore, SxpInfo, Symsxp, Vecsxp,
-};
+pub(crate) use crate::sexp::ffi::NodeBody;
+use crate::sexp::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
 
 /// Header fields copied out of a node. Every pointer here is a value, not a borrow.
 #[derive(Clone, Copy)]
@@ -19,20 +18,6 @@ pub(crate) struct HeaderSnap {
     /// `gengc_next_node`. For vectors this is the element buffer, not a SEXP.
     pub payload: SEXP,
     pub body: NodeBody,
-}
-
-/// The union arm selected by the type tag. Other arms are not read.
-#[derive(Clone, Copy)]
-pub(crate) enum NodeBody {
-    Vector(Vecsxp),
-    List(Listsxp),
-    Symbol(Symsxp),
-    Closure(Closxp),
-    Environment(Envsxp),
-    Promise(Promsxp),
-    Primitive(Primsxp),
-    ExtPtr([*mut c_void; 3]),
-    Other,
 }
 
 /// First two scalars of a plain integer or real buffer.
@@ -84,6 +69,8 @@ impl<'a> Sexp<'a> {
         let core = if let Some(node) = &self.node {
             crate::sexp::memory::checked_snapshot(self.ptr, node)
                 .expect("SEXP allocation has been reclaimed")
+        } else if let Some(core) = self.singleton_snapshot(self.ptr) {
+            core
         } else if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(self.ptr) {
             core
         } else {
@@ -104,7 +91,7 @@ impl<'a> Sexp<'a> {
             return None;
         }
         let ptr = if let Some(parent_node) = &self.node {
-            if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
+            if let Some(canonical) = self.singleton_projection(ptr) {
                 canonical
             } else {
                 let (canonical, node) = crate::sexp::memory::checked_projection(ptr)?;
@@ -116,7 +103,9 @@ impl<'a> Sexp<'a> {
         } else {
             ptr
         };
-        if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
+        if let Some(core) = self.singleton_snapshot(ptr) {
+            Some(snapshot_header(core))
+        } else if let Some(core) = crate::sexp::globals::immutable_singleton_snapshot(ptr) {
             Some(snapshot_header(core))
         } else if let Some((canonical, node)) = crate::sexp::memory::checked_projection(ptr) {
             crate::sexp::memory::checked_snapshot(canonical, &node).map(snapshot_header)
@@ -165,10 +154,6 @@ fn canonical_node(ptr: SEXP) -> bool {
     addr >= 0x1000 && addr % std::mem::align_of::<SexprecCore>() == 0
 }
 
-fn stores_vecsxp(ty: SEXPTYPE) -> bool {
-    ty == SEXPTYPE::CHARSXP || ty.is_vector_type()
-}
-
 fn read_legacy_header(ptr: SEXP) -> HeaderSnap {
     // Prefer owned snapshots even for a legacy wrapper. Only foreign native
     // memory uses the factory's explicit unsafe liveness contract.
@@ -185,35 +170,10 @@ fn read_legacy_header(ptr: SEXP) -> HeaderSnap {
 }
 
 fn snapshot_header(core: SexprecCore) -> HeaderSnap {
-    let sxpinfo = core.sxpinfo;
-    let ty = sxpinfo.type_of();
-    // SAFETY: interpret only the arm selected by the owned header's type tag.
-    // Physical copying and allocation validation happen in safe Rust first.
-    let body = unsafe {
-        if stores_vecsxp(ty) {
-            NodeBody::Vector(core.data.vecsxp)
-        } else if ty.is_list_type() {
-            NodeBody::List(core.data.listsxp)
-        } else if ty == SEXPTYPE::SYMSXP {
-            NodeBody::Symbol(core.data.symsxp)
-        } else if ty == SEXPTYPE::CLOSXP {
-            NodeBody::Closure(core.data.closxp)
-        } else if ty == SEXPTYPE::ENVSXP {
-            NodeBody::Environment(core.data.envsxp)
-        } else if ty == SEXPTYPE::PROMSXP {
-            NodeBody::Promise(core.data.promsxp)
-        } else if ty == SEXPTYPE::SPECIALSXP || ty == SEXPTYPE::BUILTINSXP {
-            NodeBody::Primitive(core.data.primsxp)
-        } else if ty == SEXPTYPE::EXTPTRSXP {
-            NodeBody::ExtPtr(core.data.extptr)
-        } else {
-            NodeBody::Other
-        }
-    };
     HeaderSnap {
-        sxpinfo,
+        sxpinfo: core.sxpinfo,
         attrib: core.attrib,
         payload: core.gengc_next_node,
-        body,
+        body: core.data,
     }
 }

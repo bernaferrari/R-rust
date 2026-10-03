@@ -1154,7 +1154,7 @@ unsafe fn write_gnu_bc_payload(
         }
         let code = VECTOR_ELT(s, 0);
         let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
-        if (*s).data.vecsxp.length != 5
+        if (*s).data.vector().length != 5
             || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
             || code.is_null()
             || TYPEOF(code) != SEXPTYPE::INTSXP

@@ -31,7 +31,7 @@ use std::rc::Rc;
 const NODE_PAGE_SIZE: usize = 4096;
 const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);
 
-use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{NodeBody, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
 use super::heap::{
     CheckedNode, HeapBackingOwners, HeapIdentity, NodeId, NodePage, NodeProjection, PageMetadata,
 };
@@ -235,6 +235,19 @@ struct SlabPage {
 pub(crate) struct ArenaBacking {
     node_pages: RefCell<Vec<SlabPage>>,
     data_bufs: RefCell<HashMap<*mut u8, SharedBuffer>>,
+}
+impl ArenaBacking {
+    pub(crate) fn copy_reference_payload(
+        &self,
+        pointer: *mut u8,
+        length: usize,
+    ) -> Option<Vec<SEXP>> {
+        self.data_bufs
+            .borrow()
+            .get(&pointer)?
+            .allocation
+            .copy_references(length)
+    }
 }
 
 #[derive(Clone)]
@@ -1088,16 +1101,14 @@ impl RArena {
         };
         let data_ptr = data.as_ptr();
 
-        // CHARSXP shares the vector header prefix. Initialize true length as
-        // well: writing only charsxp_truelen leaves that accessor uninitialized.
+        // Character shape uses the same initialized vector record as the
+        // character accessor; both length fields are ordinary Rust values.
         let node_ptr = self.allocate_core_in_slab(|| {
             let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
-            c.data = SexprecData {
-                vecsxp: super::ffi::Vecsxp {
-                    length: len,
-                    truelength: 0,
-                },
-            };
+            c.data = NodeBody::Vector(super::ffi::Vecsxp {
+                length: len,
+                truelength: 0,
+            });
             // GNU CHARSXP gp bits: ASCII (1<<6) and/or UTF8 (1<<3).
             // Serialization writes these via PackFlags(LEVELS(s)).
             let mut gp = 0u16;
@@ -1135,9 +1146,9 @@ impl RArena {
             return ptr::null_mut();
         }
         unsafe {
-            (*ptr).data.listsxp.carval = car;
-            (*ptr).data.listsxp.cdrval = cdr;
-            (*ptr).data.listsxp.tagval = tag;
+            (*ptr).data.list_mut().carval = car;
+            (*ptr).data.list_mut().cdrval = cdr;
+            (*ptr).data.list_mut().tagval = tag;
         }
         ptr
     }
@@ -1932,6 +1943,66 @@ where
 #[cfg(test)]
 mod tests {
     #[test]
+    fn heap_reference_snapshots_use_only_typed_owners_in_the_same_domain() {
+        let mut arena = super::RArena::new();
+        let identity = arena.heap_identity();
+        let vector = arena.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        let vector_token = arena.node_token(vector).unwrap();
+        let value = vector_token.root_lease().unwrap();
+        let vector_data = super::checked_snapshot(vector, &vector_token)
+            .unwrap()
+            .gengc_next_node
+            .cast::<u8>();
+        assert_eq!(
+            identity.copy_reference_payload(vector_data, 3),
+            Some(vec![std::ptr::null_mut(); 3])
+        );
+        assert!(identity.copy_reference_payload(vector_data, 4).is_none());
+        assert!(arena.backing.data_bufs.try_borrow_mut().is_ok());
+        let integers = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
+        let integer_token = arena.node_token(integers).unwrap();
+        let integer_data = super::checked_snapshot(integers, &integer_token)
+            .unwrap()
+            .gengc_next_node
+            .cast::<u8>();
+        assert!(identity.copy_reference_payload(integer_data, 3).is_none());
+        let mut foreign = super::RArena::new();
+        let foreign_vector = foreign.alloc_vector(super::SEXPTYPE::VECSXP, 3);
+        let foreign_token = foreign.node_token(foreign_vector).unwrap();
+        let foreign_data = super::checked_snapshot(foreign_vector, &foreign_token)
+            .unwrap()
+            .gengc_next_node
+            .cast::<u8>();
+        assert!(identity.copy_reference_payload(foreign_data, 3).is_none());
+        let mut permanent =
+            super::super::instance::persistent::PersistentHeap::new(identity.clone());
+        let string = permanent.allocate_string(vector).unwrap();
+        let string_token = permanent.token(string).unwrap();
+        let string_data = super::checked_snapshot(string, &string_token)
+            .unwrap()
+            .gengc_next_node
+            .cast::<u8>();
+        assert_eq!(
+            identity.copy_reference_payload(string_data, 1),
+            Some(vec![vector])
+        );
+        assert!(identity.copy_reference_payload(string_data, 2).is_none());
+        drop(arena);
+        drop(permanent);
+        assert_eq!(
+            identity.copy_reference_payload(vector_data, 3),
+            Some(vec![std::ptr::null_mut(); 3])
+        );
+        assert_eq!(
+            identity.copy_reference_payload(string_data, 1),
+            Some(vec![vector])
+        );
+        drop(value);
+        assert!(identity.copy_reference_payload(vector_data, 3).is_none());
+        assert!(identity.copy_reference_payload(string_data, 1).is_none());
+    }
+
+    #[test]
     fn automatic_roots_span_registered_arena_and_permanent_pages_in_one_heap() {
         let mut arena = super::RArena::new();
         let identity = arena.heap_identity();
@@ -2031,7 +2102,7 @@ mod tests {
         // SAFETY: both initialized nodes belong to this same heap domain;
         // this fixture installs the nonowning edge before facade teardown.
         unsafe {
-            (*parent).data.listsxp.carval = child;
+            (*parent).data.list_mut().carval = child;
         }
         let original_owner = std::rc::Rc::downgrade(&original.backing);
         let later_owner = std::rc::Rc::downgrade(&later.backing);
@@ -2048,7 +2119,7 @@ mod tests {
         let header = super::checked_snapshot(parent, &parent_token).unwrap();
         // SAFETY: the parent header type is LISTSXP and the retained child
         // projection is precisely the one installed above.
-        assert_eq!(unsafe { header.data.listsxp.carval }, child);
+        assert_eq!(header.data.list().carval, child);
         drop(value);
         assert!(original_owner.upgrade().is_none());
         assert!(later_owner.upgrade().is_none());
@@ -2362,12 +2433,10 @@ mod tests {
         session.with_active(|| unsafe {
             let node = super::with_arena(|arena| arena.alloc_vector(super::SEXPTYPE::INTSXP, 0));
             let _root = super::super::protect::protect(node);
-            (*node).data = super::SexprecData {
-                vecsxp: super::super::ffi::Vecsxp {
-                    length: 3,
-                    truelength: 3,
-                },
-            };
+            (*node).data = super::NodeBody::Vector(super::super::ffi::Vecsxp {
+                length: 3,
+                truelength: 3,
+            });
             for lent in [false, true] {
                 let initialize = || {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2410,12 +2479,10 @@ mod tests {
         session.with_active(|| unsafe {
             let replacement = super::with_arena(|arena| {
                 let node = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
-                (*node).data = super::SexprecData {
-                    vecsxp: super::super::ffi::Vecsxp {
-                        length: 3,
-                        truelength: 3,
-                    },
-                };
+                (*node).data = super::NodeBody::Vector(super::super::ffi::Vecsxp {
+                    length: 3,
+                    truelength: 3,
+                });
                 let old = arena.node_token(node).unwrap();
                 assert!(!super::attach_zeroed_data_buffer(node, 12).is_null());
                 assert_eq!(arena.pending_data_bytes.get(), 12);
@@ -2920,9 +2987,9 @@ mod tests {
         assert!(!cell.is_null());
         unsafe {
             assert_eq!((*cell).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
-            assert_eq!((*cell).data.listsxp.carval, car);
-            assert_eq!((*cell).data.listsxp.cdrval, cdr);
-            assert!((*cell).data.listsxp.tagval.is_null());
+            assert_eq!((*cell).data.list().carval, car);
+            assert_eq!((*cell).data.list().cdrval, cdr);
+            assert!((*cell).data.list().tagval.is_null());
         }
     }
 
@@ -2933,13 +3000,13 @@ mod tests {
         assert!(!list.is_null());
         unsafe {
             assert_eq!((*list).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
-            assert!((*list).data.listsxp.carval.is_null());
-            let cdr1 = (*list).data.listsxp.cdrval;
+            assert!((*list).data.list().carval.is_null());
+            let cdr1 = (*list).data.list().cdrval;
             assert!(!cdr1.is_null());
-            let cdr2 = (*cdr1).data.listsxp.cdrval;
+            let cdr2 = (*cdr1).data.list().cdrval;
             assert!(!cdr2.is_null());
             assert_eq!(
-                (*cdr2).data.listsxp.cdrval,
+                (*cdr2).data.list().cdrval,
                 crate::sexp::globals::R_NilValue()
             );
         }

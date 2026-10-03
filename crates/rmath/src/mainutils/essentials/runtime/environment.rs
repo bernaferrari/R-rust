@@ -154,7 +154,7 @@ pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             base_error("the empty environment has no parent");
         }
         // enclos is the enclosing/parent environment
-        let parent = (*env).data.envsxp.enclos;
+        let parent = (*env).data.environment().enclos;
         if parent.is_null() {
             return crate::sexp::globals::R_EmptyEnv();
         }
@@ -244,7 +244,7 @@ pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let t = TYPEOF(env);
         if t == SEXPTYPE::ENVSXP {
             // Check frame - if it's NULL/NILSXP, env is empty
-            let frame = (*env).data.envsxp.frame;
+            let frame = (*env).data.environment().frame;
             if frame.is_null() || frame == R_NilValue() {
                 return Rf_ScalarLogical(TRUE);
             }
@@ -267,7 +267,7 @@ pub unsafe fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return R_NilValue();
         };
         let mut names = Vec::new();
-        let mut frame = (*env).data.envsxp.frame;
+        let mut frame = (*env).data.environment().frame;
         while !frame.is_null() && frame != R_NilValue() {
             let tag = crate::sexp::accessors::TAG(frame);
             if !tag.is_null() && tag != R_NilValue() {

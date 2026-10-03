@@ -15,14 +15,13 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
+    PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
 use crate::sexp::constructors::Rf_length;
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
-
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -81,7 +80,6 @@ const IDENT_USE_SRCREF: c_int = 32;
 /// When set, compare external pointers by reference.
 const IDENT_EXTPTR_AS_REF: c_int = 64;
 
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -107,7 +105,6 @@ unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
         ((*x).sxpinfo.gp() >> 4) as c_int & 1
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // neWithNaN — not-equal with NaN awareness
@@ -247,7 +244,6 @@ unsafe fn skip_identical_attr(object: SEXP, cell: SEXP, flags: c_int) -> bool {
     }
 }
 
-
 unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> c_int {
     unsafe {
         let mut n = 0;
@@ -261,7 +257,6 @@ unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> 
         n
     }
 }
-
 
 /// GNU `R_body_no_src`: `BODY` with srcref/srcfile/wholeSrcref stripped
 /// when `ignore.srcref` is the default.
@@ -295,12 +290,10 @@ unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
                 crate::sexp::symbol::Rf_install(name.as_ptr()),
                 R_NilValue(),
             );
-
         }
         copy
     }
 }
-
 
 /// GNU `identical.c` attribute comparison: tagged pairlists, either by
 /// order (`IDENT_ATTR_BY_ORDER`) or as a set of unique tags.
@@ -414,7 +407,6 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     }
 }
 
-
 /// Core recursive identical comparison of two SEXP values.
 ///
 /// This is the workhorse behind R's `identical()` function. It compares
@@ -467,7 +459,6 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
         if attributes_identical(x, y, flags) == 0 {
             return 0;
         }
-
 
         let t = TYPEOF(x);
 
@@ -644,7 +635,10 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 if TYPEOF(nx) != TYPEOF(ny) {
                     return 0;
                 }
-                if TYPEOF(nx) != SEXPTYPE::LISTSXP && TYPEOF(nx) != SEXPTYPE::LANGSXP && TYPEOF(nx) != SEXPTYPE::DOTSXP {
+                if TYPEOF(nx) != SEXPTYPE::LISTSXP
+                    && TYPEOF(nx) != SEXPTYPE::LANGSXP
+                    && TYPEOF(nx) != SEXPTYPE::DOTSXP
+                {
                     return R_compute_identical(nx, ny, flags);
                 }
                 lx = nx;
@@ -677,10 +671,16 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             return 0;
         } else if t == SEXPTYPE::PROMSXP {
             let ex = unsafe {
-                crate::mainutils::coerce::substitute((*x).data.promsxp.expr, (*x).data.promsxp.env)
+                crate::mainutils::coerce::substitute(
+                    (*x).data.promise().expr,
+                    (*x).data.promise().env,
+                )
             };
             let ey = unsafe {
-                crate::mainutils::coerce::substitute((*y).data.promsxp.expr, (*y).data.promsxp.env)
+                crate::mainutils::coerce::substitute(
+                    (*y).data.promise().expr,
+                    (*y).data.promise().env,
+                )
             };
             return R_compute_identical(ex, ey, flags);
         } else if t == SEXPTYPE::OBJSXP {
@@ -844,7 +844,6 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
-
         // extptr.as.ref: default FALSE
         if let Some(v) = next_arg() {
             if logical_true(v) {
@@ -976,7 +975,7 @@ mod tests {
 
     #[test]
     fn test_compute_identical_integer_arrays() {
-        use crate::sexp::ffi::SexprecData;
+        use crate::sexp::ffi::NodeBody;
         unsafe {
             // Create two INTSXP vectors with same data
             let data1 = Box::new([42i32, 99i32]);
@@ -984,21 +983,17 @@ mod tests {
 
             let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
             node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 2,
-                    truelength: 2,
-                },
-            };
+            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 2,
+                truelength: 2,
+            });
 
             let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
             node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 2,
-                    truelength: 2,
-                },
-            };
+            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 2,
+                truelength: 2,
+            });
 
             let x = node1.as_mut() as *mut _ as SEXP;
             let y = node2.as_mut() as *mut _ as SEXP;
@@ -1009,28 +1004,24 @@ mod tests {
 
     #[test]
     fn test_compute_identical_integer_arrays_differ() {
-        use crate::sexp::ffi::SexprecData;
+        use crate::sexp::ffi::NodeBody;
         unsafe {
             let data1 = Box::new([42i32, 99i32]);
             let data2 = Box::new([42i32, 100i32]);
 
             let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
             node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 2,
-                    truelength: 2,
-                },
-            };
+            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 2,
+                truelength: 2,
+            });
 
             let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
             node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 2,
-                    truelength: 2,
-                },
-            };
+            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 2,
+                truelength: 2,
+            });
 
             let x = node1.as_mut() as *mut _ as SEXP;
             let y = node2.as_mut() as *mut _ as SEXP;
@@ -1041,28 +1032,24 @@ mod tests {
 
     #[test]
     fn test_compute_identical_raw_arrays() {
-        use crate::sexp::ffi::SexprecData;
+        use crate::sexp::ffi::NodeBody;
         unsafe {
             let data1 = Box::new([1u8, 2, 3]);
             let data2 = Box::new([1u8, 2, 3]);
 
             let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::RAWSXP, 3));
             node1.gengc_next_node = data1.as_ptr() as *mut SexprecCore;
-            node1.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 3,
-                    truelength: 3,
-                },
-            };
+            node1.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 3,
+                truelength: 3,
+            });
 
             let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::RAWSXP, 3));
             node2.gengc_next_node = data2.as_ptr() as *mut SexprecCore;
-            node2.data = SexprecData {
-                vecsxp: crate::sexp::ffi::Vecsxp {
-                    length: 3,
-                    truelength: 3,
-                },
-            };
+            node2.data = NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+                length: 3,
+                truelength: 3,
+            });
 
             let x = node1.as_mut() as *mut _ as SEXP;
             let y = node2.as_mut() as *mut _ as SEXP;
@@ -1079,15 +1066,12 @@ mod tests {
             let mut node3 = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
 
             // Same offset => identical
-            node1.data = crate::sexp::ffi::SexprecData {
-                primsxp: crate::sexp::ffi::Primsxp { offset: 42 },
-            };
-            node2.data = crate::sexp::ffi::SexprecData {
-                primsxp: crate::sexp::ffi::Primsxp { offset: 42 },
-            };
-            node3.data = crate::sexp::ffi::SexprecData {
-                primsxp: crate::sexp::ffi::Primsxp { offset: 99 },
-            };
+            node1.data =
+                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 42 });
+            node2.data =
+                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 42 });
+            node3.data =
+                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 99 });
 
             let x = node1.as_mut() as *mut _ as SEXP;
             let y = node2.as_mut() as *mut _ as SEXP;

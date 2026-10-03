@@ -287,22 +287,22 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
             let mut current = x;
             while !current.is_null() && current != R_NilValue() {
                 count += 1;
-                current = (*current).data.listsxp.cdrval;
+                current = (*current).data.list().cdrval;
             }
             count
         } else if t == SEXPTYPE::ENVSXP {
             let mut count = 0i32;
             let mut walk = |mut frame: SEXP| {
                 while !frame.is_null() && frame != R_NilValue() {
-                    let tag = (*frame).data.listsxp.tagval;
+                    let tag = (*frame).data.list().tagval;
                     if !tag.is_null() && tag != R_NilValue() {
                         count += 1;
                     }
-                    frame = (*frame).data.listsxp.cdrval;
+                    frame = (*frame).data.list().cdrval;
                 }
             };
-            walk((*x).data.envsxp.frame);
-            let hashtab = (*x).data.envsxp.hashtab;
+            walk((*x).data.environment().frame);
+            let hashtab = (*x).data.environment().hashtab;
             if !hashtab.is_null()
                 && hashtab != R_NilValue()
                 && (*hashtab).sxpinfo.type_of() == SEXPTYPE::VECSXP
@@ -465,8 +465,8 @@ mod tests {
                 for _ in 0..3 {
                     assert!(!cell.is_null());
                     assert_ne!(cell, R_NilValue());
-                    assert!((*cell).data.listsxp.carval.is_null());
-                    cell = (*cell).data.listsxp.cdrval;
+                    assert!((*cell).data.list().carval.is_null());
+                    cell = (*cell).data.list().cdrval;
                 }
                 assert_eq!(cell, R_NilValue());
             }
@@ -581,8 +581,8 @@ mod tests {
             let cell = Rf_cons(car, cdr);
             assert!(!cell.is_null());
             assert_eq!((*cell).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
-            assert_eq!((*cell).data.listsxp.carval, car);
-            assert_eq!((*cell).data.listsxp.cdrval, cdr);
+            assert_eq!((*cell).data.list().carval, car);
+            assert_eq!((*cell).data.list().cdrval, cdr);
         }
     }
 

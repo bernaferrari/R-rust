@@ -43,7 +43,7 @@ pub mod symbol;
 pub use ffi::{
     Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, Primsxp,
     Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t, Rboolean,
-    Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, Symsxp, TRUE, Vecsxp,
+    Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, NodeBody, SxpInfo, Symsxp, TRUE, Vecsxp,
 };
 
 #[cfg(feature = "altrep")]

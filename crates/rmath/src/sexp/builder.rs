@@ -716,18 +716,18 @@ pub fn lang2_in<'arena>(
         return None;
     }
     unsafe {
-        (*cdr).data.listsxp.carval = arg.clone().as_raw();
-        (*cdr).data.listsxp.cdrval = R_NilValue();
-        (*cdr).data.listsxp.tagval = ptr::null_mut();
+        (*cdr).data.list_mut().carval = arg.clone().as_raw();
+        (*cdr).data.list_mut().cdrval = R_NilValue();
+        (*cdr).data.list_mut().tagval = ptr::null_mut();
     }
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
     if head.is_null() {
         return None;
     }
     unsafe {
-        (*head).data.listsxp.carval = car.as_raw();
-        (*head).data.listsxp.cdrval = cdr;
-        (*head).data.listsxp.tagval = ptr::null_mut();
+        (*head).data.list_mut().carval = car.as_raw();
+        (*head).data.list_mut().cdrval = cdr;
+        (*head).data.list_mut().tagval = ptr::null_mut();
     }
     arena.sexp(head)
 }
@@ -746,27 +746,27 @@ pub fn lang3_in<'arena>(
         return None;
     }
     unsafe {
-        (*c2).data.listsxp.carval = arg2.clone().as_raw();
-        (*c2).data.listsxp.cdrval = R_NilValue();
-        (*c2).data.listsxp.tagval = ptr::null_mut();
+        (*c2).data.list_mut().carval = arg2.clone().as_raw();
+        (*c2).data.list_mut().cdrval = R_NilValue();
+        (*c2).data.list_mut().tagval = ptr::null_mut();
     }
     let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
     if c1.is_null() {
         return None;
     }
     unsafe {
-        (*c1).data.listsxp.carval = arg1.clone().as_raw();
-        (*c1).data.listsxp.cdrval = c2;
-        (*c1).data.listsxp.tagval = ptr::null_mut();
+        (*c1).data.list_mut().carval = arg1.clone().as_raw();
+        (*c1).data.list_mut().cdrval = c2;
+        (*c1).data.list_mut().tagval = ptr::null_mut();
     }
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
     if head.is_null() {
         return None;
     }
     unsafe {
-        (*head).data.listsxp.carval = car.as_raw();
-        (*head).data.listsxp.cdrval = c1;
-        (*head).data.listsxp.tagval = ptr::null_mut();
+        (*head).data.list_mut().carval = car.as_raw();
+        (*head).data.list_mut().cdrval = c1;
+        (*head).data.list_mut().tagval = ptr::null_mut();
     }
     arena.sexp(head)
 }

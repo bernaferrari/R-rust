@@ -8,9 +8,7 @@
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use super::ffi::{
-    NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData,
-};
+use super::ffi::{NA_INTEGER, NA_REAL, NodeBody, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
 
 #[inline]
 fn is_valid_sexp_ptr(x: SEXP) -> bool {
@@ -157,15 +155,16 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
             // buffer was not committed, the formula stays at the head.
             if ALTREP(x) != 0 {
                 #[cfg(feature = "altrep")]
-                if super::altrep::materialize_raw(x).unwrap_or_else(|e| super::context::r_error(e.to_string())) {
+                if super::altrep::materialize_raw(x)
+                    .unwrap_or_else(|e| super::context::r_error(e.to_string()))
+                {
                     // The buffer now owns the values, so metadata can be removed.
                     (*x).sxpinfo.set_alt(false);
                 }
                 super::altseq::materialize(x);
             }
             let uncommitted = ALTREP(x) != 0
-                && ((*x).gengc_next_node.is_null()
-                    || super::memory::vector_payload_is_pending(x));
+                && ((*x).gengc_next_node.is_null() || super::memory::vector_payload_is_pending(x));
             if uncommitted {
                 super::altseq::keep_formula_replace_tail(x, v);
                 return;
@@ -301,7 +300,6 @@ pub unsafe fn SET_MISSING(x: SEXP, v: c_int) {
     }
 }
 
-
 /// Get the scalar flag.
 pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
@@ -387,9 +385,11 @@ pub unsafe fn CAR(x: SEXP) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
+        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
+            super::globals::immutable_singleton_projection(x).unwrap_or(x)
         } else {
             debug_assert_list_like(x);
-            (*x).data.listsxp.carval
+            (*x).data.list().carval
         }
     }
 }
@@ -399,9 +399,11 @@ pub unsafe fn CDR(x: SEXP) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
+        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
+            super::globals::immutable_singleton_projection(x).unwrap_or(x)
         } else {
             debug_assert_list_like(x);
-            (*x).data.listsxp.cdrval
+            (*x).data.list().cdrval
         }
     }
 }
@@ -411,9 +413,11 @@ pub unsafe fn TAG(x: SEXP) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
+        } else if TYPEOF(x) == SEXPTYPE::NILSXP {
+            super::globals::immutable_singleton_projection(x).unwrap_or(x)
         } else {
             debug_assert_list_like(x);
-            (*x).data.listsxp.tagval
+            (*x).data.list().tagval
         }
     }
 }
@@ -426,7 +430,7 @@ pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, y);
-            (*x).data.listsxp.carval = y;
+            (*x).data.list_mut().carval = y;
         }
     }
 }
@@ -439,7 +443,7 @@ pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 1, y);
-            (*x).data.listsxp.cdrval = y;
+            (*x).data.list_mut().cdrval = y;
         }
     }
 }
@@ -452,7 +456,7 @@ pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 2, y);
-            (*x).data.listsxp.tagval = y;
+            (*x).data.list_mut().tagval = y;
         }
     }
 }
@@ -507,7 +511,7 @@ pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.symsxp.pname
+            (*x).data.symbol().pname
         }
     }
 }
@@ -518,7 +522,7 @@ pub unsafe fn SYMVALUE(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.symsxp.value
+            (*x).data.symbol().value
         }
     }
 }
@@ -529,7 +533,7 @@ pub unsafe fn INTERNAL(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.symsxp.internal
+            (*x).data.symbol().internal
         }
     }
 }
@@ -541,7 +545,7 @@ pub unsafe fn SET_PRINTNAME(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.symsxp.pname = v;
+            (*x).data.symbol_mut().pname = v;
         }
     }
 }
@@ -553,7 +557,7 @@ pub unsafe fn SET_SYMVALUE(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.symsxp.value = v;
+            (*x).data.symbol_mut().value = v;
         }
     }
 }
@@ -565,7 +569,7 @@ pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.symsxp.internal = v;
+            (*x).data.symbol_mut().internal = v;
         }
     }
 }
@@ -580,7 +584,7 @@ pub unsafe fn FORMALS(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.closxp.formals
+            (*x).data.closure().formals
         }
     }
 }
@@ -591,7 +595,7 @@ pub unsafe fn BODY(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.closxp.body
+            (*x).data.closure().body
         }
     }
 }
@@ -602,7 +606,7 @@ pub unsafe fn CLOENV(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.closxp.env
+            (*x).data.closure().env
         }
     }
 }
@@ -614,7 +618,7 @@ pub unsafe fn SET_FORMALS(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.closxp.formals = v;
+            (*x).data.closure_mut().formals = v;
         }
     }
 }
@@ -626,7 +630,7 @@ pub unsafe fn SET_BODY(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.closxp.body = v;
+            (*x).data.closure_mut().body = v;
         }
     }
 }
@@ -638,7 +642,7 @@ pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.closxp.env = v;
+            (*x).data.closure_mut().env = v;
         }
     }
 }
@@ -653,7 +657,7 @@ pub unsafe fn FRAME(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.envsxp.frame
+            (*x).data.environment().frame
         }
     }
 }
@@ -664,7 +668,7 @@ pub unsafe fn ENCLOS(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.envsxp.enclos
+            (*x).data.environment().enclos
         }
     }
 }
@@ -675,7 +679,7 @@ pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.envsxp.hashtab
+            (*x).data.environment().hashtab
         }
     }
 }
@@ -688,7 +692,7 @@ pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, v);
-            (*x).data.envsxp.frame = v;
+            (*x).data.environment_mut().frame = v;
         }
     }
 }
@@ -701,7 +705,7 @@ pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 1, v);
-            (*x).data.envsxp.enclos = v;
+            (*x).data.environment_mut().enclos = v;
         }
     }
 }
@@ -714,7 +718,7 @@ pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 2, v);
-            (*x).data.envsxp.hashtab = v;
+            (*x).data.environment_mut().hashtab = v;
         }
     }
 }
@@ -729,7 +733,7 @@ pub unsafe fn PRVALUE(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.promsxp.value
+            (*x).data.promise().value
         }
     }
 }
@@ -740,7 +744,7 @@ pub unsafe fn PRCODE(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.promsxp.expr
+            (*x).data.promise().expr
         }
     }
 }
@@ -751,7 +755,7 @@ pub unsafe fn PRENV(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
-            (*x).data.promsxp.env
+            (*x).data.promise().env
         }
     }
 }
@@ -764,7 +768,7 @@ pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, v);
-            (*x).data.promsxp.value = v;
+            (*x).data.promise_mut().value = v;
         }
     }
 }
@@ -776,7 +780,7 @@ pub unsafe fn SET_PRCODE(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.promsxp.expr = v;
+            (*x).data.promise_mut().expr = v;
         }
     }
 }
@@ -788,7 +792,7 @@ pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.promsxp.env = v;
+            (*x).data.promise_mut().env = v;
         }
     }
 }
@@ -803,7 +807,7 @@ pub unsafe fn PRIMOFFSET(x: SEXP) -> c_int {
         if !is_valid_sexp_ptr(x) {
             return 0;
         }
-        (*x).data.primsxp.offset
+        (*x).data.primitive().offset
     }
 }
 
@@ -814,7 +818,7 @@ pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
     }
     unsafe {
         if is_valid_sexp_ptr(x) {
-            (*x).data.primsxp.offset = v;
+            (*x).data.primitive_mut().offset = v;
         }
     }
 }
@@ -844,14 +848,19 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
         if t.is_vector_type() || t == SEXPTYPE::CHARSXP {
             if ALTREP(x) != 0 && (*x).gengc_next_node.is_null() {
                 #[cfg(feature = "altrep")]
-                let extension = super::altrep::materialize_raw(x).unwrap_or_else(|e| super::context::r_error(e.to_string()));
+                let extension = super::altrep::materialize_raw(x)
+                    .unwrap_or_else(|e| super::context::r_error(e.to_string()));
                 #[cfg(not(feature = "altrep"))]
                 let extension = false;
-                if !extension { super::altseq::materialize(x); }
+                if !extension {
+                    super::altseq::materialize(x);
+                }
                 // Ported callers expect usable storage or an R error. A
                 // nonempty lazy vector must never yield a null data pointer.
                 if (*x).vecsxp_length() != 0 && (*x).gengc_next_node.is_null() {
-                    super::context::r_error("cannot materialize compact vector: invalid size, memory budget or allocation failure");
+                    super::context::r_error(
+                        "cannot materialize compact vector: invalid size, memory budget or allocation failure",
+                    );
                 }
             }
             (*x).gengc_next_node as *mut c_void
@@ -1027,8 +1036,8 @@ mod element_slot_decision_tests {
         assert!(
             element_slot_decision(SEXPTYPE::STRSXP, true, i64::MAX, i64::MAX - 1, false).is_ok()
         );
-        let low = element_slot_decision(SEXPTYPE::STRSXP, true, i64::MAX, i64::MIN, false)
-            .unwrap_err();
+        let low =
+            element_slot_decision(SEXPTYPE::STRSXP, true, i64::MAX, i64::MIN, false).unwrap_err();
         assert_eq!(low.kind, ElementSlotRejectKind::BadIndex);
         let empty = element_slot_decision(SEXPTYPE::STRSXP, true, i64::MIN, 0, false).unwrap_err();
         assert_eq!(empty.kind, ElementSlotRejectKind::BadIndex);
@@ -1072,11 +1081,23 @@ mod element_slot_kani {
                 assert!(index < 0 || index >= length || data_is_null);
             }
         }
-        kani::cover(decision.is_ok() && tag == SEXPTYPE::STRSXP && string_only, "reachable");
-        kani::cover(decision.is_ok() && tag == SEXPTYPE::VECSXP && !string_only, "reachable");
-        kani::cover(decision.is_ok() && tag == SEXPTYPE::BCODESXP && !string_only, "reachable");
+        kani::cover(
+            decision.is_ok() && tag == SEXPTYPE::STRSXP && string_only,
+            "reachable",
+        );
+        kani::cover(
+            decision.is_ok() && tag == SEXPTYPE::VECSXP && !string_only,
+            "reachable",
+        );
+        kani::cover(
+            decision.is_ok() && tag == SEXPTYPE::BCODESXP && !string_only,
+            "reachable",
+        );
         kani::cover(!string_only && tag == SEXPTYPE::BCODESXP, "reachable");
-        kani::cover(string_only && tag == SEXPTYPE::BCODESXP && decision.is_err(), "reachable");
+        kani::cover(
+            string_only && tag == SEXPTYPE::BCODESXP && decision.is_err(),
+            "reachable",
+        );
         kani::cover(index == -1 && decision.is_err(), "reachable");
         kani::cover(data_is_null && decision.is_err(), "reachable");
         kani::cover(tag == SEXPTYPE::INTSXP && decision.is_err(), "reachable");
@@ -1088,7 +1109,11 @@ pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::String(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v.as_raw(); }
+            if let super::altrep::AltrepElement::String(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v.as_raw();
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) {
@@ -1117,7 +1142,11 @@ pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::List(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v.as_raw(); }
+            if let super::altrep::AltrepElement::List(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v.as_raw();
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) {
@@ -1150,7 +1179,11 @@ pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Logical(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v; }
+            if let super::altrep::AltrepElement::Logical(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v;
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) {
@@ -1188,7 +1221,12 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Integer(v) | super::altrep::AltrepElement::Logical(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v; }
+            if let super::altrep::AltrepElement::Integer(v)
+            | super::altrep::AltrepElement::Logical(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v;
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) {
@@ -1227,7 +1265,11 @@ pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Real(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v; }
+            if let super::altrep::AltrepElement::Real(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v;
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) {
@@ -1266,7 +1308,11 @@ pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Complex(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v; }
+            if let super::altrep::AltrepElement::Complex(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v;
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) || COMPLEX(x).is_null() {
@@ -1296,7 +1342,11 @@ pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
     unsafe {
         #[cfg(feature = "altrep")]
         if let Some(value) = super::altrep::lazy_raw(x, i as R_xlen_t) {
-            if let super::altrep::AltrepElement::Raw(v) = value.unwrap_or_else(|e| super::context::r_error(e.to_string())) { return v; }
+            if let super::altrep::AltrepElement::Raw(v) =
+                value.unwrap_or_else(|e| super::context::r_error(e.to_string()))
+            {
+                return v;
+            }
             super::context::r_error("ALTREP element type mismatch");
         }
         if !is_valid_sexp_ptr(x) || RAW(x).is_null() {
@@ -1361,45 +1411,32 @@ impl SexprecCore {
             });
         }
     }
-    /// Get the vector length from the data union.
+    /// Get the length from the checked vector body.
     #[inline]
-    pub unsafe fn vecsxp_length(&self) -> R_xlen_t {
+    pub fn vecsxp_length(&self) -> R_xlen_t {
         self.require_vector_header();
-        unsafe { self.data.vecsxp.length }
+        self.data.vector().length
     }
 
-    /// Get the vector true length from the data union.
+    /// Get the capacity from the checked vector body.
     #[inline]
-    pub unsafe fn vecsxp_truelength(&self) -> R_xlen_t {
+    pub fn vecsxp_truelength(&self) -> R_xlen_t {
         self.require_vector_header();
-        unsafe { self.data.vecsxp.truelength }
+        self.data.vector().truelength
     }
 
     /// Set the vector true length.
     #[inline]
-    pub unsafe fn set_vecsxp_truelength(&mut self, v: R_xlen_t) {
+    pub fn set_vecsxp_truelength(&mut self, v: R_xlen_t) {
         self.require_vector_header();
-        unsafe {
-            self.data = SexprecData {
-                vecsxp: super::ffi::Vecsxp {
-                    length: self.data.vecsxp.length,
-                    truelength: v,
-                },
-            };
-        }
+        self.data.vector_mut().truelength = v;
     }
 
     /// Set the logical vector length without touching the element buffer.
     #[inline]
-    pub unsafe fn set_vecsxp_length(&mut self, v: R_xlen_t) {
+    pub fn set_vecsxp_length(&mut self, v: R_xlen_t) {
         self.require_vector_header();
-        let truelength = unsafe { self.data.vecsxp.truelength };
-        self.data = SexprecData {
-            vecsxp: super::ffi::Vecsxp {
-                length: v,
-                truelength,
-            },
-        };
+        self.data.vector_mut().length = v;
     }
 }
 
@@ -1411,6 +1448,22 @@ impl SexprecCore {
 mod tests {
     use super::super::ffi::*;
     use super::*;
+
+    #[test]
+    fn nil_list_accessors_use_the_nil_value_without_a_list_body() {
+        let value = super::super::object::Sexp::nil();
+        let canonical = value.as_raw();
+        let address_only = std::ptr::without_provenance_mut(canonical.addr());
+        unsafe {
+            for input in [canonical, address_only] {
+                for output in [CAR(input), CDR(input), TAG(input)] {
+                    assert_eq!(output, canonical);
+                    assert_eq!((*output).sxpinfo.type_of(), SEXPTYPE::NILSXP);
+                    assert!(matches!((*output).data, NodeBody::Other));
+                }
+            }
+        }
+    }
 
     #[test]
     fn string_setter_rejects_out_of_bounds_before_writing() {
@@ -1429,7 +1482,7 @@ mod tests {
 
     #[test]
     fn string_setter_remembers_old_to_young_edges() {
-        let mut session = super::super::session::RSession::new();
+        let mut session = super::super::session::RSession::new_for_gc_tests();
         let (parent, child) = session
             .with_arena(|arena| {
                 (
@@ -1499,12 +1552,10 @@ mod tests {
 
     fn make_test_vector() -> SexprecCore {
         let mut node = SexprecCore::new_vector(SEXPTYPE::REALSXP, 3);
-        node.data = SexprecData {
-            vecsxp: Vecsxp {
-                length: 3,
-                truelength: 3,
-            },
-        };
+        node.data = NodeBody::Vector(Vecsxp {
+            length: 3,
+            truelength: 3,
+        });
         node
     }
 
@@ -1708,7 +1759,6 @@ pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
         (*x).sxpinfo.set_gp(gp);
     }
 }
-
 
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.

@@ -593,9 +593,9 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
         if s.is_null() {
             error("could not allocate weak reference");
         }
-        (*s).data.listsxp.carval = key;
-        (*s).data.listsxp.cdrval = val;
-        (*s).data.listsxp.tagval = fin;
+        (*s).data.list_mut().carval = key;
+        (*s).data.list_mut().cdrval = val;
+        (*s).data.list_mut().tagval = fin;
         if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
             register_r_finalizer(key, fin, _onexit != 0);
         }
@@ -619,7 +619,7 @@ pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
             return R_NilValue();
         }
         validate_weak_ref_object(w);
-        (*w).data.listsxp.carval
+        (*w).data.list().carval
     }
 }
 
@@ -629,7 +629,7 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
             return R_NilValue();
         }
         validate_weak_ref_object(w);
-        (*w).data.listsxp.cdrval
+        (*w).data.list().cdrval
     }
 }
 
@@ -919,9 +919,9 @@ pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
         if s.is_null() {
             error("could not allocate external pointer");
         }
-        (*s).data.extptr[0] = p;
-        (*s).data.extptr[1] = prot as *mut c_void;
-        (*s).data.extptr[2] = tag as *mut c_void;
+        (*s).data.extptr_mut()[0] = p;
+        (*s).data.extptr_mut()[1] = prot as *mut c_void;
+        (*s).data.extptr_mut()[2] = tag as *mut c_void;
         s
     }
 }
@@ -934,7 +934,7 @@ pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
         if s.is_null() {
             return ptr::null_mut();
         }
-        (*s).data.extptr[0]
+        (*s).data.extptr()[0]
     }
 }
 
@@ -946,7 +946,7 @@ pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
         if s.is_null() {
             return R_NilValue();
         }
-        (*s).data.extptr[2] as SEXP
+        (*s).data.extptr()[2] as SEXP
     }
 }
 
@@ -958,7 +958,7 @@ pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
         if s.is_null() {
             return R_NilValue();
         }
-        (*s).data.extptr[1] as SEXP
+        (*s).data.extptr()[1] as SEXP
     }
 }
 
@@ -968,7 +968,7 @@ pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
 pub unsafe fn R_ClearExternalPtr(s: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr[0] = ptr::null_mut();
+            (*s).data.extptr_mut()[0] = ptr::null_mut();
         }
     }
 }
@@ -979,7 +979,7 @@ pub unsafe fn R_ClearExternalPtr(s: SEXP) {
 pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr[0] = p;
+            (*s).data.extptr_mut()[0] = p;
         }
     }
 }
@@ -990,7 +990,7 @@ pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
 pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr[2] = tag as *mut c_void;
+            (*s).data.extptr_mut()[2] = tag as *mut c_void;
         }
     }
 }
@@ -1001,7 +1001,7 @@ pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
 pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
     unsafe {
         if !s.is_null() {
-            (*s).data.extptr[1] = p as *mut c_void;
+            (*s).data.extptr_mut()[1] = p as *mut c_void;
         }
     }
 }

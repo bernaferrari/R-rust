@@ -350,7 +350,7 @@ pub(crate) unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
     }
     unsafe {
         if !x.is_null() {
-            (*x).data.vecsxp.truelength = v as R_xlen_t;
+            (*x).data.vector_mut().truelength = v as R_xlen_t;
         }
     }
 }
@@ -362,7 +362,7 @@ pub(crate) unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
         if x.is_null() {
             0
         } else {
-            (*x).data.vecsxp.truelength
+            (*x).data.vector().truelength
         }
     }
 }
@@ -397,7 +397,7 @@ pub(crate) unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
     }
     unsafe {
         if !x.is_null() {
-            (*x).data.vecsxp.length = v;
+            (*x).data.vector_mut().length = v;
         }
     }
 }

@@ -2,18 +2,18 @@
 
 //! Global singleton R objects.
 //!
-//! These are the immutable sentinel values that R's interpreter uses
-//! everywhere. Mutable runtime environments are session-owned and reached
+//! These are immutable thread-confined sentinel values used throughout R. Mutable runtime environments are session-owned and reached
 //! through the active `RInstance`, not through process-global fallback slots.
 
 
 use super::ffi::SEXP;
 #[path = "singletons.rs"]
 mod singletons;
+pub(crate) use singletons::{SingletonLease, SingletonPoolLease};
 use super::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
-// Immutable sentinel projections. The process owns their stable Rust cells.
+// Immutable sentinel projections. Rc leases own their stable Rust cells.
 // ---------------------------------------------------------------------------
 
 pub(crate) fn immutable_singleton_projection(pointer: SEXP) -> Option<SEXP> {
@@ -22,6 +22,15 @@ pub(crate) fn immutable_singleton_projection(pointer: SEXP) -> Option<SEXP> {
 
 pub(crate) fn immutable_singleton_snapshot(pointer: SEXP) -> Option<super::ffi::SexprecCore> {
     singletons::snapshot(pointer)
+}
+
+/// Inspect the existing bank without creating TLS state during a read.
+pub(crate) fn immutable_na_string_projection() -> Option<SEXP> {
+    singletons::current_na_string_projection()
+}
+
+pub(crate) fn immutable_singleton_pool() -> SingletonPoolLease {
+    singletons::pool()
 }
 
 /// Get a pointer to R_NilValue.
@@ -230,6 +239,122 @@ mod tests {
     use super::*;
 
     #[test]
+    fn singleton_handles_retain_headers_and_payloads_after_pool_close() {
+        let nil = crate::sexp::object::Sexp::nil();
+        let logical = unsafe {
+            crate::sexp::object::Sexp::from_static_raw_unchecked(R_True())
+        };
+        let pointer = logical.clone().as_raw();
+        let pool = immutable_singleton_pool();
+        let address_only = std::ptr::without_provenance_mut(pointer.addr());
+        assert_eq!(pool.canonical_projection(address_only), Some(pointer));
+        singletons::close_pool_for_test();
+        assert!(immutable_singleton_projection(pointer).is_none());
+        assert!(nil.is_nil());
+        assert_eq!(logical.logical_elt(0), Some(TRUE));
+        assert_eq!(logical.clone().as_raw(), pointer);
+    }
+
+    #[test]
+    fn checked_graph_children_retain_the_original_singleton_bank() {
+        let nil = unsafe { R_NilValue() };
+        let logical = unsafe { R_True() };
+        let mut arena = crate::sexp::memory::RArena::new();
+        let node = arena.alloc_node(SEXPTYPE::LISTSXP);
+        unsafe {
+            (*node).data.list_mut().carval = logical;
+            (*node).data.list_mut().cdrval = nil;
+        }
+        let parent = crate::sexp::object::Sexp::from_arena_raw(node, &arena).unwrap();
+        singletons::close_pool_for_test();
+        let child = parent.car().expect("retained static child");
+        let tail = parent.cdr().expect("retained nil child");
+        drop(parent);
+        assert_eq!(child.logical_elt(0), Some(TRUE));
+        assert!(tail.is_nil());
+        assert_eq!(tail.as_raw(), nil);
+    }
+
+    #[test]
+    fn string_values_keep_na_identity_after_pool_close() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let node = arena.alloc_vector(SEXPTYPE::STRSXP, 2);
+        let present = arena.alloc_charsxp(b"NA");
+        let na = unsafe { R_NaString() };
+        unsafe {
+            super::super::accessors::SET_STRING_ELT(node, 0, na);
+            super::super::accessors::SET_STRING_ELT(node, 1, present);
+        }
+        let strings = crate::sexp::object::Sexp::from_arena_raw(node, &arena).unwrap();
+        singletons::close_pool_for_test();
+        assert!(strings.try_string_elt(0).unwrap().is_na_string());
+        assert!(!strings.try_string_elt(1).unwrap().is_na_string());
+        assert_eq!(strings.try_string_value_elt(0).unwrap(), None);
+        assert_eq!(strings.try_string_value_elt(1).unwrap(), Some("NA".to_owned()));
+        assert!(immutable_na_string_projection().is_none());
+    }
+
+    #[test]
+    fn singleton_identity_is_stable_and_confined_to_its_thread() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = (0..2).map(|_| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let value = crate::sexp::object::Sexp::nil();
+                let pointer = value.clone().as_raw();
+                assert_eq!(unsafe { R_NilValue() }, pointer);
+                assert!(value.is_nil());
+                barrier.wait();
+                pointer.addr()
+            })
+        }).collect();
+        let pointers: Vec<_> = threads.into_iter().map(|thread| thread.join().unwrap()).collect();
+        assert_ne!(pointers[0], pointers[1]);
+    }
+
+    #[test]
+    fn static_handles_read_owned_snapshots_during_tls_teardown() {
+        struct EarlierHolder {
+            values: Option<(crate::sexp::object::Sexp<'static>, crate::sexp::object::Sexp<'static>, crate::sexp::object::Sexp<'static>)>,
+            report: Option<std::sync::Arc<std::sync::Mutex<bool>>>,
+        }
+        impl Drop for EarlierHolder {
+            fn drop(&mut self) {
+                if let Some((nil, logical, na)) = self.values.take() {
+                    assert!(nil.is_nil());
+                    assert_eq!(logical.logical_elt(0), Some(TRUE));
+                    assert!(na.is_na_string());
+                    *self.report.as_ref().unwrap().lock().unwrap() = true;
+                }
+            }
+        }
+        thread_local! {
+            static HOLDER: std::cell::RefCell<EarlierHolder> = const {
+                std::cell::RefCell::new(EarlierHolder { values: None, report: None })
+            };
+        }
+        let report = std::sync::Arc::new(std::sync::Mutex::new(false));
+        let observed = report.clone();
+        std::thread::spawn(move || {
+            // Initialized first, this holder drops after the singleton TLS pool.
+            HOLDER.with(|_| ());
+            let nil = crate::sexp::object::Sexp::nil();
+            let logical = unsafe {
+                crate::sexp::object::Sexp::from_static_raw_unchecked(R_True())
+            };
+            let na = unsafe {
+                crate::sexp::object::Sexp::from_static_raw_unchecked(R_NaString())
+            };
+            HOLDER.with(|holder| {
+                let mut holder = holder.borrow_mut();
+                holder.values = Some((nil, logical, na));
+                holder.report = Some(observed);
+            });
+        }).join().unwrap();
+        assert!(*report.lock().unwrap());
+    }
+
+    #[test]
     fn shared_singletons_reject_legacy_mutation() {
         use crate::sexp::accessors::*;
         unsafe {
@@ -237,16 +362,16 @@ mod tests {
                 let flags = (*node).sxpinfo;
                 let attributes = (*node).attrib;
                 let data = (*node).gengc_next_node;
-                let body = (*node).data.extptr;
+                let body = (*node).data;
                 let snapshot = immutable_singleton_snapshot(node).unwrap();
                 assert_eq!(snapshot.sxpinfo.type_and_flags, flags.type_and_flags);
                 assert_eq!(snapshot.attrib, attributes);
                 assert_eq!(snapshot.gengc_next_node, data);
-                // Safe Rust snapshots must agree with the exported native
-                // shape, including the scalar logical's vector lengths.
+                // Safe snapshots agree with the genuine owned header, including
+                // the scalar logical's typed vector lengths.
                 if flags.type_of() == SEXPTYPE::LGLSXP || flags.type_of() == SEXPTYPE::CHARSXP {
-                    assert_eq!(snapshot.data.vecsxp.length, (*node).data.vecsxp.length);
-                    assert_eq!(snapshot.data.vecsxp.truelength, (*node).data.vecsxp.truelength);
+                    assert_eq!(snapshot.data.vector().length, (*node).data.vector().length);
+                    assert_eq!(snapshot.data.vector().truelength, (*node).data.vector().truelength);
                 }
                 SET_NAMED(node, 0);
                 SET_OBJECT(node, 1);
@@ -285,7 +410,7 @@ mod tests {
                 assert_eq!((*node).sxpinfo.rcount, flags.rcount);
                 assert_eq!((*node).attrib, attributes);
                 assert_eq!((*node).gengc_next_node, data);
-                assert_eq!((*node).data.extptr, body);
+                assert_eq!((*node).data, body);
                 assert_eq!(NAMED(node), 2);
             }
             assert_eq!(LOGICAL_ELT(R_True(), 0), 1);
@@ -295,7 +420,7 @@ mod tests {
 
     #[test]
     fn singleton_storage_preserves_provenance() {
-        // No session or arena is needed: exercise every process-global slot
+        // No session or arena is needed: exercise every thread-owned slot
         // directly, including its logical payload, under strict-provenance Miri.
         unsafe {
             for (value, kind) in [
@@ -369,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_set_global_env() {
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let saved = R_GlobalEnv();
             let fake = 0x1 as SEXP;
@@ -498,7 +623,7 @@ mod tests {
     #[test]
     fn test_r_true_false_survive_gc_cycles() {
         use crate::sexp::accessors::LOGICAL_ELT;
-        let _session = crate::sexp::session::RSession::new();
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             // Churn young garbage, then run both collection kinds: the
             // singletons are out-of-arena and must keep their payload word.

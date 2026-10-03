@@ -1881,7 +1881,7 @@ mod tests {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let parent = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            (*env).data.envsxp.enclos = parent;
+            (*env).data.environment_mut().enclos = parent;
 
             let sym = Rf_install(b"newvar\0".as_ptr() as *const _);
             let value = Rf_ScalarReal(3.14);

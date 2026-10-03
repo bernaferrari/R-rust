@@ -3,7 +3,6 @@ use super::Sexp;
 #[cfg(test)]
 use super::{SexpResult, SexpView};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
 
 /// Return whether a raw pointer is an atomic vector.
 ///
@@ -104,7 +103,7 @@ impl<'a> Sexp<'a> {
     /// Check if this is R_NilValue.
     #[inline]
     pub fn is_nil(&self) -> bool {
-        self.ptr == unsafe { R_NilValue() }
+        self.typeof_() == SEXPTYPE::NILSXP
     }
 
     /// Check if this is a null value (R_NilValue).

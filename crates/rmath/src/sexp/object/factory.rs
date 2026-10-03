@@ -11,6 +11,7 @@ pub(crate) struct SessionNodeFactory<'session> {
     owner: OwnerToken<'session>,
     heap: HeapIdentity,
     availability: InstanceLiveness,
+    singletons: crate::sexp::globals::SingletonPoolLease,
 }
 
 impl<'session> SessionNodeFactory<'session> {
@@ -27,6 +28,7 @@ impl<'session> SessionNodeFactory<'session> {
             owner,
             heap,
             availability,
+            singletons: crate::sexp::globals::immutable_singleton_pool(),
         }
     }
 
@@ -34,15 +36,8 @@ impl<'session> SessionNodeFactory<'session> {
         if !self.availability.is_live() {
             return Err(SexpError::RootUnavailable);
         }
-        if let Some(pointer) = crate::sexp::session::immutable_singleton_projection(pointer) {
-            return Ok(Sexp {
-                ptr: pointer,
-                owner: SexpOwner::Static,
-                node: None,
-                session_owner_ptr: None,
-                root: None,
-                _marker: std::marker::PhantomData,
-            });
+        if let Some(singleton) = self.singletons.lease(pointer) {
+            return Ok(Sexp::from_singleton(singleton, self.singletons.clone()));
         }
         let (pointer, node) = crate::sexp::memory::checked_projection(pointer)
             .filter(|(_, node)| node.belongs_to(&self.heap))
@@ -56,6 +51,8 @@ impl<'session> SessionNodeFactory<'session> {
             node: Some(node),
             session_owner_ptr: std::ptr::NonNull::new(self.owner.as_ptr()),
             root: Some(root),
+            singleton: None,
+            singletons: Some(self.singletons.clone()),
             _marker: std::marker::PhantomData,
         })
     }

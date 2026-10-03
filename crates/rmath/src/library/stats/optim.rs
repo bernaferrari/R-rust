@@ -31,7 +31,7 @@ unsafe fn SETCADR(x: SEXP, y: SEXP) {
         if !x.is_null() {
             let cdr = CDR(x);
             if !cdr.is_null() {
-                (*cdr).data.listsxp.carval = y;
+                (*cdr).data.list_mut().carval = y;
             }
         }
     }

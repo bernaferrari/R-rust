@@ -143,6 +143,8 @@ pub struct Sexp<'a> {
     node: Option<crate::sexp::heap::CheckedNode>,
     pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
     root: Option<std::rc::Rc<crate::sexp::heap::NodeRootLease>>,
+    singleton: Option<crate::sexp::globals::SingletonLease>,
+    singletons: Option<crate::sexp::globals::SingletonPoolLease>,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
 }
 
@@ -162,6 +164,8 @@ impl Clone for Sexp<'_> {
             node: self.node.clone(),
             session_owner_ptr: self.session_owner_ptr,
             root: self.root.clone(),
+            singleton: self.singleton.clone(),
+            singletons: self.singletons.clone(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -213,7 +217,8 @@ impl<'a> Sexp<'a> {
     /// Return R's immutable `NULL` singleton as an owner-independent handle.
     #[inline]
     pub fn nil() -> Sexp<'static> {
-        unsafe { Sexp::from_static_raw_unchecked(R_NilValue()) }
+        let pool = crate::sexp::globals::immutable_singleton_pool();
+        Sexp::from_singleton(pool.nil(), pool)
     }
 
     /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
@@ -253,6 +258,8 @@ impl<'a> Sexp<'a> {
                 node: None,
                 session_owner_ptr: None,
                 root: None,
+                singleton: None,
+                singletons: None,
                 _marker: std::marker::PhantomData,
             })
         }
@@ -279,6 +286,7 @@ impl<'a> Sexp<'a> {
             })?;
         let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
         sexp.root = Some(token.root_lease().ok_or(SexpError::RootUnavailable)?);
+        sexp.singletons = Some(crate::sexp::globals::immutable_singleton_pool());
         sexp.node = Some(token);
         sexp.owner = SexpOwner::Arena(Self::arena_owner_token(arena));
         Ok(sexp)
@@ -290,35 +298,7 @@ impl<'a> Sexp<'a> {
         ptr: SEXP,
         owner: crate::sexp::owner::OwnerToken<'session>,
     ) -> SexpResult<Sexp<'session>> {
-        let instance = owner.as_ptr();
-        if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
-            return Ok(unsafe { Sexp::from_static_raw_unchecked(canonical) });
-        }
-        if instance.is_null() || !unsafe { (*instance).owns_sexp(ptr) } {
-            return Err(SexpError::UnownedPointer {
-                address: ptr as usize,
-            });
-        }
-        let ptr =
-            unsafe { (*instance).canonical_projection(ptr) }.ok_or(SexpError::UnownedPointer {
-                address: ptr as usize,
-            })?;
-        let mut sexp = unsafe { Sexp::try_from_raw(ptr) }?;
-        sexp.node = Some(unsafe { (*instance).node_token(ptr) }.ok_or(
-            SexpError::UnownedPointer {
-                address: ptr as usize,
-            },
-        )?);
-        sexp.owner = SexpOwner::Session(instance as usize);
-        sexp.session_owner_ptr = std::ptr::NonNull::new(instance);
-        sexp.root = Some(
-            sexp.node
-                .as_ref()
-                .expect("validated owner allocation")
-                .root_lease()
-                .ok_or(SexpError::RootUnavailable)?,
-        );
-        Ok(sexp)
+        SessionNodeFactory::new(owner).wrap(ptr)
     }
 
     /// Create a `Sexp` from a raw pointer without null checking.
@@ -335,21 +315,59 @@ impl<'a> Sexp<'a> {
             node: None,
             session_owner_ptr: None,
             root: None,
+            singleton: None,
+            singletons: None,
             _marker: std::marker::PhantomData,
         }
     }
 
     /// Create a `Sexp` from a known immutable singleton.
     #[inline]
-    pub(crate) const unsafe fn from_static_raw_unchecked(ptr: SEXP) -> Self {
+    pub(crate) unsafe fn from_static_raw_unchecked(ptr: SEXP) -> Self {
+        let pool = crate::sexp::globals::immutable_singleton_pool();
+        let singleton = pool.lease(ptr).expect("known immutable singleton");
+        Self::from_singleton(singleton, pool)
+    }
+
+    fn from_singleton(
+        singleton: crate::sexp::globals::SingletonLease,
+        pool: crate::sexp::globals::SingletonPoolLease,
+    ) -> Self {
         Sexp {
-            ptr,
+            ptr: singleton.projection(),
             owner: SexpOwner::Static,
             node: None,
             session_owner_ptr: None,
             root: None,
+            singleton: Some(singleton),
+            singletons: Some(pool),
             _marker: std::marker::PhantomData,
         }
+    }
+
+    pub(crate) fn singleton_snapshot(&self, ptr: SEXP) -> Option<SexprecCore> {
+        if let Some(owner) = &self.singleton {
+            if owner.projection() == ptr {
+                return Some(owner.snapshot());
+            }
+        }
+        self.singletons.as_ref()?.snapshot(ptr)
+    }
+
+    pub(crate) fn singleton_projection(&self, ptr: SEXP) -> Option<SEXP> {
+        self.singletons.as_ref()?.canonical_projection(ptr)
+    }
+
+    /// Whether this value is the retained `NA_character_` sentinel.
+    #[inline]
+    pub fn is_na_string(&self) -> bool {
+        if let Some(pool) = &self.singletons {
+            return self.ptr == pool.na_string_projection();
+        }
+        // Unsafe raw fixtures retain their ambient bank by caller contract.
+        // Inspection never initializes or recreates a bank during teardown.
+        self.owner == SexpOwner::Unknown
+            && crate::sexp::globals::immutable_na_string_projection() == Some(self.ptr)
     }
 
     /// Get the underlying raw SEXP pointer.
@@ -616,19 +634,15 @@ impl<'a> Sexp<'a> {
         self.ensure_live()?;
         child.ensure_live()?;
         let ptr = child.clone().as_raw();
-        let valid = if crate::sexp::session::is_immutable_singleton(ptr) {
+        let valid = if self.singleton_projection(ptr).is_some() {
             true
+        } else if self.owner == SexpOwner::Unknown {
+            // Unsafe raw factories establish graph ownership in their contract.
+            true
+        } else if let (Some(parent), Some(child)) = (&self.node, &child.node) {
+            parent.same_heap(child)
         } else {
-            match self.owner {
-                SexpOwner::Session(_) => self.session_owner_ptr.is_some_and(|owner| {
-                    // SAFETY: this handle retains the live session owner.
-                    unsafe { (*owner.as_ptr()).owns_sexp(ptr) }
-                }),
-                SexpOwner::Arena(_) => self.owner == child.owner,
-                SexpOwner::Static => false,
-                // Raw factories require the caller to establish graph ownership.
-                SexpOwner::Unknown => true,
-            }
+            false
         };
         if valid {
             Ok(())
@@ -671,13 +685,13 @@ impl<'a> Sexp<'a> {
     fn checked_child(&self, ptr: SEXP) -> SexpResult<Sexp<'a>> {
         self.ensure_live()?;
         if ptr.is_null() {
-            Ok(Sexp::nil())
-        } else if let Some(canonical) = crate::sexp::session::immutable_singleton_projection(ptr) {
-            Ok(unsafe { Sexp::from_static_raw_unchecked(canonical) })
-        } else if let Some(owner) = self.session_owner_ptr {
-            // SAFETY: the parent handle retains this session's lifetime.
-            // Children receive independent leases before the parent can drop.
-            unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) }.sexp(ptr)
+            if let Some(pool) = &self.singletons {
+                Ok(Self::from_singleton(pool.nil(), pool.clone()))
+            } else {
+                Ok(Sexp::nil())
+            }
+        } else if let Some(singleton) = self.singletons.as_ref().and_then(|pool| pool.lease(ptr)) {
+            Ok(Self::from_singleton(singleton, self.singletons.clone().expect("retained sentinel bank")))
         } else {
             // SAFETY: the parent factory established graph liveness for this lifetime.
             let mut child = unsafe { Sexp::try_from_raw(ptr) }?;
@@ -688,9 +702,12 @@ impl<'a> Sexp<'a> {
                         address: ptr as usize,
                     })?;
                 child.ptr = canonical;
+                child.root = Some(node.root_lease().ok_or(SexpError::RootUnavailable)?);
                 child.node = Some(node);
             }
             child.owner = self.owner;
+            child.session_owner_ptr = self.session_owner_ptr;
+            child.singletons = self.singletons.clone();
             Ok(child)
         }
     }
@@ -1949,9 +1966,9 @@ mod tests {
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
         unsafe {
-            (*closure).data.closxp.formals = formals;
-            (*closure).data.closxp.body = body;
-            (*closure).data.closxp.env = env;
+            (*closure).data.closure_mut().formals = formals;
+            (*closure).data.closure_mut().body = body;
+            (*closure).data.closure_mut().env = env;
         }
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -1970,9 +1987,9 @@ mod tests {
         let enclos = arena.alloc_node(SEXPTYPE::ENVSXP);
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
-            (*env).data.envsxp.frame = frame;
-            (*env).data.envsxp.enclos = enclos;
-            (*env).data.envsxp.hashtab = ptr::null_mut();
+            (*env).data.environment_mut().frame = frame;
+            (*env).data.environment_mut().enclos = enclos;
+            (*env).data.environment_mut().hashtab = ptr::null_mut();
         }
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -2110,7 +2127,7 @@ mod tests {
         let mut arena = RArena::new();
         let special = arena.alloc_node(SEXPTYPE::SPECIALSXP);
         unsafe {
-            (*special).data.primsxp.offset = 42;
+            (*special).data.primitive_mut().offset = 42;
         }
         let sexp = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -2123,7 +2140,7 @@ mod tests {
 
         let builtin = arena.alloc_node(SEXPTYPE::BUILTINSXP);
         unsafe {
-            (*builtin).data.primsxp.offset = 7;
+            (*builtin).data.primitive_mut().offset = 7;
         }
         let sexp2 = some(unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
@@ -2256,7 +2273,7 @@ mod tests {
 
         let ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
         unsafe {
-            (*ext).data.extptr = [
+            *(*ext).data.extptr_mut() = [
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),

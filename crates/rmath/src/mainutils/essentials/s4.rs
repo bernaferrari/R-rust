@@ -1453,7 +1453,7 @@ pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
-            let tag = (*current).data.listsxp.tagval;
+            let tag = (*current).data.list().tagval;
             let slot_name = if !tag.is_null() && tag != R_NilValue() {
                 let sym_str = crate::sexp::accessors::CHAR(tag);
                 if !sym_str.is_null() {

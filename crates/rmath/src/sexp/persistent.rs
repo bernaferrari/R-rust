@@ -3,7 +3,7 @@
 //! Raw addresses are compatibility projections; Rust cells own every header.
 
 use crate::sexp::{
-    ffi::{SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp},
+    ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp},
     heap::{CheckedNode, HeapBackingOwners, HeapError, HeapIdentity, NodePage},
     memory::{NodePageRegistration, register_node_page},
 };
@@ -44,13 +44,30 @@ struct PersistentAllocation {
     header: NodePage<SexprecCore>,
     // Fixed interior cells keep a native character projection stable without
     // handing Rust ownership of the bytes to a raw allocation or header.
-    _payload: Option<PersistentPayload>,
+    payload: Option<PersistentPayload>,
 }
 
 /// The single physical owner of permanent headers and their payloads.
 /// Automatic values retain this same store through the heap backing bag.
 pub(crate) struct PersistentBacking {
     nodes: RefCell<HashMap<usize, PersistentAllocation>>,
+}
+impl PersistentBacking {
+    pub(crate) fn copy_reference_payload(
+        &self,
+        pointer: *mut u8,
+        length: usize,
+    ) -> Option<Vec<SEXP>> {
+        self.nodes.borrow().values().find_map(|allocation| {
+            let PersistentPayload::Pointers(values) = allocation.payload.as_ref()? else {
+                return None;
+            };
+            if values.as_ptr().cast::<u8>().cast_mut() != pointer || length > values.len() {
+                return None;
+            }
+            Some(values.iter().take(length).map(Cell::get).collect())
+        })
+    }
 }
 
 pub(crate) struct PersistentHeap {
@@ -97,7 +114,7 @@ impl PersistentHeap {
             PersistentAllocation {
                 _registration: registration,
                 header: page,
-                _payload: payload,
+                payload,
             },
         );
         self.next_page = next_page;
@@ -117,12 +134,10 @@ impl PersistentHeap {
         cells.push(Cell::new(0));
         let cells: Rc<[Cell<u8>]> = Rc::from(cells.into_boxed_slice());
         let mut header = SexprecCore::new(SEXPTYPE::CHARSXP);
-        header.data = SexprecData {
-            vecsxp: Vecsxp {
-                length,
-                truelength: 0,
-            },
-        };
+        header.data = NodeBody::Vector(Vecsxp {
+            length,
+            truelength: 0,
+        });
         let payload = PersistentPayload::Bytes(cells);
         header.gengc_next_node = payload.pointer();
         self.allocate(header, Some(payload))

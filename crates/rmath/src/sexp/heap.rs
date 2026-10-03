@@ -93,6 +93,21 @@ impl HeapIdentity {
     ) -> Rc<HeapBackingOwners> {
         self.retain(PhysicalBacking::Persistent(backing))
     }
+    /// Copy pointer-vector elements from canonical typed owners in this
+    /// exact heap domain. The supplied address only selects registered
+    /// storage; it is never dereferenced or interpreted as a byte buffer.
+    pub(crate) fn copy_reference_payload(
+        &self,
+        pointer: *mut u8,
+        length: usize,
+    ) -> Option<Vec<super::ffi::SEXP>> {
+        let owners = self.retained_backing()?;
+        let result = owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.copy_reference_payload(pointer, length),
+            PhysicalBacking::Persistent(store) => store.copy_reference_payload(pointer, length),
+        });
+        result
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -608,6 +623,18 @@ impl<T> NodePage<T> {
         drop(cell.replace(value));
         Ok(cell.as_ptr())
     }
+    /// Update canonical storage only while the original exact allocation
+    /// remains live. A stale or foreign identity cannot overwrite a successor.
+    pub(crate) fn replace_live(&self, id: &NodeId, value: T) -> Result<(), HeapError> {
+        if !self.metadata.validates(id) {
+            return Err(HeapError::InvalidSlot);
+        }
+        self.values
+            .get(id.slot)
+            .ok_or(HeapError::InvalidSlot)?
+            .set(value);
+        Ok(())
+    }
     pub(crate) fn resolve(&self, id: &NodeId) -> Option<*mut T> {
         self.metadata
             .validates(id)
@@ -625,6 +652,31 @@ impl<T: Copy> NodePage<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_replacement_rejects_stale_and_foreign_exact_allocations() {
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();
+        let original = page.metadata.activate(0, false).unwrap();
+        page.replace_live(&original, 7).unwrap();
+        assert_eq!(page.copy_live(&original), Some(7));
+        let foreign = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();
+        let foreign_id = foreign.metadata.activate(0, false).unwrap();
+        assert_eq!(
+            page.replace_live(&foreign_id, 99),
+            Err(HeapError::InvalidSlot)
+        );
+        assert_eq!(page.copy_live(&original), Some(7));
+        assert!(page.metadata.release(&original));
+        page.replace_inactive(0, 11).unwrap();
+        let replacement = page.metadata.activate(0, false).unwrap();
+        assert_eq!(
+            page.replace_live(&original, 99),
+            Err(HeapError::InvalidSlot)
+        );
+        assert_eq!(page.copy_live(&replacement), Some(11));
+        page.replace_live(&replacement, 13).unwrap();
+        assert_eq!(page.copy_live(&replacement), Some(13));
+    }
+
     #[test]
     fn automatic_root_clones_share_one_lease_and_last_drop_unroots() {
         let page = NodePage::try_new(HeapIdentity::new(), 0, 130, || 0).unwrap();

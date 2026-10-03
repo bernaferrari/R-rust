@@ -31,9 +31,9 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
             if !env.is_null() {
-                (*env).data.envsxp.frame = frame;
-                (*env).data.envsxp.enclos = enclos;
-                (*env).data.envsxp.hashtab = hashtab;
+                (*env).data.environment_mut().frame = frame;
+                (*env).data.environment_mut().enclos = enclos;
+                (*env).data.environment_mut().hashtab = hashtab;
             }
             env
         })
@@ -43,10 +43,14 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
 pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
-        header.data = super::ffi::SexprecData {
-            envsxp: super::ffi::Envsxp { frame, enclos, hashtab },
-        };
-        let value = (*owner).persistent_nodes.allocate_header(header)
+        header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
+            frame,
+            enclos,
+            hashtab,
+        });
+        let value = (*owner)
+            .persistent_nodes
+            .allocate_header(header)
             .unwrap_or_else(|_| crate::sexp::context::r_error("persistent environment allocation"));
         (*owner).env_nodes.push(value);
         value
@@ -65,9 +69,9 @@ pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
-                (*prom).data.promsxp.value = R_UnboundValue();
-                (*prom).data.promsxp.expr = expr;
-                (*prom).data.promsxp.env = env;
+                (*prom).data.promise_mut().value = R_UnboundValue();
+                (*prom).data.promise_mut().expr = expr;
+                (*prom).data.promise_mut().env = env;
             }
             prom
         })
@@ -82,9 +86,9 @@ pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
-                (*prom).data.promsxp.value = value;
-                (*prom).data.promsxp.expr = expr;
-                (*prom).data.promsxp.env = R_NilValue();
+                (*prom).data.promise_mut().value = value;
+                (*prom).data.promise_mut().expr = expr;
+                (*prom).data.promise_mut().env = R_NilValue();
                 // Set gp bits for EVPROMISE
                 (*prom).sxpinfo.set_gp(1); // PRSEEN flag
             }
@@ -109,9 +113,9 @@ pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let p = allocSExp(SEXPTYPE::PROMSXP);
         if !p.is_null() {
-            (*p).data.promsxp.value = R_UnboundValue();
-            (*p).data.promsxp.expr = expr;
-            (*p).data.promsxp.env = env;
+            (*p).data.promise_mut().value = R_UnboundValue();
+            (*p).data.promise_mut().expr = expr;
+            (*p).data.promise_mut().env = env;
         }
         p
     }
@@ -146,9 +150,11 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
 
 pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP) -> SEXP {
     let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
-    header.data = super::ffi::SexprecData {
-        listsxp: super::ffi::Listsxp { carval: car, cdrval: cdr, tagval: ptr::null_mut() },
-    };
+    header.data = super::ffi::NodeBody::List(super::ffi::Listsxp {
+        carval: car,
+        cdrval: cdr,
+        tagval: ptr::null_mut(),
+    });
     let ptr = unsafe { (*instance).persistent_nodes.allocate_header(header) }
         .unwrap_or_else(|_| crate::sexp::context::r_error("persistent cons allocation"));
     with_raw_cons_in(instance, |rc| rc.push(ptr));
@@ -167,7 +173,11 @@ pub(crate) unsafe fn free_raw_cons_in(instance: *mut RInstance, ptr: SEXP) {
         return;
     }
     let removed = with_raw_cons_in(instance, |cells| {
-        cells.iter().position(|&p| p == ptr).map(|pos| cells.remove(pos)).is_some()
+        cells
+            .iter()
+            .position(|&p| p == ptr)
+            .map(|pos| cells.remove(pos))
+            .is_some()
     });
     if removed {
         unsafe { (*instance).persistent_nodes.remove(ptr) };
@@ -198,67 +208,67 @@ pub unsafe fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
 pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
-        let cdr = if sym2.is_null() {
-            unsafe { R_NilValue() }
-        } else {
-            let cell = arena.cons(sym2, unsafe { R_NilValue() }, ptr::null_mut());
-            if !cell.is_null() {
+            let cdr = if sym2.is_null() {
+                unsafe { R_NilValue() }
+            } else {
+                let cell = arena.cons(sym2, unsafe { R_NilValue() }, ptr::null_mut());
+                if !cell.is_null() {
+                    unsafe {
+                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    }
+                }
+                cell
+            };
+            let car = arena.cons(sym1, cdr, ptr::null_mut());
+            if !car.is_null() {
                 unsafe {
-                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    (*car).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
             }
-            cell
-        };
-        let car = arena.cons(sym1, cdr, ptr::null_mut());
-        if !car.is_null() {
-            unsafe {
-                (*car).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
-        }
-        car
-    })
-}
+            car
+        })
+    }
 }
 
 /// Create a formals list from 3 symbols.
 pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
-        let c3 = if sym3.is_null() {
-            unsafe { R_NilValue() }
-        } else {
-            let cell = arena.cons(sym3, unsafe { R_NilValue() }, ptr::null_mut());
-            if !cell.is_null() {
-                unsafe {
-                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let c3 = if sym3.is_null() {
+                unsafe { R_NilValue() }
+            } else {
+                let cell = arena.cons(sym3, unsafe { R_NilValue() }, ptr::null_mut());
+                if !cell.is_null() {
+                    unsafe {
+                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    }
                 }
-            }
-            cell
-        };
-        let c2 = if sym2.is_null() {
-            c3
-        } else {
-            let cell = arena.cons(sym2, c3, ptr::null_mut());
-            if !cell.is_null() {
-                unsafe {
-                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                cell
+            };
+            let c2 = if sym2.is_null() {
+                c3
+            } else {
+                let cell = arena.cons(sym2, c3, ptr::null_mut());
+                if !cell.is_null() {
+                    unsafe {
+                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    }
                 }
-            }
-            cell
-        };
-        let c1 = if sym1.is_null() {
-            c2
-        } else {
-            let cell = arena.cons(sym1, c2, ptr::null_mut());
-            if !cell.is_null() {
-                unsafe {
-                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                cell
+            };
+            let c1 = if sym1.is_null() {
+                c2
+            } else {
+                let cell = arena.cons(sym1, c2, ptr::null_mut());
+                if !cell.is_null() {
+                    unsafe {
+                        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    }
                 }
-            }
-            cell
-        };
-        c1
-    })
+                cell
+            };
+            c1
+        })
     }
 }
 
@@ -284,7 +294,7 @@ pub unsafe fn allocLang(n: c_int) -> SEXP {
             let mut current = list;
             while !current.is_null() && current != R_NilValue() {
                 (*current).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                current = (*current).data.listsxp.cdrval;
+                current = (*current).data.list().cdrval;
             }
         }
         list
@@ -331,7 +341,9 @@ pub(crate) unsafe fn R_alloc(size: usize, nelem: usize) -> *mut c_void {
     // Ported callers rely on R_alloc returning usable storage or raising an
     // R error. Returning null on a nonempty request invites unchecked writes.
     if ptr.is_null() && size != 0 && nelem != 0 {
-        super::context::r_error("cannot allocate transient memory: size, memory budget or allocation failure");
+        super::context::r_error(
+            "cannot allocate transient memory: size, memory budget or allocation failure",
+        );
     }
     ptr
 }
@@ -363,7 +375,10 @@ pub(crate) unsafe fn R_alloc_in(
         };
         let ptr = buffer.as_ptr();
         with_vmax_in(instance, |vmax| {
-            vmax.push(TransientAllocation { buffer, _reservation: reservation });
+            vmax.push(TransientAllocation {
+                buffer,
+                _reservation: reservation,
+            });
         });
         ptr.cast()
     }
@@ -449,7 +464,8 @@ mod tests {
         let mut left = RInstance::new_for_gc_tests();
         let mut right = RInstance::new_for_gc_tests();
         let node_bytes = std::mem::size_of::<SexprecCore>();
-        left.arena.set_budget(memory::ArenaBudget::new(node_bytes + 32, 0));
+        left.arena
+            .set_budget(memory::ArenaBudget::new(node_bytes + 32, 0));
         right.arena.set_budget(memory::ArenaBudget::new(4, 0));
         unsafe {
             let left_ptr = addr_of_mut!(left);
@@ -487,7 +503,11 @@ mod tests {
             (*instance).arena.set_budget(memory::ArenaBudget::new(8, 0));
             for (size, count) in [(1, 9), (usize::MAX, 2), (1, isize::MAX as usize + 1)] {
                 let error = std::panic::catch_unwind(|| R_alloc(size, count)).unwrap_err();
-                assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+                assert!(
+                    error
+                        .downcast_ref::<crate::sexp::context::RError>()
+                        .is_some()
+                );
                 assert_eq!(vmax_len_in(instance), 0);
                 assert!((*instance).arena.try_reserve_transient(8).is_some());
             }
@@ -551,7 +571,7 @@ mod tests {
             let prom = mkPROMISE(expr, R_NilValue());
             assert!(!prom.is_null());
             assert_eq!((*prom).sxpinfo.type_of(), SEXPTYPE::PROMSXP);
-            assert_eq!((*prom).data.promsxp.expr, expr);
+            assert_eq!((*prom).data.promise().expr, expr);
         }
     }
 
@@ -684,7 +704,8 @@ mod tests {
             let binding = cons_raw(value, R_NilValue());
             let name = super::super::symbol::Rf_installChar(c"multi-byte-symbol".as_ptr(), 17);
             SETTAG(binding, name);
-            let environment = NewPersistentEnvironment(binding, crate::sexp::globals::R_BaseEnv(), R_NilValue());
+            let environment =
+                NewPersistentEnvironment(binding, crate::sexp::globals::R_BaseEnv(), R_NilValue());
             let character = persistent_mkChar(c"multi-byte-persistent".as_ptr());
             let integer = persistent_scalar_integer(41);
             let logical = persistent_scalar_logical(1);
@@ -692,17 +713,28 @@ mod tests {
             let string = persistent_mkstring(c"owned-string-bytes".as_ptr());
             let instance = super::super::instance::current_instance_ptr().unwrap();
             let token = (*instance).node_token(environment).unwrap();
-            for raw in [binding, name, character, integer, logical, real, string, value] {
+            for raw in [
+                binding, name, character, integer, logical, real, string, value,
+            ] {
                 assert!(token.same_heap(&(*instance).node_token(raw).unwrap()));
             }
             super::super::gengc::full_gc();
             assert_eq!(INTEGER_ELT(CAR(binding), 0), 77);
-            assert_eq!(std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(), b"multi-byte-persistent");
-            assert_eq!(std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name))).to_bytes(), b"multi-byte-symbol");
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(),
+                b"multi-byte-persistent"
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name))).to_bytes(),
+                b"multi-byte-symbol"
+            );
             assert_eq!(INTEGER_ELT(integer, 0), 41);
             assert_eq!(LOGICAL_ELT(logical, 0), 1);
             assert_eq!(REAL_ELT(real, 0), 2.5);
-            assert_eq!(std::ffi::CStr::from_ptr(CHAR(STRING_ELT(string, 0))).to_bytes(), b"owned-string-bytes");
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(string, 0))).to_bytes(),
+                b"owned-string-bytes"
+            );
             token
         });
         assert!(token.is_live());
@@ -728,5 +760,4 @@ mod tests {
             assert_ne!(token, (*instance).node_token(next).unwrap());
         });
     }
-
 }

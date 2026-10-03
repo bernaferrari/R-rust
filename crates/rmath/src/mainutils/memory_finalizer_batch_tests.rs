@@ -30,8 +30,8 @@ fn graph() -> (SEXP, ProtectGuard<'static>) {
             let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             *crate::sexp::accessors::INTEGER(value) = 73;
             *(*child).gengc_next_node.cast::<SEXP>() = value;
-            (*key).data.extptr[1] = child.cast();
-            (*key).data.extptr[2] = R_NilValue().cast();
+            (*key).data.extptr_mut()[1] = child.cast();
+            (*key).data.extptr_mut()[2] = R_NilValue().cast();
             GRAPH_NODES.with(|nodes| {
                 nodes
                     .borrow_mut()
@@ -122,9 +122,9 @@ fn ready_finalizer_batch_roots_later_r_function_before_first_c_callback() {
                     crate::sexp::symbol::Rf_install(c"key".as_ptr()),
                 );
                 let function = arena.alloc_node(SEXPTYPE::CLOSXP);
-                (*function).data.closxp.formals = formal;
-                (*function).data.closxp.body = nil;
-                (*function).data.closxp.env = R_GlobalEnv();
+                (*function).data.closure_mut().formals = formal;
+                (*function).data.closure_mut().body = nil;
+                (*function).data.closure_mut().env = R_GlobalEnv();
                 GRAPH_NODES.with(|nodes| {
                     nodes
                         .borrow_mut()
@@ -175,9 +175,9 @@ fn real_r_finalizer_call_survives_torture_before_evaluation() {
             let body = arena.cons(assignment, lhs, nil);
             (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             let function = arena.alloc_node(SEXPTYPE::CLOSXP);
-            (*function).data.closxp.formals = formal;
-            (*function).data.closxp.body = body;
-            (*function).data.closxp.env = R_GlobalEnv();
+            (*function).data.closure_mut().formals = formal;
+            (*function).data.closure_mut().body = body;
+            (*function).data.closure_mut().env = R_GlobalEnv();
             (function, crate::sexp::protect::protect(function))
         });
         R_RegisterFinalizer(key, function);
