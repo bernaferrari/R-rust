@@ -17,7 +17,6 @@ use crate::sexp::accessors::{
     BODY, CAR, CDR, CHAR, CLOENV, PRCODE, PRINTNAME, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF,
     XLENGTH,
 };
-use crate::sexp::envir::{Environment, addMissingVarsToNewEnv};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
@@ -29,101 +28,6 @@ use super::eval::Rf_eval;
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
-}
-
-// ---------------------------------------------------------------------------
-// Safe closure application — the primary internal implementation
-// ---------------------------------------------------------------------------
-
-/// Safe closure application using Sexp<'a>.
-///
-/// This is the idiomatic Rust API for applying R closures.
-/// It extracts formals, body, and environment from the closure,
-/// matches arguments to formals, creates a new evaluation environment,
-/// and evaluates the body.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn apply_closure_safe<'a>(
-    closure: Sexp<'a>,
-    args: Sexp<'a>,
-    rho: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
-    if !closure.clone().is_closure() {
-        return Err("not a closure".to_string());
-    }
-    let _closure_guard = unsafe { protect(closure.clone().as_raw()) };
-    unsafe { super::jit::R_CheckJIT(closure.clone().as_raw()) };
-
-    let formals = closure
-        .clone()
-        .try_formals()
-        .clone()
-        .map_err(|err| sexp_err("closure formals lookup", err))?;
-    let mut body = closure
-        .clone()
-        .try_body()
-        .clone()
-        .map_err(|err| sexp_err("closure body lookup", err))?;
-    if unsafe { TYPEOF(body.clone().as_raw()) } == SEXPTYPE::BCODESXP {
-        if let Some(source) =
-            unsafe { methods_matchsignature_source(closure.clone().as_raw(), body.clone().as_raw()) }
-        {
-            unsafe {
-                crate::sexp::accessors::SET_BODY(closure.clone().as_raw(), source);
-                body = Sexp::from_raw_unchecked(source);
-            }
-        }
-    }
-
-    let cloenv = closure
-        .try_cloenv()
-        .map_err(|err| sexp_err("closure environment lookup", err))?;
-    let cloenv = unsafe {
-        Sexp::from_raw_unchecked(remap_methods_snapshot_cloenv(
-            closure.as_raw(),
-            cloenv.as_raw(),
-        ))
-    };
-
-
-    // Match arguments to formals
-    let matched = unsafe { match_args_safe(formals.clone(), args.clone()) }?;
-
-    // Create new environment with matched arguments
-    let new_env = unsafe { create_env_safe(matched, cloenv) }?;
-
-    // Bind the matched arguments into the new environment
-    let frame = new_env
-        .clone()
-        .try_frame()
-        .clone()
-        .map_err(|err| sexp_err("new closure environment frame lookup", err))?;
-    let new_env_bindings = Environment::new(new_env.clone())?;
-    for cell in PairlistIter::new(frame) {
-        let sym = cell
-            .clone()
-            .try_tag()
-            .clone()
-            .map_err(|err| sexp_err("matched argument tag lookup", err))?;
-        if !sym.clone().is_nil() {
-            let val = cell
-                .try_car()
-                .map_err(|err| sexp_err("matched argument value lookup", err))?;
-            unsafe { new_env_bindings.clone().define(sym, val) }.clone()?;
-        }
-    }
-
-    // Add missing arguments
-    unsafe {
-        addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.clone().as_raw());
-    }
-
-    // Evaluate body in new environment.
-    // If the body was compiled to BCODESXP by cmpfun or the invocation JIT,
-    // the top-level eval_safe dispatch (EvalKind::Bytecode) calls bcEval.
-    unsafe { crate::eval::eval::eval_safe(body, new_env)
-}
 }
 
 /// Safe argument matching using Sexp<'a> and PairlistIter.
@@ -1326,8 +1230,8 @@ mod owned_matcher_tests {
             session.with_active_in(|instance| unsafe {
                 (
                     (*instance).context_stack.len(),
-                    (*instance).error_state.handler_stack,
-                    (*instance).error_state.restart_stack,
+                    (*instance).error_state.handler_stack.as_raw(),
+                    (*instance).error_state.restart_stack.as_raw(),
                     (*instance).error_state.in_warning,
                 )
             })

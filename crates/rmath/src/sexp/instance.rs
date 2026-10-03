@@ -71,12 +71,12 @@ pub(crate) struct ErrorState {
     pub interrupts_pending: bool,
     pub collect_warnings: c_int,
     pub nwarnings: c_int,
-    pub warnings: SEXP,
-    pub handler_stack: SEXP,
+    pub warnings: RuntimeValue,
+    pub handler_stack: RuntimeValue,
     /// R-level `globalCallingHandlers()` list (named functions).
-    pub global_calling_handlers: SEXP,
+    pub global_calling_handlers: RuntimeValue,
 
-    pub restart_stack: SEXP,
+    pub restart_stack: RuntimeValue,
     pub error_buffer: [u8; crate::mainutils::errors::BUFSIZE + 1],
     pub expressions: c_int,
     pub expressions_keep: c_int,
@@ -97,26 +97,24 @@ pub(crate) struct ErrorState {
     /// `base::complex`) are single builtins in this port, so a warning
     /// raised inside them has no closure context to attribute through;
     /// handlers install their own call here for the handler's duration.
-    pub warning_call: SEXP,
+    pub warning_call: RuntimeValue,
     /// Condition object currently being signaled by `stop(<condition>)`.
     /// This is session state so a caught condition cannot leak across
     /// sequential sessions sharing an OS thread.
-    pub signalled_condition: SEXP,
+    pub signalled_condition: RuntimeValue,
     /// Set by `verrorcall_dflt` when the attributed call is empty
     /// (`errorcall(R_NilValue)` / `call. = FALSE`). GNU `try()` then
     /// prints `Error : ` and attaches a condition with a NULL call.
     pub call_less: bool,
     /// Call used to attribute warnings emitted by an nmath evaluation.
-    pub mathlib_warning_call: SEXP,
-    /// Previous mathlib warning calls held by nested attribution guards.
-    pub mathlib_warning_call_stack: Vec<SEXP>,
+    pub mathlib_warning_call: RuntimeValue,
     /// Non-SEXP handler bookkeeping must follow the active session when
     /// sessions are nested on one host thread.
     pub calling_handlers_signaled: bool,
     pub try_catch_handler_classes: Vec<Vec<String>>,
     /// Call recorded by the most recent error raise (`errorcall` / unused-arg).
     /// `null` means unset; `R_NilValue` means `call. = FALSE`.
-    pub last_error_call: SEXP,
+    pub last_error_call: RuntimeValue,
     /// True when `last_error_call` is the applied language object (matchArgs,
     /// builtin `attribute_handler_errors`), not `getCurrentCall()` from `stop()`.
     pub last_error_call_explicit: bool,
@@ -150,24 +148,23 @@ impl Default for ErrorState {
             toplevel_expr_no: 0,
             nwarnings: 50,
             last_rendered_message: None,
-            warning_call: std::ptr::null_mut(),
-            signalled_condition: std::ptr::null_mut(),
+            warning_call: RuntimeValue::empty(),
+            signalled_condition: RuntimeValue::empty(),
             call_less: false,
-            mathlib_warning_call: std::ptr::null_mut(),
-            mathlib_warning_call_stack: Vec::new(),
+            mathlib_warning_call: RuntimeValue::empty(),
             calling_handlers_signaled: false,
             try_catch_handler_classes: Vec::new(),
-            last_error_call: std::ptr::null_mut(),
+            last_error_call: RuntimeValue::empty(),
             last_error_call_explicit: false,
             last_error_nframe: 0,
             try_catch_nframes: Vec::new(),
             current_srcref_location: None,
             sequence_recycling_warned: false,
-            warnings: std::ptr::null_mut(),
-            handler_stack: std::ptr::null_mut(),
-            global_calling_handlers: std::ptr::null_mut(),
+            warnings: RuntimeValue::empty(),
+            handler_stack: RuntimeValue::empty(),
+            global_calling_handlers: RuntimeValue::empty(),
 
-            restart_stack: std::ptr::null_mut(),
+            restart_stack: RuntimeValue::empty(),
             error_buffer: [0; crate::mainutils::errors::BUFSIZE + 1],
             expressions: 500,
             expressions_keep: 500,
@@ -1271,6 +1268,74 @@ mod owned_evaluator_root_tests {
                 *slot(instance, index) = RuntimeValue::empty();
                 owner.full_gc().unwrap();
                 assert!(!original.is_live());
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod owned_error_root_tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    unsafe fn slot(instance: *mut RInstance, index: usize) -> *mut RuntimeValue {
+        unsafe {
+            match index {
+                0 => &raw mut (*instance).error_state.warnings,
+                1 => &raw mut (*instance).error_state.handler_stack,
+                2 => &raw mut (*instance).error_state.global_calling_handlers,
+                3 => &raw mut (*instance).error_state.restart_stack,
+                4 => &raw mut (*instance).error_state.warning_call,
+                5 => &raw mut (*instance).error_state.signalled_condition,
+                6 => &raw mut (*instance).error_state.mathlib_warning_call,
+                7 => &raw mut (*instance).error_state.last_error_call,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn owned_error_fields_preserve_original_roots_and_release_replacements() {
+        let session = RSession::new_for_gc_tests();
+        let foreign = RSession::new_for_gc_tests();
+        let foreign_value = foreign.with_active(|| {
+            foreign
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .character("foreign")
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let factory = owner.node_factory();
+            for index in 0..8 {
+                let value = factory.character("sole field root").unwrap();
+                let pointer = value.as_raw();
+                let original = crate::sexp::memory::checked_projection(pointer).unwrap().1;
+                *slot(instance, index) = RuntimeValue::from_raw_in(instance, pointer);
+                drop(value);
+                owner.full_gc().unwrap();
+                assert!(original.is_live());
+                let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    (*slot(instance, index)).replace_from_raw_in(instance, foreign_value.as_raw());
+                }));
+                assert!(rejected.is_err());
+                assert_eq!((*slot(instance, index)).as_raw(), pointer);
+                let replacement = factory.character("replacement").unwrap();
+                let next = crate::sexp::memory::checked_projection(replacement.as_raw())
+                    .unwrap()
+                    .1;
+                (*slot(instance, index)).replace_from_raw_in(instance, replacement.as_raw());
+                drop(replacement);
+                owner.full_gc().unwrap();
+                assert!(!original.is_live());
+                assert!(next.is_live());
+                *slot(instance, index) = RuntimeValue::empty();
+                owner.full_gc().unwrap();
+                assert!(!next.is_live());
             }
         });
     }

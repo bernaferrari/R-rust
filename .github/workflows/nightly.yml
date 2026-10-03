@@ -125,6 +125,30 @@ jobs:
               owned_restart_transfer_tests
           - subject: conditions
             filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
+          - subject: runtime roots and native callback scopes
+            filter: >-
+              owned_evaluator_fields
+              owned_source_attribution
+              owned_exec_
+              owned_profile
+              owned_line_profile
+              owned_native_
+              owned_rust_trycatch
+              retained_class_and_context
+              managed_factories_retain
+              nested_arena_lend
+              owned_error_
+          - subject: explicit allocation and parser authority
+            filter: >-
+              explicit_allocator_
+              execution_scope_
+              passive_parser_
+              owned_parser_
+              owned_parse_eval_
+          - subject: private bytecode continuations
+            filter: >-
+              owned_private_bytecode
+              eval_bytecode_rejects
           - subject: ALTREP arithmetic
             filter: >-
               owned_logical_coercion

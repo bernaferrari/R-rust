@@ -22,16 +22,27 @@ pub fn mkHandlerEntry(
     calling: c_int,
 ) -> SEXP {
     unsafe {
-        let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
-        if !entry.is_null() {
-            SET_VECTOR_ELT(entry, 0, klass);
-            SET_VECTOR_ELT(entry, 1, parentenv);
-            SET_VECTOR_ELT(entry, 2, handler);
-            SET_VECTOR_ELT(entry, 3, target);
-            SET_VECTOR_ELT(entry, 4, result);
-            SETLEVELS(entry, calling);
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let factory = owner.node_factory();
+        let inputs = [klass, parentenv, handler, target, result].map(|pointer| {
+            factory
+                .wrap(pointer)
+                .and_then(|value| value.into_owned())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+        let entry = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 5)))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut entry = crate::sexp::object::SexpMut::try_from_checked(entry)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for (index, value) in inputs.into_iter().enumerate() {
+            entry
+                .try_set_vector_elt(index as _, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        entry
+        SETLEVELS(entry.as_raw(), calling);
+        entry.as_raw()
     }
 }
 
@@ -88,39 +99,73 @@ pub const RESULT_SIZE: usize = 4;
 pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-
-        let classes = CAR(args);
-        let mut rest = CDR(args);
-        let handlers = CAR(rest);
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap()
+            .expect("condition handlers require a managed runtime");
+        let factory = owner.node_factory();
+        let own = |pointer| {
+            factory
+                .wrap(pointer)
+                .and_then(|value| value.into_owned())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        let arguments = own(args);
+        let classes = own(CAR(arguments.as_raw()));
+        let mut rest = CDR(arguments.as_raw());
+        let handlers = own(CAR(rest));
         rest = CDR(rest);
-        let parentenv = CAR(rest);
+        let parentenv = own(CAR(rest));
         rest = CDR(rest);
-        let target = CAR(rest);
+        let target = own(CAR(rest));
         rest = CDR(rest);
-        let calling = asLogical(CAR(rest));
-
-        if isNull(classes) != 0 || isNull(handlers) != 0 {
-            return handler_stack();
+        let calling_value = own(CAR(rest));
+        let oldstack = crate::sexp::instance::with_required_current_instance(|instance| {
+            (*instance).error_state.handler_stack.owned()
+        })
+        .unwrap_or_else(|| factory.nil().into_owned().unwrap());
+        let n = if classes.is_nil() || handlers.is_nil() {
+            0
+        } else {
+            LENGTH(handlers.as_raw())
+        };
+        let entries: Vec<_> = (0..n)
+            .map(|i| {
+                (
+                    own(STRING_ELT(classes.as_raw(), i as _)),
+                    own(VECTOR_ELT(handlers.as_raw(), i as _)),
+                )
+            })
+            .collect();
+        let calling = asLogical(calling_value.as_raw());
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if classes.is_nil() || handlers.is_nil() {
+            return oldstack.as_raw();
         }
-
-        let n = LENGTH(handlers);
-
-        {
-            let oldstack = handler_stack();
-
-            let result = Rf_allocVector(SEXPTYPE::VECSXP, RESULT_SIZE as c_int);
-            let mut newstack = oldstack;
-
-            for i in (0..n).rev() {
-                let klass = STRING_ELT(classes, i as R_xlen_t);
-                let handler = VECTOR_ELT(handlers, i as R_xlen_t);
-                let entry = mkHandlerEntry(klass, parentenv, handler, target, result, calling);
-                newstack = Rf_cons(entry, newstack);
-            }
-
-            set_handler_stack(newstack);
-            oldstack
+        let result = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, RESULT_SIZE as _)))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut newstack = oldstack.clone();
+        for (klass, handler) in entries.into_iter().rev() {
+            let entry = own(mkHandlerEntry(
+                klass.as_raw(),
+                parentenv.as_raw(),
+                handler.as_raw(),
+                target.as_raw(),
+                result.as_raw(),
+                calling,
+            ));
+            newstack = factory
+                .pairlist_cell(&entry, &newstack, &factory.nil())
+                .and_then(|value| value.into_owned())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
+        set_handler_stack(newstack.as_raw());
+        oldstack.as_raw()
     }
 }
 
@@ -352,7 +397,7 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
         // tryCatch handlers receive objectNotFoundError rather than a
         // reconstructed simpleError.
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-            (*inst).error_state.signalled_condition = cond;
+            (*inst).error_state.signalled_condition = crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
         let msg = translateChar(STRING_ELT(elt, 0));
         errorcall(call, msg);
@@ -1036,7 +1081,7 @@ mod condition_construction_tests {
             drop(result);
             drop(condition);
             drop(environment);
-            (*instance).error_state.handler_stack = nil;
+            (*instance).error_state.handler_stack = crate::sexp::instance::RuntimeValue::from_raw_in(instance, nil);
             (*instance).context_stack.clear();
             owner.full_gc().unwrap();
             assert!(result_node.is_live());

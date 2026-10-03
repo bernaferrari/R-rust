@@ -708,154 +708,297 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
 /// - w == 1: print immediately
 /// - w >= 2: convert to error
 pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
-    unsafe {
-        // Guard against recursive warnings
-        if in_warning() != 0 {
-            return;
-        }
-
-        // Check for warning.expression option
-        let s = GetOption1(Rf_install(b"warning.expression\0".as_ptr() as *const c_char));
-        if !s.is_null() && isNull(s) == 0 {
-            if isLanguage(s) == 0 && isExpression(s) == 0 {
-                // Invalid option — fall through
+    let pin = super::state::error_scope_pin();
+    let pointer = pin.as_ptr();
+    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let affiliation = owner.weak_owner().expect("managed warning owner");
+    // The incoming call may be rooted solely by a mutable runtime override.
+    // Retain the actual value before even the first option-symbol allocation.
+    let call_owned = collection_checked(unsafe {
+        owner
+            .sexp(if call.is_null() {
+                globals::R_NilValue()
             } else {
-                // Would eval the expression — for now, format and print
-                let msg = format_varargs(format, ap);
-                eprintln!("Warning: {}", msg);
+                call
+            })
+            .and_then(crate::sexp::object::Sexp::into_owned)
+    });
+    let call = call_owned.as_raw();
+    collection_checked(crate::sexp::owner::with_runtime(
+        &affiliation,
+        |access| unsafe {
+            // Guard against recursive warnings
+            if in_warning() != 0 {
                 return;
             }
-        }
 
-        // Get warn level
-        let warn_sym = Rf_install(b"warn\0".as_ptr() as *const c_char);
-        let w = asLogical(GetOption1(warn_sym));
-        if w == crate::sexp::ffi::NA_INTEGER {
-            // Set to sensible default
-            if immediate_warning() {
-                // w = 1 — print immediately
-            } else {
-                // w = 0 — default, handled below
+            (*pointer).error_state.in_warning = 1;
+            let _cleanup = WarningCollectionScope { owner: pin };
+
+            // Check for warning.expression option
+            let expression = collection_checked(access.with_native(|_| {
+                access
+                    .domain()
+                    .wrap(GetOption1(Rf_install(c"warning.expression".as_ptr())))
+            }));
+            if !expression.is_nil() {
+                if !matches!(expression.typeof_(), SEXPTYPE::LANGSXP | SEXPTYPE::EXPRSXP) {
+                    crate::sexp::context::r_error("invalid option \"warning.expression\"");
+                }
+                // Snapshot the actual nearest function environment before evaluation
+                // can replace contexts or mutate the option holding the expression.
+                let environment = (*pointer)
+                    .context_stack
+                    .iter()
+                    .rev()
+                    .find_map(|context| {
+                        let context = &*context.get();
+                        (context.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0)
+                            .then(|| context.cloenv.owned())
+                            .flatten()
+                    })
+                    .unwrap_or_else(|| {
+                        collection_checked(access.domain().wrap((*pointer).global_env))
+                    });
+                collection_checked(access.require_active());
+                let _result = collection_checked(access.with_native(|_| {
+                    access.domain().wrap(crate::eval::eval::eval_keep_vis(
+                        expression.as_raw(),
+                        environment.as_raw(),
+                    ))
+                }));
+                return;
             }
-        }
-        if w < 0 || in_warning() != 0 || in_error() != 0 {
-            return;
-        }
 
-        // suppressWarnings(): upstream muffles through a calling-handler
-        // restart so the warning never reaches collection or printing; the
-        // port tracks the same with a depth counter around the expression.
-        if suppress_warnings_depth() > 0 {
-            return;
-        }
-
-        set_in_warning(1);
-
-        // Format the variadic message into a string
-        let (mut fmt_str, truncated) = format_varargs_to_buf(format, ap);
-        if truncated {
-            // Append truncation marker if room
-            let trunc_msg = " [... truncated]";
-            if fmt_str.len() + trunc_msg.len() < BUFSIZE {
-                fmt_str.push_str(trunc_msg);
+            // Get warn level
+            let mut w = collection_checked(access.with_native(|_| {
+                let option = access
+                    .domain()
+                    .wrap(GetOption1(Rf_install(c"warn".as_ptr())))?;
+                Ok(crate::mainutils::coerce::asInteger(option.as_raw()))
+            }));
+            if w == crate::sexp::ffi::NA_INTEGER {
+                w = 0;
             }
-        }
+            if w <= 0 && immediate_warning() {
+                w = 1;
+            }
+            if w < 0 || in_error() != 0 {
+                return;
+            }
 
-        if w >= 2 {
-            // Convert warning to error
-            set_in_warning(0);
-            let full_msg = format!("(converted from warning) {}", fmt_str);
-            let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
-            errorcall(call, c_msg.as_ptr());
-        } else if w == 1 || immediate_warning() {
-            // Print warnings immediately
-            let dcall = if !call.is_null() && isNull(call) == 0 {
-                // errors.c:496 deparses with deparse1s()
-                warning_dcall(call)
-            } else {
-                String::new()
-            };
+            // suppressWarnings(): upstream muffles through a calling-handler
+            // restart so the warning never reaches collection or printing; the
+            // port tracks the same with a depth counter around the expression.
+            if suppress_warnings_depth() > 0 {
+                return;
+            }
 
-            let mut out = String::new();
-            if dcall.is_empty() {
-                out.push_str("Warning:");
-            } else {
-                out.push_str("Warning in ");
-                out.push_str(&dcall);
-                out.push_str(" :");
-                let msg_first_line = fmt_str
-                    .find('\n')
-                    .map(|i| &fmt_str[..i])
-                    .unwrap_or(&fmt_str);
-                if 18 + dcall.len() + msg_first_line.len() > LONGWARN {
-                    out.push('\n');
-                    out.push(' ');
+            // Format the variadic message into a string
+            let (mut fmt_str, truncated) = format_varargs_to_buf(format, ap);
+            if truncated {
+                // Append truncation marker if room
+                let trunc_msg = " [... truncated]";
+                if fmt_str.len() + trunc_msg.len() < BUFSIZE {
+                    fmt_str.push_str(trunc_msg);
                 }
             }
-            out.push(' ');
-            out.push_str(&fmt_str);
-            out.push('\n');
-            if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
-                let sigsym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
-                let tr = if SYMVALUE(sigsym) != globals::R_UnboundValue() {
-                    R_ConciseTraceback(call, 1)
+
+            if w >= 2 {
+                // Convert warning to error
+                (*pointer).error_state.in_warning = 0;
+                let full_msg = format!("(converted from warning) {}", fmt_str);
+                let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
+                errorcall(call, c_msg.as_ptr());
+            } else if w == 1 || immediate_warning() {
+                // Print warnings immediately
+                let dcall = if !call.is_null() && isNull(call) == 0 {
+                    // errors.c:496 deparses with deparse1s()
+                    let text = warning_dcall(call);
+                    collection_checked(access.require_active());
+                    text
                 } else {
-                    R_ConciseTraceback(call, 0)
+                    String::new()
                 };
-                if !tr.is_empty() {
-                    out.push_str("Calls: ");
-                    out.push_str(&tr);
-                    out.push('\n');
-                }
-            }
-            crate::sexp::output::capture_stderr(&out);
-        } else {
-            // w == 0: collect warnings
-            if collect_warnings() == 0 {
-                setup_warnings();
-            }
-            let cw = collect_warnings();
-            let nw = nwarnings();
-            if cw < nw {
-                // Store the warning
-                let warnings_ptr = warnings_ptr();
-                if !warnings_ptr.is_null() && TYPEOF(warnings_ptr) == SEXPTYPE::VECSXP {
-                    SET_VECTOR_ELT(warnings_ptr, cw as R_xlen_t, call);
-                    let names = CAR(ATTRIB(warnings_ptr));
-                    if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                        // Append traceback if requested
-                        #[allow(clippy::implicit_clone)]
-                        let mut msg_to_store = fmt_str.to_string();
-                        if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
-                            let tr = R_ConciseTraceback(call, 0);
-                            if !tr.is_empty() && msg_to_store.len() + tr.len() + 8 < BUFSIZE {
-                                msg_to_store.push_str("\nCalls: ");
-                                msg_to_store.push_str(&tr);
-                            }
-                        }
-                        let c_msg = std::ffi::CString::new(msg_to_store).unwrap_or_default();
-                        let ch = Rf_mkChar(c_msg.as_ptr());
-                        SET_STRING_ELT(names, cw as R_xlen_t, ch);
-                    }
-                    increment_collect_warnings();
-                }
-            }
-        }
 
-        set_in_warning(0);
+                let mut out = String::new();
+                if dcall.is_empty() {
+                    out.push_str("Warning:");
+                } else {
+                    out.push_str("Warning in ");
+                    out.push_str(&dcall);
+                    out.push_str(" :");
+                    let msg_first_line = fmt_str
+                        .find('\n')
+                        .map(|i| &fmt_str[..i])
+                        .unwrap_or(&fmt_str);
+                    if 18 + dcall.len() + msg_first_line.len() > LONGWARN {
+                        out.push('\n');
+                        out.push(' ');
+                    }
+                }
+                out.push(' ');
+                out.push_str(&fmt_str);
+                out.push('\n');
+                if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
+                    let tr = collection_checked(access.with_native(|_| {
+                        let sigsym = Rf_install(c".signalSimpleWarning".as_ptr());
+                        access.require_active()?;
+                        Ok(R_ConciseTraceback(
+                            call,
+                            if SYMVALUE(sigsym) != globals::R_UnboundValue() {
+                                1
+                            } else {
+                                0
+                            },
+                        ))
+                    }));
+                    if !tr.is_empty() {
+                        out.push_str("Calls: ");
+                        out.push_str(&tr);
+                        out.push('\n');
+                    }
+                }
+                collection_checked(access.require_active());
+                crate::sexp::output::capture_stderr(&out);
+            } else {
+                // Collection retains actual vector/name/call leases across
+                // traceback and character allocation callbacks.
+                collect_warning_owned(call, &fmt_str);
+            }
+
+            collection_checked(access.require_active());
+        },
+    ));
+}
+
+struct WarningCollectionScope {
+    owner: crate::sexp::owner::OwnerPin,
+}
+impl Drop for WarningCollectionScope {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.owner.as_ptr()).error_state.in_warning = 0;
+        }
     }
 }
 
-/// Setup the warnings collection vector.
+fn collection_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+unsafe fn collect_warning_owned(call: SEXP, message: &str) {
+    let pin = super::state::error_scope_pin();
+    let pointer = pin.as_ptr();
+    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let affiliation = owner.weak_owner().expect("managed warning owner");
+    let _cleanup = WarningCollectionScope { owner: pin };
+    collection_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
+        let domain = access.domain();
+        let call = if call.is_null() {
+            domain.nil()
+        } else {
+            collection_checked(domain.wrap(call))
+        };
+        if unsafe { (*pointer).error_state.collect_warnings } == 0 {
+            unsafe {
+                setup_warnings();
+            }
+        }
+        collection_checked(access.require_active());
+        let (count, capacity, warnings) = unsafe {
+            (
+                (*pointer).error_state.collect_warnings,
+                (*pointer).error_state.nwarnings,
+                (*pointer).error_state.warnings.owned(),
+            )
+        };
+        if count < 0 {
+            crate::sexp::context::r_error("invalid collected warning count");
+        }
+        if count >= capacity {
+            return;
+        }
+        let Some(warnings) = warnings else {
+            return;
+        };
+        if warnings.typeof_() != SEXPTYPE::VECSXP {
+            return;
+        }
+        let attributes = collection_checked(warnings.try_attrib());
+        let names = if attributes.is_nil() {
+            None
+        } else {
+            let candidate = collection_checked(attributes.try_car());
+            (candidate.typeof_() == SEXPTYPE::STRSXP).then_some(candidate)
+        };
+        let mut text = message.to_owned();
+        if r_show_warn_calls() && !call.is_nil() {
+            let trace = collection_checked(
+                access.with_native(|_| Ok(unsafe { R_ConciseTraceback(call.as_raw(), 0) })),
+            );
+            if !trace.is_empty() && text.len() + trace.len() + 8 < BUFSIZE {
+                text.push_str("\nCalls: ");
+                text.push_str(&trace);
+            }
+        }
+        let allocator = collection_checked(access.allocator(&domain));
+        let character = collection_checked(allocator.character(&text));
+        let mut vector =
+            collection_checked(crate::sexp::object::SexpMut::try_from_checked(warnings));
+        collection_checked(vector.try_set_vector_elt(count as i64, call));
+        if let Some(names) = names {
+            let mut names =
+                collection_checked(crate::sexp::object::SexpMut::try_from_checked(names));
+            collection_checked(names.try_set_string_elt(count as i64, character));
+        }
+        let warnings = vector.freeze();
+        collection_checked(access.require_active());
+        // A callback may clear or replace the live field. Publish the complete
+        // original snapshot and its matching count together after callbacks.
+        unsafe {
+            (*pointer).error_state.warnings =
+                crate::sexp::instance::RuntimeValue::from_owned(warnings);
+            (*pointer).error_state.collect_warnings = count + 1;
+        }
+    }));
+}
+
+/// Setup the warnings collection vector with both actual allocations owned
+/// before name-symbol installation can allocate or trigger notification.
 pub(super) unsafe fn setup_warnings() {
-    unsafe {
-        let nw = nwarnings();
-        let w = Rf_allocVector(SEXPTYPE::VECSXP, nw);
-        let names = Rf_allocVector(SEXPTYPE::STRSXP, nw);
-        setAttrib_wrap(w, R_NamesSymbol(), names);
-        set_warnings_ptr(w);
-        set_collect_warnings(0);
-    }
+    let pin = super::state::error_scope_pin();
+    let pointer = pin.as_ptr();
+    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let affiliation = owner.weak_owner().expect("managed warning owner");
+    collection_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
+        let capacity = unsafe { (*pointer).error_state.nwarnings };
+        if capacity < 0 {
+            crate::sexp::context::r_error("invalid warning collection capacity");
+        }
+        let domain = access.domain();
+        let allocator = collection_checked(access.allocator(&domain));
+        let warnings = collection_checked(
+            allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, capacity as i64))),
+        );
+        let names = collection_checked(
+            allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, capacity as i64))),
+        );
+        collection_checked(access.with_native(|_| {
+            unsafe {
+                let names_symbol = R_NamesSymbol();
+                access.require_active()?;
+                setAttrib_wrap(warnings.as_raw(), names_symbol, names.as_raw());
+            }
+            Ok(())
+        }));
+        collection_checked(access.require_active());
+        unsafe {
+            (*pointer).error_state.warnings =
+                crate::sexp::instance::RuntimeValue::from_owned(warnings);
+            (*pointer).error_state.collect_warnings = 0;
+        }
+    }));
 }
 
 /// Issue a warning with call.
@@ -1004,51 +1147,33 @@ pub unsafe fn Rf_warning1(msg: *const c_char) {
     }
 }
 
-/// Restore the previous mathlib warning call on drop.
-///
-/// Internal evaluator scope only: the creating instance must outlive the guard,
-/// and nested guards must unwind in reverse creation order. Session evaluation
-/// retains its instance across these scopes; this type never crosses the owned
-/// embedding API boundary.
+/// Own the previous attribution and original runtime until scope cleanup.
 pub struct MathlibWarningCallGuard {
-    owner: *mut crate::sexp::instance::RInstance,
+    owner: crate::sexp::owner::OwnerPin,
+    previous: Option<crate::sexp::instance::RuntimeValue>,
 }
 
 impl Drop for MathlibWarningCallGuard {
     fn drop(&mut self) {
-        // Restore the instance active at creation. Ambient lookup could
-        // target another session if an embedding operation switched it.
-        unsafe {
-            let previous = (*self.owner)
-                .error_state
-                .mathlib_warning_call_stack
-                .pop()
-                .unwrap_or(std::ptr::null_mut());
-            (*self.owner).error_state.mathlib_warning_call = previous;
+        if let Some(previous) = self.previous.take() {
+            unsafe { (*self.owner.as_ptr()).error_state.mathlib_warning_call = previous; }
         }
     }
 }
 
-/// Scope mathlib (nmath) warning attribution to `call`.
-///
-/// Upstream's `warning()` resolves the call by walking out of the enclosing
-/// CTXT_BUILTIN context; the port does not push builtin contexts for the
-/// dpq builtins, so `dpq_evaluate` pushes the builtin's call here for the
-/// duration of the nmath invocation.
+/// Scope nmath warning attribution to the original owning call.
 pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
-    let owner = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        let prev = (*inst).error_state.mathlib_warning_call;
-        (*inst).error_state.mathlib_warning_call_stack.push(prev);
-        (*inst).error_state.mathlib_warning_call = call;
-        inst
-    });
-    MathlibWarningCallGuard { owner }
+    let owner = super::state::error_scope_pin();
+    let next = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(owner.as_ptr(), call) };
+    let previous = unsafe {
+        std::mem::replace(&mut (*owner.as_ptr()).error_state.mathlib_warning_call, next)
+    };
+    MathlibWarningCallGuard { owner, previous: Some(previous) }
 }
 
-/// The call mathlib warnings should attribute to, if one is in scope.
 pub fn mathlib_warning_call() -> SEXP {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.mathlib_warning_call
+        (*inst).error_state.mathlib_warning_call.as_raw()
     })
 }
 

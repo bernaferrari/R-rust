@@ -44,12 +44,20 @@ pub mod ctxt_flags {
 /// projection from this value; the collector never reconstructs ownership by
 /// scanning or remapping its address. Replacement acquires the new lease first,
 /// so validation failure leaves the previous value intact.
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ContextValue(Option<super::object::Sexp<'static>>);
 
 impl ContextValue {
     pub fn empty() -> Self {
         Self(None)
+    }
+
+    pub(crate) fn from_owned(value: super::object::Sexp<'static>) -> Self {
+        Self(Some(value))
+    }
+
+    pub(crate) fn take_owned(&mut self) -> Option<super::object::Sexp<'static>> {
+        self.0.take()
     }
 
     pub fn as_raw(&self) -> SEXP {

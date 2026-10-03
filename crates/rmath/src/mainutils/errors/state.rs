@@ -75,19 +75,52 @@ pub fn set_toplevel_expr_no(no: usize) {
 /// raised inside attribute to the wrapper's call (errors.c renders them
 /// through the closure's context).
 pub fn warning_call_override() -> SEXP {
-    instance::with_current_instance(|inst| unsafe { (*inst).error_state.warning_call })
+    instance::with_current_instance(|inst| unsafe { (*inst).error_state.warning_call.as_raw() })
         .unwrap_or(std::ptr::null_mut())
 }
 
-/// Install the warning-call attribution override, returning the previous
-/// value so the caller can restore it (guard style).
-pub fn set_warning_call_override(call: SEXP) -> SEXP {
-    let mut previous = std::ptr::null_mut();
-    instance::with_required_current_instance(|inst| unsafe {
-        previous = (*inst).error_state.warning_call;
-        (*inst).error_state.warning_call = call;
-    });
-    previous
+/// Retain the original runtime and previous attribution through cleanup.
+pub struct WarningCallGuard {
+    owner: crate::sexp::owner::OwnerPin,
+    previous: Option<crate::sexp::instance::RuntimeValue>,
+}
+
+impl Drop for WarningCallGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            // Cleanup restores the original physical runtime even if a callback
+            // revoked it or changed the ambient session.
+            unsafe {
+                (*self.owner.as_ptr()).error_state.warning_call = previous;
+            }
+        }
+    }
+}
+
+pub(super) fn error_scope_pin() -> crate::sexp::owner::OwnerPin {
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .unwrap_or_else(|| crate::sexp::context::r_error("error scope requires a managed runtime"))
+}
+
+pub fn warning_call_guard(call: SEXP) -> WarningCallGuard {
+    let owner = error_scope_pin();
+    let next = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(owner.as_ptr(), call) };
+    let previous =
+        unsafe { std::mem::replace(&mut (*owner.as_ptr()).error_state.warning_call, next) };
+    WarningCallGuard {
+        owner,
+        previous: Some(previous),
+    }
+}
+
+fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
+    instance::with_required_current_instance(|instance| unsafe {
+        crate::sexp::instance::RuntimeValue::from_raw_in(instance, value)
+    })
 }
 
 pub(super) fn last_rendered_message() -> Option<String> {
@@ -143,6 +176,7 @@ pub fn record_error_call(call: SEXP, explicit: bool) {
         };
         (nframe, stored)
     };
+    let stored = error_value(stored);
     with_error_state(|state| {
         // First explicit applied-call wins. A later explicit from
         // attribute_handler_errors (the tryCatch builtin itself) must not
@@ -157,17 +191,19 @@ pub fn record_error_call(call: SEXP, explicit: bool) {
 }
 
 /// Consume the raise-site call recorded by [`record_error_call`].
-pub fn take_recorded_error_call() -> Option<(SEXP, bool, i32)> {
+pub fn take_recorded_error_call() -> Option<(crate::sexp::object::Sexp<'static>, bool, i32)> {
     with_error_state(|state| {
         if state.last_error_call.is_null() {
             return None;
         }
         let recorded = (
-            state.last_error_call,
+            state
+                .last_error_call
+                .take_owned()
+                .expect("occupied error call"),
             state.last_error_call_explicit,
             state.last_error_nframe,
         );
-        state.last_error_call = std::ptr::null_mut();
         state.last_error_call_explicit = false;
         state.last_error_nframe = 0;
         Some(recorded)
@@ -187,7 +223,6 @@ pub(crate) fn pop_try_catch_nframe() {
 pub(crate) fn try_catch_entry_nframe() -> Option<i32> {
     with_error_state(|state| state.try_catch_nframes.last().copied())
 }
-
 
 pub(super) fn r_show_warn_calls() -> bool {
     with_error_state(|state| state.show_warn_calls)
@@ -269,7 +304,9 @@ pub(crate) fn warning_class_suppressed(classes: &[String]) -> bool {
         };
         match filter {
             None => true,
-            Some(wanted) => classes.iter().any(|class| wanted.iter().any(|want| want == class)),
+            Some(wanted) => classes
+                .iter()
+                .any(|class| wanted.iter().any(|want| want == class)),
         }
     })
 }
@@ -313,11 +350,12 @@ pub(crate) fn message_class_suppressed(classes: &[String]) -> bool {
         };
         match filter {
             None => true,
-            Some(wanted) => classes.iter().any(|class| wanted.iter().any(|want| want == class)),
+            Some(wanted) => classes
+                .iter()
+                .any(|class| wanted.iter().any(|want| want == class)),
         }
     })
 }
-
 
 pub(super) fn set_no_break_warning(val: bool) {
     with_error_state(|state| state.no_break_warning = val);
@@ -376,8 +414,6 @@ pub(crate) fn restore_collect_warnings(n: c_int) {
     set_collect_warnings(n);
 }
 
-
-
 pub(super) fn increment_collect_warnings() {
     with_error_state(|state| state.collect_warnings += 1);
 }
@@ -387,27 +423,30 @@ pub(super) fn nwarnings() -> c_int {
 }
 
 pub(crate) fn warnings_ptr() -> SEXP {
-    with_error_state(|state| state.warnings)
+    with_error_state(|state| state.warnings.as_raw())
 }
 
 pub(super) fn set_warnings_ptr(val: SEXP) {
-    with_error_state(|state| state.warnings = val);
+    let value = error_value(val);
+    with_error_state(|state| state.warnings = value);
 }
 
 pub(super) fn handler_stack() -> SEXP {
-    with_error_state(|state| state.handler_stack)
+    with_error_state(|state| state.handler_stack.as_raw())
 }
 
 pub(super) fn set_handler_stack(val: SEXP) {
-    with_error_state(|state| state.handler_stack = val);
+    let value = error_value(val);
+    with_error_state(|state| state.handler_stack = value);
 }
 
 pub(super) fn restart_stack() -> SEXP {
-    with_error_state(|state| state.restart_stack)
+    with_error_state(|state| state.restart_stack.as_raw())
 }
 
 pub(super) fn set_restart_stack(val: SEXP) {
-    with_error_state(|state| state.restart_stack = val);
+    let value = error_value(val);
+    with_error_state(|state| state.restart_stack = value);
 }
 
 /// Get the current error buffer contents as a string.
@@ -581,4 +620,73 @@ pub fn R_SetInterruptsPending(val: bool) {
 /// Matches C's `R_Expressions = R_Expressions_keep` in error cleanup.
 pub fn R_Expressions_keep() {
     R_SetExpressions(expressions_keep());
+}
+
+#[cfg(test)]
+mod owned_error_scope_tests {
+    use super::*;
+    use crate::sexp::{instance::RuntimeValue, session::RSession};
+
+    #[test]
+    fn owned_error_consumption_moves_root_before_clearing_slot() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let value = owner.node_factory().character("recorded call").unwrap();
+            let original = crate::sexp::memory::checked_projection(value.as_raw())
+                .unwrap()
+                .1;
+            record_error_call(value.as_raw(), true);
+            drop(value);
+            let (recorded, explicit, _) = take_recorded_error_call().unwrap();
+            assert!(explicit);
+            assert!(take_recorded_error_call().is_none());
+            owner.full_gc().unwrap();
+            assert!(original.is_live());
+            assert!(recorded.try_char_eq(b"recorded call").unwrap());
+            drop(recorded);
+            owner.full_gc().unwrap();
+            assert!(!original.is_live());
+        });
+    }
+
+    #[test]
+    fn owned_error_attribution_restores_original_runtime_after_revocation_and_drop() {
+        let mut original = RSession::new_for_gc_tests();
+        let weak = original.owner_token().unwrap().weak_owner().unwrap();
+        let pin = weak.pin().unwrap();
+        let factory = weak.node_factory().unwrap();
+        let previous = factory.character("previous call").unwrap();
+        let original_node = crate::sexp::memory::checked_projection(previous.as_raw())
+            .unwrap()
+            .1;
+        unsafe {
+            (*pin.as_ptr()).error_state.warning_call =
+                RuntimeValue::from_owned(previous.into_owned().unwrap());
+        }
+        let next = factory.character("override").unwrap();
+        let warning = warning_call_guard(next.as_raw());
+        let mathlib = super::super::mathlib_warning_call_guard(next.as_raw());
+        drop(next);
+        original.gc();
+        assert!(original_node.is_live(), "guard owns displaced call");
+        original.close();
+        drop(original);
+        let other = RSession::new_for_gc_tests();
+        let other_before = warning_call_override();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _warning = warning;
+            let _mathlib = mathlib;
+            panic!("unwind attribution");
+        }));
+        assert!(result.is_err());
+        assert_eq!(warning_call_override(), other_before);
+        let restored = unsafe { (*pin.as_ptr()).error_state.warning_call.owned().unwrap() };
+        assert!(restored.try_char_eq(b"previous call").unwrap());
+        assert!(unsafe { (*pin.as_ptr()).error_state.mathlib_warning_call.is_null() });
+        drop(pin);
+        assert_eq!(weak.allocation_strong_count(), 0);
+        assert!(restored.try_char_eq(b"previous call").unwrap());
+        drop(other);
+    }
 }

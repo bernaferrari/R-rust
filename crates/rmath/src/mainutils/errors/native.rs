@@ -40,7 +40,7 @@ struct HandlerStackScope {
 impl HandlerStackScope {
     fn capture(pin: OwnerPin) -> Self {
         let previous = unsafe {
-            ContextValue::from_raw_in(pin.as_ptr(), (*pin.as_ptr()).error_state.handler_stack)
+            (*pin.as_ptr()).error_state.handler_stack.clone()
         };
         Self {
             pin,
@@ -52,7 +52,7 @@ impl HandlerStackScope {
             // The original allocation stays physically pinned through cleanup,
             // including revocation and replacement of ambient dispatch.
             unsafe {
-                (*self.pin.as_ptr()).error_state.handler_stack = previous.as_raw();
+                (*self.pin.as_ptr()).error_state.handler_stack = previous;
             }
         }
     }

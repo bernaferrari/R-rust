@@ -384,18 +384,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_checked_root_snapshot((*instance).preserve_stack.checked_entries_snapshot());
         // Context and bytecode values own exact-generation automatic roots.
 
-        MARK_WHERE.with(|w| w.set("error_state"));
-        mark_reachable((*instance).error_state.warnings);
-        mark_reachable((*instance).error_state.handler_stack);
-        mark_reachable((*instance).error_state.global_calling_handlers);
-        mark_reachable((*instance).error_state.restart_stack);
-        mark_reachable((*instance).error_state.warning_call);
-        mark_reachable((*instance).error_state.signalled_condition);
-        mark_reachable((*instance).error_state.last_error_call);
-        mark_reachable((*instance).error_state.mathlib_warning_call);
-        for &call in &(*instance).error_state.mathlib_warning_call_stack {
-            mark_reachable(call);
-        }
+        // Error-state values own exact-generation automatic roots.
 
         MARK_WHERE.with(|w| w.set("eval_state"));
         mark_reachable((*instance).eval_state.printvector.na_string);
@@ -904,24 +893,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
 
         update_protect_stack_in(instance, old_to_new);
         update_preserve_stack_in(instance, old_to_new);
-
-        update_field(&mut (*instance).error_state.warnings, old_to_new);
-        update_field(&mut (*instance).error_state.handler_stack, old_to_new);
-        update_field(&mut (*instance).error_state.restart_stack, old_to_new);
-        update_field(
-            &mut (*instance).error_state.global_calling_handlers,
-            old_to_new,
-        );
-        update_field(&mut (*instance).error_state.warning_call, old_to_new);
-        update_field(&mut (*instance).error_state.signalled_condition, old_to_new);
-        update_field(&mut (*instance).error_state.last_error_call, old_to_new);
-        update_field(
-            &mut (*instance).error_state.mathlib_warning_call,
-            old_to_new,
-        );
-        for call in &mut (*instance).error_state.mathlib_warning_call_stack {
-            update_field(call, old_to_new);
-        }
 
         update_field(
             &mut (*instance).eval_state.printvector.na_string,
@@ -1880,18 +1851,17 @@ mod tests {
             (*instance).eval_state.bc_stack.set_depth(0);
             (*instance).context_stack.clear();
             (*instance).gc_state.remembered_set.clear();
-            (*instance).error_state.warnings = nil;
-            (*instance).error_state.handler_stack = nil;
-            (*instance).error_state.restart_stack = nil;
-            (*instance).error_state.global_calling_handlers = nil;
-            (*instance).error_state.signalled_condition = nil;
-            (*instance).error_state.warning_call = nil;
-            (*instance).error_state.last_error_call = std::ptr::null_mut();
+            (*instance).error_state.warnings = instance::RuntimeValue::empty();
+            (*instance).error_state.handler_stack = instance::RuntimeValue::empty();
+            (*instance).error_state.restart_stack = instance::RuntimeValue::empty();
+            (*instance).error_state.global_calling_handlers = instance::RuntimeValue::empty();
+            (*instance).error_state.signalled_condition = instance::RuntimeValue::empty();
+            (*instance).error_state.warning_call = instance::RuntimeValue::empty();
+            (*instance).error_state.last_error_call = instance::RuntimeValue::empty();
             (*instance).error_state.last_error_call_explicit = false;
             (*instance).error_state.last_error_nframe = 0;
             (*instance).error_state.try_catch_nframes.clear();
-            (*instance).error_state.mathlib_warning_call = nil;
-            (*instance).error_state.mathlib_warning_call_stack.clear();
+            (*instance).error_state.mathlib_warning_call = instance::RuntimeValue::empty();
             (*instance).eval_state.current_expr = instance::RuntimeValue::empty();
             (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
             (*instance).eval_state.exec_token = instance::RuntimeValue::empty();
@@ -3538,7 +3508,7 @@ mod tests {
         };
 
         instance::with_required_current_instance(|inst| unsafe {
-            (*inst).error_state.warning_call = roots[0];
+            (*inst).error_state.warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
             (*inst).objects_state.deferred_default_object = roots[1];
             unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
             #[cfg(not(target_arch = "wasm32"))]
@@ -3585,7 +3555,7 @@ mod tests {
         instance::with_required_current_instance(|inst| update_instance_roots_in(inst, &remap));
 
         instance::with_required_current_instance(|inst| unsafe {
-            assert_eq!((*inst).error_state.warning_call, replacements[0]);
+            assert_eq!((*inst).error_state.warning_call.as_raw(), roots[0], "owning error fields preserve original allocation identity");
             assert_eq!(
                 (*inst).objects_state.deferred_default_object,
                 replacements[1]

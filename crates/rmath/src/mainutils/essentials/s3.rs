@@ -1673,8 +1673,7 @@ pub unsafe fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SE
         // install the call as the warning attribution override for the
         // handler body; the guard restores the previous value even when a
         // base_error panic unwinds through.
-        let previous = crate::mainutils::errors::set_warning_call_override(call);
-        let _restore = RestoreWarningCall(previous);
+        let _restore = crate::mainutils::errors::warning_call_guard(call);
         let supplied = match_complex_formals(args);
 
         // Wrapper: `if (missing(modulus) && missing(argument))`.
@@ -1682,18 +1681,6 @@ pub unsafe fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SE
             return complex_from_real_imaginary(&supplied);
         }
         complex_from_polar(&supplied)
-    }
-}
-
-/// Drop guard restoring the warning-call attribution override on scope
-/// exit, including panic unwinds through `attribute_handler_errors`.
-struct RestoreWarningCall(SEXP);
-
-impl Drop for RestoreWarningCall {
-    fn drop(&mut self) {
-        unsafe {
-            crate::mainutils::errors::set_warning_call_override(self.0);
-        }
     }
 }
 

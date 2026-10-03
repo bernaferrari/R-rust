@@ -276,7 +276,7 @@ fn parse_failure(message: impl Into<String>) -> ! {
             colno,
         );
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-            (*inst).error_state.signalled_condition = cond;
+            (*inst).error_state.signalled_condition = crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
     }
     std::panic::panic_any(RError { message });
