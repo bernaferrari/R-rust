@@ -20,7 +20,7 @@ use std::os::raw::c_int;
 
 use crate::fprec::{fprec, fround};
 use crate::sexp::accessors::{
-    CADR, CAR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
+    CADR, CAR, COMPLEX, INTEGER, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::Rcomplex;
@@ -92,72 +92,64 @@ pub fn R_FINITE(x: f64) -> bool {
 /// Safe integer addition with overflow detection.
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
-/// If `pnaflag` is non-null, sets it to true on overflow.
-pub unsafe fn R_integer_plus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
-    unsafe {
-        if x == NA_INTEGER || y == NA_INTEGER {
-            return NA_INTEGER;
-        }
-
-        let x64 = x as i64;
-        let y64 = y as i64;
-        let result = x64 + y64;
-
-        if result > c_int::MAX as i64 || result < c_int::MIN as i64 {
-            if !pnaflag.is_null() {
-                *pnaflag = true;
-            }
-            return NA_INTEGER;
-        }
-        result as c_int
+/// Sets `pnaflag` to true on overflow and otherwise leaves it unchanged.
+#[forbid(unsafe_code)]
+pub fn R_integer_plus(x: c_int, y: c_int, pnaflag: &mut bool) -> c_int {
+    if x == NA_INTEGER || y == NA_INTEGER {
+        return NA_INTEGER;
     }
+
+    let x64 = x as i64;
+    let y64 = y as i64;
+    let result = x64 + y64;
+
+    if result > c_int::MAX as i64 || result < c_int::MIN as i64 {
+        *pnaflag = true;
+        return NA_INTEGER;
+    }
+    result as c_int
 }
 
 /// Safe integer subtraction with overflow detection.
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
-pub unsafe fn R_integer_minus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
-    unsafe {
-        if x == NA_INTEGER || y == NA_INTEGER {
-            return NA_INTEGER;
-        }
-
-        // Match C's overflow checks using i64 to avoid wrapping
-        let x64 = x as i64;
-        let y64 = y as i64;
-        if (y64 < 0 && x64 > (c_int::MAX as i64 + y64))
-            || (y64 > 0 && x64 < (c_int::MIN as i64 + y64))
-        {
-            if !pnaflag.is_null() {
-                *pnaflag = true;
-            }
-            return NA_INTEGER;
-        }
-        x - y
+/// Sets `pnaflag` to true on overflow and otherwise leaves it unchanged.
+#[forbid(unsafe_code)]
+pub fn R_integer_minus(x: c_int, y: c_int, pnaflag: &mut bool) -> c_int {
+    if x == NA_INTEGER || y == NA_INTEGER {
+        return NA_INTEGER;
     }
+
+    // Match C's overflow checks using i64 to avoid wrapping
+    let x64 = x as i64;
+    let y64 = y as i64;
+    if (y64 < 0 && x64 > (c_int::MAX as i64 + y64)) || (y64 > 0 && x64 < (c_int::MIN as i64 + y64))
+    {
+        *pnaflag = true;
+        return NA_INTEGER;
+    }
+    x - y
 }
 
 /// Safe integer multiplication with overflow detection.
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
-pub unsafe fn R_integer_times(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
-    unsafe {
-        if x == NA_INTEGER || y == NA_INTEGER {
-            return NA_INTEGER;
-        }
+/// Sets `pnaflag` to true on overflow and otherwise leaves it unchanged.
+#[forbid(unsafe_code)]
+pub fn R_integer_times(x: c_int, y: c_int, pnaflag: &mut bool) -> c_int {
+    if x == NA_INTEGER || y == NA_INTEGER {
+        return NA_INTEGER;
+    }
 
-        // Compute wrapping product (matches C behavior)
-        let z = x.wrapping_mul(y);
-        // Check if double product matches (GOODIPROD pattern from C)
-        let z_double = (x as f64) * (y as f64);
-        if z_double == z as f64 && z != NA_INTEGER {
-            z
-        } else {
-            if !pnaflag.is_null() {
-                *pnaflag = true;
-            }
-            NA_INTEGER
-        }
+    // Compute wrapping product (matches C behavior)
+    let z = x.wrapping_mul(y);
+    // Check if double product matches (GOODIPROD pattern from C)
+    let z_double = (x as f64) * (y as f64);
+    if z_double == z as f64 && z != NA_INTEGER {
+        z
+    } else {
+        *pnaflag = true;
+        NA_INTEGER
     }
 }
 
@@ -352,12 +344,6 @@ unsafe fn is_integer_or_logical(x: SEXP) -> bool {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
     }
-}
-
-/// Helper: check if SEXP is a scalar of given type.
-#[inline]
-unsafe fn is_scalar(x: SEXP, sexptype: c_int) -> bool {
-    unsafe { TYPEOF(x) == sexptype && LENGTH(x) == 1 }
 }
 
 /// Helper: NO_REFERENCES check (NAMED == 0).
@@ -690,6 +676,7 @@ const OP_INTDIV: c_int = 7;
 
 /// Integer binary operation with checked inputs and a rooted result of the
 /// operation's actual kind (real for division and exponentiation).
+#[forbid(unsafe_code)]
 fn integer_binary_arith<'s>(
     factory: &SessionNodeFactory<'s>,
     code: c_int,
@@ -729,9 +716,9 @@ fn integer_binary_arith<'s>(
             result.try_set_real_elt(index, value)?;
         } else {
             let value = match code {
-                OP_PLUS => unsafe { R_integer_plus(x1, x2, &mut naflag) },
-                OP_MINUS => unsafe { R_integer_minus(x1, x2, &mut naflag) },
-                OP_TIMES => unsafe { R_integer_times(x1, x2, &mut naflag) },
+                OP_PLUS => R_integer_plus(x1, x2, &mut naflag),
+                OP_MINUS => R_integer_minus(x1, x2, &mut naflag),
+                OP_TIMES => R_integer_times(x1, x2, &mut naflag),
                 OP_MOD => {
                     if x1 == NA_INTEGER || x2 == NA_INTEGER || x2 == 0 {
                         NA_INTEGER
@@ -1126,70 +1113,6 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if argc == 2 {
             let arg2 = CADR(args);
 
-            // Handle scalar fast paths
-            if is_scalar(arg1, SEXPTYPE::REALSXP.as_c_int())
-                && is_scalar(arg2, SEXPTYPE::REALSXP.as_c_int())
-            {
-                let x1 = *REAL(arg1);
-                let x2 = *REAL(arg2);
-                let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-                let _ans_guard = protect(ans);
-                let val = match code {
-                    OP_PLUS => x1 + x2,
-                    OP_MINUS => x1 - x2,
-                    OP_TIMES => x1 * x2,
-                    OP_DIV => x1 / x2,
-                    OP_POW => R_pow(x1, x2),
-                    OP_MOD => myfmod(x1, x2),
-                    OP_INTDIV => myfloor(x1, x2),
-                    _ => f64::NAN,
-                };
-                *REAL(ans) = val;
-                return ans;
-            }
-
-            if is_scalar(arg1, SEXPTYPE::INTSXP.as_c_int())
-                && is_scalar(arg2, SEXPTYPE::INTSXP.as_c_int())
-            {
-                let i1 = *INTEGER(arg1);
-                let i2 = *INTEGER(arg2);
-                match code {
-                    OP_PLUS => {
-                        let mut naflag = false;
-                        let result = R_integer_plus(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _ans_guard = protect(ans);
-                        *INTEGER(ans) = result;
-                        return ans;
-                    }
-                    OP_MINUS => {
-                        let mut naflag = false;
-                        let result = R_integer_minus(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _ans_guard = protect(ans);
-                        *INTEGER(ans) = result;
-                        return ans;
-                    }
-                    OP_TIMES => {
-                        let mut naflag = false;
-                        let result = R_integer_times(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _ans_guard = protect(ans);
-                        *INTEGER(ans) = result;
-                        return ans;
-                    }
-                    OP_DIV => {
-                        let result = R_integer_divide(i1, i2);
-                        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-                        let _ans_guard = protect(ans);
-                        *REAL(ans) = result;
-                        return ans;
-                    }
-                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for arithmetic result
-                }
-            }
-
-            // General binary dispatch
             // Retain both originals before either provider can detach them,
             // and both conversions through the second provider and kernel.
             let owner = crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
@@ -1202,6 +1125,44 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let original_arg2 = factory.wrap(arg2).unwrap_or_else(|error| {
                 crate::sexp::context::r_error(format!("arithmetic argument: {error}"))
             });
+
+            // Real scalars copy both values before allocating the rooted
+            // output. Lazy providers remain lazy and no payload loan escapes.
+            if original_arg1.typeof_() == SEXPTYPE::REALSXP
+                && original_arg1.len() == 1
+                && original_arg2.typeof_() == SEXPTYPE::REALSXP
+                && original_arg2.len() == 1
+            {
+                let x1 = original_arg1.try_real_elt(0).unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(format!("real arithmetic input: {error}"))
+                });
+                let x2 = original_arg2.try_real_elt(0).unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(format!("real arithmetic input: {error}"))
+                });
+                let value = match code {
+                    OP_PLUS => x1 + x2,
+                    OP_MINUS => x1 - x2,
+                    OP_TIMES => x1 * x2,
+                    OP_DIV => x1 / x2,
+                    OP_POW => R_pow(x1, x2),
+                    OP_MOD => myfmod(x1, x2),
+                    OP_INTDIV => myfloor(x1, x2),
+                    _ => f64::NAN,
+                };
+                let result = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, 1)))
+                    .and_then(|result| {
+                        let mut result = SexpMut::try_from_checked(result)?;
+                        result.try_set_real_elt(0, value)?;
+                        Ok(result.freeze())
+                    })
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(format!("real arithmetic result: {error}"))
+                    });
+                return result.as_raw();
+            }
+
+            // Integer scalars use the same checked kernel as longer vectors.
             let arg1_owner =
                 coerce_logical_to_int(&factory, original_arg1).unwrap_or_else(|error| {
                     crate::sexp::context::r_error(format!("logical coercion: {error}"))
@@ -1345,6 +1306,198 @@ mod tests {
             .register_altrep_class("logical-coercion", LogicalCoercionProvider { mode, reads })
             .unwrap();
         AltrepBuilder::new(class).build().unwrap()
+    }
+
+    #[test]
+    fn owned_scalar_altrep_arithmetic_retains_detached_operands() {
+        struct ScalarProvider {
+            kind: SEXPTYPE,
+            integer: i32,
+            real: f64,
+            detach: Rc<Cell<SEXP>>,
+            nil: SEXP,
+            reads: Rc<Cell<usize>>,
+        }
+        impl AltrepClass for ScalarProvider {
+            fn vector_type(&self) -> SEXPTYPE {
+                self.kind
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(1)
+            }
+            fn element<'s>(
+                &self,
+                context: &AltrepContext<'s>,
+                index: i64,
+            ) -> SexpResult<AltrepElement<'s>> {
+                assert_eq!(index, 0);
+                self.reads.set(self.reads.get() + 1);
+                let head = self.detach.replace(std::ptr::null_mut());
+                if !head.is_null() {
+                    unsafe { crate::sexp::accessors::SETCDR(head, self.nil) };
+                }
+                context.gc()?;
+                Ok(if self.kind == SEXPTYPE::INTSXP {
+                    AltrepElement::Integer(self.integer)
+                } else {
+                    AltrepElement::Real(self.real)
+                })
+            }
+        }
+        for kind in [SEXPTYPE::INTSXP, SEXPTYPE::REALSXP] {
+            let session = RSession::new_for_gc_tests();
+            let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+            let detach = Rc::new(Cell::new(std::ptr::null_mut()));
+            let left_reads = Rc::new(Cell::new(0));
+            let right_reads = Rc::new(Cell::new(0));
+            let left_class = session
+                .register_altrep_class(
+                    "scalar-left",
+                    ScalarProvider {
+                        kind,
+                        integer: 7,
+                        real: 2.5,
+                        detach: detach.clone(),
+                        nil: factory.nil().as_raw(),
+                        reads: left_reads.clone(),
+                    },
+                )
+                .unwrap();
+            let right_class = session
+                .register_altrep_class(
+                    "scalar-right",
+                    ScalarProvider {
+                        kind,
+                        integer: 5,
+                        real: 4.25,
+                        detach: Rc::new(Cell::new(std::ptr::null_mut())),
+                        nil: factory.nil().as_raw(),
+                        reads: right_reads.clone(),
+                    },
+                )
+                .unwrap();
+            let left = AltrepBuilder::new(left_class).build().unwrap();
+            let original_class = altrep::altrep_class(&left).unwrap();
+            let right = AltrepBuilder::new(right_class).build().unwrap();
+            let mut arguments = PairlistBuilder::from_factory(factory.clone());
+            arguments.push(left.clone(), None).unwrap();
+            // Move away the right operand's only independent root. Initially
+            // the argument chain alone retains it for this actual handler call.
+            arguments.push(right, None).unwrap();
+            let arguments = arguments.finish().unwrap();
+            let operation = factory
+                .wrap(unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) })
+                .unwrap();
+            let collections = Rc::new(Cell::new(0));
+            let observed = collections.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1);
+                crate::sexp::gengc::full_gc();
+            }));
+            let before = crate::sexp::protect::R_ProtectCount();
+            detach.set(arguments.as_raw());
+            let result = factory
+                .wrap(unsafe {
+                    do_arith(
+                        factory.nil().as_raw(),
+                        operation.as_raw(),
+                        arguments.as_raw(),
+                        factory.nil().as_raw(),
+                    )
+                })
+                .unwrap();
+            assert!(arguments.try_cdr().unwrap().is_nil());
+            assert_eq!(left_reads.get(), 1);
+            assert_eq!(right_reads.get(), 1);
+            assert!(collections.get() >= 2);
+            drop(arguments);
+            crate::sexp::gengc::full_gc();
+            assert_eq!(result.typeof_(), kind);
+            if kind == SEXPTYPE::INTSXP {
+                assert_eq!(result.try_integer_elt(0).unwrap(), 12);
+            } else {
+                assert_eq!(result.try_real_elt(0).unwrap(), 6.75);
+            }
+            assert_eq!(left.typeof_(), kind);
+            assert!(altrep::is_altrep(&left));
+            assert!(!altrep::is_materialized(&left));
+            assert_eq!(altrep::altrep_class(&left).unwrap(), original_class);
+            assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+        }
+    }
+
+    #[test]
+    fn owned_scalar_arithmetic_preserves_na_power_cases_during_result_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let power = factory
+            .wrap(unsafe { crate::mainutils::names::R_Primitive(c"^".as_ptr()) })
+            .unwrap();
+        let collections = Rc::new(Cell::new(0));
+        let observed = collections.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }));
+        for kind in [SEXPTYPE::INTSXP, SEXPTYPE::REALSXP] {
+            let scalar = |value: f64| {
+                let value_node = factory
+                    .allocate(|arena| Some(arena.alloc_vector(kind, 1)))
+                    .unwrap();
+                let mut value_node = SexpMut::try_from_checked(value_node).unwrap();
+                if kind == SEXPTYPE::INTSXP {
+                    let integer = if crate::sexp::ffi::is_na_real(value) {
+                        NA_INTEGER
+                    } else {
+                        value as i32
+                    };
+                    value_node.try_set_integer_elt(0, integer).unwrap();
+                } else {
+                    value_node.try_set_real_elt(0, value).unwrap();
+                }
+                value_node.freeze()
+            };
+            for (left, right, expected) in [
+                (1.0, NA_REAL, 1.0),
+                (NA_REAL, 0.0, 1.0),
+                (NA_REAL, 2.0, NA_REAL),
+            ] {
+                let mut arguments = PairlistBuilder::from_factory(factory.clone());
+                arguments.push(scalar(left), None).unwrap();
+                arguments.push(scalar(right), None).unwrap();
+                let arguments = arguments.finish().unwrap();
+                let before = crate::sexp::protect::R_ProtectCount();
+                let collections_before = collections.get();
+                session.with_active_in(|instance| unsafe {
+                    (*instance).memory_state.gc_force_gap = 1;
+                    (*instance).memory_state.gc_force_wait = 1;
+                });
+                let result = factory
+                    .wrap(unsafe {
+                        do_arith(
+                            factory.nil().as_raw(),
+                            power.as_raw(),
+                            arguments.as_raw(),
+                            factory.nil().as_raw(),
+                        )
+                    })
+                    .unwrap();
+                session.with_active_in(|instance| unsafe {
+                    (*instance).memory_state.gc_force_gap = 0;
+                });
+                assert!(collections.get() > collections_before);
+                drop(arguments);
+                crate::sexp::gengc::full_gc();
+                assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
+                let actual = result.try_real_elt(0).unwrap();
+                if crate::sexp::ffi::is_na_real(expected) {
+                    assert!(crate::sexp::ffi::is_na_real(actual));
+                } else {
+                    assert_eq!(actual, expected);
+                }
+                assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
+            }
+        }
     }
 
     #[test]
@@ -1717,59 +1870,41 @@ mod tests {
     #[test]
     fn test_R_integer_plus() {
         let mut naflag = false;
-        assert_eq!(unsafe { R_integer_plus(3, 4, &mut naflag) }, 7);
+        assert_eq!(R_integer_plus(3, 4, &mut naflag), 7);
         assert!(!naflag);
 
         // NA propagation
-        assert_eq!(
-            unsafe { R_integer_plus(NA_INTEGER, 4, &mut naflag) },
-            NA_INTEGER
-        );
-        assert_eq!(
-            unsafe { R_integer_plus(3, NA_INTEGER, &mut naflag) },
-            NA_INTEGER
-        );
+        assert_eq!(R_integer_plus(NA_INTEGER, 4, &mut naflag), NA_INTEGER);
+        assert_eq!(R_integer_plus(3, NA_INTEGER, &mut naflag), NA_INTEGER);
 
         // Overflow
-        assert_eq!(
-            unsafe { R_integer_plus(c_int::MAX, 1, &mut naflag) },
-            NA_INTEGER
-        );
+        assert_eq!(R_integer_plus(c_int::MAX, 1, &mut naflag), NA_INTEGER);
         assert!(naflag);
     }
 
     #[test]
     fn test_R_integer_minus() {
         let mut naflag = false;
-        assert_eq!(unsafe { R_integer_minus(10, 3, &mut naflag) }, 7);
+        assert_eq!(R_integer_minus(10, 3, &mut naflag), 7);
         assert!(!naflag);
 
         // Overflow: (MIN+2) - 3 = MIN-1, which overflows
-        assert_eq!(
-            unsafe { R_integer_minus(c_int::MIN + 2, 3, &mut naflag) },
-            NA_INTEGER
-        );
+        assert_eq!(R_integer_minus(c_int::MIN + 2, 3, &mut naflag), NA_INTEGER);
         assert!(naflag);
     }
 
     #[test]
     fn test_R_integer_times() {
         let mut naflag = false;
-        assert_eq!(unsafe { R_integer_times(6, 7, &mut naflag) }, 42);
+        assert_eq!(R_integer_times(6, 7, &mut naflag), 42);
         assert!(!naflag);
 
         // NA propagation
-        assert_eq!(
-            unsafe { R_integer_times(NA_INTEGER, 7, &mut naflag) },
-            NA_INTEGER
-        );
+        assert_eq!(R_integer_times(NA_INTEGER, 7, &mut naflag), NA_INTEGER);
 
         // Overflow
         naflag = false;
-        assert_eq!(
-            unsafe { R_integer_times(c_int::MAX, 2, &mut naflag) },
-            NA_INTEGER
-        );
+        assert_eq!(R_integer_times(c_int::MAX, 2, &mut naflag), NA_INTEGER);
         assert!(naflag);
     }
 

@@ -118,11 +118,16 @@ jobs:
               owned_matcher_
           - subject: conditions
             filter: bounded_condition_text_survives_each_allocation_and_reentrant_gc
-          - subject: logical ALTREP arithmetic
+          - subject: ALTREP arithmetic
             filter: >-
               owned_logical_coercion
               materialized_altrep_retype_preserves_original_kind_body_and_cache
               owned_integer_vector
+              owned_scalar_altrep_arithmetic
+              owned_scalar_arithmetic_preserves_na_power_cases_during_result_gc
+              test_R_integer_plus
+              test_R_integer_minus
+              test_R_integer_times
           - subject: option defaults
             filter: options_initialization_retains_defaults_through_reentrant_gc
           - subject: option retry

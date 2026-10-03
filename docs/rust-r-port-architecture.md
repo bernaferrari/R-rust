@@ -110,6 +110,11 @@ integer result and retains both arguments through provider and GC callbacks.
 The integer binary arithmetic kernel uses checked element reads and owning
 typed result writes, including real results for division and powers. No raw
 input or output buffer loan spans its provider reads.
+Binary arithmetic retains both original operands before scalar or vector
+provider access. Integer scalars use the same owning kernel; real scalar
+arithmetic copies checked elements and writes an owning typed result.
+Overflow flags use borrowed Rust booleans. The integer kernel and its
+overflow helpers forbid unsafe code at compile time.
 Complete payload publication still needs the stronger typed
 capabilities tracked separately; detached header drafts retain both a kind
 and a body until the representation itself derives one from the other.
