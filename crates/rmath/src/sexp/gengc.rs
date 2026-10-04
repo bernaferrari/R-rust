@@ -1119,23 +1119,19 @@ fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
             return;
         }
         (*instance).memory_state.gc_force_wait = (*instance).memory_state.gc_force_gap;
-        // Environment force-protects ride the LEGACY stack (push N / pop N
-        // around the cycle); the root table is untouched here.
-        let start = (*instance).legacy_protect.len();
-        push_environment_binding_protects(instance);
-        let added = (*instance).legacy_protect.len().saturating_sub(start);
+        let owner = super::owner::OwnerToken::from_raw(instance);
+        let pin = owner
+            .pin()
+            .and_then(|pin| pin.ok_or(super::object::SexpError::RootUnavailable))
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
+        let _bindings = owned_environment_binding_values(owner)
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
         (*instance).gc_state.gc_pending = false;
-        (*instance).memory_state.in_gc = 1;
-        (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
-        let liveness = instance::instance_liveness(instance);
+        let _collection = crate::mainutils::memory_main::GcOperationGuard::enter(pin, true)
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
         run_gc_cycle_in(instance, do_torture_mark_sweep_in);
-        if liveness.is_live() {
-            (*instance).memory_state.in_gc = 0;
-            super::protect::unprotect_count_in(instance, added);
-        }
     }
 }
-
 fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
     unsafe { (*instance).gc_state.gc_pending || (*instance).arena.growth_warrants_gc() }
 }
@@ -1172,48 +1168,45 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
     }
 }
 
-fn push_environment_binding_protects(instance: *mut instance::RInstance) {
-    unsafe {
-        let values = collect_environment_binding_values(instance);
-        for value in values {
-            push_protect_in(instance, value);
-        }
-    }
+/// Claim exact owning leases for the original environment binding values.
+/// Root claims and header snapshots cannot invoke callbacks; only the completed
+/// owning graph crosses collection, teardown or callback unwind.
+fn owned_environment_binding_values(
+    owner: super::owner::OwnerToken<'_>,
+) -> super::object::SexpResult<Vec<super::object::Sexp<'static>>> {
+    owner.require_active()?;
+    collect_environment_binding_values(owner.as_ptr())
+        .into_iter()
+        .map(|value| owner.sexp(value)?.into_owned())
+        .collect()
 }
 
-/// Run an explicit user-requested collection (`gc()` / `gcinfo`-style entry
-/// points) with the same environment force-protect preamble the eval safe
-/// points use.
-///
-/// `gc()` can fire mid-evaluation — inside a loop body or a closure call —
-/// unlike safe points, which only run between statements. Without the
-/// preamble, a full collection there sweeps in-flight frame bindings (loop
-/// variables, closure-call environments), surfacing later as
-/// `object 'i' not found`.
+fn gc_entry_failure(failure: super::object::SexpError) -> ! {
+    std::panic::panic_any(super::context::RError {
+        message: failure.to_string(),
+    });
+}
+
+/// Run an explicit collection with actual owning environment binding snapshots.
+/// The leases release exactly these values on unwind or revocation; caller and
+/// callback protection entries are unaffected.
 pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
     instance::with_required_current_instance(|instance| unsafe {
-        // Raw place accesses throughout: the collection below reenters the
-        // protect stack and instance bookkeeping, so no borrow may be held
-        // across it.
-        // Environment force-protects ride the LEGACY stack (push N / pop N
-        // around the cycle); the root table is untouched here.
-        let start = (*instance).legacy_protect.len();
-        push_environment_binding_protects(instance);
-        let added = (*instance).legacy_protect.len().saturating_sub(start);
+        let owner = super::owner::OwnerToken::from_raw(instance);
+        let _pin = owner
+            .pin()
+            .and_then(|pin| pin.ok_or(super::object::SexpError::RootUnavailable))
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
+        let _bindings = owned_environment_binding_values(owner)
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
         (*instance).gc_state.gc_pending = false;
-        let liveness = instance::instance_liveness(instance);
-        let result = if full {
+        if full {
             full_gc_in(instance)
         } else {
             minor_gc_in(instance)
-        };
-        if liveness.is_live() {
-            super::protect::unprotect_count_in(instance, added);
         }
-        result
     })
 }
-
 /// Every N-th evaluation-safe-point collection also runs a full collection
 /// (via the same environment force-protect preamble) so old-generation
 /// garbage is reclaimed without waiting for an explicit `gc()`.
@@ -1224,42 +1217,34 @@ const SAFE_POINT_FULL_COLLECTION_INTERVAL: u64 = 64;
 /// Call this after loop iterations and brace-block statements complete, when
 /// no SEXP values from the just-finished evaluation remain only on Rust stack.
 pub fn maybe_collect_at_eval_safe_point() {
-    let collected = instance::with_required_current_instance(|instance| unsafe {
-        // Raw place accesses throughout: the collection below reenters the
-        // protect stack and instance bookkeeping, so no borrow may be held
-        // across it.
+    instance::with_required_current_instance(|instance| unsafe {
         if !eval_safe_point_gc_due_in(instance) {
-            return false;
+            return;
         }
-        // Environment force-protects ride the LEGACY stack (push N / pop N
-        // around the cycle); the root table is untouched here.
-        let start = (*instance).legacy_protect.len();
-        push_environment_binding_protects(instance);
-        let added = (*instance).legacy_protect.len().saturating_sub(start);
+        let owner = super::owner::OwnerToken::from_raw(instance);
+        let _pin = owner
+            .pin()
+            .and_then(|pin| pin.ok_or(super::object::SexpError::RootUnavailable))
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
+        let bindings = owned_environment_binding_values(owner)
+            .unwrap_or_else(|failure| gc_entry_failure(failure));
         (*instance).gc_state.gc_pending = false;
-        // Safe points normally collect the young generation only; without a
-        // periodic full pass, old-generation garbage from promoted-then-dead
-        // objects would accumulate unbounded between explicit gc() calls.
+        // Full passes bound old-generation garbage between explicit gc() calls.
         (*instance).gc_state.safe_point_collections =
             (*instance).gc_state.safe_point_collections.wrapping_add(1);
-        let liveness = instance::instance_liveness(instance);
         if (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
             full_gc_in(instance);
         } else {
             minor_gc_in(instance);
         }
-        if liveness.is_live() {
-            super::protect::unprotect_count_in(instance, added);
-            true
-        } else {
-            false
+        drop(bindings);
+        // A revoked owner stops this safe-point notification. A different active
+        // runtime must never receive the original owner's pending finalizers.
+        if owner.require_active().is_ok() {
+            run_pending_finalizers_after_collection();
         }
     });
-    if collected {
-        run_pending_finalizers_after_collection();
-    }
 }
-
 /// Run finalizers whose keys died in the collection that just completed.
 ///
 /// Sweeps only mark weak references ready
@@ -1677,6 +1662,152 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    fn preamble_unwind_detaches_incidental_roots(safe_point: bool) {
+        use std::{cell::RefCell, rc::Rc};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let pin = owner.weak_owner().unwrap().pin().unwrap();
+        let instance = pin.as_ptr();
+        let allocate = || {
+            owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap()
+        };
+        let binding = allocate();
+        let binding_node = binding.allocation().unwrap().clone();
+        let callback_binding_node = binding_node.clone();
+        assert!(session.define_var("owned_gc_preamble_binding", binding));
+        let caller_value = allocate();
+        unsafe { super::super::protect::protect_raw_pointer(caller_value.as_raw()) };
+        drop(caller_value);
+        let expected = Rc::new(RefCell::new(unsafe {
+            (*instance).legacy_protect.checked_entries_snapshot()
+        }));
+        let callback_value = Rc::new(RefCell::new(Some(allocate().into_owned().unwrap())));
+        let callback_expected = expected.clone();
+        register_gc_callback(Box::new(move |_| {
+            // The global binding and the caller protection are sole roots here;
+            // this checked node is an observer, not another owning handle.
+            assert!(callback_binding_node.is_live());
+            unsafe {
+                super::super::accessors::SET_FRAME(
+                    (*instance).global_env,
+                    super::super::globals::R_NilValue(),
+                );
+                super::super::owner::OwnerToken::from_raw(instance)
+                    .full_gc()
+                    .unwrap();
+            }
+            // The detached binding now survives only in the original preamble's
+            // actual owning snapshot, not in an environment or fixture handle.
+            assert!(callback_binding_node.is_live());
+            let value = callback_value.borrow_mut().take().unwrap();
+            unsafe { super::super::protect::protect_raw_pointer(value.as_raw()) };
+            drop(value);
+            let entries = unsafe { (*instance).legacy_protect.checked_entries_snapshot() };
+            // The preamble must add no manual roots that could accidentally be
+            // confused with this callback's independently retained protection.
+            assert_eq!(
+                &entries[..entries.len() - 1],
+                callback_expected.borrow().as_slice()
+            );
+            *callback_expected.borrow_mut() = entries;
+            std::panic::panic_any(91_u32);
+        }));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if safe_point {
+                unsafe { (*instance).gc_state.gc_pending = true };
+                maybe_collect_at_eval_safe_point();
+            } else {
+                collect_with_environment_protects(true);
+            }
+        }));
+        assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 91);
+        assert_eq!(
+            unsafe { (*instance).legacy_protect.checked_entries_snapshot() },
+            *expected.borrow()
+        );
+        unsafe { (*instance).gc_state.callbacks.clear() };
+        owner.full_gc().unwrap();
+        assert!(
+            !binding_node.is_live(),
+            "preamble retained its binding after unwind"
+        );
+        assert_eq!(
+            unsafe { (*instance).legacy_protect.checked_entries_snapshot() },
+            *expected.borrow()
+        );
+        unsafe { super::super::protect::unprotect_count_in(instance, 2) };
+    }
+
+    #[test]
+    fn owned_gc_preamble_unwind_restores_original_protection_depth() {
+        preamble_unwind_detaches_incidental_roots(false);
+    }
+
+    #[test]
+    fn owned_gc_safe_point_unwind_retains_and_releases_detached_binding() {
+        preamble_unwind_detaches_incidental_roots(true);
+    }
+
+    #[test]
+    fn owned_gc_safe_point_revocation_stops_original_finalizer_continuation() {
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+        };
+        let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+        let original = facade
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap();
+        let pin = original.pin().unwrap();
+        let instance = pin.as_ptr();
+        let binding = original
+            .node_factory()
+            .unwrap()
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let binding_node = binding.allocation().unwrap().clone();
+        assert!(
+            facade
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .define_var("owned_safe_point_binding", binding)
+        );
+        let callback_facade = Rc::downgrade(&facade);
+        let calls = Rc::new(Cell::new(0));
+        let callback_calls = calls.clone();
+        register_gc_callback(Box::new(move |_| unsafe {
+            callback_calls.set(callback_calls.get() + 1);
+            super::super::accessors::SET_FRAME(
+                (*instance).global_env,
+                super::super::globals::R_NilValue(),
+            );
+            super::super::owner::OwnerToken::from_raw(instance)
+                .full_gc()
+                .unwrap();
+            assert!(binding_node.is_live());
+            assert_eq!((*instance).legacy_protect.len(), 0);
+            drop(callback_facade.upgrade().unwrap().borrow_mut().take());
+        }));
+        unsafe { (*instance).gc_state.gc_pending = true };
+        // Actual minor collection must stop before consulting a dead ambient
+        // owner for finalizers or cleanup.
+        maybe_collect_at_eval_safe_point();
+        assert_eq!(calls.get(), 1);
+        assert!(facade.borrow().is_none());
+        assert!(pin.require_live().is_err());
+        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { (*instance).legacy_protect.len() }, 0);
+    }
 
     #[test]
     fn collected_node_resources_reenter_only_after_collection_and_arena_lends_end() {

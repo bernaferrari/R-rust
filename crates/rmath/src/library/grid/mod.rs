@@ -22,12 +22,12 @@ unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
     unsafe { grid::L_pretty2(scale, n) }
 }
 
-pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "pretty2" => Some(unsafe {
-            std::mem::transmute(c_pretty2 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }),
+        "pretty2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_pretty2),
+        )),
         _ => None,
     }
 }

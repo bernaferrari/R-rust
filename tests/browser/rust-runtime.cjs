@@ -26,14 +26,21 @@ const server = http.createServer(async (req, res) => {
     await page.waitForSelector('#console-command');
     assert.match(await page.locator('.runtime').innerText(), /Rport Rust runtime/);
     const request = (operation, code) => page.evaluate(({operation,code}) => rportRust.request(operation,code), {operation,code});
-    assert.equal(await request('eval','x <- 41; x + 1'), '[1] 42');
+    assert.equal(await request('eval','x <- 41; x + 1'), '[1] 42\n');
+    for (const [code, expected] of [
+      ["cat('recovered')", 'recovered'],
+      ["cat(' a  \\n\\n')", ' a  \n\n'],
+      ["cat('prefix'); 7L", 'prefix[1] 7\n'],
+      ["print.zz <- function(x, ...) cat('custom  '); structure(1, class='zz')", 'custom  '],
+      ["print.zz <- function(x, ...) cat('custom\\n\\n'); structure(1, class='zz')", 'custom\n\n'],
+    ]) assert.equal(await request('eval', code), expected, code);
     assert.equal(await request('string',"paste('a','b',sep='|')"),'a|b');
     await assert.rejects(request('eval',"stop('expected-error')"), /expected-error/);
-    assert.equal(await request('eval','x'), '[1] 41', 'R errors preserve the session');
-    assert.equal(await request('eval',"f <- function() { on.exit(cat('exit')); return(7L) }; f()"), 'exit\n[1] 7');
+    assert.equal(await request('eval','x'), '[1] 41\n', 'R errors preserve the session');
+    assert.equal(await request('eval',"f <- function() { on.exit(cat('exit')); return(7L) }; f()"), 'exit[1] 7\n');
     await request('eval','i <- 0L; repeat { i <- i + 1L; if (i < 3) next; break }; stopifnot(i == 3)');
     assert.match(await request('plot',"plot(x=1:3,y=3:1,col='red')"), /data:image\/png;base64,/);
-    assert.equal(await request('eval', "xx<-seq(0,1,length.out=15); yy<-sin(5*xx)+xx^2; ff<-loess(yy~xx); round(ff$fitted[1],8)"), '[1] -0.02619684');
+    assert.equal(await request('eval', "xx<-seq(0,1,length.out=15); yy<-sin(5*xx)+xx^2; ff<-loess(yy~xx); round(ff$fitted[1],8)"), '[1] -0.02619684\n');
     const smooth=await request('plot', "plot(xx,yy,main='LOESS μ'); lines(xx,predict(ff),col='red',lwd=3)");
     assert.match(smooth,/data:image\/png;base64,/);
     if (process.env.RPORT_PLOT_ARTIFACT) await fs.writeFile(process.env.RPORT_PLOT_ARTIFACT,Buffer.from(smooth.match(/data:image\/png;base64,([^"]+)/)[1],'base64'));
@@ -54,7 +61,7 @@ const server = http.createServer(async (req, res) => {
       "plot(0:1,0:1,type='n'); rasterImage(matrix(c('red','blue','green','white'),2),0,0,1,1,interpolate=FALSE)",
       "plot(1:3,3:1,pch=21,bg='gold'); savedPlot<-serialize(recordPlot(),NULL); replayPlot(unserialize(savedPlot))",
     ]) assert.match(await request('plot',code), /data:image\/png;base64,/);
-    assert.equal(await request('eval', "nx<-seq(0,1,length.out=30); ny<-sin(nx); ny[c(4,17)]<-NA; nf<-loess(ny~nx,na.action=na.exclude); np<-predict(nf); paste(length(np),paste(which(is.na(np)),collapse=','),any(is.nan(np)),sep='|')"), '[1] "30|4,17|FALSE"');
+    assert.equal(await request('eval', "nx<-seq(0,1,length.out=30); ny<-sin(nx); ny[c(4,17)]<-NA; nf<-loess(ny~nx,na.action=na.exclude); np<-predict(nf); paste(length(np),paste(which(is.na(np)),collapse=','),any(is.nan(np)),sep='|')"), '[1] "30|4,17|FALSE"\n');
     await assert.rejects(request('eval', "lx<-seq(0,1,length.out=5000); ly<-sin(lx); loess(ly~lx)"), /LOESS workspace limit exceeded/);
     await page.locator('#console-command').fill('x + 2');
     await page.locator('#console-run').click();
@@ -66,7 +73,7 @@ const server = http.createServer(async (req, res) => {
       return await result;
     });
     assert.match(stopped, /session reset/i);
-    assert.equal(await request('eval',"exists('x')"), '[1] FALSE');
+    assert.equal(await request('eval',"exists('x')"), '[1] FALSE\n');
     assert.deepEqual(errors, []);
     console.log('Browser Rust worker: UI evaluation, typed strings, recoverable errors, nonlocal control flow, Vello PNG plotting, hist/bar/box/raster, serialized replay, cancellation and reset passed');
   } finally { await browser.close(); }

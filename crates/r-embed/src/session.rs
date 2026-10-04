@@ -27,10 +27,6 @@ pub struct RSession {
     /// Interactive graphics are recorded into a session-owned scene so a
     /// later command (for example `lines()`) can draw on the prior plot.
     interactive_scene: Option<r_graphics_engine::Scene>,
-    /// Live handle slots: index = slot id, value = current generation.
-    /// Removed slots keep their entry with a bumped generation so stale
-    /// handles are rejected; ids are never reused.
-    handle_slot_states: Vec<u32>,
 }
 
 /// Owned result of an evaluation.
@@ -287,12 +283,16 @@ impl RSession {
     /// Initializes an isolated rmath session with its own arena, protection
     /// stack, environments, RNG state, and output capture.
     pub fn new() -> Result<Self, RSessionError> {
+        let session_id = NEXT_SESSION_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(1)
+            })
+            .map_err(|_| RSessionError::InitFailed("session identities exhausted".into()))?;
         Ok(RSession {
-            session_id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
+            session_id,
             active: true,
             inner: rmath::android::RSession::new(),
             interactive_scene: None,
-            handle_slot_states: Vec::new(),
         })
     }
 
@@ -393,14 +393,7 @@ impl RSession {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
-        // The reserved handle environment is engine-internal: hosts listing
-        // bindings for tab completion never see it.
-        Ok(self
-            .inner
-            .global_binding_names()
-            .into_iter()
-            .filter(|name| name != HANDLE_ENV_NAME)
-            .collect())
+        Ok(self.inner.global_binding_names())
     }
 
     /// Return whether `code` is a syntactically complete R input.
@@ -707,123 +700,72 @@ local({{
         })
     }
 
-    /// Evaluate `expr` and keep the resulting value rooted in the session's
-    /// reserved handle environment, returning an opaque [`ValueHandle`].
-    ///
-    /// The value survives later evaluations and `gc()` because it stays
-    /// bound in the reserved environment until [`RSession::remove_handle`]
-    /// or session close. `expr` is wrapped in `{ }`, so multi-statement
-    /// expressions work.
+    /// Evaluate `expr` globally and retain its successful result privately.
+    /// The owning root survives evaluation and collection until removal or close.
     pub fn define_handle(&mut self, expr: &str) -> Result<ValueHandle, RSessionError> {
-        self.ensure_handle_env()?;
-        self.handle_slot_states.push(0);
-        let slot = self.handle_slot_states.len() as u32 - 1;
-        self.assign_handle_slot(slot, expr)?;
+        let value = self
+            .inner
+            .define_retained(expr)
+            .map_err(RSessionError::EvalError)?;
         Ok(ValueHandle {
             session_id: self.session_id,
-            slot,
-            generation: 0,
+            value,
         })
     }
 
-    /// Borrow the value behind `handle` for reading.
-    ///
-    /// The [`ReadGuard`] holds an owned snapshot and exclusively borrows the
-    /// session: no evaluation can run while it is alive, so the snapshot
-    /// cannot be invalidated underneath the reader.
+    /// Borrow a directly copied typed snapshot. Reading never evaluates R code
+    /// or invokes an R printing method.
     pub fn read_handle<'s>(
         &'s mut self,
         handle: &ValueHandle,
     ) -> Result<ReadGuard<'s>, RSessionError> {
-        let slot = self.validate_handle(handle)?;
-        let expr = format!("{}$h{slot}", HANDLE_ENV_NAME);
-        let snapshot = self.eval_result(&expr)?;
-        if matches!(snapshot.value, RValue::Null | RValue::Error(_)) && !self.slot_exists(slot)? {
-            return Err(RSessionError::EvalError(
-                "stale value handle: slot binding vanished".into(),
-            ));
-        }
+        self.validate_handle(handle)?;
+        let value = self
+            .inner
+            .retained_snapshot(handle.value)
+            .map_err(RSessionError::EvalError)?;
         Ok(ReadGuard {
             session: self,
-            snapshot,
+            snapshot: EvalOutput {
+                output: String::new(),
+                value,
+            },
         })
     }
 
-    /// Borrow the slot behind `handle` for writing.
-    ///
-    /// The [`WriteGuard`] exclusively borrows the session: at most one write
-    /// guard (and no evaluation) exists at any time.
+    /// Exclusively borrow the checked identity for subsequent writes.
     pub fn write_handle<'s>(
         &'s mut self,
         handle: &ValueHandle,
     ) -> Result<WriteGuard<'s>, RSessionError> {
-        let slot = self.validate_handle(handle)?;
-        if !self.slot_exists(slot)? {
-            return Err(RSessionError::EvalError(
-                "stale value handle: slot binding vanished".into(),
-            ));
-        }
+        self.validate_handle(handle)?;
         Ok(WriteGuard {
             session: self,
-            slot,
+            value: handle.value,
         })
     }
 
-    /// Drop the slot binding and invalidate every handle referring to it.
-    ///
-    /// Later reads or writes through those handles fail as stale.
+    /// Release the private owning root and invalidate every copy of the handle.
     pub fn remove_handle(&mut self, handle: &ValueHandle) -> Result<(), RSessionError> {
-        let slot = self.validate_handle(handle)?;
-        let expr = format!("rm(h{slot}, envir = {HANDLE_ENV_NAME})");
-        self.eval(&expr)?;
-        if let Some(generation) = self.handle_slot_states.get_mut(slot as usize) {
-            *generation += 1;
-        }
-        Ok(())
+        self.validate_handle(handle)?;
+        self.inner
+            .remove_retained(handle.value)
+            .map_err(RSessionError::EvalError)
     }
 
-    fn validate_handle(&self, handle: &ValueHandle) -> Result<u32, RSessionError> {
+    fn validate_handle(&self, handle: &ValueHandle) -> Result<(), RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
         if handle.session_id != self.session_id {
             return Err(RSessionError::EvalError(format!(
                 "value handle belongs to session {}, used on session {}",
                 handle.session_id, self.session_id
             )));
         }
-        match self.handle_slot_states.get(handle.slot as usize) {
-            None => Err(RSessionError::EvalError(
-                "stale value handle: slot never existed".into(),
-            )),
-            Some(generation) if *generation != handle.generation => Err(RSessionError::EvalError(
-                "stale value handle: slot was removed".into(),
-            )),
-            Some(_) => Ok(handle.slot),
-        }
-    }
-
-    fn ensure_handle_env(&mut self) -> Result<(), RSessionError> {
-        let expr = format!(
-            "if (!exists(\"{HANDLE_ENV_NAME}\", envir = globalenv(), inherits = FALSE)) \
-             assign(\"{HANDLE_ENV_NAME}\", new.env(parent = emptyenv()), envir = globalenv())"
-        );
-        self.eval(&expr).map(|_| ())
-    }
-
-    fn slot_exists(&mut self, slot: u32) -> Result<bool, RSessionError> {
-        let expr = format!("exists(\"h{slot}\", envir = {HANDLE_ENV_NAME})");
-        Ok(self.eval(&expr)?.trim() == "[1] TRUE")
-    }
-
-    fn assign_handle_slot(&mut self, slot: u32, expr: &str) -> Result<(), RSessionError> {
-        let wrapped = format!("{{ {}$h{slot} <- {{ {} }} }}", HANDLE_ENV_NAME, expr.trim());
-        self.eval(&wrapped).map(|_| ())
-    }
-
-    fn update_handle_slot(&mut self, slot: u32, expr: &str) -> Result<(), RSessionError> {
-        let wrapped = format!(
-            "local({{ . <- {HANDLE_ENV_NAME}$h{slot}; {HANDLE_ENV_NAME}$h{slot} <- {{ {} }} }})",
-            expr.trim()
-        );
-        self.eval(&wrapped).map(|_| ())
+        self.inner
+            .validate_retained(handle.value)
+            .map_err(RSessionError::EvalError)
     }
 
     /// Close the session.
@@ -842,30 +784,15 @@ impl Drop for RSession {
     }
 }
 
-/// Opaque, session-scoped handle to a live R value kept rooted inside the
-/// session's handle environment.
+/// Opaque, copyable identity for a privately retained R value.
 ///
-/// A handle is a plain `Copy` id (`session_id`, slot, generation): it holds
-/// no reference into the R arena, so it can be stored anywhere and outlive
-/// evaluations. Safety comes from validation at use time:
-///
-/// - a handle from another session is rejected (`foreign-session handle`),
-/// - a handle whose slot was [`removed`](RSession::remove_handle) or never
-///   existed is rejected as *stale* (slot ids are never reused; the
-///   generation counter also catches internal reuse),
-/// - the underlying R value stays garbage-collector-rooted because it lives
-///   in the reserved `..rport_handles..` environment until removed or the
-///   session closes.
-///
-/// There is deliberately no path from a `ValueHandle` back to raw `SEXP`
-/// data: reads and writes go through [`RSession::read_handle`] and
-/// [`RSession::write_handle`], which borrow the session for the guard's
-/// lifetime.
+/// Engine validation rejects foreign sessions, removed generations and closed
+/// sessions before accessing the value. Owning roots are independent of R
+/// bindings. No raw heap references cross the host boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueHandle {
     session_id: u64,
-    slot: u32,
-    generation: u32,
+    value: rmath::android::RetainedValueId,
 }
 
 impl ValueHandle {
@@ -902,7 +829,7 @@ impl std::fmt::Debug for ReadGuard<'_> {
 }
 
 impl ReadGuard<'_> {
-    /// The captured console output produced by the read evaluation.
+    /// Reads produce no console output; this always returns an empty string.
     pub fn output(&self) -> &str {
         &self.snapshot.output
     }
@@ -920,17 +847,17 @@ impl ReadGuard<'_> {
 
 /// Exclusive write access to a handle's slot, scoped to the session borrow.
 ///
-/// Dropping the guard releases the session borrow; the slot binding itself
-/// persists until [`RSession::remove_handle`] or session close.
+/// Dropping the guard releases the session borrow; its owning root persists
+/// until [`RSession::remove_handle`] or session close.
 pub struct WriteGuard<'s> {
     session: &'s mut RSession,
-    slot: u32,
+    value: rmath::android::RetainedValueId,
 }
 
 impl std::fmt::Debug for WriteGuard<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WriteGuard")
-            .field("slot", &self.slot)
+            .field("value", &self.value)
             .finish()
     }
 }
@@ -938,22 +865,26 @@ impl std::fmt::Debug for WriteGuard<'_> {
 impl WriteGuard<'_> {
     /// Replace the slot's value with the result of evaluating `expr`.
     ///
-    /// On error the slot keeps its previous binding.
+    /// On error the slot keeps its previous value. Ordinary R side effects remain.
     pub fn set(&mut self, expr: &str) -> Result<(), RSessionError> {
-        self.session.assign_handle_slot(self.slot, expr)
+        self.session
+            .inner
+            .set_retained(self.value, expr)
+            .map_err(RSessionError::EvalError)
     }
 
     /// Evaluate `expr` with the slot's current value bound to `.`.
     ///
-    /// This is the in-place mutation form: the expression sees the live
-    /// value through `.` and the slot is rebound to the expression's result.
+    /// The expression runs in a fresh private child frame. Its successful result
+    /// replaces the root; failed evaluation keeps the previous slot. Shared
+    /// reference objects retain ordinary R mutation semantics.
     pub fn update(&mut self, expr: &str) -> Result<(), RSessionError> {
-        self.session.update_handle_slot(self.slot, expr)
+        self.session
+            .inner
+            .update_retained(self.value, expr)
+            .map_err(RSessionError::EvalError)
     }
 }
-
-/// Name of the reserved global binding holding the handle-slot environment.
-const HANDLE_ENV_NAME: &str = "..rport_handles..";
 
 #[cfg(test)]
 mod tests {

@@ -374,7 +374,6 @@ pub unsafe fn R_init_splines(_dll: *mut c_void) {
     // Since our functions are #[unsafe(no_mangle)] and directly linked, no registration needed.
 }
 
-use crate::unix::dynload::DL_FUNC;
 
 const SPLINE_CALL_NAMES: &[&str] = &["C_spline_basis", "C_spline_value"];
 
@@ -397,19 +396,16 @@ unsafe extern "C-unwind" fn c_spline_value(
     unsafe { spline_value(knots, coeff, order, x, deriv) }
 }
 
-fn as_dl<T>(f: T) -> DL_FUNC {
-    Some(unsafe { std::mem::transmute_copy(&f) })
-}
 
-pub fn lookup(name: &str) -> DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "spline_basis" => as_dl(
-            c_spline_basis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "spline_value" => as_dl(
-            c_spline_value as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
+        "spline_basis" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_spline_basis),
+        )),
+        "spline_value" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(c_spline_value),
+        )),
         _ => None,
     }
 }

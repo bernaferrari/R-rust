@@ -85,11 +85,35 @@ Closure duplication shares FORMALS, BODY, and CLOENV as GNU R does, snapshots
 those edges before allocation, and duplicates attributes according to the
 requested depth. The collector and object representation are unchanged.
 
-The bounded acceptance evidence and its limits are recorded in
-[`runtime-ownership-acceptance.md`](runtime-ownership-acceptance.md). Typed native
-dispatch (`rport-wpdk.1`), private host roots (`rport-jxfp.10`), and exact console
-capture (`rport-jxfp.11`) remain separate integration obligations; owning runtime
-fields do not by themselves establish those contracts.
+Bundled `.Call`, `.External`, and `.External2` resolution now returns a typed
+native routine. Its callable variant retains the exact Rust function pointer;
+interface and fixed `.Call` arity checks precede invocation. Dispatch snapshots
+owning argument cells, values, and tags before lazy name or package providers
+can collect or close the original runtime. This does not authenticate the
+remaining erased `.C`/`.Fortran` route or arbitrary foreign-library pointers.
+External payload counts and complete per-routine input contracts remain separate
+obligations from the callable ABI.
+
+Host handles now select an opaque namespace, slot, and generation in a private
+engine store of owning values. They no longer evaluate R helper strings or
+consult `..rport_handles..` bindings. Publication and writes stage a result
+before replacing a slot; failure preserves its old value, while ordinary R
+side effects are not rolled back. Exhausted generations retire slots, and
+closure invalidates the store. Typed reads do not print or parse output.
+
+Console capture retains its original physical runtime through cleanup, including
+closure and unwinding. Automatic printing executes the real printer into a
+capture: custom methods retain their exact bytes and stream order, and explicit
+output is not trimmed or given an invented newline. Script callbacks use checked
+original-owner continuation; a revoked runtime cannot supply another session's
+warnings, location state, or successful result. GC operation guards likewise
+restore the original flag, and environment preambles retain owning snapshots
+instead of adding temporary entries to a manual protection ledger.
+
+The executable acceptance evidence and its limits are recorded in
+[`runtime-ownership-acceptance.md`](runtime-ownership-acceptance.md). These
+boundaries have targeted native and Miri regressions; they do not establish
+whole-runtime aliasing safety, complete GNU behavior, or platform acceptance.
 
 Internal unsafe routines still require root and aliasing discipline. Targeted
 strict-provenance Miri runs with default borrow checking cover binding

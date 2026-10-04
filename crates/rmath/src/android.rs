@@ -16,6 +16,9 @@
 //!   as the internal code.
 
 pub(crate) mod result_budget;
+#[cfg(test)]
+#[path = "android/output_contract_tests.rs"]
+mod output_contract_tests;
 
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
@@ -25,6 +28,7 @@ use crate::sexp::memory::ArenaBudget;
 use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::output;
 use crate::sexp::session::CancellationToken;
+pub use crate::sexp::session::RetainedValueId;
 
 // ---------------------------------------------------------------------------
 // RSession — per-thread interpreter context
@@ -55,111 +59,94 @@ fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
     }
 }
 
-fn auto_print_error(payload: &(dyn std::any::Any + Send)) -> Option<String> {
-    if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
-        return Some(err.message.clone());
-    }
-    if let Some(crate::sexp::context::RSignal::Error { message }) =
-        payload.downcast_ref::<crate::sexp::context::RSignal>()
-    {
-        return Some(message.clone());
-    }
-    None
+fn append_captured(output: &mut output::RCapturedOutput, next: output::RCapturedOutput) {
+    output.stdout.push_str(&next.stdout);
+    output.stderr.push_str(&next.stderr);
+    output.interleaved.push_str(&next.interleaved);
+    output.truncated |= next.truncated;
 }
 
-/// Format a visible value once. `show()` `stop()` panics out of
-/// `format_sexp_direct`; that must become an eval error, not a host panic
-/// and not a successful print. Stdout emitted before `stop()` is left in
-/// `take_show_stdout_before_error` for the error result.
-fn format_visible_value(sexp: Sexp<'_>) -> Result<String, String> {
-    let _ = output::take_show_stdout_before_error();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        output::format_sexp_direct(sexp)
-    })) {
-        Ok(text) => Ok(text),
-        Err(payload) => match auto_print_error(payload.as_ref()) {
-            Some(message) => Err(message),
-            None => std::panic::resume_unwind(payload),
-        },
-    }
+fn with_output_authority<T>(
+    original: &crate::sexp::owner::WeakOwner,
+    operation: impl FnOnce() -> T,
+) -> Result<T, String> {
+    crate::sexp::owner::with_runtime(original, |_| {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+            Ok(value) => Ok(value),
+            Err(_payload) if !original.is_live() => {
+                Err(crate::sexp::object::SexpError::RootUnavailable.to_string())
+            }
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    })
+    .map_err(|error| error.to_string())?
 }
 
 fn result_from_eval(
     sexp: Sexp<'_>,
-    captured: output::RCapturedOutput,
+    mut captured: output::RCapturedOutput,
     visible: bool,
     limit: Option<usize>,
     export_value: bool,
+    original: Option<&crate::sexp::owner::WeakOwner>,
 ) -> RResult {
-    if let Some(limit) = limit {
-        if visible || export_value {
-            if let Err(message) = result_budget::admit(sexp.clone(), limit) {
-                return error_result(message);
-            }
-        }
-    }
-    let auto = if visible {
-        match format_visible_value(sexp.clone()) {
-            Ok(text) => text,
-            Err(message) => {
-                let partial = output::take_show_stdout_before_error();
-                let mut captured = captured;
-                if !partial.is_empty() {
-                    captured.stdout.push_str(&partial);
+    let Some(owner) = original else {
+        return error_result_with_captured("session is closed", &captured, None);
+    };
+    let result = with_output_authority(owner, || {
+        if let Some(limit) = limit {
+            if visible || export_value {
+                if let Err(message) = result_budget::admit(sexp.clone(), limit) {
+                    return error_result_with_captured(message, &captured, original);
                 }
-                return error_result_with_captured(message, &captured);
             }
         }
-    } else {
-        String::new()
-    };
-    let mut stdout = captured.stdout;
-    if visible {
-        // GNU concatenates auto-print onto a prior cat() that had no
-        // trailing newline (`cat(deparse(x)); TRUE` → `...)[1] TRUE`).
-        stdout.push_str(&auto);
-    }
-    if !stdout.is_empty() && !stdout.ends_with('\n') {
-        stdout.push('\n');
-    }
-    let captured_stderr_len = captured.stderr.len();
-    let mut stderr = captured.stderr;
-    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
-        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
-            stderr.push_str(&block);
+        if visible {
+            match output::capture_printed_value(sexp.clone()) {
+                Ok(printed) => append_captured(&mut captured, printed),
+                Err(error) => {
+                    append_captured(&mut captured, error.captured);
+                    return error_result_with_captured(error.message, &captured, original);
+                }
+            }
         }
-    }
-    let mut display = captured.interleaved;
-    if visible {
-        display.push_str(&auto);
-    }
-    if !display.is_empty() && !display.ends_with('\n') {
-        display.push('\n');
-    }
-    if stderr.len() > captured_stderr_len {
-        display.push_str(&stderr[captured_stderr_len..]);
-    }
-
-    if captured.truncated {
-        stdout.push_str("\n[captured console output truncated by runtime limit]");
-        display.push_str("\n[captured console output truncated by runtime limit]");
-    }
-
-    if let Some(limit) = limit {
-        result_budget::truncate(&mut display, limit);
-    }
-    let typed = if export_value {
-        RValue::from_sexp(sexp)
-    } else {
-        RValue::Null
-    };
-    RResult {
-        value: typed.numeric_scalar_value(),
-        typed,
-        output: display,
-        stdout,
-        stderr,
-    }
+        if !owner.is_live() {
+            return error_result_with_captured(
+                crate::sexp::object::SexpError::RootUnavailable.to_string(),
+                &captured,
+                original,
+            );
+        }
+        if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+            if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+                captured.stderr.push_str(&block);
+                captured.interleaved.push_str(&block);
+            }
+        }
+        let typed = if export_value {
+            RValue::from_sexp(sexp)
+        } else {
+            RValue::Null
+        };
+        let mut stdout = captured.stdout.clone();
+        let mut display = captured.interleaved.clone();
+        if captured.truncated {
+            let marker = "\n[captured console output truncated by runtime limit]";
+            stdout.push_str(marker);
+            display.push_str(marker);
+        }
+        if let Some(limit) = limit {
+            result_budget::truncate(&mut display, limit);
+        }
+        RResult {
+            value: typed.numeric_scalar_value(),
+            typed,
+            output: display,
+            stdout,
+            stderr: captured.stderr.clone(),
+        }
+    });
+    result.unwrap_or_else(|message| error_result_with_captured(message, &captured, original))
 }
 
 fn error_result(message: impl Into<String>) -> RResult {
@@ -173,51 +160,51 @@ fn error_result(message: impl Into<String>) -> RResult {
     .with_error_output()
 }
 
-/// Top-level eval failure: keep the captured output — it already contains the
-/// rendered error text ("Error in <call> : ...", written by verrorcall_dflt
-/// through the output-capture channel), exactly like Rscript's stderr. Falls
-/// back to the bare-message rendering when nothing was captured (e.g. errors
-/// raised before evaluation starts).
+/// Preserve program output, then append the exact rendering of this error once.
 fn error_result_with_captured(
     message: impl Into<String>,
     captured: &super::sexp::output::RCapturedOutput,
+    original: Option<&crate::sexp::owner::WeakOwner>,
 ) -> RResult {
-    let mut result = error_result(message);
-    // GNU Rscript: pre-error print/cat stays on stdout; the rendered
-    // error and trailing "In addition:" warnings go to stderr.
-    let mut stdout = String::new();
-    if !captured.stdout.is_empty() {
-        // GNU Rscript keeps spaces on the last printed line (source()
-        // echo's " .... [TRUNCATED] "). Only drop extra trailing newlines.
-        stdout.push_str(captured.stdout.trim_end_matches(['\n', '\r']));
-        stdout.push('\n');
-    }
-    let mut stderr = result.output.trim_end().to_string();
-    if !stderr.is_empty() && !stderr.ends_with('\n') {
-        stderr.push('\n');
-    }
-
-    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
-        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
-            if !stderr.is_empty() {
-                stderr.push('\n');
-            }
-            stderr.push_str("In addition: ");
-            stderr.push_str(&block);
-        }
+    let message = message.into();
+    // A closed owner grants no error-state access. An enclosing different
+    // runtime must never supply this session's error or deferred warnings.
+    let details = original.and_then(|owner| {
+        with_output_authority(owner, || {
+            let rendered = crate::mainutils::errors::try_last_rendered_message(&message);
+            let warnings = if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+                unsafe { crate::mainutils::errors::take_warnings_block() }
+            } else {
+                None
+            };
+            (rendered, warnings)
+        })
+        .ok()
+    });
+    let (rendered, warnings) = details.unwrap_or_default();
+    let rendered = rendered.unwrap_or_else(|| format!("Error: {message}\n"));
+    let mut stdout = captured.stdout.clone();
+    let mut stderr = captured.stderr.clone();
+    let mut display = captured.interleaved.clone();
+    stderr.push_str(&rendered);
+    display.push_str(&rendered);
+    if let Some(block) = warnings {
+        let warning = format!("In addition: {block}");
+        stderr.push_str(&warning);
+        display.push_str(&warning);
     }
     if captured.truncated {
-        stdout.push_str("[captured console output truncated by runtime limit]\n");
+        let marker = "\n[captured console output truncated by runtime limit]";
+        stdout.push_str(marker);
+        display.push_str(marker);
     }
-    let mut text = stdout.clone();
-    text.push_str(&stderr);
-    result.stdout = stdout;
-    result.stderr = stderr;
-    if text.contains("Error") {
-        result.output = text.trim_end().to_string();
+    RResult {
+        value: 0.0,
+        typed: RValue::Error(message),
+        output: display,
+        stdout,
+        stderr,
     }
-
-    result
 }
 
 fn is_valid_package_name(package: &str) -> bool {
@@ -270,6 +257,76 @@ impl RSession {
 
     pub fn is_active(&self) -> bool {
         self.core.is_active()
+    }
+
+    /// Evaluate and retain a value in private owning engine storage.
+    pub fn define_retained(
+        &mut self,
+        code: &str,
+    ) -> Result<RetainedValueId, String> {
+        self.core
+            .define_retained(code)
+            .map_err(|error| error.message)
+    }
+
+    /// Copy the retained value directly, without R lookup or auto-printing.
+    pub fn retained_snapshot(
+        &self,
+        id: RetainedValueId,
+    ) -> Result<RValue, String> {
+        self.core
+            .with_retained_value(id, |value| {
+                if let Some(limit) = self.result_limit {
+                    result_budget::admit(value.clone(), limit).map_err(|message| {
+                        crate::sexp::session::REvalError {
+                            message: message.into(),
+                        }
+                    })?;
+                }
+                value
+                    .to_owned_value()
+                    .map(RValue::from_owned_value)
+                    .map_err(|error| crate::sexp::session::REvalError {
+                        message: error.to_string(),
+                    })
+            })
+            .map_err(|error| error.message)
+    }
+
+    pub fn validate_retained(
+        &self,
+        id: RetainedValueId,
+    ) -> Result<(), String> {
+        self.core
+            .validate_retained(id)
+            .map_err(|error| error.message)
+    }
+
+    pub fn set_retained(
+        &mut self,
+        id: RetainedValueId,
+        code: &str,
+    ) -> Result<(), String> {
+        self.core
+            .set_retained(id, code)
+            .map_err(|error| error.message)
+    }
+
+    pub fn update_retained(
+        &mut self,
+        id: RetainedValueId,
+        code: &str,
+    ) -> Result<(), String> {
+        self.core
+            .update_retained(id, code)
+            .map_err(|error| error.message)
+    }
+
+    pub fn remove_retained(
+        &mut self,
+        id: RetainedValueId,
+    ) -> Result<(), String> {
+        self.core.remove_retained(id).map_err(|error| error.message)
     }
 
     pub fn runtime_info(&self) -> RRuntimeInfo {
@@ -568,16 +625,24 @@ impl RSession {
         export_value: bool,
     ) -> RResult {
         let limit = self.result_limit;
+        let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
         let previous = self.core.replace_cancellation_token(token);
         let result =
             self.core
                 .eval_script_with_output_capture_then(
                     code,
                     |result, captured, visible| match result {
-                        Ok(result) => {
-                            result_from_eval(result, captured, visible, limit, export_value)
+                        Ok(result) => result_from_eval(
+                            result,
+                            captured,
+                            visible,
+                            limit,
+                            export_value,
+                            original.as_ref(),
+                        ),
+                        Err(e) => {
+                            error_result_with_captured(e.to_string(), &captured, original.as_ref())
                         }
-                        Err(e) => error_result_with_captured(e.to_string(), &captured),
                     },
                 );
         self.core.set_cancellation_token(previous);
@@ -600,12 +665,15 @@ impl RSession {
         // pointer stored by the activation layer never dangles.
         let backend = backend as *mut (dyn r_graphics_engine::DrawTarget + 'session);
         let limit = self.result_limit;
+        let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
         self.core.eval_script_with_output_capture_then_renderplot(
             code,
             backend,
             |result, captured, visible| match result {
-                Ok(result) => result_from_eval(result, captured, visible, limit, false),
-                Err(e) => error_result_with_captured(e.to_string(), &captured),
+                Ok(result) => {
+                    result_from_eval(result, captured, visible, limit, false, original.as_ref())
+                }
+                Err(e) => error_result_with_captured(e.to_string(), &captured, original.as_ref()),
             },
         )
     }
@@ -632,7 +700,7 @@ pub struct RResult {
     pub value: f64,
     /// Owned typed value for Android/FFI callers that should not parse output.
     pub typed: RValue,
-    /// Combined display (stdout then stderr) for embed hosts.
+    /// Actual console emission in chronological order, including automatic printing and warnings.
     pub output: String,
     /// Rscript stdout — print/cat/auto-print only.
     pub stdout: String,
@@ -930,6 +998,123 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    fn console_owner_fixture() -> RSession {
+        RSession {
+            core: CoreRSession::new_without_default_packages(),
+            result_limit: None,
+        }
+    }
+
+    #[test]
+    fn owned_retained_console_closed_error_preserves_other_owner_warnings() {
+        let mut closed = console_owner_fixture();
+        closed.close();
+        let other = console_owner_fixture();
+        other.core.with_active_in(|instance| {
+            unsafe {
+                (*instance).error_state.collect_warnings = 1;
+            }
+            let result = closed.eval_script("7L");
+            assert!(matches!(result.typed, RValue::Error(_)));
+            assert_eq!(result.stdout, "");
+            assert!(result.stderr.contains("session is closed"));
+            assert_eq!(unsafe { (*instance).error_state.collect_warnings }, 1);
+            unsafe {
+                (*instance).error_state.collect_warnings = 0;
+            }
+        });
+    }
+
+    #[test]
+    fn owned_retained_console_revoked_print_keeps_bytes_and_original_cleanup() {
+        for code in ["x", "x; 7L"] {
+            let mut session = console_owner_fixture();
+            let setup = session.eval(
+                "print.zz <- function(x, ...) { cat('partial  '); gc(); invisible(x) }; x <- structure(1L, class='zz')",
+            );
+            assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
+            let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
+            let pin = owner.pin().unwrap();
+            let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = revoked.clone();
+            session.core.with_active_in(|instance| {
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if !observed.replace(true) {
+                        unsafe {
+                            crate::sexp::instance::revoke_instance_availability(instance);
+                        }
+                    }
+                }));
+            });
+            let result = session.eval(code);
+            assert!(revoked.get(), "{code}");
+            assert!(matches!(result.typed, RValue::Error(_)), "{result:?}");
+            assert_eq!(result.stdout, "partial  ", "{code}");
+            assert!(result.output.starts_with("partial  "));
+            assert!(owner.pin().is_err());
+            assert!(!session.is_active());
+            let subsequent = session.eval("cat('must not run')");
+            assert!(
+                matches!(subsequent.typed, RValue::Error(_)),
+                "{subsequent:?}"
+            );
+            assert_eq!(subsequent.stdout, "");
+            assert!(!subsequent.output.contains("must not run"));
+            assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+            assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
+        }
+    }
+
+    #[test]
+    fn owned_retained_console_active_last_value_error_is_typed_and_recovers() {
+        let mut session = console_owner_fixture();
+        let (setup, _, _) = session.core.eval_code_with_output_capture(
+            "makeActiveBinding('.Last.value', function(value) stop('last value failed'), globalenv())",
+        );
+        assert!(setup.is_ok(), "{setup:?}");
+        drop(setup);
+        let result = session.eval("7L; 8L");
+        assert!(
+            matches!(&result.typed, RValue::Error(message) if message.contains("last value failed")),
+            "{result:?}"
+        );
+        let (removed, _, _) = session
+            .core
+            .eval_code_with_output_capture("rm('.Last.value')");
+        assert!(removed.is_ok(), "{removed:?}");
+        drop(removed);
+        assert_eq!(session.eval("7L").stdout, "[1] 7\n");
+    }
+
+    #[test]
+    fn owned_retained_console_live_print_panic_preserves_payload_and_cleanup() {
+        let mut session = console_owner_fixture();
+        let setup = session.eval(
+            "print.zz <- function(x, ...) { gc(); invisible(x) }; x <- structure(1L, class='zz')",
+        );
+        assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
+        let pin = session
+            .core
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap()
+            .pin()
+            .unwrap();
+        session.core.with_active(|| {
+            crate::sexp::gengc::register_gc_callback(Box::new(|_| std::panic::panic_any(991_u32)));
+        });
+        let outcome =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval("x; 7L")));
+        let payload = outcome.expect_err("live-owner Rust panic must preserve its payload");
+        assert_eq!(payload.downcast_ref::<u32>(), Some(&991));
+        assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+        assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
+        session
+            .core
+            .with_active_in(|instance| unsafe { (*instance).gc_state.callbacks.clear() });
+        assert_eq!(session.eval("7L").stdout, "[1] 7\n");
+    }
     fn string_vector(values: Vec<String>) -> RValue {
         RValue::StringVector(values.into_iter().map(Some).collect())
     }
@@ -1018,7 +1203,7 @@ stop("after-echo")
                 .with_arena(|arena| arena.node_count() > 0)
                 .unwrap_or(false)
         );
-        assert_eq!(session.eval("1 + 1").output, "[1] 2");
+        assert_eq!(session.eval("1 + 1").output, "[1] 2\n");
     }
 
     #[test]
@@ -1029,7 +1214,7 @@ stop("after-echo")
 
         let mut android = RSession::new();
         assert_eq!(crate::sexp::instance::current_instance_ptr(), current);
-        assert_eq!(android.eval("1 + 1").output, "[1] 2");
+        assert_eq!(android.eval("1 + 1").output, "[1] 2\n");
         assert_eq!(crate::sexp::instance::current_instance_ptr(), current);
     }
 
@@ -1097,7 +1282,7 @@ stop("after-echo")
             tempdir.typed,
             string_vector(vec![cache.join("Rtmp").to_string_lossy().into_owned()])
         );
-        assert_eq!(session.eval("file.exists(tempdir())").output, "[1] TRUE");
+        assert_eq!(session.eval("file.exists(tempdir())").output, "[1] TRUE\n");
         assert_eq!(
             session.runtime_info(),
             RRuntimeInfo {
@@ -1152,8 +1337,8 @@ stop("after-echo")
         let require = session.eval("require(\"tiny\")");
         assert_eq!(require.output, "");
         assert_eq!(require.typed, RValue::Logical(Some(true)));
-        assert_eq!(session.eval("tiny_value()").output, "[1] 42");
-        assert_eq!(session.eval("lazy_data").output, "[1] 271");
+        assert_eq!(session.eval("tiny_value()").output, "[1] 42\n");
+        assert_eq!(session.eval("lazy_data").output, "[1] 271\n");
         assert_eq!(
             session.eval("data(package = \"tiny\")").typed,
             string_vector(vec!["lazy_data".to_string(), "tiny_data".to_string()])
@@ -1162,7 +1347,7 @@ stop("after-echo")
             session
                 .eval("data(\"tiny_data\", package = \"tiny\")\ntiny_data")
                 .output,
-            "[1] 314"
+            "[1] 314\n"
         );
         assert_eq!(
             session.eval("tiny_label").typed,
@@ -1242,12 +1427,12 @@ stop("after-echo")
             .expect("configure paths");
 
         assert_eq!(session.eval("library(\"tiny\")").output, "");
-        assert_eq!(session.eval("tiny_value()").output, "[1] 19");
+        assert_eq!(session.eval("tiny_value()").output, "[1] 19\n");
         assert_eq!(
             session.eval("tiny_label").typed,
             string_vector(vec!["namespace".to_string()])
         );
-        assert_eq!(session.eval("tiny_imported()").output, "[1] 11");
+        assert_eq!(session.eval("tiny_imported()").output, "[1] 11\n");
 
         let dep_value = session.eval("dep_value");
         assert!(matches!(dep_value.typed, RValue::Error(_)), "{dep_value:?}");
@@ -1294,13 +1479,13 @@ stop("after-echo")
             session
                 .eval("getS3method(\"tiny_generic\", \"myclass\")(1L)")
                 .output,
-            "[1] 77"
+            "[1] 77\n"
         );
         assert_eq!(
             session
                 .eval("x <- 1L\nclass(x) <- \"myclass\"\ntiny_generic(x)")
                 .output,
-            "[1] 77"
+            "[1] 77\n"
         );
 
         let private_method = session.eval("tiny_generic.myclass");
@@ -1669,7 +1854,7 @@ stop("after-echo")
         assert_eq!(invisible.typed, RValue::Real(Some(7.0)));
 
         let visible = session.eval("x");
-        assert_eq!(visible.output, "[1] 42");
+        assert_eq!(visible.output, "[1] 42\n");
     }
 
     #[test]
@@ -1744,11 +1929,11 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let printed = session.eval("capture.output(print(1))");
-        assert_eq!(printed.output, "[1] \"[1] 1\"");
+        assert_eq!(printed.output, "[1] \"[1] 1\"\n");
         assert_eq!(printed.typed, literal_string_vector(&["[1] 1"]));
 
         let cat = session.eval("capture.output(cat(\"hello\"))");
-        assert_eq!(cat.output, "[1] \"hello\"");
+        assert_eq!(cat.output, "[1] \"hello\"\n");
         assert_eq!(cat.typed, literal_string_vector(&["hello"]));
     }
 
@@ -1761,16 +1946,16 @@ stop("after-echo")
         assert_eq!(stopped.output.trim_end(), "Error: boom");
 
         let warned = session.eval("warning(\"careful\"); 1");
-        assert_eq!(warned.output, "Warning message:\ncareful \n[1] 1");
+        assert_eq!(warned.output, "Warning message:\ncareful \n[1] 1\n");
 
         let messaged = session.eval("message(\"hi\"); 1");
-        assert_eq!(messaged.output, "hi\n[1] 1");
+        assert_eq!(messaged.output, "hi\n[1] 1\n");
 
         let suppress_warning = session.eval("suppressWarnings(warning(\"careful\")); 1");
-        assert_eq!(suppress_warning.output, "[1] 1");
+        assert_eq!(suppress_warning.output, "[1] 1\n");
 
         let suppress_message = session.eval("suppressMessages(message(\"hi\")); 1");
-        assert_eq!(suppress_message.output, "[1] 1");
+        assert_eq!(suppress_message.output, "[1] 1\n");
     }
 
     #[test]
@@ -1801,15 +1986,15 @@ stop("after-echo")
         let result = session.eval("regexpr(\"a\", c(\"cat\", \"dog\"))");
         assert_eq!(
             result.output,
-            "[1]  2 -1\nattr(,\"match.length\")\n[1]  1 -1\nattr(,\"index.type\")\n[1] \"chars\"\nattr(,\"useBytes\")\n[1] TRUE"
+            "[1]  2 -1\nattr(,\"match.length\")\n[1]  1 -1\nattr(,\"index.type\")\n[1] \"chars\"\nattr(,\"useBytes\")\n[1] TRUE\n"
         );
 
         let match_length =
             session.eval("attr(regexpr(\"a\", c(\"cat\", \"dog\")), \"match.length\")");
-        assert_eq!(match_length.output, "[1]  1 -1");
+        assert_eq!(match_length.output, "[1]  1 -1\n");
 
         let use_bytes = session.eval("attr(regexpr(\"a\", \"cat\"), \"useBytes\")");
-        assert_eq!(use_bytes.output, "[1] TRUE");
+        assert_eq!(use_bytes.output, "[1] TRUE\n");
     }
 
     #[test]
@@ -1828,7 +2013,7 @@ stop("after-echo")
         let length = session.eval(
             "con <- textConnection(\"pb\", c(\"underlying\"), \"r\", FALSE); pushBack(c(\"first\", \"second\"), con); pushBackLength(con)",
         );
-        assert_eq!(length.output, "[1] 2");
+        assert_eq!(length.output, "[1] 2\n");
 
         let lines = session.eval("readLines(con, 3, TRUE, TRUE, \"\", FALSE)");
         assert_eq!(
@@ -1841,7 +2026,7 @@ stop("after-echo")
         );
 
         let drained = session.eval("pushBackLength(con)");
-        assert_eq!(drained.output, "[1] 0");
+        assert_eq!(drained.output, "[1] 0\n");
     }
 
     #[test]
@@ -1858,16 +2043,16 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let permutation = session.eval("all(sort(sample.int(5)) == 1:5)");
-        assert_eq!(permutation.output, "[1] TRUE");
+        assert_eq!(permutation.output, "[1] TRUE\n");
 
         let replace = session.eval("length(sample.int(3, 7, TRUE))");
-        assert_eq!(replace.output, "[1] 7");
+        assert_eq!(replace.output, "[1] 7\n");
 
         let weighted_replace = session.eval("sample.int(3, 5, TRUE, c(0, 0, 1))");
-        assert_eq!(weighted_replace.output, "[1] 3 3 3 3 3");
+        assert_eq!(weighted_replace.output, "[1] 3 3 3 3 3\n");
 
         let weighted_no_replace = session.eval("length(sample.int(3, 2, FALSE, c(0, 1, 1)))");
-        assert_eq!(weighted_no_replace.output, "[1] 2");
+        assert_eq!(weighted_no_replace.output, "[1] 2\n");
 
         let too_large = session.eval("sample.int(3, 4, FALSE)");
         assert!(matches!(too_large.typed, RValue::Error(_)));
@@ -1883,7 +2068,7 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let shortcut = session.eval("all(sort(sample(5)) == 1:5)");
-        assert_eq!(shortcut.output, "[1] TRUE");
+        assert_eq!(shortcut.output, "[1] TRUE\n");
 
         let integer_type = session.eval("is.integer(sample(5, 3))");
         assert_eq!(integer_type.typed, RValue::Logical(Some(true)));
@@ -1912,12 +2097,12 @@ stop("after-echo")
         assert_eq!(weighted_replace.typed, RValue::Logical(Some(true)));
         let weighted_replace_length =
             session.eval("length(sample(c(\"a\", \"b\", \"c\"), 5, TRUE, c(0, 0, 1)))");
-        assert_eq!(weighted_replace_length.output, "[1] 5");
+        assert_eq!(weighted_replace_length.output, "[1] 5\n");
 
         let weighted_no_replace = session.eval("all(sample(1:3, 2, FALSE, c(0, 1, 1)) != 1L)");
         assert_eq!(weighted_no_replace.typed, RValue::Logical(Some(true)));
         let weighted_no_replace_length = session.eval("length(sample(1:3, 2, FALSE, c(0, 1, 1)))");
-        assert_eq!(weighted_no_replace_length.output, "[1] 2");
+        assert_eq!(weighted_no_replace_length.output, "[1] 2\n");
 
         let impossible = session.eval("sample(1:3, 2, FALSE, c(1, 0, 0))");
         assert!(matches!(impossible.typed, RValue::Error(_)));
@@ -1929,16 +2114,16 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let len = session.eval("length(proc.time())");
-        assert_eq!(len.output, "[1] 5");
+        assert_eq!(len.output, "[1] 5\n");
 
         let names = session.eval("toString(names(proc.time()))");
         assert_eq!(
             names.output,
-            "[1] \"user.self, sys.self, elapsed, user.child, sys.child\""
+            "[1] \"user.self, sys.self, elapsed, user.child, sys.child\"\n"
         );
 
         let class = session.eval("class(proc.time())");
-        assert_eq!(class.output, "[1] \"proc_time\"");
+        assert_eq!(class.output, "[1] \"proc_time\"\n");
     }
 
     #[test]
@@ -1946,14 +2131,14 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let pass = session.eval("tryCatch(1 + 2, error=function(e) \"caught\")");
-        assert_eq!(pass.output, "[1] 3");
+        assert_eq!(pass.output, "[1] 3\n");
 
         let caught = session.eval("tryCatch(stop(\"boom\"), error=function(e) \"caught\")");
-        assert_eq!(caught.output, "[1] \"caught\"");
+        assert_eq!(caught.output, "[1] \"caught\"\n");
 
         let message =
             session.eval("tryCatch(stop(\"boom\"), error=function(e) conditionMessage(e))");
-        assert_eq!(message.output, "[1] \"boom\"");
+        assert_eq!(message.output, "[1] \"boom\"\n");
     }
 
     #[test]
@@ -1961,24 +2146,24 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let empty = session.eval("ls()");
-        assert_eq!(empty.output, "character(0)");
+        assert_eq!(empty.output, "character(0)\n");
         assert_eq!(empty.typed, RValue::StringVector(Vec::new()));
 
         let mut session = RSession::new();
         let sorted = session.eval("y <- 2; x <- 1; ls()");
-        assert_eq!(sorted.output, "[1] \"x\" \"y\"");
+        assert_eq!(sorted.output, "[1] \"x\" \"y\"\n");
         assert_eq!(sorted.typed, literal_string_vector(&["x", "y"]));
 
         let mut session = RSession::new();
         let hidden = session.eval(".hidden <- 1; visible <- 2; ls()");
-        assert_eq!(hidden.output, "[1] \"visible\"");
+        assert_eq!(hidden.output, "[1] \"visible\"\n");
 
         let all_names = session.eval("ls(all.names = TRUE)");
-        assert_eq!(all_names.output, "[1] \".hidden\" \"visible\"");
+        assert_eq!(all_names.output, "[1] \".hidden\" \"visible\"\n");
 
         let mut session = RSession::new();
         let removed = session.eval("x <- 1; rm(\"x\"); length(ls())");
-        assert_eq!(removed.output, "[1] 0");
+        assert_eq!(removed.output, "[1] 0\n");
     }
 
     #[test]
@@ -1986,15 +2171,15 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let primitive = session.eval("is.primitive(sum)");
-        assert_eq!(primitive.output, "[1] TRUE");
+        assert_eq!(primitive.output, "[1] TRUE\n");
         assert_eq!(primitive.typed, RValue::Logical(Some(true)));
 
         let closure = session.eval("is.primitive(function(x) x)");
-        assert_eq!(closure.output, "[1] FALSE");
+        assert_eq!(closure.output, "[1] FALSE\n");
         assert_eq!(closure.typed, RValue::Logical(Some(false)));
 
         let loaded = session.eval("is.loaded(\"R_init_base\")");
-        assert_eq!(loaded.output, "[1] FALSE");
+        assert_eq!(loaded.output, "[1] FALSE\n");
         assert_eq!(loaded.typed, RValue::Logical(Some(false)));
 
         let single = session.eval("is.single(1)");
@@ -2028,11 +2213,11 @@ stop("after-echo")
         assert_eq!(streamed.typed, RValue::Integer(Some(0)));
 
         let interned = session.eval("system(\"printf hi\", intern = TRUE)");
-        assert_eq!(interned.output, "[1] \"hi\"");
+        assert_eq!(interned.output, "[1] \"hi\"\n");
         assert_eq!(interned.typed, literal_string_vector(&["hi"]));
 
         let status = session.eval("status <- system(\"false\"); status");
-        assert_eq!(status.output, "[1] 1");
+        assert_eq!(status.output, "[1] 1\n");
     }
 
     #[test]
@@ -2270,21 +2455,21 @@ stop("after-echo")
         );
 
         let super_assign = session.eval("x <- 0; f <- function() { x <<- 1 }; f(); x");
-        assert_eq!(super_assign.output, "[1] 1");
+        assert_eq!(super_assign.output, "[1] 1\n");
     }
 
     #[test]
     fn test_eval_multiple_expressions_returns_last_value() {
         let mut session = RSession::new();
         let result = session.eval("x <- c(10, 20, 30)\nx");
-        assert_eq!(result.output, "[1] 10 20 30");
+        assert_eq!(result.output, "[1] 10 20 30\n");
     }
 
     #[test]
     fn test_eval_integer_subassignment() {
         let mut session = RSession::new();
         let result = session.eval("x <- c(10, 20, 30)\nx[2] <- 99\nx");
-        assert_eq!(result.output, "[1] 10 99 30");
+        assert_eq!(result.output, "[1] 10 99 30\n");
     }
 
     #[test]
@@ -2294,9 +2479,9 @@ stop("after-echo")
         let with_na = session.eval("(1:3)[c(TRUE, NA)]");
         let longer = session.eval("(1:3)[c(TRUE, FALSE, TRUE, TRUE)]");
 
-        assert_eq!(recycled.output, "[1] 1 3 5");
-        assert_eq!(with_na.output, "[1]  1 NA  3");
-        assert_eq!(longer.output, "[1]  1  3 NA");
+        assert_eq!(recycled.output, "[1] 1 3 5\n");
+        assert_eq!(with_na.output, "[1]  1 NA  3\n");
+        assert_eq!(longer.output, "[1]  1  3 NA\n");
     }
 
     #[test]
@@ -2306,9 +2491,9 @@ stop("after-echo")
         let integer = session.eval("(1:3)[c(1L, 0L, NA_integer_, 4L)]");
         let negative = session.eval("(1:3)[-2]");
 
-        assert_eq!(positive.output, "[1]  1 NA NA");
-        assert_eq!(integer.output, "[1]  1 NA NA");
-        assert_eq!(negative.output, "[1] 1 3");
+        assert_eq!(positive.output, "[1]  1 NA NA\n");
+        assert_eq!(integer.output, "[1]  1 NA NA\n");
+        assert_eq!(negative.output, "[1] 1 3\n");
     }
 
     #[test]
@@ -2318,9 +2503,9 @@ stop("after-echo")
         let list_name = session.eval("list(a = 10, b = 20)[[\"b\"]]");
         let atomic = session.eval("c(10, 20, 30)[[2]]");
 
-        assert_eq!(list_numeric.output, "[1] 20");
-        assert_eq!(list_name.output, "[1] 20");
-        assert_eq!(atomic.output, "[1] 20");
+        assert_eq!(list_numeric.output, "[1] 20\n");
+        assert_eq!(list_name.output, "[1] 20\n");
+        assert_eq!(atomic.output, "[1] 20\n");
     }
 
     #[test]
@@ -2331,10 +2516,10 @@ stop("after-echo")
         let unique = session.eval("unique(c(1, 1, 2, 1))");
         let reversed = session.eval("rev(c(1, 2, 3))");
 
-        assert_eq!(sorted.output, "[1] 1 2 3");
-        assert_eq!(sorted_desc.output, "[1] 3 2 1");
-        assert_eq!(unique.output, "[1] 1 2");
-        assert_eq!(reversed.output, "[1] 3 2 1");
+        assert_eq!(sorted.output, "[1] 1 2 3\n");
+        assert_eq!(sorted_desc.output, "[1] 3 2 1\n");
+        assert_eq!(unique.output, "[1] 1 2\n");
+        assert_eq!(reversed.output, "[1] 3 2 1\n");
     }
 
     #[test]
@@ -2349,14 +2534,14 @@ stop("after-echo")
         let which_min = session.eval("which.min(c(3, 1, 2))");
         let which_max = session.eval("which.max(c(3, 1, 2))");
 
-        assert_eq!(matched.output, "[1]  2 NA");
-        assert_eq!(contains.output, "[1]  TRUE FALSE");
-        assert_eq!(union.output, "[1] 1 2 3");
-        assert_eq!(intersect.output, "[1] 2");
-        assert_eq!(setdiff.output, "[1] 1 3");
-        assert_eq!(setequal.output, "[1] TRUE");
-        assert_eq!(which_min.output, "[1] 2");
-        assert_eq!(which_max.output, "[1] 1");
+        assert_eq!(matched.output, "[1]  2 NA\n");
+        assert_eq!(contains.output, "[1]  TRUE FALSE\n");
+        assert_eq!(union.output, "[1] 1 2 3\n");
+        assert_eq!(intersect.output, "[1] 2\n");
+        assert_eq!(setdiff.output, "[1] 1 3\n");
+        assert_eq!(setequal.output, "[1] TRUE\n");
+        assert_eq!(which_min.output, "[1] 2\n");
+        assert_eq!(which_max.output, "[1] 1\n");
     }
 
     #[test]
@@ -2374,23 +2559,23 @@ stop("after-echo")
         let seq_len = session.eval("seq_len(3)");
         let seq_along = session.eval("seq_along(c(4, 5))");
 
-        assert_eq!(any.output, "[1] TRUE");
-        assert_eq!(all.output, "[1] FALSE");
+        assert_eq!(any.output, "[1] TRUE\n");
+        assert_eq!(all.output, "[1] FALSE\n");
         assert_eq!(
             matrix.output,
-            "     [,1] [,2]\n[1,]    1    3\n[2,]    2    4"
+            "     [,1] [,2]\n[1,]    1    3\n[2,]    2    4\n"
         );
-        assert_eq!(dim.output, "[1] 2 2");
-        assert_eq!(nrow.output, "[1] 2");
-        assert_eq!(ncol.output, "[1] 2");
+        assert_eq!(dim.output, "[1] 2 2\n");
+        assert_eq!(nrow.output, "[1] 2\n");
+        assert_eq!(ncol.output, "[1] 2\n");
         assert_eq!(
             diag.output,
-            "     [,1] [,2] [,3]\n[1,]    1    0    0\n[2,]    0    1    0\n[3,]    0    0    1"
+            "     [,1] [,2] [,3]\n[1,]    1    0    0\n[2,]    0    1    0\n[3,]    0    0    1\n"
         );
-        assert_eq!(diff.output, "[1] 3 5");
-        assert_eq!(names.output, "[1] \"a\" \"b\"");
-        assert_eq!(seq_len.output, "[1] 1 2 3");
-        assert_eq!(seq_along.output, "[1] 1 2");
+        assert_eq!(diff.output, "[1] 3 5\n");
+        assert_eq!(names.output, "[1] \"a\" \"b\"\n");
+        assert_eq!(seq_len.output, "[1] 1 2 3\n");
+        assert_eq!(seq_along.output, "[1] 1 2\n");
     }
 
     #[test]
@@ -2405,14 +2590,14 @@ stop("after-echo")
         let is_vector = session.eval("is.vector(c(1, 2))");
         let is_data_frame = session.eval("is.data.frame(data.frame(a = 1))");
 
-        assert_eq!(missing.output, "[1] FALSE");
-        assert_eq!(assigned.output, "[1] 2");
-        assert_eq!(removed.output, "[1] FALSE");
-        assert_eq!(tempdir_exists.output, "[1] TRUE");
-        assert_eq!(inherits.output, "[1] TRUE");
-        assert_eq!(to_string.output, "[1] \"1, 2, 3\"");
-        assert_eq!(is_vector.output, "[1] TRUE");
-        assert_eq!(is_data_frame.output, "[1] TRUE");
+        assert_eq!(missing.output, "[1] FALSE\n");
+        assert_eq!(assigned.output, "[1] 2\n");
+        assert_eq!(removed.output, "[1] FALSE\n");
+        assert_eq!(tempdir_exists.output, "[1] TRUE\n");
+        assert_eq!(inherits.output, "[1] TRUE\n");
+        assert_eq!(to_string.output, "[1] \"1, 2, 3\"\n");
+        assert_eq!(is_vector.output, "[1] TRUE\n");
+        assert_eq!(is_data_frame.output, "[1] TRUE\n");
     }
 
     #[test]
@@ -2424,11 +2609,11 @@ stop("after-echo")
         );
 
         assert_eq!(setup.output, "");
-        assert_eq!(session.eval("dim(y)").output, "[1] 0 1");
-        assert_eq!(session.eval("nrow(y)").output, "[1] 0");
-        assert_eq!(session.eval("ncol(y)").output, "[1] 1");
-        assert_eq!(session.eval("names(y)").output, "[1] \"a\"");
-        assert_eq!(session.eval("is.data.frame(y)").output, "[1] TRUE");
+        assert_eq!(session.eval("dim(y)").output, "[1] 0 1\n");
+        assert_eq!(session.eval("nrow(y)").output, "[1] 0\n");
+        assert_eq!(session.eval("ncol(y)").output, "[1] 1\n");
+        assert_eq!(session.eval("names(y)").output, "[1] \"a\"\n");
+        assert_eq!(session.eval("is.data.frame(y)").output, "[1] TRUE\n");
     }
 
     #[test]
@@ -2448,17 +2633,17 @@ stop("after-echo")
         let cumvar_third = session.eval("cumvar(c(1, 2, 3))[3]");
 
         assert!((dnorm.value - 0.3989422804014327).abs() < 1e-12);
-        assert_eq!(pnorm.output, "[1] 0.5");
-        assert_eq!(qnorm.output, "[1] 0");
+        assert_eq!(pnorm.output, "[1] 0.5\n");
+        assert_eq!(qnorm.output, "[1] 0\n");
         assert!((dpois.value - 0.22404180765538775).abs() < 1e-12);
         assert!((dbinom.value - 0.3125).abs() < 1e-12);
         assert!((dgamma.value - 0.2706705664732254).abs() < 1e-12);
         assert!((dcauchy.value - 0.3183098861837907).abs() < 1e-12);
-        assert_eq!(cumsum.output, "[1] 1 3 6");
-        assert_eq!(cumprod.output, "[1] 1 2 6");
-        assert_eq!(cumvar_first.output, "[1] TRUE");
-        assert_eq!(cumvar_second.output, "[1] 0.5");
-        assert_eq!(cumvar_third.output, "[1] 1");
+        assert_eq!(cumsum.output, "[1] 1 3 6\n");
+        assert_eq!(cumprod.output, "[1] 1 2 6\n");
+        assert_eq!(cumvar_first.output, "[1] TRUE\n");
+        assert_eq!(cumvar_second.output, "[1] 0.5\n");
+        assert_eq!(cumvar_third.output, "[1] 1\n");
     }
 
     #[test]
@@ -2487,9 +2672,9 @@ stop("after-echo")
         let char_to_raw = session.eval("charToRaw(\"AZ\")");
         let raw_to_char = session.eval("rawToChar(as.raw(c(65, 90)))");
 
-        assert_eq!(as_raw.output, "[1] 41 5a");
-        assert_eq!(char_to_raw.output, "[1] 41 5a");
-        assert_eq!(raw_to_char.output, "[1] \"AZ\"");
+        assert_eq!(as_raw.output, "[1] 41 5a\n");
+        assert_eq!(char_to_raw.output, "[1] 41 5a\n");
+        assert_eq!(raw_to_char.output, "[1] \"AZ\"\n");
     }
 
     #[test]
@@ -2500,39 +2685,39 @@ stop("after-echo")
         let unsorted = session.eval("is.unsorted(c(1, 3, 2))");
         let sorted = session.eval("is.unsorted(c(1, 2, 3))");
 
-        assert_eq!(names.output, "[1] \"a\" \"b\"");
-        assert_eq!(class.output, "[1] \"foo\"");
-        assert_eq!(unsorted.output, "[1] TRUE");
-        assert_eq!(sorted.output, "[1] FALSE");
+        assert_eq!(names.output, "[1] \"a\" \"b\"\n");
+        assert_eq!(class.output, "[1] \"foo\"\n");
+        assert_eq!(unsorted.output, "[1] TRUE\n");
+        assert_eq!(sorted.output, "[1] FALSE\n");
     }
 
     #[test]
     fn test_eval_additional_distribution_helpers() {
         let mut session = RSession::new();
         let cases = [
-            ("dexp(1)", "[1] 0.3678794"),
-            ("pexp(1)", "[1] 0.6321206"),
-            ("dbeta(0.5, 2, 3)", "[1] 1.5"),
-            ("pbeta(0.5, 2, 3)", "[1] 0.6875"),
-            ("qbeta(0.5, 2, 3)", "[1] 0.3857276"),
-            ("dt(0, 5)", "[1] 0.3796067"),
-            ("pt(0, 5)", "[1] 0.5"),
-            ("qt(0.5, 5)", "[1] 0"),
-            ("dchisq(2, 3)", "[1] 0.2075537"),
-            ("pchisq(2, 3)", "[1] 0.4275933"),
-            ("qchisq(0.5, 3)", "[1] 2.365974"),
-            ("dweibull(2, 3)", "[1] 0.004025552"),
-            ("pweibull(2, 3)", "[1] 0.9996645"),
-            ("qweibull(0.5, 3)", "[1] 0.884997"),
-            ("df(1, 5, 10)", "[1] 0.4954798"),
-            ("pf(1, 5, 10)", "[1] 0.5348806"),
-            ("qf(0.5, 5, 10)", "[1] 0.9319332"),
-            ("dnbinom(2, 5, 0.5)", "[1] 0.1171875"),
-            ("pnbinom(2, 5, 0.5)", "[1] 0.2265625"),
-            ("qnbinom(0.5, 5, 0.5)", "[1] 4"),
-            ("dgeom(2, 0.5)", "[1] 0.125"),
-            ("pgeom(2, 0.5)", "[1] 0.875"),
-            ("qgeom(0.5, 0.5)", "[1] 0"),
+            ("dexp(1)", "[1] 0.3678794\n"),
+            ("pexp(1)", "[1] 0.6321206\n"),
+            ("dbeta(0.5, 2, 3)", "[1] 1.5\n"),
+            ("pbeta(0.5, 2, 3)", "[1] 0.6875\n"),
+            ("qbeta(0.5, 2, 3)", "[1] 0.3857276\n"),
+            ("dt(0, 5)", "[1] 0.3796067\n"),
+            ("pt(0, 5)", "[1] 0.5\n"),
+            ("qt(0.5, 5)", "[1] 0\n"),
+            ("dchisq(2, 3)", "[1] 0.2075537\n"),
+            ("pchisq(2, 3)", "[1] 0.4275933\n"),
+            ("qchisq(0.5, 3)", "[1] 2.365974\n"),
+            ("dweibull(2, 3)", "[1] 0.004025552\n"),
+            ("pweibull(2, 3)", "[1] 0.9996645\n"),
+            ("qweibull(0.5, 3)", "[1] 0.884997\n"),
+            ("df(1, 5, 10)", "[1] 0.4954798\n"),
+            ("pf(1, 5, 10)", "[1] 0.5348806\n"),
+            ("qf(0.5, 5, 10)", "[1] 0.9319332\n"),
+            ("dnbinom(2, 5, 0.5)", "[1] 0.1171875\n"),
+            ("pnbinom(2, 5, 0.5)", "[1] 0.2265625\n"),
+            ("qnbinom(0.5, 5, 0.5)", "[1] 4\n"),
+            ("dgeom(2, 0.5)", "[1] 0.125\n"),
+            ("pgeom(2, 0.5)", "[1] 0.875\n"),
+            ("qgeom(0.5, 0.5)", "[1] 0\n"),
         ];
 
         for (code, expected) in cases {
@@ -2544,7 +2729,7 @@ stop("after-echo")
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
-        assert_eq!(result.output, "[1] \"a\" \"b\"");
+        assert_eq!(result.output, "[1] \"a\" \"b\"\n");
     }
 
     #[test]
@@ -2553,31 +2738,31 @@ stop("after-echo")
         let cases = [
             (
                 "out <- c(); for (x in c(TRUE, FALSE)) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"TRUE,FALSE\"",
+                "[1] \"TRUE,FALSE\"\n",
             ),
             (
                 "out <- c(); for (x in c(1L, 2L)) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"1,2\"",
+                "[1] \"1,2\"\n",
             ),
             (
                 "out <- c(); for (x in c(1.5, 2.5)) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"1.5,2.5\"",
+                "[1] \"1.5,2.5\"\n",
             ),
             (
                 "out <- c(); for (x in c('a', 'b')) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"a,b\"",
+                "[1] \"a,b\"\n",
             ),
             (
                 "out <- raw(); for (x in as.raw(c(65, 90))) out <- c(out, x); out",
-                "[1] 41 5a",
+                "[1] 41 5a\n",
             ),
             (
                 "out <- c(); for (x in list(1, 2)) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"1,2\"",
+                "[1] \"1,2\"\n",
             ),
             (
                 "out <- c(); for (x in factor(c('b', 'a'), levels = c('a', 'b'))) out <- c(out, x); paste(out, collapse = ',')",
-                "[1] \"b,a\"",
+                "[1] \"b,a\"\n",
             ),
         ];
 
@@ -2590,11 +2775,11 @@ stop("after-echo")
     fn test_eval_c_empty_and_raw_coercion_match_r() {
         let mut session = RSession::new();
         let cases = [
-            ("typeof(c())", "[1] \"NULL\""),
-            ("typeof(c(raw()))", "[1] \"raw\""),
-            ("typeof(c(raw(), as.raw(1)))", "[1] \"raw\""),
-            ("typeof(c(as.raw(1), TRUE))", "[1] \"logical\""),
-            ("c(as.raw(65), as.raw(90))", "[1] 41 5a"),
+            ("typeof(c())", "[1] \"NULL\"\n"),
+            ("typeof(c(raw()))", "[1] \"raw\"\n"),
+            ("typeof(c(raw(), as.raw(1)))", "[1] \"raw\"\n"),
+            ("typeof(c(as.raw(1), TRUE))", "[1] \"logical\"\n"),
+            ("c(as.raw(65), as.raw(90))", "[1] 41 5a\n"),
         ];
 
         for (code, expected) in cases {
@@ -2615,9 +2800,9 @@ stop("after-echo")
         let exact = session.eval("x <- list(a = 1, b = 2)\nx$a");
         let partial = session.eval("x <- list(alpha = 11, beta = 22)\nx$al");
         let missing = session.eval("x <- list(a = 1)\nx$b");
-        assert_eq!(exact.output, "[1] 1");
-        assert_eq!(partial.output, "[1] 11");
-        assert_eq!(missing.output, "NULL");
+        assert_eq!(exact.output, "[1] 1\n");
+        assert_eq!(partial.output, "[1] 11\n");
+        assert_eq!(missing.output, "NULL\n");
     }
 
     #[test]
@@ -2629,13 +2814,13 @@ stop("after-echo")
         let na_removed = session.eval("mean(c(1, NA), na.rm = TRUE)");
         let nan_then_na = session.eval("mean(c(NaN, NA))");
         let na_then_nan = session.eval("mean(c(NA, NaN))");
-        assert_eq!(numeric.output, "[1] 2");
-        assert_eq!(sequence.output, "[1] 2.5");
-        assert_eq!(na.output, "[1] NA");
-        assert_eq!(na_removed.output, "[1] 1");
+        assert_eq!(numeric.output, "[1] 2\n");
+        assert_eq!(sequence.output, "[1] 2.5\n");
+        assert_eq!(na.output, "[1] NA\n");
+        assert_eq!(na_removed.output, "[1] 1\n");
         // GNU .Internal(mean) keeps the first ISNAN payload; NA does not trump NaN.
-        assert_eq!(nan_then_na.output, "[1] NaN");
-        assert_eq!(na_then_nan.output, "[1] NA");
+        assert_eq!(nan_then_na.output, "[1] NaN\n");
+        assert_eq!(na_then_nan.output, "[1] NA\n");
     }
 
     #[test]
@@ -2644,50 +2829,50 @@ stop("after-echo")
         let sum = session.eval("sum(c(1, NA, 3), na.rm = TRUE)");
         let min = session.eval("min(c(3, NA, 1), na.rm = TRUE)");
         let range = session.eval("range(c(3, NA, 1), na.rm = TRUE)");
-        assert_eq!(sum.output, "[1] 4");
-        assert_eq!(min.output, "[1] 1");
-        assert_eq!(range.output, "[1] 1 3");
+        assert_eq!(sum.output, "[1] 4\n");
+        assert_eq!(min.output, "[1] 1\n");
+        assert_eq!(range.output, "[1] 1 3\n");
     }
 
     #[test]
     fn test_eval_summary_type_and_missing_parity() {
         let mut session = RSession::new();
 
-        assert_eq!(session.eval("sum(integer(0))").output, "[1] 0");
-        assert_eq!(session.eval("prod(integer(0))").output, "[1] 1");
+        assert_eq!(session.eval("sum(integer(0))").output, "[1] 0\n");
+        assert_eq!(session.eval("prod(integer(0))").output, "[1] 1\n");
         assert_eq!(
             session.eval("typeof(sum(1L, 2L))").output,
-            "[1] \"integer\""
+            "[1] \"integer\"\n"
         );
         assert_eq!(
             session.eval("typeof(sum(1L, 2.5))").output,
-            "[1] \"double\""
+            "[1] \"double\"\n"
         );
         assert_eq!(
             session.eval("typeof(range(1L:3L))").output,
-            "[1] \"integer\""
+            "[1] \"integer\"\n"
         );
         assert_eq!(
             session.eval("range(c(1L, NA_integer_))").output,
-            "[1] NA NA"
+            "[1] NA NA\n"
         );
-        assert_eq!(session.eval("sum(NaN)").output, "[1] NaN");
-        assert_eq!(session.eval("sum(1+2i, 3+4i)").output, "[1] 4+6i");
-        assert_eq!(session.eval("prod(1+2i, 3+4i)").output, "[1] -5+10i");
+        assert_eq!(session.eval("sum(NaN)").output, "[1] NaN\n");
+        assert_eq!(session.eval("sum(1+2i, 3+4i)").output, "[1] 4+6i\n");
+        assert_eq!(session.eval("prod(1+2i, 3+4i)").output, "[1] -5+10i\n");
     }
 
     #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");
-        assert_eq!(result.output, "[1] b a b c\nLevels: a b c");
+        assert_eq!(result.output, "[1] b a b c\nLevels: a b c\n");
     }
 
     #[test]
     fn test_eval_closure_positional_arg() {
         let mut session = RSession::new();
         let result = session.eval("f <- function(x) x + 1\nf(41)");
-        assert_eq!(result.output, "[1] 42");
+        assert_eq!(result.output, "[1] 42\n");
     }
 
     #[test]
@@ -2695,35 +2880,35 @@ stop("after-echo")
         let mut session = RSession::new();
         let result =
             session.eval("make <- function(x) function(y) x + y\nadd2 <- make(2)\nadd2(40)");
-        assert_eq!(result.output, "[1] 42");
+        assert_eq!(result.output, "[1] 42\n");
     }
 
     #[test]
     fn test_eval_closure_default_arg() {
         let mut session = RSession::new();
         let result = session.eval("f <- function(x, y = x + 1) y\nf(41)");
-        assert_eq!(result.output, "[1] 42");
+        assert_eq!(result.output, "[1] 42\n");
     }
 
     #[test]
     fn test_eval_closure_lazy_unused_arg() {
         let mut session = RSession::new();
         let result = session.eval("f <- function(x) 1\nf(unknown_symbol)");
-        assert_eq!(result.output, "[1] 1");
+        assert_eq!(result.output, "[1] 1\n");
     }
 
     #[test]
     fn test_eval_closure_named_args() {
         let mut session = RSession::new();
         let result = session.eval("f <- function(x, y) x + y\nf(y = 40, x = 2)");
-        assert_eq!(result.output, "[1] 42");
+        assert_eq!(result.output, "[1] 42\n");
     }
 
     #[test]
     fn test_eval_closure_return() {
         let mut session = RSession::new();
         let result = session.eval("f <- function() return(42)\nf()");
-        assert_eq!(result.output, "[1] 42");
+        assert_eq!(result.output, "[1] 42\n");
     }
 
     #[test]
@@ -2854,8 +3039,8 @@ stop("after-echo")
         let mut session = RSession::new();
         let missing = session.eval("f <- function(x) missing(x)\nf()");
         let present = session.eval("f <- function(x) missing(x)\nf(1)");
-        assert_eq!(missing.output, "[1] TRUE");
-        assert_eq!(present.output, "[1] FALSE");
+        assert_eq!(missing.output, "[1] TRUE\n");
+        assert_eq!(present.output, "[1] FALSE\n");
     }
 
     #[test]
@@ -2866,7 +3051,7 @@ stop("after-echo")
         // failing call, like Rscript's stderr rendering.
         assert_eq!(
             result.output,
-            "Error in f() : argument \"x\" is missing, with no default"
+            "Error in f() : argument \"x\" is missing, with no default\n"
         );
     }
 
@@ -2938,7 +3123,7 @@ stop("after-echo")
                         let cancelled = CancellationToken::cancelled();
                         let cancelled_result =
                             session.eval_with_cancellation_token("1 + 1", Some(cancelled));
-                        assert_eq!(cancelled_result.output, "Error: operation cancelled");
+                        assert_eq!(cancelled_result.output, "Error: operation cancelled\n");
 
                         let code = format!("local_value <- {}; local_value", worker * 100 + iter);
                         let result = session.eval(&code);
@@ -2960,7 +3145,7 @@ stop("after-echo")
                         session.eval("tempdir()").typed,
                         string_vector(vec![temp_dir.clone()])
                     );
-                    assert_eq!(session.eval("1 + 1").output, "[1] 2");
+                    assert_eq!(session.eval("1 + 1").output, "[1] 2\n");
 
                     let _ = std::fs::remove_dir_all(root);
                     (worker, rng_bits, temp_dir)
@@ -2994,13 +3179,13 @@ stop("after-echo")
         let flag = CancellationToken::cancelled();
 
         let cancelled_result = cancelled.eval_with_cancellation_token("1 + 1", Some(flag));
-        assert_eq!(cancelled_result.output, "Error: operation cancelled");
+        assert_eq!(cancelled_result.output, "Error: operation cancelled\n");
 
         let active_result = active.eval("1 + 1");
-        assert_eq!(active_result.output, "[1] 2");
+        assert_eq!(active_result.output, "[1] 2\n");
 
         let next_cancelled_eval = cancelled.eval("1 + 1");
-        assert_eq!(next_cancelled_eval.output, "[1] 2");
+        assert_eq!(next_cancelled_eval.output, "[1] 2\n");
     }
 
     #[test]
@@ -3075,7 +3260,7 @@ stop("after-echo")
     fn test_runif_rlevel_contract_and_rng_consumption() {
         let mut session = RSession::new();
         let seeded = session.eval("set.seed(1); runif(3)");
-        assert_eq!(seeded.output, "[1] 0.2655087 0.3721239 0.5728534");
+        assert_eq!(seeded.output, "[1] 0.2655087 0.3721239 0.5728534\n");
 
         // Defaults, vector recycling, and a zero-length request match R's
         // vectorized primitive and do not consume an extra draw for n = 0.
@@ -3097,7 +3282,7 @@ stop("after-echo")
     fn test_eval_null() {
         let mut session = RSession::new();
         let result = session.eval("NULL");
-        assert_eq!(result.output, "NULL");
+        assert_eq!(result.output, "NULL\n");
     }
 
     #[test]

@@ -18,11 +18,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
-use crate::unix::dynload::DL_FUNC;
 
-fn as_dl<T>(f: T) -> DL_FUNC {
-    Some(unsafe { std::mem::transmute_copy(&f) })
-}
 
 unsafe extern "C-unwind" fn c_rchisq(n: SEXP, a: SEXP) -> SEXP {
     unsafe { do_rchisq(n, a) }
@@ -566,270 +562,383 @@ unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
 
 /// Routines whose real signature is `.External2` `(call, op, args, env)`.
 /// `.External` must not transmute a `.Call` pointer from `lookup_call`.
-pub fn lookup_external(name: &str) -> DL_FUNC {
+pub(crate) fn lookup_external(
+    name: &str,
+) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "zeroin2" => {
-            as_dl(
-            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "do_fmin" => {
-            as_dl(
-            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "termsform" => as_dl(c_termsform as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "call_dqags" => as_dl(c_call_dqags as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "call_dqagi" => as_dl(c_call_dqagi as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "compcases" => as_dl(c_compcases as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "doD" => as_dl(c_do_d as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "deriv" => as_dl(c_deriv as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "optim" => as_dl(super::optim::c_optim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "nlm" => as_dl(super::zeroin::c_nlm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "optimhess" => as_dl(super::optim::c_optimhess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "modelframe" => {
-            as_dl(c_modelframe as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "modelmatrix" => {
-            as_dl(c_modelmatrix as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "signrank_free" => {
-            as_dl(super::distn::c_signrank_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "wilcox_free" => {
-            as_dl(super::distn::c_wilcox_free as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
+        "zeroin2" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_zeroin2,
+        )),
+        "do_fmin" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_do_fmin,
+        )),
+        "termsform" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_termsform,
+        )),
+        "call_dqags" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_call_dqags,
+        )),
+        "call_dqagi" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_call_dqagi,
+        )),
+        "compcases" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_compcases,
+        )),
+        "doD" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_do_d,
+        )),
+        "deriv" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_deriv,
+        )),
+        "optim" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            super::optim::c_optim,
+        )),
+        "nlm" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            super::zeroin::c_nlm,
+        )),
+        "optimhess" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            super::optim::c_optimhess,
+        )),
+        "modelframe" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_modelframe,
+        )),
+        "modelmatrix" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_modelmatrix,
+        )),
+        "signrank_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            super::distn::c_signrank_free,
+        )),
+        "wilcox_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            super::distn::c_wilcox_free,
+        )),
         _ => None,
     }
 }
 
 /// Recorded `.Call` arity. `None` means this name is not a stats `.Call` routine.
 pub fn call_arity(name: &str) -> Option<usize> {
-    let bare = name.strip_prefix("C_").unwrap_or(name);
-    Some(match bare {
-        "SWilk"
-        | "bw_den_binned" | "dpermdist1" | "logit_link" | "logit_linkinv"
-        | "logit_mu_eta" | "DoubleCentre" | "free_starma" | "get_s2" | "get_resid" => 1,
-        "rchisq" | "rexp" | "rgeom" | "rpois" | "rt" | "rsignrank" | "updateform" | "pacf1"
-        | "pKendall" | "ar2ma" | "dpermdist2" | "fft" | "mvfft" | "ARIMA_Invtrans"
-        | "ARIMA_undoPars" | "ARIMA_Gradtrans" | "TSconv" | "getQ0" | "nextn" | "bw_den"
-        | "Starma_method" | "arma0fa" | "set_trans" | "Invtrans" | "Dotrans" | "Gradtrans"
-        | "SplineEval" | "cutree" | "monoFC_m" => 2,
-        "rbeta" | "rbinom" | "rcauchy" | "rf" | "rgamma" | "rlnorm" | "rlogis" | "rnbinom"
-        | "rnorm" | "runif" | "rweibull" | "rwilcox" | "rnchisq" | "rnbinom_mu" | "rmultinom"
-        | "r2dtable" | "rWishart" | "influence" | "Rsm" | "KalmanFore" | "KalmanSmooth"
-        | "acf" | "nls_iter" | "ARIMA_transPars" | "Fisher_sim" | "SplineCoef"
-        | "binomial_dev_resids" | "pRho" | "rfilter" => 3,
-        "rhyper" | "Cdqrls" | "cov" | "cor" | "Cdist"
-        | "optim" | "optimhess" | "ARIMA_Like" | "tukeyline" | "chisq_sim" | "cfilter"
-        | "arma0_kfore" | "Fexact" | "bw_ucv" | "bw_bcv" | "bw_phi4" | "bw_phi6" => 4,
-        "KalmanLike" | "ApproxTest" | "ksmooth" | "BinDist" | "lowess" => 5,
-        "numeric_deriv" | "runmed" | "psmirnov_exact" | "ARIMA_CSS" => 6,
-        "Approx" | "setup_starma" => 8,
-        _ => return super::distn::call_arity(bare),
-    })
+    match lookup_call(name)? {
+        crate::mainutils::native_routines::NativeRoutine::Call(function) => Some(function.arity()),
+        _ => None,
+    }
 }
 
-pub fn lookup_call(name: &str) -> DL_FUNC {
+pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "rchisq" => as_dl(c_rchisq as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rexp" => as_dl(c_rexp as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rgeom" => as_dl(c_rgeom as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rpois" => as_dl(c_rpois as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rt" => as_dl(c_rt as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rsignrank" => as_dl(c_rsignrank as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "rbeta" => as_dl(c_rbeta as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rbinom" => as_dl(c_rbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rcauchy" => as_dl(c_rcauchy as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rf" => as_dl(c_rf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rgamma" => as_dl(c_rgamma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rlnorm" => as_dl(c_rlnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rlogis" => as_dl(c_rlogis as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rnbinom" => as_dl(c_rnbinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rnorm" => as_dl(c_rnorm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "runif" => as_dl(c_runif as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rweibull" => as_dl(c_rweibull as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rwilcox" => as_dl(c_rwilcox as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rnchisq" => as_dl(c_rnchisq as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rnbinom_mu" => {
-            as_dl(c_rnbinom_mu as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "rhyper" => as_dl(c_rhyper as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "rmultinom" => as_dl(c_rmultinom as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "r2dtable" => as_dl(c_r2dtable as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "rWishart" => as_dl(crate::library::stats::rwishart::c_rWishart as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "Cdqrls" => as_dl(c_cdqrls as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "influence" => as_dl(c_influence as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "cov" => as_dl(c_cov as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "cor" => as_dl(c_cor as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "Cdist" => as_dl(c_cdist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "updateform" => as_dl(super::updateform::c_updateform as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
-        "Rsm" => {
-            as_dl(super::smooth::c_rsm as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "lowess" => as_dl(super::lowess::c_lowess as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "KalmanFore" => as_dl(super::filter::c_kalman_fore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "KalmanLike" => as_dl(super::filter::c_kalman_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "KalmanSmooth" => as_dl(super::filter::c_kalman_smooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "acf" => {
-            as_dl(super::filter::c_acf as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "pacf1" => as_dl(super::filter::c_pacf1 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "SWilk" => as_dl(c_swilk as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "nls_iter" => as_dl(super::nls_iter::c_nls_iter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "bw_den" => {
-            as_dl(super::bandwidths::c_bw_den as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "bw_den_binned" => {
-            as_dl(super::bandwidths::c_bw_den_binned as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "bw_ucv" => as_dl(super::bandwidths::c_bw_ucv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "bw_bcv" => as_dl(super::bandwidths::c_bw_bcv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "bw_phi4" => as_dl(super::bandwidths::c_bw_phi4 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "bw_phi6" => as_dl(super::bandwidths::c_bw_phi6 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "BinDist" => {
-            as_dl(c_bindist as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "runmed" => as_dl(super::srunmed::c_runmed as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "tukeyline" => as_dl(super::line::c_tukeyline as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "nextn" => as_dl(c_nextn as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "chisq_sim" => {
-            as_dl(c_chisq_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "ksmooth" => as_dl(super::ksmooth::c_ksmooth as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "rfilter" => {
-            as_dl(super::filter::c_rfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "arma0_kfore" => as_dl(super::starma_api::c_arma0_kfore as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "psmirnov_exact" => as_dl(crate::mainutils::essentials::c_psmirnov_exact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "cfilter" => as_dl(super::filter::c_cfilter as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "pRho" => {
-            as_dl(super::prho::c_pRho as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "pKendall" => {
-            as_dl(super::kendall::c_pKendall as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "ar2ma" => as_dl(super::filter::c_ar2ma as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "dpermdist1" => {
-            as_dl(super::permdist::c_dpermdist1 as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "dpermdist2" => {
-            as_dl(super::permdist::c_dpermdist2 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "numeric_deriv" => as_dl(super::numeric_deriv::c_numeric_deriv as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_transPars" => as_dl(super::arima_native::c_arima_trans_pars as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_CSS" => as_dl(super::arima_native::c_arima_css as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_Like" => as_dl(super::arima_native::c_arima_like as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_Invtrans" => as_dl(super::arima_native::c_arima_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_undoPars" => as_dl(super::arima_native::c_arima_undo_pars as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
-        "ARIMA_Gradtrans" => as_dl(super::arima_native::c_arima_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
-        "TSconv" => {
-            as_dl(super::arima_native::c_tsconv as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "getQ0" => {
-            as_dl(super::arima_native::c_get_q0 as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "fft" => as_dl(c_fft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "mvfft" => as_dl(c_mvfft as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "ApproxTest" => as_dl(
-            c_approx_test as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "Approx" => as_dl(
-            c_approx
-                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
-                ) -> SEXP,
-        ),
-        "zeroin2" => {
-            as_dl(
-            c_zeroin2 as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "do_fmin" => {
-            as_dl(
-            c_do_fmin as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "Fisher_sim" => {
-            as_dl(c_fisher_sim as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "setup_starma" => as_dl(super::starma_api::c_setup_starma as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
-                ) -> SEXP,
-        ),
-        "free_starma" => {
-            as_dl(super::starma_api::c_free_starma as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "Starma_method" => as_dl(super::starma_api::c_starma_method as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
-        "arma0fa" => {
-            as_dl(super::starma_api::c_arma0fa as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "get_s2" => as_dl(super::starma_api::c_get_s2 as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "get_resid" => {
-            as_dl(super::starma_api::c_get_resid as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "set_trans" => {
-            as_dl(super::starma_api::c_set_trans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "Invtrans" => {
-            as_dl(super::starma_api::c_invtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "Dotrans" => {
-            as_dl(super::starma_api::c_dotrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "Gradtrans" => {
-            as_dl(super::starma_api::c_gradtrans as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "Fexact" => as_dl(super::starma_api::c_fexact as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "SplineCoef" => as_dl(super::splines::c_spline_coef as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "SplineEval" => {
-            as_dl(super::splines::c_spline_eval as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "logit_link" => {
-            as_dl(super::family::c_logit_link as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "logit_linkinv" => {
-            as_dl(super::family::c_logit_linkinv as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "logit_mu_eta" => {
-            as_dl(super::family::c_logit_mu_eta as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "binomial_dev_resids" => as_dl(super::family::c_binomial_dev_resids as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "DoubleCentre" => {
-            as_dl(super::dblcen::c_double_centre as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
-        "cutree" => {
-            as_dl(super::hclust_utils::c_cutree as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "monoFC_m" => as_dl(super::hclust_utils::c_mono_fc_m as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        ),
+        "rchisq" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rchisq),
+        )),
+        "rexp" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rexp),
+        )),
+        "rgeom" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rgeom),
+        )),
+        "rpois" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rpois),
+        )),
+        "rt" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rt),
+        )),
+        "rsignrank" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_rsignrank),
+        )),
+        "rbeta" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rbeta),
+        )),
+        "rbinom" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rbinom),
+        )),
+        "rcauchy" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rcauchy),
+        )),
+        "rf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rf),
+        )),
+        "rgamma" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rgamma),
+        )),
+        "rlnorm" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rlnorm),
+        )),
+        "rlogis" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rlogis),
+        )),
+        "rnbinom" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rnbinom),
+        )),
+        "rnorm" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rnorm),
+        )),
+        "runif" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_runif),
+        )),
+        "rweibull" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rweibull),
+        )),
+        "rwilcox" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rwilcox),
+        )),
+        "rnchisq" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rnchisq),
+        )),
+        "rnbinom_mu" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rnbinom_mu),
+        )),
+        "rhyper" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_rhyper),
+        )),
+        "rmultinom" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_rmultinom),
+        )),
+        "r2dtable" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r2dtable),
+        )),
+        "rWishart" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(
+                crate::library::stats::rwishart::c_rWishart,
+            ),
+        )),
+        "Cdqrls" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_cdqrls),
+        )),
+        "influence" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_influence),
+        )),
+        "cov" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_cov),
+        )),
+        "cor" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_cor),
+        )),
+        "Cdist" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_cdist),
+        )),
+        "updateform" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::updateform::c_updateform),
+        )),
+        "Rsm" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::smooth::c_rsm),
+        )),
+        "lowess" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(super::lowess::c_lowess),
+        )),
+        "KalmanFore" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::filter::c_kalman_fore),
+        )),
+        "KalmanLike" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(super::filter::c_kalman_like),
+        )),
+        "KalmanSmooth" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::filter::c_kalman_smooth),
+        )),
+        "acf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::filter::c_acf),
+        )),
+        "pacf1" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::filter::c_pacf1),
+        )),
+        "SWilk" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_swilk),
+        )),
+        "nls_iter" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::nls_iter::c_nls_iter),
+        )),
+        "bw_den" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::bandwidths::c_bw_den),
+        )),
+        "bw_den_binned" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(
+                super::bandwidths::c_bw_den_binned,
+            ),
+        )),
+        "bw_ucv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::bandwidths::c_bw_ucv),
+        )),
+        "bw_bcv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::bandwidths::c_bw_bcv),
+        )),
+        "bw_phi4" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::bandwidths::c_bw_phi4),
+        )),
+        "bw_phi6" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::bandwidths::c_bw_phi6),
+        )),
+        "BinDist" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(c_bindist),
+        )),
+        "runmed" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args6(super::srunmed::c_runmed),
+        )),
+        "tukeyline" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::line::c_tukeyline),
+        )),
+        "nextn" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_nextn),
+        )),
+        "chisq_sim" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_chisq_sim),
+        )),
+        "ksmooth" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(super::ksmooth::c_ksmooth),
+        )),
+        "rfilter" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::filter::c_rfilter),
+        )),
+        "arma0_kfore" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::starma_api::c_arma0_kfore),
+        )),
+        "psmirnov_exact" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args6(
+                crate::mainutils::essentials::c_psmirnov_exact,
+            ),
+        )),
+        "cfilter" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::filter::c_cfilter),
+        )),
+        "pRho" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::prho::c_pRho),
+        )),
+        "pKendall" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::kendall::c_pKendall),
+        )),
+        "ar2ma" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::filter::c_ar2ma),
+        )),
+        "dpermdist1" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::permdist::c_dpermdist1),
+        )),
+        "dpermdist2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::permdist::c_dpermdist2),
+        )),
+        "numeric_deriv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args6(
+                super::numeric_deriv::c_numeric_deriv,
+            ),
+        )),
+        "ARIMA_transPars" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(
+                super::arima_native::c_arima_trans_pars,
+            ),
+        )),
+        "ARIMA_CSS" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args6(super::arima_native::c_arima_css),
+        )),
+        "ARIMA_Like" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(
+                super::arima_native::c_arima_like,
+            ),
+        )),
+        "ARIMA_Invtrans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(
+                super::arima_native::c_arima_invtrans,
+            ),
+        )),
+        "ARIMA_undoPars" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(
+                super::arima_native::c_arima_undo_pars,
+            ),
+        )),
+        "ARIMA_Gradtrans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(
+                super::arima_native::c_arima_gradtrans,
+            ),
+        )),
+        "TSconv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::arima_native::c_tsconv),
+        )),
+        "getQ0" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::arima_native::c_get_q0),
+        )),
+        "fft" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_fft),
+        )),
+        "mvfft" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_mvfft),
+        )),
+        "ApproxTest" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(c_approx_test),
+        )),
+        "Approx" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args8(c_approx),
+        )),
+        "zeroin2" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_zeroin2,
+        )),
+        "do_fmin" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_do_fmin,
+        )),
+        "Fisher_sim" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_fisher_sim),
+        )),
+        "setup_starma" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args8(
+                super::starma_api::c_setup_starma,
+            ),
+        )),
+        "free_starma" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::starma_api::c_free_starma),
+        )),
+        "Starma_method" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(
+                super::starma_api::c_starma_method,
+            ),
+        )),
+        "arma0fa" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::starma_api::c_arma0fa),
+        )),
+        "get_s2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::starma_api::c_get_s2),
+        )),
+        "get_resid" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::starma_api::c_get_resid),
+        )),
+        "set_trans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::starma_api::c_set_trans),
+        )),
+        "Invtrans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::starma_api::c_invtrans),
+        )),
+        "Dotrans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::starma_api::c_dotrans),
+        )),
+        "Gradtrans" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::starma_api::c_gradtrans),
+        )),
+        "Fexact" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(super::starma_api::c_fexact),
+        )),
+        "SplineCoef" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(super::splines::c_spline_coef),
+        )),
+        "SplineEval" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::splines::c_spline_eval),
+        )),
+        "logit_link" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::family::c_logit_link),
+        )),
+        "logit_linkinv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::family::c_logit_linkinv),
+        )),
+        "logit_mu_eta" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::family::c_logit_mu_eta),
+        )),
+        "binomial_dev_resids" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(
+                super::family::c_binomial_dev_resids,
+            ),
+        )),
+        "DoubleCentre" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(super::dblcen::c_double_centre),
+        )),
+        "cutree" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::hclust_utils::c_cutree),
+        )),
+        "monoFC_m" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(super::hclust_utils::c_mono_fc_m),
+        )),
         _ => super::distn::lookup_call(name),
     }
 }

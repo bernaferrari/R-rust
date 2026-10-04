@@ -12,7 +12,6 @@ use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::symbol::Rf_install;
-use crate::unix::dynload::DL_FUNC;
 
 const METHODS_CALL_NAMES: &[&str] = &[
     "C_R_M_setPrimitiveMethods",
@@ -173,59 +172,88 @@ unsafe extern "C-unwind" fn c_r_set_method_dispatch(on_off: SEXP) -> SEXP {
 }
 
 
-fn as_dl<T>(f: T) -> DL_FUNC {
-    Some(unsafe { std::mem::transmute_copy(&f) })
-}
 
 /// Resolve a methods `.Call` name (`C_R_getGeneric` or `R_getGeneric`).
-pub fn lookup(name: &str) -> DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "R_getGeneric" => as_dl(c_r_get_generic as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
-        "R_identC" => as_dl(c_r_ident_c as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_methodsPackageMetaName" => {
-            as_dl(c_r_methods_package_meta_name as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "R_el_named" => as_dl(c_r_el_named as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_set_el_named" => as_dl(c_r_set_el_named as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "R_missingArg" => as_dl(c_r_missing_arg as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_get_slot" => as_dl(c_r_get_slot as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_set_slot" => as_dl(c_r_set_slot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP),
-        "R_hasSlot" => as_dl(c_r_has_slot as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_initMethodDispatch" => as_dl(c_r_init_method_dispatch as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "R_standardGeneric" => {
-            as_dl(c_r_standard_generic as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "R_selectMethod" => {
-            as_dl(c_r_select_method as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "R_clear_method_selection" => as_dl(c_r_clear_method_selection as unsafe extern "C-unwind" fn() -> SEXP),
-        "R_getClassFromCache" => {
-            as_dl(c_r_get_class_from_cache as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "R_quick_method_check" => {
-            as_dl(c_r_quick_method_check as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP)
-        }
-        "R_nextMethodCall" => as_dl(c_r_next_method_call as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "R_M_setPrimitiveMethods" => as_dl(
-            c_r_m_set_primitive_methods
-                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "do_substitute_direct" => {
-            as_dl(c_do_substitute_direct as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP)
-        }
-        "R_get_primname" => as_dl(c_r_get_primname as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "new_object" => as_dl(c_new_object as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "Rf_allocS4Object" => as_dl(c_rf_alloc_s4_object as unsafe extern "C-unwind" fn() -> SEXP),
+        "R_getGeneric" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_r_get_generic),
+        )),
+        "R_identC" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_ident_c),
+        )),
+        "R_methodsPackageMetaName" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r_methods_package_meta_name),
+        )),
+        "R_el_named" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_el_named),
+        )),
+        "R_set_el_named" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r_set_el_named),
+        )),
+        "R_missingArg" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_missing_arg),
+        )),
+        "R_get_slot" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_get_slot),
+        )),
+        "R_set_slot" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r_set_slot),
+        )),
+        "R_hasSlot" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_has_slot),
+        )),
+        "R_initMethodDispatch" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_r_init_method_dispatch),
+        )),
+        "R_standardGeneric" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r_standard_generic),
+        )),
+        "R_selectMethod" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_r_select_method),
+        )),
+        "R_clear_method_selection" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args0(c_r_clear_method_selection),
+        )),
+        "R_getClassFromCache" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_get_class_from_cache),
+        )),
+        "R_quick_method_check" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_r_quick_method_check),
+        )),
+        "R_nextMethodCall" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_r_next_method_call),
+        )),
+        "R_M_setPrimitiveMethods" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(c_r_m_set_primitive_methods),
+        )),
+        "do_substitute_direct" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_do_substitute_direct),
+        )),
+        "R_get_primname" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_r_get_primname),
+        )),
+        "new_object" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_new_object),
+        )),
+        "Rf_allocS4Object" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args0(c_rf_alloc_s4_object),
+        )),
         "R_externalptr_prototype_object" => {
-            as_dl(c_r_externalptr_prototype_object as unsafe extern "C-unwind" fn() -> SEXP)
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args0(
+                    c_r_externalptr_prototype_object,
+                ),
+            ))
         }
-        "R_dummy_extern_place" => as_dl(c_r_dummy_extern_place as unsafe extern "C-unwind" fn() -> SEXP),
-        "R_set_method_dispatch" => {
-            as_dl(c_r_set_method_dispatch as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }
+        "R_dummy_extern_place" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args0(c_r_dummy_extern_place),
+        )),
+        "R_set_method_dispatch" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_r_set_method_dispatch),
+        )),
         _ => None,
-
     }
 }
 

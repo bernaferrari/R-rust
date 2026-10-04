@@ -112,43 +112,76 @@ unsafe extern "C-unwind" fn c_rgb(
     unsafe { colors::do_rgb(r, g, b, a, mcv, nam) }
 }
 
-fn as_ext(f: unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) -> crate::unix::dynload::DL_FUNC {
-    Some(unsafe { std::mem::transmute(f) })
-}
 
-pub fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "PDF" => as_ext(c_pdf),
-        "palette2" => as_ext(c_palette2),
-        "devholdflush" => as_ext(c_devholdflush),
-        "devcur" => as_ext(c_devcur),
-        "devoff" => as_ext(c_devoff),
-        "devset" => as_ext(c_devset),
-        "devcontrol" => as_ext(c_devcontrol),
-        "devdisplaylist" => as_ext(c_devdisplaylist),
-        "devcap" => as_ext(c_devcap),
-        "devsize" => as_ext(c_devsize),
-        "devnext" => as_ext(c_devnext),
-        "devprev" => as_ext(c_devprev),
-        "R_CreateAtVector" => Some(unsafe { std::mem::transmute(c_create_at as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "R_GAxisPars" => Some(unsafe { std::mem::transmute(c_g_axis_pars as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "gray" => Some(unsafe { std::mem::transmute(c_gray as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "hsv" => Some(unsafe { std::mem::transmute(c_hsv as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "hcl" => Some(unsafe { std::mem::transmute(c_hcl as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
-        "rgb" => Some(unsafe { std::mem::transmute(c_rgb as unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP) }),
+        "PDF" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_pdf,
+        )),
+        "palette2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_palette2),
+        )),
+        "devholdflush" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devholdflush,
+        )),
+        "devcur" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devcur,
+        )),
+        "devoff" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devoff,
+        )),
+        "devset" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devset,
+        )),
+        "devcontrol" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devcontrol,
+        )),
+        "devdisplaylist" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devdisplaylist,
+        )),
+        "devcap" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devcap,
+        )),
+        "devsize" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devsize,
+        )),
+        "devnext" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devnext,
+        )),
+        "devprev" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_devprev,
+        )),
+        "R_CreateAtVector" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_create_at),
+        )),
+        "R_GAxisPars" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_g_axis_pars),
+        )),
+        "gray" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_gray),
+        )),
+        "hsv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_hsv),
+        )),
+        "hcl" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args5(c_hcl),
+        )),
+        "rgb" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args6(c_rgb),
+        )),
         _ => None,
     }
 }
 
 /// One-argument `.External` device routines. Not `R_CreateAtVector` or `R_GAxisPars`.
-pub fn lookup_external(name: &str) -> crate::unix::dynload::DL_FUNC {
+pub(crate) fn lookup_external(
+    name: &str,
+) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "PDF" | "devholdflush" | "devcur" | "devoff" | "devset"
-        | "devcontrol" | "devdisplaylist" | "devcap" | "devsize" | "devnext" | "devprev" => {
-            lookup(name)
-        }
+        "PDF" | "devholdflush" | "devcur" | "devoff" | "devset" | "devcontrol"
+        | "devdisplaylist" | "devcap" | "devsize" | "devnext" | "devprev" => lookup(name),
         _ => None,
     }
 }

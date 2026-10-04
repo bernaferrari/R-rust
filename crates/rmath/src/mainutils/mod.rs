@@ -54,6 +54,7 @@ pub mod match_mod;
 pub mod memory_main;
 pub mod mkdtemp;
 pub mod names;
+pub(crate) mod native_routines;
 pub mod objects;
 pub mod options;
 pub mod paste;

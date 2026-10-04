@@ -7,71 +7,36 @@ mod size;
 mod sock;
 mod stubs;
 
-pub(crate) unsafe fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     match name {
-        "countfields" | "C_countfields" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_countfields)
-        }),
-        "readtablehead" | "C_readtablehead" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_readtablehead)
-        }),
-        "octsize" | "C_octsize" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_octsize)
-        }),
-        "objectSize" | "C_objectSize" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_object_size)
-        }),
-        "typeconvert" | "C_typeconvert" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                ) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_typeconvert)
-        }),
-        "writetable" | "C_writetable" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                ) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_writetable)
-        }),
-        "edit" | "C_edit" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                    crate::sexp::ffi::SEXP,
-                ) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_edit)
-        }),
-        "tzcode_type" | "C_tzcode_type" => Some(unsafe {
-            std::mem::transmute::<
-                unsafe extern "C-unwind" fn(crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP,
-                _,
-            >(c_tzcode_type)
-        }),
+        "countfields" | "C_countfields" => Some(
+            crate::mainutils::native_routines::NativeRoutine::External1(c_countfields),
+        ),
+        "readtablehead" | "C_readtablehead" => Some(
+            crate::mainutils::native_routines::NativeRoutine::External1(c_readtablehead),
+        ),
+        "octsize" | "C_octsize" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_octsize),
+        )),
+        "objectSize" | "C_objectSize" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args1(c_object_size),
+            ))
+        }
+        "typeconvert" | "C_typeconvert" => Some(
+            crate::mainutils::native_routines::NativeRoutine::External2(c_typeconvert),
+        ),
+        "writetable" | "C_writetable" => Some(
+            crate::mainutils::native_routines::NativeRoutine::External2(c_writetable),
+        ),
+        "edit" | "C_edit" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_edit,
+        )),
+        "tzcode_type" | "C_tzcode_type" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args0(c_tzcode_type),
+            ))
+        }
         _ => None,
     }
 }
@@ -80,7 +45,7 @@ unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate
     unsafe { io::countfields(args) }
 }
 
-unsafe extern "C-unwind" fn c_tzcode_type(_args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe extern "C-unwind" fn c_tzcode_type() -> crate::sexp::ffi::SEXP {
     unsafe { stubs::tzcode_type() }
 }
 

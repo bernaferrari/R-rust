@@ -22,7 +22,6 @@ pub struct RCapturedOutput {
     pub truncated: bool,
 }
 
-
 /// One capture layer owns its budget, including traffic forwarded to it.
 #[derive(Debug, Default)]
 struct CaptureFrame {
@@ -35,7 +34,6 @@ struct CaptureFrame {
     sink_depth_at_start: usize,
     connection: Option<(*mut RInstance, i32)>,
 }
-
 
 #[derive(Clone, Copy)]
 enum OutputStream {
@@ -80,7 +78,6 @@ impl CaptureFrame {
                 interleaved.push_str(&buffer[previous_len..]);
             }
             return !split;
-
         }
         false
     }
@@ -136,7 +133,6 @@ impl OutputCaptureState {
             interleaved: frame.interleaved.unwrap_or_default(),
             truncated: frame.truncated,
         }
-
     }
 
     pub(crate) fn is_capturing(&self) -> bool {
@@ -252,11 +248,14 @@ pub(crate) fn print_dispatch_extras() -> SEXP {
 pub(crate) unsafe fn cons_print_args(x: SEXP) -> SEXP {
     unsafe {
         let extras = print_dispatch_extras();
-        let extras = if extras.is_null() { R_NilValue() } else { extras };
+        let extras = if extras.is_null() {
+            R_NilValue()
+        } else {
+            extras
+        };
         crate::sexp::constructors::Rf_cons(x, extras)
     }
 }
-
 
 unsafe fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
     unsafe {
@@ -289,7 +288,6 @@ pub(crate) unsafe fn copy_print_dispatch_extras(args: SEXP, x: SEXP) -> SEXP {
     unsafe { print_args_except_x(args, x) }
 }
 
-
 /// Start capturing R output.
 pub fn start_capture() {
     super::instance::with_required_current_instance(start_capture_in);
@@ -315,20 +313,32 @@ pub(crate) fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
 /// A nested capture owned by its starting session, restored even on errors.
 /// Discarding an unfinished capture mirrors capture.output(file=NULL) on error.
 pub(crate) struct OutputCaptureGuard {
-    instance: *mut RInstance,
+    owner: super::owner::OwnerPin,
     active: bool,
 }
 impl OutputCaptureGuard {
+    fn owner() -> super::owner::OwnerPin {
+        // The current token is used only to authenticate its original managed
+        // owner; the returned pin, rather than the token, retains storage.
+        unsafe { super::owner::OwnerToken::current() }
+            .expect("output capture requires a current runtime")
+            .weak_owner()
+            .expect("output capture requires a managed runtime")
+            .pin()
+            .expect("output capture requires an active runtime")
+    }
+
     pub(crate) fn start() -> Self {
-        let instance = super::instance::with_required_current_instance(|instance| instance);
-        start_capture_in(instance);
+        let owner = Self::owner();
+        start_capture_in(owner.as_ptr());
         Self {
-            instance,
+            owner,
             active: true,
         }
     }
     pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
-        let instance = super::instance::with_required_current_instance(|instance| instance);
+        let owner = Self::owner();
+        let instance = owner.as_ptr();
         unsafe {
             let depth = (*instance).connections_state.sink.sink_number;
             let mut capture = (*instance).output_capture.borrow_mut();
@@ -336,21 +346,24 @@ impl OutputCaptureGuard {
             capture.current.sink_depth_at_start = depth;
         }
         Self {
-            instance,
+            owner,
             active: true,
         }
     }
     pub(crate) fn set_connection(&mut self, index: i32) {
+        self.owner
+            .require_live()
+            .expect("output capture runtime was closed");
         unsafe {
-            (*self.instance)
+            (*self.owner.as_ptr())
                 .output_capture
                 .borrow_mut()
                 .current
-                .connection = Some((self.instance, index));
+                .connection = Some((self.owner.as_ptr(), index));
         }
     }
     pub(crate) fn finish(mut self) -> RCapturedOutput {
-        let output = stop_capture_in(self.instance);
+        let output = stop_capture_in(self.owner.as_ptr());
         self.active = false;
         output
     }
@@ -358,7 +371,7 @@ impl OutputCaptureGuard {
 impl Drop for OutputCaptureGuard {
     fn drop(&mut self) {
         if self.active {
-            let _ = stop_capture_in(self.instance);
+            let _ = stop_capture_in(self.owner.as_ptr());
         }
     }
 }
@@ -523,7 +536,11 @@ fn needs_scientific(v: f64) -> bool {
         return false;
     }
     let scipen = unsafe { crate::mainutils::options::GetOptionScipen() };
-    let fixed = if exponent >= 0 { exponent + 1 } else { -exponent + 1 };
+    let fixed = if exponent >= 0 {
+        exponent + 1
+    } else {
+        -exponent + 1
+    };
     let sci = 6 + exponent.abs().to_string().len() as i32;
     fixed > sci + scipen
 }
@@ -591,8 +608,6 @@ fn trim_float(s: String) -> String {
     format!("{mantissa}{exponent}")
 }
 
-
-
 fn format_r_default_real(v: f64) -> String {
     let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
     let abs = v.abs();
@@ -605,7 +620,6 @@ fn format_r_default_real(v: f64) -> String {
         let decimals = (digits as usize).saturating_sub(1);
         return trim_float(format!("{v:.decimals$e}"));
     }
-
 
     let decimals = if exponent >= 0 {
         (digits - exponent - 1).max(0) as usize
@@ -638,7 +652,6 @@ pub(crate) fn format_complex_value(v: super::ffi::Rcomplex) -> String {
     }
 }
 
-
 fn format_access_error(err: impl std::fmt::Display) -> String {
     format!("<{err}>")
 }
@@ -668,7 +681,6 @@ fn format_complex_element(x: Sexp<'_>, i: R_xlen_t) -> String {
 }
 
 pub(crate) fn format_raw_value(v: u8) -> String {
-
     format!("{v:02x}")
 }
 
@@ -735,10 +747,8 @@ fn class_for_print(class: SEXP) -> ClassForPrint {
         if keep.is_empty() {
             return ClassForPrint::Omit;
         }
-        let out = crate::sexp::constructors::Rf_allocVector3(
-            SEXPTYPE::STRSXP,
-            keep.len() as R_xlen_t,
-        );
+        let out =
+            crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, keep.len() as R_xlen_t);
         let guard = crate::sexp::protect::protect(out);
         for (i, elt) in keep.into_iter().enumerate() {
             crate::sexp::accessors::SET_STRING_ELT(out, i as R_xlen_t, elt);
@@ -746,8 +756,6 @@ fn class_for_print(class: SEXP) -> ClassForPrint {
         ClassForPrint::Filtered(out, guard)
     }
 }
-
-
 
 fn format_printable_attributes(x: Sexp<'_>) -> String {
     unsafe {
@@ -802,21 +810,14 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
     }
 }
 
-
 fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
     let attrs = format_printable_attributes(x);
     if attrs.is_empty() {
         format!("{body}\n")
     } else {
         format!("{body}\n{attrs}")
-
     }
 }
-
-
-
-
-
 
 fn format_with_printable_attributes(base: String, x: Sexp<'_>) -> String {
     format!("{base}{}", format_printable_attributes(x))
@@ -883,9 +884,7 @@ fn matrix_dimname_titles(dimnames: SEXP) -> (Option<String>, Option<String>) {
             if p.is_null() {
                 return String::new();
             }
-            std::ffi::CStr::from_ptr(p)
-                .to_string_lossy()
-                .into_owned()
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
         };
         (Some(elt(0)), Some(elt(1)))
     }
@@ -1100,8 +1099,6 @@ fn print_right_flag() -> bool {
     }
 }
 
-
-
 fn matrix_print_window(nrow: usize, ncol: usize, max: usize) -> (usize, usize) {
     let c_pr = ncol.min(max);
     let mut r_pr = nrow;
@@ -1252,8 +1249,6 @@ where
     lines.join("\n")
 }
 
-
-
 fn format_character_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
 where
     F: Fn(usize, usize) -> String,
@@ -1299,20 +1294,19 @@ where
         widths.push(width);
     }
 
-    let page_width = unsafe {
-        crate::mainutils::options::GetOptionWidth().max(10) as usize
-    };
+    let page_width = unsafe { crate::mainutils::options::GetOptionWidth().max(10) as usize };
     let mut blocks = Vec::new();
     let mut start = 0;
     while start < ncol {
         let mut used = row_width;
         let mut end = start;
         while end < ncol {
-            let extra = widths[end] + if row_width > 0 || end > start || empty_row_labs {
-                1
-            } else {
-                0
-            };
+            let extra = widths[end]
+                + if row_width > 0 || end > start || empty_row_labs {
+                    1
+                } else {
+                    0
+                };
             if end > start && used + extra > page_width {
                 break;
             }
@@ -1354,7 +1348,6 @@ where
             }
             // Gap sits outside the field; `right` chooses the side of the pad.
             header.push_str(&align(&col_labels[c], widths[c]));
-
         }
         lines.push(header);
 
@@ -1370,7 +1363,6 @@ where
     }
     lines.join("\n")
 }
-
 
 fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
     unsafe {
@@ -1422,11 +1414,9 @@ fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
     }
 }
 
-
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
     let Some((nrow, ncol)) = matrix_dims(x.clone()) else {
-        return format_array(x.clone())
-            .map(|body| format_with_printable_attributes(body, x));
+        return format_array(x.clone()).map(|body| format_with_printable_attributes(body, x));
     };
     let body = match x.clone().typeof_() {
         SEXPTYPE::INTSXP => format_matrix_with(x.clone(), nrow, ncol, |r, c| {
@@ -1441,19 +1431,15 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
             let quote = print_quote_flag()
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
-            format_character_matrix_with(
-                x.clone(),
-                nrow,
-                ncol,
-                |r, c| format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote),
-            )
+            format_character_matrix_with(x.clone(), nrow, ncol, |r, c| {
+                format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote)
+            })
         }
 
         _ => return None,
     };
     Some(format_with_printable_attributes(body, x))
 }
-
 
 fn array_dims(x: Sexp<'_>) -> Option<Vec<usize>> {
     unsafe {
@@ -1480,11 +1466,7 @@ fn array_dims(x: Sexp<'_>) -> Option<Vec<usize>> {
 }
 
 fn ceil_div(a: usize, b: usize) -> usize {
-    if b == 0 {
-        0
-    } else {
-        a.div_ceil(b)
-    }
+    if b == 0 { 0 } else { a.div_ceil(b) }
 }
 
 fn sexp_string_at(x: SEXP, i: R_xlen_t) -> Option<String> {
@@ -1528,8 +1510,7 @@ fn array_slice_banner(x: Sexp<'_>, dims: &[usize], slice: usize) -> String {
         } else {
             R_NilValue()
         };
-        let has_dnn =
-            !dnn.is_null() && dnn != R_NilValue() && TYPEOF(dnn) == SEXPTYPE::STRSXP;
+        let has_dnn = !dnn.is_null() && dnn != R_NilValue() && TYPEOF(dnn) == SEXPTYPE::STRSXP;
         let mut header = String::from(", ");
         let mut k = 1usize;
         for (j, &extent) in dims.iter().enumerate().skip(2) {
@@ -1634,8 +1615,7 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
         text.push('\n');
     }
     if max_reached {
-        let mut msg =
-            String::from(" [ reached 'max' / getOption(\"max.print\") -- omitted");
+        let mut msg = String::from(" [ reached 'max' / getOption(\"max.print\") -- omitted");
         if nb_pr < nb {
             let omitted = nb - nb_pr;
             msg.push_str(&format!(
@@ -1644,7 +1624,6 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
                 if omitted == 1 { "" } else { "s" }
             ));
         } else if nb_pr == nb {
-
             let nr_rem = nr.saturating_sub(nr_last);
             if nr_rem > 0 {
                 msg.push_str(&format!(
@@ -1669,9 +1648,6 @@ fn format_array(x: Sexp<'_>) -> Option<String> {
     Some(text)
 }
 
-
-
-
 fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
@@ -1687,7 +1663,6 @@ fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
             crate::sexp::attrib_core::R_LevelsSymbol(),
         );
         string_vector_labels(levels).filter(|levels| !levels.is_empty())
-
     }
 }
 
@@ -1772,7 +1747,6 @@ fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> 
     }
 }
 
-
 fn escape_printed_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -1816,24 +1790,16 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
         }
         let _g = crate::sexp::protect::protect(formatted);
         for i in 0..n_show {
-            let days = x
-                .clone()
-                .try_real_elt(i)
-                .ok()
-                .or_else(|| {
-                    x.clone()
-                        .try_integer_elt(i)
-                        .ok()
-                        .and_then(|v| {
-                            if v == crate::sexp::NA_INTEGER {
-                                None
-                            } else {
-                                Some(v as f64)
-                            }
-                        })
-                });
-            let text = days
-                .and_then(crate::mainutils::essentials::date_days_to_iso);
+            let days = x.clone().try_real_elt(i).ok().or_else(|| {
+                x.clone().try_integer_elt(i).ok().and_then(|v| {
+                    if v == crate::sexp::NA_INTEGER {
+                        None
+                    } else {
+                        Some(v as f64)
+                    }
+                })
+            });
+            let text = days.and_then(crate::mainutils::essentials::date_days_to_iso);
             if let Some(text) = text {
                 if text == "NA" {
                     crate::sexp::accessors::SET_STRING_ELT(
@@ -1874,7 +1840,6 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
         out
     }
 }
-
 
 fn format_posixct_element(x: Sexp<'_>, i: R_xlen_t, include_tz: bool, force_time: bool) -> String {
     x.try_real_elt(i)
@@ -1951,7 +1916,6 @@ pub(crate) fn format_posixct_vector_max(
     }
 }
 
-
 fn posixlt_time_length(x: Sexp<'_>) -> R_xlen_t {
     unsafe {
         let raw = x.as_raw();
@@ -1973,8 +1937,7 @@ fn format_posixlt_vector(x: Sexp<'_>) -> String {
         return "POSIXlt of length 0".to_string();
     }
     unsafe {
-        use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString};
         use crate::sexp::ffi::{NA_INTEGER, TRUE};
         use crate::sexp::protect::protect;
         let format = Rf_mkString(c"".as_ptr());
@@ -2001,9 +1964,6 @@ fn format_posixlt_vector(x: Sexp<'_>) -> String {
         format_vector_stock_n(Sexp::from_raw_unchecked(formatted), true, None)
     }
 }
-
-
-
 
 fn difftime_units(x: Sexp<'_>) -> String {
     unsafe {
@@ -2168,8 +2128,8 @@ fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
     unsafe {
         let digits = summary_default_digits();
         let old = crate::mainutils::format::format_get_R_print();
-        let previous = crate::mainutils::format::format_set_R_print(
-            crate::mainutils::format::RPrint {
+        let previous =
+            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
                 digits,
                 scipen: old.scipen,
                 na_width: old.na_width,
@@ -2183,7 +2143,9 @@ fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
 
 fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Option<Vec<String>> {
     unsafe {
-        if x.typeof_() != SEXPTYPE::REALSXP { return None; }
+        if x.typeof_() != SEXPTYPE::REALSXP {
+            return None;
+        }
         let slice: Vec<_> = x.iter_real().collect();
         if slice.len() != names.len() {
             return None;
@@ -2229,13 +2191,9 @@ fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Option<Vec<Strin
     }
 }
 
-
-
 fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
     with_summary_default_digits(|| unsafe { format_vector_stock(x, false) })
 }
-
-
 
 fn format_summary_via_format(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
@@ -2272,7 +2230,8 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         return Some(format_summary_default_unnamed_numeric(x));
     };
     let values: Vec<String> = match x.clone().typeof_() {
-        SEXPTYPE::REALSXP => format_summary_via_format(x.clone()).or_else(|| format_named_summary_reals(x.clone(), &names))?,
+        SEXPTYPE::REALSXP => format_summary_via_format(x.clone())
+            .or_else(|| format_named_summary_reals(x.clone(), &names))?,
 
         SEXPTYPE::INTSXP => (0..x.clone().len())
             .map(|i| {
@@ -2318,7 +2277,6 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     Some(format!("{name_line} \n{value_line} "))
-
 }
 
 fn list_names(x: Sexp<'_>) -> Vec<String> {
@@ -2381,7 +2339,6 @@ fn data_frame_row_labels(x: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
     (1..=nrow).map(|i| i.to_string()).collect()
 }
 
-
 fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
     if x.clone().len() == 0 {
         return "NA".to_string();
@@ -2431,7 +2388,6 @@ fn format_data_frame_column(col: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
         .collect()
 }
 
-
 fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     if !has_class(x.clone(), "data.frame") {
         return None;
@@ -2440,12 +2396,7 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     let nrow = data_frame_nrows(x.clone());
     let row_labels = data_frame_row_labels(x.clone(), nrow);
     let columns: Vec<Sexp<'_>> = x.iter_vector().collect();
-    let row_width = row_labels
-        .iter()
-        .map(String::len)
-        .max()
-        .unwrap_or(1)
-        .max(1);
+    let row_width = row_labels.iter().map(String::len).max().unwrap_or(1).max(1);
     let formatted_cols: Vec<Vec<String>> = columns
         .iter()
         .map(|col| format_data_frame_column(col.clone(), nrow))
@@ -2485,7 +2436,9 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
             .map(|(col, width)| {
                 format!(
                     "{:>width$}",
-                    col.get(row as usize).cloned().unwrap_or_else(|| "NA".to_string())
+                    col.get(row as usize)
+                        .cloned()
+                        .unwrap_or_else(|| "NA".to_string())
                 )
             })
             .collect::<Vec<_>>()
@@ -2539,8 +2492,6 @@ fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     format_list_body_with_attributes(sections.join("\n\n"), x)
 }
 
-
-
 fn format_pairlist(x: Sexp<'_>) -> String {
     format_pairlist_with_path(x, "")
 }
@@ -2570,10 +2521,6 @@ fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
             return format_with_printable_attributes("NULL".to_string(), x);
         }
         format_list_body_with_attributes(sections.join("\n\n"), x)
-
-
-
-
     }
 }
 
@@ -2649,7 +2596,6 @@ fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
     }
 }
 
-
 fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
     unsafe {
         let raw = x.as_raw();
@@ -2659,9 +2605,30 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
         if crate::mainutils::coerce::IS_S4_OBJECT(raw) != 0 {
             return format_dispatched_show(raw);
         }
-        let klass = crate::sexp::attrib_core::getAttrib(
-            raw,
-            crate::sexp::attrib_core::R_ClassSymbol());
+    }
+    let guard = OutputCaptureGuard::start();
+    let evaluated =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dispatch_print_method(x)));
+    let captured = guard.finish();
+    match evaluated {
+        Ok(Some(())) => Some(captured.stdout.trim_end_matches('\n').to_string()),
+        Ok(None) => None,
+        Err(payload) => {
+            keep_show_stdout_before_error(&captured.stdout);
+            std::panic::resume_unwind(payload)
+        }
+    }
+}
+
+/// Execute the method into the caller's capture, keeping stream order intact.
+fn dispatch_print_method(x: Sexp<'_>) -> Option<()> {
+    unsafe {
+        let raw = x.as_raw();
+        if crate::sexp::accessors::OBJECT(raw) == 0 {
+            return None;
+        }
+        let klass =
+            crate::sexp::attrib_core::getAttrib(raw, crate::sexp::attrib_core::R_ClassSymbol());
         let env = crate::sexp::globals::R_GlobalEnv();
         let method = crate::mainutils::objects::lookup_s3_method_for_classes(
             "print", klass, env, env, env, false,
@@ -2670,7 +2637,11 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
             return None;
         }
         let extras = print_dispatch_extras();
-        let extras = if extras.is_null() { R_NilValue() } else { extras };
+        let extras = if extras.is_null() {
+            R_NilValue()
+        } else {
+            extras
+        };
         let args = crate::sexp::constructors::Rf_cons(raw, extras);
         let _args = crate::sexp::protect::protect(args);
         let print_sym = crate::sexp::symbol::Rf_install(c"print".as_ptr());
@@ -2679,20 +2650,19 @@ fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
             crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         }
         let _call = crate::sexp::protect::protect(call);
-        let guard = OutputCaptureGuard::start();
-        let Some(_) = crate::mainutils::essentials::apply_s3_closure_method(
-            "print", call, args, env) else {
-            return None;
-        };
-
-        let captured = guard.finish();
-        Some(captured.stdout.trim_end_matches('\n').to_string())
+        crate::mainutils::essentials::apply_s3_closure_method("print", call, args, env).map(|_| ())
     }
 }
 
 /// GNU `PrintValue` dispatches `print` when a class is set. try-error,
 /// conditions, srcref, and S4 keep their dedicated printers.
 fn auto_print_method(x: Sexp<'_>) -> Option<String> {
+    auto_print_method_supported(&x)
+        .then(|| format_dispatched_print(x))
+        .flatten()
+}
+
+fn auto_print_method_supported(x: &Sexp<'_>) -> bool {
     if has_class(x.clone(), "try-error")
         || has_class(x.clone(), "condition")
         || has_class(x.clone(), "srcref")
@@ -2700,17 +2670,16 @@ fn auto_print_method(x: Sexp<'_>) -> Option<String> {
         || has_class(x.clone(), "noquote")
         || has_class(x.clone(), "summaryDefault")
     {
-        return None;
+        return false;
     }
     if unsafe {
         crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
             || x.typeof_() == SEXPTYPE::S4SXP
     } {
-        return None;
+        return false;
     }
-    format_dispatched_print(x)
+    true
 }
-
 
 fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
     if let Some(dispatched) = format_dispatched_print(elem.clone()) {
@@ -2725,7 +2694,6 @@ fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
     }
 }
 
-
 /// Format a value for top-level emission, excluding the caller-owned final
 /// line terminator.
 ///
@@ -2736,11 +2704,6 @@ fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
 pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
     format_sexp_direct(x)
 }
-
-
-
-
-
 
 fn first_deparse_line(text: crate::sexp::ffi::SEXP) -> Option<String> {
     unsafe {
@@ -2816,8 +2779,6 @@ fn format_primitive(x: Sexp<'_>) -> String {
     }
 }
 
-
-
 fn deparse_expression_one(expr: SEXP) -> String {
     unsafe {
         // GNU print.c DEFAULTDEPARSE is keepNA | keepInteger | niceNames.
@@ -2859,7 +2820,6 @@ fn deparse_expression_one(expr: SEXP) -> String {
         parts.join("\n")
     }
 }
-
 
 fn format_expression_vector(x: Sexp<'_>) -> String {
     unsafe {
@@ -3459,16 +3419,16 @@ pub fn print_value(x: Sexp<'_>) {
         return;
     }
 
-    if let Some(text) = auto_print_method(x.clone()) {
-        emit(&format!("{text}\n"));
+    if auto_print_method_supported(&x) && dispatch_print_method(x.clone()).is_some() {
         return;
     }
-
 
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
             if x.clone().typeof_() == SEXPTYPE::CLOSXP {
-                if let Some(source) = crate::mainutils::essentials::print::function_srcref_text(x.clone().as_raw()) {
+                if let Some(source) =
+                    crate::mainutils::essentials::print::function_srcref_text(x.clone().as_raw())
+                {
                     emit(&source);
                     return;
                 }
@@ -3482,7 +3442,6 @@ pub fn print_value(x: Sexp<'_>) {
                 format_with_printable_attributes(format_primitive(x.clone()), x)
             ));
         }
-
 
         SEXPTYPE::LISTSXP => {
             emit(&format!("{}\n", format_sexp_top_level(x)));
@@ -3621,9 +3580,8 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::VECSXP => {
             if has_class(x.clone(), "summary.warnings") {
-                let text = unsafe {
-                    crate::mainutils::essentials::format_summary_warnings(x.as_raw())
-                };
+                let text =
+                    unsafe { crate::mainutils::essentials::format_summary_warnings(x.as_raw()) };
 
                 emit(&text);
                 return;
@@ -3686,6 +3644,55 @@ pub fn print_value(x: Sexp<'_>) {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct PrintedOutputError {
+    pub(crate) message: String,
+    pub(crate) captured: RCapturedOutput,
+}
+
+/// Capture actual automatic printing, including custom methods and both streams.
+/// Presentation formatting never modifies these emitted bytes.
+pub(crate) fn capture_printed_value(x: Sexp<'_>) -> Result<RCapturedOutput, PrintedOutputError> {
+    // Only the managed original authority escapes this temporary current token.
+    let original = unsafe { super::owner::OwnerToken::current() }
+        .expect("automatic printing requires a current runtime")
+        .weak_owner()
+        .expect("automatic printing requires a managed runtime");
+    let guard = OutputCaptureGuard::start();
+    let printed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        super::owner::with_runtime(&original, |access| {
+            access.domain().link(&x)?;
+            print_value(x);
+            Ok::<(), super::object::SexpError>(())
+        })
+    }));
+    let captured = guard.finish();
+    match printed {
+        Ok(Ok(Ok(()))) => Ok(captured),
+        Ok(Err(error)) | Ok(Ok(Err(error))) => Err(PrintedOutputError {
+            message: error.to_string(),
+            captured,
+        }),
+        Err(payload) => {
+            let message = if !original.is_live() {
+                Some(super::object::SexpError::RootUnavailable.to_string())
+            } else if let Some(error) = payload.downcast_ref::<super::context::RError>() {
+                Some(error.message.clone())
+            } else if let Some(super::context::RSignal::Error { message }) =
+                payload.downcast_ref::<super::context::RSignal>()
+            {
+                Some(message.clone())
+            } else {
+                None
+            };
+            match message {
+                Some(message) => Err(PrintedOutputError { message, captured }),
+                None => std::panic::resume_unwind(payload),
+            }
+        }
+    }
+}
+
 fn emit(msg: &str) {
     if is_capturing() {
         capture_stdout(msg);
@@ -3725,13 +3732,14 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
             || x.typeof_() == SEXPTYPE::S4SXP
     } {
-        if let Some(text) = format_dispatched_print(x.clone()) {
-            return text;
-        }
-        if let Some(text) = format_dispatched_show(x.clone().as_raw()) {
+        if let Some(text) = format_dispatched_show(x.as_raw()) {
             return text;
         }
     }
+    format_sexp_body(x)
+}
+
+fn format_sexp_body(x: Sexp<'_>) -> String {
     match x.clone().typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
@@ -3817,9 +3825,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 && !has_class(x.clone(), "table");
             let base = unsafe { format_vector_stock(x.clone(), quote) };
             format_with_printable_attributes(base, x)
-
         }
-
 
         SEXPTYPE::RAWSXP => {
             if x.clone().len() == 0 {
@@ -3844,7 +3850,6 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
             format_list(x)
         }
-
 
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
@@ -4094,6 +4099,87 @@ mod tests {
     use crate::sexp::session::RSession;
 
     #[test]
+    fn owned_output_capture_retains_only_its_original_runtime_through_closure() {
+        let mut original = Some(RSession::new_for_gc_tests());
+        let owner = original
+            .as_ref()
+            .unwrap()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap();
+        let count = owner.allocation_strong_count();
+        let guard = original.as_ref().unwrap().with_active(|| {
+            let guard = OutputCaptureGuard::start();
+            capture_stdout("original  ");
+            guard
+        });
+        assert_eq!(owner.allocation_strong_count(), count + 1);
+        let replacement = RSession::new_for_gc_tests();
+        let replacement_guard = replacement.with_active(|| {
+            let guard = OutputCaptureGuard::start();
+            capture_stdout("replacement\n\n");
+            guard
+        });
+        drop(original.take());
+        assert!(!owner.is_live());
+        assert_eq!(owner.allocation_strong_count(), 1);
+        assert_eq!(guard.finish().stdout, "original  ");
+        assert_eq!(owner.allocation_strong_count(), 0);
+        assert!(replacement.with_active(is_capturing));
+        assert_eq!(replacement_guard.finish().stdout, "replacement\n\n");
+    }
+
+    #[test]
+    fn owned_output_capture_preserves_custom_method_stream_order_and_error_prefix() {
+        let mut session = RSession::new_without_default_packages();
+        let (value, _, _) = session.eval_script_with_output_capture(
+            "print.zz <- function(x, ...) { cat('first  '); message('second'); cat('third\\n\\n') }; structure(1, class='zz')",
+        );
+        let value = value.unwrap().into_owned().unwrap();
+        let output = session.with_active(|| capture_printed_value(value).unwrap());
+        assert_eq!(output.stdout, "first  third\n\n");
+        assert_eq!(output.stderr, "second\n");
+        assert_eq!(output.interleaved, "first  second\nthird\n\n");
+
+        let (value, _, _) = session.eval_script_with_output_capture(
+            "print.zz <- function(x, ...) { cat('before  '); stop('boom') }; structure(1, class='zz')",
+        );
+        let value = value.unwrap().into_owned().unwrap();
+        let failure = session.with_active(|| capture_printed_value(value).unwrap_err());
+        assert!(failure.message.contains("boom"));
+        assert_eq!(failure.captured.stdout, "before  ");
+        assert_eq!(failure.captured.interleaved, "before  ");
+        assert!(!session.with_active(is_capturing));
+    }
+
+    #[test]
+    fn exact_top_level_emission_preserves_custom_print_without_newline() {
+        let mut session = RSession::new_without_default_packages();
+        let (value, captured, visible) = session.eval_script_with_output_capture(
+            "print.zz <- function(x, ...) cat('custom  '); structure(1, class='zz')",
+        );
+        assert!(visible);
+        assert_eq!(captured.stdout, "");
+        let value = value.unwrap().into_owned().unwrap();
+        let emitted = session.with_active(|| capture_printed_value(value).unwrap().stdout);
+        assert_eq!(emitted, "custom  ");
+    }
+
+    #[test]
+    fn exact_top_level_emission_preserves_custom_print_blank_lines() {
+        let mut session = RSession::new_without_default_packages();
+        let (value, captured, visible) = session.eval_script_with_output_capture(
+            "print.zz <- function(x, ...) cat('custom\\n\\n'); structure(1, class='zz')",
+        );
+        assert!(visible);
+        assert_eq!(captured.stdout, "");
+        let value = value.unwrap().into_owned().unwrap();
+        let emitted = session.with_active(|| capture_printed_value(value).unwrap().stdout);
+        assert_eq!(emitted, "custom\n\n");
+    }
+
+    #[test]
     fn test_capture_lifecycle() {
         let _session = RSession::new();
         assert!(!is_capturing());
@@ -4210,7 +4296,8 @@ mod tests {
                     state.capture_stderr(message);
                 }
                 let frame = &state.current;
-                let stream_bytes = frame.stdout.as_ref().unwrap().len() + frame.stderr.as_ref().unwrap().len();
+                let stream_bytes =
+                    frame.stdout.as_ref().unwrap().len() + frame.stderr.as_ref().unwrap().len();
                 assert!(stream_bytes <= limit);
                 assert_eq!(frame.interleaved.as_ref().unwrap().len(), stream_bytes);
             }

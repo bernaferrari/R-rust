@@ -56,6 +56,9 @@ use super::protect::protect;
 use rmath_nmath::rng::{detach_rng, install_rng};
 use rmath_nmath::{MathState, RngState, detach_state, install_state};
 
+mod retained;
+pub use retained::RetainedValueId;
+
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct REvalError {
@@ -200,50 +203,6 @@ fn remember_last_value(value: SEXP) {
     }
 }
 
-fn auto_print_visible(value: Sexp<'_>) -> RResult<()> {
-    let s4 = unsafe { crate::mainutils::objects::IS_S4_OBJECT(value.clone().as_raw()) } != 0;
-    let srcref = unsafe {
-        let class = crate::sexp::attrib_core::getAttrib(
-            value.clone().as_raw(),
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
-        if class.is_null()
-            || class == crate::sexp::globals::R_NilValue()
-            || crate::sexp::accessors::TYPEOF(class) != crate::sexp::ffi::SEXPTYPE::STRSXP
-        {
-            false
-        } else {
-            let n = crate::sexp::accessors::XLENGTH(class);
-            (0..n).any(|i| {
-                let elt = crate::sexp::accessors::STRING_ELT(class, i);
-                !elt.is_null()
-                    && CStr::from_ptr(crate::sexp::accessors::CHAR(elt)).to_bytes() == b"srcref"
-            })
-        }
-    };
-    let data_frame = unsafe {
-        crate::mainutils::essentials::sexp_has_class(value.clone().as_raw(), "data.frame")
-    };
-    if s4 || srcref || data_frame {
-        // PrintObjectS4 evals show() with no local handler, so a stop()
-        // inside tryCatch never reaches this frame. Only an R error that
-        // escapes print becomes a script error; any other panic keeps unwinding.
-        match catch_unwind(AssertUnwindSafe(|| {
-            super::output::print_value(value);
-        })) {
-            Ok(()) => Ok(()),
-            Err(payload) => match print_panic_r_error(payload.as_ref()) {
-                Some(err) => Err(err),
-                None => std::panic::resume_unwind(payload),
-            },
-        }
-    } else {
-        let rendered = super::output::format_sexp_top_level(value);
-        super::output::capture_stdout(&format!("{rendered}\n"));
-        Ok(())
-    }
-}
-
 fn expr_or_nil(expr: SEXP) -> SEXP {
     if expr.is_null() {
         unsafe { R_NilValue() }
@@ -252,13 +211,53 @@ fn expr_or_nil(expr: SEXP) -> SEXP {
     }
 }
 
-/// Resets the top-level expression location when a script loop ends so a
-/// stale `(from #n)` position never outlives the script that set it.
-struct ToplevelExprNoGuard;
+/// Physical location cleanup belongs to the original runtime even after close.
+struct ToplevelExprNoGuard {
+    owner: super::owner::OwnerPin,
+}
+impl ToplevelExprNoGuard {
+    fn new(session: &RSession) -> Self {
+        Self {
+            owner: session
+                .owner_token()
+                .expect("active script owner")
+                .weak_owner()
+                .expect("managed script owner")
+                .pin()
+                .expect("live script owner"),
+        }
+    }
 
+    fn require_active(&self) -> RResult<()> {
+        self.owner.require_live().map_err(|error| REvalError {
+            message: error.to_string(),
+        })?;
+        if super::instance::current_instance_ptr() != Some(self.owner.as_ptr()) {
+            return Err(REvalError {
+                message: super::object::SexpError::OwnerNotActive.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn run_checked<T>(&self, operation: impl FnOnce() -> T) -> RResult<T> {
+        self.require_active()?;
+        let outcome = catch_unwind(AssertUnwindSafe(operation));
+        self.require_active()?;
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(payload) => match print_panic_r_error(payload.as_ref()) {
+                Some(error) => Err(error),
+                None => std::panic::resume_unwind(payload),
+            },
+        }
+    }
+}
 impl Drop for ToplevelExprNoGuard {
     fn drop(&mut self) {
-        crate::mainutils::errors::set_toplevel_expr_no(0);
+        unsafe {
+            (*self.owner.as_ptr()).error_state.toplevel_expr_no = 0;
+        }
     }
 }
 
@@ -546,6 +545,8 @@ impl Drop for ProtectScope {
 pub struct RSession {
     /// Whether this session is active.
     active: bool,
+    /// Host values own their physical leases outside the R binding graph.
+    retained_values: retained::RetainedValues,
     /// Native projection of the shared interior cell owned below.
     instance: *mut RInstance,
     /// Physical allocation authority. Operation guards clone this original
@@ -613,6 +614,7 @@ impl RSession {
         // also detaches the thread-local runtime state through normal Drop.
         let session = RSession {
             active: true,
+            retained_values: retained::RetainedValues::default(),
             instance,
             _instance_owner: instance_owner,
             _thread_confined: PhantomData,
@@ -731,7 +733,7 @@ impl RSession {
     }
 
     fn activate(&self) -> CurrentInstanceGuard {
-        assert!(self.active, "cannot activate a closed R session");
+        assert!(self.is_active(), "cannot activate a closed R session");
         // SAFETY: the session retains the owner for the guard's lifetime.
         unsafe { CurrentInstanceGuard::new(self.instance_ptr()) }
     }
@@ -793,7 +795,7 @@ impl RSession {
 
     /// Retain this session lifetime without borrowing the RInstance itself.
     pub(crate) fn owner_token(&self) -> Option<super::owner::OwnerToken<'_>> {
-        if !self.active {
+        if !self.is_active() {
             return None;
         }
         // SAFETY: self retains the original allocation; the return lifetime
@@ -803,9 +805,11 @@ impl RSession {
 
     /// Check if this session is active.
     ///
-    /// Returns `false` after [`RSession::close`] has been called.
+    /// Returns `false` after close or revocation by an original-runtime callback.
     pub fn is_active(&self) -> bool {
-        self.active
+        // The session retains physical bytes; this callback-free availability
+        // snapshot never adopts a runtime from the ambient session stack.
+        self.active && unsafe { super::instance::instance_liveness(self.instance).is_live() }
     }
 
     /// Get the global environment.
@@ -902,7 +906,7 @@ impl RSession {
 
     /// Evaluate an expression and return a session-scoped safe wrapper.
     pub fn eval_sexp<'session>(&'session self, expr: Sexp<'_>) -> RResult<Sexp<'session>> {
-        if !self.active {
+        if !self.is_active() {
             return Err(REvalError {
                 message: "session is closed".to_string(),
             });
@@ -948,7 +952,7 @@ impl RSession {
         super::output::RCapturedOutput,
         bool,
     ) {
-        if !self.active {
+        if !self.is_active() {
             return (
                 Err(REvalError {
                     message: "session is closed".to_string(),
@@ -1061,7 +1065,7 @@ impl RSession {
     where
         F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
     {
-        if !self.active {
+        if !self.is_active() {
             return f(
                 Err(REvalError {
                     message: "session is closed".to_string(),
@@ -1136,7 +1140,7 @@ impl RSession {
         };
         let expressions = expressions;
         self.with_active(|| {
-            self.inst().output_capture.borrow_mut().start();
+            let capture = super::output::OutputCaptureGuard::start();
             // Stale error-buffer renders from a previous script must not be
             // trusted by this script's top-level error renderer.
             crate::mainutils::errors::clear_last_rendered_message();
@@ -1148,15 +1152,31 @@ impl RSession {
             // Upstream's REPL updates the current srcref per top-level
             // expression; the 1-based loop index is the port's location for
             // show.error.locations rendering.
-            let _toplevel_no_guard = ToplevelExprNoGuard;
+            let _toplevel_no_guard = ToplevelExprNoGuard::new(self);
             for (index, expr) in expressions.iter().enumerate() {
                 let raw_expr = expr.clone().as_raw();
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
-                result = self.eval_sexp(expr.clone());
-                if let Ok(value) = result.as_ref() {
-                    remember_last_value(value.clone().as_raw());
+                result = _toplevel_no_guard
+                    .run_checked(|| self.eval_sexp(expr.clone()))
+                    .and_then(|result| result);
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
                 }
-                crate::eval::parser::flush_parsed_expr_warnings(index);
+                if let Ok(value) = result.as_ref() {
+                    if let Err(error) = _toplevel_no_guard
+                        .run_checked(|| remember_last_value(value.clone().as_raw()))
+                    {
+                        result = Err(error);
+                        break;
+                    }
+                }
+                if let Err(error) = _toplevel_no_guard
+                    .run_checked(|| crate::eval::parser::flush_parsed_expr_warnings(index))
+                {
+                    result = Err(error);
+                    break;
+                }
                 let visible_flag = if self.inst().eval_state.visible != 0 {
                     1
                 } else {
@@ -1177,48 +1197,79 @@ impl RSession {
                     None
                 };
                 if let Some(value) = to_print {
-                    if let Err(err) = auto_print_visible(value) {
+                    if let Err(err) =
+                        _toplevel_no_guard.run_checked(|| super::output::print_value(value))
+                    {
                         result = Err(err);
                     }
                 }
-                if self.caught_script_error_continues(&mut result, raw_expr) {
-                    continue;
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
+                }
+                match _toplevel_no_guard
+                    .run_checked(|| self.caught_script_error_continues(&mut result, raw_expr))
+                {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(error) => {
+                        result = Err(error);
+                        break;
+                    }
                 }
                 if result.is_err() {
                     break;
                 }
                 if let Ok(value) = result.as_ref() {
-                    unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                         crate::mainutils::main::Rf_callToplevelHandlers(
                             raw_expr,
                             value.clone().as_raw(),
                             crate::sexp::ffi::TRUE,
                             visible_flag,
                         );
+                    }) {
+                        result = Err(error);
+                        break;
                     }
+                }
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
                 }
                 // main.c REPL tail: after each top-level expression, upstream
                 // flushes deferred warnings so they interleave with printed
                 // output like Rscript's stderr. The final statement defers to
                 // result assembly, which prints the auto-rendered value first.
                 if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
-                    unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    }) {
+                        result = Err(error);
+                        break;
                     }
                 }
                 // SAFETY: activation owns the live instance. No field borrow
                 // survives collection or finalizer reentry.
-                unsafe {
+                if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                     crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+                }) {
+                    result = Err(error);
+                    break;
                 }
             }
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
-            unsafe {
+            if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                 crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }) {
+                result = Err(error);
+            }
+            if let Err(error) = _toplevel_no_guard.require_active() {
+                result = Err(error);
             }
             let visible = self.inst().eval_state.visible != 0;
-            let output = self.inst().output_capture.borrow_mut().stop();
+            let output = capture.finish();
             f(result, output, visible)
         })
     }
@@ -1234,7 +1285,7 @@ impl RSession {
         'backend: 'session,
         F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
     {
-        if !self.active {
+        if !self.is_active() {
             return f(
                 Err(REvalError {
                     message: "session is closed".to_string(),
@@ -1295,21 +1346,37 @@ impl RSession {
             }
             let mut forwarding = RecordingTarget { target, recording };
             let _backend_guard = RenderPlotBackendGuard::install(instance, &mut forwarding);
-            self.inst().output_capture.borrow_mut().start();
+            let capture = super::output::OutputCaptureGuard::start();
             // Remaining parsed statements retain their automatic leases.
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
             // Same per-expression location as the plain script loop above.
-            let _toplevel_no_guard = ToplevelExprNoGuard;
+            let _toplevel_no_guard = ToplevelExprNoGuard::new(self);
             for (index, expr) in expressions.iter().enumerate() {
                 let raw_expr = expr.clone().as_raw();
                 crate::mainutils::errors::set_toplevel_expr_no(index + 1);
-                result = self.eval_sexp(expr.clone());
-                if let Ok(value) = result.as_ref() {
-                    remember_last_value(value.clone().as_raw());
+                result = _toplevel_no_guard
+                    .run_checked(|| self.eval_sexp(expr.clone()))
+                    .and_then(|result| result);
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
                 }
-                crate::eval::parser::flush_parsed_expr_warnings(index);
+                if let Ok(value) = result.as_ref() {
+                    if let Err(error) = _toplevel_no_guard
+                        .run_checked(|| remember_last_value(value.clone().as_raw()))
+                    {
+                        result = Err(error);
+                        break;
+                    }
+                }
+                if let Err(error) = _toplevel_no_guard
+                    .run_checked(|| crate::eval::parser::flush_parsed_expr_warnings(index))
+                {
+                    result = Err(error);
+                    break;
+                }
                 // Same per-expression auto-print as the plain script loop
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
@@ -1321,12 +1388,25 @@ impl RSession {
                     None
                 };
                 if let Some(value) = to_print {
-                    if let Err(err) = auto_print_visible(value) {
+                    if let Err(err) =
+                        _toplevel_no_guard.run_checked(|| super::output::print_value(value))
+                    {
                         result = Err(err);
                     }
                 }
-                if self.caught_script_error_continues(&mut result, raw_expr) {
-                    continue;
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
+                }
+                match _toplevel_no_guard
+                    .run_checked(|| self.caught_script_error_continues(&mut result, raw_expr))
+                {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(error) => {
+                        result = Err(error);
+                        break;
+                    }
                 }
                 if result.is_err() {
                     break;
@@ -1337,35 +1417,53 @@ impl RSession {
                     } else {
                         0
                     };
-                    unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                         crate::mainutils::main::Rf_callToplevelHandlers(
                             raw_expr,
                             value.clone().as_raw(),
                             crate::sexp::ffi::TRUE,
                             visible_flag,
                         );
+                    }) {
+                        result = Err(error);
+                        break;
                     }
+                }
+                if let Err(error) = _toplevel_no_guard.require_active() {
+                    result = Err(error);
+                    break;
                 }
                 // Same main.c REPL-tail flush as the plain script loop; the
                 // final statement's warnings flush at result assembly.
                 if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
-                    unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    }) {
+                        result = Err(error);
+                        break;
                     }
                 }
                 // SAFETY: activation owns the live instance. No field borrow
                 // survives collection or finalizer reentry.
-                unsafe {
+                if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                     crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+                }) {
+                    result = Err(error);
+                    break;
                 }
             }
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
-            unsafe {
+            if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                 crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }) {
+                result = Err(error);
+            }
+            if let Err(error) = _toplevel_no_guard.require_active() {
+                result = Err(error);
             }
             let visible = self.inst().eval_state.visible != 0;
-            let output = self.inst().output_capture.borrow_mut().stop();
+            let output = capture.finish();
             f(result, output, visible)
         }
     }
@@ -1378,7 +1476,7 @@ impl RSession {
     where
         F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
     {
-        if !self.active {
+        if !self.is_active() {
             return f(
                 Err(REvalError {
                     message: "session is closed".to_string(),
@@ -1413,19 +1511,26 @@ impl RSession {
             }
         };
         self.with_active(|| {
-            self.inst().output_capture.borrow_mut().start();
+            let capture = super::output::OutputCaptureGuard::start();
             // Single-chunk eval: the parsed expression is script position
             // #1, same location contract as the script loops above.
-            let _toplevel_no_guard = ToplevelExprNoGuard;
+            let _toplevel_no_guard = ToplevelExprNoGuard::new(self);
             crate::mainutils::errors::set_toplevel_expr_no(1);
-            let result = self.eval_sexp(expr);
+            let mut result = _toplevel_no_guard
+                .run_checked(|| self.eval_sexp(expr))
+                .and_then(|result| result);
             // SAFETY: activation owns the live instance. No field borrow
             // survives collection or finalizer reentry.
-            unsafe {
+            if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
                 crate::sexp::gengc::run_pending_gc_if_quiescent_in(self.instance);
+            }) {
+                result = Err(error);
+            }
+            if let Err(error) = _toplevel_no_guard.require_active() {
+                result = Err(error);
             }
             let visible = self.inst().eval_state.visible != 0;
-            let output = self.inst().output_capture.borrow_mut().stop();
+            let output = capture.finish();
             f(result, output, visible)
         })
     }
@@ -1453,7 +1558,7 @@ impl RSession {
         expr: Sexp<'_>,
         env: Sexp<'_>,
     ) -> RResult<Sexp<'session>> {
-        if !self.active {
+        if !self.is_active() {
             return Err(REvalError {
                 message: "session is closed".to_string(),
             });
@@ -1506,7 +1611,7 @@ impl RSession {
     /// The raw value is accepted only after proving it belongs to this session
     /// or is one of R's immutable singleton sentinels.
     fn define_var_raw(&self, name: &str, value: SEXP) -> bool {
-        if !self.active {
+        if !self.is_active() {
             return false;
         }
         self.with_active(|| {
@@ -1533,7 +1638,7 @@ impl RSession {
     where
         F: FnOnce(&mut RArena) -> T,
     {
-        if !self.active {
+        if !self.is_active() {
             return None;
         }
         let _guard = self.activate();
@@ -1753,6 +1858,7 @@ impl RSession {
         unsafe {
             super::instance::revoke_instance_availability(self.instance);
         }
+        self.retained_values.clear();
         detach_state(&self.inst().math_state);
         detach_rng(&self.inst().rng_state);
         clear_current_instance_if(self.instance);

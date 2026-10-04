@@ -176,35 +176,83 @@ pub unsafe fn R_gc_running() -> c_int {
         .unwrap_or(0)
 }
 
-/// Trigger a full garbage collection.
+/// Own the exact physical GC state until its collection scope ends.
+/// Revocation denies new work while cleanup restores the original prior flag.
+pub(crate) struct GcOperationGuard {
+    owner: crate::sexp::owner::OwnerPin,
+    previous_in_gc: Option<c_int>,
+}
+
+impl GcOperationGuard {
+    pub(crate) fn enter(
+        owner: crate::sexp::owner::OwnerPin,
+        full: bool,
+    ) -> crate::sexp::object::SexpResult<Self> {
+        owner.require_live()?;
+        let instance = owner.as_ptr();
+        let previous_in_gc = unsafe {
+            (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
+            if full {
+                let previous = (*instance).memory_state.in_gc;
+                (*instance).memory_state.in_gc = 1;
+                Some(previous)
+            } else {
+                None
+            }
+        };
+        Ok(Self {
+            owner,
+            previous_in_gc,
+        })
+    }
+}
+
+impl Drop for GcOperationGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous_in_gc {
+            // The pin retains this exact allocation even after callback teardown.
+            // No ambient lookup or callback is permitted during state cleanup.
+            unsafe { (*self.owner.as_ptr()).memory_state.in_gc = previous };
+        }
+    }
+}
+
+fn collect_user_gc(full: bool) -> crate::sexp::object::SexpResult<()> {
+    use crate::sexp::{object::SexpError, owner::with_runtime};
+    let owner = crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        (*instance).runtime_owner.clone()
+    })
+    .ok_or(SexpError::RootUnavailable)?;
+    with_runtime(&owner, |access| {
+        let collection = GcOperationGuard::enter(owner.pin()?, full)?;
+        access.with_native(|_| {
+            crate::sexp::gengc::collect_with_environment_protects(full);
+            Ok(())
+        })?;
+        // Finalizers observe the prior flag, as they did before this operation.
+        drop(collection);
+        access.with_native(|_| {
+            unsafe { R_RunPendingFinalizers() };
+            Ok(())
+        })
+    })?
+}
+
+/// Trigger a full garbage collection, retaining original cleanup authority.
 ///
 /// This is the equivalent of R's `R_gc()`.
 pub unsafe fn R_gc() {
-    with_memory_state(|state| {
-        state.gc_count += 1;
-        state.in_gc = 1;
-    });
-    // Explicit gc() may fire mid-evaluation (inside loop bodies / closure
-    // calls). Route it through the safe-point preamble so in-flight frame
-    // bindings are force-protected during the collection instead of swept.
-    crate::sexp::gengc::collect_with_environment_protects(true);
-    with_memory_state(|state| state.in_gc = 0);
-    unsafe {
-        R_RunPendingFinalizers();
+    if let Err(failure) = collect_user_gc(true) {
+        unsafe { error(&failure.to_string()) };
     }
 }
 
-/// Trigger a lightweight garbage collection.
-///
-/// This is the equivalent of R's `R_gc_lite()`.
+/// Trigger a lightweight garbage collection in the exact original runtime.
 pub unsafe fn R_gc_lite() {
-    with_memory_state(|state| state.gc_count += 1);
-    crate::sexp::gengc::collect_with_environment_protects(false);
-    unsafe {
-        R_RunPendingFinalizers();
+    if let Err(failure) = collect_user_gc(false) {
+        unsafe { error(&failure.to_string()) };
     }
 }
-
 /// GC torture settings.
 ///
 /// When `gap > 0`, every `gap` allocations will force a GC cycle.
@@ -2249,5 +2297,170 @@ mod tests {
             let result = readline(ptr::null_mut());
             assert!(result.is_null());
         }
+    }
+}
+
+
+#[cfg(test)]
+mod owned_gc_operation_tests {
+    use super::*;
+    use crate::sexp::{gengc::register_gc_callback, owner::OwnerPin, session::RSession};
+    use std::{
+        cell::{Cell, RefCell},
+        panic::{AssertUnwindSafe, catch_unwind},
+        rc::Rc,
+    };
+
+    fn pin(session: &RSession) -> OwnerPin {
+        session
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap()
+            .pin()
+            .unwrap()
+    }
+
+    #[test]
+    fn owned_gc_operation_live_panic_restores_original_state_and_payload() {
+        let session = RSession::new_for_gc_tests();
+        let original = pin(&session);
+        let instance = original.as_ptr();
+        register_gc_callback(Box::new(move |_| {
+            assert_eq!(unsafe { (*instance).memory_state.in_gc }, 1);
+            std::panic::panic_any(73_u32);
+        }));
+        let outcome = catch_unwind(AssertUnwindSafe(|| unsafe { R_gc() }));
+        assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 73);
+        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { (*instance).memory_state.gc_count }, 1);
+    }
+
+    #[test]
+    fn owned_gc_operation_nested_collection_restores_outer_flag() {
+        let session = RSession::new_for_gc_tests();
+        let original = pin(&session);
+        let instance = original.as_ptr();
+        let calls = Rc::new(Cell::new(0));
+        let callback_calls = calls.clone();
+        register_gc_callback(Box::new(move |_| unsafe {
+            callback_calls.set(callback_calls.get() + 1);
+            assert_eq!((*instance).memory_state.in_gc, 1);
+            R_gc();
+            assert_eq!((*instance).memory_state.in_gc, 1);
+        }));
+        unsafe { R_gc() };
+        assert_eq!(calls.get(), 1);
+        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { (*instance).memory_state.gc_count }, 2);
+    }
+
+    fn drops_facade(full: bool) {
+        let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+        let original = pin(facade.borrow().as_ref().unwrap());
+        let instance = original.as_ptr();
+        let other = RSession::new_for_gc_tests();
+        let other_pin = pin(&other);
+        unsafe { (*other_pin.as_ptr()).memory_state.in_gc = 9 };
+        let callback_facade = Rc::downgrade(&facade);
+        let calls = Rc::new(Cell::new(0));
+        let callback_calls = calls.clone();
+        let outcome = catch_unwind(AssertUnwindSafe(|| unsafe {
+            crate::sexp::session::with_instance_active(instance, || {
+                register_gc_callback(Box::new(move |_| {
+                    callback_calls.set(callback_calls.get() + 1);
+                    drop(callback_facade.upgrade().unwrap().borrow_mut().take());
+                }));
+                if full { R_gc() } else { R_gc_lite() }
+            });
+        }));
+        assert_eq!(calls.get(), 1);
+        assert!(facade.borrow().is_none());
+        assert!(original.require_live().is_err());
+        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { (*other_pin.as_ptr()).memory_state.in_gc }, 9);
+        assert!(outcome.unwrap_err().is::<crate::sexp::context::RError>());
+    }
+
+    #[test]
+    fn owned_gc_operation_full_revocation_cleans_original_and_denies_continuation() {
+        drops_facade(true);
+    }
+
+    #[test]
+    fn owned_gc_operation_lite_revocation_denies_ambient_finalizer_continuation() {
+        drops_facade(false);
+    }
+
+    fn allocation_callback_cleanup(revoke: bool) {
+        let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+        let original = pin(facade.borrow().as_ref().unwrap());
+        let instance = original.as_ptr();
+        let original_owner = facade
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap();
+        let factory = original_owner.node_factory().unwrap();
+        let binding = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let binding_node = binding.allocation().unwrap().clone();
+        assert!(
+            facade
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .define_var("owned_torture_binding", binding)
+        );
+        let calls = Rc::new(Cell::new(0));
+        let callback_calls = calls.clone();
+        let callback_facade = Rc::downgrade(&facade);
+        let outcome = catch_unwind(AssertUnwindSafe(|| unsafe {
+            crate::sexp::session::with_instance_active(instance, || {
+                register_gc_callback(Box::new(move |_| {
+                    callback_calls.set(callback_calls.get() + 1);
+                    assert_eq!((*instance).memory_state.in_gc, 1);
+                    assert!(binding_node.is_live());
+                    assert_eq!((*instance).legacy_protect.len(), 0);
+                    (*instance).memory_state.gc_force_gap = 0;
+                    if revoke {
+                        drop(callback_facade.upgrade().unwrap().borrow_mut().take());
+                    } else {
+                        std::panic::panic_any(127_u32);
+                    }
+                }));
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+                factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            })
+        }));
+        assert_eq!(calls.get(), 1);
+        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { (*instance).legacy_protect.len() }, 0);
+        if revoke {
+            assert!(facade.borrow().is_none());
+            assert!(original.require_live().is_err());
+            assert!(matches!(
+                outcome.unwrap(),
+                Err(crate::sexp::object::SexpError::RootUnavailable)
+            ));
+        } else {
+            assert!(original.require_live().is_ok());
+            assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 127);
+        }
+    }
+
+    #[test]
+    fn owned_gc_operation_actual_allocation_callback_panic_restores_original() {
+        allocation_callback_cleanup(false);
+    }
+
+    #[test]
+    fn owned_gc_operation_actual_allocation_callback_revocation_restores_original() {
+        allocation_callback_cleanup(true);
     }
 }

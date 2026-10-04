@@ -355,7 +355,10 @@ unsafe fn checkValidSymbolId(
 // ---------------------------------------------------------------------------
 
 /// Called from the R-level .Call2() implementation.
-pub fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
+///
+/// # Safety
+/// The caller retains the original runtime and the supplied symbol graph.
+pub unsafe fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
     unsafe {
         let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
         let mut fun: DL_FUNC = None;
@@ -931,8 +934,14 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
 // R_doDotCall — the .Call dispatcher
 // ---------------------------------------------------------------------------
 
-/// Core .Call dispatch: invokes a native function returning SEXP with 0..MAX_ARGS arguments.
-pub fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SEXP {
+/// Foreign ABI dispatch for host-authorized native extensions. Bundled Rust
+/// routines use exact typed descriptors instead.
+///
+/// # Safety
+/// The caller proves the erased pointer implements the exact C-unwind ABI and
+/// argument count, keeps its library loaded, and retains all payload allocations
+/// and the original runtime across invocation and result validation.
+pub unsafe fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SEXP {
     unsafe {
         if fun.is_none() {
             return R_NilValue();
@@ -951,247 +960,359 @@ pub fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SE
 // do_External — .External and .External2
 // ---------------------------------------------------------------------------
 
-/// .External / .External2 handler.
-pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if Rf_length(args) < 1 {
-            errorcall(call, "'.NAME' is missing");
-        }
-        check1arg2(args, call, ".NAME");
+/// Actual owning payloads captured before reconstruction or native callbacks.
+/// Control arguments select resolution; they never become callable payloads.
+struct NativeOperands {
+    name: crate::sexp::object::Sexp<'static>,
+    payload: Vec<(
+        crate::sexp::object::Sexp<'static>,
+        crate::sexp::object::Sexp<'static>,
+    )>,
+    package: Option<(
+        String,
+        crate::sexp::object::Sexp<'static>,
+        crate::sexp::object::Sexp<'static>,
+    )>,
+}
 
-        let mut ofun: DL_FUNC = None;
-        if let Some(name) = ported_call_name(CAR(args)) {
-            ofun = crate::library::stats::random::lookup_external(&name)
-                .or_else(|| crate::library::grdevices::lookup_external(&name))
-                .or_else(|| crate::library::graphics::lookup(&name))
-                .or_else(|| crate::library::utils::lookup(&name))
-                .or_else(|| crate::library::tools::native_calls::lookup(&name));
-        }
-        if ofun.is_none() && native_extension_policy_enabled() {
-            native_extension_policy_error(call, ".External");
-        }
-
-        let mut symbol = R_RegisteredNativeSymbol::new(R_EXTERNAL_SYM);
-        let _vmax = vmaxget();
-        let mut buf = [0u8; MAX_SYMBOL_BYTES];
-
-        if ofun.is_none() {
-            let _args = resolveNativeRoutine(
-                args,
-                &mut ofun,
-                &mut symbol,
-                &mut buf,
-                ptr::null_mut(),
-                ptr::null_mut(),
-                call,
-                env,
-            );
-        }
-
-        if ofun.is_none() {
-            if let Some(name) = ported_call_name(CAR(args)) {
-                ofun = crate::library::stats::random::lookup_external(&name)
-                    .or_else(|| crate::library::grdevices::lookup_external(&name))
-                    .or_else(|| crate::library::graphics::lookup(&name))
-                    .or_else(|| crate::library::utils::lookup(&name))
-                    .or_else(|| crate::library::tools::native_calls::lookup(&name));
-            }
-        }
-        if ofun.is_none() {
-            let name = std::ffi::CStr::from_bytes_until_nul(&buf)
-                .ok()
-                .and_then(|c| c.to_str().ok())
-                .unwrap_or("");
-            if !name.is_empty() {
-                ofun = crate::library::stats::random::lookup_external(name)
-                    .or_else(|| crate::library::grdevices::lookup_external(name))
-                    .or_else(|| crate::library::graphics::lookup(name))
-                    .or_else(|| crate::library::utils::lookup(name))
-                    .or_else(|| crate::library::tools::native_calls::lookup(name));
-            }
-        }
-
-        if ofun.is_none() {
-            errorcall(
-                call,
-                &format!(
-                    "C symbol name \"{}\" not in load table",
-                    String::from_utf8_lossy(&buf).trim_end_matches(char::from(0))
-                ),
-            );
-        }
-
-        let primval = PRIMVAL(op);
-        let resolved = ported_call_name(CAR(args)).unwrap_or_else(|| {
-            std::ffi::CStr::from_bytes_until_nul(&buf)
-                .ok()
-                .and_then(|c| c.to_str().ok())
-                .unwrap_or("")
-                .to_string()
-        });
-        if !resolved.is_empty() {
-            let bare = resolved.strip_prefix("C_").unwrap_or(&resolved);
-            let ext2 = matches!(
-                bare,
-                "zeroin2"
-                    | "do_fmin"
-                    | "modelframe"
-                    | "modelmatrix"
-                    | "parseRd"
-                    | "parseRdText"
-                    | "optim"
-                    | "optimhess"
-                    | "getSnapshot"
-                    | "playSnapshot"
-            );
-            let ext1 = crate::library::grdevices::lookup_external(&resolved).is_some();
-            if ext2 && primval != 1 {
-                errorcall(call, ".External2 routine called through .External");
-            }
-            if ext1 && !ext2 && primval == 1 {
-                errorcall(call, ".External routine called through .External2");
-            }
-        }
-        let retval = if primval == 1 {
-            type ExtRoutine2 = unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
-            let f: ExtRoutine2 = std::mem::transmute_copy(&ofun);
-            f(call, op, args, env)
-        } else {
-            type ExtRoutine = unsafe extern "C-unwind" fn(SEXP) -> SEXP;
-            let f: ExtRoutine = std::mem::transmute_copy(&ofun);
-            f(args)
-        };
-
-
-        vmaxset(ptr::null_mut()); // simplified
-        check_retval(call, retval)
+fn native_admission_error(message: impl Into<String>) -> crate::sexp::object::SexpError {
+    crate::sexp::object::SexpError::EvaluationFailed {
+        message: message.into(),
     }
 }
 
-// ---------------------------------------------------------------------------
-// do_dotcall — .Call handler
-// ---------------------------------------------------------------------------
+impl NativeOperands {
+    fn capture(
+        arguments: crate::sexp::object::Sexp<'static>,
+    ) -> crate::sexp::object::SexpResult<Self> {
+        if arguments.is_nil() {
+            return Err(native_admission_error("'.NAME' is missing"));
+        }
+        if !arguments.try_tag()?.is_nil() {
+            return Err(native_admission_error(
+                "the first argument should not be named",
+            ));
+        }
+        let name = arguments.try_car()?.into_owned()?;
+        let mut snapshots = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut cursor = arguments.try_cdr()?;
+        while !cursor.is_nil() {
+            let identity = cursor
+                .allocation()?
+                .link()
+                .ok_or(crate::sexp::object::SexpError::StaleAllocation)?;
+            if !seen.insert(identity) {
+                return Err(native_admission_error("cyclic native argument list"));
+            }
+            let value = cursor.try_car()?.into_owned()?;
+            let tag = cursor.try_tag()?.into_owned()?;
+            snapshots.push((value, tag));
+            cursor = cursor.try_cdr()?;
+        }
+        let mut payload = Vec::new();
+        let mut package = None;
+        // Every source cell and edge has been captured before character/ALTREP
+        // access can invoke a provider and detach the original argument graph.
+        for (value, tag) in snapshots {
+            let control = !tag.is_nil() && tag.try_printname()?.try_as_string()? == "PACKAGE";
+            if control {
+                if value.typeof_() != SEXPTYPE::STRSXP || value.len() != 1 {
+                    return Err(native_admission_error(
+                        "PACKAGE argument must be a single character string",
+                    ));
+                }
+                let text = value.try_string_elt(0)?.try_as_string()?;
+                if package.is_some() {
+                    eprintln!("WARNING: 'PACKAGE' used more than once");
+                }
+                package = Some((
+                    text.strip_prefix("package:").unwrap_or(&text).to_owned(),
+                    value,
+                    tag,
+                ));
+            } else {
+                if payload.len() == MAX_ARGS {
+                    return Err(native_admission_error(
+                        "too many arguments in foreign function call",
+                    ));
+                }
+                payload.push((value, tag));
+            }
+        }
+        Ok(Self {
+            name,
+            payload,
+            package,
+        })
+    }
+
+    fn lookup_name(&self) -> crate::sexp::object::SexpResult<Option<String>> {
+        let name = if self.name.typeof_() == SEXPTYPE::VECSXP {
+            if self.name.len() == 0 {
+                return Ok(None);
+            }
+            self.name.try_vector_elt(0)?
+        } else {
+            self.name.clone()
+        };
+        match name.typeof_() {
+            SEXPTYPE::STRSXP if name.len() == 1 => {
+                Ok(Some(name.try_string_elt(0)?.try_as_string()?))
+            }
+            SEXPTYPE::SYMSXP => Ok(Some(name.try_printname()?.try_as_string()?)),
+            _ => Ok(None),
+        }
+    }
+
+    fn argument_list(
+        &self,
+        allocator: &crate::sexp::object::NodeAllocator<'_, 'static>,
+        include_package: bool,
+        nil: &crate::sexp::object::Sexp<'static>,
+    ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+        let mut result = nil.clone();
+        if include_package {
+            if let Some((_, value, tag)) = &self.package {
+                result = allocator.pairlist_cell(value, &result, tag)?;
+            }
+        }
+        for (value, tag) in self.payload.iter().rev() {
+            result = allocator.pairlist_cell(value, &result, tag)?;
+        }
+        allocator.pairlist_cell(&self.name, &result, nil)
+    }
+}
+
+fn lookup_bundled_native(
+    name: &str,
+    package: Option<&str>,
+) -> Option<crate::mainutils::native_routines::NativeRoutine> {
+    fn in_package(
+        name: &str,
+        package: &str,
+    ) -> Option<crate::mainutils::native_routines::NativeRoutine> {
+        match package {
+            "methods" => crate::library::methods::native_calls::lookup(name),
+            "tools" => crate::library::tools::native_calls::lookup(name),
+            "utils" => crate::library::utils::lookup(name),
+            "stats" => crate::library::stats::random::lookup_external(name)
+                .or_else(|| crate::library::stats::random::lookup_call(name)),
+            "splines" => crate::library::splines::splines::lookup(name),
+            "grDevices" => crate::library::grdevices::lookup(name),
+            "grid" => crate::library::grid::lookup(name),
+            "graphics" => crate::library::graphics::lookup(name),
+            _ => None,
+        }
+    }
+    match package {
+        Some(package) => in_package(name, package),
+        None => [
+            "methods",
+            "tools",
+            "utils",
+            "stats",
+            "splines",
+            "grDevices",
+            "grid",
+            "graphics",
+        ]
+        .into_iter()
+        .find_map(|package| in_package(name, package)),
+    }
+}
+
+/// This translated entry retains original values and execution authority for
+/// the full callback, including reconstruction and result validation.
+unsafe fn invoke_native_handler(
+    call: SEXP,
+    operator: SEXP,
+    arguments: SEXP,
+    environment: SEXP,
+    interface: crate::mainutils::native_routines::NativeInterface,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    use crate::mainutils::native_routines::NativeInterface;
+    use crate::sexp::{
+        object::SexpError,
+        owner::{OwnerToken, with_runtime},
+    };
+    let owner = unsafe { OwnerToken::current()? };
+    let managed = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+    // Primitive projections may be immortal native table entries. Capture
+    // their immutable identity before allocating a local owning operator.
+    let operator_identity =
+        unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(operator) }
+            .map(|descriptor| (descriptor.name, descriptor.op.typeof_()));
+    with_runtime(&managed, |access| {
+        let domain = access.domain();
+        let call = domain.wrap(call)?.into_owned()?;
+        let environment = domain.wrap(environment)?.into_owned()?;
+        let operands = NativeOperands::capture(domain.wrap(arguments)?.into_owned()?)?;
+        access.require_active()?;
+        let name = operands.lookup_name()?;
+        access.require_active()?;
+        let package = operands.package.as_ref().map(|(name, _, _)| name.as_str());
+        let routine = name
+            .as_deref()
+            .and_then(|name| lookup_bundled_native(name, package));
+        // Rejection happens before any argument-list construction, wrapper
+        // allocation, or native callback. The pointer descriptor is definitive.
+        if let Some(routine) = routine {
+            routine
+                .validate_request(interface, operands.payload.len())
+                .map_err(|error| native_admission_error(error.to_string()))?;
+        } else if native_extension_policy_enabled() {
+            unsafe { native_extension_policy_error(call.as_raw(), &interface.to_string()) };
+        }
+        let result = if let Some(routine) = routine {
+            match interface {
+                NativeInterface::Call => {
+                    let pointers: Vec<_> = operands
+                        .payload
+                        .iter()
+                        .map(|(value, _)| value.as_raw())
+                        .collect();
+                    access.require_active()?;
+                    unsafe { routine.invoke_call(&pointers) }
+                        .map_err(|error| native_admission_error(error.to_string()))?
+                }
+                NativeInterface::External | NativeInterface::External2 => {
+                    let allocator = access.allocator(&domain)?;
+                    let list = operands.argument_list(&allocator, false, &domain.nil())?;
+                    if interface == NativeInterface::External {
+                        access.require_active()?;
+                        unsafe { routine.invoke_external1(list.as_raw()) }
+                    } else {
+                        let operator = match operator_identity {
+                            Some((name, kind)) => access.with_native(|owner| {
+                                let pointer = unsafe {
+                                    crate::eval::primitive::make_primitive_binding(name, kind)
+                                };
+                                owner.sexp(pointer)?.into_owned()
+                            })?,
+                            None => domain.nil(),
+                        };
+                        access.require_active()?;
+                        unsafe {
+                            routine.invoke_external2(
+                                call.as_raw(),
+                                operator.as_raw(),
+                                list.as_raw(),
+                                environment.as_raw(),
+                            )
+                        }
+                    }
+                    .map_err(|error| native_admission_error(error.to_string()))?
+                }
+            }
+        } else {
+            // Trusted host extensions still supply an erased foreign ABI.
+            // They are deliberately separate from typed bundled admission.
+            let allocator = access.allocator(&domain)?;
+            let list = operands.argument_list(&allocator, true, &domain.nil())?;
+            let mut function: DL_FUNC = None;
+            let mut symbol = R_RegisteredNativeSymbol::new(if interface == NativeInterface::Call {
+                R_CALL_SYM
+            } else {
+                R_EXTERNAL_SYM
+            });
+            let mut buffer = [0; MAX_SYMBOL_BYTES];
+            unsafe {
+                resolveNativeRoutine(
+                    list.as_raw(),
+                    &mut function,
+                    &mut symbol,
+                    &mut buffer,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    call.as_raw(),
+                    environment.as_raw(),
+                );
+            }
+            access.require_active()?;
+            if function.is_none() {
+                return Err(native_admission_error(format!(
+                    "C symbol name {:?} not in load table",
+                    name.unwrap_or_default()
+                )));
+            }
+            let payload = operands.argument_list(&allocator, false, &domain.nil())?;
+            match interface {
+                NativeInterface::Call => {
+                    let pointers: Vec<_> = operands
+                        .payload
+                        .iter()
+                        .map(|(value, _)| value.as_raw())
+                        .collect();
+                    access.require_active()?;
+                    unsafe {
+                        R_doDotCall(function, pointers.len() as c_int, &pointers, call.as_raw())
+                    }
+                }
+                NativeInterface::External => {
+                    // SAFETY: trusted host policy assumes the foreign symbol
+                    // implements this ABI. Runtime registration metadata is
+                    // tracked separately; bundled functions never reach here.
+                    let function: unsafe extern "C-unwind" fn(SEXP) -> SEXP =
+                        unsafe { std::mem::transmute_copy(&function) };
+                    access.require_active()?;
+                    unsafe { function(payload.as_raw()) }
+                }
+                NativeInterface::External2 => {
+                    let operator = match operator_identity {
+                        Some((name, kind)) => access.with_native(|owner| {
+                            let pointer = unsafe {
+                                crate::eval::primitive::make_primitive_binding(name, kind)
+                            };
+                            owner.sexp(pointer)?.into_owned()
+                        })?,
+                        None => domain.nil(),
+                    };
+                    let function: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                        unsafe { std::mem::transmute_copy(&function) };
+                    access.require_active()?;
+                    unsafe {
+                        function(
+                            call.as_raw(),
+                            operator.as_raw(),
+                            payload.as_raw(),
+                            environment.as_raw(),
+                        )
+                    }
+                }
+            }
+        };
+        access.require_active()?;
+        let result = unsafe { check_retval(call.as_raw(), result) };
+        domain.wrap(result)?.into_owned()
+    })?
+}
+
+/// .External / .External2 handler.
+pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let interface = if unsafe { PRIMVAL(op) } == 1 {
+        crate::mainutils::native_routines::NativeInterface::External2
+    } else {
+        crate::mainutils::native_routines::NativeInterface::External
+    };
+    unsafe { invoke_native_handler(call, op, args, env, interface) }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .as_raw()
+}
 
 /// .Call handler.
 pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        if Rf_length(args) < 1 {
-            errorcall(call, "'.NAME' is missing");
-        }
-        check1arg2(args, call, ".NAME");
-
-        let mut ofun: DL_FUNC = None;
-        if let Some(name) = ported_call_name(CAR(args)) {
-            ofun = crate::library::methods::native_calls::lookup(&name)
-                .or_else(|| crate::library::tools::native_calls::lookup(&name))
-                .or_else(|| crate::library::utils::lookup(&name))
-                .or_else(|| crate::library::stats::random::lookup_call(&name))
-                .or_else(|| crate::library::splines::splines::lookup(&name))
-                .or_else(|| crate::library::grdevices::lookup(&name))
-                .or_else(|| crate::library::grid::lookup(&name))
-                .or_else(|| crate::library::graphics::lookup(&name));
-        }
-
-
-
-        if ofun.is_none() && native_extension_policy_enabled() {
-            native_extension_policy_error(call, ".Call");
-        }
-
-        let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
-        let _vmax = vmaxget();
-        let mut buf = [0u8; MAX_SYMBOL_BYTES];
-
-        if ofun.is_none() {
-            let _args = resolveNativeRoutine(
-                args,
-                &mut ofun,
-                &mut symbol,
-                &mut buf,
-                ptr::null_mut(),
-                ptr::null_mut(),
-                call,
-                env,
-            );
-            if ofun.is_none() {
-                let name = std::ffi::CStr::from_bytes_until_nul(&buf)
-                    .ok()
-                    .and_then(|c| c.to_str().ok())
-                    .unwrap_or("");
-                if !name.is_empty() {
-                    ofun = crate::library::methods::native_calls::lookup(name)
-                        .or_else(|| crate::library::tools::native_calls::lookup(name))
-                        .or_else(|| crate::library::stats::random::lookup_call(name))
-                        .or_else(|| crate::library::splines::splines::lookup(name))
-                        .or_else(|| crate::library::grdevices::lookup(name))
-                        .or_else(|| crate::library::grid::lookup(name))
-                        .or_else(|| crate::library::graphics::lookup(name))
-                        .or_else(|| crate::library::utils::lookup(name));
-                }
-            }
-        }
-
-
-        let mut cargs: [SEXP; MAX_ARGS] = [ptr::null_mut(); MAX_ARGS];
-        let mut nargs = 0usize;
-        let mut pargs = CDR(args);
-        while !pargs.is_null() && pargs != R_NilValue() {
-            if nargs >= MAX_ARGS {
-                errorcall(call, "too many arguments in foreign function call");
-            }
-            cargs[nargs] = CAR(pargs);
-            nargs += 1;
-            pargs = CDR(pargs);
-        }
-
-
-
-        if ofun.is_none() {
-            let name = ported_call_name(CAR(args)).unwrap_or_default();
-            if name.starts_with("C_") || name.starts_with("R_") {
-                errorcall(
-                    call,
-                    &format!("C symbol name \"{name}\" not in load table"),
-                );
-            }
-            return R_NilValue();
-        }
-
-        let call_name = ported_call_name(CAR(args)).unwrap_or_else(|| {
-            std::ffi::CStr::from_bytes_until_nul(&buf)
-                .ok()
-                .and_then(|c| c.to_str().ok())
-                .unwrap_or("")
-                .to_string()
-        });
-        if !call_name.is_empty() {
-            if crate::library::grdevices::lookup_external(&call_name).is_some()
-                || crate::library::stats::random::lookup_external(&call_name).is_some()
-            {
-                errorcall(call, ".Call used for an .External routine");
-            }
-            let bare = call_name.strip_prefix("C_").unwrap_or(&call_name);
-            if crate::library::stats::random::lookup_call(bare).is_some() {
-                match crate::library::stats::random::call_arity(bare) {
-                    Some(n) if n == nargs => {}
-                    _ => errorcall(call, "incorrect number of arguments"),
-                }
-            }
-            let expect = match bare {
-                "R_GAxisPars" => Some(3usize),
-                "R_CreateAtVector" => Some(4usize),
-                _ => None,
-            };
-            if let Some(n) = expect {
-                if nargs != n {
-                    errorcall(call, "incorrect number of arguments");
-                }
-            }
-        }
-        let retval = R_doDotCall(ofun, nargs as c_int, &cargs, call);
-        vmaxset(ptr::null_mut()); // simplified
-        retval
+        invoke_native_handler(
+            call,
+            op,
+            args,
+            env,
+            crate::mainutils::native_routines::NativeInterface::Call,
+        )
     }
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    .as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -1860,5 +1981,504 @@ mod tests {
 
         assert_eq!(left_naok, left_naok_again);
         assert_ne!(left_naok, right_naok);
+    }
+}
+
+#[cfg(test)]
+mod typed_native_handler_tests {
+    use super::*;
+    use crate::{
+        mainutils::native_routines::NativeInterface,
+        sexp::{
+            object::{SessionNodeFactory, Sexp},
+            session::RSession,
+        },
+    };
+    use std::{cell::Cell, rc::Rc};
+
+    fn make_arguments(
+        factory: &SessionNodeFactory<'_>,
+        name: &str,
+        values: &[(Sexp<'static>, Sexp<'static>)],
+    ) -> Sexp<'static> {
+        let name = factory.strings(&[name]).unwrap().into_owned().unwrap();
+        make_arguments_value(factory, &name, values)
+    }
+
+    fn make_arguments_value(
+        factory: &SessionNodeFactory<'_>,
+        name: &Sexp<'static>,
+        values: &[(Sexp<'static>, Sexp<'static>)],
+    ) -> Sexp<'static> {
+        let mut list = factory.nil().into_owned().unwrap();
+        for (value, tag) in values.iter().rev() {
+            list = factory
+                .pairlist_cell(value, &list, tag)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+        }
+        factory
+            .pairlist_cell(name, &list, &factory.nil())
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    }
+
+    fn operator(session: &RSession, interface: NativeInterface) -> Sexp<'static> {
+        let name = match interface {
+            NativeInterface::Call => ".Call",
+            NativeInterface::External => ".External",
+            NativeInterface::External2 => ".External2",
+        };
+        unsafe {
+            let raw = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            session
+                .owner_token()
+                .unwrap()
+                .sexp(raw)
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        }
+    }
+
+    fn rejection(operation: impl FnOnce() -> SEXP) -> String {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+        let payload = result.expect_err("incompatible native request must be rejected");
+        payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("native rejection is an R error")
+            .message
+            .clone()
+    }
+
+    #[test]
+    fn owning_native_handlers_reject_wrong_interfaces_before_allocation() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            for (name, interface) in [
+                ("C_par", NativeInterface::External),
+                ("C_nlm", NativeInterface::External),
+                ("C_termsform", NativeInterface::External2),
+                ("C_doTabExpand", NativeInterface::External),
+                ("C_nonASCII", NativeInterface::External2),
+                ("C_typeconvert", NativeInterface::Call),
+                ("C_contourDef", NativeInterface::External),
+                ("C_signrank_free", NativeInterface::Call),
+            ] {
+                let arguments = make_arguments(&factory, name, &[]);
+                let operator = operator(&session, interface);
+                let before =
+                    session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
+                let message = rejection(|| unsafe {
+                    if interface == NativeInterface::Call {
+                        do_dotcall(
+                            factory.nil().as_raw(),
+                            operator.as_raw(),
+                            arguments.as_raw(),
+                            factory.nil().as_raw(),
+                        )
+                    } else {
+                        do_External(
+                            factory.nil().as_raw(),
+                            operator.as_raw(),
+                            arguments.as_raw(),
+                            factory.nil().as_raw(),
+                        )
+                    }
+                });
+                assert!(
+                    message.contains("routine called through"),
+                    "{name}: {message}"
+                );
+                assert_eq!(
+                    session.with_active_in(|instance| unsafe { (*instance).arena.node_count() }),
+                    before
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn owning_native_handlers_reject_all_registered_call_arity_mismatches() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let operator = operator(&session, NativeInterface::Call);
+            let nil = factory.nil().into_owned().unwrap();
+            for (name, expected) in [
+                ("C_R_identC", 2usize),
+                ("C_spline_basis", 4),
+                ("C_pretty2", 2),
+                ("C_rpois", 2),
+                ("C_tzcode_type", 0),
+            ] {
+                for actual in [expected.saturating_sub(1), expected + 1] {
+                    if actual == expected {
+                        continue;
+                    }
+                    let values = vec![(nil.clone(), nil.clone()); actual];
+                    let arguments = make_arguments(&factory, name, &values);
+                    let message = rejection(|| unsafe {
+                        do_dotcall(
+                            nil.as_raw(),
+                            operator.as_raw(),
+                            arguments.as_raw(),
+                            nil.as_raw(),
+                        )
+                    });
+                    assert!(
+                        message.contains(&format!("expected {expected}, received {actual}")),
+                        "{name}: {message}"
+                    );
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn owning_native_call_honors_package_and_excludes_control_from_payload() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let nil = factory.nil().into_owned().unwrap();
+            let operator = operator(&session, NativeInterface::Call);
+            let value = factory.strings(&["same"]).unwrap().into_owned().unwrap();
+            let invalid_package = unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(crate::sexp::constructors::Rf_ScalarInteger(42))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let tag = unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let package = factory.strings(&["methods"]).unwrap().into_owned().unwrap();
+            for position in 0..=2 {
+                let mut payload = vec![(value.clone(), nil.clone()), (value.clone(), nil.clone())];
+                payload.insert(position, (package.clone(), tag.clone()));
+                let arguments = make_arguments(&factory, "C_R_identC", &payload);
+                let result = unsafe {
+                    do_dotcall(
+                        nil.as_raw(),
+                        operator.as_raw(),
+                        arguments.as_raw(),
+                        nil.as_raw(),
+                    )
+                };
+                assert_eq!(
+                    factory.wrap(result).unwrap().try_logical_elt(0).unwrap(),
+                    TRUE
+                );
+            }
+            let wrong_package = factory.strings(&["tools"]).unwrap().into_owned().unwrap();
+            let arguments = make_arguments(
+                &factory,
+                "C_R_identC",
+                &[
+                    (value.clone(), nil.clone()),
+                    (wrong_package, tag.clone()),
+                    (value.clone(), nil.clone()),
+                ],
+            );
+            let message = rejection(|| unsafe {
+                do_dotcall(
+                    nil.as_raw(),
+                    operator.as_raw(),
+                    arguments.as_raw(),
+                    nil.as_raw(),
+                )
+            });
+            assert!(
+                message.contains("disabled"),
+                "explicit wrong package must not fall back globally: {message}"
+            );
+            let invalid = make_arguments(&factory, "C_R_identC", &[(invalid_package, tag)]);
+            let message = rejection(|| unsafe {
+                do_dotcall(
+                    nil.as_raw(),
+                    operator.as_raw(),
+                    invalid.as_raw(),
+                    nil.as_raw(),
+                )
+            });
+            assert!(message.contains("PACKAGE argument must be a single character string"));
+        });
+    }
+
+    #[test]
+    fn owning_native_external_retains_detached_controls_across_real_gc() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let nil = factory.nil().into_owned().unwrap();
+            let operator = operator(&session, NativeInterface::External);
+            let tag = unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let package = factory
+                .strings(&["grDevices"])
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let package_token = package.allocation().unwrap().clone();
+            let arguments = make_arguments(&factory, "C_devcur", &[(package, tag)]);
+            let original = arguments.as_raw();
+            let name_token = arguments.try_car().unwrap().allocation().unwrap().clone();
+            let calls = Rc::new(Cell::new(0));
+            let notifications = calls.clone();
+            let callback_owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if notifications.get() != 0 {
+                    return;
+                }
+                notifications.set(1);
+                unsafe {
+                    let pin = callback_owner.pin().unwrap();
+                    let instance = pin.as_ptr();
+                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::sexp::accessors::SETCAR(original, R_NilValue());
+                    SETCDR(original, R_NilValue());
+                }
+                crate::sexp::gengc::full_gc();
+                assert!(name_token.is_live());
+                assert!(
+                    package_token.is_live(),
+                    "the removed control has only the operation snapshot as a root"
+                );
+            }));
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let result = unsafe {
+                do_External(
+                    nil.as_raw(),
+                    operator.as_raw(),
+                    arguments.as_raw(),
+                    nil.as_raw(),
+                )
+            };
+            assert_eq!(factory.wrap(result).unwrap().try_integer_elt(0).unwrap(), 1);
+            assert_eq!(calls.get(), 1);
+        });
+    }
+
+    #[test]
+    fn owning_native_external_denies_publication_after_callback_close() {
+        // No RefCell loan or RSession reference is held across the callback.
+        let session = RSession::new_for_gc_tests();
+        let factory = unsafe {
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap()
+                .node_factory()
+        };
+        let nil = factory.nil().into_owned().unwrap();
+        let operator = operator(&session, NativeInterface::External);
+        let arguments = make_arguments(&factory, "C_devcur", &[]);
+        let callback_owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let sessions = Rc::new(std::cell::RefCell::new(Some(session)));
+        let weak = Rc::downgrade(&sessions);
+        let calls = Rc::new(Cell::new(0));
+        let notifications = calls.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if notifications.get() != 0 {
+                return;
+            }
+            notifications.set(1);
+            unsafe {
+                let pin = callback_owner.pin().unwrap();
+                let instance = pin.as_ptr();
+                (*instance).memory_state.gc_force_gap = 0;
+            }
+            weak.upgrade()
+                .unwrap()
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .close();
+        }));
+        unsafe {
+            let instance = crate::sexp::owner::OwnerToken::current().unwrap().as_ptr();
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        }
+        let message = rejection(|| unsafe {
+            do_External(
+                nil.as_raw(),
+                operator.as_raw(),
+                arguments.as_raw(),
+                nil.as_raw(),
+            )
+        });
+        assert!(
+            message.contains("owner could not retain its root"),
+            "{message}"
+        );
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn owning_native_altrep_name_and_package_collect_and_reject_revoked_runtime() {
+        use crate::sexp::altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement};
+        use crate::sexp::object::SexpResult;
+        use std::cell::RefCell;
+
+        struct CollectingText {
+            text: &'static str,
+            calls: Rc<Cell<usize>>,
+            close: bool,
+            session: std::rc::Weak<RefCell<Option<RSession>>>,
+        }
+        impl AltrepClass for CollectingText {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::STRSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+                Ok(1)
+            }
+            fn element<'s>(
+                &self,
+                context: &AltrepContext<'s>,
+                _: R_xlen_t,
+            ) -> SexpResult<AltrepElement<'s>> {
+                self.calls.set(self.calls.get() + 1);
+                let text = context.string(self.text)?;
+                context.gc()?;
+                if self.close {
+                    self.session
+                        .upgrade()
+                        .unwrap()
+                        .borrow_mut()
+                        .as_mut()
+                        .unwrap()
+                        .close();
+                }
+                Ok(AltrepElement::String(text))
+            }
+        }
+
+        for package_provider in [false, true] {
+            for close in [false, true] {
+                let sessions = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+                let calls = Rc::new(Cell::new(0));
+                let collections = Rc::new(Cell::new(0));
+                let observed = collections.clone();
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    observed.set(observed.get() + 1);
+                }));
+                // Release all RSession and RefCell loans before provider entry.
+                let (factory, nil, operator, arguments) = {
+                    let borrowed = sessions.borrow();
+                    let session = borrowed.as_ref().unwrap();
+                    let factory = unsafe {
+                        crate::sexp::owner::OwnerToken::current()
+                            .unwrap()
+                            .node_factory()
+                    };
+                    let nil = factory.nil().into_owned().unwrap();
+                    let operator = operator(session, NativeInterface::Call);
+                    let class = session
+                        .register_altrep_class(
+                            "native_lookup_collecting_text",
+                            CollectingText {
+                                text: if package_provider {
+                                    "methods"
+                                } else {
+                                    "C_R_identC"
+                                },
+                                calls: calls.clone(),
+                                close,
+                                session: Rc::downgrade(&sessions),
+                            },
+                        )
+                        .unwrap()
+                        .into_owned()
+                        .unwrap();
+                    let provider = AltrepBuilder::new(class)
+                        .build()
+                        .unwrap()
+                        .into_owned()
+                        .unwrap();
+                    let name = if package_provider {
+                        factory
+                            .strings(&["C_R_identC"])
+                            .unwrap()
+                            .into_owned()
+                            .unwrap()
+                    } else {
+                        provider.clone()
+                    };
+                    let package = if package_provider {
+                        provider
+                    } else {
+                        factory.strings(&["methods"]).unwrap().into_owned().unwrap()
+                    };
+                    let tag = unsafe {
+                        session
+                            .owner_token()
+                            .unwrap()
+                            .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                            .unwrap()
+                            .into_owned()
+                            .unwrap()
+                    };
+                    let value = factory.strings(&["same"]).unwrap().into_owned().unwrap();
+                    let arguments = make_arguments_value(
+                        &factory,
+                        &name,
+                        &[
+                            (value.clone(), nil.clone()),
+                            (package, tag),
+                            (value, nil.clone()),
+                        ],
+                    );
+                    (factory, nil, operator, arguments)
+                };
+                let invoke = || unsafe {
+                    do_dotcall(
+                        nil.as_raw(),
+                        operator.as_raw(),
+                        arguments.as_raw(),
+                        nil.as_raw(),
+                    )
+                };
+                if close {
+                    let message = rejection(invoke);
+                    assert!(
+                        message.contains("owner could not retain its root"),
+                        "{message}"
+                    );
+                } else {
+                    let result = invoke();
+                    assert_eq!(
+                        factory.wrap(result).unwrap().try_logical_elt(0).unwrap(),
+                        TRUE
+                    );
+                }
+                assert_eq!(calls.get(), 1, "the actual lookup provider must run once");
+                assert!(
+                    collections.get() > 0,
+                    "the provider must execute an actual collection"
+                );
+            }
+        }
     }
 }

@@ -143,21 +143,32 @@ fn as_dl<T>(f: T) -> DL_FUNC {
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
-pub fn lookup(name: &str) -> DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "doTabExpand" => as_dl(c_do_tab_expand as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "nonASCII" => as_dl(c_non_ascii as unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-        "delim_match" => as_dl(c_delim_match as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "splitString" => as_dl(c_split_string as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "parseRd" | "parseRdText" => as_dl(
-            super::parse_rd::c_parse_rd
-                as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-        ),
-        "deparseRd" => as_dl(c_deparse_rd as unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP),
-        "parseLatex" => {
-            as_dl(c_parse_latex as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP)
+        "doTabExpand" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_do_tab_expand),
+        )),
+        "nonASCII" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_non_ascii),
+        )),
+        "delim_match" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_delim_match),
+        )),
+        "splitString" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_split_string),
+        )),
+        "parseRd" | "parseRdText" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External2(
+                super::parse_rd::c_parse_rd,
+            ))
         }
+        "deparseRd" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_deparse_rd),
+        )),
+        "parseLatex" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_parse_latex,
+        )),
         _ => None,
     }
 }

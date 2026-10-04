@@ -1,0 +1,86 @@
+[
+  {
+    "name": "cat_no_newline",
+    "code": "cat('recovered')",
+    "stdout": "recovered",
+    "error": false
+  },
+  {
+    "name": "cat_blank_lines",
+    "code": "cat(' a  \\n\\n')",
+    "stdout": " a  \n\n",
+    "error": false
+  },
+  {
+    "name": "cat_carriage_return",
+    "code": "cat('\\r')",
+    "stdout": "\r",
+    "error": false
+  },
+  {
+    "name": "empty_invisible",
+    "code": "cat(''); invisible(7L)",
+    "stdout": "",
+    "error": false
+  },
+  {
+    "name": "visible",
+    "code": "x <- 41; x + 1",
+    "stdout": "[1] 42\n",
+    "error": false
+  },
+  {
+    "name": "cat_then_visible",
+    "code": "cat('prefix'); 7L",
+    "stdout": "prefix[1] 7\n",
+    "error": false
+  },
+  {
+    "name": "on_exit_then_visible",
+    "code": "f <- function(){on.exit(cat('exit'));return(7L)};f()",
+    "stdout": "exit[1] 7\n",
+    "error": false
+  },
+  {
+    "name": "intermediate_visible",
+    "code": "1L; 2L",
+    "stdout": "[1] 1\n[1] 2\n",
+    "error": false
+  },
+  {
+    "name": "custom_print_no_newline",
+    "code": "print.zz<-function(x,...)cat('custom  ');structure(1,class='zz')",
+    "stdout": "custom  ",
+    "error": false
+  },
+  {
+    "name": "custom_print_blank_lines",
+    "code": "print.zz<-function(x,...)cat('custom\\n\\n');structure(1,class='zz')",
+    "stdout": "custom\n\n",
+    "error": false
+  },
+  {
+    "name": "intermediate_custom_print",
+    "code": "print.zz<-function(x,...)cat('custom  ');structure(1,class='zz');2L",
+    "stdout": "custom  [1] 2\n",
+    "error": false
+  },
+  {
+    "name": "cat_then_error",
+    "code": "cat('before  ');stop('boom')",
+    "stdout": "before  ",
+    "error": true
+  },
+  {
+    "name": "cat_blank_lines_then_error",
+    "code": "cat('before\\n\\n');stop('boom')",
+    "stdout": "before\n\n",
+    "error": true
+  },
+  {
+    "name": "custom_print_then_error",
+    "code": "print.zz<-function(x,...) {cat('before  ');stop('boom')};structure(1,class='zz')",
+    "stdout": "before  ",
+    "error": true
+  }
+]

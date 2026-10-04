@@ -173,6 +173,10 @@ unsafe extern "C-unwind" fn c_str_width(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_str_height(args: SEXP) -> SEXP {
     unsafe { text_metrics::measure(args, true) }
 }
+unsafe extern "C-unwind" fn c_stem_leaf(x: SEXP, scale: SEXP, width: SEXP, atom: SEXP) -> SEXP {
+    unsafe { stem::C_StemLeaf(x, scale, width, atom) }
+}
+
 unsafe extern "C-unwind" fn c_contour_def() -> SEXP {
     unsafe { plot3d::C_contourDef() }
 }
@@ -209,54 +213,62 @@ unsafe extern "C-unwind" fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rh
 }
 
 
-pub(crate) fn lookup(name: &str) -> crate::unix::dynload::DL_FUNC {
+pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "par" => Some(unsafe { std::mem::transmute(c_par as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            ) }),
-        "plot_new" => Some(unsafe { std::mem::transmute(c_plot_new as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            ) }),
+        "par" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_par,
+        )),
+        "plot_new" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_plot_new,
+        )),
         #[cfg(feature = "renderplot-device")]
-        "getSnapshot" => Some(unsafe {
-            std::mem::transmute(
-                c_get_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            )
-        }),
+        "getSnapshot" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_get_snapshot,
+        )),
         #[cfg(feature = "renderplot-device")]
-        "playSnapshot" => Some(unsafe {
-            std::mem::transmute(
-                c_play_snapshot as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            )
-        }),
-        "plot_window" => Some(unsafe { std::mem::transmute(c_plot_window as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "axis" => Some(unsafe { std::mem::transmute(c_axis as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect" | "polygon" | "abline" => Some(unsafe { std::mem::transmute(c_plot_xy as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "strWidth" => Some(unsafe { std::mem::transmute(c_str_width as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "strHeight" => Some(unsafe { std::mem::transmute(c_str_height as unsafe extern "C-unwind" fn(SEXP) -> SEXP) }),
-        "BinCount" => Some(unsafe {
-            std::mem::transmute(
-                c_bin_count as unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            )
-        }),
-        "contourDef" => Some(unsafe {
-            std::mem::transmute(c_contour_def as unsafe extern "C-unwind" fn() -> SEXP)
-        }),
-        "contour" => Some(unsafe {
-            std::mem::transmute(c_contour as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }),
-        "image" => Some(unsafe {
-            std::mem::transmute(c_image as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }),
-        "layout" => Some(unsafe {
-            std::mem::transmute(c_layout as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        }),
-        "filledcontour" | "persp" | "arrows" | "clip" | "convertX" | "convertY"
-        | "dend" | "dendwindow" | "erase" | "path" | "raster" | "symbols" | "xspline"
-        | "locator" | "identify" | "StemLeaf" => {
-            Some(unsafe {
-            std::mem::transmute(c_nil as unsafe extern "C-unwind" fn(SEXP) -> SEXP)
-        })
-        }
+        "playSnapshot" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_play_snapshot,
+        )),
+        "plot_window" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_plot_window,
+        )),
+        "axis" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_axis,
+        )),
+        "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect"
+        | "polygon" | "abline" => Some(
+            crate::mainutils::native_routines::NativeRoutine::External1(c_plot_xy),
+        ),
+        "strWidth" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_str_width,
+        )),
+        "strHeight" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_str_height,
+        )),
+        "BinCount" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_bin_count),
+        )),
+        "contourDef" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args0(c_contour_def),
+        )),
+        "contour" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_contour,
+        )),
+        "image" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_image,
+        )),
+        "layout" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_layout,
+        )),
+        "filledcontour" | "persp" | "arrows" | "clip" | "convertX" | "convertY" | "dend"
+        | "dendwindow" | "erase" | "path" | "raster" | "symbols" | "xspline" | "locator"
+        | "identify" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_nil,
+        )),
+        "StemLeaf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_stem_leaf),
+        )),
         _ => None,
     }
 }

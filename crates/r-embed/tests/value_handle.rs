@@ -27,12 +27,21 @@ fn define_read_roundtrip_survives_gc_and_evals() {
     assert_eq!(guard.session_id(), guard.session_id());
     drop(guard);
 
-    // R-side mutation is visible through the same handle.
+    // An ordinary R binding cannot substitute the engine-private value.
     session
-        .eval("..rport_handles..$h0 <- c(9, 9)")
+        .eval("..rport_handles.. <- new.env(); ..rport_handles..$h0 <- c(9,9); gc()")
         .expect("r-side assign");
     let guard = session.read_handle(&handle).expect("second read");
-    assert_eq!(*guard, real(&[9.0, 9.0]));
+    assert_eq!(*guard, real(&[1.5, 2.5, 3.5]));
+    assert_eq!(guard.output(), "");
+    drop(guard);
+    session
+        .eval("rm(..rport_handles..); gc()")
+        .expect("remove interfering binding");
+    assert_eq!(
+        *session.read_handle(&handle).expect("private value remains"),
+        real(&[1.5, 2.5, 3.5])
+    );
 }
 
 #[test]
@@ -105,12 +114,14 @@ fn foreign_session_handle_is_rejected() {
 fn define_failure_yields_no_handle_slot() {
     let mut session = RSession::new().expect("session");
     assert!(session.define_handle("stop('nope')").is_err());
-    // The failed slot was never published: no binding exists.
-    let exists = session
-        .eval("exists(\"h0\", envir = ..rport_handles..)")
-        .expect("exists probe");
-    assert_eq!(exists.trim(), "[1] FALSE");
-    // A later define reuses nothing: fresh handle works.
+    // Failure creates no R-side backing environment or published identity.
+    assert!(
+        !session
+            .global_binding_names()
+            .expect("names")
+            .iter()
+            .any(|name| name == "..rport_handles..")
+    );
     let handle = session.define_handle("11").expect("second define");
     let guard = session.read_handle(&handle).expect("read");
     assert_eq!(*guard, rmath::android::RValue::Real(Some(11.0)));
@@ -132,12 +143,108 @@ fn multi_statement_define_and_null_values_roundtrip() {
 }
 
 #[test]
-fn handle_env_is_hidden_from_global_binding_names() {
+fn retained_values_do_not_create_global_bindings() {
     let mut session = RSession::new().expect("session");
     session.define_handle("1").expect("define");
     let names = session.global_binding_names().expect("names");
     assert!(
         !names.iter().any(|n| n == "..rport_handles.."),
         "engine-internal env leaked into host binding list: {names:?}"
+    );
+}
+
+#[test]
+fn ordinary_reserved_name_binding_is_visible_and_cannot_redirect_handles() {
+    let mut session = RSession::new().expect("session");
+    let handle = session.define_handle("42").expect("define");
+    session
+        .eval("..rport_handles.. <- 9; exists <- function(...) FALSE; gc()")
+        .expect("binding interference");
+    assert!(
+        session
+            .global_binding_names()
+            .expect("names")
+            .iter()
+            .any(|name| name == "..rport_handles..")
+    );
+    assert_eq!(
+        *session.read_handle(&handle).expect("read"),
+        rmath::android::RValue::Real(Some(42.0))
+    );
+    session
+        .write_handle(&handle)
+        .expect("write")
+        .update(". + 1")
+        .expect("update");
+    assert_eq!(
+        *session.read_handle(&handle).expect("updated"),
+        rmath::android::RValue::Real(Some(43.0))
+    );
+}
+
+#[test]
+fn failed_update_preserves_shared_vector_and_private_dot_frame() {
+    let mut session = RSession::new().expect("session");
+    let handle = session.define_handle("x <- c(1,2); x").expect("define");
+    session
+        .eval("x[1] <- 8; . <- 90; gc()")
+        .expect("mutate original alias");
+    assert_eq!(
+        *session.read_handle(&handle).expect("retained alias"),
+        real(&[1.0, 2.0])
+    );
+    assert!(
+        session
+            .write_handle(&handle)
+            .expect("write")
+            .update(".[1] <- 7; side_effect <- TRUE; stop('fail')")
+            .is_err()
+    );
+    assert_eq!(
+        *session.read_handle(&handle).expect("old value"),
+        real(&[1.0, 2.0])
+    );
+    assert_eq!(
+        session.eval_result(".").expect("global dot").value,
+        rmath::android::RValue::Real(Some(90.0))
+    );
+    session
+        .write_handle(&handle)
+        .expect("write")
+        .update(".[1] <- 3; gc(); .")
+        .expect("update");
+    assert_eq!(
+        *session.read_handle(&handle).expect("new value"),
+        real(&[3.0, 2.0])
+    );
+}
+
+#[test]
+fn close_invalidates_every_operation_and_reused_slots_keep_old_handles_stale() {
+    let mut session = RSession::new().expect("session");
+    let old = session.define_handle("1").expect("define");
+    session.remove_handle(&old).expect("remove");
+    let new = session.define_handle("2").expect("reuse");
+    assert!(session.read_handle(&old).is_err());
+    assert_ne!(old, new);
+    session.close();
+    assert!(session.define_handle("3").is_err());
+    assert!(session.read_handle(&new).is_err());
+    assert!(session.write_handle(&new).is_err());
+    assert!(session.remove_handle(&new).is_err());
+}
+
+#[test]
+fn direct_snapshot_obeys_export_budget_without_losing_root() {
+    let mut session = RSession::new().expect("session");
+    let handle = session.define_handle("c(1,2,3)").expect("define");
+    session.set_result_limit(Some(1));
+    assert!(session.read_handle(&handle).is_err());
+    session.set_result_limit(None);
+    assert_eq!(
+        *session
+            .read_handle(&handle)
+            .expect("root after rejected export"),
+        real(&[1.0, 2.0, 3.0])
     );
 }
