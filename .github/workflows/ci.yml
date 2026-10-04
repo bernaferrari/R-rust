@@ -68,6 +68,9 @@ jobs:
       - name: Check capability inventory
         run: python3 scripts/capability_report.py --check
 
+      - name: Test parity deadlines and log capture
+        run: python3 -m unittest scripts/tests/test_run_parity_case.py
+
       - name: Test (workspace)
         run: cargo test --workspace
 
@@ -213,34 +216,34 @@ jobs:
         working-directory: website
         run: |
           mkdir -p "$RUNNER_TEMP/showcase-evidence"
-          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/typecheck.timeout" -- pnpm typecheck 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/typecheck.log"
+          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/typecheck.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/typecheck.log" -- pnpm typecheck
       - name: Lint the showcase
         shell: bash
         working-directory: website
         run: |
-          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/lint.timeout" -- pnpm lint 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/lint.log"
+          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/lint.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/lint.log" -- pnpm lint
       - name: Test showcase units
         shell: bash
         working-directory: website
         run: |
-          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/unit.timeout" -- pnpm test:unit 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/unit.log"
+          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/unit.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/unit.log" -- pnpm test:unit
       - name: Build the showcase
         shell: bash
         working-directory: website
         run: |
-          python3 ../scripts/run_parity_case.py --timeout 300 --timeout-marker "$RUNNER_TEMP/showcase-evidence/build.timeout" -- pnpm build 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/build.log"
+          python3 ../scripts/run_parity_case.py --timeout 300 --timeout-marker "$RUNNER_TEMP/showcase-evidence/build.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/build.log" -- pnpm build
       - name: Install showcase Chromium
         shell: bash
         working-directory: website
         run: |
-          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser-install.timeout" -- pnpm exec playwright install --with-deps chromium 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/browser-install.log"
+          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser-install.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/browser-install.log" -- pnpm exec playwright install --with-deps chromium
       - name: Exercise the showcase through Chromium
         shell: bash
         working-directory: website
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/showcase-evidence/playwright.json
         run: |
-          python3 ../scripts/run_parity_case.py --timeout 600 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser.timeout" -- pnpm test:e2e --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/browser.log"
+          python3 ../scripts/run_parity_case.py --timeout 600 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/browser.log" -- pnpm test:e2e --reporter=line,json
       - name: Preserve showcase command and browser evidence
         if: always()
         uses: actions/upload-artifact@v4

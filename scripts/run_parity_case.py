@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import math
 import os
 from pathlib import Path
@@ -42,6 +43,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", type=positive_seconds, required=True)
     parser.add_argument("--timeout-marker", type=Path, required=True)
+    parser.add_argument(
+        "--combined-log", type=Path,
+        help="write exact combined child output to a new file, without an output pipe",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command
@@ -53,21 +58,26 @@ def main() -> int:
         parser.error("the Bash parity harness requires POSIX process groups")
     if args.timeout_marker.exists():
         parser.error("timeout marker must be absent before execution")
-    try:
-        process = subprocess.Popen(command, start_new_session=True)
-    except OSError as error:
-        print(f"Cannot start parity process: {error}", file=sys.stderr)
-        return 2
-    try:
-        code = process.wait(timeout=args.timeout)
-    except subprocess.TimeoutExpired:
-        stop_group(process)
-        args.timeout_marker.write_text(f"{args.timeout:g}\n", encoding="utf-8")
-        print(f"TIMEOUT after {args.timeout:g}s: {Path(command[0]).name}", file=sys.stderr)
-        return 124
-    except BaseException:
-        stop_group(process)
-        raise
+    with ExitStack() as streams:
+        try:
+            output = streams.enter_context(args.combined_log.open("xb")) if args.combined_log else None
+            process = subprocess.Popen(
+                command, start_new_session=True, stdout=output,
+                stderr=subprocess.STDOUT if output is not None else None,
+            )
+        except OSError as error:
+            print(f"Cannot start parity process or log: {error}", file=sys.stderr)
+            return 2
+        try:
+            code = process.wait(timeout=args.timeout)
+        except subprocess.TimeoutExpired:
+            stop_group(process)
+            args.timeout_marker.write_text(f"{args.timeout:g}\n", encoding="utf-8")
+            print(f"TIMEOUT after {args.timeout:g}s: {Path(command[0]).name}", file=sys.stderr)
+            return 124
+        except BaseException:
+            stop_group(process)
+            raise
     return code if code >= 0 else 128 - code
 
 
