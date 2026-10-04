@@ -55,6 +55,9 @@ mod as_helpers;
 mod atomic;
 mod call;
 mod lang;
+mod pairlist;
+#[cfg(test)]
+mod pairlist_tests;
 mod safe;
 mod vector;
 mod vectorizable;

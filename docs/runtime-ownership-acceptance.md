@@ -1024,6 +1024,28 @@ A separate checkout applies formatting-only wrapping and module ordering to
 four files, preserving the source files already loaded by ongoing strict Miri
 runs in the development checkout. Its complete workspace formatting check and
 warning-denied all-target workspace Clippy passed (79 seconds for Clippy).
-The dedicated review branch will remain fixed while native, exact-oracle,
-upstream and browser CI execute. Their results remain pending; passing these
-local checks does not certify a complete CI checkpoint or full GNU R parity.
+Verified milestones publish directly to main. CI retains the running immutable
+checkpoint while later main commits queue, so continued repairs do not cancel
+its oracle evidence. The preceding checkpoint passed formatting, Clippy and
+Rust Wasm execution; native intercept-only models and five browser scenarios
+still failed, and conformance remained in progress. Passing local checks does
+not certify a complete CI checkpoint or full GNU R parity.
+
+## Checked pairlist coercion: native candidate (rport-wszw.7.1.1.1)
+
+String/list coercion now captures checked, independently owning children and
+tags before allocation or callbacks. Cyclic chains, improper tails and invalid
+tags reject before native work. Provider/deparse callbacks recheck the original
+runtime after success or unwind, and language operator names are captured before
+source mutation. The new kernel forbids unsafe code; deparse and attribute
+operations retain thin native adapters.
+
+The unchanged production baseline genuinely failed all three new controls,
+including two bounded cycle regressions and the GNU nested-list string case.
+The final enclosing suite passed all 51 native tests, and four existing owning
+deparse tests passed. Independent GNU integer, NA, attribute and precision
+controls confirmed that deparse1line uses simple options; its previous options
+were repaired without rewriting or normalizing expected strings. All-target
+Clippy and assigned formatting passed. The six safety tests are running strict
+Miri against frozen authored sources, with no completed aggregate yet; the
+pairlist item remains open. Raw atomic conversions remain rport-wszw.7.1.1.2.
