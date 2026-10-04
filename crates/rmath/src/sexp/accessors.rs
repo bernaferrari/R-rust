@@ -375,9 +375,13 @@ pub unsafe fn SET_MISSING(x: SEXP, v: c_int) {
     });
 }
 
-/// Get the scalar flag.
-pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
-    header_snapshot(x).map_or(0, |header| header.sxpinfo.scalar() as c_int)
+/// GNU scalar admission checks both the requested kind and scalar flag.
+/// The supplied address is only a lookup key for a checked owning Cell or
+/// immutable lease; reading flags requires no caller dereference authority.
+pub fn IS_SCALAR(x: SEXP, requested_type: c_int) -> c_int {
+    header_snapshot(x).map_or(0, |header| {
+        c_int::from(header.sxpinfo.type_of().0 == requested_type && header.sxpinfo.scalar())
+    })
 }
 
 /// Set the scalar flag.
@@ -1860,3 +1864,7 @@ fn reference_elements_reject_foreign_payloads_and_oversized_headers() {
 #[cfg(test)]
 #[path = "accessors/projection_tests.rs"]
 mod projection_tests;
+
+#[cfg(test)]
+#[path = "accessors/scalar_admission_tests.rs"]
+mod scalar_admission_tests;

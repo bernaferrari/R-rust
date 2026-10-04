@@ -334,3 +334,17 @@ tests pass in 68.82 and 111.73 seconds: the four special environment tokens and
 two original session domains. These Miri fixtures use explicitly declared
 minimal heaps; they do not certify full methods startup. The one-branch reader
 repair and frozen original-byte tests have separate source-ledger evidence.
+
+Scalar admission now checks both the requested GNU SEXPTYPE and the scalar
+header flag. The public helper is safe Rust: it reads an authenticated owning
+header snapshot, without dereferencing the supplied projection. The original
+implementation admits a scalar under a different requested type; that exact
+regression fails before the repair. Three native cases pass in 0.01 seconds and
+three strict-provenance Miri cases pass in 119.86 seconds with the default alias
+checker. They cover every supported vector kind against requested types -1
+through 31, both scalar flags, unregistered and retired storage, and an original
+immutable logical singleton retained across bank retirement. Existing explicit
+caller type checks remain. The pinned GNU macro and frozen source hashes are
+recorded independently; this establishes the helper's checked contract, not
+whole-engine safety. Workspace all-target Clippy passes with warnings denied in
+31.06 seconds and workspace formatting passes for the current development tree.
