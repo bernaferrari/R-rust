@@ -799,3 +799,18 @@ with the default alias checker and isolation. The full public bootstrap case
 remains native acceptance. Warnings-denied facade Clippy, assigned formatting and
 reproducible GNU fixtures pass. GLM dispersion and weighted preprocessing are
 tracked separately and are not certified by this linear-model checkpoint.
+
+## Permanent native character encoding
+
+The safe permanent character allocator now seals GNU's ASCII flag with the
+original bytes before publishing the checked node. Non-ASCII native bytes retain
+their original encoding identity. This repairs symbol printname flags at their
+producer rather than modifying serialized output.
+
+The original ASCII regression fails; all eight enclosing heap cases then pass
+natively and under strict-provenance Miri in 57.78 seconds with the default alias
+checker. Sealed payload and retained ownership controls remain covered. Assigned
+formatting and warnings-denied facade Clippy pass. Together with the separate
+writer metadata fix, the unchanged independent 592,931-byte graph of all 108
+portable datasets compares exactly; that enclosing result does not certify every
+character encoding or native symbol conversion path.

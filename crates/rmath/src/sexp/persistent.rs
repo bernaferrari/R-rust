@@ -312,6 +312,12 @@ impl PersistentHeap {
         cells.push(Cell::new(0));
         let cells: Rc<[Cell<u8>]> = Rc::from(cells.into_boxed_slice());
         let mut header = SexprecCore::new(SEXPTYPE::CHARSXP);
+        // This producer admits native bytes, as GNU mkCharLenCE(CE_NATIVE)
+        // does. ASCII is independent of encoding and must be sealed with
+        // the original header, before the checked node becomes observable.
+        if bytes.is_ascii() {
+            header.sxpinfo.set_gp(1 << 6);
+        }
         header.data = NodeBody::Vector(Vecsxp {
             length,
             truelength: 0,
@@ -426,6 +432,50 @@ impl Drop for PersistentHeap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persistent_ascii_character_flags_match_gnu_before_publication() {
+        let mut permanent = PersistentHeap::new(HeapIdentity::new());
+        for bytes in [b"".as_slice(), b"tsp", b"class", b"names", b"~", b"mtcars"] {
+            let pointer = permanent.allocate_chars(bytes).unwrap();
+            let node = permanent.token(pointer).unwrap();
+            let header = permanent.heap_identity().node_snapshot(&node).unwrap();
+            assert_eq!(header.sxpinfo.gp() & (1 << 6), 1 << 6, "{bytes:?}");
+            let payload = permanent.heap_identity().payload_lease(&node).unwrap();
+            assert!(payload.is_immutable());
+            assert_eq!(payload.capacity(), bytes.len() + 1);
+            assert_eq!(payload.byte_elt(bytes.len()), Some(0));
+        }
+    }
+
+    #[test]
+    fn persistent_nonascii_bytes_keep_native_encoding_and_owned_storage() {
+        let mut permanent = PersistentHeap::new(HeapIdentity::new());
+        let mut saved = Vec::new();
+        for bytes in ["é".as_bytes(), &[0xff], &[b'A', 0, b'B']] {
+            let pointer = permanent.allocate_chars(bytes).unwrap();
+            let node = permanent.token(pointer).unwrap();
+            let heap = permanent.heap_identity();
+            let header = heap.node_snapshot(&node).unwrap();
+            assert_eq!(header.sxpinfo.gp() & ((1 << 1) | (1 << 2) | (1 << 3)), 0);
+            assert_eq!(
+                header.sxpinfo.gp() & (1 << 6),
+                if bytes.is_ascii() { 1 << 6 } else { 0 }
+            );
+            let owner = node.root_lease().unwrap();
+            let payload = heap.payload_lease(&node).unwrap();
+            saved.push((node, owner, payload, bytes.to_vec()));
+        }
+        drop(permanent);
+        for (node, owner, payload, bytes) in saved {
+            assert!(node.is_live());
+            for (index, byte) in bytes.into_iter().enumerate() {
+                assert_eq!(payload.byte_elt(index), Some(byte));
+            }
+            drop(owner);
+        }
+    }
+
     #[test]
     fn detached_permanent_payload_snapshot_pins_the_actual_cells_and_charge() {
         let mut permanent = PersistentHeap::new(HeapIdentity::new());
