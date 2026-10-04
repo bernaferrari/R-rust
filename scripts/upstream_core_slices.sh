@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
+source "$ROOT_DIR/scripts/upstream_case_workspace.sh"
 CASES_DIR="$ROOT_DIR/tests/upstream-core/cases"
 XFAIL_FILE="$ROOT_DIR/tests/upstream-core/xfail.tsv"
 UPSTREAM_CORPUS_DIR="$ROOT_DIR/tests/upstream-r"
@@ -81,7 +82,7 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
 fi
 
 echo "INFO: building Rust rmath artifact for upstream slice runner." >&2
-(cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
+(cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" build -p rmath >/dev/null)
 
 RUST_RLIB="$(conformance_find_rmath_rlib)"
 if [[ -z "$RUST_RLIB" ]]; then
@@ -148,22 +149,25 @@ run_case() {
     case_dir="$(dirname "$case_file")"
     case_basename="$(basename "$case_file")"
 
-    if ! (
-        cd "$case_dir" &&
-            env LC_ALL=C LANG=C TZ=UTC SRCDIR="$case_dir" \
-                Rscript --vanilla "$case_basename"
-    ) >"$c_out" 2>&1; then
+    local c_workspace="$tmp_dir/stock"
+    local r_workspace="$tmp_dir/rust"
+    if ! upstream_stage_case_workspace "$case_dir" "$c_workspace" ||
+        ! upstream_stage_case_workspace "$case_dir" "$r_workspace"; then
+        echo "FAIL ${case_name}: unable to copy fixture workspaces"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    if ! upstream_run_case_workspace "$c_workspace" "$case_basename" \
+        Rscript --vanilla >"$c_out" 2>&1; then
         echo "FAIL ${case_name}: stock R exited non-zero"
         sed 's/^/  C | /' "$c_out"
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    if ! (
-        cd "$case_dir" &&
-            env LC_ALL=C LANG=C TZ=UTC SRCDIR="$case_dir" \
-                "$RUST_BIN" "$case_basename"
-    ) >"$r_out" 2>&1; then
+    if ! upstream_run_case_workspace "$r_workspace" "$case_basename" \
+        "$RUST_BIN" >"$r_out" 2>&1; then
         echo "FAIL ${case_name}: Rust runner exited non-zero"
 
         sed 's/^/  R | /' "$r_out"
@@ -275,6 +279,13 @@ main() {
                 ;;
         esac
     done <"$UPSTREAM_DISPOSITIONS"
+
+    # Test output belongs only to the engine workspaces. Recheck the immutable
+    # import before publishing results, including the set of imported files.
+    if ! python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py"; then
+        echo "ERROR: pinned upstream corpus changed during execution" >&2
+        failed=$((failed + 1))
+    fi
 
     echo "Summary: ${passed}/${total} upstream cases passed, ${xfailed} expected failures, ${skipped} skipped"
     write_report

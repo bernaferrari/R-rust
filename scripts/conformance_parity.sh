@@ -144,7 +144,7 @@ fi
 
 if [[ "$MODE" != "--regen-goldens" ]]; then
     echo "INFO: building Rust rmath artifact for conformance runner." >&2
-    (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
+    (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" build -p rmath >/dev/null)
 
     RUST_RLIB="$(conformance_find_rmath_rlib)"
 

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -19,6 +20,14 @@ SPEC.loader.exec_module(validator)
 
 
 class UpstreamCorpusValidationTests(unittest.TestCase):
+    def test_engine_workspaces_preserve_import_and_isolate_outputs(self) -> None:
+        subprocess.run(
+            ["bash", str(ROOT / "scripts" / "upstream_case_workspace_test.sh")],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
     def test_repository_corpus_is_valid_and_complete(self) -> None:
         oracle = json.loads(
             (ROOT / "oracle" / "r-oracle.json").read_text(encoding="utf-8")
@@ -30,9 +39,9 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
 
         self.assertEqual(report.imported_files, 245)
         self.assertEqual(report.total, 70)
-        self.assertEqual(report.expected_failures, 4)
-        self.assertEqual(report.skipped, 47)
-        self.assertEqual(report.runnable, 23)
+        self.assertEqual(report.expected_failures, 0)
+        self.assertEqual(report.skipped, 31)
+        self.assertEqual(report.runnable, 39)
 
     def make_corpus(
         self,
