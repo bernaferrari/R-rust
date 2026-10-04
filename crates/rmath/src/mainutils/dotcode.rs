@@ -1001,7 +1001,11 @@ pub unsafe fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP
 /// Actual owning payloads captured before reconstruction or native callbacks.
 /// Control arguments select resolution; they never become callable payloads.
 struct NativeOperands {
+    // Preserve the original structured name for native/foreign metadata while
+    // retaining the exact child used for lookup before a control provider can
+    // mutate its container and collect the detached child.
     name: crate::sexp::object::Sexp<'static>,
+    lookup_child: crate::sexp::object::Sexp<'static>,
     payload: Vec<(
         crate::sexp::object::Sexp<'static>,
         crate::sexp::object::Sexp<'static>,
@@ -1023,6 +1027,7 @@ impl NativeOperands {
     fn capture(
         arguments: crate::sexp::object::Sexp<'static>,
         interface: crate::mainutils::native_routines::NativeInterface,
+        access: &crate::sexp::owner::RuntimeAccess,
     ) -> crate::sexp::object::SexpResult<Self> {
         if arguments.is_nil() {
             return Err(native_admission_error("'.NAME' is missing"));
@@ -1049,6 +1054,15 @@ impl NativeOperands {
             snapshots.push((value, tag));
             cursor = cursor.try_cdr()?;
         }
+        // A list-name ALTREP element provider may itself reenter and detach
+        // argument cells. Capture every payload/tag first, then the lookup child
+        // before PACKAGE providers can change the original name container.
+        let lookup_child = if name.typeof_() == SEXPTYPE::VECSXP && name.len() > 0 {
+            name.try_vector_elt(0)?.into_owned()?
+        } else {
+            name.clone()
+        };
+        access.require_active()?;
         let mut payload = Vec::new();
         let mut package = None;
         // Every source cell and edge has been captured before character/ALTREP
@@ -1062,6 +1076,7 @@ impl NativeOperands {
                     ));
                 }
                 let text = value.try_string_elt(0)?.try_as_string()?;
+                access.require_active()?;
                 if package.is_some() {
                     eprintln!("WARNING: 'PACKAGE' used more than once");
                 }
@@ -1083,20 +1098,14 @@ impl NativeOperands {
         }
         Ok(Self {
             name,
+            lookup_child,
             payload,
             package,
         })
     }
 
     fn lookup_name(&self) -> crate::sexp::object::SexpResult<Option<String>> {
-        let name = if self.name.typeof_() == SEXPTYPE::VECSXP {
-            if self.name.len() == 0 {
-                return Ok(None);
-            }
-            self.name.try_vector_elt(0)?
-        } else {
-            self.name.clone()
-        };
+        let name = &self.lookup_child;
         match name.typeof_() {
             SEXPTYPE::STRSXP if name.len() == 1 => {
                 Ok(Some(name.try_string_elt(0)?.try_as_string()?))
@@ -1188,7 +1197,8 @@ unsafe fn invoke_native_handler(
         let domain = access.domain();
         let call = domain.wrap(call)?.into_owned()?;
         let environment = domain.wrap(environment)?.into_owned()?;
-        let operands = NativeOperands::capture(domain.wrap(arguments)?.into_owned()?, interface)?;
+        let operands =
+            NativeOperands::capture(domain.wrap(arguments)?.into_owned()?, interface, access)?;
         access.require_active()?;
         let name = operands.lookup_name()?;
         access.require_active()?;
@@ -1365,6 +1375,9 @@ mod buffer_dispatch;
 
 #[cfg(test)]
 mod native_inventory;
+
+#[cfg(test)]
+mod lookup_snapshot_tests;
 
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;

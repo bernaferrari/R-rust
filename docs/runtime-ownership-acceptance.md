@@ -137,3 +137,13 @@ Workspace formatting remains a separate mechanical checkpoint.
 Kani should target production identity, generation, workspace, and typed-native
 admission helpers. Miri and collecting integration tests remain necessary for
 aliasing and reentry. No new Kani proof is claimed by this checkpoint.
+
+The native lookup snapshot repair passes 24 native controls in 0.09 seconds and
+all six focused strict-provenance Miri cases in 560.11 seconds, with zero
+failures or ignored tests and the default alias checker. Its fixtures detach the
+original lookup child or argument spine, perform full GC and genuine nested
+native invocation, and reject publication after original-runtime revocation.
+The operation retains every payload before list-name providers and the selected
+lookup child before PACKAGE providers. The Miri proof belongs to its recorded
+compiled-source manifest; the independent shared-environment index repair was
+edited after that compilation and is not certified by this selection.
