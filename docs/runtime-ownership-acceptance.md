@@ -890,6 +890,9 @@ its three shared-kernel tests passed, and all-target Clippy plus formatting pass
 Three metadata tests passed strict-provenance Miri with the default checker and
 isolation (65.53 seconds). Independent pinned GNU controls cover ten NULL modes,
 named/missing/empty versions, empty assignment, type promotion, growth and invalid
-replacement. The additional NULL-kernel Miri run remains pending; its incomplete
-progress is not counted as an aggregate PASS. rport-wszw.7.1 tracks that final
-acceptance. The separate isVectorizable admission gap remains rport-wszw.7.1.1.
+replacement. The additional NULL-kernel Miri run subsequently passed all three
+cases (441.54 seconds), with the default alias checker, strict provenance and
+isolation unchanged. Its original loaded production paths stayed fixed through
+the actual footer; this scoped evidence does not attest unrelated concurrent
+agent edits as one whole-HEAD run. rport-wszw.7.1 is complete. The separate
+isVectorizable admission gap remains rport-wszw.7.1.1.
