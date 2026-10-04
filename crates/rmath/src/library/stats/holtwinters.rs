@@ -141,7 +141,7 @@ fn hw_additive_sse(
             season: s0,
         },
         kernel::Output {
-            sse: &mut sse,
+            sse: std::slice::from_mut(&mut sse),
             level: &mut level,
             trend: &mut trend,
             season: &mut season,
@@ -246,7 +246,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 season: &s,
             },
             kernel::Output {
-                sse: &mut sse,
+                sse: std::slice::from_mut(&mut sse),
                 level: &mut level,
                 trend: &mut trend,
                 season: &mut season,

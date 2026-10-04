@@ -20,7 +20,7 @@ pub(crate) struct Initial<'a> {
 }
 
 pub(crate) struct Output<'a> {
-    pub(crate) sse: &'a mut f64,
+    pub(crate) sse: &'a mut [f64],
     pub(crate) level: &'a mut [f64],
     pub(crate) trend: &'a mut [f64],
     pub(crate) season: &'a mut [f64],
@@ -29,6 +29,7 @@ pub(crate) struct Output<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct Lengths {
     pub(crate) x: usize,
+    pub(crate) sse: usize,
     pub(crate) seed: usize,
     pub(crate) level: usize,
     pub(crate) trend: usize,
@@ -90,6 +91,7 @@ impl Parameters {
             .checked_sub(1)
             .ok_or(FilterError::InvalidStart)?;
         let steps = lengths.x.saturating_sub(start);
+        require("SSE", lengths.sse, usize::from(steps > 0))?;
         require("level", lengths.level, workspace(steps, 1)?)?;
         // GNU's level recurrence reads the previous trend even when trend
         // updates and forecasting are disabled. Preserve that buffer contract.
@@ -115,6 +117,7 @@ pub(crate) fn filter(
 ) -> Result<(), FilterError> {
     parameters.validate(Lengths {
         x: x.len(),
+        sse: output.sse.len(),
         seed: initial.season.len(),
         level: output.level.len(),
         trend: output.trend.len(),
@@ -154,7 +157,7 @@ pub(crate) fn filter(
             forecast *= previous_season;
         }
         let residual = sample - forecast;
-        *output.sse += residual * residual;
+        output.sse[0] += residual * residual;
         let deseasonalized = if additive {
             sample - previous_season
         } else {
@@ -199,6 +202,7 @@ mod tests {
     fn holtwinters_checked_workspace_rejects_overflow_and_zero_start() {
         let lengths = Lengths {
             x: 4,
+            sse: 1,
             seed: usize::MAX,
             level: 5,
             trend: 5,
@@ -224,7 +228,7 @@ mod tests {
                 season: &[1.0; 2],
             },
             Output {
-                sse: &mut sse,
+                sse: std::slice::from_mut(&mut sse),
                 level: &mut level,
                 trend: &mut trend,
                 season: &mut season,
@@ -256,7 +260,7 @@ mod tests {
                 season: &[],
             },
             Output {
-                sse: &mut sse,
+                sse: std::slice::from_mut(&mut sse),
                 level: &mut level,
                 trend: &mut [],
                 season: &mut [],
@@ -265,5 +269,69 @@ mod tests {
         .unwrap();
         assert_eq!(sse, 7.0);
         assert_eq!(level, [2.0, 22.0]);
+    }
+}
+
+#[cfg(test)]
+mod sse_slice_tests {
+    use super::*;
+    #[test]
+    fn holtwinters_sse_slice_requires_storage_only_for_actual_iterations_before_writes() {
+        let mut p = Parameters {
+            alpha: 0.3,
+            beta: 0.,
+            gamma: 0.,
+            start_time: 1,
+            period: 0,
+            additive: true,
+            trend: false,
+            seasonal: false,
+        };
+        let mut level = [11., 12.];
+        let mut trend = [13.];
+        let error = filter(
+            &[1.],
+            p,
+            Initial {
+                level: 2.,
+                trend: 0.,
+                season: &[],
+            },
+            Output {
+                sse: &mut [],
+                level: &mut level,
+                trend: &mut trend,
+                season: &mut [],
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            FilterError::ShortBuffer {
+                name: "SSE",
+                needed: 1,
+                actual: 0
+            }
+        );
+        assert_eq!(level, [11., 12.]);
+        assert_eq!(trend, [13.]);
+        p.start_time = 2;
+        filter(
+            &[],
+            p,
+            Initial {
+                level: 2.,
+                trend: 0.,
+                season: &[],
+            },
+            Output {
+                sse: &mut [],
+                level: &mut level,
+                trend: &mut [],
+                season: &mut [],
+            },
+        )
+        .unwrap();
+        assert_eq!(level, [2., 12.]);
     }
 }

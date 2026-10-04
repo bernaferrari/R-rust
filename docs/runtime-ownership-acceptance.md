@@ -312,3 +312,25 @@ with the default alias checker. Warnings-free all-target Clippy passes in
 its frozen source manifest; the superseded six-case candidate is retained as
 earlier evidence. The structured numerical registry covers 19 of its 26 declared
 C/Fortran entries; that count does not claim complete stats or GNU R parity.
+
+Holt-Winters buffer admission now follows the actual executed GNU branches.
+Initialization-only calls accept unread empty data, coefficients and SSE;
+enabled trend and seasonal initialization still require their real inputs.
+Calls with updates require the previous trend values even when trend updates
+are disabled, preserving GNU's level recurrence. The safe kernel receives the
+actual caller's SSE slice and validates its length before any output write.
+Three new independent GNU branch cases reproduce all 51 argument-buffer rows,
+with a durable generator and byte-identical fixture regeneration. All eleven
+native cases pass in 0.02 seconds, fifteen neighboring buffer controls pass in
+0.09 seconds, and all eleven strict-provenance Miri cases pass in 399.41 seconds
+with the default alias checker. Warnings-free all-target Clippy passes in
+30.95 seconds; assigned source hashes and formatting remain verified.
+
+GNU's serialized base-namespace token now restores the distinct original base
+namespace, preserving its identity instead of substituting the base environment.
+Three native original-byte tests pass in 1.63 seconds, including the genuine
+full-base bootstrap and collection. Two exact managed strict-provenance Miri
+tests pass in 68.82 and 111.73 seconds: the four special environment tokens and
+two original session domains. These Miri fixtures use explicitly declared
+minimal heaps; they do not certify full methods startup. The one-branch reader
+repair and frozen original-byte tests have separate source-ledger evidence.

@@ -1,0 +1,52 @@
+case	argument	type	input	output
+init-only	0	double		
+init-only	1	integer	2	2
+init-only	2	double		
+init-only	3	double		
+init-only	4	double		
+init-only	5	integer	3	3
+init-only	6	integer		
+init-only	7	integer		
+init-only	8	integer	0	0
+init-only	9	integer	0	0
+init-only	10	double	2e+00	2e+00
+init-only	11	double		
+init-only	12	double		
+init-only	13	double		
+init-only	14	double	0e+00	2e+00
+init-only	15	double		
+init-only	16	double		
+init-trend-season	0	double		
+init-trend-season	1	integer	2	2
+init-trend-season	2	double		
+init-trend-season	3	double		
+init-trend-season	4	double		
+init-trend-season	5	integer	3	3
+init-trend-season	6	integer		
+init-trend-season	7	integer	2	2
+init-trend-season	8	integer	1	1
+init-trend-season	9	integer	1	1
+init-trend-season	10	double	2e+00	2e+00
+init-trend-season	11	double	3e+00	3e+00
+init-trend-season	12	double	5.0e-01,1.5e+00	5.0e-01,1.5e+00
+init-trend-season	13	double		
+init-trend-season	14	double	0e+00	2e+00
+init-trend-season	15	double	0e+00	3e+00
+init-trend-season	16	double	9.9e+01,9.9e+01	5.0e-01,1.5e+00
+iter-disabled-components	0	double	1e+00,2e+00	1e+00,2e+00
+iter-disabled-components	1	integer	2	2
+iter-disabled-components	2	double	2.9999999999999999e-01	2.9999999999999999e-01
+iter-disabled-components	3	double		
+iter-disabled-components	4	double		
+iter-disabled-components	5	integer	1	1
+iter-disabled-components	6	integer	1	1
+iter-disabled-components	7	integer	0	0
+iter-disabled-components	8	integer	0	0
+iter-disabled-components	9	integer	0	0
+iter-disabled-components	10	double	2e+00	2e+00
+iter-disabled-components	11	double		
+iter-disabled-components	12	double		
+iter-disabled-components	13	double	0e+00	1.0900000000000001e+00
+iter-disabled-components	14	double	0e+00,0e+00,0e+00	2.00e+00,1.70e+00,1.79e+00
+iter-disabled-components	15	double	0e+00,0e+00	0e+00,0e+00
+iter-disabled-components	16	double		

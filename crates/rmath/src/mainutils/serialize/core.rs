@@ -1719,7 +1719,7 @@ unsafe fn read_item_body(
         } else if stype == BASEENV_SXP {
             Ok(R_BaseEnv())
         } else if stype == BASENAMESPACE_SXP {
-            Ok(R_BaseEnv())
+            Ok(crate::sexp::envir::R_BaseNamespace())
         } else if stype == NAMESPACESXP || stype == PACKAGESXP {
             let names = read_packed_string_vec(reader, ref_table)?;
             let pkg = first_string_elt(names);
@@ -2077,5 +2077,139 @@ mod bytecode_reader_tests {
             assert!(read_bc_language(244, &mut reader, &mut ReadRefTable::new(), reps).is_err());
             assert_eq!(reader.item_depth, 0);
         }
+    }
+}
+
+#[cfg(test)]
+mod special_environment_identity_tests {
+    use super::*;
+    use crate::sexp::{
+        object::{SessionNodeFactory, Sexp, SexpMut},
+        session::RSession,
+    };
+
+    // Exact GNU R 4.7, XDR version 3 bytes produced by the pinned oracle:
+    // serialize(asNamespace("base"), NULL, xdr=TRUE, version=3).
+    const BASE_NAMESPACE_RDS: &[u8] =
+        b"X\n\x00\x00\x00\x03\x00\x04\x07\x00\x00\x03\x05\x00\x00\x00\x00\x05UTF-8\x00\x00\x00\xfa";
+
+    fn raw<'s>(factory: &SessionNodeFactory<'s>, bytes: &[u8]) -> Sexp<'s> {
+        let value = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t)))
+            .unwrap();
+        let mut value = SexpMut::try_from_checked(value).unwrap();
+        for (index, byte) in bytes.iter().copied().enumerate() {
+            value.try_set_raw_elt(index as R_xlen_t, byte).unwrap();
+        }
+        value.freeze()
+    }
+
+    fn read<'s>(factory: &SessionNodeFactory<'s>, bytes: &[u8]) -> Sexp<'s> {
+        let bytes = raw(factory, bytes);
+        // The original factory/input own their exact heap through deserialization.
+        factory
+            .wrap(unsafe {
+                crate::mainutils::serialize::R_unserialize(bytes.as_raw(), R_NilValue())
+            })
+            .unwrap()
+    }
+
+    fn minimal_original_namespace<'s>(
+        session: &'s RSession,
+        factory: &SessionNodeFactory<'s>,
+    ) -> Sexp<'s> {
+        let base = factory.wrap(unsafe { R_BaseEnv() }).unwrap();
+        let symbol = factory
+            .wrap(unsafe { crate::sexp::symbol::Rf_install(c".BaseNamespaceEnv".as_ptr()) })
+            .unwrap();
+        // Bootstrap uses a shared original base frame, then replaces its placeholder.
+        unsafe { crate::sexp::envir::define_var_safe(symbol.clone(), base.clone(), base.clone()) };
+        let namespace = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+            .unwrap();
+        let frame = base.try_frame().unwrap();
+        let global = session.global_env().unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_FRAME(namespace.as_raw(), frame.as_raw());
+            crate::sexp::accessors::SET_ENCLOS(namespace.as_raw(), global.as_raw());
+            crate::sexp::envir::define_var_safe(symbol, namespace.clone(), base);
+        }
+        assert_eq!(
+            unsafe { crate::sexp::envir::R_BaseNamespace() },
+            namespace.as_raw()
+        );
+        namespace
+    }
+
+    #[test]
+    fn original_gnu_base_namespace_rds_preserves_real_base_bootstrap_identity() {
+        let session = RSession::new_without_default_packages();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let value = read(&factory, BASE_NAMESPACE_RDS);
+        assert_eq!(value.as_raw(), unsafe {
+            crate::sexp::envir::R_BaseNamespace()
+        });
+        assert_ne!(value.as_raw(), unsafe { R_BaseEnv() });
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert_eq!(value.as_raw(), unsafe {
+            crate::sexp::envir::R_BaseNamespace()
+        });
+    }
+
+    #[test]
+    fn original_gnu_special_environment_tokens_preserve_original_owner_after_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let namespace = minimal_original_namespace(&session, &factory);
+        // All four exact oracle streams differ only in the final type byte.
+        let cases = unsafe {
+            [
+                (0xf2, R_EmptyEnv()),
+                (0xfd, R_GlobalEnv()),
+                (0xf1, R_BaseEnv()),
+                (0xfa, namespace.as_raw()),
+            ]
+        };
+        let mut values = Vec::new();
+        for (token, expected) in cases {
+            let mut bytes = BASE_NAMESPACE_RDS.to_vec();
+            *bytes.last_mut().unwrap() = token;
+            let value = read(&factory, &bytes);
+            assert_eq!(value.as_raw(), expected);
+            values.push(value);
+        }
+        session.owner_token().unwrap().full_gc().unwrap();
+        for (value, (_, expected)) in values.iter().zip(cases) {
+            assert!(value.allocation().unwrap().is_live());
+            assert_eq!(value.as_raw(), expected);
+        }
+        assert_ne!(values[2], values[3]);
+        assert_eq!(
+            values[3].try_enclos().unwrap(),
+            session.global_env().unwrap()
+        );
+    }
+
+    #[test]
+    fn original_gnu_namespace_token_uses_each_exact_session_domain() {
+        let left = RSession::new_for_gc_tests();
+        let left_factory = SessionNodeFactory::new(left.owner_token().unwrap());
+        let left_namespace = minimal_original_namespace(&left, &left_factory)
+            .into_owned()
+            .unwrap();
+        let left_value = read(&left_factory, BASE_NAMESPACE_RDS)
+            .into_owned()
+            .unwrap();
+        let right = RSession::new_for_gc_tests();
+        let right_factory = SessionNodeFactory::new(right.owner_token().unwrap());
+        let right_namespace = minimal_original_namespace(&right, &right_factory);
+        let right_value = read(&right_factory, BASE_NAMESPACE_RDS);
+        assert_eq!(left_value, left_namespace);
+        assert_eq!(right_value, right_namespace);
+        assert_ne!(left_value.as_raw(), right_value.as_raw());
+        right.owner_token().unwrap().full_gc().unwrap();
+        left.with_active(|| left.owner_token().unwrap().full_gc().unwrap());
+        assert!(left_value.allocation().unwrap().is_live());
+        assert!(right_value.allocation().unwrap().is_live());
     }
 }
