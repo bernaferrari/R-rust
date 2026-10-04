@@ -29,9 +29,29 @@ use std::cell::{Cell, RefCell};
 
 thread_local! {
     static PREDICT_MODEL: RefCell<Option<super::loess::Model>> = const { RefCell::new(None) };
+    static PREDICT_OWNER: RefCell<Option<crate::sexp::owner::WeakOwner>> = const { RefCell::new(None) };
     /// The pseudovalue refit after `lowesp` must not replace the model
     /// `predict.loess` interpolates. `simpleLoess` always calls it second.
     static SKIP_PREDICT_STORE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Owned scalar admission snapshot, taken after every R/provider callback and
+/// immediately before invoking the numeric interpolation kernel. The model
+/// may belong only to the original managed runtime that published it.
+pub(crate) fn checked_predictor_width() -> Result<usize, String> {
+    let current = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .map_err(|error| error.to_string())?
+        .weak_owner()
+        .ok_or_else(|| "LOESS prediction requires a managed runtime".to_owned())?;
+    let matches = PREDICT_OWNER.with(|slot| {
+        slot.borrow().as_ref().is_some_and(|owner| owner.is_live() && owner.same_owner(&current))
+    });
+    if !matches { return Err("no LOESS model for the original runtime".to_owned()); }
+    PREDICT_MODEL.with(|slot| {
+        slot.borrow().as_ref().and_then(|model| model.x.first().map(Vec::len))
+            .filter(|width| *width > 0)
+            .ok_or_else(|| "no LOESS model to interpolate".to_owned())
+    })
 }
 
 fn loess_median(mut values: Vec<f64>) -> f64 {
@@ -122,7 +142,10 @@ fn store_predict_model(model: super::loess::Model) {
     if skip {
         return;
     }
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .ok().and_then(|owner| owner.weak_owner());
     PREDICT_MODEL.with(|slot| *slot.borrow_mut() = Some(model));
+    PREDICT_OWNER.with(|slot| *slot.borrow_mut() = owner);
 }
 
 fn write_fit(dest: *mut c_double, values: &[f64]) {
@@ -336,7 +359,7 @@ fn engine_loess_ifit(m: *mut c_int, x_evaluate: *mut c_double, fit: *mut c_doubl
     }
 }
 
-pub unsafe extern "C" fn c_lowesw(
+pub unsafe extern "C-unwind" fn c_lowesw(
     residuals: *mut std::ffi::c_void,
     n: *mut std::ffi::c_void,
     robust: *mut std::ffi::c_void,
@@ -361,7 +384,7 @@ pub unsafe extern "C" fn c_lowesw(
     }
 }
 
-pub unsafe extern "C" fn c_lowesp(
+pub unsafe extern "C-unwind" fn c_lowesp(
     n: *mut std::ffi::c_void,
     y: *mut std::ffi::c_void,
     fitted: *mut std::ffi::c_void,
@@ -601,7 +624,7 @@ fn strcmp_c(s1: &str, s2: &str) -> bool {
     s1 == s2
 }
 
-pub unsafe extern "C" fn loess_raw(
+pub unsafe extern "C-unwind" fn loess_raw(
     y: *mut c_double,
     x: *mut c_double,
     weights: *mut c_double,
@@ -632,177 +655,10 @@ pub unsafe extern "C" fn loess_raw(
             y, x, weights, robust, d, n, span, degree, nonparametric, drop_square, cell,
             surf_stat, surface, parameter, trL, one_delta, two_delta,
         );
-        return;
-        use crate::main::errors::Rf_error;
-
-        let mut i0: c_int = 0;
-        let mut one: c_int = 1;
-        let mut two: c_int = 2;
-        let mut d0: c_double = 0.0;
-
-        *trL = 0.0;
-
-        loess_workspace(
-            *d,
-            *n,
-            *span,
-            *degree,
-            *nonparametric,
-            drop_square,
-            *sum_drop_sqr,
-            *setLf != 0,
-        );
-        let (iv, v, mut tau) = with_loess_workspace_state(|state| {
-            let (iv, v) = state.ptrs();
-            (iv, v, state.tau)
-        });
-        *v.add(1) = *cell;
-
-        let surf = CStr::from_ptr(*surf_stat).to_str().unwrap_or("");
-
-        if strcmp_c(surf, "interpolate/none") {
-            lowesb(
-                x,
-                y,
-                robust,
-                std::ptr::addr_of_mut!(d0),
-                std::ptr::addr_of_mut!(i0),
-                iv,
-                v,
-            );
-            lowese(iv, v, n, x, surface);
-            loess_prune(parameter, a, xi, vert, vval);
-        } else if strcmp_c(surf, "direct/none") {
-            lowesf(
-                x,
-                y,
-                robust,
-                iv,
-                v,
-                n,
-                x,
-                std::ptr::addr_of_mut!(d0),
-                std::ptr::addr_of_mut!(i0),
-                surface,
-            );
-        } else if strcmp_c(surf, "interpolate/1.approx") {
-            lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), iv, v);
-            lowese(iv, v, n, x, surface);
-            let mut nsing = *iv.add(29);
-            for i in 0..(*n as usize) {
-                *trL = *trL + *diagonal.add(i);
-            }
-            lowesa(
-                trL,
-                n,
-                d,
-                &mut tau,
-                std::ptr::addr_of_mut!(nsing),
-                one_delta,
-                two_delta,
-            );
-            loess_prune(parameter, a, xi, vert, vval);
-        } else if strcmp_c(surf, "interpolate/2.approx") {
-            lowesb(
-                x,
-                y,
-                weights,
-                std::ptr::addr_of_mut!(d0),
-                std::ptr::addr_of_mut!(i0),
-                iv,
-                v,
-            );
-            lowese(iv, v, n, x, surface);
-            let _nsing = *iv.add(29);
-            ehg196(&mut tau, d, span, trL);
-            let mut nsing = *iv.add(29);
-            lowesa(
-                trL,
-                n,
-                d,
-                &mut tau,
-                std::ptr::addr_of_mut!(nsing),
-                one_delta,
-                two_delta,
-            );
-            loess_prune(parameter, a, xi, vert, vval);
-        } else if strcmp_c(surf, "direct/approximate") {
-            lowesf(
-                x,
-                y,
-                weights,
-                iv,
-                v,
-                n,
-                x,
-                diagonal,
-                std::ptr::addr_of_mut!(one),
-                surface,
-            );
-            let mut nsing = *iv.add(29);
-            for i in 0..(*n as usize) {
-                *trL = *trL + *diagonal.add(i);
-            }
-            lowesa(
-                trL,
-                n,
-                d,
-                &mut tau,
-                std::ptr::addr_of_mut!(nsing),
-                one_delta,
-                two_delta,
-            );
-        } else if strcmp_c(surf, "interpolate/exact") {
-            let hat_matrix = vec![0.0f64; (*n as usize) * (*n as usize)];
-            let mut ll = vec![0.0f64; (*n as usize) * (*n as usize)];
-            lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), iv, v);
-            lowesl(iv, v, n, x, hat_matrix.as_ptr() as *mut c_double);
-            lowesc(
-                n,
-                hat_matrix.as_ptr() as *mut c_double,
-                ll.as_mut_ptr(),
-                trL,
-                one_delta,
-                two_delta,
-            );
-            lowese(iv, v, n, x, surface);
-            loess_prune(parameter, a, xi, vert, vval);
-        } else if strcmp_c(surf, "direct/exact") {
-            let mut hat_matrix = vec![0.0f64; (*n as usize) * (*n as usize)];
-            let mut ll = vec![0.0f64; (*n as usize) * (*n as usize)];
-            lowesf(
-                x,
-                y,
-                weights,
-                iv,
-                v,
-                n,
-                x,
-                hat_matrix.as_mut_ptr(),
-                std::ptr::addr_of_mut!(two),
-                surface,
-            );
-            lowesc(
-                n,
-                hat_matrix.as_mut_ptr(),
-                ll.as_mut_ptr(),
-                trL,
-                one_delta,
-                two_delta,
-            );
-            let k = (*n + 1) as usize;
-            for i in 0..(*n as usize) {
-                *diagonal.add(i) = *hat_matrix.as_ptr().add(i * k);
-            }
-        } else {
-            Rf_error(b"invalid surface statistic type\0".as_ptr() as *const core::ffi::c_char);
-        }
-        with_loess_workspace_state(|state| state.tau = tau);
-        loess_free();
     }
 }
 
-pub unsafe extern "C" fn loess_dfit(
+pub unsafe extern "C-unwind" fn loess_dfit(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -822,34 +678,6 @@ pub unsafe extern "C" fn loess_dfit(
         engine_loess_dfit(
             y, x, x_evaluate, weights, span, degree, nonparametric, drop_square, d, n, m, fit,
         );
-        return;
-        let mut i0: c_int = 0;
-        let mut d0: c_double = 0.0;
-
-        loess_workspace(
-            *d,
-            *n,
-            *span,
-            *degree,
-            *nonparametric,
-            drop_square,
-            *sum_drop_sqr,
-            false,
-        );
-        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
-        lowesf(
-            x,
-            y,
-            weights,
-            iv,
-            v,
-            m,
-            x_evaluate,
-            std::ptr::addr_of_mut!(d0),
-            std::ptr::addr_of_mut!(i0),
-            fit,
-        );
-        loess_free();
     }
 }
 
@@ -930,7 +758,7 @@ pub unsafe fn loess_dfitse(
     }
 }
 
-pub unsafe extern "C" fn loess_ifit(
+pub unsafe extern "C-unwind" fn loess_ifit(
     parameter: *mut c_int,
     a: *mut c_int,
     xi: *mut c_double,
@@ -943,11 +771,6 @@ pub unsafe extern "C" fn loess_ifit(
     unsafe {
         let _ = (parameter, a, xi, vert, vval);
         engine_loess_ifit(m, x_evaluate, fit);
-        return;
-        loess_grow(parameter, a, xi, vert, vval);
-        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
-        lowese(iv, v, m, x_evaluate, fit);
-        loess_free();
     }
 }
 
@@ -998,7 +821,7 @@ pub unsafe fn loess_ise(
     }
 }
 
-pub unsafe extern "C" fn c_loess_ise(
+pub unsafe extern "C-unwind" fn c_loess_ise(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -1023,7 +846,7 @@ pub unsafe extern "C" fn c_loess_ise(
     }
 }
 
-pub unsafe extern "C" fn c_loess_dfitse(
+pub unsafe extern "C-unwind" fn c_loess_dfitse(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,

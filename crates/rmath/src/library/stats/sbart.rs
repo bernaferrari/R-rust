@@ -1006,7 +1006,7 @@ pub unsafe fn sbart_(
 }
 
 /// `.Fortran(C_rbart)` — `qsbart.f` scratch layout into `sbart_`.
-pub unsafe extern "C" fn c_rbart(
+pub unsafe extern "C-unwind" fn c_rbart(
     penalt: *mut std::ffi::c_void,
     dofoff: *mut std::ffi::c_void,
     xs: *mut std::ffi::c_void,
@@ -1081,7 +1081,7 @@ pub unsafe extern "C" fn c_rbart(
 }
 
 /// `.Fortran(C_bvalus)` — evaluate the cubic spline at each x.
-pub unsafe extern "C" fn c_bvalus(
+pub unsafe extern "C-unwind" fn c_bvalus(
     n: *mut std::ffi::c_void,
     knot: *mut std::ffi::c_void,
     coef: *mut std::ffi::c_void,

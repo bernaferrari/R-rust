@@ -218,7 +218,7 @@ fn hcass2_body(n: i32, ia: &[i32], ib: &[i32], iorder: &mut [i32], iia: &mut [i3
     }
 }
 
-pub unsafe extern "C" fn c_hclust(
+pub unsafe extern "C-unwind" fn c_hclust(
     n: *mut c_void,
     len: *mut c_void,
     iopt: *mut c_void,
@@ -248,7 +248,7 @@ pub unsafe extern "C" fn c_hclust(
     }
 }
 
-pub unsafe extern "C" fn c_hcass2(
+pub unsafe extern "C-unwind" fn c_hcass2(
     n: *mut c_void,
     ia: *mut c_void,
     ib: *mut c_void,

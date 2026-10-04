@@ -113,7 +113,7 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     ans
 }
 
-pub unsafe extern "C" fn c_eureka(
+pub unsafe extern "C-unwind" fn c_eureka(
     lr: *mut std::ffi::c_void,
     r: *mut std::ffi::c_void,
     g: *mut std::ffi::c_void,

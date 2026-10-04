@@ -228,7 +228,7 @@ pub unsafe fn kmeans_MacQueen(
     let wss = unsafe { slice::from_raw_parts_mut(wss, wss_len) };
     kmeans_macqueen_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
 }
-pub unsafe extern "C" fn c_kmeans_lloyd(
+pub unsafe extern "C-unwind" fn c_kmeans_lloyd(
     x: *mut std::ffi::c_void,
     m: *mut std::ffi::c_void,
     p: *mut std::ffi::c_void,
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn c_kmeans_lloyd(
     }
 }
 
-pub unsafe extern "C" fn c_kmeans_macqueen(
+pub unsafe extern "C-unwind" fn c_kmeans_macqueen(
     x: *mut std::ffi::c_void,
     m: *mut std::ffi::c_void,
     p: *mut std::ffi::c_void,
@@ -396,7 +396,7 @@ pub unsafe fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// `.Fortran(C_kmns, ...)`: Hartigan-Wong (AS 136).
-pub unsafe extern "C" fn c_kmns(
+pub unsafe extern "C-unwind" fn c_kmns(
     x: *mut std::ffi::c_void,
     m: *mut std::ffi::c_void,
     p: *mut std::ffi::c_void,

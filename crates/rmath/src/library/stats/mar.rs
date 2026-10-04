@@ -1206,7 +1206,7 @@ pub unsafe fn multi_yw(
     }
 }
 
-pub unsafe extern "C" fn c_multi_yw(
+pub unsafe extern "C-unwind" fn c_multi_yw(
     acf: *mut std::ffi::c_void,
     n: *mut std::ffi::c_void,
     omax: *mut std::ffi::c_void,

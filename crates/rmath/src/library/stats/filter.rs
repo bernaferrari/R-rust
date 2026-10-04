@@ -1004,7 +1004,7 @@ fn arma_css(y: &[f64], phi: &[f64], theta: &[f64], intercept: f64, ncond: usize)
     for l in ncond..n {
         let mut tmp = y[l] - intercept;
         for (j, &pj) in phi.iter().enumerate() {
-            if l >= j + 1 {
+            if l > j {
                 tmp -= pj * (y[l - j - 1] - intercept);
             }
         }
@@ -3656,7 +3656,7 @@ pub unsafe fn do_decompose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let trend_s = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _t = protect(trend_s);
         for i in 0..n {
-            if i < half || i + half >= n || (even && i + half >= n) {
+            if i < half || i + half >= n {
                 *REAL(trend_s).add(i) = NA_REAL;
                 continue;
             }
@@ -5422,7 +5422,7 @@ fn collect_offsets(expr: SEXP, out: &mut Vec<SEXP>) {
             if name == "offset" {
                 // walk_vars already records this call. Pushing it again makes
                 // model.offset add the same column twice (PR#18456).
-                if !out.iter().any(|&existing| existing == expr) {
+                if !out.contains(&expr) {
                     out.push(expr);
                 }
                 return;

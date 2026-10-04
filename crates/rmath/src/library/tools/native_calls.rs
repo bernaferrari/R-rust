@@ -1,6 +1,6 @@
 //! Bind ported tools C routines so GNU `.Call(C_doTabExpand, ...)` resolves.
 
-use std::ffi::{CString, c_char, c_double, c_int};
+use std::ffi::{CString, c_char};
 
 use crate::sexp::accessors::TYPEOF;
 use crate::sexp::constructors::Rf_mkString;
@@ -8,7 +8,6 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::symbol::Rf_install;
 
-use crate::unix::dynload::DL_FUNC;
 
 use super::text::{delim_match, doTabExpand, nonASCII, splitString};
 
@@ -120,7 +119,7 @@ unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
     }
 }
 
-unsafe extern "C" fn c_renctest(x: *mut std::ffi::c_void) {
+unsafe extern "C-unwind" fn c_renctest(x: *mut std::ffi::c_void) {
     unsafe {
         if x.is_null() {
             return;
@@ -137,10 +136,6 @@ unsafe extern "C" fn c_renctest(x: *mut std::ffi::c_void) {
             crate::mainutils::printutils::Rprintf(c.as_ptr(), std::ptr::null_mut());
         }
     }
-}
-
-fn as_dl<T>(f: T) -> DL_FUNC {
-    Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
@@ -175,273 +170,158 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     }
 }
 
-pub fn lookup_c(name: &str) -> DL_FUNC {
+/// Bundled C/Fortran providers retain their exact interfaces, argument types
+/// and checked buffer contracts beside the actual callable declaration.
+pub(crate) fn lookup_buffer(
+    name: &str,
+) -> Option<crate::mainutils::native_routines::buffers::BufferRoutine> {
+    use crate::mainutils::native_routines::buffers::{
+        self, BufferInterface, BufferRoutine,
+        BufferType::{Character, Integer, Real},
+        LoessKernel, VoidKernel,
+    };
     let bare = name.strip_prefix("C_").unwrap_or(name);
-    match bare {
-        "Renctest" => as_dl(c_renctest as unsafe extern "C" fn(*mut std::ffi::c_void)),
-        "kmns" => as_dl(
-            crate::library::stats::kmeans::c_kmns
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "eureka" => as_dl(
-            crate::library::stats::burg::c_eureka
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "multi_yw" => as_dl(
-            crate::library::stats::mar::c_multi_yw
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "kmeans_Lloyd" => as_dl(
-            crate::library::stats::kmeans::c_kmeans_lloyd
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "kmeans_MacQueen" => as_dl(
-            crate::library::stats::kmeans::c_kmeans_macqueen
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "hclust" => as_dl(
-            crate::library::stats::hclust_f::c_hclust
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-
-        "rbart" => as_dl(
-            crate::library::stats::sbart::c_rbart
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "bvalus" => as_dl(
-            crate::library::stats::sbart::c_bvalus
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "hcass2" => as_dl(
-            crate::library::stats::hclust_f::c_hcass2
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "loess_raw" => {
-            let f: unsafe extern "C" fn(
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_int,
-                *mut c_int,
-                *mut c_double,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_double,
-                *mut *mut c_char,
-                *mut c_double,
-                *mut c_int,
-                *mut c_int,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_int,
-            ) = crate::library::stats::loessc::loess_raw;
-            as_dl(f)
-        }
-        "loess_dfit" => {
-            let f: unsafe extern "C" fn(
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_int,
-                *mut c_double,
-            ) = crate::library::stats::loessc::loess_dfit;
-            as_dl(f)
-        }
-        "loess_ifit" => {
-            let f: unsafe extern "C" fn(
-                *mut c_int,
-                *mut c_int,
-                *mut c_double,
-                *mut c_double,
-                *mut c_double,
-                *mut c_int,
-                *mut c_double,
-                *mut c_double,
-            ) = crate::library::stats::loessc::loess_ifit;
-            as_dl(f)
-        }
-        "loess_ise" => as_dl(
-            crate::library::stats::loessc::c_loess_ise
-                as unsafe extern "C" fn(
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_double,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_double,
-                    *mut c_double,
-                ),
-        ),
-        "loess_dfitse" => as_dl(
-            crate::library::stats::loessc::c_loess_dfitse
-                as unsafe extern "C" fn(
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_double,
-                    *mut c_int,
-                    *mut c_double,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_int,
-                    *mut c_double,
-                    *mut c_double,
-                ),
-        ),
-        "lowesw" => as_dl(
-            crate::library::stats::loessc::c_lowesw
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        "lowesp" => as_dl(
-            crate::library::stats::loessc::c_lowesp
-                as unsafe extern "C" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                ),
-        ),
-        _ => None,
+    // SAFETY: each adjacent type list and shape predicate describes the exact
+    // Rust kernel declaration below. Invocation rechecks all admission rules.
+    unsafe {
+        Some(match bare {
+            "dtrco" => BufferRoutine::owned(
+                "base",
+                BufferInterface::Fortran,
+                &[Real, Integer, Integer, Real, Real, Integer],
+                buffers::dtrco_shape,
+                buffers::dtrco_owned,
+            ),
+            "Renctest" => BufferRoutine::void(
+                "tools",
+                BufferInterface::C,
+                &[Character],
+                buffers::renctest,
+                VoidKernel::Args1(c_renctest),
+            ),
+            "kmns" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[
+                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Real,
+                    Integer, Real, Integer, Integer, Integer, Real, Integer,
+                ],
+                buffers::kmns,
+                VoidKernel::Args17(crate::library::stats::kmeans::c_kmns),
+            ),
+            "eureka" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Integer, Real, Real, Real, Real, Real],
+                buffers::eureka,
+                VoidKernel::Args6(crate::library::stats::burg::c_eureka),
+            ),
+            "multi_yw" => BufferRoutine::void(
+                "stats",
+                BufferInterface::C,
+                &[
+                    Real, Integer, Integer, Integer, Real, Real, Real, Real, Integer, Integer,
+                ],
+                buffers::multi_yw,
+                VoidKernel::Args10(crate::library::stats::mar::c_multi_yw),
+            ),
+            "kmeans_Lloyd" => BufferRoutine::void(
+                "stats",
+                BufferInterface::C,
+                &[
+                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
+                ],
+                buffers::kmeans,
+                VoidKernel::Args9(crate::library::stats::kmeans::c_kmeans_lloyd),
+            ),
+            "kmeans_MacQueen" => BufferRoutine::void(
+                "stats",
+                BufferInterface::C,
+                &[
+                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
+                ],
+                buffers::kmeans,
+                VoidKernel::Args9(crate::library::stats::kmeans::c_kmeans_macqueen),
+            ),
+            "hclust" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[
+                    Integer, Integer, Integer, Integer, Integer, Real, Real, Integer, Real, Real,
+                ],
+                buffers::hclust,
+                VoidKernel::Args10(crate::library::stats::hclust_f::c_hclust),
+            ),
+            "rbart" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[
+                    Real, Real, Real, Real, Real, Real, Integer, Real, Integer, Real, Real, Real,
+                    Real, Integer, Real, Real, Real, Integer, Integer, Integer,
+                ],
+                buffers::rbart,
+                VoidKernel::Args20(crate::library::stats::sbart::c_rbart),
+            ),
+            "bvalus" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Integer, Real, Real, Integer, Real, Real, Integer],
+                buffers::bvalus,
+                VoidKernel::Args7(crate::library::stats::sbart::c_bvalus),
+            ),
+            "hcass2" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Integer, Integer, Integer, Integer, Integer, Integer],
+                buffers::hcass2,
+                VoidKernel::Args6(crate::library::stats::hclust_f::c_hcass2),
+            ),
+            "loess_raw" => BufferRoutine::numeric(
+                "stats",
+                BufferInterface::C,
+                buffers::loess_raw,
+                LoessKernel::Raw(crate::library::stats::loessc::loess_raw),
+            ),
+            "loess_dfit" => BufferRoutine::numeric(
+                "stats",
+                BufferInterface::C,
+                buffers::loess_dfit,
+                LoessKernel::Dfit(crate::library::stats::loessc::loess_dfit),
+            ),
+            "loess_ifit" => BufferRoutine::numeric(
+                "stats",
+                BufferInterface::C,
+                buffers::loess_ifit,
+                LoessKernel::Ifit(crate::library::stats::loessc::loess_ifit),
+            ),
+            "loess_ise" => BufferRoutine::numeric(
+                "stats",
+                BufferInterface::C,
+                buffers::loess_ise,
+                LoessKernel::Ise(crate::library::stats::loessc::c_loess_ise),
+            ),
+            "loess_dfitse" => BufferRoutine::numeric(
+                "stats",
+                BufferInterface::C,
+                buffers::loess_dfitse,
+                LoessKernel::Dfitse(crate::library::stats::loessc::c_loess_dfitse),
+            ),
+            "lowesw" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Real, Integer, Real, Integer],
+                buffers::lowesw,
+                VoidKernel::Args4(crate::library::stats::loessc::c_lowesw),
+            ),
+            "lowesp" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Integer, Real, Real, Real, Real, Integer, Real],
+                buffers::lowesp,
+                VoidKernel::Args7(crate::library::stats::loessc::c_lowesp),
+            ),
+            _ => return None,
+        })
     }
 }
 
