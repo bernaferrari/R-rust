@@ -457,88 +457,81 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let tmp_owned = own(Rf_install(c"*tmp*".as_ptr()));
             let modified_expression = own(Rf_install(c"*vtmp*".as_ptr()));
             let tmp_sym = tmp_owned.as_raw();
-            let saved_tmp = crate::sexp::envir::R_findVarInFrame(rho, tmp_sym);
-            let _saved_tmp = protect(saved_tmp);
-            struct RestoreTmp {
-                rho: SEXP,
-                tmp_sym: SEXP,
-                saved: SEXP,
-            }
-            impl Drop for RestoreTmp {
-                fn drop(&mut self) {
-                    unsafe {
-                        if !self.saved.is_null()
-                            && self.saved != R_NilValue()
-                            && self.saved != crate::sexp::globals::R_UnboundValue()
+            let restore_tmp =
+                restore_tmp::RestoreTmp::capture(environment.clone(), tmp_owned.clone())
+                    .unwrap_or_else(|error| {
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                            message: error.to_string(),
+                        })
+                    });
+            restore_tmp
+                .run(|| {
+                    let mut lhs_expr = expr;
+                    let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
+                    let _chain_guard = protect(chain);
+                    let mut current_rhs = rhs_owned.clone();
+                    let mut current_expression = rhs_expression.clone();
+                    while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
+                        let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                        if assign_fn == R_NilValue() {
+                            break;
+                        }
+                        crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
+                        let repl = replace_tmp_call(
+                            &own(assign_fn),
+                            &tmp_owned,
+                            &own(CDDR(lhs_expr)),
+                            &current_rhs,
+                            &current_expression,
+                            &environment,
+                        )
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
+                        owner.require_active().unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                        current_expression = modified_expression.clone();
+                        let next = CDR(chain);
+                        if !next.is_null()
+                            && next != R_NilValue()
+                            && TYPEOF(next) == SEXPTYPE::LISTSXP
                         {
-                            crate::sexp::envir::defineVar(self.tmp_sym, self.saved, self.rho);
-                        } else {
-                            crate::sexp::envir::remove_binding_raw(self.rho, self.tmp_sym);
+                            chain = next;
+                        }
+                        lhs_expr = CADR(lhs_expr);
+                    }
+                    if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
+                        let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                        if assign_fn != R_NilValue() {
+                            crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
+                            let repl = replace_tmp_call(
+                                &own(assign_fn),
+                                &tmp_owned,
+                                &own(CDDR(lhs_expr)),
+                                &current_rhs,
+                                &current_expression,
+                                &environment,
+                            )
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                            current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
+                            owner.require_active().unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                         }
                     }
-                }
-            }
-            let _restore_tmp = RestoreTmp {
-                rho,
-                tmp_sym,
-                saved: saved_tmp,
-            };
-            let mut lhs_expr = expr;
-            let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
-            let _chain_guard = protect(chain);
-            let mut current_rhs = rhs_owned.clone();
-            let mut current_expression = rhs_expression.clone();
-            while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
-                let assign_fn = replacement_fun_head(CAR(lhs_expr));
-                if assign_fn == R_NilValue() {
-                    break;
-                }
-                crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
-                let repl = replace_tmp_call(
-                    &own(assign_fn),
-                    &tmp_owned,
-                    &own(CDDR(lhs_expr)),
-                    &current_rhs,
-                    &current_expression,
-                    &environment,
-                )
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
-                owner
-                    .require_active()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                current_expression = modified_expression.clone();
-                let next = CDR(chain);
-                if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP {
-                    chain = next;
-                }
-                lhs_expr = CADR(lhs_expr);
-            }
-            if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
-                let assign_fn = replacement_fun_head(CAR(lhs_expr));
-                if assign_fn != R_NilValue() {
-                    crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
-                    let repl = replace_tmp_call(
-                        &own(assign_fn),
-                        &tmp_owned,
-                        &own(CDDR(lhs_expr)),
-                        &current_rhs,
-                        &current_expression,
-                        &environment,
-                    )
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-            }
 
-            let var_sym = CADR(lhs_expr);
-            if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                bind_assignment(var_sym, current_rhs.as_raw(), primval, rho);
-            }
-
+                    let var_sym = CADR(lhs_expr);
+                    if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
+                        bind_assignment(var_sym, current_rhs.as_raw(), primval, rho);
+                    }
+                })
+                .unwrap_or_else(|error| {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: error.to_string(),
+                    })
+                });
             super::runtime::set_visible(FALSE);
             rhs
         } else {
@@ -998,6 +991,83 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
         crate::sexp::symbol::Rf_install(c_name.as_ptr())
     }
 }
+
+#[path = "assignment/restore_tmp.rs"]
+mod restore_tmp;
+
+/// Passive cleanup adapters retain the exact original allocation. These short
+/// field operations never enter R, adopt TLS authority, or span a callback.
+fn restore_tmp_barrier(
+    owner: &crate::sexp::owner::OwnerPin,
+    parent: &Sexp<'_>,
+    child: &Sexp<'_>,
+) -> crate::sexp::object::SexpResult<()> {
+    if unsafe {
+        crate::sexp::gengc::write_barrier_in(owner.as_ptr(), parent.as_raw(), child.as_raw())
+    } {
+        Ok(())
+    } else {
+        Err(crate::sexp::object::SexpError::AllocationFailed {
+            object: "temporary binding write barrier",
+        })
+    }
+}
+
+fn restore_tmp_remove_metadata(
+    owner: &crate::sexp::owner::OwnerPin,
+    environment: &Sexp<'_>,
+    symbol: &Sexp<'_>,
+) {
+    let key = (environment.as_raw().addr(), symbol.as_raw().addr());
+    unsafe {
+        (*owner.as_ptr()).active_bindings.remove(&key);
+        (*owner.as_ptr()).locked_bindings.remove(&key);
+    }
+}
+
+fn restore_tmp_locked(
+    pin: &crate::sexp::owner::OwnerPin,
+    environment: &Sexp<'_>,
+    symbol: &Sexp<'_>,
+) -> bool {
+    let key = (environment.as_raw().addr(), symbol.as_raw().addr());
+    unsafe { (*pin.as_ptr()).locked_bindings.contains(&key) }
+}
+
+fn restore_tmp_active(
+    pin: &crate::sexp::owner::OwnerPin,
+    environment: &Sexp<'_>,
+    symbol: &Sexp<'_>,
+) -> bool {
+    let key = (environment.as_raw().addr(), symbol.as_raw().addr());
+    unsafe { (*pin.as_ptr()).active_bindings.contains_key(&key) }
+}
+
+fn restore_tmp_read(
+    authority: &crate::sexp::owner::StoredOwner<'_>,
+    pin: &crate::sexp::owner::OwnerPin,
+    environment: &Sexp<'static>,
+    symbol: &Sexp<'static>,
+) -> crate::sexp::object::SexpResult<Sexp<'static>> {
+    authority.require_active()?;
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        crate::sexp::envir::find_var_in_frame_result(environment.clone(), symbol.clone())
+    }));
+    pin.require_live()?;
+    let result = match outcome {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    };
+    authority.require_active()?;
+    result
+        .map_err(|message| crate::sexp::object::SexpError::EvaluationFailed { message })?
+        .ok_or(crate::sexp::object::SexpError::StaleAllocation)?
+        .into_owned()
+}
+
+#[cfg(test)]
+#[path = "assignment/restore_tmp_tests.rs"]
+mod restore_tmp_tests;
 
 #[cfg(test)]
 mod owned_source_assignment_tests {

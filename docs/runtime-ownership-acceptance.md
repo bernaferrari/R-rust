@@ -621,3 +621,24 @@ formatting and a byte-identical independent GNU fixture rerun pass. The source
 ledger records independent later changes without claiming they were exercised
 by this selection. List/classed span coercion and locale breadth remain tracked
 in rport-wpdk.6.5.2.
+
+## Original temporary-binding cleanup
+
+Nested source replacement now owns its original environment, binding cell and
+saved value, with a checked cleanup helper that forbids unsafe code. Admission
+reads an existing active getter in GNU order before lock/active rejection; it
+remains unarmed through that admission. Normal cleanup disarms before restoring
+the original recorded cell. Error cleanup passively removes the temporary
+binding from the original physical heap, including after revocation, without
+invoking a provider, evaluator or new ambient runtime.
+
+Eleven final native regressions, ten enclosing source-assignment controls, and
+all eleven strict-provenance Miri cases pass. The completed Miri selection takes
+2,473.20 seconds with the default alias checker and memory-profiling enabled.
+Independent pinned GNU cases establish getter side effects, bound NULL, error
+removal and late lock/detachment behavior. Tests remove incidental roots before
+collection and preserve live panic payloads through cleanup. Warnings-denied
+Clippy and assigned formatting pass; source ledgers distinguish independent
+later changes. The existing protected raw evalseq chain remains a separate
+modernization target. Malformed or cyclic frames are left unchanged during
+unwind rather than raising a second cleanup panic.
