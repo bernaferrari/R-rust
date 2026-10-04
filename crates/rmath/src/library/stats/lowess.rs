@@ -449,52 +449,331 @@ pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `supsmu(x, y)` — super-smoother via default-span lowess.
-pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3, Rf_cons};
-        use crate::sexp::globals::R_NilValue;
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let n = XLENGTH(y);
-        if n > 0 && n <= 5 {
-            let mut acc = 0.0;
-            for i in 0..n {
-                acc += if TYPEOF(y) == SEXPTYPE::REALSXP {
-                    *REAL(y).add(i as usize)
-                } else {
-                    *INTEGER(y).add(i as usize) as f64
-                };
+/// GNU default/fixed-span supersmoother through owning inputs and checked slices.
+pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::{
+        R_xlen_t, Sexp, SexpMut,
+        owner::{OwnerToken, RuntimeAccess, with_runtime},
+    };
+    let fail = |error: String| -> ! { crate::sexp::context::r_error(error) };
+    // SAFETY: this translated entry is activated by the original runtime.
+    let owner = unsafe { OwnerToken::current() }
+        .map_err(|e| e.to_string())
+        .unwrap_or_else(|e| fail(e));
+    let original = owner
+        .weak_owner()
+        .ok_or_else(|| "supersmoother requires a managed runtime".to_owned())
+        .unwrap_or_else(|e| fail(e));
+    let args = owner
+        .sexp(args)
+        .and_then(Sexp::into_owned)
+        .map_err(|e| e.to_string())
+        .unwrap_or_else(|e| fail(e));
+    let result = with_runtime(&original, |access| -> Result<SEXP, String> {
+        let domain = access.domain();
+        let names = ["x", "y", "wt", "span", "periodic", "bass", "trace"];
+        let mut slots: Vec<Option<Sexp<'static>>> = (0..7).map(|_| None).collect();
+        let mut cell = args;
+        let mut seen = std::collections::HashSet::new();
+        let mut actual = Vec::new();
+        // Capture owning values before matching or any numeric provider.
+        while !cell.is_nil() {
+            if !seen.insert(cell.as_raw().addr()) {
+                return Err("cyclic supersmoother arguments".into());
             }
-            let mean = acc / n as f64;
-            let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            let _yo = protect(yo);
-            for i in 0..n {
-                *REAL(yo).add(i as usize) = mean;
-            }
-            let xo = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            let _xo = protect(xo);
-            for i in 0..n {
-                *REAL(xo).add(i as usize) = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
-                } else {
-                    *INTEGER(x).add(i as usize) as f64
-                };
-            }
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            SET_VECTOR_ELT(result, 0, xo);
-            SET_VECTOR_ELT(result, 1, yo);
-            crate::mainutils::essentials::set_string_names(
-                result,
-                &["x".to_string(), "y".to_string()],
-            );
-            return result;
+            let value = cell
+                .try_car()
+                .and_then(Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+            let tag = cell.try_tag().map_err(|e| e.to_string())?;
+            let name = if tag.is_nil() {
+                None
+            } else {
+                Some(
+                    tag.try_printname()
+                        .and_then(|n| n.try_as_string())
+                        .map_err(|e| e.to_string())?,
+                )
+            };
+            actual.push((name, value));
+            cell = cell
+                .try_cdr()
+                .and_then(Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
         }
-        let f = Rf_ScalarReal(0.5);
-        let _f = protect(f);
-        let call_args = Rf_cons(x, Rf_cons(y, Rf_cons(f, R_NilValue())));
-        let _ca = protect(call_args);
-        do_lowess(_call, _op, call_args, rho)
-    }
+        // GNU closure matching: all exact names, then partial names, then positionals.
+        // Missing values still reserve the matched formal, while requesting its default.
+        let mut assigned = [false; 7];
+        let mut matches = vec![None; actual.len()];
+        for (i, (name, _)) in actual.iter().enumerate() {
+            if let Some(name) = name {
+                if let Some(index) = names.iter().position(|&n| n == name) {
+                    if assigned[index] {
+                        return Err("duplicate supersmoother argument".into());
+                    }
+                    assigned[index] = true;
+                    matches[i] = Some(index);
+                }
+            }
+        }
+        for (i, (name, _)) in actual.iter().enumerate() {
+            if matches[i].is_none() {
+                if let Some(name) = name {
+                    let candidates: Vec<_> = names
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, n)| !assigned[*index] && n.starts_with(name))
+                        .map(|(index, _)| index)
+                        .collect();
+                    if candidates.len() != 1 {
+                        return Err("unknown or ambiguous supersmoother argument".into());
+                    }
+                    assigned[candidates[0]] = true;
+                    matches[i] = Some(candidates[0]);
+                }
+            }
+        }
+        let mut positional = 0;
+        for (i, (name, _)) in actual.iter().enumerate() {
+            if name.is_none() {
+                while positional < 7 && assigned[positional] {
+                    positional += 1;
+                }
+                if positional >= 7 {
+                    return Err("unused supersmoother argument".into());
+                }
+                assigned[positional] = true;
+                matches[i] = Some(positional);
+                positional += 1;
+            }
+        }
+        for ((_, value), index) in actual.into_iter().zip(matches) {
+            let index = index.ok_or("unmatched supersmoother argument")?;
+            slots[index] = if value.as_raw() == domain.missing().as_raw() {
+                None
+            } else {
+                Some(value)
+            };
+        }
+        access.require_active().map_err(|e| e.to_string())?;
+        fn numeric(v: &Sexp<'_>, access: &RuntimeAccess) -> Result<Vec<f64>, String> {
+            let kind = v.typeof_();
+            if !matches!(
+                kind,
+                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+            ) {
+                return Err("supersmoother requires numeric observations".into());
+            }
+            let len = usize::try_from(v.len()).map_err(|_| "invalid supersmoother length")?;
+            access.require_active().map_err(|e| e.to_string())?;
+            let mut result = Vec::new();
+            result
+                .try_reserve_exact(len)
+                .map_err(|_| "supersmoother allocation failed")?;
+            for i in 0..len {
+                let i = i as R_xlen_t;
+                let x = match kind {
+                    SEXPTYPE::REALSXP => v.try_real_elt(i).map_err(|e| e.to_string())?,
+                    SEXPTYPE::INTSXP => {
+                        let x = v.try_integer_elt(i).map_err(|e| e.to_string())?;
+                        if x == NA_INTEGER {
+                            f64::NAN
+                        } else {
+                            f64::from(x)
+                        }
+                    }
+                    _ => {
+                        let x = v.try_logical_elt(i).map_err(|e| e.to_string())?;
+                        if x == NA_INTEGER {
+                            f64::NAN
+                        } else {
+                            f64::from(x)
+                        }
+                    }
+                };
+                access.require_active().map_err(|e| e.to_string())?;
+                result.push(x);
+            }
+            Ok(result)
+        }
+        let scalar = |index: usize, default: f64| -> Result<f64, String> {
+            let x = if let Some(v) = &slots[index] {
+                v.try_as_f64().map_err(|e| e.to_string())?
+            } else {
+                default
+            };
+            access.require_active().map_err(|e| e.to_string())?;
+            Ok(x)
+        };
+        let span = if let Some(v) = &slots[3] {
+            if v.typeof_() == SEXPTYPE::STRSXP {
+                let text = v.try_string_value_elt(0).map_err(|e| e.to_string())?;
+                access.require_active().map_err(|e| e.to_string())?;
+                if text.as_deref() != Some("cv") {
+                    return Err("'span' must be between 0 and 1.".into());
+                }
+                0.
+            } else {
+                scalar(3, 0.)?
+            }
+        } else {
+            0.
+        };
+        if !span.is_finite() || !(0. ..=1.).contains(&span) {
+            return Err("'span' must be between 0 and 1.".into());
+        }
+        let x = numeric(slots[0].as_ref().ok_or("missing supersmoother x")?, access)?;
+        let yv = slots[1].as_ref().ok_or("missing supersmoother y")?;
+        if !matches!(yv.typeof_(), SEXPTYPE::REALSXP | SEXPTYPE::INTSXP) {
+            return Err("'y' must be numeric vector".into());
+        }
+        let y = numeric(yv, access)?;
+        if y.is_empty() {
+            return Err("'y' must be numeric vector".into());
+        }
+        if x.len() != y.len() {
+            return Err("number of observations in 'x' and 'y' must match.".into());
+        }
+        let weights = if let Some(w) = &slots[2] {
+            numeric(w, access)?
+        } else {
+            let mut w = Vec::new();
+            w.try_reserve_exact(y.len())
+                .map_err(|_| "supersmoother weight allocation failed")?;
+            w.resize(y.len(), 1.);
+            w
+        };
+        if weights.len() != y.len() {
+            return Err("number of weights must match number of observations.".into());
+        }
+        let periodic = scalar(4, 0.)?;
+        if !periodic.is_finite() {
+            return Err("invalid periodic flag".into());
+        }
+        let periodic = periodic != 0.;
+        let alpha = scalar(5, 0.)?;
+        let trace = scalar(6, 0.)?;
+        if !trace.is_finite() {
+            return Err("invalid trace flag".into());
+        }
+        if trace != 0. {
+            return Err("supersmoother trace output is not implemented".into());
+        }
+        if periodic && x.iter().any(|x| !x.is_finite() || *x < 0. || *x > 1.) {
+            return Err("'x' must be between 0 and 1 for periodic smooth".into());
+        }
+        let mut order: Vec<_> = (0..y.len())
+            .filter(|&i| (x[i] + y[i] + weights[i]).is_finite())
+            .collect();
+        if order.is_empty() {
+            return Err("no finite observations".into());
+        }
+        order.sort_by(|&a, &b| {
+            x[a].partial_cmp(&x[b])
+                .unwrap()
+                .then_with(|| y[a].partial_cmp(&y[b]).unwrap())
+        });
+        if order.len() != y.len() {
+            let deleted = y.len() - order.len();
+            let text = if deleted == 1 {
+                format!("{deleted} observation with NA, NaN or Inf deleted")
+            } else {
+                format!("{deleted} observations with NAs, NaNs and/or Infs deleted")
+            };
+            let message = std::ffi::CString::new(text).unwrap();
+            access
+                .with_native(|_| {
+                    unsafe {
+                        crate::mainutils::errors::Rf_warning1(message.as_ptr());
+                    }
+                    Ok(())
+                })
+                .map_err(|e| e.to_string())?;
+        }
+        let xo: Vec<_> = order.iter().map(|&i| x[i]).collect();
+        let yo: Vec<_> = order.iter().map(|&i| y[i]).collect();
+        let wo: Vec<_> = order.iter().map(|&i| weights[i]).collect();
+        let n = order.len();
+        let width = n.checked_mul(7).ok_or("supersmoother workspace overflow")?;
+        let mut scratch = Vec::new();
+        scratch
+            .try_reserve_exact(width)
+            .map_err(|_| "supersmoother workspace allocation failed")?;
+        scratch.resize(width, 0.);
+        let mut smooth = Vec::new();
+        smooth
+            .try_reserve_exact(n)
+            .map_err(|_| "supersmoother output allocation failed")?;
+        smooth.resize(n, 0.);
+        let mut edf = [0.];
+        super::supsmu::filter(
+            super::supsmu::Input {
+                x: &xo,
+                y: &yo,
+                weights: &wo,
+            },
+            super::supsmu::Parameters {
+                n,
+                periodic: if periodic { 2 } else { 1 },
+                span,
+                alpha,
+            },
+            super::supsmu::Output {
+                smoothed: &mut smooth,
+                scratch: &mut scratch,
+                edf: &mut edf,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+        let allocate = |kind, len| {
+            allocator
+                .allocate(|arena| arena.alloc_vector_sexp(kind, len).map(|v| v.as_raw()))
+                .and_then(Sexp::into_owned)
+                .map_err(|e| e.to_string())
+        };
+        let keep: Vec<_> = (0..n).filter(|&i| i == 0 || xo[i] != xo[i - 1]).collect();
+        let mut xout =
+            SexpMut::try_from_checked(allocate(SEXPTYPE::REALSXP, keep.len() as R_xlen_t)?)
+                .map_err(|e| e.to_string())?;
+        let mut yout =
+            SexpMut::try_from_checked(allocate(SEXPTYPE::REALSXP, keep.len() as R_xlen_t)?)
+                .map_err(|e| e.to_string())?;
+        for (i, &j) in keep.iter().enumerate() {
+            xout.try_set_real_elt(i as R_xlen_t, xo[j])
+                .map_err(|e| e.to_string())?;
+            yout.try_set_real_elt(i as R_xlen_t, smooth[j])
+                .map_err(|e| e.to_string())?;
+        }
+        let mut result =
+            SexpMut::try_from_checked(allocate(SEXPTYPE::VECSXP, 2)?).map_err(|e| e.to_string())?;
+        result
+            .try_set_vector_elt(0, xout.freeze())
+            .map_err(|e| e.to_string())?;
+        result
+            .try_set_vector_elt(1, yout.freeze())
+            .map_err(|e| e.to_string())?;
+        let result = result.freeze();
+        let names = allocator
+            .strings(&["x", "y"])
+            .and_then(Sexp::into_owned)
+            .map_err(|e| e.to_string())?;
+        access
+            .with_native(|_| {
+                unsafe {
+                    crate::sexp::attrib_core::setAttrib(
+                        result.as_raw(),
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        names.as_raw(),
+                    );
+                }
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
+        access.require_active().map_err(|e| e.to_string())?;
+        Ok(result.as_raw())
+    })
+    .map_err(|e| e.to_string())
+    .unwrap_or_else(|e| fail(e));
+    result.unwrap_or_else(|e| fail(e))
 }

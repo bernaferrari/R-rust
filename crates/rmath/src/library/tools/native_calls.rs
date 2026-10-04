@@ -187,6 +187,7 @@ pub(crate) fn lookup_buffer(
             "HoltWinters" => buffers::holtwinters::ROUTINE,
             "multi_burg" => buffers::multi_burg::ROUTINE,
             "stl" => buffers::stl::ROUTINE,
+            "supsmu" => buffers::supsmu::ROUTINE,
             "dtrco" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,

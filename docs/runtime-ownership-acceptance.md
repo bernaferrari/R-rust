@@ -536,3 +536,22 @@ cyclic syntax, collecting callbacks, error/panic recovery and revocation have
 explicit coverage. Clippy and formatting pass. The proof ledger distinguishes
 later independent class-permit changes. Qualified replacement heads and nested
 source temporary-binding cleanup remain separate tracked work.
+
+Supersmoother now uses a checked ten-buffer descriptor and a slice-based Rust
+kernel for upstream's default running-linear method. The kernel and buffer
+adapter forbid unsafe code. Public calls retain all actual inputs before
+provider callbacks, apply exact/partial/positional argument matching, filter and
+sort numerical inputs, and authenticate the original runtime before results
+are published. Eleven independent GNU cases compare all 110 argument buffers;
+public fixtures cover fixed and cross-validated spans and unchanged tails.
+
+Thirteen native cases, twenty distinct neighboring buffer cases and all thirteen
+strict-provenance Miri cases pass. The full Miri selection completes in 1,723.65
+seconds with the default alias checker. A genuine intermediate CV bandwidth
+difference is isolated in the pure kernel and repaired by replacing two
+`powi(2)` calls with upstream-order multiplication, retaining the original tie
+rules and tolerance. Warnings-denied Clippy passes in 23.65 seconds and formatting
+passes. Structured admission now covers 21 of the 26 captured stats C/Fortran
+registrations; this count does not certify foreign ABI signatures or complete
+semantics. PPR spline/tracing settings and character-span coercion remain tracked
+separately.
