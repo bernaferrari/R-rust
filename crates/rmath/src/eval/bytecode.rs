@@ -2295,7 +2295,7 @@ fn eval_bytecode_loop(
                 PrivateLoopKind::For { .. } => {
                     if control == ControlFlow::Break {
                         current_pc = frame.end;
-                        completed = Some((make_lgl(execution, 0)?, ControlFlow::Normal));
+                        completed = Some((execution.false_value.clone(), ControlFlow::Normal));
                     } else if let Some(body) =
                         next_for_iteration(&mut frame, stack, &env, execution)?
                     {
@@ -2315,7 +2315,7 @@ fn eval_bytecode_loop(
                             completed = Some((value, control));
                         } else if !scalar_bool_or_false(&value, "while condition")? {
                             current_pc = frame.end;
-                            completed = Some((make_lgl(execution, 0)?, ControlFlow::Normal));
+                            completed = Some((execution.false_value.clone(), ControlFlow::Normal));
                         } else {
                             *testing = false;
                             current_pc = *body;
@@ -3233,6 +3233,44 @@ mod tests {
     }
 
     #[test]
+    fn owned_private_bytecode_for_break_returns_original_false_after_collecting_callback() {
+        let session = RSession::new_for_gc_tests();
+        let (variable, original_false) = session.with_active(|| {
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let domain = access.domain();
+                let variable = access
+                    .with_native(|_| {
+                        domain.wrap(unsafe {
+                            crate::sexp::symbol::Rf_install(c"private_for_break".as_ptr())
+                        })
+                    })
+                    .unwrap();
+                (variable, domain.logical(false))
+            })
+            .unwrap()
+        });
+        let sequence = fixture_integer(&session, 17);
+        let code = private_code(
+            &session,
+            &[BCfor, 0, 1, 5, 6, BCbreak, BCreturn],
+            &[variable, sequence],
+        );
+        let callbacks = collect_and_detach_pool(&session, &code);
+        let result = session
+            .with_active(|| {
+                eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+            })
+            .unwrap();
+        assert!(
+            callbacks.get() > 0,
+            "the for iteration must actually collect"
+        );
+        assert_eq!(result.logical_elt(0), Some(0));
+        assert_eq!(result.as_raw(), original_false.as_raw());
+    }
+
+    #[test]
     fn owned_private_bytecode_rejects_self_recursive_loop_offsets() {
         let session = RSession::new_for_gc_tests();
         let error = run_private(&session, &[BCwhile, 0, 0, 4], &[]).unwrap_err();
@@ -3264,6 +3302,11 @@ mod tests {
         words.extend_from_slice(&[BCfalse, BCreturn]);
         let result = run_private(&session, &words, &[]).unwrap();
         assert_eq!(result.logical_elt(0), Some(0));
+        let original_false = session.with_active(|| {
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| access.domain().logical(false)).unwrap()
+        });
+        assert_eq!(result.as_raw(), original_false.as_raw());
     }
 
     #[test]
