@@ -381,3 +381,21 @@ stays unchanged; the portable optimization strategy still needs broader parity.
 The original full-default embedding constructor tests remain intact and did
 not reach a footer within their recorded local bounds. These base-runtime
 contract tests do not certify completion of full default-package startup.
+
+STL now uses a checked seventeen-buffer Fortran descriptor and a fallible Rust
+kernel. The old raw adapter is removed; the kernel, mathematical helpers and
+new buffer adapter forbid unsafe code. Workspace bounds, executed jump/period
+requirements and branch-sensitive unread inputs are admitted before output
+writes. Robust fitting reuses disjoint scratch storage. Nine independent GNU
+cases compare all 153 argument buffers, including normalization, zero/negative
+iterations, robust fitting, minimal valid periods and untouched tails. Durable
+fixture regeneration is byte-identical; empty trailing columns are retained.
+
+Eight native cases pass in 0.03 seconds, twenty neighboring buffer cases pass
+in 0.11 seconds, and eight strict-provenance Miri cases pass in 930.51 seconds
+with the default alias checker. Actual managed Fortran calls cover collecting
+names, aliased inputs with independent outputs, original-session closure and
+wrong-package refusal. Warnings-denied all-target Clippy passes in 24.63 seconds
+and assigned formatting passes. Frozen source and interpreter ledgers are
+recorded separately. Structured admission covers 20 of the 26 declared stats
+C/Fortran entries; this does not establish complete numerical API parity.
