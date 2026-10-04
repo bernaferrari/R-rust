@@ -2628,6 +2628,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "getNamespaceExports",
+            "function(ns) {\n\
+             ns <- asNamespace(ns)\n\
+             names(if (isBaseNamespace(ns)) .BaseNamespaceEnv else .getNamespaceInfo(ns, \"exports\"))\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
             "getNamespaceName",
             "function(ns) {\n\
              ns <- asNamespace(ns)\n\

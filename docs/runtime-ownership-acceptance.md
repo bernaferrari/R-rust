@@ -748,3 +748,13 @@ warnings-denied Clippy and assigned formatting support this scoped checkpoint.
 Original installed cache identity also has a passing regression. Full startup and
 portable dataset work remain separate units; temporary diagnostic startup results
 are not substituted for their unchanged final acceptance tests.
+
+## Generic namespace export introspection
+
+The base environment now defines GNU's `getNamespaceExports` closure. It resolves
+the original namespace and reads its actual exports environment; base uses its
+own namespace names. A focused real-base test passes for base, ordinary populated
+and empty exports, invalid namespaces and recovery. Its completed native footer
+is one pass in 2.40 seconds. The independent pinned GNU control agrees. This
+checkpoint adds no unsafe code and does not certify portable dataset loading or
+the separate namespace lifecycle work.
