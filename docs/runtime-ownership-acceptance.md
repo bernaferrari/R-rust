@@ -13,6 +13,8 @@ the names below identify production regressions and bounded evidence.
 | Cloning and releasing roots preserves the exact allocation | `sexp::heap::tests::{automatic_root_clones_share_one_lease_and_last_drop_unroots,stale_automatic_root_drop_cannot_unroot_replacement_or_revive_closed_page,automatic_root_overflow_fails_without_changing_the_count}` | Root-count and identity properties do not prove every graph edge is published correctly. |
 | Collection cannot invalidate an executing owned graph | `owned_s4_*`, `owned_task_callback_*`, `owned_eval_selected_expression_survives_detachment_and_full_gc`, `owning_closure_duplicate_retains_original_edges_across_detachment_and_gc` | These fixtures detach caches, source slots, or callback lists and collect without an incidental source root. All 27 new native regressions execute and pass. |
 | Closure copying retains syntax without deep-copying its graph | `owning_closure_duplicate_shares_syntax_with_constant_allocation_cost` and the detachment fixture | Two native tests and two strict-provenance Miri tests pass with the default borrow checker. Node counts are constant for the tested closure bodies; this is not a whole-runtime performance benchmark. |
+| Pairlist copying retains the original values before allocating | `mainutils::duplicate::owned_pairlist_tests::*` | Twelve native cases pass, including a genuine 32-cell detachment regression and exact 32/64-cell allocation counts. Ten strict-provenance Miri cases pass. Nested traversal still uses Rust recursion; vector/atomic snapshots and iterative continuations remain separate work. |
+| Translated header reads retain canonical provenance with one admission | `sexp::accessors::projection_tests::owned_checked_header_*` | Five native and strict-provenance Miri cases pass for stale generations, foreign domains, retired storage and original singleton banks. The explicit debug microbenchmark improves lookup cost; both unchanged full methods-startup probes remain incomplete. |
 | External-pointer duplication preserves the canonical object | `mainutils::duplicate::extptr_identity_tests::*` | Four native and strict-provenance Miri fixtures pass for deep/shallow identity, collecting children with a sole alias, mutation, explicit resource close, and last-alias release after shutdown. Copying allocates no node or child and invokes no provider. |
 | Compiled execution owns its instructions and operands | Source/private/GNU bytecode replacement fixtures, including source-tree release and private-pool detachment | Prior targeted Miri checks pass. GNU CALL syntax constants are retained when its bytecode format requires them; private source-pool erasure tests do not imply GNU constants can all be discarded. |
 
@@ -26,7 +28,7 @@ the names below identify production regressions and bounded evidence.
 | A live owned value has a deliberate relationship with closure | `sexp::owner::tests::{owned_value_preserves_original_graph_after_runtime_close_and_drop_without_cycle,owned_lazy_value_rejects_revoked_provider_before_callback,owned_lazy_callback_can_close_and_drop_runtime_but_cannot_publish_success}` | Pure owned storage can survive runtime closure; runtime-dependent providers must reject a revoked owner. This is different from a host handle remaining usable after its session closes. |
 | Resource destruction can reenter only after arena loans end | `sexp::gengc::tests::collected_node_resources_reenter_only_after_collection_and_arena_lends_end` | Does not establish every external resource's construction, explicit close, collection, and shutdown matrix. STARMA has a typed canonical resource boundary; its full lifecycle acceptance remains required. |
 | A host handle retains its value privately and rejects reused identities | `owned_retained_*` store regressions | Ten native and strict-provenance Miri store fixtures pass for binding interference, collection, failed publication/writes, foreign identities, generation retirement, sole closure roots, and closure. The separate full embedding suite still requires default package startup. |
-| Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*` | Thirteen native and strict-provenance Miri fixtures pass, including fixed/variadic payload admission and independent GNU metadata for 66 supported External registrations. This metadata does not prove handler semantics. Erased C/Fortran and foreign pointers remain outside this milestone. |
+| Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*`, `native_routines::buffers::*`, `dotcode::buffer_dispatch::tests::*` | Thirteen Call/External native and strict-provenance Miri fixtures pass. Nine additional native and Miri cases verify checked, independently owned numerical buffers, original lookup ownership, rejected admission and promoted-result attribute barriers. Seventeen of the 26 captured bundled C/Fortran registrations have checked adapters; nine remain unsupported. Matching registration metadata does not prove handler semantics. Foreign libraries remain an unsafe boundary. |
 | GC preambles release their exact temporary ownership on unwind | `owned_gc_*` | Nine native and strict-provenance Miri tests pass for full/lite GC, allocation torture, eval safe points, detached bindings, callback closure, and panic cleanup. The Miri run also verifies the original-runtime capture sole-pin fixture. |
 | Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*`, four `focused_console_*`, and three `public_capture_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four focused interpreter fixtures and three public host-callback fixtures pass strict-provenance Miri. The public capture scope restores its parent or idle bank after a panic, preserves the panic payload, and cleans its original bank after revocation and reentry. |
 
@@ -72,6 +74,32 @@ checker. The fixtures distinguish the parent, idle, original, and replacement
 banks and preserve exact bytes and typed panic payloads. This does not add another
 capture implementation or change the presentation contract.
 
+The runtime milestones merged in `3c800eaa` additionally pass the warnings-free
+default-feature rmath/all-target Clippy gate in 25.95 seconds and the
+workspace/all-target gate in 27.48 seconds. Sixty-three affected managed native
+controls pass in 2.71 seconds. The pairlist milestone `4f622efd` passes twelve
+native cases in 0.06 seconds; ten original fixtures pass strict-provenance Miri
+in 869.62 seconds. The additional 32/64-cell size and allocation cases are native
+evidence, rather than part of that ten-case Miri selection. Both the original
+three-cell and larger 32-cell regressions fail against the original implementation.
+
+The single-admission header milestone `b9423327` passes five native and five
+strict-provenance Miri cases, the latter in 130.56 seconds. Using the same debug
+settings, the explicit four-read benchmark has median costs of 2003.86 ns for
+same-page nodes, 2264.71 ns for different-page nodes and 327.10 ns for singleton
+reads, versus 4046.84, 4268.56 and 432.94 ns before the change. These are bounded
+lookup measurements, not a claim about full package startup or resident memory.
+
+The numerical adapter milestone `b672a5ae` passes nine native cases in 0.04
+seconds and the same nine strict-provenance Miri cases in 786.14 seconds.
+Production remains unchanged between those runs. One equivalent test-only
+`find_map` cleanup follows Miri compilation; the compiled source manifest and
+production hashes record that distinction. The promoted-result regression
+executes real allocation-triggered GC followed by minor collection, without an
+incidental old-to-young output edge hiding a missing attribute barrier. All
+three new Miri selections use the default alias checker and strict provenance,
+with only leak checking disabled.
+
 CI for `038fd34a` completed with failures after successfully building the browser
 bundle and executing the real Rust runtime tests. Workspace formatting, Clippy,
 embedding expectations, Wasm warnings, and showcase artifact preparation failed;
@@ -98,9 +126,13 @@ An isolated real stats namespace test completes and retains its S3 method table
 through collection; this does not certify full methods startup. The upstream
 ledger still has 39 marked-passing and 31 skipped whole drivers. A selected
 native checkpoint is not a completed workspace, browser, mobile, or whole GNU R
-conformance run. The complete workspace formatting check currently reports
-differences in 291 files; its mechanical repair is tracked separately and must
-not overwrite a running agent's source.
+conformance run. The new production conformance harness preserves runner bytes,
+reports each active case and bounds each owned subprocess. A real pinned-oracle
+smoke run builds in 39.50 seconds, completes GNU `001_arithmetic`, then reports
+the Rust runner's 180-second timeout. Its report records one failure, 1,180
+unattempted cases and `execution_complete=false` out of 1,181 captured cases.
+This verifies the harness's incomplete-run contract; it is not a parity pass.
+Workspace formatting remains a separate mechanical checkpoint.
 
 Kani should target production identity, generation, workspace, and typed-native
 admission helpers. Miri and collecting integration tests remain necessary for
