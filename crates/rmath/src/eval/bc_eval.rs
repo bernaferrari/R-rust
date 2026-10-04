@@ -178,7 +178,9 @@ pub mod opcodes {
     /// Temporary link while a later index still runs. 3 is sticky.
     pub const OP_BUMP_LINK: i32 = 61;
     pub const OP_DROP_LINK: i32 = 62;
-    pub const OP_LAST: i32 = 58;
+    /// Invoke a flat replacement function, store its object, retain the RHS.
+    pub const OP_REPLACEMENT: i32 = 63;
+    pub const OP_LAST: i32 = 63;
 }
 
 #[derive(Clone)]
@@ -2331,18 +2333,19 @@ unsafe fn eval_gnu_adapter(
                     // would silently truncate vectors and drop attributes.
                     let result = with_stack_rooted(&stack, a, || {
                         with_stack_rooted(&stack, b, || {
-                            let op = R_findVar(
-                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
-                                super::runtime::base_env(),
-                            );
+                            // The instruction fixes primitive identity; mutable
+                            // base bindings and retained call text cannot change it.
+                            let op = own_operand(super::primitive::make_primitive_binding(
+                                symbol.to_str().unwrap(), SEXPTYPE::BUILTINSXP,
+                            ));
                             let tail = Rf_cons(b, R_NilValue());
                             let _tail = own_operand(tail);
                             let args = Rf_cons(a, tail);
                             let _args = own_operand(args);
                             if opcode <= super::bytecode::GNU_OP_EXPT {
-                                super::arithmetic::do_arith(call, op, args, rho)
+                                super::arithmetic::do_arith(call, op.as_raw(), args, rho)
                             } else {
-                                super::arithmetic::do_relop(call, op, args, rho)
+                                super::arithmetic::do_relop(call, op.as_raw(), args, rho)
                             }
                         })
                     });
@@ -3301,6 +3304,84 @@ unsafe fn apply_pending_arg_tags(
     }
 }
 
+/// Build calls from actual owning values. Computed symbols and language objects
+/// are data; initialized promises prevent the native evaluator interpreting them
+/// again. Syntax-special calls retain their original argument expressions.
+fn private_call_owned(
+    function: &Sexp<'static>,
+    arguments: &[Sexp<'static>],
+    tags: &[Option<Sexp<'static>>],
+    environment: &Sexp<'static>,
+    syntax: bool,
+    expressions: Option<&[Option<Sexp<'static>>]>,
+) -> Sexp<'static> {
+    let owner = crate::sexp::owner::StoredOwner::from_value(environment)
+        .and_then(|owner| {
+            owner
+                .managed()
+                .ok_or(crate::sexp::object::SexpError::RootUnavailable)
+        })
+        .unwrap_or_else(|error| bc_error(error.to_string()));
+    crate::sexp::owner::with_runtime(&owner, |access| {
+        let domain = access.domain();
+        let allocator = access.allocator(&domain)?;
+        let mut rest = domain.nil();
+        for (index, argument) in arguments.iter().enumerate() {
+            let value = if syntax {
+                argument.clone()
+            } else if let Some(expression) = expressions
+                .and_then(|expressions| expressions.get(index))
+                .and_then(Option::as_ref)
+            {
+                allocator.evaluated_promise_with_expression(expression, environment, argument)?
+            } else if argument.typeof_() == SEXPTYPE::PROMSXP
+                || argument.as_raw() == domain.missing().as_raw()
+            {
+                argument.clone()
+            } else {
+                allocator.evaluated_promise(argument, environment)?
+            };
+            rest = allocator.pairlist_cell(
+                &value,
+                &rest,
+                tags.get(index)
+                    .and_then(Option::as_ref)
+                    .unwrap_or(&domain.nil()),
+            )?;
+        }
+        allocator.call(function, &rest)
+    })
+    .and_then(|result| result)
+    .unwrap_or_else(|error| bc_error(error.to_string()))
+}
+
+fn private_argument_tags(
+    pending: &mut Vec<(usize, Sexp<'static>)>,
+    top: usize,
+    count: usize,
+) -> Vec<Option<Sexp<'static>>> {
+    let mut tags = Vec::new();
+    tags.try_reserve(count)
+        .unwrap_or_else(|_| bc_error("cannot allocate bytecode argument tags"));
+    tags.resize_with(count, || None);
+    let bottom = top
+        .checked_sub(count)
+        .unwrap_or_else(|| bc_error("argument tag stack underflow"));
+    let mut remaining = Vec::new();
+    remaining
+        .try_reserve(pending.len())
+        .unwrap_or_else(|_| bc_error("cannot retain bytecode outer argument tags"));
+    for (depth, tag) in std::mem::take(pending) {
+        if depth < bottom {
+            remaining.push((depth, tag));
+        } else if depth < top {
+            tags[top - 1 - depth] = Some(tag);
+        }
+    }
+    *pending = remaining;
+    tags
+}
+
 unsafe fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SEXP {
     unsafe {
         let value = stack.top();
@@ -3665,137 +3746,131 @@ unsafe fn bc_eval_owned(
                         pending_arg_tags.push((depth_now.saturating_sub(1), own_operand(tag)));
                     }
                 }
-                opcodes::OP_CALL => {
+                opcodes::OP_CALL | opcodes::OP_CALLBUILTIN | opcodes::OP_CALLSPECIAL => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
-                    if nargs < 0 {
-                        bc_error("CALL has a negative argument count");
-                    }
-                    let mut arg_roots: Vec<Sexp<'static>> = Vec::new();
-                    let fun_owned = stack_pop_checked(&mut stack, "CALL function");
-                    let fun = fun_owned.as_raw();
-                    let mut args_owned = own_operand(R_NilValue());
-                    let mut args = args_owned.as_raw();
+                    let nargs = usize::try_from(nargs)
+                        .unwrap_or_else(|_| bc_error("CALL has a negative argument count"));
+                    let function = stack_pop_checked(&mut stack, "CALL function");
                     let top = stack.depth();
-                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
+                    if nargs > top {
+                        bc_error("CALL argument stack underflow");
+                    }
+                    let mut arguments = Vec::new();
+                    arguments
+                        .try_reserve(nargs)
+                        .unwrap_or_else(|_| bc_error("cannot allocate bytecode arguments"));
                     for _ in 0..nargs {
-                        let arg_owned = stack_pop_checked(&mut stack, "CALL argument");
-                        let arg = arg_owned.as_raw();
-                        let expr = if TYPEOF(arg) == SEXPTYPE::PROMSXP {
-                            crate::sexp::accessors::PRCODE(arg)
-                        } else {
-                            arg
-                        };
-                        args = Rf_cons(expr, args);
-                        arg_roots.push(own_operand(args));
-
-                        cells.push(args);
+                        arguments.push(stack_pop_checked(&mut stack, "CALL argument"));
                     }
-                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
-                    if fun.is_null() {
-                        stack.push(R_NilValue());
-                    } else {
-                        let call = Rf_cons(fun, args);
-                        arg_roots.push(own_operand(call));
-
-                        if !call.is_null() {
-                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+                    let tags = private_argument_tags(&mut pending_arg_tags, top, nargs);
+                    let call = private_call_owned(
+                        &function,
+                        &arguments,
+                        &tags,
+                        &rho_owned,
+                        op == opcodes::OP_CALLSPECIAL,
+                        None,
+                    );
+                    let src = owned_constant_at(&constants, 0, "CALL source");
+                    if TYPEOF(src) == SEXPTYPE::LANGSXP {
+                        let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                        let srcref = own_operand(crate::attrib_core::getAttrib(src, srcref_symbol));
+                        if srcref.as_raw() != R_NilValue() {
+                            crate::attrib_core::setAttrib(call.as_raw(), srcref_symbol, srcref.as_raw());
                         }
-                        let src = owned_constant_at(&constants, 0 as i64, "CALL source");
-                        if !src.is_null() && TYPEOF(src) == SEXPTYPE::LANGSXP {
-                            let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
-                            let srcref = crate::attrib_core::getAttrib(src, srcref_symbol);
-                            if !srcref.is_null() && srcref != R_NilValue() {
-                                crate::attrib_core::setAttrib(call, srcref_symbol, srcref);
-                            }
-                        }
-                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
-                            Ok(value) => value,
-                            Err(jump) => {
-                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
-                                super::runtime::set_visible(FALSE);
-                                continue;
-                            }
-                        };
-                        stack.push(result);
                     }
+                    let result = match eval_nested_call(call.as_raw(), rho, &stack, &loop_stack) {
+                        Ok(value) => value,
+                        Err(jump) => {
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                            super::runtime::set_visible(FALSE);
+                            continue;
+                        }
+                    };
+                    pin.require_live()
+                        .unwrap_or_else(|error| bc_error(error.to_string()));
+                    stack.push_owned(own_operand(result));
                 }
 
-                opcodes::OP_CALLBUILTIN => {
-                    let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLBUILTIN");
-                    if nargs < 0 {
-                        bc_error("CALLBUILTIN has a negative argument count");
+                opcodes::OP_REPLACEMENT => {
+                    let setter_idx = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT function");
+                    let symbol_idx = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT object");
+                    let count = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT arguments");
+                    let rhs_expr_idx =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT RHS expression");
+                    let count = usize::try_from(count)
+                        .unwrap_or_else(|_| bc_error("negative replacement argument count"));
+                    if count == 0 || count >= stack.depth() {
+                        bc_error("REPLACEMENT argument stack underflow");
                     }
-                    let fun_owned = stack_pop_checked(&mut stack, "CALLBUILTIN function");
-                    let fun = fun_owned.as_raw();
-                    let mut args_owned = own_operand(R_NilValue());
-                    let mut args = args_owned.as_raw();
+                    let function = own_operand(owned_constant_at(
+                        &constants,
+                        setter_idx as i64,
+                        "REPLACEMENT function",
+                    ));
+                    let symbol = own_operand(owned_constant_at(
+                        &constants,
+                        symbol_idx as i64,
+                        "REPLACEMENT object",
+                    ));
+                    if function.typeof_() != SEXPTYPE::SYMSXP || symbol.typeof_() != SEXPTYPE::SYMSXP {
+                        bc_error("REPLACEMENT constants must be symbols");
+                    }
                     let top = stack.depth();
-                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
-                    for _ in 0..nargs {
-                        let arg_owned = stack_pop_checked(&mut stack, "CALLBUILTIN argument");
-                        let arg = arg_owned.as_raw();
-                        args_owned = own_operand(Rf_cons(arg, args));
-                        args = args_owned.as_raw();
-                        cells.push(args);
+                    let mut arguments = Vec::new();
+                    arguments
+                        .try_reserve(count + 1)
+                        .unwrap_or_else(|_| bc_error("cannot allocate replacement arguments"));
+                    for _ in 0..count {
+                        arguments.push(stack_pop_checked(&mut stack, "REPLACEMENT argument"));
                     }
-                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
-                    if fun.is_null() {
-                        stack.push(R_NilValue());
-                    } else {
-                        let call = Rf_cons(fun, args);
-                        if !call.is_null() {
-                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+                    let rhs = stack_pop_checked(&mut stack, "REPLACEMENT value");
+                    let mut tags = private_argument_tags(&mut pending_arg_tags, top, count);
+                    // The RHS was evaluated before the object and other arguments.
+                    // Reversely stored call arguments become (object, ..., value).
+                    arguments.insert(0, rhs.clone());
+                    let value_symbol = own_operand(crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+                    tags.try_reserve(1)
+                        .unwrap_or_else(|_| bc_error("cannot allocate replacement tags"));
+                    tags.insert(0, Some(value_symbol));
+                    let rhs_expression = own_operand(owned_constant_at(
+                        &constants,
+                        rhs_expr_idx as i64,
+                        "REPLACEMENT RHS expression",
+                    ));
+                    let temporary = own_operand(crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr()));
+                    let mut expressions = Vec::new();
+                    expressions
+                        .try_reserve(arguments.len())
+                        .unwrap_or_else(|_| bc_error("cannot retain replacement expressions"));
+                    expressions.resize_with(arguments.len(), || None);
+                    expressions[0] = Some(rhs_expression);
+                    expressions[count] = Some(temporary);
+                    let call = private_call_owned(
+                        &function,
+                        &arguments,
+                        &tags,
+                        &rho_owned,
+                        false,
+                        Some(&expressions),
+                    );
+                    let result = match eval_nested_call(call.as_raw(), rho, &stack, &loop_stack) {
+                        Ok(value) => own_operand(value),
+                        Err(jump) => {
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                            super::runtime::set_visible(FALSE);
+                            continue;
                         }
-                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
-                            Ok(value) => value,
-                            Err(jump) => {
-                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
-                                super::runtime::set_visible(FALSE);
-                                continue;
-                            }
-                        };
-                        stack.push(result);
-                    }
-                }
-
-                opcodes::OP_CALLSPECIAL => {
-                    let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLSPECIAL");
-                    if nargs < 0 {
-                        bc_error("CALLSPECIAL has a negative argument count");
-                    }
-                    let fun_owned = stack_pop_checked(&mut stack, "CALLSPECIAL function");
-                    let fun = fun_owned.as_raw();
-                    let mut args_owned = own_operand(R_NilValue());
-                    let mut args = args_owned.as_raw();
-                    let top = stack.depth();
-                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
-                    for _ in 0..nargs {
-                        let arg_owned = stack_pop_checked(&mut stack, "CALLSPECIAL argument");
-                        let arg = arg_owned.as_raw();
-                        args_owned = own_operand(Rf_cons(arg, args));
-                        args = args_owned.as_raw();
-                        cells.push(args);
-                    }
-                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
-                    if fun.is_null() {
-                        stack.push(R_NilValue());
-                    } else {
-                        let call = Rf_cons(fun, args);
-                        if !call.is_null() {
-                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-                        }
-                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
-                            Ok(value) => value,
-                            Err(jump) => {
-                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
-                                super::runtime::set_visible(FALSE);
-                                continue;
-                            }
-                        };
-                        stack.push(result);
-                    }
+                    };
+                    pin.require_live()
+                        .unwrap_or_else(|error| bc_error(error.to_string()));
+                    with_stack_rooted(&stack, result.as_raw(), || {
+                        defineVar(symbol.as_raw(), result.as_raw(), rho)
+                    });
+                    stack.push_owned(rhs);
                     super::runtime::set_visible(FALSE);
                 }
+
 
                 opcodes::OP_STARTASSIGN => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "STARTASSIGN");
@@ -4220,6 +4295,119 @@ mod tests {
     use super::*;
     use crate::sexp::accessors::SET_VECTOR_ELT;
     use crate::sexp::globals::R_BaseEnv;
+
+    #[test]
+    fn gnu_methods_tail_fixtures_execute_vector_calls_and_replacements() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let cases: [(&[u8], &str); 4] = [
+            (
+                include_bytes!(
+                    "../../../r-embed/tests/fixtures/gnu-bytecode-methods-tail/tail.rds"
+                ),
+                "identical(f(c('x','y','z','w'),1L,'foo','fixturePackage'),structure(c(x='foo'),package='fixturePackage'))",
+            ),
+            (
+                include_bytes!(
+                    "../../../r-embed/tests/fixtures/gnu-bytecode-methods-tail/padding.rds"
+                ),
+                "identical(f('foo',3L),c('foo','ANY','ANY','ANY'))",
+            ),
+            (
+                include_bytes!(
+                    "../../../r-embed/tests/fixtures/gnu-bytecode-methods-tail/oldclass.rds"
+                ),
+                "identical(f('child',c('parent','oldClass')),c('child','parent','oldClass'))",
+            ),
+            (
+                include_bytes!(
+                    "../../../r-embed/tests/fixtures/gnu-bytecode-methods-tail/attribute.rds"
+                ),
+                "identical(f(c(x='foo'),'fixturePackage'),structure(c(x='foo'),package='fixturePackage'))",
+            ),
+        ];
+        for (bytes, assertion) in cases {
+            let raw = bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            let (result, _, _) = session.eval_code_with_output_capture(&format!(
+                "f<-unserialize(as.raw(c({raw})));{assertion}"
+            ));
+            assert_eq!(result.unwrap().logical_elt(0), Some(TRUE), "{assertion}");
+            unsafe {
+                let function = own_operand(crate::sexp::envir::R_findVar(
+                    crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+                    session.global_env().unwrap().as_raw(),
+                ));
+                assert!(
+                    BCODE_IS_GNU(crate::sexp::accessors::BODY(function.as_raw())),
+                    "fixture must execute GNU bytecode: {assertion}"
+                );
+            }
+        }
+        let words: Vec<i32> = cases[0]
+            .0
+            .windows(8)
+            .position(|bytes| bytes == [0, 0, 0, 12, 0, 0, 0, 123])
+            .map(|start| {
+                let length =
+                    u32::from_be_bytes(cases[0].0[start - 4..start].try_into().unwrap()) as usize;
+                cases[0].0[start..start + length * 4]
+                    .chunks_exact(4)
+                    .map(|bytes| i32::from_be_bytes(bytes.try_into().unwrap()))
+                    .collect()
+            })
+            .unwrap();
+        assert_eq!(
+            super::super::bytecode::validate_gnu_adapter_stream(&words, 48),
+            Ok(true),
+            "tail must be actually executable"
+        );
+        let mut bytes = cases[0].0.to_vec();
+        let stream = [20_i32, 7, 16, 25, 51, 26, 22, 27, 4];
+        let encoded: Vec<_> = stream.iter().flat_map(|word| word.to_be_bytes()).collect();
+        let offsets: Vec<_> = bytes
+            .windows(encoded.len())
+            .enumerate()
+            .filter_map(|(offset, value)| (value == encoded).then_some(offset))
+            .collect();
+        assert_eq!(offsets.len(), 1, "frozen GNU EQ stream must be unique");
+        // EQ -> NE changes the compiled tail while retained source is intact.
+        let offset = offsets[0] + 4 * 4;
+        bytes[offset..offset + 4].copy_from_slice(&52_i32.to_be_bytes());
+        let raw = bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let (result, _, _) = session.eval_code_with_output_capture(&format!("f<-unserialize(as.raw(c({raw})));g<-unserialize(serialize(f,NULL));length(f(c('x','y','z','w'),1L,'foo','fixturePackage'))+10L*length(g(c('x','y','z','w'),1L,'foo','fixturePackage'))"));
+        let result = result.unwrap().into_owned().unwrap();
+        unsafe {
+            let function = own_operand(crate::sexp::envir::R_findVar(
+                crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+                session.global_env().unwrap().as_raw(),
+            ));
+            let body = own_operand(crate::sexp::accessors::BODY(function.as_raw()));
+            assert_eq!(
+                body.typeof_(),
+                SEXPTYPE::BCODESXP,
+                "GNU tail cannot run retained source"
+            );
+            assert!(BCODE_IS_GNU(body.as_raw()), "GNU tail dialect tag");
+            let words = owned_instruction_words(&own_operand(crate::sexp::accessors::VECTOR_ELT(
+                body.as_raw(),
+                0,
+            )));
+            assert_eq!(words[75], 52, "mutated EQ operand must be loaded");
+        }
+        assert_eq!(
+            result.integer_elt(0),
+            Some(44),
+            "mutated bytecode must survive serialization and control the result (real {:?})",
+            result.real_elt(0)
+        );
+    }
 
     #[test]
     fn gnu_source_marker_does_not_override_compiled_instructions() {

@@ -213,6 +213,16 @@ impl BytecodeCompiler {
                 let is_missing = name.as_deref() == Some("missing");
                 let is_internal = name.as_deref() == Some(".Internal");
                 let is_at = name.as_deref() == Some("@") || name.as_deref() == Some("$");
+                let syntax_call = is_internal
+                    || is_missing
+                    || is_at
+                    || name.as_deref().is_some_and(|name| {
+                        super::primitive::fun_tab_index_by_name(name).is_some_and(|index| {
+                            super::primitive::primitive_kind_for_eval(
+                                crate::mainutils::names::R_FunTab[index as usize].eval,
+                            ) == SEXPTYPE::SPECIALSXP
+                        })
+                    });
                 let mut arg_cells = Vec::new();
                 let mut cur = CDR(expr);
                 let mut seen_cur = std::collections::HashSet::new();
@@ -245,7 +255,7 @@ impl BytecodeCompiler {
                     let argument = argument_owned.as_raw();
                     let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
                     let missing_arg = argument == crate::sexp::globals::R_MissingArg();
-                    if missing_arg || is_internal || is_missing || is_at {
+                    if missing_arg || syntax_call {
                         let idx = self.add_const(argument);
                         self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     } else if (!eager || local_fun) && !constant {
@@ -273,7 +283,14 @@ impl BytecodeCompiler {
                 }
                 let fun_idx = self.add_const(fun);
                 self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
-                self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+                self.emit_operand(
+                    if syntax_call {
+                        opcodes::OP_CALLSPECIAL
+                    } else {
+                        opcodes::OP_CALL
+                    },
+                    arg_cells.len() as c_int,
+                );
                 true
             } else {
                 return false;
@@ -418,7 +435,14 @@ impl BytecodeCompiler {
 
             let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
-                return self.compile_subassign(expr, false);
+                return if matches!(
+                    symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                    Some("[") | Some("[[")
+                ) {
+                    self.compile_subassign(expr, false)
+                } else {
+                    self.compile_replacement(lhs, rhs)
+                };
             }
             let binds_compiled_fun = is_function_syntax(rhs);
             if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
@@ -429,6 +453,83 @@ impl BytecodeCompiler {
             }
             let symbol_idx = self.add_const(lhs);
             self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+            true
+        }
+    }
+
+    /// Flat replacement assigns the modified object but returns the original
+    /// RHS. Evaluate RHS first; retain other arguments as expressions/promises.
+    unsafe fn compile_replacement(&mut self, lhs: SEXP, rhs: SEXP) -> bool {
+        unsafe {
+            let function = own_operand(CAR(lhs));
+            let Some(name) = symbol_name_from_sexp(function.as_raw()) else {
+                return false;
+            };
+            let mut cells = Vec::new();
+            let mut current = CDR(lhs);
+            let mut seen = std::collections::HashSet::new();
+            while current != R_NilValue() && !current.is_null() {
+                seen.try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track replacement arguments"));
+                if !seen.insert(current.addr()) {
+                    compiler_error("cyclic replacement arguments");
+                }
+                cells
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot snapshot replacement arguments"));
+                let cell = own_operand(current);
+                let tag = TAG(current);
+                cells.push((
+                    own_operand(CAR(current)),
+                    own_operand(if tag.is_null() { R_NilValue() } else { tag }),
+                ));
+                current = CDR(cell.as_raw());
+            }
+            let Some((object, object_tag)) = cells.first() else {
+                return false;
+            };
+            if object.typeof_() != SEXPTYPE::SYMSXP
+                || cells.iter().any(|(arg, _)| arg.as_raw() == R_DotsSymbol())
+            {
+                return false;
+            }
+            let setter_name = std::ffi::CString::new(format!("{name}<-"))
+                .unwrap_or_else(|_| compiler_error("invalid replacement function name"));
+            let setter = own_operand(crate::sexp::symbol::Rf_install(setter_name.as_ptr()));
+            let rhs_expr_idx = self.add_const(rhs);
+            if !self.compile_expr(rhs) {
+                return false;
+            }
+            let object_idx = self.add_const(object.as_raw());
+            self.emit_operand(opcodes::OP_GETVAR, object_idx);
+            self.emit(opcodes::OP_MARK_SHARED);
+            if object_tag.as_raw() != R_NilValue() {
+                let idx = self.add_const(object_tag.as_raw());
+                self.emit_operand(opcodes::OP_SETTAG, idx);
+            }
+            for (argument, tag) in cells.iter().skip(1) {
+                let idx = self.add_const(argument.as_raw());
+                self.emit_operand(
+                    if argument.as_raw() == crate::sexp::globals::R_MissingArg() {
+                        opcodes::OP_PUSHCONST
+                    } else {
+                        opcodes::OP_MAKEPROMISE
+                    },
+                    idx,
+                );
+                if tag.as_raw() != R_NilValue() {
+                    let idx = self.add_const(tag.as_raw());
+                    self.emit_operand(opcodes::OP_SETTAG, idx);
+                }
+            }
+            let setter_idx = self.add_const(setter.as_raw());
+            self.emit_operand(opcodes::OP_REPLACEMENT, setter_idx);
+            self.emit(object_idx);
+            self.emit(
+                c_int::try_from(cells.len())
+                    .unwrap_or_else(|_| compiler_error("too many replacement arguments")),
+            );
+            self.emit(rhs_expr_idx);
             true
         }
     }
@@ -914,6 +1015,233 @@ mod tests {
     use crate::sexp::envir::defineVar;
     use crate::sexp::session::RSession;
     use crate::sexp::symbol::Rf_install;
+
+    #[test]
+    fn compiled_methods_tail_vector_operations_match_source() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        for script in [
+            "{value<-c(a='foo',b='ANY',c='ANY',d='ANY');unspec<-value=='ANY';unspec[[4L]]}",
+            "c(as.character('foo'),rep('ANY',3L))",
+            "{cl<-'child';S3Class<-c('parent','oldClass');c(cl,S3Class)}",
+            "list(quote(retained_symbol))",
+            "list(quote(a+b),expression(a+b))",
+            "list(b=1L,a=identity(2L))",
+            "{i<-0L;repeat{i<-i+1L;if(i==2L)break};i}",
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let source = factory
+                    .wrap(crate::eval::eval::Rf_eval(
+                        expression.as_raw(),
+                        env.as_raw(),
+                    ))
+                    .unwrap();
+                let code = compile_expr(expression.as_raw(), env.as_raw())
+                    .expect("methods-tail microcase must compile");
+                let code = factory.wrap(code).unwrap();
+                let compiled = factory
+                    .wrap(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()))
+                    .unwrap();
+                assert_eq!(
+                    crate::mainutils::identical::R_compute_identical(
+                        source.as_raw(),
+                        compiled.as_raw(),
+                        0
+                    ),
+                    1,
+                    "{script}"
+                );
+            }));
+            if let Err(payload) = result {
+                let error = payload
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .map(|error| error.message.as_str())
+                    .unwrap_or("Rust panic");
+                panic!("{script}: {error}");
+            }
+        }
+    }
+
+    fn assert_private_matches_source(script: &str, collect: bool) {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let source = own_operand(crate::eval::eval::Rf_eval(
+                expression.as_raw(),
+                env.as_raw(),
+            ));
+            let source_visible = crate::sexp::globals::R_Visible();
+            let code = own_operand(
+                compile_expr(expression.as_raw(), env.as_raw()).expect("replacement must compile"),
+            );
+            let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(code.as_raw()));
+            // No expression remains for an interpreter fallback.
+            crate::sexp::accessors::SET_VECTOR_ELT(pool.as_raw(), 0, R_NilValue());
+            let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+            if collect {
+                let captured_pool = pool.clone();
+                let count = callbacks.clone();
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    for index in 0..captured_pool.len() {
+                        crate::sexp::accessors::SET_VECTOR_ELT(
+                            captured_pool.as_raw(),
+                            index,
+                            R_NilValue(),
+                        );
+                    }
+                    crate::sexp::gengc::full_gc();
+                    count.set(count.get() + 1);
+                }));
+                session.with_active_in(|instance| {
+                    (*instance).memory_state.gc_force_gap = 1;
+                    (*instance).memory_state.gc_force_wait = 1;
+                });
+            }
+            let compiled = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+            assert_eq!(
+                crate::mainutils::identical::R_compute_identical(
+                    source.as_raw(),
+                    compiled.as_raw(),
+                    0
+                ),
+                1,
+                "{script}"
+            );
+            assert_eq!(
+                crate::sexp::globals::R_Visible(),
+                source_visible,
+                "assignment visibility: {script}"
+            );
+            if collect {
+                assert!(callbacks.get() > 0, "must actually collect");
+            }
+        }));
+        if let Err(payload) = result {
+            if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
+                panic!("{script}: {}", error.message);
+            }
+            if let Some(signal) = payload.downcast_ref::<crate::sexp::context::RSignal>() {
+                panic!("{script}: {signal:?}");
+            }
+            std::panic::resume_unwind(payload);
+        }
+    }
+
+    #[test]
+    fn compiled_attribute_replacement_matches_source() {
+        for script in [
+            "{x<-c('foo','ANY');attr(x,'package')<-c('a','b');x}",
+            "{x<-c('foo','ANY');names(x)<-c('a','b');x}",
+            "{x<-c('foo','ANY');y<-c('x','y');length(x)<-length(y)<-1L;list(x,y)}",
+            "{x<-c('foo','ANY');rhs<-quote(retained_symbol);attr(x,'mark')<-rhs}",
+            "{x<-c('foo');rhs<-quote(a+b);attr(x,'mark')<-rhs}",
+            "{trace<-0L;x<-c('foo');attr(x,{trace<-trace*10L+2L;'mark'})<-{trace<-trace*10L+1L;7L};list(trace,attr(x,'mark'))}",
+            "{x<-c('foo');`stamp<-`<-function(x,label,value){attr(x,label)<-value;x};stamp(x,'mark')<-quote(retained_symbol);x}",
+            "{x<-1L;`stamp<-`<-function(label,object,value){attr(object,label)<-value;object};stamp(object=x,label='mark')<-7L;x}",
+        ] {
+            assert_private_matches_source(script, false);
+        }
+    }
+
+    #[test]
+    fn compiled_replacement_preserves_lazy_source_for_custom_setter() {
+        // Pinned GNU oracle returns an attribute containing the symbol itself;
+        // the port's interpreted replacement frontend still eagerly forces it.
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        let expression=owner.with_arena(|arena|crate::eval::parser::parse("{x<-c('foo');`stamp<-`<-function(x,label,value){attr(x,'expression')<-substitute(label);x};stamp(x,unbound_label)<-7L;x}",arena,factory.domain())).unwrap().unwrap();
+        unsafe {
+            let code = own_operand(
+                compile_expr(expression.as_raw(), env.as_raw())
+                    .expect("lazy custom replacement must compile"),
+            );
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+                0,
+                R_NilValue(),
+            );
+            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+            let symbol = crate::sexp::symbol::Rf_install(c"expression".as_ptr());
+            let attribute = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+            assert_eq!(attribute.typeof_(), SEXPTYPE::SYMSXP);
+            assert_eq!(
+                symbol_name_from_sexp(attribute.as_raw()).as_deref(),
+                Some("unbound_label")
+            );
+            owner.full_gc().unwrap();
+            assert_eq!(
+                symbol_name_from_sexp(attribute.as_raw()).as_deref(),
+                Some("unbound_label")
+            );
+        }
+    }
+
+    #[test]
+    fn compiled_replacement_preserves_object_and_rhs_substitute_metadata() {
+        // Independent pinned GNU expectation: *tmp* for the cached object and
+        // the original quote(y) expression for the evaluated RHS.
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        let script = "{x<-1L;`stamp<-`<-function(x,value){attr(x,'code')<-substitute(x);attr(x,'rhs')<-substitute(value);x};stamp(x)<-quote(y);x}";
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        unsafe {
+            let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+                0,
+                R_NilValue(),
+            );
+            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+            let symbol = crate::sexp::symbol::Rf_install(c"code".as_ptr());
+            let object_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+            let symbol = crate::sexp::symbol::Rf_install(c"rhs".as_ptr());
+            let rhs_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+            assert_eq!(
+                symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
+                Some("*tmp*")
+            );
+            assert_eq!(
+                symbol_name_from_sexp(CAR(rhs_expr.as_raw())).as_deref(),
+                Some("quote")
+            );
+            assert_eq!(
+                symbol_name_from_sexp(CAR(CDR(rhs_expr.as_raw()))).as_deref(),
+                Some("y")
+            );
+            owner.full_gc().unwrap();
+            assert_eq!(
+                symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
+                Some("*tmp*")
+            );
+        }
+    }
+
+    #[test]
+    fn owned_private_replacement_arguments_survive_pool_detachment_and_collecting_setter() {
+        assert_private_matches_source(
+            "{x<-c('foo');`stamp<-`<-function(x,label,value){gc();attr(x,label)<-value;x};stamp(x,'mark')<-quote(retained_symbol);x}",
+            true,
+        );
+    }
 
     #[test]
     fn compile_constant_round_trips_through_bc_eval() {
