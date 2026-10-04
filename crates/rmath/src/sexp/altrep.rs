@@ -107,7 +107,7 @@ impl<'s> AltrepContext<'s> {
         })
     }
     fn active<T>(&self, f: impl FnOnce() -> SexpResult<T>) -> SexpResult<T> {
-        storage::with_owner(&self.owner, |owner| storage::activate(owner, f))
+        storage::invoke_provider(&self.owner, f)
     }
 }
 
@@ -449,3 +449,7 @@ mod tests;
 #[cfg(test)]
 #[path = "altrep/private_metadata_tests.rs"]
 mod private_metadata_tests;
+
+#[cfg(test)]
+#[path = "altrep/callback_admission_tests.rs"]
+mod callback_admission_tests;

@@ -134,6 +134,40 @@ pub(super) fn activate<T>(owner: OwnerToken<'_>, callback: impl FnOnce() -> T) -
     // SAFETY: only a lifetime-bound checked owner capability enters here.
     unsafe { with_instance_active(owner.as_ptr(), callback) }
 }
+
+/// Arbitrary provider code requires a closed execution scope, never an arena
+/// loan. Passive sealed built-ins use their separate checked storage path.
+pub(super) fn invoke_provider<T>(
+    authority: &StoredOwner<'_>,
+    callback: impl FnOnce() -> SexpResult<T>,
+) -> SexpResult<T> {
+    with_owner(authority, |owner| {
+        if super::super::memory::is_arena_lent(owner.as_ptr()) {
+            return Err(failure("release the arena lend before an ALTREP callback"));
+        }
+        activate(owner, || {
+            authority.require_active()?;
+            // Provider code may construct and drop another runtime. End its
+            // activation scope before checking the original operation's
+            // authority; the scoped guard restores only a still-live owner.
+            let outcome = activate(owner, || {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(callback))
+            });
+            match outcome {
+                Ok(result) => {
+                    authority.require_active()?;
+                    result
+                }
+                Err(payload) => {
+                    // Revocation denies continuation even on unwind. A live
+                    // original owner preserves the callback's exact panic.
+                    authority.with_projection(|_| Ok(()))?;
+                    std::panic::resume_unwind(payload)
+                }
+            }
+        })
+    })
+}
 pub(super) fn allocate<'s>(
     owner: OwnerToken<'s>,
     kind: SEXPTYPE,

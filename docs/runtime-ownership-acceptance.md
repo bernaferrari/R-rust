@@ -555,3 +555,21 @@ passes. Structured admission now covers 21 of the 26 captured stats C/Fortran
 registrations; this count does not certify foreign ABI signatures or complete
 semantics. PPR spline/tracing settings and character-span coercion remain tracked
 separately.
+
+## ALTREP provider admission during arena loans
+
+Generic safe ALTREP providers now pass an original-owner admission gate before
+callbacks, including class configuration. A live arena loan rejects the call
+before provider code runs. Passive sealed compact-sequence reads retain their
+existing loan-safe path. Callback activation restores the original live owner
+before post-callback checks; original revocation refuses continuation, and a
+live owner's callback panic retains its exact payload.
+
+Two scalar-only counter fixtures reproduced the previous missing gate without
+executing an allocator or interpreter under the loan (0 passed, 2 failed).
+The final implementation passes 55 native controls (45 ALTREP, nine compact
+sequence, one private-edge remapping) and seven strict Miri tests with the
+default alias checker and strict provenance (420.51 seconds). Clippy with
+warnings denied and formatting pass. One old declaration-change fixture was
+updated to reach canonical private metadata instead of public attributes;
+its mutation, rejection, cache, and retry assertions remain intact.

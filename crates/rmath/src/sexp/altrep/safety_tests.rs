@@ -85,8 +85,8 @@ fn compact_factories_root_results_before_allocation_gc_callbacks() {
     assert!(real.compact_seq().is_some());
 }
 
-/// All descriptor edits here go through the public safe value API, exactly as
-/// provider code can do through its owning context. No corrupt header seam.
+/// Mutate the actual private metadata using checked owning values. Public
+/// attributes carry user attributes and cannot expose the declaration slots.
 struct ReplaceDeclaration {
     phase: Rc<std::cell::Cell<u8>>,
 }
@@ -94,7 +94,9 @@ impl ReplaceDeclaration {
     fn replace(&self, c: &AltrepContext<'_>) -> SexpResult<()> {
         let control = c.data1()?;
         let replacement = control.try_vector_elt(0)?;
-        let slots = c.object().try_attrib()?.try_car()?;
+        let slots = Metadata::load(&c.object())
+            .ok_or(failure("missing private declaration metadata"))?
+            .slots;
         SexpMut::try_from_checked(slots)?.try_set_vector_elt(0, replacement)?;
         SexpMut::try_from_checked(control)?.try_set_vector_elt(1, c.object())?;
         c.gc()

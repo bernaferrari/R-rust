@@ -140,17 +140,17 @@ fn register_impl<'s>(
 ) -> SexpResult<AltrepClassHandle<'s>> {
     let capability = StoredOwner::from_token(owner);
     storage::with_owner(&capability, |owner| {
-        let kind = storage::with_owner(&capability, |owner| {
-            storage::activate(owner, || VectorKind::from_sexp(provider.vector_type()))
+        let kind = storage::invoke_provider(&capability, || {
+            VectorKind::from_sexp(provider.vector_type())
         })?;
-        let cache = storage::with_owner(&capability, |owner| {
-            Ok(storage::activate(owner, || {
+        let cache = storage::invoke_provider(&capability, || {
+            Ok({
                 if provider.cache_in_data2() {
                     CachePolicy::Data2
                 } else {
                     CachePolicy::Private
                 }
-            }))
+            })
         })?;
         let name = CString::new(format!(".AltrepClass.{name}"))
             .map_err(|_| failure("invalid ALTREP class name"))?;
