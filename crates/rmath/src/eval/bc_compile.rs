@@ -6,6 +6,9 @@
 //! `R_compileExpr`, and JIT scoring to produce bytecode that `bcEval` can run.
 
 #[cfg(test)]
+#[path = "bc_compile/nested_subassign_tests.rs"]
+mod nested_subassign_tests;
+#[cfg(test)]
 #[path = "bc_compile/subassign_tests.rs"]
 mod subassign_tests;
 
@@ -541,149 +544,94 @@ impl BytecodeCompiler {
         }
     }
 
-    /// `x[] <- rhs` is `` `<-`(`[`(x, ...), rhs) ``. The value is the
-    /// modified object, which for a full replacement of a length-1 vector
-    /// is the RHS, and the symbol is written back.
+    /// Select a bounded replacement path after evaluating its RHS. The opcode
+    /// owns the selected root and child; indices stay original lazy syntax.
     unsafe fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
         unsafe {
-            let lhs_owned = own_operand(CAR(CDR(expr)));
-
-            let lhs = lhs_owned.as_raw();
-            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
-
-            let rhs = rhs_owned.as_raw();
-            if TYPEOF(lhs) != SEXPTYPE::LANGSXP {
+            let lhs = own_operand(CAR(CDR(expr)));
+            let rhs = own_operand(CAR(CDR(CDR(expr))));
+            if lhs.typeof_() != SEXPTYPE::LANGSXP {
                 return false;
             }
-            let double = match symbol_name_from_sexp(CAR(lhs)).as_deref() {
-                Some("[") => false,
-                Some("[[") => true,
+            let setter_name = match symbol_name_from_sexp(CAR(lhs.as_raw())).as_deref() {
+                Some("[") => c"[<-",
+                Some("[[") => c"[[<-",
                 _ => return false,
             };
-            let object_owned = own_operand(CAR(CDR(lhs)));
-
-            let object = object_owned.as_raw();
-            let dollar = if TYPEOF(object) == SEXPTYPE::LANGSXP
-                && symbol_name_from_sexp(CAR(object)).as_deref() == Some("$")
+            let mut arguments = Vec::new();
+            let mut current = CDR(lhs.as_raw());
+            let mut seen = std::collections::HashSet::new();
+            while !current.is_null() && current != R_NilValue() {
+                seen.try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track subassignment arguments"));
+                if !seen.insert(current.addr()) {
+                    compiler_error("cyclic subassignment arguments");
+                }
+                arguments
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot snapshot subassignment arguments"));
+                let cell = own_operand(current);
+                let tag = TAG(current);
+                arguments.push((
+                    own_operand(CAR(current)),
+                    own_operand(if tag.is_null() { R_NilValue() } else { tag }),
+                ));
+                current = CDR(cell.as_raw());
+            }
+            let Some((object, _)) = arguments.first() else {
+                return false;
+            };
+            if arguments
+                .iter()
+                .any(|(value, _)| value.as_raw() == R_DotsSymbol())
             {
-                let base_owned = own_operand(CAR(CDR(object)));
-
-                let base = base_owned.as_raw();
-                let tag_owned = own_operand(CAR(CDR(CDR(object))));
-
-                let tag = tag_owned.as_raw();
-                if TYPEOF(base) != SEXPTYPE::SYMSXP || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                return false;
+            }
+            let (root, field) = if object.typeof_() == SEXPTYPE::SYMSXP {
+                (object.clone(), own_operand(R_NilValue()))
+            } else if object.typeof_() == SEXPTYPE::LANGSXP
+                && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
+            {
+                let first = own_operand(CDR(object.as_raw()));
+                let second = own_operand(CDR(first.as_raw()));
+                let root = own_operand(CAR(first.as_raw()));
+                let field = own_operand(CAR(second.as_raw()));
+                if root.typeof_() != SEXPTYPE::SYMSXP
+                    || field.typeof_() != SEXPTYPE::SYMSXP
+                    || CDR(second.as_raw()) != R_NilValue()
+                {
                     return false;
                 }
-                if !self.compile_expr(base) {
-                    return false;
-                }
-                let tag_idx = self.add_const(tag);
-                self.emit_operand(opcodes::OP_PUSHCONST, tag_idx);
-                let dollar_sym = crate::sexp::symbol::Rf_install(c"$".as_ptr());
-                let dollar_idx = self.add_const(dollar_sym);
-                self.emit_operand(opcodes::OP_PUSHFUN, dollar_idx);
-                self.emit_operand(opcodes::OP_CALL, 2);
-                Some((base, tag))
-            } else if TYPEOF(object) == SEXPTYPE::SYMSXP && self.compile_expr(object) {
-                None
+                (root, field)
             } else {
                 return false;
             };
-            // A subscript that runs code (`x[{x[2] <<- 3; 1}] <<- 2`) must
-            // see the fetched object as shared, or the inner assign mutates
-            // the value the outer update writes back. Constant indexes do not.
-            let mut scan = CDR(CDR(lhs));
-            let mut constant_indexes = true;
-            let mut seen_scan = std::collections::HashSet::new();
-            while !scan.is_null() && scan != R_NilValue() {
-                seen_scan
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
-                if !seen_scan.insert(scan.addr()) {
-                    compiler_error("cyclic bytecode source list");
-                }
-                let sub_owned = own_operand(CAR(scan));
-
-                let sub = sub_owned.as_raw();
-                let ty = TYPEOF(sub);
-                let constant = ty == SEXPTYPE::INTSXP
-                    || ty == SEXPTYPE::REALSXP
-                    || ty == SEXPTYPE::LGLSXP
-                    || ty == SEXPTYPE::NILSXP;
-                if !constant {
-                    constant_indexes = false;
-                    break;
-                }
-                scan = CDR(scan);
-            }
-            if !constant_indexes {
-                self.emit(opcodes::OP_BUMP_LINK);
-            }
-            let mut index = CDR(CDR(lhs));
-            let mut n_index: c_int = 0;
-            let mut seen_index = std::collections::HashSet::new();
-            while !index.is_null() && index != R_NilValue() {
-                seen_index
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
-                if !seen_index.insert(index.addr()) {
-                    compiler_error("cyclic bytecode source list");
-                }
-                let index_owned = own_operand(index);
-                n_index = n_index
-                    .checked_add(1)
-                    .unwrap_or_else(|| compiler_error("too many bytecode subscripts"));
-                if !self.compile_expr(CAR(index)) {
-                    return false;
-                }
-                index = CDR(index);
-            }
-            if !constant_indexes {
-                self.emit_operand(opcodes::OP_DROP_LINK, n_index);
-            }
-            if n_index == 0 {
-                let missing = crate::sexp::globals::R_MissingArg();
-                let missing_idx = self.add_const(missing);
-                self.emit_operand(opcodes::OP_PUSHCONST, missing_idx);
-                n_index = 1;
-            }
-            if !self.compile_expr(rhs) {
+            let setter = own_operand(crate::sexp::symbol::Rf_install(setter_name.as_ptr()));
+            let rhs_expression = self.add_const(rhs.as_raw());
+            if !self.compile_expr(rhs.as_raw()) {
                 return false;
             }
-            let op_sym = crate::sexp::symbol::Rf_install(if double {
-                c"[[<-".as_ptr()
-            } else {
-                c"[<-".as_ptr()
-            });
-            let fun_idx = self.add_const(op_sym);
-            self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
-            self.emit_operand(opcodes::OP_CALL, n_index + 2);
-            if let Some((base, tag)) = dollar {
-                let tmp = crate::sexp::symbol::Rf_install(c".Compiler.sub".as_ptr());
-                let tmp_idx = self.add_const(tmp);
-                self.emit_operand(opcodes::OP_SETVAR, tmp_idx);
-                self.emit(opcodes::OP_POP);
-                if !self.compile_expr(base) {
-                    return false;
-                }
-                let tag_idx = self.add_const(tag);
-                self.emit_operand(opcodes::OP_PUSHCONST, tag_idx);
-                self.emit_operand(opcodes::OP_GETVAR, tmp_idx);
-                let set_sym = crate::sexp::symbol::Rf_install(c"$<-".as_ptr());
-                let set_idx = self.add_const(set_sym);
-                self.emit_operand(opcodes::OP_PUSHFUN, set_idx);
-                self.emit_operand(opcodes::OP_CALL, 3);
-                let base_idx = self.add_const(base);
-                self.emit_operand(opcodes::OP_SETVAR, base_idx);
-            } else {
-                let symbol_idx = self.add_const(object);
-                if superassign {
-                    self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
-                } else {
-                    self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+            self.emit(opcodes::OP_MARK_SHARED);
+            for (argument, tag) in arguments.iter().skip(1) {
+                let index = self.add_const(argument.as_raw());
+                self.emit_operand(opcodes::OP_PUSHCONST, index);
+                if !tag.is_nil() {
+                    let index = self.add_const(tag.as_raw());
+                    self.emit_operand(opcodes::OP_SETTAG, index);
                 }
             }
+            let setter = self.add_const(setter.as_raw());
+            let root = self.add_const(root.as_raw());
+            let field = self.add_const(field.as_raw());
+            self.emit_operand(opcodes::OP_REPLACEMENT_PATH, setter);
+            self.emit(root);
+            self.emit(field);
+            self.emit(i32::from(superassign));
+            self.emit(
+                c_int::try_from(arguments.len() - 1)
+                    .unwrap_or_else(|_| compiler_error("too many subassignment arguments")),
+            );
+            self.emit(rhs_expression);
             true
         }
     }

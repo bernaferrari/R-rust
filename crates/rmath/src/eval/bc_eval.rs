@@ -180,7 +180,9 @@ pub mod opcodes {
     pub const OP_DROP_LINK: i32 = 62;
     /// Invoke a flat replacement function, store its object, retain the RHS.
     pub const OP_REPLACEMENT: i32 = 63;
-    pub const OP_LAST: i32 = 63;
+    /// Bounded root/optional-dollar replacement with explicit local/super scope.
+    pub const OP_REPLACEMENT_PATH: i32 = 64;
+    pub const OP_LAST: i32 = 64;
 }
 
 #[derive(Clone)]
@@ -3360,6 +3362,26 @@ fn private_replacement_owned(
     environment: &Sexp<'static>,
     loops: &[LoopContext],
 ) -> Result<Sexp<'static>, LoopJump> {
+    private_target_call_owned(
+        setter,
+        arguments,
+        tags,
+        Some(rhs_expression),
+        environment,
+        loops,
+    )
+}
+
+/// Calls a getter or setter with separately owning observable syntax and
+/// cached execution arguments. A getter has no value argument.
+fn private_target_call_owned(
+    setter: &Sexp<'static>,
+    arguments: &[Sexp<'static>],
+    tags: &[Option<Sexp<'static>>],
+    rhs_expression: Option<&Sexp<'static>>,
+    environment: &Sexp<'static>,
+    loops: &[LoopContext],
+) -> Result<Sexp<'static>, LoopJump> {
     use crate::sexp::{
         object::SexpError,
         owner::{StoredOwner, with_runtime},
@@ -3409,16 +3431,27 @@ fn private_replacement_owned(
                         .into_owned()?,
                 ))
             })?;
-            let rhs = arguments.first().ok_or(SexpError::AllocationFailed {
-                object: "replacement RHS",
-            })?;
+            let rhs = rhs_expression
+                .map(|_| {
+                    arguments.first().ok_or(SexpError::AllocationFailed {
+                        object: "replacement RHS",
+                    })
+                })
+                .transpose()?;
             let object = arguments.last().ok_or(SexpError::AllocationFailed {
                 object: "replacement target",
             })?;
-            let value =
-                allocator.evaluated_promise_with_expression(rhs_expression, environment, rhs)?;
-            let mut tail = allocator.pairlist_cell(&value, &domain.nil(), &value_tag)?;
-            for index in 1..arguments.len() - 1 {
+            let mut tail = if let Some(expression) = rhs_expression {
+                let value = allocator.evaluated_promise_with_expression(
+                    expression,
+                    environment,
+                    rhs.expect("RHS presence follows expression"),
+                )?;
+                allocator.pairlist_cell(&value, &domain.nil(), &value_tag)?
+            } else {
+                domain.nil()
+            };
+            for index in usize::from(rhs_expression.is_some())..arguments.len() - 1 {
                 tail = allocator.pairlist_cell(
                     &arguments[index],
                     &tail,
@@ -3429,7 +3462,9 @@ fn private_replacement_owned(
             }
             access.require_active()?;
             unsafe {
-                crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
+                if let Some(rhs) = rhs {
+                    crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
+                }
                 crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
             }
             let target =
@@ -3472,6 +3507,144 @@ fn private_replacement_owned(
     }));
     match attempt {
         Ok(result) => Ok(result),
+        Err(payload) => Err(recover_loop_jump(payload, loops)),
+    }
+}
+
+/// Own the selected root/child through the complete getter-inner-outer chain.
+/// No temporary binding exposes a partial update or reselects a mutated root.
+fn private_replacement_path_owned(
+    setter: &Sexp<'static>,
+    root: &Sexp<'static>,
+    field: &Sexp<'static>,
+    superassign: bool,
+    arguments: &mut Vec<Sexp<'static>>,
+    tags: &mut Vec<Option<Sexp<'static>>>,
+    rhs_expression: &Sexp<'static>,
+    environment: &Sexp<'static>,
+    loops: &[LoopContext],
+) -> Result<Sexp<'static>, LoopJump> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{StoredOwner, with_runtime},
+    };
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let owner = StoredOwner::from_value(environment)
+            .and_then(|owner| owner.managed().ok_or(SexpError::RootUnavailable))
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        with_runtime(&owner, |access| {
+            let lookup = access.with_native(|owner| {
+                if superassign {
+                    owner
+                        .sexp(unsafe { ENCLOS(environment.as_raw()) })?
+                        .into_owned()
+                } else {
+                    Ok(environment.clone())
+                }
+            })?;
+            let object = access.with_native(|owner| {
+                owner
+                    .sexp(unsafe { super::eval::Rf_eval(root.as_raw(), lookup.as_raw()) })?
+                    .into_owned()
+            })?;
+            access.require_active()?;
+            unsafe {
+                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+            }
+            let (getter, outer_setter, modified_expression) = if field.is_nil() {
+                (None, None, None)
+            } else {
+                access.with_native(|owner| {
+                    Ok((
+                        Some(
+                            owner
+                                .sexp(unsafe { crate::sexp::symbol::Rf_install(c"$".as_ptr()) })?
+                                .into_owned()?,
+                        ),
+                        Some(
+                            owner
+                                .sexp(unsafe { crate::sexp::symbol::Rf_install(c"$<-".as_ptr()) })?
+                                .into_owned()?,
+                        ),
+                        Some(
+                            owner
+                                .sexp(unsafe {
+                                    crate::sexp::symbol::Rf_install(c"*vtmp*".as_ptr())
+                                })?
+                                .into_owned()?,
+                        ),
+                    ))
+                })?
+            };
+            let child = if let Some(getter) = &getter {
+                match private_target_call_owned(
+                    getter,
+                    &[field.clone(), object.clone()],
+                    &[None, None],
+                    None,
+                    environment,
+                    loops,
+                ) {
+                    Ok(value) => value,
+                    Err(jump) => return Ok(Err(jump)),
+                }
+            } else {
+                object.clone()
+            };
+            arguments
+                .try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "replacement child",
+                })?;
+            tags.try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "replacement child tag",
+                })?;
+            arguments.push(child);
+            tags.push(None);
+            let changed = match private_replacement_owned(
+                setter,
+                arguments,
+                tags,
+                rhs_expression,
+                environment,
+                loops,
+            ) {
+                Ok(value) => value,
+                Err(jump) => return Ok(Err(jump)),
+            };
+            let result = if let Some(outer_setter) = &outer_setter {
+                match private_replacement_owned(
+                    outer_setter,
+                    &[changed, field.clone(), object],
+                    &[None, None, None],
+                    modified_expression.as_ref().expect("dollar RHS expression"),
+                    environment,
+                    loops,
+                ) {
+                    Ok(value) => value,
+                    Err(jump) => return Ok(Err(jump)),
+                }
+            } else {
+                changed
+            };
+            access.with_native(|_| {
+                unsafe {
+                    if superassign {
+                        setVar(root.as_raw(), result.as_raw(), lookup.as_raw());
+                    } else {
+                        defineVar(root.as_raw(), result.as_raw(), environment.as_raw());
+                    }
+                }
+                Ok(())
+            })?;
+            Ok(Ok(result))
+        })
+        .and_then(|result| result)
+        .unwrap_or_else(|error| bc_error(error.to_string()))
+    }));
+    match attempt {
+        Ok(result) => result,
         Err(payload) => Err(recover_loop_jump(payload, loops)),
     }
 }
@@ -3993,6 +4166,86 @@ unsafe fn bc_eval_owned(
                     with_stack_rooted(&stack, result.as_raw(), || {
                         defineVar(symbol.as_raw(), result.as_raw(), rho)
                     });
+                    stack.push_owned(rhs);
+                    super::runtime::set_visible(FALSE);
+                }
+
+                opcodes::OP_REPLACEMENT_PATH => {
+                    let setter =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH function");
+                    let root = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH root");
+                    let field = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH field");
+                    let scope = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH scope");
+                    let count =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH extras");
+                    let expression =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_PATH RHS");
+                    let count = usize::try_from(count)
+                        .unwrap_or_else(|_| bc_error("negative replacement path argument count"));
+                    if count >= stack.depth() {
+                        bc_error("REPLACEMENT_PATH argument stack underflow");
+                    }
+                    let function = own_operand(owned_constant_at(
+                        &constants,
+                        setter as i64,
+                        "REPLACEMENT_PATH function",
+                    ));
+                    let symbol = own_operand(owned_constant_at(
+                        &constants,
+                        root as i64,
+                        "REPLACEMENT_PATH root",
+                    ));
+                    let field = own_operand(owned_constant_at(
+                        &constants,
+                        field as i64,
+                        "REPLACEMENT_PATH field",
+                    ));
+                    let expression = own_operand(owned_constant_at(
+                        &constants,
+                        expression as i64,
+                        "REPLACEMENT_PATH RHS",
+                    ));
+                    if function.typeof_() != SEXPTYPE::SYMSXP
+                        || symbol.typeof_() != SEXPTYPE::SYMSXP
+                        || (!field.is_nil() && field.typeof_() != SEXPTYPE::SYMSXP)
+                        || !matches!(scope, 0 | 1)
+                    {
+                        bc_error("invalid REPLACEMENT_PATH constants or scope");
+                    }
+                    let top = stack.depth();
+                    let mut arguments = Vec::new();
+                    arguments
+                        .try_reserve(count + 1)
+                        .unwrap_or_else(|_| bc_error("cannot allocate replacement path arguments"));
+                    for _ in 0..count {
+                        arguments.push(stack_pop_checked(&mut stack, "REPLACEMENT_PATH extra"));
+                    }
+                    let rhs = stack_pop_checked(&mut stack, "REPLACEMENT_PATH RHS");
+                    let mut tags = private_argument_tags(&mut pending_arg_tags, top, count);
+                    arguments.insert(0, rhs.clone());
+                    tags.try_reserve(1)
+                        .unwrap_or_else(|_| bc_error("cannot allocate replacement path tags"));
+                    tags.insert(0, None);
+                    match private_replacement_path_owned(
+                        &function,
+                        &symbol,
+                        &field,
+                        scope == 1,
+                        &mut arguments,
+                        &mut tags,
+                        &expression,
+                        &rho_owned,
+                        &loop_stack,
+                    ) {
+                        Ok(_changed) => {}
+                        Err(jump) => {
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                            super::runtime::set_visible(FALSE);
+                            continue;
+                        }
+                    }
+                    pin.require_live()
+                        .unwrap_or_else(|error| bc_error(error.to_string()));
                     stack.push_owned(rhs);
                     super::runtime::set_visible(FALSE);
                 }

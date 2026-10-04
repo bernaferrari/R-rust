@@ -28,7 +28,7 @@ the names below identify production regressions and bounded evidence.
 | A live owned value has a deliberate relationship with closure | `sexp::owner::tests::{owned_value_preserves_original_graph_after_runtime_close_and_drop_without_cycle,owned_lazy_value_rejects_revoked_provider_before_callback,owned_lazy_callback_can_close_and_drop_runtime_but_cannot_publish_success}` | Pure owned storage can survive runtime closure; runtime-dependent providers must reject a revoked owner. This is different from a host handle remaining usable after its session closes. |
 | Resource destruction can reenter only after arena loans end | `sexp::gengc::tests::collected_node_resources_reenter_only_after_collection_and_arena_lends_end` | Does not establish every external resource's construction, explicit close, collection, and shutdown matrix. STARMA has a typed canonical resource boundary; its full lifecycle acceptance remains required. |
 | A host handle retains its value privately and rejects reused identities | `owned_retained_*` store regressions | Ten native and strict-provenance Miri store fixtures pass for binding interference, collection, failed publication/writes, foreign identities, generation retirement, sole closure roots, and closure. The separate full embedding suite still requires default package startup. |
-| Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*`, `native_routines::buffers::*`, `dotcode::buffer_dispatch::tests::*` | Thirteen Call/External native and strict-provenance Miri fixtures pass. Nine additional native and Miri cases verify checked, independently owned numerical buffers, original lookup ownership, rejected admission and promoted-result attribute barriers. Eighteen of the 26 captured bundled C/Fortran registrations have checked adapters; eight remain unsupported. Matching registration metadata does not prove handler semantics. Foreign libraries remain an unsafe boundary. |
+| Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*`, `native_routines::buffers::*`, `dotcode::buffer_dispatch::tests::*` | Thirteen Call/External native and strict-provenance Miri fixtures pass. Nine additional native and Miri cases verify checked, independently owned numerical buffers, original lookup ownership, rejected admission and promoted-result attribute barriers. Twenty of the 26 captured bundled C/Fortran registrations have checked adapters; six remain unsupported. Burg and STL acceptance evidence appears below. Matching registration metadata does not prove handler semantics. Foreign libraries remain an unsafe boundary. |
 | GC preambles release their exact temporary ownership on unwind | `owned_gc_*` | Nine native and strict-provenance Miri tests pass for full/lite GC, allocation torture, eval safe points, detached bindings, callback closure, and panic cleanup. The Miri run also verifies the original-runtime capture sole-pin fixture. |
 | Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*`, four `focused_console_*`, and three `public_capture_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four focused interpreter fixtures and three public host-callback fixtures pass strict-provenance Miri. The public capture scope restores its parent or idle bank after a panic, preserves the panic payload, and cleans its original bank after revocation and reentry. |
 
@@ -399,3 +399,21 @@ wrong-package refusal. Warnings-denied all-target Clippy passes in 24.63 seconds
 and assigned formatting passes. Frozen source and interpreter ledgers are
 recorded separately. Structured admission covers 20 of the 26 declared stats
 C/Fortran entries; this does not establish complete numerical API parity.
+
+Compiled replacement now handles a symbol or one dollar-field path through
+typed continuation operands, including assignment into an enclosing environment.
+The executor owns the selected root, child, original RHS and deferred argument
+syntax across getters and both setters. It preserves GNU evaluation order,
+custom `substitute` behavior, exact invisible RHS identity and enclosing-scope
+lookup without exposing a temporary compiler binding. Malformed operands fail
+before any getter executes, and original-runtime revocation denies publication.
+
+Thirty-three compiler and twenty-four executor native cases pass in 27.39 and
+32.88 seconds. Four focused strict-provenance Miri cases pass in 1,118.32 seconds
+with the default alias checker, covering detached constant pools, collection,
+error and panic recovery, revocation and malformed paths. Two independent GNU
+serialized closures execute after the source tree and fallback pool are removed.
+Warnings-denied all-target Clippy passes in 23.74 seconds, and assigned formatting
+passes. Frozen owned sources and the interpreter ledger distinguish subsequent
+independent numerical and methods edits. General replacement chains and full
+methods startup remain separate obligations.
