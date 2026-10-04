@@ -65,6 +65,32 @@ replacement calls retain separate owning syntax and execution graphs, resolve
 the setter once, and preserve the original shared RHS. The checked node factory
 publishes complete promise expression/environment/value links before collection.
 
+S4 primitive generics, method lists, validity functions, inheritance tables,
+and the deferred-default marker now retain their actual values through owning
+fields. Cache replacement and clearing release those roots. Dispatch snapshots
+the values before calling R; its status guard restores the original physical
+runtime even when a callback revokes availability. Task callbacks likewise own
+their function and data, snapshot inputs before evaluation, and restore running
+and visibility state on their original runtime. Stable callback identities make
+removal and insertion during iteration deterministic. The public callback
+wrapper's optional-data, naming, indexing, and warning compatibility remains
+tracked in `rport-2gpp.1.4`.
+
+`eval()` owns the selected expression and environment through callbacks and
+collection. A NULL element in an expression vector participates in evaluation
+and visibility rather than being skipped. Return transfers are consumed only
+by the matching eval context; unmatched transfers continue to unwind. Direct
+native entries use the same original-owner transfer scope as managed calls.
+Closure duplication shares FORMALS, BODY, and CLOENV as GNU R does, snapshots
+those edges before allocation, and duplicates attributes according to the
+requested depth. The collector and object representation are unchanged.
+
+The bounded acceptance evidence and its limits are recorded in
+[`runtime-ownership-acceptance.md`](runtime-ownership-acceptance.md). Typed native
+dispatch (`rport-wpdk.1`), private host roots (`rport-jxfp.10`), and exact console
+capture (`rport-jxfp.11`) remain separate integration obligations; owning runtime
+fields do not by themselves establish those contracts.
+
 Internal unsafe routines still require root and aliasing discipline. Targeted
 strict-provenance Miri runs with default borrow checking cover binding
 publication callbacks, owning options/cache eviction, and replacement graphs
