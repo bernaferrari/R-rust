@@ -3,45 +3,42 @@
 //! Port of R's src/main/version.c
 //!
 //! R version string constants and helpers.
-//! The actual version numbers come from Rversion.h; here we provide
-//! FFI-compatible stubs that can be overridden at link time.
+//! C projections of the same pinned target used by R introspection and streams.
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 /// R major version number (e.g., "4")
-pub const R_MAJOR: &[u8] = b"4\0";
+pub const R_MAJOR: &[u8] = crate::mainutils::compatibility_target::MAJOR_C;
 
 /// R minor version number (e.g., "3.0")
-pub const R_MINOR: &[u8] = b"3.0\0";
+pub const R_MINOR: &[u8] = crate::mainutils::compatibility_target::MINOR_C;
 
 /// R development status (e.g., "Under development (unstable)" or "")
-pub const R_STATUS: &[u8] = b"Under development (unstable)\0";
+pub const R_STATUS: &[u8] = crate::mainutils::compatibility_target::STATUS_C;
 
 /// R release year
-pub const R_YEAR: &[u8] = b"2024\0";
+pub const R_YEAR: &[u8] = crate::mainutils::compatibility_target::YEAR_C;
 
 /// R release month
-pub const R_MONTH: &[u8] = b"04\0";
+pub const R_MONTH: &[u8] = crate::mainutils::compatibility_target::MONTH_C;
 
 /// R release day
-pub const R_DAY: &[u8] = b"24\0";
+pub const R_DAY: &[u8] = crate::mainutils::compatibility_target::DAY_C;
 
 /// R SVN revision number (0 if not from SVN)
-pub const R_SVN_REVISION: c_int = 0;
+pub const R_SVN_REVISION: c_int = crate::mainutils::compatibility_target::REVISION;
 
 /// R nickname
-pub const R_NICK: &[u8] = b"Something for Everyone\0";
+pub const R_NICK: &[u8] = crate::mainutils::compatibility_target::NICKNAME_C;
 
 /// R platform string
-pub const R_PLATFORM: &[u8] = b"x86_64-apple-darwin\0";
+pub const R_PLATFORM: &[u8] = &crate::mainutils::compatibility_target::PLATFORM_C;
 
 /// R CPU architecture
-pub const R_CPU: &[u8] = b"x86_64\0";
+pub const R_CPU: &[u8] = &crate::mainutils::compatibility_target::ARCH_C;
 
 /// R OS name
-pub const R_OS: &[u8] = b"darwin\0";
+pub const R_OS: &[u8] = &crate::mainutils::compatibility_target::OS_C;
 
 /// R internals UUID
 pub const R_INTERNALS_UUID: &[u8] = b"unset\0";
@@ -56,62 +53,57 @@ pub unsafe fn R_version(buf: *mut c_char, len: usize) -> c_int {
             return -1;
         }
 
-        let version_str = CStr::from_ptr(R_version_string());
-        let vbytes = version_str.to_bytes_with_nul();
-        let copy_len = vbytes.len().min(len - 1);
-        ptr::copy_nonoverlapping(vbytes.as_ptr(), buf as *mut u8, copy_len);
-        *buf.add(copy_len) = 0;
-        copy_len as c_int
+        // SAFETY: the compatibility caller owns these `len` writable bytes.
+        let output = std::slice::from_raw_parts_mut(buf.cast::<u8>(), len);
+        crate::mainutils::compatibility_target::write_version(output).unwrap() as c_int
     }
 }
 
 /// Return a pointer to the static R version string.
 ///
-/// Format: "R version MAJOR.MINOR STATUS (YEAR-MONTH-DAY)"
-pub unsafe fn R_version_string() -> *const c_char {
-    // We build a static string. Since we can't use format! at const time,
-    // we use a pre-built static.
-    // For simplicity, use a reasonable default.
-    static VERSION: &[u8] = b"R version 4.3.0 Under development (unstable) (2024-04-24)\0";
-    VERSION.as_ptr() as *const c_char
+/// Identifies the Rust port and its pinned GNU compatibility target.
+pub fn R_version_string() -> *const c_char {
+    crate::mainutils::compatibility_target::VERSION_STRING_C
+        .as_ptr()
+        .cast()
 }
 
 /// Return R_MAJOR
-pub unsafe fn R_get_major() -> *const c_char {
+pub fn R_get_major() -> *const c_char {
     R_MAJOR.as_ptr() as *const c_char
 }
 
 /// Return R_MINOR
-pub unsafe fn R_get_minor() -> *const c_char {
+pub fn R_get_minor() -> *const c_char {
     R_MINOR.as_ptr() as *const c_char
 }
 
 /// Return R_YEAR
-pub unsafe fn R_get_year() -> *const c_char {
+pub fn R_get_year() -> *const c_char {
     R_YEAR.as_ptr() as *const c_char
 }
 
 /// Return R_MONTH
-pub unsafe fn R_get_month() -> *const c_char {
+pub fn R_get_month() -> *const c_char {
     R_MONTH.as_ptr() as *const c_char
 }
 
 /// Return R_DAY
-pub unsafe fn R_get_day() -> *const c_char {
+pub fn R_get_day() -> *const c_char {
     R_DAY.as_ptr() as *const c_char
 }
 
 /// Return R_NICK
-pub unsafe fn R_get_nick() -> *const c_char {
+pub fn R_get_nick() -> *const c_char {
     R_NICK.as_ptr() as *const c_char
 }
 
 /// Return R_PLATFORM
-pub unsafe fn R_get_platform() -> *const c_char {
+pub fn R_get_platform() -> *const c_char {
     R_PLATFORM.as_ptr() as *const c_char
 }
 
 /// Return R_STATUS
-pub unsafe fn R_get_status() -> *const c_char {
+pub fn R_get_status() -> *const c_char {
     R_STATUS.as_ptr() as *const c_char
 }

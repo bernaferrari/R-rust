@@ -26,16 +26,6 @@ use super::*;
 use crate::mainutils::essentials::{elt_real_safe, elt_to_string};
 
 // ---------------------------------------------------------------------------
-fn atomic_rank(t: i32) -> i32 {
-    match t {
-        10 => 1,
-        13 => 2,
-        14 => 3,
-        15 => 4,
-        16 => 5,
-        _ => 0,
-    }
-}
 // Exported functions
 unsafe fn value_deletes_columns(value: SEXP) -> bool {
     unsafe {
@@ -654,13 +644,9 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             {
                 return x;
             } else {
-                let xr = atomic_rank(TYPEOF(x));
-                let yr = atomic_rank(TYPEOF(y));
+                // GNU only initializes a NULL LHS here. VectorAssign performs
+                // the actual RHS type admission after selecting the indices.
                 if isNull(x) {
-                    x = Rf_allocVector(TYPEOF(y), 0);
-                } else if xr > 0 && yr > 0 && yr <= xr {
-                    y = coerceVector(y, TYPEOF(x));
-                } else {
                     x = coerceVector(x, TYPEOF(y));
                 }
             }

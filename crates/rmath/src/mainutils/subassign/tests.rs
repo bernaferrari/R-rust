@@ -23,6 +23,25 @@ mod tests {
     use crate::sexp::symbol::Rf_install;
 
     #[test]
+    fn gnu_null_empty_atomic_assignment_keeps_type_promotion_contracts() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        for script in [
+            "x<-character(); x[logical()]<-NULL; identical(x,character())",
+            "x<-integer(); x[logical()]<-NULL; identical(x,integer())",
+            "x<-integer(); x[logical()]<-1.5; identical(x,double())",
+            "x<-character(); x[logical()]<-1L; identical(x,character())",
+            "x<-NULL; x[2L]<-'z'; identical(x,c(NA_character_,'z'))",
+            "x<-character(); inherits(try(x[1L]<-NULL,silent=TRUE),'try-error')",
+        ] {
+            let result = session
+                .eval_code_with_output_capture(script)
+                .0
+                .unwrap_or_else(|error| panic!("{script}: {error}"));
+            assert_eq!(result.try_logical_elt(0).unwrap(), 1, "{script}");
+        }
+    }
+
+    #[test]
     fn test_do_subassign_handles_empty_r_argument_list() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {

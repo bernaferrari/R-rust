@@ -2001,7 +2001,7 @@ pub unsafe fn do_as_vector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             return ans;
         }
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        if x.is_null() {
             return R_NilValue();
         }
 

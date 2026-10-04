@@ -864,3 +864,32 @@ formatting passed. Frozen source hashes remained unchanged through that footer.
 
 This closes the weighted/GLM unit, not the model-system family. Original
 na.exclude restoration remains tracked separately as rport-wszw.6.2.
+
+## Pinned version metadata and GNU NULL contracts (rport-wszw.7)
+
+A forbid-unsafe compatibility_target module now defines the oracle version, date,
+revision, nickname, real target architecture/OS and explicit Rust-port identity.
+R.Version(), R.version, getRversion(), the C metadata projections and serialized
+writer headers use that same target. Historical minimum-reader versions retain
+their original version-2/version-3 values. This identifies the pinned oracle; it
+does not declare complete GNU R coverage. Static C getters now require no unsafe
+operation. The buffer boundary delegates to a checked slice writer and reports
+text bytes without counting the C terminator.
+
+Original GNU numeric-version formatting preserves names; character conversion
+removes them while retaining missing and empty values. Shared repairs admit NULL
+in the internal pairlist predicate, preserve expression(NULL), and let as.vector
+apply the requested mode to NULL. Empty atomic assignment initializes only a
+NULL LHS; the ordinary VectorAssign type admission handles other vectors. That
+removes an extra coercion which had incorrectly tried to convert an empty
+character LHS into NULL.
+
+Exact staged tree f712fa9efa9d270b94ccda7923cbd701db28d42b was archived separately
+from ongoing agent edits. Its public suite passed all three tests (15.91 seconds),
+its three shared-kernel tests passed, and all-target Clippy plus formatting passed.
+Three metadata tests passed strict-provenance Miri with the default checker and
+isolation (65.53 seconds). Independent pinned GNU controls cover ten NULL modes,
+named/missing/empty versions, empty assignment, type promotion, growth and invalid
+replacement. The additional NULL-kernel Miri run remains pending; its incomplete
+progress is not counted as an aggregate PASS. rport-wszw.7.1 tracks that final
+acceptance. The separate isVectorizable admission gap remains rport-wszw.7.1.1.

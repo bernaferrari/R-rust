@@ -40,28 +40,9 @@ use crate::sexp::symbol::Rf_install;
 // R runtime essentials
 // ---------------------------------------------------------------------------
 
-#[cfg(target_os = "macos")]
-const R_VERSION_OS: &str = "darwin";
-#[cfg(not(target_os = "macos"))]
-const R_VERSION_OS: &str = std::env::consts::OS;
 unsafe fn make_r_version_list(simple_list_class: bool) -> SEXP {
     unsafe {
-        let fields = [
-            ("platform", "rust-port"),
-            ("arch", std::env::consts::ARCH),
-            ("os", R_VERSION_OS),
-            ("system", "rust-port"),
-            ("status", ""),
-            ("major", "4"),
-            ("minor", "4.1"),
-            ("year", "2026"),
-            ("month", "05"),
-            ("day", "09"),
-            ("svn rev", ""),
-            ("language", "R"),
-            ("version.string", "R version 4.4.1 (Rust Port)"),
-            ("nickname", "Rust Port"),
-        ];
+        let fields = crate::mainutils::compatibility_target::FIELDS;
 
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as R_xlen_t);
         if result.is_null() {

@@ -572,7 +572,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "format.numeric_version",
-            "function(x, ...) { x <- unclass(x); y <- rep.int(NA_character_, length(x)); ind <- lengths(x) > 0L; y[ind] <- unlist(lapply(x[ind], paste, collapse = \".\")); y }",
+            "function(x, ...) { x <- unclass(x); y <- rep.int(NA_character_, length(x)); names(y) <- names(x); ind <- lengths(x) > 0L; y[ind] <- unlist(lapply(x[ind], paste, collapse = \".\")); y }",
+        );
+        eval_base_binding(
+            base_env,
+            "as.character.numeric_version",
+            "function(x, ...) as.character(format(x))",
         );
         eval_base_binding(
             base_env,

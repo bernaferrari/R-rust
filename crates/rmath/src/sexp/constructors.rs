@@ -329,14 +329,13 @@ pub unsafe fn Rf_isSymbol(x: SEXP) -> c_int {
     }
 }
 
-/// Check if an SEXP is a list (pairlist).
+/// GNU's list predicate includes NULL and pairlists, but excludes calls.
 pub unsafe fn Rf_isList(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::LISTSXP) as c_int
-    }
+    // SAFETY: the compatibility caller retains a live allocation. The checked
+    // projection avoids dereferencing an arbitrary object header here.
+    unsafe { super::object::Sexp::from_raw(x) }
+        .is_some_and(|value| matches!(value.typeof_(), SEXPTYPE::NILSXP | SEXPTYPE::LISTSXP))
+        as c_int
 }
 
 /// Check if an SEXP is an integer vector.
@@ -465,6 +464,25 @@ mod tests {
                         .downcast_ref::<crate::sexp::context::RError>()
                         .is_some()
                 );
+            }
+        });
+    }
+
+    #[test]
+    fn gnu_null_list_predicate_admits_null_and_pairlists_only() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            assert_eq!(Rf_isList(R_NilValue()), 1);
+            assert_eq!(Rf_isList(ptr::null_mut()), 0);
+            for (kind, expected) in [
+                (SEXPTYPE::LISTSXP, 1),
+                (SEXPTYPE::LANGSXP, 0),
+                (SEXPTYPE::VECSXP, 0),
+                (SEXPTYPE::EXPRSXP, 0),
+                (SEXPTYPE::INTSXP, 0),
+            ] {
+                let value = Rf_allocVector3(kind, 1);
+                assert_eq!(Rf_isList(value), expected, "{kind:?}");
             }
         });
     }

@@ -365,3 +365,47 @@ fn test_coerce_symbol_to_unsupported_type_errors() {
     });
     assert!(err.is_err());
 }
+
+#[test]
+fn gnu_null_as_vector_modes_use_the_shared_coercion_path() {
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let factory = session.owner_token().unwrap().node_factory();
+        let nil = factory.nil();
+        for target in [
+            SEXPTYPE::LGLSXP,
+            SEXPTYPE::INTSXP,
+            SEXPTYPE::REALSXP,
+            SEXPTYPE::CPLXSXP,
+            SEXPTYPE::STRSXP,
+            SEXPTYPE::RAWSXP,
+            SEXPTYPE::VECSXP,
+            SEXPTYPE::EXPRSXP,
+            SEXPTYPE::LISTSXP,
+        ] {
+            let result = factory
+                .wrap(ascommon(nil.as_raw(), nil.as_raw(), target.into()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert_eq!(
+                result.typeof_(),
+                if target == SEXPTYPE::LISTSXP {
+                    SEXPTYPE::NILSXP
+                } else {
+                    target
+                }
+            );
+            if target == SEXPTYPE::EXPRSXP {
+                assert_eq!(result.len(), 1);
+                assert!(result.try_vector_elt(0).unwrap().is_nil());
+            } else {
+                assert_eq!(result.len(), 0);
+            }
+        }
+        assert_eq!(
+            ascommon(nil.as_raw(), nil.as_raw(), SEXPTYPE::ANYSXP.into()),
+            nil.as_raw()
+        );
+    });
+}

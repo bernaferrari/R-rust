@@ -94,9 +94,12 @@ pub unsafe fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
         if !version.is_null() {
             let _version_guard = protect(version);
             let data = INTEGER(version);
-            *data.add(0) = 4;
-            *data.add(1) = 4;
-            *data.add(2) = 1;
+            for (index, component) in crate::mainutils::compatibility_target::COMPONENTS
+                .into_iter()
+                .enumerate()
+            {
+                *data.add(index) = component;
+            }
             SET_VECTOR_ELT(result, 0, version);
         }
 
@@ -128,8 +131,11 @@ pub unsafe fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 /// R's `R.version.string` — returns the full R version string.
 pub unsafe fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let s = c"R version 4.4.1 (Rust Port)";
-        Rf_mkString(s.as_ptr())
+        Rf_mkString(
+            crate::mainutils::compatibility_target::VERSION_STRING_C
+                .as_ptr()
+                .cast(),
+        )
     }
 }
 

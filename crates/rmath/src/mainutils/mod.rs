@@ -16,6 +16,7 @@ pub mod character;
 pub mod clippath;
 pub mod coerce;
 pub mod colors;
+pub(crate) mod compatibility_target;
 pub mod complex_cmath;
 pub mod connections;
 pub mod cum;

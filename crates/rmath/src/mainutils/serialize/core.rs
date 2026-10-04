@@ -20,7 +20,7 @@ pub const R_VERSION_230: c_int = (2 << 16) | (3 << 8);
 pub const R_VERSION_350: c_int = (3 << 16) | (5 << 8);
 
 /// Writer R version in packed form.
-pub const R_VERSION: c_int = R_VERSION_450;
+pub const R_VERSION: c_int = crate::mainutils::compatibility_target::PACKED_VERSION;
 
 /// Chunk size for vector I/O.
 pub const CHUNK_SIZE: usize = 512;
