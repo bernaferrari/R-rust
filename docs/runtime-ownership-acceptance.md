@@ -32,11 +32,12 @@ the names below identify production regressions and bounded evidence.
 | GC preambles release their exact temporary ownership on unwind | `owned_gc_*` | Nine native and strict-provenance Miri tests pass for full/lite GC, allocation torture, eval safe points, detached bindings, callback closure, and panic cleanup. The Miri run also verifies the original-runtime capture sole-pin fixture. |
 | Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*`, four `focused_console_*`, and three `public_capture_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four focused interpreter fixtures and three public host-callback fixtures pass strict-provenance Miri. The public capture scope restores its parent or idle bank after a panic, preserves the panic payload, and cleans its original bank after revocation and reentry. |
 
-Unreachable-cycle coverage and retained-memory measurements must include
-environments, closures, promises, and external resources together. The current
-node counts and root-release assertions do not measure resident memory after
-retaining one small value, allocating a large temporary graph, closing the
-session, and releasing the final value. Broad runtime borrowing work remains
+Unreachable-cycle coverage must include environments, closures, promises, and
+external resources together. The targeted retention acceptance below measures
+accounted bytes, physical backing release, and process resident memory while
+retaining one small value and collecting a large temporary graph. It does not
+establish reclamation of every mixed resource cycle or immediate return of
+resident pages to the operating system. Broad runtime borrowing work remains
 tracked in `rport-sg9a`; the acceptance matrix must not substitute for that work.
 
 ## Verification checkpoint
@@ -453,3 +454,32 @@ median times of 0.914 ms for 10,000 clones and 5.898 ms for 10,000 independent
 wraps. There is no previous-version or GNU performance baseline. Observed
 process RSS remains about 89 MiB after release, so exact heap reclamation does
 not establish immediate return of those resident pages to the operating system.
+
+Promise forcing now admits evaluation through typed states over the canonical
+full `gp` field. An owning guard marks ordinary interrupted evaluation and
+releases its root on unwind. Recursive forcing reports GNU's specific error
+with the original call. Restart-warning handlers already observe evaluating
+state; if that warning aborts, including conversion to an error, the promise
+remains evaluating as independently verified in GNU R. Successful publication
+authenticates the original live domain and every edge, then updates sharedness,
+the cached value, environment and idle state through checked header storage.
+The state module and its minimal managed lifecycle fixtures forbid unsafe code.
+
+Warnings, recursive-error signaling and evaluation share one original-owner
+unwind check. A live callback preserves its exact panic payload; revocation
+returns a checked failed force. The bounded recursive/retry baseline fails all
+three GNU contracts, and the actual restart-warning GC baseline fails its
+revoked-owner case. The durable GNU script independently asserts error calls,
+retry warnings, caching, warning-handler reentry and warning-to-error behavior.
+
+Twenty focused native cases pass, including the complete public GNU script
+through real base startup. Fourteen strict-provenance Miri cases pass with the
+default alias checker and only leak checking disabled: six state lifecycle
+cases in 382.86 seconds, two actual warning-GC cases in 110.17 seconds, and six
+owning evaluation controls in 397.41 seconds. The first six exercise the
+unchanged state helper before the separately verified callback-unwind repair;
+the recorded source ledgers retain that distinction. Public base fixtures are
+native evidence, while the Miri fixtures use the minimal managed profile.
+All-target warnings-denied Clippy and assigned formatting pass. Full default
+methods startup remains unresolved, and nested source temporary-binding
+cleanup is tracked separately in `rport-hah9u.32.5`.

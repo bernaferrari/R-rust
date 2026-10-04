@@ -15,8 +15,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use super::accessors::{
-    CAR, CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR,
-    SETTAG, TAG, TYPEOF,
+    CAR, CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SETCAR, SETCDR, SETTAG, TAG, TYPEOF,
 };
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
@@ -656,6 +655,22 @@ pub unsafe fn find_var_binding_result<'a>(
 // forcePromise — safe version
 // ---------------------------------------------------------------------------
 
+/// Every forcing callback revalidates the original execution authority even
+/// when it unwinds. A live owner preserves the exact panic payload; revocation
+/// yields a checked failure instead of publishing a replacement runtime's error.
+fn promise_callback<T>(
+    authority: &super::owner::StoredOwner<'_>,
+    callback: impl FnOnce() -> T,
+) -> super::object::SexpResult<T> {
+    authority.require_active()?;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(callback));
+    authority.require_active()?;
+    match result {
+        Ok(value) => Ok(value),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
 /// Force evaluation of a promise, returning its value.
 ///
 /// If the input is not a promise, returns it as-is.
@@ -707,11 +722,36 @@ pub unsafe fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult
             }
             let environment = prom.try_prenv()?;
             let nil = factory.nil();
+            let evaluation = match promise_state::Admission::begin(prom.clone())? {
+                promise_state::Admission::Evaluating => {
+                    let call =
+                        factory.wrap(unsafe { crate::mainutils::errors::R_getCurrentCall() })?;
+                    promise_callback::<()>(&authority, || {
+                        crate::mainutils::errors::errorcall_str(
+                            call.as_raw(),
+                            promise_state::RECURSIVE,
+                        );
+                    })?;
+                    unreachable!("recursive promise signaling always unwinds");
+                }
+                promise_state::Admission::Ready(evaluation) => evaluation,
+                promise_state::Admission::Restart(restart) => {
+                    let call =
+                        factory.wrap(unsafe { crate::mainutils::errors::R_getCurrentCall() })?;
+                    promise_callback(&authority, || unsafe {
+                        crate::mainutils::errors::Rf_warningcall1(
+                            call.as_raw(),
+                            c"restarting interrupted promise evaluation".as_ptr(),
+                        );
+                    })?;
+                    restart.enter()
+                }
+            };
 
             // Every selected edge and the original physical owner remain retained
             // through evaluation and context cleanup. Capture the result before
             // releasing that context, which may itself run R callbacks.
-            let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let value = promise_callback(&authority, || {
                 authority.require_active()?;
                 let context = unsafe {
                     crate::sexp::context::begin_context_guard(
@@ -732,21 +772,8 @@ pub unsafe fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult
                 drop(context);
                 authority.require_active()?;
                 Ok::<_, SexpError>(result)
-            }));
-            // A replacement ambient runtime cannot authenticate either a successful
-            // value or an unwind. Preserve the exact payload while the original is
-            // live; revocation becomes a failed checked force.
-            authority.require_active()?;
-            let value = match evaluated {
-                Ok(result) => result?,
-                Err(payload) => std::panic::resume_unwind(payload),
-            };
-            unsafe {
-                SET_PRVALUE(prom.as_raw(), value.as_raw());
-                SET_PRENV(prom.as_raw(), nil.as_raw());
-                // GNU's cached promise value is shared with the promise itself.
-                super::accessors::SET_NAMED(value.as_raw(), 2);
-            }
+            })??;
+            evaluation.publish(&factory.domain(), &value, &nil)?;
             authority.require_active()?;
             Ok(Some(value))
         })
@@ -2147,3 +2174,18 @@ mod shared_index_tests;
 #[cfg(test)]
 #[path = "envir/owned_promise_tests.rs"]
 mod owned_promise_tests;
+
+#[cfg(all(test, not(miri)))]
+#[path = "envir/promise_state_tests.rs"]
+mod promise_state_tests;
+
+#[path = "envir/promise_state.rs"]
+mod promise_state;
+
+#[cfg(test)]
+#[path = "envir/promise_state_lifecycle_tests.rs"]
+mod promise_state_lifecycle_tests;
+
+#[cfg(test)]
+#[path = "envir/promise_warning_owner_tests.rs"]
+mod promise_warning_owner_tests;
