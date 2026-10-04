@@ -455,10 +455,11 @@ impl HeapIdentity {
             PhysicalBacking::Persistent(store) => store.replace_node(node.id(), value),
         });
         result?;
+        let prepend = super::env_hash::prepare_binding_prepend(self, &original, &value);
         owners
             .binding_tables
             .borrow_mut()
-            .invalidate_node(node.link()?, &original, &value);
+            .invalidate_node(node.link()?, &original, &value, prepend.as_ref());
         Some(())
     }
 

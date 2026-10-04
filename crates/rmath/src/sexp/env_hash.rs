@@ -34,8 +34,97 @@ impl BindingIndex {
         }
     }
 }
+/// Callback-free proof captured before borrowing the canonical index.
+/// The new head must prepend exactly one cell to the old frame, using an
+/// immutable original-domain symbol name. Index membership proves acyclicity.
+pub(crate) struct BindingPrepend {
+    head: NodeLink,
+    tail: NodeLink,
+    tag: NodeLink,
+    name: Vec<u8>,
+}
+
+pub(crate) fn prepare_binding_prepend(
+    heap: &HeapIdentity,
+    old: &SexprecCore,
+    new: &SexprecCore,
+) -> Option<BindingPrepend> {
+    let (NodeBody::Environment(old), NodeBody::Environment(new)) = (old.data, new.data) else {
+        return None;
+    };
+    if old.frame == new.frame {
+        return None;
+    }
+    let ResolvedLink::Node { allocation, .. } = heap.resolve_link(new.frame)? else {
+        return None;
+    };
+    let NodeBody::List(cell) = heap.node_snapshot(&allocation)?.data else {
+        return None;
+    };
+    if cell.cdrval != old.frame
+        && !(old.frame.is_null()
+            && matches!(heap.resolve_link(cell.cdrval),
+            Some(ResolvedLink::Singleton(nil)) if nil.snapshot().sxpinfo.type_of() == SEXPTYPE::NILSXP))
+    {
+        return None;
+    }
+    let ResolvedLink::Node {
+        allocation: tag, ..
+    } = heap.resolve_link(cell.tagval)?
+    else {
+        return None;
+    };
+    Some(BindingPrepend {
+        head: new.frame,
+        tail: old.frame,
+        tag: cell.tagval,
+        name: symbol_bytes(heap, &tag)?,
+    })
+}
+
+impl BindingIndex {
+    fn prepend(&mut self, cell: &BindingPrepend) -> bool {
+        if !self.valid || self.frame != cell.tail || self.members.contains(&cell.head) {
+            return false;
+        }
+        // Reserve before any semantic mutation. Failed allocation leaves the
+        // table invalidated by its caller; no partial proof can be published.
+        if self.members.try_reserve(1).is_err()
+            || self.bindings.try_reserve(1).is_err()
+            || self.first_names.try_reserve(1).is_err()
+        {
+            return false;
+        }
+        let mut name = Vec::new();
+        if name.try_reserve_exact(cell.name.len()).is_err() {
+            return false;
+        }
+        name.extend_from_slice(&cell.name);
+        if let Some(old_first) = self.first_names.get(name.as_slice()).copied() {
+            // Distinct symbols can have byte-equal names. All such exact-tag
+            // entries must continue selecting the first canonical binding.
+            for binding in self.bindings.values_mut() {
+                if *binding == old_first {
+                    *binding = cell.head;
+                }
+            }
+        }
+        self.members.insert(cell.head);
+        self.first_names.insert(name, cell.head);
+        self.bindings.insert(cell.tag, cell.head);
+        self.frame = cell.head;
+        true
+    }
+}
+
 impl BindingTables {
-    pub(crate) fn invalidate_node(&mut self, node: NodeLink, old: &SexprecCore, new: &SexprecCore) {
+    pub(crate) fn invalidate_node(
+        &mut self,
+        node: NodeLink,
+        old: &SexprecCore,
+        new: &SexprecCore,
+        prepend: Option<&BindingPrepend>,
+    ) {
         let shape_changed = old.sxpinfo.type_of() != new.sxpinfo.type_of()
             || std::mem::discriminant(&old.data) != std::mem::discriminant(&new.data);
         let frame_changed = match (old.data, new.data) {
@@ -52,9 +141,15 @@ impl BindingTables {
             (NodeBody::Symbol(old), NodeBody::Symbol(new)) => old.pname != new.pname,
             _ => shape_changed,
         };
+        if !frame_changed && !chain_changed && !symbol_changed {
+            return;
+        }
         for (env, table) in &mut self.tables {
-            if (frame_changed && *env == node)
-                || (chain_changed && table.members.contains(&node))
+            if frame_changed && *env == node {
+                if !prepend.is_some_and(|cell| table.prepend(cell)) {
+                    table.valid = false;
+                }
+            } else if (chain_changed && table.members.contains(&node))
                 || (symbol_changed && table.bindings.contains_key(&node))
             {
                 table.valid = false;
@@ -437,6 +532,247 @@ mod tests {
         unsafe { crate::sexp::envir::find_var_in_frame_result(env.clone(), key.clone()) }.unwrap()
     }
 
+    fn assert_canonical_index(env: &Sexp<'_>) {
+        let node = env.allocation().unwrap();
+        let heap = node.heap_identity();
+        let NodeBody::Environment(body) = heap.node_snapshot(node).unwrap().data else {
+            panic!("expected environment");
+        };
+        assert!(
+            heap.with_binding_tables(|tables| {
+                let table = tables.tables.get(&node.link().unwrap()).unwrap();
+                table.valid && table.frame == body.frame
+            })
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn owned_binding_index_definitions_keep_canonical_index_across_prepends_updates_and_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let env = environment(&factory, &factory.nil());
+        let mut names = Vec::new();
+        for index in 0..256 {
+            let name = symbol(&factory, &format!("defined_index_{index}"));
+            let value = integer(&factory, index);
+            assert!(unsafe {
+                crate::sexp::envir::define_var_safe(name.clone(), value, env.clone())
+            });
+            // Check before lookup: rebuilding a stale table would conceal a
+            // quadratic regression in the canonical insertion path.
+            assert_canonical_index(&env);
+            names.push(name);
+        }
+        for (index, name) in names.iter().enumerate() {
+            assert_eq!(
+                lookup(&env, name).unwrap().integer_elt(0),
+                Some(index as i32)
+            );
+        }
+        let first_cell = env
+            .try_frame()
+            .unwrap()
+            .allocation()
+            .unwrap()
+            .link()
+            .unwrap();
+        unsafe {
+            crate::sexp::envir::define_var_safe(
+                names[127].clone(),
+                integer(&factory, 999),
+                env.clone(),
+            )
+        };
+        assert_canonical_index(&env);
+        assert_eq!(
+            env.try_frame().unwrap().allocation().unwrap().link(),
+            Some(first_cell)
+        );
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert_canonical_index(&env);
+        assert_eq!(lookup(&env, &names[127]).unwrap().integer_elt(0), Some(999));
+        assert_eq!(lookup(&env, &names[0]).unwrap().integer_elt(0), Some(0));
+    }
+
+    #[test]
+    fn owned_binding_index_prepend_redirects_aliases_and_shared_tail_edits_invalidate() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let key = symbol(&factory, "prepended_alias");
+        let other = symbol(&factory, "prepended_other");
+        let alias = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::SYMSXP)))
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SET_PRINTNAME(
+                alias.as_raw(),
+                key.try_printname().unwrap().as_raw(),
+            )
+        };
+        let tail = factory
+            .pairlist_cell(&integer(&factory, 11), &factory.nil(), &key)
+            .unwrap();
+        let left = environment(&factory, &tail);
+        let right = environment(&factory, &tail);
+        assert_eq!(lookup(&left, &alias).unwrap().integer_elt(0), Some(11));
+        assert_eq!(lookup(&right, &key).unwrap().integer_elt(0), Some(11));
+        let head = factory
+            .pairlist_cell(&integer(&factory, 22), &tail, &alias)
+            .unwrap();
+        unsafe { crate::sexp::accessors::SET_FRAME(left.as_raw(), head.as_raw()) };
+        assert_canonical_index(&left);
+        assert_canonical_index(&right);
+        for name in [&key, &alias] {
+            assert_eq!(lookup(&left, name).unwrap().integer_elt(0), Some(22));
+            assert_eq!(lookup(&right, name).unwrap().integer_elt(0), Some(11));
+        }
+        unsafe { crate::sexp::accessors::SETTAG(tail.as_raw(), other.as_raw()) };
+        assert_eq!(lookup(&right, &other).unwrap().integer_elt(0), Some(11));
+        assert!(lookup(&right, &key).is_none());
+        assert_eq!(lookup(&left, &other).unwrap().integer_elt(0), Some(11));
+        unsafe { crate::sexp::accessors::SETCDR(head.as_raw(), factory.nil().as_raw()) };
+        assert!(lookup(&left, &other).is_none());
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert_eq!(lookup(&left, &key).unwrap().integer_elt(0), Some(22));
+        assert_eq!(lookup(&right, &other).unwrap().integer_elt(0), Some(11));
+    }
+
+    #[test]
+    fn owned_binding_definition_preserves_collecting_callback_insertions() {
+        for same_name in [false, true] {
+            let session = RSession::new_for_gc_tests();
+            let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+            let env = environment(&factory, &factory.nil());
+            let outer_name = symbol(&factory, "outer_definition");
+            let callback_name = if same_name {
+                outer_name.clone()
+            } else {
+                symbol(&factory, "callback_definition")
+            };
+            let outer_value = integer(&factory, 99);
+            let callback_value = integer(&factory, 17).into_owned().unwrap();
+            let fired = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = fired.clone();
+            let callback_env = env.clone().into_owned().unwrap();
+            let callback_key = callback_name.clone().into_owned().unwrap();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    instance::with_required_current_instance(|instance| unsafe {
+                        (*instance).memory_state.gc_force_gap = 0;
+                    });
+                    unsafe {
+                        crate::sexp::envir::define_var_safe(
+                            callback_key.clone(),
+                            callback_value.clone(),
+                            callback_env.clone(),
+                        )
+                    };
+                    crate::sexp::gengc::full_gc();
+                }
+            }));
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            unsafe {
+                crate::sexp::envir::define_var_safe(outer_name.clone(), outer_value, env.clone())
+            };
+            assert!(fired.get());
+            assert_canonical_index(&env);
+            assert_eq!(lookup(&env, &outer_name).unwrap().integer_elt(0), Some(99));
+            if !same_name {
+                assert_eq!(
+                    lookup(&env, &callback_name).unwrap().integer_elt(0),
+                    Some(17)
+                );
+                assert!(
+                    env.try_frame()
+                        .unwrap()
+                        .try_cdr()
+                        .unwrap()
+                        .try_cdr()
+                        .unwrap()
+                        .is_nil()
+                );
+            } else {
+                assert!(env.try_frame().unwrap().try_cdr().unwrap().is_nil());
+            }
+        }
+    }
+
+    #[test]
+    fn owned_binding_definition_active_setter_keeps_argument_and_call_through_gc() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let key = symbol(&factory, "active_definition");
+        let written = symbol(&factory, "active_definition_written");
+        let global = session.global_env().unwrap();
+        let expr = session
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "function(value) { gc(); active_definition_written <<- value }",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let handler = factory
+            .wrap(unsafe { crate::eval::eval::Rf_eval(expr.as_raw(), global.as_raw()) })
+            .unwrap();
+        let env = environment(&factory, &factory.nil());
+        unsafe {
+            crate::sexp::envir::make_active_binding_raw(
+                env.as_raw(),
+                key.as_raw(),
+                handler.as_raw(),
+            )
+        };
+        let value = integer(&factory, 123);
+        session.with_active_in(|instance| unsafe { (*instance).gc_state.gc_pending = true });
+        unsafe { crate::sexp::envir::define_var_safe(key, value, env.clone()) };
+        assert_eq!(lookup(&global, &written).unwrap().integer_elt(0), Some(123));
+        assert_canonical_index(&env);
+    }
+
+    #[test]
+    fn owned_binding_definition_rechecks_locks_after_collecting_callback() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let env = environment(&factory, &factory.nil());
+        let key = symbol(&factory, "locked_during_definition");
+        let value = integer(&factory, 19);
+        let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let fired = observed.clone();
+        let callback_env = env.clone().into_owned().unwrap();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            fired.set(true);
+            instance::with_required_current_instance(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 0;
+            });
+            crate::sexp::envir::lock_environment_raw(callback_env.as_raw());
+        }));
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::sexp::envir::define_var_safe(key.clone(), value, env.clone())
+        }));
+        assert!(observed.get());
+        let error = result
+            .unwrap_err()
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap();
+        assert!(error.message.contains("locked environment"));
+        assert!(lookup(&env, &key).is_none());
+        assert!(env.try_frame().unwrap().is_nil());
+        assert_canonical_index(&env);
+    }
+
     #[test]
     fn owned_binding_index_reads_current_cells_and_invalidates_detached_live_members() {
         let session = RSession::new_for_gc_tests();
@@ -778,8 +1114,18 @@ mod tests {
             BindingLookup::Unavailable
         );
         let error =
-            unsafe { crate::sexp::envir::find_var_in_frame_result(env, missing) }.unwrap_err();
+            unsafe { crate::sexp::envir::find_var_in_frame_result(env.clone(), missing.clone()) }
+                .unwrap_err();
         assert!(error.contains("cyclic binding chain"), "{error}");
+        let definition = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::sexp::envir::define_var_safe(missing, integer(&factory, 2), env.clone())
+        }));
+        let error = definition
+            .unwrap_err()
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap();
+        assert!(error.message.contains("cyclic binding chain"));
+        assert_eq!(env.try_frame().unwrap(), cell);
     }
 
     #[test]

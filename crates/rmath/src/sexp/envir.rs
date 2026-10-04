@@ -18,7 +18,7 @@ use super::accessors::{
     CAR, CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR,
     SETTAG, TAG, TYPEOF,
 };
-use super::constructors::{Rf_cons, Rf_lang2};
+use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_EmptyEnv, R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::{with_current_instance, with_required_current_instance};
@@ -352,30 +352,60 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
 }
 
 fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
-    unsafe {
-        if TYPEOF(fun) == SEXPTYPE::CLOSXP {
-            let args = value
-                .map(|value| Rf_cons(value, R_NilValue()))
-                .unwrap_or_else(|| R_NilValue());
-            let call = Rf_cons(fun, args);
-            if !call.is_null() {
-                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-            }
-            return crate::eval::closure::applyClosure(call, fun, args, env, R_NilValue(), 1);
+    // This translated boundary immediately acquires actual original-domain
+    // values. Argument/call nodes stay owned through collection and R reentry.
+    let owner = unsafe { super::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let env = owner
+        .sexp(env)
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let fun = owner
+        .sexp(fun)
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let value = value.map(|value| {
+        owner
+            .sexp(value)
+            .unwrap_or_else(|error| binding_error(error.to_string()))
+    });
+    let factory = owner.node_factory();
+    let nil = factory.nil();
+    let args = match &value {
+        Some(value) => factory
+            .pairlist_cell(value, &nil, &nil)
+            .unwrap_or_else(|error| binding_error(error.to_string())),
+        None => nil.clone(),
+    };
+    let call = factory
+        .pairlist_cell(&fun, &args, &nil)
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    unsafe { crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int()) };
+    let result = unsafe {
+        if fun.is_closure() {
+            crate::eval::closure::applyClosure(
+                call.as_raw(),
+                fun.as_raw(),
+                args.as_raw(),
+                env.as_raw(),
+                nil.as_raw(),
+                1,
+            )
+        } else {
+            crate::eval::eval::Rf_eval(call.as_raw(), env.as_raw())
         }
-
-        let call = match value {
-            Some(value) => Rf_lang2(fun, value),
-            None => {
-                let call = Rf_cons(fun, R_NilValue());
-                if !call.is_null() {
-                    crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-                }
-                call
-            }
-        };
-        crate::eval::eval::Rf_eval(call, env)
-    }
+    };
+    owner
+        .require_active()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    owner
+        .sexp(result)
+        .unwrap_or_else(|error| binding_error(error.to_string()))
+        .as_raw()
 }
 
 /// Typed, owner-scoped environment facade.
@@ -706,6 +736,74 @@ pub unsafe fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>
 // defineVar — safe version
 // ---------------------------------------------------------------------------
 
+/// Resolve a binding cell without evaluating its active binding. Only a
+/// complete canonical index can establish absence; the fallback bounds cycles.
+fn definition_cell<'s>(rho: &Sexp<'s>, symbol: &Sexp<'s>) -> EnvResult<Option<Sexp<'s>>> {
+    match super::env_hash::hash_binding_lookup(rho, symbol) {
+        super::env_hash::BindingLookup::Absent => return Ok(None),
+        super::env_hash::BindingLookup::Cell(link) => {
+            return rho
+                .checked_child(link)
+                .map(Some)
+                .map_err(|error| sexp_err("binding definition", error));
+        }
+        super::env_hash::BindingLookup::Unavailable => {}
+    }
+    let mut current = rho
+        .try_frame()
+        .map_err(|error| sexp_err("binding frame", error))?;
+    let mut seen = hashbrown::HashSet::new();
+    while !current.is_nil() {
+        let link = current
+            .allocation()
+            .ok()
+            .and_then(|node| node.link())
+            .ok_or_else(|| "binding definition: invalid binding cell".to_owned())?;
+        seen.try_reserve(1)
+            .map_err(|_| "binding definition: allocation failed".to_owned())?;
+        if !seen.insert(link) {
+            return Err("binding definition: cyclic binding chain".to_owned());
+        }
+        let tag = current
+            .try_tag()
+            .map_err(|error| sexp_err("binding tag", error))?;
+        if symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()) {
+            return Ok(Some(current));
+        }
+        current = current
+            .try_cdr()
+            .map_err(|error| sexp_err("binding chain", error))?;
+    }
+    Ok(None)
+}
+
+unsafe fn update_definition_cell(
+    owner: super::owner::OwnerToken<'_>,
+    rho: &Sexp<'_>,
+    symbol: &Sexp<'_>,
+    value: &Sexp<'_>,
+    cell: &Sexp<'_>,
+) {
+    if binding_is_locked_raw(rho.as_raw(), symbol.as_raw()) {
+        binding_error("cannot change value of locked binding");
+    }
+    if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
+        let function = owner
+            .sexp(fun)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        call_active_binding(rho.as_raw(), function.as_raw(), Some(value.as_raw()));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        return;
+    }
+    unsafe {
+        SETCAR(cell.as_raw(), value.as_raw());
+        super::accessors::SET_MISSING(cell.as_raw(), 0);
+    }
+    increment_named_on_assign(value.as_raw());
+}
+
 /// Define a variable in the given environment's frame.
 ///
 /// If the symbol already exists, its value is updated.
@@ -714,80 +812,86 @@ pub unsafe fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
 pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool {
-    if !rho.clone().is_environment() {
+    if !rho.is_environment() || !symbol.is_symbol() {
         return false;
     }
-
-    // Read before any SET_FRAME. A later lookup would miss the peer once the
-    // heads differ.
-    let peer = unsafe { base_binding_peer(rho.clone().as_raw()) };
-    let frame = match rho.clone().try_frame() {
-        Ok(f) => f,
-        Err(_) => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
-    };
-
-    for cell in PairlistIter::new(frame.clone()) {
-        if cell
-            .clone()
-            .try_tag()
-            .clone()
-            .ok()
-            .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
-        {
-            if binding_is_locked_raw(rho.clone().as_raw(), symbol.clone().as_raw()) {
-                binding_error("cannot change value of locked binding");
-            }
-            if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw())
-            {
-                call_active_binding(rho.as_raw(), fun, Some(value.as_raw()));
-                return true;
-            }
-            unsafe {
-                let raw = cell.clone().as_raw();
-                SETCAR(raw, value.clone().as_raw());
-                super::accessors::SET_MISSING(raw, 0);
-            }
-
-
-            increment_named_on_assign(value.clone().as_raw());
-            return true;
-        }
+    let owner = unsafe { super::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let factory = owner.node_factory();
+    let domain = factory.domain();
+    for input in [&rho, &symbol, &value] {
+        domain
+            .link(input)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
     }
-
-    if environment_is_locked_raw(rho.clone().as_raw()) {
-        binding_error("cannot add bindings to a locked environment");
-    }
-
-    let new_cell = unsafe { Rf_cons(value.clone().as_raw(), frame.as_raw()) };
-    if !new_cell.is_null() {
-        unsafe {
-            SETTAG(new_cell, symbol.clone().as_raw());
-            SET_FRAME(rho.clone().as_raw(), new_cell);
-            mirror_base_frame(rho.clone().as_raw(), peer);
-        }
-        increment_named_on_assign(value.clone().as_raw());
-
-
-        let peer_has_hash =
-            peer.is_some_and(|peer| super::env_hash::env_has_hash_table(peer));
-        if !super::env_hash::env_has_hash_table(rho.clone().as_raw()) && !peer_has_hash {
-            let nil = unsafe { R_NilValue() };
-            let mut count = 0usize;
-            let mut cur = unsafe { super::accessors::FRAME(rho.clone().as_raw()) };
-            while !cur.is_null() && cur != nil {
-                count += 1;
-                if count >= 100 {
-                    super::env_hash::promote_to_hash_table(rho.as_raw());
-                    break;
-                }
-                cur = unsafe { super::accessors::CDR(cur) };
-            }
-        }
-
+    let lookup = || definition_cell(&rho, &symbol).unwrap_or_else(|error| binding_error(error));
+    if let Some(cell) = lookup() {
+        unsafe { update_definition_cell(owner, &rho, &symbol, &value, &cell) };
         return true;
     }
-
-    false
+    if environment_is_locked_raw(rho.as_raw()) {
+        binding_error("cannot add bindings to a locked environment");
+    }
+    let previous_frame = rho
+        .try_frame()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    let new_cell = factory
+        .pairlist_cell(&value, &previous_frame, &symbol)
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    // Allocation may run collecting callbacks which prepend, replace, lock,
+    // or install an active binding. Resolve the actual current frame again;
+    // never overwrite it with the pre-allocation snapshot.
+    if let Some(cell) = lookup() {
+        unsafe { update_definition_cell(owner, &rho, &symbol, &value, &cell) };
+        return true;
+    }
+    if environment_is_locked_raw(rho.as_raw()) {
+        binding_error("cannot add bindings to a locked environment");
+    }
+    let frame = rho
+        .try_frame()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    // Only the owning cells and copied identities remain live while the
+    // canonical mutation updates its one existing nonowning binding index.
+    unsafe { SETCDR(new_cell.as_raw(), frame.as_raw()) };
+    let peer = unsafe { base_binding_peer(rho.as_raw()) };
+    let peer_owner = peer.map(|peer| {
+        domain
+            .wrap(peer)
+            .unwrap_or_else(|error| binding_error(error.to_string()))
+    });
+    unsafe {
+        SET_FRAME(rho.as_raw(), new_cell.as_raw());
+        mirror_base_frame(rho.as_raw(), peer_owner.as_ref().map(|peer| peer.as_raw()));
+    }
+    increment_named_on_assign(value.as_raw());
+    let peer_has_hash = peer_owner
+        .as_ref()
+        .is_some_and(|peer| super::env_hash::env_has_hash_table(peer.as_raw()));
+    if !super::env_hash::env_has_hash_table(rho.as_raw()) && !peer_has_hash {
+        let mut count = 0usize;
+        let mut current = new_cell;
+        while !current.is_nil() {
+            count += 1;
+            if count >= 100 {
+                super::env_hash::promote_to_hash_table(rho.as_raw());
+                break;
+            }
+            current = current
+                .try_cdr()
+                .unwrap_or_else(|error| binding_error(error.to_string()));
+        }
+    }
+    owner
+        .require_active()
+        .unwrap_or_else(|error| binding_error(error.to_string()));
+    true
 }
 
 // ---------------------------------------------------------------------------
