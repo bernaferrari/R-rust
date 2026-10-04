@@ -997,7 +997,7 @@ GNU contract and runtime namespace tests remain independent supporting evidence.
 This completes the formerly bounded/incomplete public gate; it does not claim
 all private compiler operations, every execution path or whole-HEAD CI parity.
 
-## Portable original datasets: native and Wasm candidate (rport-wszw.2)
+## Verified portable original datasets (rport-wszw.2)
 
 The portable package retains all 108 original lazy objects, their captured key
 syntax and the 91 public data topics. Authenticated assets include the original
@@ -1014,11 +1014,15 @@ checks including that complete byte stream. Independent pinned GNU contracts,
 reproducible asset generation, five tooling tests, all-target Clippy and assigned
 formatting passed. The frozen 30-file candidate is checkpointed for broader CI.
 
-Its eight-case strict Miri run continues unchanged and has no aggregate footer
-yet, so rport-wszw.2 stays open. Removed lazy bindings/malformed namespace
-metadata, generic browser filename I/O and public namespace listing are separate
-remaining items (rport-wszw.2.3, rport-wszw.11 and rport-wszw.12). This checkpoint
-does not claim arbitrary namespace mutation compatibility or complete R parity.
+All eight strict-provenance Miri cases completed in 10,081.85 seconds with
+default alias checking and isolation; the wrapper exited successfully. The
+original 30-file selection remained unchanged, including the full inventory,
+saved-promise collection and lifecycle cases. That proof belongs to its loaded
+snapshot; separate native/Wasm receipts authenticate later metadata and ASCII
+changes. Removed bindings and malformed metadata are verified separately below.
+Generic browser filename I/O and public namespace listing remain separate items
+(`rport-wszw.11` and `rport-wszw.12`). This closes portable normal dataset loading,
+not arbitrary namespace mutation compatibility or complete R parity.
 
 ## Immutable CI checkpoint (rport-jxfp.3.12.6)
 
@@ -1188,7 +1192,7 @@ strict addition complements the prior completed fifteen-case owning mget proof;
 it does not claim seventeen newly rerun Miri cases. Bare callable fallback
 admission remains tracked separately in `rport-wszw.14.1`.
 
-## Portable dataset namespace mutation: native candidate (rport-wszw.2.3)
+## Verified portable dataset namespace mutation (rport-wszw.2.3)
 
 A removed lazy binding is now absent instead of returning the unbound sentinel
 as a value. Public `::` and `:::` report the independently observed GNU missing
@@ -1202,10 +1206,12 @@ candidate passes the two core cases in 0.01 seconds and both public cases in
 4.34 seconds. All eight original native dataset cases and all seven unchanged
 full public cases pass, the latter in 56.77 seconds, preserving all 108 object
 contracts and exact serialized bytes. All-target rmath/r-embed Clippy with
-memory profiling and denied warnings and assigned formatting pass. Two focused
-mutation Miri cases await the existing eight-case dataset run; neither pending
-selection is counted as complete. The five-file ledger authenticates this
-native candidate independently of other agents’ changes.
+memory profiling and denied warnings and assigned formatting pass. Both focused
+strict-provenance Miri cases completed in 176.01 seconds with default alias
+checking and isolation and a successful wrapper exit. Their authenticated
+five-file source ledger matches the published main milestone; no assigned
+source changed during the run. This evidence is independent of the original
+eight-case proof and does not certify unrelated concurrent changes.
 
 ## Owning covratio arithmetic warning calls: native candidate (rport-wszw.6.3)
 
