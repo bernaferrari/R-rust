@@ -2,6 +2,9 @@
 //! Owning GNU covariance-ratio inputs and callback-free arithmetic.
 use crate::sexp::{ffi::SEXPTYPE, object::Sexp, owner::RuntimeAccess};
 
+#[path = "covratio/rows.rs"]
+mod rows;
+
 type Value = Sexp<'static>;
 type Result<T> = std::result::Result<T, String>;
 fn checked<T>(value: crate::sexp::object::SexpResult<T>) -> Result<T> {
@@ -184,44 +187,117 @@ fn deletion_sigma(residuals: &[f64], hat: &[f64], n: f64, p: f64) -> Vec<f64> {
 /// residuals scaled by working weights, with zero prior-weight cases omitted.
 struct ResidualSnapshot {
     values: Vec<f64>,
-    retained: Option<Vec<usize>>,
+    names: Value,
 }
 fn weighted_residuals(
     access: &RuntimeAccess,
     residuals: &Value,
+    names: &Value,
     weights: &Value,
     drop_weights: &Value,
+    omitted: Option<&rows::Rows>,
 ) -> Result<ResidualSnapshot> {
-    let mut values = numeric(access, residuals)?;
+    let raw = numeric(access, residuals)?;
+    let mut values = if let Some(rows) = omitted {
+        rows.restore(access, &raw)?
+    } else {
+        raw
+    };
+    let names = if let Some(rows) = omitted {
+        rows.names(access, names, residuals.len() as usize)?
+    } else {
+        names.clone()
+    };
     if !weights.is_nil() {
         let weights = numeric(access, weights)?;
+        let weights = if let Some(rows) = omitted {
+            rows.restore(access, &weights)?
+        } else {
+            weights
+        };
         if weights.len() != values.len() {
             return Err("model weights do not match working residuals".into());
         }
         for (value, weight) in values.iter_mut().zip(weights) {
-            *value *= weight.sqrt();
+            if crate::sexp::ffi::is_na_real(*value) || crate::sexp::ffi::is_na_real(weight) {
+                *value = crate::sexp::ffi::NA_REAL;
+            } else {
+                *value *= weight.sqrt();
+            }
         }
     }
-    let retained = if drop_weights.is_nil() {
-        None
+    if drop_weights.is_nil() {
+        return Ok(ResidualSnapshot { values, names });
+    }
+    let weights = numeric(access, drop_weights)?;
+    let weights = if let Some(rows) = omitted {
+        rows.restore(access, &weights)?
     } else {
-        let weights = numeric(access, drop_weights)?;
-        if weights.len() != values.len() {
-            return Err("model prior weights do not match working residuals".into());
-        }
-        let retained: Vec<_> = weights
-            .iter()
-            .enumerate()
-            .filter_map(|(i, weight)| (*weight != 0.).then_some(i))
-            .collect();
-        if retained.len() == values.len() {
-            None
-        } else {
-            values = retained.iter().map(|i| values[*i]).collect();
-            Some(retained)
-        }
+        weights
     };
-    Ok(ResidualSnapshot { values, retained })
+    if weights.len() != values.len() {
+        return Err("model prior weights do not match working residuals".into());
+    }
+    let retained: Vec<_> = weights
+        .iter()
+        .enumerate()
+        .filter_map(|(i, weight)| (*weight != 0.).then_some(i))
+        .collect();
+    let names = rows::select_names(access, &names, values.len(), &retained)?;
+    values = retained
+        .iter()
+        .map(|i| {
+            if weights[*i].is_nan() {
+                crate::sexp::ffi::NA_REAL
+            } else {
+                values[*i]
+            }
+        })
+        .collect();
+    Ok(ResidualSnapshot { values, names })
+}
+fn warn_recycling(access: &RuntimeAccess, lhs: usize, rhs: usize) -> Result<()> {
+    if lhs > 0 && rhs > 0 && !lhs.max(rhs).is_multiple_of(lhs.min(rhs)) {
+        active(access)?;
+        crate::mainutils::errors::nmath_warning_hook(
+            "longer object length is not a multiple of shorter object length",
+        );
+        active(access)?;
+    }
+    Ok(())
+}
+fn warn_recycling_assignment(access: &RuntimeAccess, target: usize, source: usize) -> Result<()> {
+    if target > 0 && source > 0 && !target.is_multiple_of(source) {
+        active(access)?;
+        crate::mainutils::errors::nmath_warning_hook(
+            "number of items to replace is not a multiple of replacement length",
+        );
+        active(access)?;
+    }
+    Ok(())
+}
+fn binary_length(lhs: usize, rhs: usize) -> usize {
+    if lhs == 0 || rhs == 0 {
+        0
+    } else {
+        lhs.max(rhs)
+    }
+}
+fn binary_names(
+    access: &RuntimeAccess,
+    lhs: &Value,
+    lhs_len: usize,
+    rhs: &Value,
+    rhs_len: usize,
+) -> Value {
+    let length = binary_length(lhs_len, rhs_len);
+    if length > 0 && lhs_len == length && !lhs.is_nil() && lhs.len() == length as i64 {
+        lhs.clone()
+    } else if length > 0 && rhs_len == length && !rhs.is_nil() && rhs.len() == length as i64 {
+        rhs.clone()
+    } else {
+        access.domain().nil()
+    }
 }
 fn is_glm(access: &RuntimeAccess, model: &Value) -> Result<bool> {
     let class = attribute(model, b"class")?;
@@ -259,31 +335,6 @@ fn fixed_glm_sigma(access: &RuntimeAccess, family: &Value) -> Result<Option<f64>
     }
     Ok(None)
 }
-fn residual_names(
-    access: &RuntimeAccess,
-    names: &Value,
-    original_length: i64,
-    snapshot: &ResidualSnapshot,
-) -> Result<Value> {
-    if names.is_nil() || names.len() != original_length {
-        return Ok(access.domain().nil());
-    }
-    let Some(retained) = &snapshot.retained else {
-        return Ok(names.clone());
-    };
-    let mut selected = Vec::with_capacity(retained.len());
-    for index in retained {
-        selected.push(
-            checked(names.try_string_value_elt(*index as i64))?.ok_or("missing model row name")?,
-        );
-        active(access)?;
-    }
-    let text: Vec<_> = selected.iter().map(String::as_str).collect();
-    let domain = access.domain();
-    let allocator = checked(access.allocator(&domain))?;
-    checked(allocator.strings(&text))
-}
-
 pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value) -> Result<Value> {
     let [model, influence, residuals] = arguments(access, args)?;
     let model = model.ok_or("argument \"model\" is missing, with no default")?;
@@ -300,7 +351,18 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     } else {
         domain.nil()
     };
-    let default_needed = residuals.is_none() || influence.is_none();
+    let arguments_residual_default = residuals.is_none();
+    let default_needed = arguments_residual_default || influence.is_none();
+    let omitted = if default_needed {
+        rows::Rows::capture(access, field(access, &model, b"na.action")?)?
+    } else {
+        None
+    };
+    let df_residual = if influence.is_none() && omitted.is_some() {
+        field(access, &model, b"df.residual")?
+    } else {
+        domain.nil()
+    };
     let weights = if default_needed {
         field(access, &model, b"weights")?
     } else {
@@ -325,8 +387,10 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         Some(weighted_residuals(
             access,
             &model_residuals,
+            &model_names,
             &weights,
             &drop_weights,
+            omitted.as_ref(),
         )?)
     } else {
         None
@@ -350,12 +414,24 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         }
         n = dims[0];
     }
-    let e = if influence.is_none() {
+    let retained: Vec<_> = if influence.is_none() {
         default_residuals
             .as_ref()
             .ok_or("missing default influence residuals")?
             .values
-            .clone()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| (!v.is_nan()).then_some(i))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let e = if influence.is_none() {
+        let values = &default_residuals
+            .as_ref()
+            .ok_or("missing default influence residuals")?
+            .values;
+        retained.iter().map(|i| values[*i]).collect::<Vec<_>>()
     } else {
         Vec::new()
     };
@@ -375,7 +451,7 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     };
     let hat_names = attribute(&hat_value, b"names")?;
     let mut hat = numeric(access, &hat_value)?;
-    let sigma = if influence.is_some() {
+    let mut sigma = if influence.is_some() {
         if let Some(sigma) = fixed_sigma {
             vec![sigma]
         } else {
@@ -427,8 +503,45 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         }
         deletion_sigma(&e, &hat, n, p)
     };
+    let hat_names = if influence.is_none() {
+        let snapshot = default_residuals
+            .as_ref()
+            .ok_or("missing default influence residuals")?;
+        let names = rows::select_names(access, &snapshot.names, snapshot.values.len(), &retained)?;
+        if let Some(rows) = omitted.as_ref() {
+            let cleaned = cleaned_residuals(&e);
+            let df = numeric(access, &df_residual)?
+                .first()
+                .copied()
+                .ok_or("invalid residual degrees of freedom")?;
+            let fallback = (cleaned.iter().map(|v| v * v).sum::<f64>() / df).sqrt();
+            let names = rows.names(access, &names, e.len())?;
+            hat = rows
+                .restore(access, &hat)?
+                .into_iter()
+                .map(|v| if v.is_nan() { 0. } else { v })
+                .collect();
+            sigma = rows
+                .restore(access, &sigma)?
+                .into_iter()
+                .map(|v| if v.is_nan() { fallback } else { v })
+                .collect();
+            names
+        } else {
+            names
+        }
+    } else {
+        hat_names
+    };
+    let sigma_names = if influence.is_some() && fixed_sigma.is_none() {
+        attribute(&sigma_value, b"names")?
+    } else if influence.is_none() && fixed_sigma.is_none() {
+        hat_names.clone()
+    } else {
+        domain.nil()
+    };
     let sigma = fixed_sigma.map_or(sigma, |sigma| vec![sigma]);
-    let residual_values = if let Some(res) = &residuals {
+    let residuals = if let Some(res) = &residuals {
         numeric(access, res)?
     } else {
         default_residuals
@@ -437,47 +550,50 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
             .values
             .clone()
     };
-    let res_names = if residuals.is_none() {
-        residual_names(
-            access,
-            &res_names,
-            model_residuals.len(),
+    let res_names =
+        if residuals.len() > 0 && default_residuals.is_some() && arguments_residual_default {
             default_residuals
                 .as_ref()
-                .ok_or("missing default residuals")?,
-        )?
-    } else {
-        res_names
-    };
-    let hat_names = if influence.is_none() {
-        residual_names(
-            access,
-            &model_names,
-            model_residuals.len(),
-            default_residuals
-                .as_ref()
-                .ok_or("missing default influence residuals")?,
-        )?
-    } else {
-        hat_names
-    };
-    let residuals = residual_values;
-    let length = if hat.is_empty() || sigma.is_empty() || residuals.is_empty() {
-        0
-    } else {
-        hat.len().max(sigma.len()).max(residuals.len())
-    };
-    let names = if res_names.len() == length as i64 && length > 0 {
-        res_names
-    } else if hat_names.len() == length as i64 && length > 0 {
-        hat_names
-    } else {
-        domain.nil()
-    };
+                .ok_or("missing default residuals")?
+                .names
+                .clone()
+        } else {
+            res_names
+        };
+    // Follow the three GNU vector operations independently: denominator,
+    // studentized residual, and final product. Their recycling and left-hand
+    // name precedence differ when only one default argument restores rows.
+    let denominator_length = binary_length(sigma.len(), hat.len());
+    warn_recycling(access, sigma.len(), hat.len())?;
+    let denominator_names = binary_names(access, &sigma_names, sigma.len(), &hat_names, hat.len());
+    let star_length = binary_length(residuals.len(), denominator_length);
+    warn_recycling(access, residuals.len(), denominator_length)?;
+    let star_names = binary_names(
+        access,
+        &res_names,
+        residuals.len(),
+        &denominator_names,
+        denominator_length,
+    );
+    let length = binary_length(hat.len(), star_length);
+    warn_recycling(access, hat.len(), star_length)?;
+    let names = binary_names(access, &hat_names, hat.len(), &star_names, star_length);
     let mut values = Vec::with_capacity(length);
     for i in 0..length {
+        let star_index = i % star_length;
+        let denominator_index = star_index % denominator_length;
+        let denominator_omh = 1. - hat[denominator_index % hat.len()];
+        let residual = residuals[star_index % residuals.len()];
+        let deviation = sigma[denominator_index % sigma.len()];
         let omh = 1. - hat[i % hat.len()];
-        let mut star = residuals[i % residuals.len()] / (sigma[i % sigma.len()] * omh.sqrt());
+        if [residual, deviation, denominator_omh, omh]
+            .into_iter()
+            .any(crate::sexp::ffi::is_na_real)
+        {
+            values.push(crate::sexp::ffi::NA_REAL);
+            continue;
+        }
+        let mut star = residual / (deviation * denominator_omh.sqrt());
         if star.is_infinite() {
             star = f64::NAN;
         }

@@ -374,3 +374,6 @@ fn portable_covratio_lm_preserves_generic_data_and_response_row_labels() {
 
 #[path = "covratio/extension_tests.rs"]
 mod extension_tests;
+
+#[path = "covratio/naexclude_tests.rs"]
+mod naexclude_tests;

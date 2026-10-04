@@ -949,3 +949,17 @@ warning-denied Clippy and formatting completed. The frozen four-file candidate
 is checkpointed so broader CI can run in parallel. Its strict 15-case Miri run
 continues unchanged; no completed strict aggregate or full lookup-family parity
 is claimed here, and rport-wszw.9 remains open until its acceptance checks finish.
+
+## Owning na.exclude covariance rows: native candidate (rport-wszw.6.2)
+
+A forbid-unsafe observation map retains omission indices and row labels, and
+restores default residuals and influence fields at their separate GNU evaluation
+phases. Supplied operands retain their original behavior, including recycling,
+name precedence, exact NA bits, warning counts and warn=2 error recovery.
+
+The enclosing native suite passed all 22 tests (3.11 seconds), preserving the
+earlier 13 assertions and adding nine omission/ownership cases. Independent GNU
+controls, all-target Clippy and formatting passed. The exact six-file candidate
+is checkpointed while its nine-case strict Miri run continues unchanged; this is
+not a completed strict aggregate, and rport-wszw.6.2 remains open. Exact GNU
+arithmetic warning-call attribution is a separate remaining item, rport-wszw.6.3.
