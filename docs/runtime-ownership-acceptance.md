@@ -935,3 +935,17 @@ Clippy and assigned formatting passed. These timings describe unit-test setup,
 not a measured change in ordinary runtime startup. The earlier stopped package
 bootstrap attempt and the intermediate 40-pass/one-failure result are not green
 verification checkpoints. Strict vectorizable validation remains independent.
+
+## Owning mget contracts: native candidate (rport-wszw.9)
+
+The retained lookup graph now applies GNU mode normalization, searches parents
+past mismatched child bindings, matches named operands before positional ones,
+recycles atomic/list fallbacks and evaluates callable fallbacks in the original
+caller environment. Name, environment, mode, fallback and inherits admission
+follow the pinned GNU ordering. Existing sequential promise-forcing tests remain.
+
+All 15 native cases passed (0.20 seconds), with independent pinned GNU controls,
+warning-denied Clippy and formatting completed. The frozen four-file candidate
+is checkpointed so broader CI can run in parallel. Its strict 15-case Miri run
+continues unchanged; no completed strict aggregate or full lookup-family parity
+is claimed here, and rport-wszw.9 remains open until its acceptance checks finish.

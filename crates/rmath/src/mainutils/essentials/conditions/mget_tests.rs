@@ -332,7 +332,7 @@ fn exercise_collecting_names(close: bool, detach_binding_during_force: bool) {
         }
     }));
     // No runtime facade loan or incidental operand lease crosses the real provider.
-    let result = unsafe { super::mget::invoke(list.as_raw()) };
+    let result = unsafe { super::mget::invoke(list.as_raw(), crate::sexp::globals::R_GlobalEnv()) };
     if close {
         assert!(result.is_err(), "original revocation must deny publication");
         assert!(!sessions.borrow().as_ref().unwrap().is_active());
@@ -387,4 +387,250 @@ fn owning_mget_selected_promise_survives_binding_detach_and_collection() {
 #[test]
 fn owning_mget_name_provider_revocation_denies_publication() {
     exercise_collecting_names(true, false);
+}
+
+fn contract(script: &str) -> Sexp<'static> {
+    let mut session = RSession::new_for_gc_tests();
+    session
+        .eval_code_with_output_capture(script)
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap()
+}
+
+#[test]
+fn owning_mget_contract_rejects_non_environment() {
+    let mut session = RSession::new_for_gc_tests();
+    session
+        .eval_script_with_output_capture("e<-new.env();e$x<-1L")
+        .0
+        .unwrap();
+    for code in ["mget('x',list(e))", "mget('x',NULL)"] {
+        assert!(
+            session.eval_code_with_output_capture(code).0.is_err(),
+            "{code}"
+        );
+    }
+}
+#[test]
+fn owning_mget_contract_validates_modes_and_inherits() {
+    let mut session = RSession::new_for_gc_tests();
+    session
+        .eval_script_with_output_capture("e<-new.env();e$x<-1L")
+        .0
+        .unwrap();
+    for code in [
+        "mget('x',e,mode='character')",
+        "mget('x',e,mode='bogus')",
+        "mget('x',e,mode=1L)",
+        "mget('x',e,mode=c('any','any'))",
+        "mget('x',e,inherits=NA)",
+        "mget('x',e,inherits=logical(0))",
+    ] {
+        assert!(
+            session.eval_code_with_output_capture(code).0.is_err(),
+            "{code}"
+        );
+    }
+}
+#[test]
+fn owning_mget_contract_mode_filter_searches_parent_and_normalizes_numeric() {
+    let values = contract(
+        "parent<-new.env();parent$x<-9L;e<-new.env(parent=parent);e$x<-'wrong';mget(c('x','x'),e,mode=c('numeric','integer'),inherits='TRUE')",
+    );
+    for index in 0..2 {
+        assert_eq!(
+            values
+                .try_vector_elt(index)
+                .unwrap()
+                .try_integer_elt(0)
+                .unwrap(),
+            9
+        );
+    }
+}
+#[test]
+fn owning_mget_contract_callable_fallback_collects_then_changes_later_binding() {
+    let values = contract(
+        "e<-new.env();e$y<-1L;mget(c('missing','y'),e,ifnotfound=list(function(name){gc();e$y<-9L;name}),inherits=FALSE)",
+    );
+    assert_eq!(
+        values
+            .try_vector_elt(0)
+            .unwrap()
+            .try_string_elt(0)
+            .unwrap()
+            .try_as_string()
+            .unwrap(),
+        "missing"
+    );
+    assert_eq!(
+        values
+            .try_vector_elt(1)
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        9
+    );
+}
+#[test]
+fn owning_mget_contract_atomic_fallback_and_lengths() {
+    let values = contract("mget(c('a','b'),new.env(),ifnotfound=c(17L,19L))");
+    assert_eq!(
+        values
+            .try_vector_elt(0)
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        17
+    );
+    assert_eq!(
+        values
+            .try_vector_elt(1)
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        19
+    );
+    let mut session = RSession::new_for_gc_tests();
+    for code in [
+        "mget(c('a','b'),new.env(),ifnotfound=list(1L,2L,3L))",
+        "mget('a',new.env(),ifnotfound=function(x)x)",
+        "mget('a',new.env(),ifnotfound=NULL)",
+    ] {
+        assert!(
+            session.eval_code_with_output_capture(code).0.is_err(),
+            "{code}"
+        );
+    }
+}
+#[test]
+fn owning_mget_contract_shares_names_and_selected_values() {
+    let value = contract(
+        "e<-new.env();e$x<-c(1L,2L);original<-e$x;names<-c('x','x');out<-mget(names,e);out[[1L]][1L]<-9L;names(out)[1L]<-'changed';identical(e$x,original)&&identical(out[[2L]],original)&&identical(names,c('x','x'))",
+    );
+    assert_eq!(value.try_logical_elt(0).unwrap(), 1);
+}
+
+#[test]
+fn owning_mget_contract_named_matching_precedes_positionals() {
+    let values = contract("e<-new.env();e$x<-19L;mget('x',mode='integer',envir=e)");
+    assert_eq!(
+        values
+            .try_vector_elt(0)
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        19
+    );
+}
+#[test]
+fn owning_mget_contract_fallback_gc_revocation_denies_publication() {
+    let mut session = RSession::new_for_gc_tests();
+    let fallback = session
+        .eval_code_with_output_capture("function(name){gc();42L}")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let environment = session
+        .eval_code_with_output_capture("new.env()")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let factory = session
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap()
+        .node_factory()
+        .unwrap();
+    let caller = unsafe {
+        session
+            .owner_token()
+            .unwrap()
+            .sexp(crate::sexp::globals::R_GlobalEnv())
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    };
+    let defaults = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let mut defaults = crate::sexp::object::SexpMut::try_from_checked(defaults).unwrap();
+    defaults.try_set_vector_elt(0, fallback).unwrap();
+    let nil = factory.nil().into_owned().unwrap();
+    let arguments = mget_arguments(
+        &factory,
+        vec![
+            (
+                factory.strings(&["missing"]).unwrap().into_owned().unwrap(),
+                nil.clone(),
+            ),
+            (environment, nil.clone()),
+            (
+                factory.strings(&["any"]).unwrap().into_owned().unwrap(),
+                nil.clone(),
+            ),
+            (defaults.freeze(), nil),
+        ],
+    );
+    let sessions = Rc::new(RefCell::new(Some(session)));
+    let weak = Rc::downgrade(&sessions);
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+        observed.set(observed.get() + 1);
+        weak.upgrade()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .close();
+    }));
+    let result = unsafe { super::mget::invoke(arguments.as_raw(), caller.as_raw()) };
+    assert!(
+        matches!(result, Err(crate::sexp::object::SexpError::RootUnavailable)),
+        "fallback must return original revocation error"
+    );
+    assert!(calls.get() > 0, "fallback executes actual full collection");
+    assert!(!sessions.borrow().as_ref().unwrap().is_active());
+    let mut replacement = RSession::new_for_gc_tests();
+    assert_eq!(
+        replacement
+            .eval_code_with_output_capture("1L+1L")
+            .0
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        2
+    );
+}
+#[test]
+fn owning_mget_contract_admission_order_matches_gnu() {
+    let mut session = RSession::new_for_gc_tests();
+    for (code, expected) in [
+        (
+            "mget('',NULL,mode=1L,ifnotfound=function(x)x)",
+            "invalid name in position 1",
+        ),
+        (
+            "mget('missing',new.env(),mode=c('any','any'),ifnotfound=function(x)x)",
+            "wrong length for 'mode' argument",
+        ),
+        (
+            "mget('missing',new.env(),ifnotfound=list(),inherits=NA)",
+            "wrong length for 'ifnotfound' argument",
+        ),
+    ] {
+        let error = session.eval_code_with_output_capture(code).0.unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "{code}: expected {expected}, got {error}"
+        );
+    }
 }

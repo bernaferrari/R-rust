@@ -2481,10 +2481,9 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `mget(x, envir, mode = "any", ifnotfound, inherits = FALSE)` —
 /// look up each name of a character vector, returning a named list.
-/// `envir` may be one environment or a list recycled along `x`; a missing
-/// `ifnotfound` errors for absent bindings, as upstream does.
-pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    match unsafe { mget::invoke(args) } {
+/// Lookups force selected promises and filter by the requested GNU mode.
+pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    match unsafe { mget::invoke(args, rho) } {
         Ok(value) => value.as_raw(),
         Err(error) => base_error(error.to_string()),
     }
