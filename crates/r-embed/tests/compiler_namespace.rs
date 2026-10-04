@@ -10,35 +10,39 @@ fn compiler_cmpfun_evaluates_supported_closure() {
 }
 
 #[test]
-fn compiler_cmpfun_keeps_original_on_unsupported_body_and_recovers() {
+fn compiler_cmpfun_preserves_source_and_executes_user_calls() {
     let mut session = RSession::new().expect("session");
     let result = session
         .eval(
-            &("f <- function(x) user_fun(x); ".to_owned()
-                + "tryCatch(compiler::cmpfun(f), error=function(e) 'recovered')"),
+            &("user_fun <- function(x) x * 2L; f <- function(x) user_fun(x); ".to_owned()
+                + "g <- compiler::cmpfun(f); "
+                + "identical(g(3L), 6L) && identical(f(3L), 6L) && "
+                + "identical(formals(g), formals(f)) && identical(environment(g), environment(f))"),
         )
-        .expect("unsupported compiler error should be catchable");
-    assert!(result.contains("recovered"), "{result}");
+        .expect("public compiler accepts calls to user functions");
+    assert_eq!(result, "[1] TRUE\n");
 
-    let body_type = session.eval("typeof(body(f))").expect("body query");
-    assert!(body_type.contains("language"), "{body_type}");
+    let original_body = session
+        .eval("identical(body(f), quote(user_fun(x)))")
+        .expect("original body query");
+    assert_eq!(original_body, "[1] TRUE\n");
 }
 
 #[test]
-fn compiler_cmpfun_preserves_builtin_identity_and_rejects_options() {
+fn compiler_cmpfun_preserves_builtin_identity_and_accepts_gnu_options() {
     let mut session = RSession::new().expect("session");
     let builtin = session
-        .eval("typeof(compiler::cmpfun(sum))")
+        .eval("identical(compiler::cmpfun(sum), sum)")
         .expect("builtin compiler call");
-    assert!(builtin.contains("builtin"), "{builtin}");
+    assert_eq!(builtin, "[1] TRUE\n");
 
     let options = session
         .eval(
-            &("tryCatch(compiler::cmpfun(function(x) x, ".to_owned()
-                + "options=list(optimize=3)), error=function(e) 'options rejected')"),
+            &("g <- compiler::cmpfun(function(x) x, ".to_owned()
+                + "options=list(optimize=3)); identical(g(7L), 7L)"),
         )
-        .expect("unsupported options should be catchable");
-    assert!(options.contains("options rejected"), "{options}");
+        .expect("valid GNU compiler options");
+    assert_eq!(options, "[1] TRUE\n");
 
     let invalid = session
         .eval("tryCatch(compiler::cmpfun(1), error=function(e) 'invalid rejected')")

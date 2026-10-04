@@ -2,8 +2,9 @@
 //!
 //! The full GNU R compiler package is not sourced by this runtime.  This
 //! namespace exposes `cmpfun` backed by the private compiler, session JIT
-//! controls, and disassembly of imported GNU bytecode. Unsupported syntax,
-//! compiler options and private-dialect disassembly fail explicitly.
+//! controls, and disassembly of imported GNU bytecode. Unsupported syntax and
+//! private-dialect disassembly fail explicitly. Accepted options currently do
+//! not change the portable compiler's optimization strategy.
 
 use std::ffi::CStr;
 
@@ -47,9 +48,9 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
 
 /// `compiler::cmpfun(f, options = NULL)` for the supported portable subset.
 ///
-/// Arguments are already evaluated by the builtin dispatcher. `options` is
-/// accepted only when omitted or explicitly `NULL`; silently ignoring a GNU R
-/// compiler option would make the result misleading.
+/// Arguments are already evaluated by the builtin dispatcher. Options are
+/// accepted, including non-list values accepted by GNU R; the portable compiler
+/// currently emits the same dialect regardless of optimization options.
 pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Named formals are matched before unnamed arguments, independent of
@@ -273,8 +274,21 @@ mod tests {
     }
 
     #[test]
-    fn cmpfun_options_rejects_non_null_values() {
-        let session = RSession::new();
+    fn cmpfun_original_gnu_contract_runs_in_the_real_base_runtime() {
+        let mut session = RSession::new_without_default_packages();
+        let (result, output, _) = session.eval_script_with_output_capture(include_str!(
+            "../../../r-embed/tests/fixtures/gnu-compiler-namespace/contract.R"
+        ));
+        result.expect("original GNU public compiler contract");
+        assert_eq!(output.stdout, "GNU compiler namespace contract PASS\n");
+        assert_eq!(output.stderr, "");
+    }
+
+    #[test]
+    fn cmpfun_accepts_non_null_options_in_the_real_base_runtime() {
+        // The public embedding tests retain full default-package startup. This
+        // argument contract uses the real base runtime without unrelated packages.
+        let session = RSession::new_without_default_packages();
         session.with_active(|| unsafe {
             let formals = crate::sexp::constructors::Rf_allocList(0);
             let body = crate::sexp::constructors::Rf_ScalarInteger(1);
@@ -283,6 +297,7 @@ mod tests {
                 body,
                 crate::sexp::globals::R_GlobalEnv(),
             );
+            let _fun = protect(fun);
             let args = crate::sexp::constructors::Rf_cons(
                 fun,
                 crate::sexp::constructors::Rf_cons(
@@ -290,19 +305,22 @@ mod tests {
                     R_NilValue(),
                 ),
             );
+            let _args = protect(args);
             crate::sexp::accessors::SETTAG(
                 crate::sexp::accessors::CDR(args),
                 Rf_install(c"options".as_ptr()),
             );
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                do_cmpfun(R_NilValue(), R_NilValue(), args, R_NilValue());
-            }))
-            .expect_err("non-null options should be rejected");
-            assert!(
-                panic
-                    .downcast_ref::<RError>()
-                    .is_some_and(|error| error.message.contains("compiler options"))
-            );
+            let compiled = do_cmpfun(R_NilValue(), R_NilValue(), args, R_NilValue());
+            let _compiled = protect(compiled);
+            assert_eq!(TYPEOF(compiled), SEXPTYPE::CLOSXP);
+            assert_eq!(crate::sexp::accessors::BODY(fun), body);
+            assert_eq!(TYPEOF(body), SEXPTYPE::INTSXP);
+            let compiled_body = crate::sexp::accessors::BODY(compiled);
+            assert_eq!(TYPEOF(compiled_body), SEXPTYPE::BCODESXP);
+            let value =
+                crate::eval::bc_eval::bcEval(compiled_body, crate::sexp::globals::R_GlobalEnv());
+            assert_eq!(TYPEOF(value), SEXPTYPE::INTSXP);
+            assert_eq!(crate::sexp::accessors::INTEGER_ELT(value, 0), 1);
         });
     }
 }

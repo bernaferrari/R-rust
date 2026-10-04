@@ -368,3 +368,16 @@ Clippy with memory profiling passes in 25.29 seconds. A subsequent comment-only
 clarification has an explicit hash delta; executable behavior stays frozen.
 Nested replacement targets, superassignment and full methods parity remain
 separate acceptance obligations.
+
+Public compiler tests now follow the independently executed GNU contract:
+user-function calls compile and execute, original closures retain their source,
+builtins retain identity, and accepted options do not cause artificial errors.
+The durable GNU script also checks non-function rejection, named/positional
+matching and duplicate arguments. That same script passes through the Rust
+compiler namespace in the real base runtime. Both focused native cases pass
+in 2.46 seconds; all-target warnings-denied Clippy with memory profiling passes
+in 24.65 seconds and assigned formatting passes. Production compiler behavior
+stays unchanged; the portable optimization strategy still needs broader parity.
+The original full-default embedding constructor tests remain intact and did
+not reach a footer within their recorded local bounds. These base-runtime
+contract tests do not certify completion of full default-package startup.
