@@ -3578,10 +3578,18 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
         .pin_runtime()
         .unwrap_or_else(|error| bc_error(error.to_string()))
         .unwrap_or_else(|| bc_error("bytecode requires a runtime owner"));
-    let result = unsafe { bc_eval_owned(body, rho, &pin) };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        bc_eval_owned(body, rho, &pin)
+    }));
+    // A callback can revoke this exact runtime while native continuation code
+    // is unwinding. Keep its physical pin through cleanup and refuse either
+    // result or panic publication under a replacement runtime.
     pin.require_live()
         .unwrap_or_else(|error| bc_error(error.to_string()));
-    result.as_raw()
+    match outcome {
+        Ok(result) => result.as_raw(),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
 }
 
 unsafe fn bc_eval_owned(

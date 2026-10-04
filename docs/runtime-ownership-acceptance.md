@@ -348,3 +348,23 @@ caller type checks remain. The pinned GNU macro and frozen source hashes are
 recorded independently; this establishes the helper's checked contract, not
 whole-engine safety. Workspace all-target Clippy passes with warnings denied in
 31.06 seconds and workspace formatting passes for the current development tree.
+
+Flat compiled `[<-` and `[[<-` now use the existing owning replacement
+executor. They evaluate the RHS first, preserve its exact returned identity and
+GNU invisibility, and retain raw index syntax for lazy custom setters. Typed
+scalar fast paths explicitly require real RHS storage. Bytecode execution keeps
+the original runtime pin through unwinding and rechecks its authority before
+publishing either a result or an error; live callback panic payloads propagate
+unchanged, while revoked original runtimes reject foreign replacement authority.
+
+Twenty-five compiler and twenty-four executor native cases pass. Six focused
+strict-provenance Miri cases pass in 2,086.95 seconds with the default alias
+checker, including collecting RHS/index callbacks, lazy setters, error recovery,
+panic identity and original-runtime revocation. Five independent pinned GNU
+serialized fixtures execute without retaining the source pool or an interpreter
+fallback. The Miri ledger records its original loaded accessor and separate
+later scalar, numerical and serialization changes. Warnings-denied all-target
+Clippy with memory profiling passes in 25.29 seconds. A subsequent comment-only
+clarification has an explicit hash delta; executable behavior stays frozen.
+Nested replacement targets, superassignment and full methods parity remain
+separate acceptance obligations.

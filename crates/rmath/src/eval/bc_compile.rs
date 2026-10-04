@@ -5,6 +5,10 @@
 //! This provides enough of the GNU R compiler pipeline for `R_cmpfun`,
 //! `R_compileExpr`, and JIT scoring to produce bytecode that `bcEval` can run.
 
+#[cfg(test)]
+#[path = "bc_compile/subassign_tests.rs"]
+mod subassign_tests;
+
 use std::os::raw::c_int;
 
 use super::bc_eval::opcodes;
@@ -439,7 +443,15 @@ impl BytecodeCompiler {
                     symbol_name_from_sexp(CAR(lhs)).as_deref(),
                     Some("[") | Some("[[")
                 ) {
-                    self.compile_subassign(expr, false)
+                    let object = own_operand(CAR(CDR(lhs)));
+                    if object.typeof_() == SEXPTYPE::SYMSXP {
+                        // Subassignment is also replacement: GNU evaluates
+                        // the RHS before selecting the target and indices,
+                        // writes the changed object, then returns that RHS.
+                        self.compile_replacement(lhs, rhs)
+                    } else {
+                        self.compile_subassign(expr, false)
+                    }
                 } else {
                     self.compile_replacement(lhs, rhs)
                 };

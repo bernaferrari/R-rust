@@ -484,9 +484,12 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         use crate::eval::attrib_core::R_DimSymbol;
 
         // Quick return for simple scalar case
-        if isNull(ATTRIB(s)) && TYPEOF(x) == REALSXP && IS_SCALAR(y, REALSXP) != 0 {
-            // Note: IS_SCALAR only inspects the scalar flag; the element type
-            // must be verified separately before using the typed accessors.
+        if isNull(ATTRIB(s))
+            && TYPEOF(x) == REALSXP
+            && TYPEOF(y) == REALSXP
+            && IS_SCALAR(y, REALSXP) != 0
+        {
+            // Keep element-type checks explicit before using typed accessors.
             if TYPEOF(s) == INTSXP && IS_SCALAR(s, INTSXP) != 0 {
                 let ival = SCALAR_IVAL(s) as R_xlen_t;
                 let ival_ok = ival != NA_INTEGER as i64 && ival >= 1 && ival <= XLENGTH(x);
