@@ -1098,6 +1098,11 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 unsafe fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {
     unsafe {
+        if package == "datasets" && package_path.is_empty() {
+            return crate::library::datasets::value(name)
+                .unwrap_or_else(|message| std::panic::panic_any(RError { message }))
+                .map(|value| value.as_raw());
+        }
         let scratch = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
         let _guard = protect(scratch);
         crate::mainutils::essentials::source_package_lazy_data(

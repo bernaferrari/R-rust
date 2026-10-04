@@ -671,6 +671,10 @@ impl RSession {
                     if package == "stats" {
                         stats_loaded = loaded;
                     }
+                } else if package == "datasets" {
+                    crate::library::datasets::attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
                 }
             }
             if stats_loaded && let Ok(exprs) = super::memory::with_arena(|arena| {

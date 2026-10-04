@@ -992,3 +992,26 @@ hashes remained fixed through the successful reaped footer. The preceding pinned
 GNU contract and runtime namespace tests remain independent supporting evidence.
 This completes the formerly bounded/incomplete public gate; it does not claim
 all private compiler operations, every execution path or whole-HEAD CI parity.
+
+## Portable original datasets: native and Wasm candidate (rport-wszw.2)
+
+The portable package retains all 108 original lazy objects, their captured key
+syntax and the 91 public data topics. Authenticated assets include the original
+compressed database, namespace metadata, index and independent value contracts;
+loading does not require an installed host R library. A forbid-unsafe owning
+kernel holds operands and codec buffers through collection and reader callbacks,
+and publishes the namespace only after construction. Thin native bridges remain.
+
+All seven public native tests passed (180.54 seconds), including every original
+type/attribute contract, topic, lazy expression, copy-on-write behavior, model
+result and all 592,931 serialized bytes without normalization. Eight owning
+native tests passed, and the fresh release Wasm runtime passed 205 real Node
+checks including that complete byte stream. Independent pinned GNU contracts,
+reproducible asset generation, five tooling tests, all-target Clippy and assigned
+formatting passed. The frozen 30-file candidate is checkpointed for broader CI.
+
+Its eight-case strict Miri run continues unchanged and has no aggregate footer
+yet, so rport-wszw.2 stays open. Removed lazy bindings/malformed namespace
+metadata, generic browser filename I/O and public namespace listing are separate
+remaining items (rport-wszw.2.3, rport-wszw.11 and rport-wszw.12). This checkpoint
+does not claim arbitrary namespace mutation compatibility or complete R parity.

@@ -1,0 +1,1851 @@
+{
+  "artifacts_sha256": {
+    "DESCRIPTION": "45968e948ef9d0fd93c14fdc324292f72a95b5ea52f0bfb8259862a71f999104",
+    "NAMESPACE": "b90c1d636c82f2182a266a8564845a896507098ebb3dfae51c302ad4f41db9d9",
+    "Rdata.rdb": "e2a9e6192258dd0a49843d90ca2a8785b7474ac045d4d4bd707a9129c1f7f63c",
+    "Rdata.rds": "10b8fa454528af734e7d4be867bd449b051fef82800b675cca4486cb9473a412",
+    "Rdata.rdx": "026e083c73d0ef874f9acf1a73ad73a64e25fa538227cbc201dc9b87de0454b8",
+    "all.rda": "8955a3dbc3279955cc97932acc2bf848979148014db0d5836dc86705301e3b63",
+    "data-index.rds": "0384afbc210f36bb51ad0a3bce369c543467266bb243cf96e47631163e86ded0",
+    "object-contracts.tsv": "7b9bca09603a693f41556f38f702c55e2e42bca45861970467344e27121d6104",
+    "values.rds": "12741500d94b551581e7f3d3a203bf153e190188404a9a48075b04191b264996"
+  },
+  "generator_sha256": {
+    "generate.R": "49b018566b1b0cf53d699bad522c5fc759050724d6335957b1b0832c3e8c07d3",
+    "generate.py": "286196bd6b78f6281c9d97f80b6217ab303d75119e0aca3d75096de794f4f38b"
+  },
+  "index": [
+    {
+      "item": "AirPassengers",
+      "title": "Monthly Airline Passenger Numbers 1949-1960"
+    },
+    {
+      "item": "BJsales",
+      "title": "Sales Data with Leading Indicator"
+    },
+    {
+      "item": "BJsales.lead (BJsales)",
+      "title": "Sales Data with Leading Indicator"
+    },
+    {
+      "item": "BOD",
+      "title": "Biochemical Oxygen Demand"
+    },
+    {
+      "item": "CO2",
+      "title": "Carbon Dioxide Uptake in Grass Plants"
+    },
+    {
+      "item": "ChickWeight",
+      "title": "Weight Versus Age of Chicks on Different Diets"
+    },
+    {
+      "item": "DNase",
+      "title": "Elisa assay of DNase"
+    },
+    {
+      "item": "EuStockMarkets",
+      "title": "Daily Closing Prices of Major European Stock Indices, 1991-1998"
+    },
+    {
+      "item": "Formaldehyde",
+      "title": "Determination of Formaldehyde"
+    },
+    {
+      "item": "HairEyeColor",
+      "title": "Hair and Eye Color of Statistics Students"
+    },
+    {
+      "item": "Harman23.cor",
+      "title": "Harman Example 2.3"
+    },
+    {
+      "item": "Harman74.cor",
+      "title": "Harman Example 7.4"
+    },
+    {
+      "item": "Indometh",
+      "title": "Pharmacokinetics of Indomethacin"
+    },
+    {
+      "item": "InsectSprays",
+      "title": "Effectiveness of Insect Sprays"
+    },
+    {
+      "item": "JohnsonJohnson",
+      "title": "Quarterly Earnings per Johnson & Johnson Share"
+    },
+    {
+      "item": "LakeHuron",
+      "title": "Level of Lake Huron 1875-1972"
+    },
+    {
+      "item": "LifeCycleSavings",
+      "title": "Intercountry Life-Cycle Savings Data"
+    },
+    {
+      "item": "Loblolly",
+      "title": "Growth of Loblolly Pine Trees"
+    },
+    {
+      "item": "Nile",
+      "title": "Flow of the River Nile"
+    },
+    {
+      "item": "Orange",
+      "title": "Growth of Orange Trees"
+    },
+    {
+      "item": "OrchardSprays",
+      "title": "Potency of Orchard Sprays"
+    },
+    {
+      "item": "PlantGrowth",
+      "title": "Results from an Experiment on Plant Growth"
+    },
+    {
+      "item": "Puromycin",
+      "title": "Reaction Velocity of an Enzymatic Reaction"
+    },
+    {
+      "item": "Seatbelts",
+      "title": "Road Casualties in Great Britain 1969-84"
+    },
+    {
+      "item": "Theoph",
+      "title": "Pharmacokinetics of Theophylline"
+    },
+    {
+      "item": "Titanic",
+      "title": "Survival of passengers on the Titanic"
+    },
+    {
+      "item": "ToothGrowth",
+      "title": "The Effect of Vitamin C on Tooth Growth in Guinea Pigs"
+    },
+    {
+      "item": "UCBAdmissions",
+      "title": "Student Admissions at UC Berkeley"
+    },
+    {
+      "item": "UKDriverDeaths",
+      "title": "Road Casualties in Great Britain 1969-84"
+    },
+    {
+      "item": "UKgas",
+      "title": "UK Quarterly Gas Consumption"
+    },
+    {
+      "item": "USAccDeaths",
+      "title": "Accidental Deaths in the US 1973-1978"
+    },
+    {
+      "item": "USArrests",
+      "title": "Violent Crime Rates by US State"
+    },
+    {
+      "item": "USJudgeRatings",
+      "title": "Lawyers' Ratings of State Judges in the US Superior Court"
+    },
+    {
+      "item": "USPersonalExpenditure",
+      "title": "Personal Expenditure Data"
+    },
+    {
+      "item": "UScitiesD",
+      "title": "Distances Between European Cities and Between US Cities"
+    },
+    {
+      "item": "VADeaths",
+      "title": "Death Rates in Virginia (1940)"
+    },
+    {
+      "item": "WWWusage",
+      "title": "Internet Usage per Minute"
+    },
+    {
+      "item": "WorldPhones",
+      "title": "The World's Telephones"
+    },
+    {
+      "item": "ability.cov",
+      "title": "Ability and Intelligence Tests"
+    },
+    {
+      "item": "airmiles",
+      "title": "Passenger Miles on Commercial US Airlines, 1937-1960"
+    },
+    {
+      "item": "airquality",
+      "title": "New York Air Quality Measurements"
+    },
+    {
+      "item": "anscombe",
+      "title": "Anscombe's Quartet of 'Identical' Simple Linear Regressions"
+    },
+    {
+      "item": "attenu",
+      "title": "The Joyner-Boore Attenuation Data"
+    },
+    {
+      "item": "attitude",
+      "title": "The Chatterjee-Price Attitude Data"
+    },
+    {
+      "item": "austres",
+      "title": "Quarterly Time Series of the Number of Australian Residents"
+    },
+    {
+      "item": "beaver1 (beavers)",
+      "title": "Body Temperature Series of Two Beavers"
+    },
+    {
+      "item": "beaver2 (beavers)",
+      "title": "Body Temperature Series of Two Beavers"
+    },
+    {
+      "item": "cars",
+      "title": "Speed and Stopping Distances of Cars"
+    },
+    {
+      "item": "chickwts",
+      "title": "Chicken Weights by Feed Type"
+    },
+    {
+      "item": "co2",
+      "title": "Mauna Loa Atmospheric CO2 Concentration"
+    },
+    {
+      "item": "crimtab",
+      "title": "Student's 3000 Criminals Data"
+    },
+    {
+      "item": "discoveries",
+      "title": "Yearly Numbers of Important Discoveries"
+    },
+    {
+      "item": "esoph",
+      "title": "Smoking, Alcohol and (O)esophageal Cancer"
+    },
+    {
+      "item": "euro",
+      "title": "Conversion Rates of Euro Currencies"
+    },
+    {
+      "item": "euro.cross (euro)",
+      "title": "Conversion Rates of Euro Currencies"
+    },
+    {
+      "item": "eurodist",
+      "title": "Distances Between European Cities and Between US Cities"
+    },
+    {
+      "item": "faithful",
+      "title": "Old Faithful Geyser Data"
+    },
+    {
+      "item": "fdeaths (UKLungDeaths)",
+      "title": "Monthly Deaths from Lung Diseases in the UK"
+    },
+    {
+      "item": "freeny",
+      "title": "Freeny's Revenue Data"
+    },
+    {
+      "item": "freeny.x (freeny)",
+      "title": "Freeny's Revenue Data"
+    },
+    {
+      "item": "freeny.y (freeny)",
+      "title": "Freeny's Revenue Data"
+    },
+    {
+      "item": "gait",
+      "title": "Hip and Knee Angle while Walking"
+    },
+    {
+      "item": "infert",
+      "title": "Infertility after Spontaneous and Induced Abortion"
+    },
+    {
+      "item": "iris",
+      "title": "Edgar Anderson's Iris Data"
+    },
+    {
+      "item": "iris3",
+      "title": "Edgar Anderson's Iris Data"
+    },
+    {
+      "item": "islands",
+      "title": "Areas of the World's Major Landmasses"
+    },
+    {
+      "item": "ldeaths (UKLungDeaths)",
+      "title": "Monthly Deaths from Lung Diseases in the UK"
+    },
+    {
+      "item": "lh",
+      "title": "Luteinizing Hormone in Blood Samples"
+    },
+    {
+      "item": "longley",
+      "title": "Longley's Economic Regression Data"
+    },
+    {
+      "item": "lynx",
+      "title": "Annual Canadian Lynx trappings 1821-1934"
+    },
+    {
+      "item": "mdeaths (UKLungDeaths)",
+      "title": "Monthly Deaths from Lung Diseases in the UK"
+    },
+    {
+      "item": "morley",
+      "title": "Michelson Speed of Light Data"
+    },
+    {
+      "item": "mtcars",
+      "title": "Motor Trend Car Road Tests"
+    },
+    {
+      "item": "nhtemp",
+      "title": "Average Yearly Temperatures in New Haven"
+    },
+    {
+      "item": "nottem",
+      "title": "Average Monthly Temperatures at Nottingham, 1920-1939"
+    },
+    {
+      "item": "npk",
+      "title": "Classical N, P, K Factorial Experiment"
+    },
+    {
+      "item": "occupationalStatus",
+      "title": "Occupational Status of Fathers and their Sons"
+    },
+    {
+      "item": "penguins",
+      "title": "Measurements of Penguins near Palmer Station, Antarctica"
+    },
+    {
+      "item": "penguins_raw (penguins)",
+      "title": "Measurements of Penguins near Palmer Station, Antarctica"
+    },
+    {
+      "item": "precip",
+      "title": "Annual Precipitation in Selected US Cities"
+    },
+    {
+      "item": "presidents",
+      "title": "Quarterly Approval Ratings of US Presidents"
+    },
+    {
+      "item": "pressure",
+      "title": "Vapor Pressure of Mercury as a Function of Temperature"
+    },
+    {
+      "item": "quakes",
+      "title": "Locations of Earthquakes off Fiji"
+    },
+    {
+      "item": "randu",
+      "title": "Random Numbers from Congruential Generator RANDU"
+    },
+    {
+      "item": "rivers",
+      "title": "Lengths of Major North American Rivers"
+    },
+    {
+      "item": "rock",
+      "title": "Measurements on Petroleum Rock Samples"
+    },
+    {
+      "item": "sleep",
+      "title": "Student's Sleep Data"
+    },
+    {
+      "item": "stack.loss (stackloss)",
+      "title": "Brownlee's Stack Loss Plant Data"
+    },
+    {
+      "item": "stack.x (stackloss)",
+      "title": "Brownlee's Stack Loss Plant Data"
+    },
+    {
+      "item": "stackloss",
+      "title": "Brownlee's Stack Loss Plant Data"
+    },
+    {
+      "item": "state.abb (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.area (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.center (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.division (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.name (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.region (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "state.x77 (state)",
+      "title": "US State Facts and Figures"
+    },
+    {
+      "item": "sunspot.m2014 (sunspot.month)",
+      "title": "Monthly Sunspot Data, from 1749 to \"Present\""
+    },
+    {
+      "item": "sunspot.month",
+      "title": "Monthly Sunspot Data, from 1749 to \"Present\""
+    },
+    {
+      "item": "sunspot.year",
+      "title": "Yearly Sunspot Data, 1700-1988"
+    },
+    {
+      "item": "sunspots",
+      "title": "Monthly Sunspot Numbers, 1749-1983"
+    },
+    {
+      "item": "swiss",
+      "title": "Swiss Fertility and Socioeconomic Indicators (1888) Data"
+    },
+    {
+      "item": "treering",
+      "title": "Yearly Tree-Ring Data, -6000-1979"
+    },
+    {
+      "item": "trees",
+      "title": "Diameter, Height and Volume for Black Cherry Trees"
+    },
+    {
+      "item": "uspop",
+      "title": "Populations Recorded by the US Census"
+    },
+    {
+      "item": "volcano",
+      "title": "Topographic Information on Auckland's Maunga Whau Volcano"
+    },
+    {
+      "item": "warpbreaks",
+      "title": "The Number of Breaks in Yarn during Weaving"
+    },
+    {
+      "item": "women",
+      "title": "Average Heights and Weights for American Women"
+    }
+  ],
+  "installed_files_sha256": {
+    "DESCRIPTION": "45968e948ef9d0fd93c14fdc324292f72a95b5ea52f0bfb8259862a71f999104",
+    "Meta/data.rds": "0384afbc210f36bb51ad0a3bce369c543467266bb243cf96e47631163e86ded0",
+    "NAMESPACE": "b90c1d636c82f2182a266a8564845a896507098ebb3dfae51c302ad4f41db9d9",
+    "data/Rdata.rdb": "e2a9e6192258dd0a49843d90ca2a8785b7474ac045d4d4bd707a9129c1f7f63c",
+    "data/Rdata.rds": "10b8fa454528af734e7d4be867bd449b051fef82800b675cca4486cb9473a412",
+    "data/Rdata.rdx": "026e083c73d0ef874f9acf1a73ad73a64e25fa538227cbc201dc9b87de0454b8"
+  },
+  "lazy_database_compression": 3,
+  "lazy_database_references": 0,
+  "namespace_exports": [],
+  "objects": [
+    {
+      "attributes": "tsp,class",
+      "bytes": "380",
+      "class": "ts",
+      "dimensions": "",
+      "length": "144",
+      "name": "AirPassengers",
+      "offset": "0",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "441",
+      "class": "ts",
+      "dimensions": "",
+      "length": "150",
+      "name": "BJsales",
+      "offset": "380",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "498",
+      "class": "ts",
+      "dimensions": "",
+      "length": "150",
+      "name": "BJsales.lead",
+      "offset": "821",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names,reference",
+      "bytes": "186",
+      "class": "data.frame",
+      "dimensions": "6,2",
+      "length": "2",
+      "name": "BOD",
+      "offset": "1319",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,formula,outer,labels,units",
+      "bytes": "831",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "84,5",
+      "length": "5",
+      "name": "CO2",
+      "offset": "1505",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,formula,outer,labels,units",
+      "bytes": "1466",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "578,4",
+      "length": "4",
+      "name": "ChickWeight",
+      "offset": "2336",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,formula,labels,units",
+      "bytes": "1181",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "176,3",
+      "length": "3",
+      "name": "DNase",
+      "offset": "3802",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,tsp,class",
+      "bytes": "14222",
+      "class": "mts,ts,matrix,array",
+      "dimensions": "1860,4",
+      "length": "7440",
+      "name": "EuStockMarkets",
+      "offset": "4983",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "201",
+      "class": "data.frame",
+      "dimensions": "6,2",
+      "length": "2",
+      "name": "Formaldehyde",
+      "offset": "19205",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,class",
+      "bytes": "239",
+      "class": "table",
+      "dimensions": "4,4,2",
+      "length": "32",
+      "name": "HairEyeColor",
+      "offset": "19406",
+      "type": "double"
+    },
+    {
+      "attributes": "names",
+      "bytes": "465",
+      "class": "list",
+      "dimensions": "",
+      "length": "3",
+      "name": "Harman23.cor",
+      "offset": "19645",
+      "type": "list"
+    },
+    {
+      "attributes": "names",
+      "bytes": "1743",
+      "class": "list",
+      "dimensions": "",
+      "length": "3",
+      "name": "Harman74.cor",
+      "offset": "20110",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,formula,labels,units",
+      "bytes": "615",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "66,3",
+      "length": "3",
+      "name": "Indometh",
+      "offset": "21853",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "276",
+      "class": "data.frame",
+      "dimensions": "72,2",
+      "length": "2",
+      "name": "InsectSprays",
+      "offset": "22468",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "392",
+      "class": "ts",
+      "dimensions": "",
+      "length": "84",
+      "name": "JohnsonJohnson",
+      "offset": "22744",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "394",
+      "class": "ts",
+      "dimensions": "",
+      "length": "98",
+      "name": "LakeHuron",
+      "offset": "23136",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "1269",
+      "class": "data.frame",
+      "dimensions": "50,5",
+      "length": "5",
+      "name": "LifeCycleSavings",
+      "offset": "23530",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,formula,labels,units",
+      "bytes": "856",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "84,3",
+      "length": "3",
+      "name": "Loblolly",
+      "offset": "24799",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "316",
+      "class": "ts",
+      "dimensions": "",
+      "length": "100",
+      "name": "Nile",
+      "offset": "25655",
+      "type": "double"
+    },
+    {
+      "attributes": "names,row.names,class,formula,labels,units",
+      "bytes": "459",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "35,3",
+      "length": "3",
+      "name": "Orange",
+      "offset": "25971",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "401",
+      "class": "data.frame",
+      "dimensions": "64,4",
+      "length": "4",
+      "name": "OrchardSprays",
+      "offset": "26430",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "302",
+      "class": "data.frame",
+      "dimensions": "30,2",
+      "length": "2",
+      "name": "PlantGrowth",
+      "offset": "26831",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class,reference",
+      "bytes": "300",
+      "class": "data.frame",
+      "dimensions": "23,3",
+      "length": "3",
+      "name": "Puromycin",
+      "offset": "27133",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,tsp,class",
+      "bytes": "3463",
+      "class": "mts,ts,matrix,array",
+      "dimensions": "192,8",
+      "length": "1536",
+      "name": "Seatbelts",
+      "offset": "27433",
+      "type": "double"
+    },
+    {
+      "attributes": "names,row.names,class,formula,labels,units",
+      "bytes": "1134",
+      "class": "nfnGroupedData,nfGroupedData,groupedData,data.frame",
+      "dimensions": "132,5",
+      "length": "5",
+      "name": "Theoph",
+      "offset": "30896",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,class",
+      "bytes": "255",
+      "class": "table",
+      "dimensions": "4,2,2,2",
+      "length": "32",
+      "name": "Titanic",
+      "offset": "32030",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "333",
+      "class": "data.frame",
+      "dimensions": "60,3",
+      "length": "3",
+      "name": "ToothGrowth",
+      "offset": "32285",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,class",
+      "bytes": "236",
+      "class": "table",
+      "dimensions": "2,2,6",
+      "length": "24",
+      "name": "UCBAdmissions",
+      "offset": "32618",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "473",
+      "class": "ts",
+      "dimensions": "",
+      "length": "192",
+      "name": "UKDriverDeaths",
+      "offset": "32854",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "381",
+      "class": "ts",
+      "dimensions": "",
+      "length": "108",
+      "name": "UKgas",
+      "offset": "33327",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "282",
+      "class": "ts",
+      "dimensions": "",
+      "length": "72",
+      "name": "USAccDeaths",
+      "offset": "33708",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "883",
+      "class": "data.frame",
+      "dimensions": "50,4",
+      "length": "4",
+      "name": "USArrests",
+      "offset": "33990",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "1157",
+      "class": "data.frame",
+      "dimensions": "43,12",
+      "length": "12",
+      "name": "USJudgeRatings",
+      "offset": "34873",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "309",
+      "class": "matrix,array",
+      "dimensions": "5,5",
+      "length": "25",
+      "name": "USPersonalExpenditure",
+      "offset": "36030",
+      "type": "double"
+    },
+    {
+      "attributes": "Labels,Size,call,class,Diag,Upper",
+      "bytes": "359",
+      "class": "dist",
+      "dimensions": "",
+      "length": "45",
+      "name": "UScitiesD",
+      "offset": "36339",
+      "type": "integer"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "216",
+      "class": "matrix,array",
+      "dimensions": "5,4",
+      "length": "20",
+      "name": "VADeaths",
+      "offset": "36698",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "263",
+      "class": "ts",
+      "dimensions": "",
+      "length": "100",
+      "name": "WWWusage",
+      "offset": "36914",
+      "type": "double"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "303",
+      "class": "matrix,array",
+      "dimensions": "7,7",
+      "length": "49",
+      "name": "WorldPhones",
+      "offset": "37177",
+      "type": "double"
+    },
+    {
+      "attributes": "names",
+      "bytes": "361",
+      "class": "list",
+      "dimensions": "",
+      "length": "3",
+      "name": "ability.cov",
+      "offset": "37480",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "169",
+      "class": "ts",
+      "dimensions": "",
+      "length": "24",
+      "name": "airmiles",
+      "offset": "37841",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "953",
+      "class": "data.frame",
+      "dimensions": "153,6",
+      "length": "6",
+      "name": "airquality",
+      "offset": "38010",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "358",
+      "class": "data.frame",
+      "dimensions": "11,8",
+      "length": "8",
+      "name": "anscombe",
+      "offset": "38963",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "1788",
+      "class": "data.frame",
+      "dimensions": "182,5",
+      "length": "5",
+      "name": "attenu",
+      "offset": "39321",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "480",
+      "class": "data.frame",
+      "dimensions": "30,7",
+      "length": "7",
+      "name": "attitude",
+      "offset": "41109",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "409",
+      "class": "ts",
+      "dimensions": "",
+      "length": "89",
+      "name": "austres",
+      "offset": "41589",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "681",
+      "class": "data.frame",
+      "dimensions": "114,4",
+      "length": "4",
+      "name": "beaver1",
+      "offset": "41998",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "644",
+      "class": "data.frame",
+      "dimensions": "100,4",
+      "length": "4",
+      "name": "beaver2",
+      "offset": "42679",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "245",
+      "class": "data.frame",
+      "dimensions": "50,2",
+      "length": "2",
+      "name": "cars",
+      "offset": "43323",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "371",
+      "class": "data.frame",
+      "dimensions": "71,2",
+      "length": "2",
+      "name": "chickwts",
+      "offset": "43568",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "1203",
+      "class": "ts",
+      "dimensions": "",
+      "length": "468",
+      "name": "co2",
+      "offset": "43939",
+      "type": "double"
+    },
+    {
+      "attributes": "dim,dimnames,class",
+      "bytes": "605",
+      "class": "table",
+      "dimensions": "42,22",
+      "length": "924",
+      "name": "crimtab",
+      "offset": "45142",
+      "type": "integer"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "196",
+      "class": "ts",
+      "dimensions": "",
+      "length": "100",
+      "name": "discoveries",
+      "offset": "45747",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "500",
+      "class": "data.frame",
+      "dimensions": "88,5",
+      "length": "5",
+      "name": "esoph",
+      "offset": "45943",
+      "type": "list"
+    },
+    {
+      "attributes": "names",
+      "bytes": "203",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "11",
+      "name": "euro",
+      "offset": "46443",
+      "type": "double"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "886",
+      "class": "matrix,array",
+      "dimensions": "11,11",
+      "length": "121",
+      "name": "euro.cross",
+      "offset": "46646",
+      "type": "double"
+    },
+    {
+      "attributes": "Size,Labels,class",
+      "bytes": "693",
+      "class": "dist",
+      "dimensions": "",
+      "length": "210",
+      "name": "eurodist",
+      "offset": "47532",
+      "type": "double"
+    },
+    {
+      "attributes": "names,row.names,class",
+      "bytes": "1108",
+      "class": "data.frame",
+      "dimensions": "272,2",
+      "length": "2",
+      "name": "faithful",
+      "offset": "48225",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "274",
+      "class": "ts",
+      "dimensions": "",
+      "length": "72",
+      "name": "fdeaths",
+      "offset": "49333",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "1344",
+      "class": "data.frame",
+      "dimensions": "39,5",
+      "length": "5",
+      "name": "freeny",
+      "offset": "49607",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "1129",
+      "class": "matrix,array",
+      "dimensions": "39,4",
+      "length": "156",
+      "name": "freeny.x",
+      "offset": "50951",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "366",
+      "class": "ts",
+      "dimensions": "",
+      "length": "39",
+      "name": "freeny.y",
+      "offset": "52080",
+      "type": "double"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "1779",
+      "class": "array",
+      "dimensions": "20,39,2",
+      "length": "1560",
+      "name": "gait",
+      "offset": "52446",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "943",
+      "class": "data.frame",
+      "dimensions": "248,8",
+      "length": "8",
+      "name": "infert",
+      "offset": "54225",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "911",
+      "class": "data.frame",
+      "dimensions": "150,5",
+      "length": "5",
+      "name": "iris",
+      "offset": "55168",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "847",
+      "class": "array",
+      "dimensions": "50,4,3",
+      "length": "600",
+      "name": "iris3",
+      "offset": "56079",
+      "type": "double"
+    },
+    {
+      "attributes": "names",
+      "bytes": "530",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "48",
+      "name": "islands",
+      "offset": "56926",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "268",
+      "class": "ts",
+      "dimensions": "",
+      "length": "72",
+      "name": "ldeaths",
+      "offset": "57456",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "191",
+      "class": "ts",
+      "dimensions": "",
+      "length": "48",
+      "name": "lh",
+      "offset": "57724",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "706",
+      "class": "data.frame",
+      "dimensions": "16,7",
+      "length": "7",
+      "name": "longley",
+      "offset": "57915",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "359",
+      "class": "ts",
+      "dimensions": "",
+      "length": "114",
+      "name": "lynx",
+      "offset": "58621",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "264",
+      "class": "ts",
+      "dimensions": "",
+      "length": "72",
+      "name": "mdeaths",
+      "offset": "58980",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "441",
+      "class": "data.frame",
+      "dimensions": "100,3",
+      "length": "3",
+      "name": "morley",
+      "offset": "59244",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class",
+      "bytes": "1102",
+      "class": "data.frame",
+      "dimensions": "32,11",
+      "length": "11",
+      "name": "mtcars",
+      "offset": "59685",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "232",
+      "class": "ts",
+      "dimensions": "",
+      "length": "60",
+      "name": "nhtemp",
+      "offset": "60787",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "579",
+      "class": "ts",
+      "dimensions": "",
+      "length": "240",
+      "name": "nottem",
+      "offset": "61019",
+      "type": "double"
+    },
+    {
+      "attributes": "names,row.names,class",
+      "bytes": "300",
+      "class": "data.frame",
+      "dimensions": "24,5",
+      "length": "5",
+      "name": "npk",
+      "offset": "61598",
+      "type": "list"
+    },
+    {
+      "attributes": "dim,dimnames,class",
+      "bytes": "303",
+      "class": "table",
+      "dimensions": "8,8",
+      "length": "64",
+      "name": "occupationalStatus",
+      "offset": "61898",
+      "type": "integer"
+    },
+    {
+      "attributes": "names,row.names,class",
+      "bytes": "2291",
+      "class": "data.frame",
+      "dimensions": "344,8",
+      "length": "8",
+      "name": "penguins",
+      "offset": "62201",
+      "type": "list"
+    },
+    {
+      "attributes": "names,row.names,class",
+      "bytes": "7976",
+      "class": "data.frame",
+      "dimensions": "344,17",
+      "length": "17",
+      "name": "penguins_raw",
+      "offset": "64492",
+      "type": "list"
+    },
+    {
+      "attributes": "names",
+      "bytes": "795",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "70",
+      "name": "precip",
+      "offset": "72468",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "287",
+      "class": "ts",
+      "dimensions": "",
+      "length": "120",
+      "name": "presidents",
+      "offset": "73263",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "272",
+      "class": "data.frame",
+      "dimensions": "19,2",
+      "length": "2",
+      "name": "pressure",
+      "offset": "73550",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "7246",
+      "class": "data.frame",
+      "dimensions": "1000,5",
+      "length": "5",
+      "name": "quakes",
+      "offset": "73822",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "8780",
+      "class": "data.frame",
+      "dimensions": "400,3",
+      "length": "3",
+      "name": "randu",
+      "offset": "81068",
+      "type": "list"
+    },
+    {
+      "attributes": "",
+      "bytes": "359",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "141",
+      "name": "rivers",
+      "offset": "89848",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "954",
+      "class": "data.frame",
+      "dimensions": "48,4",
+      "length": "4",
+      "name": "rock",
+      "offset": "90207",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "325",
+      "class": "data.frame",
+      "dimensions": "20,3",
+      "length": "3",
+      "name": "sleep",
+      "offset": "91161",
+      "type": "list"
+    },
+    {
+      "attributes": "",
+      "bytes": "82",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "21",
+      "name": "stack.loss",
+      "offset": "91486",
+      "type": "double"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "203",
+      "class": "matrix,array",
+      "dimensions": "21,3",
+      "length": "63",
+      "name": "stack.x",
+      "offset": "91568",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "269",
+      "class": "data.frame",
+      "dimensions": "21,4",
+      "length": "4",
+      "name": "stackloss",
+      "offset": "91771",
+      "type": "list"
+    },
+    {
+      "attributes": "",
+      "bytes": "150",
+      "class": "character",
+      "dimensions": "",
+      "length": "50",
+      "name": "state.abb",
+      "offset": "92040",
+      "type": "character"
+    },
+    {
+      "attributes": "",
+      "bytes": "233",
+      "class": "numeric",
+      "dimensions": "",
+      "length": "50",
+      "name": "state.area",
+      "offset": "92190",
+      "type": "double"
+    },
+    {
+      "attributes": "names",
+      "bytes": "770",
+      "class": "list",
+      "dimensions": "",
+      "length": "2",
+      "name": "state.center",
+      "offset": "92423",
+      "type": "list"
+    },
+    {
+      "attributes": "levels,class",
+      "bytes": "213",
+      "class": "factor",
+      "dimensions": "",
+      "length": "50",
+      "name": "state.division",
+      "offset": "93193",
+      "type": "integer"
+    },
+    {
+      "attributes": "",
+      "bytes": "417",
+      "class": "character",
+      "dimensions": "",
+      "length": "50",
+      "name": "state.name",
+      "offset": "93406",
+      "type": "character"
+    },
+    {
+      "attributes": "levels,class",
+      "bytes": "156",
+      "class": "factor",
+      "dimensions": "",
+      "length": "50",
+      "name": "state.region",
+      "offset": "93823",
+      "type": "integer"
+    },
+    {
+      "attributes": "dim,dimnames",
+      "bytes": "1527",
+      "class": "matrix,array",
+      "dimensions": "50,8",
+      "length": "400",
+      "name": "state.x77",
+      "offset": "93979",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "5437",
+      "class": "ts",
+      "dimensions": "",
+      "length": "3177",
+      "name": "sunspot.m2014",
+      "offset": "95506",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "6032",
+      "class": "ts",
+      "dimensions": "",
+      "length": "3310",
+      "name": "sunspot.month",
+      "offset": "100943",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "727",
+      "class": "ts",
+      "dimensions": "",
+      "length": "289",
+      "name": "sunspot.year",
+      "offset": "106975",
+      "type": "double"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "4933",
+      "class": "ts",
+      "dimensions": "",
+      "length": "2820",
+      "name": "sunspots",
+      "offset": "107702",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "1157",
+      "class": "data.frame",
+      "dimensions": "47,6",
+      "length": "6",
+      "name": "swiss",
+      "offset": "112635",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "14322",
+      "class": "ts",
+      "dimensions": "",
+      "length": "7980",
+      "name": "treering",
+      "offset": "113792",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "340",
+      "class": "data.frame",
+      "dimensions": "31,3",
+      "length": "3",
+      "name": "trees",
+      "offset": "128114",
+      "type": "list"
+    },
+    {
+      "attributes": "tsp,class",
+      "bytes": "186",
+      "class": "ts",
+      "dimensions": "",
+      "length": "19",
+      "name": "uspop",
+      "offset": "128454",
+      "type": "double"
+    },
+    {
+      "attributes": "dim",
+      "bytes": "3083",
+      "class": "matrix,array",
+      "dimensions": "87,61",
+      "length": "5307",
+      "name": "volcano",
+      "offset": "128640",
+      "type": "double"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "293",
+      "class": "data.frame",
+      "dimensions": "54,3",
+      "length": "3",
+      "name": "warpbreaks",
+      "offset": "131723",
+      "type": "list"
+    },
+    {
+      "attributes": "names,class,row.names",
+      "bytes": "188",
+      "class": "data.frame",
+      "dimensions": "15,2",
+      "length": "2",
+      "name": "women",
+      "offset": "132016",
+      "type": "list"
+    }
+  ],
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "runtime": {
+    "nickname": "Unsuffered Consequences",
+    "source_date": "2026-08-27T09:09:57Z",
+    "svn_revision": 90451,
+    "version": "4.7.0 Under development (unstable)"
+  },
+  "schema_version": 1,
+  "serialization_version": 2,
+  "source": {
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "repository": "https://github.com/wch/r-source.git"
+  },
+  "topics": {
+    "AirPassengers": [
+      "AirPassengers"
+    ],
+    "BJsales": [
+      "BJsales",
+      "BJsales.lead"
+    ],
+    "BOD": [
+      "BOD"
+    ],
+    "CO2": [
+      "CO2"
+    ],
+    "ChickWeight": [
+      "ChickWeight"
+    ],
+    "DNase": [
+      "DNase"
+    ],
+    "EuStockMarkets": [
+      "EuStockMarkets"
+    ],
+    "Formaldehyde": [
+      "Formaldehyde"
+    ],
+    "HairEyeColor": [
+      "HairEyeColor"
+    ],
+    "Harman23.cor": [
+      "Harman23.cor"
+    ],
+    "Harman74.cor": [
+      "Harman74.cor"
+    ],
+    "Indometh": [
+      "Indometh"
+    ],
+    "InsectSprays": [
+      "InsectSprays"
+    ],
+    "JohnsonJohnson": [
+      "JohnsonJohnson"
+    ],
+    "LakeHuron": [
+      "LakeHuron"
+    ],
+    "LifeCycleSavings": [
+      "LifeCycleSavings"
+    ],
+    "Loblolly": [
+      "Loblolly"
+    ],
+    "Nile": [
+      "Nile"
+    ],
+    "Orange": [
+      "Orange"
+    ],
+    "OrchardSprays": [
+      "OrchardSprays"
+    ],
+    "PlantGrowth": [
+      "PlantGrowth"
+    ],
+    "Puromycin": [
+      "Puromycin"
+    ],
+    "Seatbelts": [
+      "Seatbelts"
+    ],
+    "Theoph": [
+      "Theoph"
+    ],
+    "Titanic": [
+      "Titanic"
+    ],
+    "ToothGrowth": [
+      "ToothGrowth"
+    ],
+    "UCBAdmissions": [
+      "UCBAdmissions"
+    ],
+    "UKDriverDeaths": [
+      "UKDriverDeaths"
+    ],
+    "UKLungDeaths": [
+      "fdeaths",
+      "ldeaths",
+      "mdeaths"
+    ],
+    "UKgas": [
+      "UKgas"
+    ],
+    "USAccDeaths": [
+      "USAccDeaths"
+    ],
+    "USArrests": [
+      "USArrests"
+    ],
+    "USJudgeRatings": [
+      "USJudgeRatings"
+    ],
+    "USPersonalExpenditure": [
+      "USPersonalExpenditure"
+    ],
+    "UScitiesD": [
+      "UScitiesD"
+    ],
+    "VADeaths": [
+      "VADeaths"
+    ],
+    "WWWusage": [
+      "WWWusage"
+    ],
+    "WorldPhones": [
+      "WorldPhones"
+    ],
+    "ability.cov": [
+      "ability.cov"
+    ],
+    "airmiles": [
+      "airmiles"
+    ],
+    "airquality": [
+      "airquality"
+    ],
+    "anscombe": [
+      "anscombe"
+    ],
+    "attenu": [
+      "attenu"
+    ],
+    "attitude": [
+      "attitude"
+    ],
+    "austres": [
+      "austres"
+    ],
+    "beavers": [
+      "beaver1",
+      "beaver2"
+    ],
+    "cars": [
+      "cars"
+    ],
+    "chickwts": [
+      "chickwts"
+    ],
+    "co2": [
+      "co2"
+    ],
+    "crimtab": [
+      "crimtab"
+    ],
+    "discoveries": [
+      "discoveries"
+    ],
+    "esoph": [
+      "esoph"
+    ],
+    "euro": [
+      "euro",
+      "euro.cross"
+    ],
+    "eurodist": [
+      "eurodist"
+    ],
+    "faithful": [
+      "faithful"
+    ],
+    "freeny": [
+      "freeny",
+      "freeny.x",
+      "freeny.y"
+    ],
+    "gait": [
+      "gait"
+    ],
+    "infert": [
+      "infert"
+    ],
+    "iris": [
+      "iris"
+    ],
+    "iris3": [
+      "iris3"
+    ],
+    "islands": [
+      "islands"
+    ],
+    "lh": [
+      "lh"
+    ],
+    "longley": [
+      "longley"
+    ],
+    "lynx": [
+      "lynx"
+    ],
+    "morley": [
+      "morley"
+    ],
+    "mtcars": [
+      "mtcars"
+    ],
+    "nhtemp": [
+      "nhtemp"
+    ],
+    "nottem": [
+      "nottem"
+    ],
+    "npk": [
+      "npk"
+    ],
+    "occupationalStatus": [
+      "occupationalStatus"
+    ],
+    "penguins": [
+      "penguins",
+      "penguins_raw"
+    ],
+    "precip": [
+      "precip"
+    ],
+    "presidents": [
+      "presidents"
+    ],
+    "pressure": [
+      "pressure"
+    ],
+    "quakes": [
+      "quakes"
+    ],
+    "randu": [
+      "randu"
+    ],
+    "rivers": [
+      "rivers"
+    ],
+    "rock": [
+      "rock"
+    ],
+    "sleep": [
+      "sleep"
+    ],
+    "stackloss": [
+      "stack.loss",
+      "stack.x",
+      "stackloss"
+    ],
+    "state": [
+      "state.abb",
+      "state.area",
+      "state.center",
+      "state.division",
+      "state.name",
+      "state.region",
+      "state.x77"
+    ],
+    "sunspot.month": [
+      "sunspot.m2014",
+      "sunspot.month"
+    ],
+    "sunspot.year": [
+      "sunspot.year"
+    ],
+    "sunspots": [
+      "sunspots"
+    ],
+    "swiss": [
+      "swiss"
+    ],
+    "treering": [
+      "treering"
+    ],
+    "trees": [
+      "trees"
+    ],
+    "uspop": [
+      "uspop"
+    ],
+    "volcano": [
+      "volcano"
+    ],
+    "warpbreaks": [
+      "warpbreaks"
+    ],
+    "women": [
+      "women"
+    ]
+  }
+}

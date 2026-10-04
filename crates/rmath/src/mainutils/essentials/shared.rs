@@ -844,6 +844,11 @@ pub(crate) fn package_description_fields(
 
     let package_path = find_package_path(package);
     if package_path.is_empty() {
+        if package == "datasets" {
+            return Ok(description_fields(include_str!(
+                "../../library/datasets/assets/DESCRIPTION"
+            )));
+        }
         return Err(format!("there is no package called '{}'", package));
     }
 
@@ -872,6 +877,9 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
 
         let package_path = find_package_path(package);
         if package_path.is_empty() {
+            if package == "datasets" {
+                return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
+            }
             return Err(format!("there is no package called '{}'", package));
         }
         let package_dir = Path::new(&package_path);
@@ -2038,6 +2046,11 @@ pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
 
 pub(crate) fn list_package_data_sets(packages: &[String]) -> Vec<String> {
     let mut names = Vec::<String>::new();
+    if find_package_path("datasets").is_empty()
+        && (packages.is_empty() || packages.iter().any(|package| package == "datasets"))
+    {
+        names.extend(crate::library::datasets::topics());
+    }
     for package_dir in data_package_dirs(packages) {
         let data_dir = package_dir.join("data");
         let Ok(entries) = std::fs::read_dir(data_dir) else {
@@ -2124,6 +2137,16 @@ pub(crate) unsafe fn load_package_data_set(
                 super::package_data::load_file(path, target_env)?;
                 return Ok(true);
             }
+        }
+        if find_package_path("datasets").is_empty()
+            && (packages.is_empty() || packages.iter().any(|package| package == "datasets"))
+        {
+            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            let target = owner
+                .sexp(target_env)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+            return crate::library::datasets::load_topic(topic, target);
         }
         Ok(false)
     }
@@ -2738,20 +2761,160 @@ pub(crate) unsafe fn define_lazy_data_names(package_env: SEXP, names: &[String])
 }
 
 pub(crate) unsafe fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
-    unsafe {
-        let value = crate::sexp::envir::R_findVarInFrame(package_env, lazy_data_names_symbol());
-        if value.is_null()
-            || value == R_NilValue()
-            || value == crate::sexp::globals::R_UnboundValue()
-            || TYPEOF(value) != SEXPTYPE::STRSXP
-        {
-            return Vec::new();
-        }
+    use crate::sexp::{
+        object::{Sexp, SexpError, SexpResult},
+        owner::{OwnerToken, RuntimeAccess, StoredOwner, with_runtime},
+    };
 
-        (0..XLENGTH(value))
-            .map(|i| elt_to_string(value, i))
-            .filter(|name| !name.is_empty() && name != "NA")
-            .collect()
+    fn fail(error: SexpError) -> ! {
+        std::panic::panic_any(RError {
+            message: error.to_string(),
+        })
+    }
+    fn lookup(
+        access: &RuntimeAccess,
+        environment: &Sexp<'static>,
+        name: &std::ffi::CStr,
+    ) -> SexpResult<Sexp<'static>> {
+        access.domain().link(environment)?;
+        let symbol = access
+            .with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })?;
+        let value = access.with_native(|owner| unsafe {
+            owner
+                .sexp(crate::sexp::envir::R_findVarInFrame(
+                    environment.as_raw(),
+                    symbol.as_raw(),
+                ))?
+                .into_owned()
+        })?;
+        if value.typeof_() == SEXPTYPE::PROMSXP {
+            access.with_native(|owner| unsafe {
+                owner
+                    .sexp(crate::sexp::envir::forcePromise(value.as_raw()))?
+                    .into_owned()
+            })
+        } else {
+            Ok(value)
+        }
+    }
+    fn binding_names(
+        access: &RuntimeAccess,
+        environment: &Sexp<'static>,
+    ) -> SexpResult<Vec<String>> {
+        let unbound = access.domain().unbound();
+        let mut chains = Vec::new();
+        chains
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "namespace lazy data names",
+            })?;
+        chains.push(environment.try_frame()?);
+        let table = environment.try_hashtab()?;
+        if !table.is_nil() {
+            if table.typeof_() != SEXPTYPE::VECSXP {
+                return Err(SexpError::TypeMismatch {
+                    expected: "environment hash table",
+                    actual: table.typeof_(),
+                });
+            }
+            for index in 0..table.len() {
+                chains
+                    .try_reserve(1)
+                    .map_err(|_| SexpError::AllocationFailed {
+                        object: "namespace lazy data names",
+                    })?;
+                chains.push(table.try_vector_elt(index)?);
+            }
+        }
+        let mut names = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for mut cell in chains {
+            while !cell.is_nil() {
+                seen.try_reserve(1)
+                    .map_err(|_| SexpError::AllocationFailed {
+                        object: "namespace lazy data names",
+                    })?;
+                let identity = cell
+                    .allocation()?
+                    .link()
+                    .ok_or(SexpError::StaleAllocation)?;
+                if !seen.insert(identity) {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "cyclic namespace binding chain".into(),
+                    });
+                }
+                if cell.try_car()? != unbound {
+                    let tag = cell.try_tag()?;
+                    if tag.typeof_() == SEXPTYPE::SYMSXP {
+                        let name = tag.try_printname()?.try_as_string()?;
+                        if name != ".packageName" && name != ".namespaceEnv" {
+                            names
+                                .try_reserve(1)
+                                .map_err(|_| SexpError::AllocationFailed {
+                                    object: "namespace lazy data names",
+                                })?;
+                            names.push(name);
+                        }
+                    }
+                }
+                cell = cell.try_cdr()?;
+            }
+        }
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+
+    // Retain the original namespace and physical runtime through metadata
+    // lookup/force callbacks; no replacement ambient runtime may be adopted.
+    let namespace = unsafe { OwnerToken::current() }
+        .and_then(|owner| owner.sexp(package_env))
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|error| fail(error));
+    let authority = StoredOwner::from_value(&namespace).unwrap_or_else(|error| fail(error));
+    let owner = authority
+        .managed()
+        .unwrap_or_else(|| fail(SexpError::RootUnavailable));
+    let _pin = owner.pin().unwrap_or_else(|error| fail(error));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_runtime(&owner, |access| -> SexpResult<Vec<String>> {
+            let info = lookup(access, &namespace, c".__NAMESPACE__.")?;
+            if info.typeof_() == SEXPTYPE::ENVSXP {
+                let lazy = lookup(access, &info, c"lazydata")?;
+                if lazy.typeof_() == SEXPTYPE::ENVSXP {
+                    return binding_names(access, &lazy);
+                }
+            }
+            // Preserve installed packages that still expose the legacy index.
+            let value = lookup(access, &namespace, c".lazyDataNames")?;
+            if value.typeof_() != SEXPTYPE::STRSXP {
+                return Ok(Vec::new());
+            }
+            let mut names = Vec::new();
+            for index in 0..value.len() {
+                if let Some(name) = value.try_string_value_elt(index)?
+                    && !name.is_empty()
+                    && name != "NA"
+                {
+                    names
+                        .try_reserve(1)
+                        .map_err(|_| SexpError::AllocationFailed {
+                            object: "namespace lazy data names",
+                        })?;
+                    names.push(name);
+                }
+            }
+            Ok(names)
+        })
+    }));
+    authority
+        .require_active()
+        .unwrap_or_else(|error| fail(error));
+    match result {
+        Ok(result) => result
+            .and_then(|result| result)
+            .unwrap_or_else(|error| fail(error)),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 

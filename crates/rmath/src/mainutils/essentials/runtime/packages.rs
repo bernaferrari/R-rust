@@ -84,6 +84,12 @@ unsafe fn attach_recommended_package_stub(package: &str) {
             return;
         }
         let lib_path = find_package_path(package);
+        if lib_path.is_empty() && package == "datasets" {
+            crate::library::datasets::attach().unwrap_or_else(|message| {
+                std::panic::panic_any(crate::sexp::context::RError { message })
+            });
+            return;
+        }
         if !lib_path.is_empty() {
             let package_dir = Path::new(&lib_path);
             let mut loading = vec![package.to_string()];
@@ -591,8 +597,8 @@ pub unsafe fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: 
 
 /// R's `data(..., package, envir)` — load package data.
 ///
-/// The Android runtime intentionally supports source-form package data
-/// (`data/*.R`) and rejects serialized/lazy databases with an explicit error.
+/// Installed source/workspace data and the portable pinned datasets database
+/// enter through the package loader; topic loads are returned invisibly.
 pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let topic_arg = arg_by_name_or_position(args, &["list"], 0);
@@ -606,6 +612,14 @@ pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let packages = package_arg_values(package_arg);
         if topic_arg.is_null() || topic_arg == R_NilValue() || XLENGTH(topic_arg) == 0 {
+            if find_package_path("datasets").is_empty()
+                && (packages.as_slice() == ["datasets"]
+                    || (packages.is_empty() && data_package_dirs(&packages).is_empty()))
+            {
+                return crate::library::datasets::index()
+                    .unwrap_or_else(|message| package_error(message))
+                    .as_raw();
+            }
             let items = list_package_data_sets(&packages);
             return package_data_index(&packages, &items);
         }

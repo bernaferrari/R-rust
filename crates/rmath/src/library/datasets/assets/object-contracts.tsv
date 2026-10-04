@@ -1,0 +1,109 @@
+name	type	length	class	dimensions	attributes
+AirPassengers	double	144	ts		tsp,class
+BJsales	double	150	ts		tsp,class
+BJsales.lead	double	150	ts		tsp,class
+BOD	list	2	data.frame	6,2	names,class,row.names,reference
+CO2	list	5	nfnGroupedData,nfGroupedData,groupedData,data.frame	84,5	names,row.names,class,formula,outer,labels,units
+ChickWeight	list	4	nfnGroupedData,nfGroupedData,groupedData,data.frame	578,4	names,row.names,class,formula,outer,labels,units
+DNase	list	3	nfnGroupedData,nfGroupedData,groupedData,data.frame	176,3	names,row.names,class,formula,labels,units
+EuStockMarkets	double	7440	mts,ts,matrix,array	1860,4	dim,dimnames,tsp,class
+Formaldehyde	list	2	data.frame	6,2	names,class,row.names
+HairEyeColor	double	32	table	4,4,2	dim,dimnames,class
+Harman23.cor	list	3	list		names
+Harman74.cor	list	3	list		names
+Indometh	list	3	nfnGroupedData,nfGroupedData,groupedData,data.frame	66,3	names,row.names,class,formula,labels,units
+InsectSprays	list	2	data.frame	72,2	names,class,row.names
+JohnsonJohnson	double	84	ts		tsp,class
+LakeHuron	double	98	ts		tsp,class
+LifeCycleSavings	list	5	data.frame	50,5	names,class,row.names
+Loblolly	list	3	nfnGroupedData,nfGroupedData,groupedData,data.frame	84,3	names,row.names,class,formula,labels,units
+Nile	double	100	ts		tsp,class
+Orange	list	3	nfnGroupedData,nfGroupedData,groupedData,data.frame	35,3	names,row.names,class,formula,labels,units
+OrchardSprays	list	4	data.frame	64,4	names,class,row.names
+PlantGrowth	list	2	data.frame	30,2	names,class,row.names
+Puromycin	list	3	data.frame	23,3	names,row.names,class,reference
+Seatbelts	double	1536	mts,ts,matrix,array	192,8	dim,dimnames,tsp,class
+Theoph	list	5	nfnGroupedData,nfGroupedData,groupedData,data.frame	132,5	names,row.names,class,formula,labels,units
+Titanic	double	32	table	4,2,2,2	dim,dimnames,class
+ToothGrowth	list	3	data.frame	60,3	names,class,row.names
+UCBAdmissions	double	24	table	2,2,6	dim,dimnames,class
+UKDriverDeaths	double	192	ts		tsp,class
+UKgas	double	108	ts		tsp,class
+USAccDeaths	double	72	ts		tsp,class
+USArrests	list	4	data.frame	50,4	names,class,row.names
+USJudgeRatings	list	12	data.frame	43,12	names,class,row.names
+USPersonalExpenditure	double	25	matrix,array	5,5	dim,dimnames
+UScitiesD	integer	45	dist		Labels,Size,call,class,Diag,Upper
+VADeaths	double	20	matrix,array	5,4	dim,dimnames
+WWWusage	double	100	ts		tsp,class
+WorldPhones	double	49	matrix,array	7,7	dim,dimnames
+ability.cov	list	3	list		names
+airmiles	double	24	ts		tsp,class
+airquality	list	6	data.frame	153,6	names,class,row.names
+anscombe	list	8	data.frame	11,8	names,class,row.names
+attenu	list	5	data.frame	182,5	names,class,row.names
+attitude	list	7	data.frame	30,7	names,class,row.names
+austres	double	89	ts		tsp,class
+beaver1	list	4	data.frame	114,4	names,class,row.names
+beaver2	list	4	data.frame	100,4	names,class,row.names
+cars	list	2	data.frame	50,2	names,class,row.names
+chickwts	list	2	data.frame	71,2	names,class,row.names
+co2	double	468	ts		tsp,class
+crimtab	integer	924	table	42,22	dim,dimnames,class
+discoveries	double	100	ts		tsp,class
+esoph	list	5	data.frame	88,5	names,class,row.names
+euro	double	11	numeric		names
+euro.cross	double	121	matrix,array	11,11	dim,dimnames
+eurodist	double	210	dist		Size,Labels,class
+faithful	list	2	data.frame	272,2	names,row.names,class
+fdeaths	double	72	ts		tsp,class
+freeny	list	5	data.frame	39,5	names,class,row.names
+freeny.x	double	156	matrix,array	39,4	dim,dimnames
+freeny.y	double	39	ts		tsp,class
+gait	double	1560	array	20,39,2	dim,dimnames
+infert	list	8	data.frame	248,8	names,class,row.names
+iris	list	5	data.frame	150,5	names,class,row.names
+iris3	double	600	array	50,4,3	dim,dimnames
+islands	double	48	numeric		names
+ldeaths	double	72	ts		tsp,class
+lh	double	48	ts		tsp,class
+longley	list	7	data.frame	16,7	names,class,row.names
+lynx	double	114	ts		tsp,class
+mdeaths	double	72	ts		tsp,class
+morley	list	3	data.frame	100,3	names,class,row.names
+mtcars	list	11	data.frame	32,11	names,row.names,class
+nhtemp	double	60	ts		tsp,class
+nottem	double	240	ts		tsp,class
+npk	list	5	data.frame	24,5	names,row.names,class
+occupationalStatus	integer	64	table	8,8	dim,dimnames,class
+penguins	list	8	data.frame	344,8	names,row.names,class
+penguins_raw	list	17	data.frame	344,17	names,row.names,class
+precip	double	70	numeric		names
+presidents	double	120	ts		tsp,class
+pressure	list	2	data.frame	19,2	names,class,row.names
+quakes	list	5	data.frame	1000,5	names,class,row.names
+randu	list	3	data.frame	400,3	names,class,row.names
+rivers	double	141	numeric		
+rock	list	4	data.frame	48,4	names,class,row.names
+sleep	list	3	data.frame	20,3	names,class,row.names
+stack.loss	double	21	numeric		
+stack.x	double	63	matrix,array	21,3	dim,dimnames
+stackloss	list	4	data.frame	21,4	names,class,row.names
+state.abb	character	50	character		
+state.area	double	50	numeric		
+state.center	list	2	list		names
+state.division	integer	50	factor		levels,class
+state.name	character	50	character		
+state.region	integer	50	factor		levels,class
+state.x77	double	400	matrix,array	50,8	dim,dimnames
+sunspot.m2014	double	3177	ts		tsp,class
+sunspot.month	double	3310	ts		tsp,class
+sunspot.year	double	289	ts		tsp,class
+sunspots	double	2820	ts		tsp,class
+swiss	list	6	data.frame	47,6	names,class,row.names
+treering	double	7980	ts		tsp,class
+trees	list	3	data.frame	31,3	names,class,row.names
+uspop	double	19	ts		tsp,class
+volcano	double	5307	matrix,array	87,61	dim
+warpbreaks	list	3	data.frame	54,3	names,class,row.names
+women	list	2	data.frame	15,2	names,class,row.names

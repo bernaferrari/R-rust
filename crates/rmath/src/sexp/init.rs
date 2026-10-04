@@ -844,7 +844,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              verbose = getOption(\"verbose\"), envir = .GlobalEnv, overwrite = TRUE) {\n\
              dots <- as.character(substitute(list(...)))[-1L]\n\
              if (length(list)) dots <- c(dots, list)\n\
-             .Internal(data(dots, package, envir))\n\
+             if (length(dots)) invisible(.Internal(data(dots, package, envir)))\n\
+             else .Internal(data(dots, package, envir))\n\
              }",
         );
         eval_base_binding(base_env, "levels", "function(x) UseMethod(\"levels\")");
