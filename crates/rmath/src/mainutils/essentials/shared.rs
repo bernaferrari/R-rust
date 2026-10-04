@@ -4724,7 +4724,15 @@ mod methods_startup_tests {
 
     #[test]
     fn stats_only_namespace_startup_registers_method_table_and_survives_gc() {
-        let session = crate::sexp::session::RSession::new_without_default_packages();
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        // This is an actual installed-package startup test. The base-only
+        // collector fixture intentionally has no host paths, so opt in to
+        // the same library discovery policy as an ordinary desktop session.
+        session.set_library_paths(
+            crate::mainutils::paths::RuntimePathPolicy::from_env()
+                .library_paths()
+                .to_vec(),
+        );
         session.with_active(|| unsafe {
             let factory = session.owner_token().unwrap().node_factory();
             let namespace = factory.wrap(load_package_namespace_by_name("stats")

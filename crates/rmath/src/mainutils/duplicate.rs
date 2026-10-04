@@ -518,18 +518,12 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 return s;
             }
             SEXPTYPE::CLOSXP => {
-                t = with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
-                let _guard = crate::sexp::protect::protect(t);
-                SET_FORMALS(t, duplicate1(FORMALS(s), deep));
-                SET_BODY(t, duplicate1(BODY(s), deep));
-                SET_CLOENV(t, CLOENV(s));
-                DUPLICATE_ATTRIB(t, s, deep);
-                if NOJIT(s) != 0 {
-                    SET_NOJIT(t);
-                }
-                if MAYBEJIT(s) != 0 {
-                    SET_MAYBEJIT(t);
-                }
+                let source = crate::sexp::altrep::rooted_raw(s)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                // GNU shares closure syntax, including source bodies. Retain
+                // the original edges before an allocating callback can detach
+                // them, and publish the initialized copy before callbacks run.
+                return duplicate_closure(&source, deep).as_raw();
             }
             SEXPTYPE::LISTSXP => {
                 t = duplicate_list(s, deep);
@@ -629,6 +623,59 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 
         t
     }
+}
+
+/// GNU closure duplication shares formals, body, and environment; only
+/// attributes follow the requested deep/shallow duplication policy.
+unsafe fn duplicate_closure<'s>(
+    source: &crate::sexp::object::Sexp<'s>,
+    deep: c_int,
+) -> crate::sexp::object::Sexp<'s> {
+    let fail = |error: crate::sexp::object::SexpError| -> ! {
+        crate::sexp::context::r_error(error.to_string())
+    };
+    let factory = source.node_factory().unwrap_or_else(|error| fail(error));
+    let formals = source.try_formals().unwrap_or_else(|error| fail(error));
+    let body = source.try_body().unwrap_or_else(|error| fail(error));
+    let environment = source.try_cloenv().unwrap_or_else(|error| fail(error));
+    let attributes = source.try_attrib().unwrap_or_else(|error| fail(error));
+    let source_node = source.allocation().expect("rooted closure allocation");
+    let flags = source_node
+        .heap_identity()
+        .node_snapshot(source_node)
+        .expect("rooted closure header")
+        .sxpinfo;
+    let formals_link = factory.link(&formals).unwrap_or_else(|error| fail(error));
+    let body_link = factory.link(&body).unwrap_or_else(|error| fail(error));
+    let environment_link = factory
+        .link(&environment)
+        .unwrap_or_else(|error| fail(error));
+    let copy = factory
+        .allocate(|arena| {
+            let projection = arena.alloc_node(SEXPTYPE::CLOSXP);
+            let allocation = arena.node_token(projection)?;
+            let heap = arena.heap_identity();
+            let mut header = heap.node_snapshot(&allocation)?;
+            header.data.closure_mut().formals = formals_link;
+            header.data.closure_mut().body = body_link;
+            header.data.closure_mut().env = environment_link;
+            header.sxpinfo.set_obj(flags.obj());
+            header
+                .sxpinfo
+                .set_gp(flags.gp() & (NOJIT_MASK | MAYBEJIT_MASK | S4_OBJECT_MASK));
+            heap.replace_node(&allocation, header)?;
+            Some(projection)
+        })
+        .unwrap_or_else(|error| fail(error));
+    if !attributes.is_nil() {
+        let copied_attributes = factory
+            .wrap(unsafe { duplicate1(attributes.as_raw(), deep) })
+            .unwrap_or_else(|error| fail(error));
+        unsafe {
+            SET_ATTRIB(copy.as_raw(), copied_attributes.as_raw());
+        }
+    }
+    copy
 }
 
 /// Own every external-pointer edge across allocating recursive duplication.
@@ -1450,6 +1497,203 @@ mod tests {
     use super::*;
     use crate::sexp::constructors::Rf_ScalarInteger;
     use crate::sexp::memory::RArena;
+
+    fn owning_closure_fixture(
+        session: &crate::sexp::session::RSession,
+        terms: usize,
+    ) -> crate::sexp::object::Sexp<'_> {
+        let factory = session.owner_token().unwrap().node_factory();
+        let scalar = factory.wrap(unsafe { Rf_ScalarInteger(42) }).unwrap();
+        let mut formals = factory.nil();
+        for _ in 0..terms {
+            formals = factory
+                .pairlist_cell(&scalar, &formals, &factory.nil())
+                .unwrap();
+        }
+        let head = factory
+            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"+".as_ptr()) })
+            .unwrap();
+        let body = factory
+            .allocate(|arena| {
+                let call = arena.alloc_node(SEXPTYPE::LANGSXP);
+                let node = arena.node_token(call)?;
+                let heap = arena.heap_identity();
+                let mut header = heap.node_snapshot(&node)?;
+                header.data.list_mut().carval = factory.link(&head).ok()?;
+                header.data.list_mut().cdrval = factory.link(&formals).ok()?;
+                heap.replace_node(&node, header)?;
+                Some(call)
+            })
+            .unwrap();
+        let environment = factory
+            .wrap(unsafe { crate::sexp::globals::R_GlobalEnv() })
+            .unwrap();
+        let attributes = factory
+            .pairlist_cell(&scalar, &factory.nil(), &head)
+            .unwrap();
+        factory
+            .allocate(|arena| {
+                let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
+                let node = arena.node_token(closure)?;
+                let heap = arena.heap_identity();
+                let mut header = heap.node_snapshot(&node)?;
+                header.data.closure_mut().formals = factory.link(&formals).ok()?;
+                header.data.closure_mut().body = factory.link(&body).ok()?;
+                header.data.closure_mut().env = factory.link(&environment).ok()?;
+                header.attrib = factory.link(&attributes).ok()?;
+                heap.replace_node(&node, header)?;
+                Some(closure)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn owning_closure_duplicate_shares_syntax_with_constant_allocation_cost() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        for terms in [1, 32] {
+            for deep in [false, true] {
+                let source = owning_closure_fixture(&session, terms);
+                let factory = source.node_factory().unwrap();
+                let owner = session.owner_token().unwrap();
+                let before = owner.with_arena(|arena| arena.node_count()).unwrap();
+                let pointer = unsafe {
+                    if deep {
+                        duplicate(source.as_raw())
+                    } else {
+                        shallow_duplicate(source.as_raw())
+                    }
+                };
+                let copy = factory.wrap(pointer).unwrap();
+                let after = owner.with_arena(|arena| arena.node_count()).unwrap();
+                assert_ne!(copy, source);
+                assert_eq!(
+                    copy.try_formals().unwrap(),
+                    source.try_formals().unwrap(),
+                    "GNU closure formals retain original identity"
+                );
+                assert_eq!(
+                    copy.try_body().unwrap(),
+                    source.try_body().unwrap(),
+                    "GNU closure body retains original identity"
+                );
+                assert_eq!(copy.try_cloenv().unwrap(), source.try_cloenv().unwrap());
+                assert_ne!(copy.try_attrib().unwrap(), source.try_attrib().unwrap());
+                let original_attribute = source.try_attrib().unwrap().try_car().unwrap();
+                let copied_attribute = copy.try_attrib().unwrap().try_car().unwrap();
+                if deep {
+                    assert_ne!(copied_attribute, original_attribute);
+                } else {
+                    assert_eq!(copied_attribute, original_attribute);
+                }
+                assert_eq!(
+                    after - before,
+                    if deep { 3 } else { 2 },
+                    "syntax size must not add closure-copy allocations"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn owning_closure_duplicate_retains_original_edges_across_detachment_and_gc() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let source = owning_closure_fixture(&session, 32);
+        let factory = source.node_factory().unwrap();
+        let formals = source.try_formals().unwrap();
+        let body = source.try_body().unwrap();
+        let environment = source.try_cloenv().unwrap();
+        let attributes = source.try_attrib().unwrap();
+        let attributes_node = attributes.allocation().unwrap().clone();
+        let expected_attributes = factory.link(&attributes).unwrap();
+        let source_node = source.allocation().unwrap().clone();
+        let expected_formals = factory.link(&formals).unwrap();
+        let expected_body = factory.link(&body).unwrap();
+        let expected_environment = factory.link(&environment).unwrap();
+        let source_link = factory.link(&source).unwrap();
+        drop((formals, body, environment, attributes));
+        unsafe {
+            SET_NOJIT(source.as_raw());
+            SET_MAYBEJIT(source.as_raw());
+            SET_OBJECT(source.as_raw(), 1);
+            SET_S4_OBJECT(source.as_raw());
+        }
+        let nil_link = factory.link(&factory.nil()).unwrap();
+        let heap = source_node.heap_identity();
+        let seen = Rc::new(Cell::new(0));
+        let observed = seen.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if observed.replace(observed.get() + 1) != 0 {
+                return;
+            }
+            let (_, copy_node) = crate::sexp::memory::automatic_roots(&heap)
+                .into_iter()
+                .find(|(_, node)| {
+                    node.link() != Some(source_link)
+                        && heap
+                            .node_snapshot(node)
+                            .is_some_and(|header| header.sxpinfo.type_of() == SEXPTYPE::CLOSXP)
+                })
+                .expect("closure copy is rooted and initialized before callbacks");
+            let header = heap.node_snapshot(&copy_node).unwrap();
+            assert_eq!(header.data.closure().formals, expected_formals);
+            assert_eq!(header.data.closure().body, expected_body);
+            unsafe {
+                let owner = crate::sexp::owner::OwnerToken::current().unwrap();
+                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+            }
+            let mut source_header = heap.node_snapshot(&source_node).unwrap();
+            source_header.data.closure_mut().formals = nil_link;
+            source_header.data.closure_mut().body = nil_link;
+            source_header.attrib = nil_link;
+            source_header.sxpinfo.set_obj(false);
+            source_header.sxpinfo.set_gp(0);
+            heap.replace_node(&source_node, source_header).unwrap();
+            crate::sexp::gengc::full_gc();
+            assert!(copy_node.is_live());
+            assert!(
+                attributes_node.is_live(),
+                "original attribute snapshot survives source detachment"
+            );
+        }));
+        session.with_active_in(|owner| unsafe {
+            (*owner).memory_state.gc_force_gap = 1;
+            (*owner).memory_state.gc_force_wait = 1;
+        });
+        let copy = factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap();
+        assert!(seen.get() > 0);
+        assert_eq!(
+            factory.link(&copy.try_formals().unwrap()).unwrap(),
+            expected_formals
+        );
+        assert_eq!(
+            factory.link(&copy.try_body().unwrap()).unwrap(),
+            expected_body
+        );
+        assert_eq!(
+            factory.link(&copy.try_cloenv().unwrap()).unwrap(),
+            expected_environment
+        );
+        unsafe {
+            assert_ne!(NOJIT(copy.as_raw()), 0);
+            assert_ne!(MAYBEJIT(copy.as_raw()), 0);
+            assert_eq!(OBJECT(copy.as_raw()), 1);
+            assert_ne!(IS_S4_OBJECT(copy.as_raw()), 0);
+        }
+        let copied_attributes = copy.try_attrib().unwrap();
+        assert_ne!(
+            factory.link(&copied_attributes).unwrap(),
+            expected_attributes
+        );
+        assert_eq!(
+            copied_attributes
+                .try_car()
+                .unwrap()
+                .try_integer_elt(0)
+                .unwrap(),
+            42
+        );
+    }
 
     struct CollectingExternalChild {
         value: i32,
