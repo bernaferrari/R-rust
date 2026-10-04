@@ -722,3 +722,26 @@ formatting pass. The selected strict-provenance Miri run is still running at thi
 checkpoint; partial case markers are not an aggregate pass. This milestone records
 native verification only and does not certify serialized promises, all package
 loading, complete compression resource behavior or whole-tree aliasing safety.
+
+## Serialized promises and original lazy-load reference restoration
+
+The serializer preserves GNU promise attributes, environment, cached value and
+expression without forcing the binding. Decoding owns each field across recursion
+and seals the complete promise before releasing the arena to allocation callbacks.
+The extracted reader keeps the ordinary recursive reader's stack frame smaller.
+
+Internal lazy-load reference hooks now use owning Rust error transport. Corrupt
+references raise their original errors instead of fabricating empty environments.
+Provisional cache entries roll back only the exact original binding they published;
+caller and callback entries survive, including after runtime revocation. The decoder
+copies raw input before callbacks so reentrant mutation cannot alias its reader.
+
+Six promise cases, two persistence-error/rollback cases and three enclosing
+environment controls pass natively. All six isolated promise Miri cases pass in
+503.95 seconds, and both file-backed persistence cases pass in 596.17 seconds.
+Both use strict provenance and the default alias checker; only the file-backed
+selection disables isolation for its actual unique temporary-file IO. GNU fixtures,
+warnings-denied Clippy and assigned formatting support this scoped checkpoint.
+Original installed cache identity also has a passing regression. Full startup and
+portable dataset work remain separate units; temporary diagnostic startup results
+are not substituted for their unchanged final acceptance tests.

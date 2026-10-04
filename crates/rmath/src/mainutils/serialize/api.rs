@@ -103,6 +103,7 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
             raw,
             (*stream).InPersistHookFunc,
             (*stream).InPersistHookData,
+            None,
         )
     }
 }
@@ -486,27 +487,155 @@ pub unsafe fn R_serialize_with_xdr(
 pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
     unsafe {
         if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::ENVSXP {
-            R_unserialize_from_stream_hooks(icon, Some(lazy_load_persist_restore), fun)
+            let owner =
+                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+            let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let data = owner
+                .sexp(fun)
+                .and_then(|s| s.into_owned())
+                .unwrap_or_else(|e| error(&e.to_string()));
+            R_unserialize_from_stream_hooks(
+                icon,
+                None,
+                R_NilValue(),
+                Some(LazyLoadRestore { data }),
+            )
         } else {
-            R_unserialize_from_stream_hooks(icon, None, fun)
+            R_unserialize_from_stream_hooks(icon, None, fun, None)
         }
     }
 }
 
-/// GNU lazyLoad `envhook`: persist name -> cached environment, else fetch
-/// the referenced payload and reconstruct bindings.
-unsafe extern "C" fn lazy_load_persist_restore(names: SEXP, data: SEXP) -> SEXP {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        persist_restore_inner(names, data)
-    })) {
-        Ok(value) => value,
-        Err(_) => unsafe {
-            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue())
-        },
+/// The runtime's lazy-load hook is Rust control flow with an actual owning
+/// environment. External C stream callbacks keep their separate ABI contract.
+#[derive(Clone)]
+pub(super) struct LazyLoadRestore {
+    data: crate::sexp::object::Sexp<'static>,
+}
+
+impl LazyLoadRestore {
+    pub(super) fn restore(&self, names: SEXP) -> Result<SEXP, String> {
+        use crate::sexp::{
+            object::SexpError,
+            owner::{OwnerToken, StoredOwner},
+        };
+        let authority = StoredOwner::from_value(&self.data).map_err(|e| e.to_string())?;
+        authority
+            .with_projection(|pointer| {
+                // This original operation pin retains cleanup storage through unwind.
+                let owner = unsafe { OwnerToken::from_raw(pointer) };
+                owner.require_active()?;
+                if crate::sexp::memory::is_arena_lent(pointer) {
+                    return Err(SexpError::OwnerNotActive);
+                }
+                let names = owner.sexp(names)?;
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    crate::sexp::session::with_instance_active(pointer, || {
+                        let raw = persist_restore_inner(names.as_raw(), self.data.as_raw(), owner);
+                        owner.require_active()?;
+                        owner.sexp(raw)?.into_owned()
+                    })
+                }));
+                // Revoked authority cannot publish a value or a callback panic.
+                owner.require_active()?;
+                match result {
+                    Ok(value) => value.map(|value| value.as_raw()),
+                    Err(payload) => std::panic::resume_unwind(payload),
+                }
+            })
+            .map_err(|e| e.to_string())
     }
 }
 
-unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
+/// A failed reconstruction must not leave its provisional environment in the
+/// shared reference cache. Cleanup changes only this original, exact binding;
+/// it neither looks up an ambient owner nor invokes active binding callbacks.
+struct PendingPersistEnvironment<'s> {
+    cache: crate::sexp::object::Sexp<'s>,
+    symbol: crate::sexp::object::Sexp<'s>,
+    environment: crate::sexp::object::Sexp<'s>,
+    owner: crate::sexp::owner::OwnerToken<'s>,
+    _pin: Option<crate::sexp::owner::OwnerPin>,
+    committed: bool,
+}
+impl Drop for PendingPersistEnvironment<'_> {
+    fn drop(&mut self) {
+        use crate::sexp::{
+            ffi::{EdgeField, NodeBody},
+            heap::ResolvedLink,
+        };
+        if self.committed {
+            return;
+        }
+        let Ok(cache) = self.cache.allocation() else {
+            return;
+        };
+        let heap = cache.heap_identity();
+        let Some(symbol) = self.symbol.allocation().ok().and_then(|n| n.link()) else {
+            return;
+        };
+        let Some(environment) = self.environment.allocation().ok().and_then(|n| n.link()) else {
+            return;
+        };
+        let Some(header) = heap.node_snapshot(cache) else {
+            return;
+        };
+        let NodeBody::Environment(body) = header.data else {
+            return;
+        };
+        let mut current = body.frame;
+        let mut previous = None;
+        let mut seen = std::collections::HashSet::new();
+        while seen.insert(current) {
+            let Some(ResolvedLink::Node { allocation, .. }) = heap.resolve_link(current) else {
+                return;
+            };
+            let Some(header) = heap.node_snapshot(&allocation) else {
+                return;
+            };
+            let NodeBody::List(cell) = header.data else {
+                return;
+            };
+            if cell.tagval == symbol && cell.carval == environment {
+                let (parent, field) = previous
+                    .map_or((cache.clone(), EdgeField::EnvironmentFrame), |p| {
+                        (p, EdgeField::ListCdr)
+                    });
+                let Some(mut header) = heap.node_snapshot(&parent) else {
+                    return;
+                };
+                let Some(next) = heap.projection_of_link(cell.cdrval) else {
+                    return;
+                };
+                let Some(parent_pointer) = heap.node_projection(&parent) else {
+                    return;
+                };
+                // Both canonical nodes and physical runtime are retained; this
+                // barrier is callback-free and remains valid after revocation.
+                if !unsafe {
+                    crate::sexp::gengc::write_barrier_in(self.owner.as_ptr(), parent_pointer, next)
+                } {
+                    return;
+                }
+                if header.set_edge(field, cell.cdrval).is_some() {
+                    heap.replace_node(&parent, header);
+                }
+                return;
+            }
+            previous = Some(allocation);
+            current = cell.cdrval;
+        }
+    }
+}
+
+unsafe fn persist_restore_inner(
+    names: SEXP,
+    data: SEXP,
+    owner: crate::sexp::owner::OwnerToken<'_>,
+) -> SEXP {
     unsafe {
         if data.is_null() || TYPEOF(data) != SEXPTYPE::ENVSXP {
             return R_NilValue();
@@ -547,10 +676,40 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
             return live;
         }
 
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
-        let _e = protect(env);
-        if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
-            crate::sexp::envir::defineVar(name_sym, env, cache);
+        let factory = owner.node_factory();
+        let environment = factory
+            .wrap(crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                R_EmptyEnv(),
+                R_NilValue(),
+            ))
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let env_raw = environment.as_raw();
+        let mut pending =
+            if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
+                let cache = factory
+                    .wrap(cache)
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                let symbol = factory
+                    .wrap(name_sym)
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                Some(PendingPersistEnvironment {
+                    cache,
+                    symbol,
+                    environment: environment.clone(),
+                    owner,
+                    _pin: owner.pin().unwrap_or_else(|e| error(&e.to_string())),
+                    committed: false,
+                })
+            } else {
+                None
+            };
+        if let Some(pending) = &pending {
+            crate::sexp::envir::define_var_safe(
+                pending.symbol.clone(),
+                environment.clone(),
+                pending.cache.clone(),
+            );
         }
         let refs_sym = Rf_install(c"refs".as_ptr());
         let refs = R_findVarInFrame(data, refs_sym);
@@ -558,6 +717,7 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
         if !refs.is_null() && refs != R_UnboundValue() {
             if TYPEOF(refs) == SEXPTYPE::ENVSXP {
                 key = R_findVarInFrame(refs, name_sym);
+        let env = env_raw;
             } else if TYPEOF(refs) == SEXPTYPE::VECSXP {
                 let nm = crate::sexp::attrib_core::getAttrib(
                     refs,
@@ -576,7 +736,7 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
             }
         }
         if key.is_null() || key == R_UnboundValue() || key == R_NilValue() {
-            return env;
+            error(&format!("lazy-load reference '{name}' has no payload"));
         }
         if TYPEOF(key) == SEXPTYPE::VECSXP {
             let kn =
@@ -600,45 +760,90 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
             || compressed.is_null()
             || compressed == R_UnboundValue()
         {
-            return env;
+            error("lazy-load reference lacks its database path or compression mode");
         }
-        let args = Rf_cons(
-            key,
-            Rf_cons(datafile, Rf_cons(compressed, Rf_cons(data, R_NilValue()))),
-        );
-        let _a = protect(args);
-        let fetched = do_lazyLoadDBfetch(R_NilValue(), R_NilValue(), args, R_NilValue());
-        let _f = protect(fetched);
+        let fields = [key, datafile, compressed, data]
+            .map(|raw| factory.wrap(raw).unwrap_or_else(|e| error(&e.to_string())));
+        let mut args = factory.nil();
+        for field in fields.iter().rev() {
+            args = factory
+                .pairlist_cell(field, &args, &factory.nil())
+                .unwrap_or_else(|e| error(&e.to_string()));
+        }
+        let fetched = factory
+            .wrap(do_lazyLoadDBfetch(
+                R_NilValue(),
+                R_NilValue(),
+                args.as_raw(),
+                R_NilValue(),
+            ))
+            .unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let fetched_raw = fetched.as_raw();
+        if TYPEOF(fetched_raw) != SEXPTYPE::VECSXP {
+            error("invalid lazy-load environment payload");
+        }
+        let fetched = fetched_raw;
         if TYPEOF(fetched) == SEXPTYPE::VECSXP {
             let fnames = crate::sexp::attrib_core::getAttrib(
                 fetched,
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
-            if TYPEOF(fnames) == SEXPTYPE::STRSXP {
-                for i in 0..XLENGTH(fnames) {
-                    let raw = CHAR(STRING_ELT(fnames, i));
-                    if raw.is_null() {
-                        continue;
-                    }
-                    let label = std::ffi::CStr::from_ptr(raw).to_string_lossy();
-                    let elt = VECTOR_ELT(fetched, i);
-                    if label == "enclos" && TYPEOF(elt) == SEXPTYPE::ENVSXP {
-                        crate::sexp::accessors::SET_ENCLOS(env, elt);
-                    } else if label == "bindings" && TYPEOF(elt) == SEXPTYPE::VECSXP {
-                        let _ = crate::mainutils::essentials::do_list2env(
-                            R_NilValue(),
-                            R_NilValue(),
-                            Rf_cons(elt, Rf_cons(env, R_NilValue())),
-                            R_NilValue(),
-                        );
-                    } else if label == "attributes" && elt != R_NilValue() {
-                        crate::sexp::accessors::SET_ATTRIB(env, elt);
-                    } else if label == "locked"
-                        && TYPEOF(elt) == SEXPTYPE::LGLSXP
-                        && XLENGTH(elt) > 0
-                        && *LOGICAL(elt) != 0
-                    {
-                        crate::sexp::envir::lock_environment_raw(env);
+            if TYPEOF(fnames) != SEXPTYPE::STRSXP {
+                error("lazy-load environment payload has no field names");
+            }
+            let mut fields = Vec::new();
+            for i in 0..XLENGTH(fnames) {
+                let label = factory
+                    .wrap(STRING_ELT(fnames, i))
+                    .unwrap_or_else(|e| error(&e.to_string()))
+                    .as_string()
+                    .unwrap_or_default();
+                let value = factory
+                    .wrap(VECTOR_ELT(fetched, i))
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                fields.push((label, value));
+            }
+            {
+                for (label, value) in fields {
+                    let elt = value.as_raw();
+                    match label.as_str() {
+                        "enclos" => {
+                            if TYPEOF(elt) != SEXPTYPE::ENVSXP {
+                                error("invalid lazy-load environment enclosure");
+                            }
+                            crate::sexp::accessors::SET_ENCLOS(env, elt);
+                        }
+                        "bindings" => {
+                            if TYPEOF(elt) != SEXPTYPE::VECSXP {
+                                error("invalid lazy-load environment bindings");
+                            }
+                            let tail = factory
+                                .pairlist_cell(&environment, &factory.nil(), &factory.nil())
+                                .unwrap_or_else(|e| error(&e.to_string()));
+                            let call = factory
+                                .pairlist_cell(&value, &tail, &factory.nil())
+                                .unwrap_or_else(|e| error(&e.to_string()));
+                            crate::mainutils::essentials::do_list2env(
+                                R_NilValue(),
+                                R_NilValue(),
+                                call.as_raw(),
+                                R_NilValue(),
+                            );
+                        }
+                        "attributes" if elt != R_NilValue() => {
+                            crate::sexp::accessors::SET_ATTRIB(env, elt);
+                        }
+                        "locked"
+                            if TYPEOF(elt) == SEXPTYPE::LGLSXP
+                                && XLENGTH(elt) > 0
+                                && value.try_logical_elt(0).unwrap_or(0) != 0 =>
+                        {
+                            crate::sexp::envir::lock_environment_raw(env);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -646,9 +851,18 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
         env
     }
 }
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|e| error(&e.to_string()));
 
 unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
     unsafe {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        if let Some(pending) = pending.as_mut() {
+            pending.committed = true;
+        }
         !hook.is_null()
             && hook != R_NilValue()
             && (TYPEOF(hook) == SEXPTYPE::CLOSXP
@@ -667,11 +881,22 @@ unsafe fn R_unserialize_from_stream_hooks(
             error("read error");
         }
 
-        let _input_guard = protect(icon);
-        let _hook_guard = if hook_data.is_null() {
+    lazy_restore: Option<LazyLoadRestore>,
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let input = owner.sexp(icon).unwrap_or_else(|e| error(&e.to_string()));
+        let _hook = if hook_data.is_null() {
             None
         } else {
-            Some(protect(hook_data))
+            Some(
+                owner
+                    .sexp(hook_data)
+                    .unwrap_or_else(|e| error(&e.to_string())),
+            )
         };
         // Must be RAWSXP
         let stype = TYPEOF(icon);
@@ -679,13 +904,30 @@ unsafe fn R_unserialize_from_stream_hooks(
             error("not a proper raw vector");
         }
 
-        let len = XLENGTH(icon) as usize;
+        if ALTREP(input.as_raw()) != 0 {
+            RAW(input.as_raw());
+        }
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let header = input.header();
+        let len = usize::try_from(input.len()).unwrap_or_else(|_| error("read error"));
         if len == 0 {
             error("read error");
         }
-
-        let raw_ptr = RAW(icon);
-        let data = slice::from_raw_parts(raw_ptr, len);
+        let lease = header
+            .payload_lease()
+            .unwrap_or_else(|| error("raw input has no initialized payload"));
+        // Copy canonical cells before any restoration callback. The reader
+        // cannot alias an R payload that reentrant code may resize or mutate.
+        let data: Vec<u8> = (0..len)
+            .map(|i| {
+                lease
+                    .byte_elt(i)
+                    .unwrap_or_else(|| error("invalid raw input payload"))
+            })
+            .collect();
+        let data = data.as_slice();
 
         // GNU serialize.c: gzip-compressed RDS starts with 1f 8b.
         let decompressed;
@@ -708,6 +950,7 @@ unsafe fn R_unserialize_from_stream_hooks(
             reader.set_persist_hook(hook_data);
         }
 
+        reader.lazy_restore = lazy_restore;
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
@@ -738,9 +981,19 @@ unsafe fn R_unserialize_from_stream_hooks(
 
         // Read the object
         let mut ref_table = ReadRefTable::new();
-        match ReadItemInternal(&mut reader, &mut ref_table) {
-            Ok(s) => s,
-            Err(message) => error(&message),
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ReadItemInternal(&mut reader, &mut ref_table)
+        }));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        match outcome {
+            Ok(Ok(s)) => owner
+                .sexp(s)
+                .unwrap_or_else(|e| error(&e.to_string()))
+                .as_raw(),
+            Ok(Err(message)) => error(&message),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
     }
 }
@@ -948,3 +1201,7 @@ pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SE
         R_lazyLoadDBinsertValue(value, file, ascii, compsxp, hook)
     }
 }
+
+#[cfg(test)]
+#[path = "persistence_tests.rs"]
+mod persistence_tests;

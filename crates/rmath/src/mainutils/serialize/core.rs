@@ -295,6 +295,7 @@ pub struct BinaryReader<'a> {
 /// Why a declared vector length is not admitted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum VectorLengthReject {
+    pub(super) lazy_restore: Option<super::api::LazyLoadRestore>,
     Negative,
     ZeroWidth,
     Truncated,
@@ -401,6 +402,7 @@ impl<'a> BinaryReader<'a> {
 
     pub fn set_ascii_body(&mut self, ascii_body: bool) {
         self.ascii_body = ascii_body;
+            lazy_restore: None,
     }
 
     pub fn set_xdr_body(&mut self, xdr_body: bool) {
@@ -1313,6 +1315,60 @@ pub unsafe fn WriteItemInternal(
 
         // Handle LISTSXP
         if stype == SEXPTYPE::LISTSXP {
+        // GNU uses the dotted-pair wire order for promises: environment,
+        // cached value, expression. Capture actual fields before hook callbacks;
+        // serialization must never force a deferred binding.
+        if stype == SEXPTYPE::PROMSXP {
+            let owner =
+                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+            let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let object = owner.sexp(s).unwrap_or_else(|e| error(&e.to_string()));
+            let attributes = object
+                .try_attrib()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let environment = object.try_prenv().unwrap_or_else(|e| error(&e.to_string()));
+            let value = object
+                .try_prvalue()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let expression = object
+                .try_prcode()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let info = object.header().sxpinfo;
+            let hasattr = i32::from(!attributes.is_nil());
+            let hastag = i32::from(!environment.is_nil());
+            writer.write_i32(PackFlags(
+                stype,
+                i32::from(info.gp()),
+                i32::from(info.obj()),
+                hasattr,
+                hastag,
+            ));
+            if hasattr != 0 {
+                WriteItemInternal(attributes.as_raw(), ref_table, writer);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| error(&e.to_string()));
+            }
+            if hastag != 0 {
+                WriteItemInternal(environment.as_raw(), ref_table, writer);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| error(&e.to_string()));
+            }
+            WriteItemInternal(value.as_raw(), ref_table, writer);
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            WriteItemInternal(expression.as_raw(), ref_table, writer);
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            return;
+        }
+
             let hastag = if sexp_has_tag(s) { 1 } else { 0 };
             let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
@@ -1653,6 +1709,73 @@ fn first_string_elt(names: SEXP) -> String {
 
 unsafe fn read_item_body(
     reader: &mut BinaryReader,
+unsafe fn read_promise(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    hasattr: i32,
+    hastag: i32,
+    levs: i32,
+    isobj: i32,
+) -> Result<SEXP, String> {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+        let _pin = owner.pin().map_err(|e| e.to_string())?;
+        owner.require_active().map_err(|e| e.to_string())?;
+        let factory = owner.node_factory();
+        let attributes = if hasattr != 0 {
+            factory
+                .wrap(ReadItemInternal(reader, ref_table)?)
+                .map_err(|e| e.to_string())?
+        } else {
+            factory.nil()
+        };
+        owner.require_active().map_err(|e| e.to_string())?;
+        let environment = if hastag != 0 {
+            factory
+                .wrap(ReadItemInternal(reader, ref_table)?)
+                .map_err(|e| e.to_string())?
+        } else {
+            factory.nil()
+        };
+        if !matches!(environment.typeof_(), SEXPTYPE::NILSXP | SEXPTYPE::ENVSXP) {
+            return Err("invalid promise environment".into());
+        }
+        owner.require_active().map_err(|e| e.to_string())?;
+        let value = factory
+            .wrap(ReadItemInternal(reader, ref_table)?)
+            .map_err(|e| e.to_string())?;
+        owner.require_active().map_err(|e| e.to_string())?;
+        let expression = factory
+            .wrap(ReadItemInternal(reader, ref_table)?)
+            .map_err(|e| e.to_string())?;
+        owner.require_active().map_err(|e| e.to_string())?;
+        let attributes_link = factory.link(&attributes).map_err(|e| e.to_string())?;
+        let body = crate::sexp::ffi::NodeBody::Promise(crate::sexp::ffi::Promsxp {
+            value: factory.link(&value).map_err(|e| e.to_string())?,
+            expr: factory.link(&expression).map_err(|e| e.to_string())?,
+            env: factory.link(&environment).map_err(|e| e.to_string())?,
+        });
+        // Seal every field while the original arena is lent. The producer
+        // roots the complete node before deferred allocation/GC callbacks.
+        let promise = factory
+            .allocate(|arena| {
+                let pointer = arena.alloc_node(SEXPTYPE::PROMSXP);
+                let node = arena.node_token(pointer)?;
+                let heap = arena.heap_identity();
+                let mut header = heap.node_snapshot(&node)?;
+                header.data = body;
+                header.attrib = attributes_link;
+                header.sxpinfo.set_gp(levs as u16);
+                header.sxpinfo.set_obj(isobj != 0);
+                heap.replace_node(&node, header)?;
+                Some(pointer)
+            })
+            .map_err(|e| e.to_string())?;
+        owner.require_active().map_err(|e| e.to_string())?;
+        Ok(promise.as_raw())
+    }
+}
+
     ref_table: &mut ReadRefTable,
     closure_body: bool,
 ) -> Result<SEXP, String> {
@@ -1701,7 +1824,9 @@ unsafe fn read_item_body(
                 ref_table.add(cached);
                 return Ok(cached);
             }
-            let restored = if let Some(func) = reader.persist_hook_func {
+            let restored = if let Some(restore) = reader.lazy_restore.clone() {
+                restore.restore(names)?
+            } else if let Some(func) = reader.persist_hook_func {
                 func(names, reader.persist_hook_data)
             } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
                 return Err("no restore method available".into());
@@ -1835,6 +1960,8 @@ unsafe fn read_item_body(
             Ok(s)
         } else if stype == SEXPTYPE::CLOSXP {
             let s = allocSExp(SEXPTYPE::CLOSXP);
+        } else if stype == SEXPTYPE::PROMSXP {
+            read_promise(reader, ref_table, hasattr, hastag, levs, isobj)
             let _s_guard = protect(s);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;

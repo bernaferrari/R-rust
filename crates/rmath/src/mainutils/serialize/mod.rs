@@ -321,3 +321,6 @@ pub use self::membuf::*;
 pub use self::stream::*;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod promise_tests;
