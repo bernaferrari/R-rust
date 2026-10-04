@@ -442,104 +442,45 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 /// Keep both native input and result physically owned through flag copying and
 /// result admission. The traversal guard ends on every error and Rust unwind.
 unsafe fn duplicate1_in(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP {
-    unsafe {
-        if s.is_null() {
-            return s;
-        }
-        if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(s) {
-            return if singleton.snapshot().sxpinfo.type_of() == SEXPTYPE::LGLSXP {
+    if s.is_null() {
+        return s;
+    }
+    let source = unsafe { crate::sexp::altrep::rooted_raw(s) }
+        .unwrap_or_else(|error| duplication_failure(error));
+    if source.runtime_owner.is_none() {
+        return if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(s) {
+            if singleton.snapshot().sxpinfo.type_of() == SEXPTYPE::LGLSXP {
                 duplicate_logical_singleton(singleton)
                     .unwrap_or_else(|error| duplication_failure(error))
                     .as_raw()
             } else {
                 s
-            };
-        }
-        if matches!(
-            SEXPTYPE(TYPEOF(s)),
-            SEXPTYPE::NILSXP
-                | SEXPTYPE::SYMSXP
-                | SEXPTYPE::ENVSXP
-                | SEXPTYPE::SPECIALSXP
-                | SEXPTYPE::BUILTINSXP
-                | SEXPTYPE::BCODESXP
-                | SEXPTYPE::WEAKREFSXP
-                | SEXPTYPE::EXTPTRSXP
-                | SEXPTYPE::CHARSXP
-                | SEXPTYPE::PROMSXP
-        ) {
-            return s;
-        }
-        let source = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| duplication_failure(e));
-        let pin = source
-            .pin_runtime()
-            .unwrap_or_else(|e| duplication_failure(e));
-        let node = source
-            .allocation()
-            .unwrap_or_else(|e| duplication_failure(e));
-        let flags = node
-            .heap_identity()
-            .node_snapshot(node)
-            .unwrap_or_else(|| duplication_failure(SexpError::StaleAllocation))
-            .sxpinfo;
-        let _frame = state
-            .enter(&source)
-            .unwrap_or_else(|e| duplication_failure(e));
-        let factory = source
-            .node_factory()
-            .unwrap_or_else(|e| duplication_failure(e));
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            factory.wrap(duplicate1_impl(s, deep, state, flags))
-        }));
-        if let Some(pin) = &pin {
-            pin.require_live()
-                .unwrap_or_else(|e| duplication_failure(e));
-        }
-        match outcome {
-            Ok(result) => result.unwrap_or_else(|e| duplication_failure(e)).as_raw(),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-}
-
-unsafe fn duplicate1_impl(
-    s: SEXP,
-    deep: c_int,
-    state: &DuplicationState,
-    flags: crate::sexp::ffi::SxpInfo,
-) -> SEXP {
-    unsafe {
-        let source =
-            crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|error| duplication_failure(error));
-        let extension = crate::sexp::altrep::has_extension_raw(s);
-        let _class_copy_guard = if extension {
-            Some(
-                crate::sexp::altrep::duplication_guard(&source)
-                    .unwrap_or_else(|error| duplication_failure(error)),
-            )
-        } else {
-            None
-        };
-        match flags.type_of() {
-            SEXPTYPE::CLOSXP => duplicate_closure(&source, deep, state).as_raw(),
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                duplicate_list(&source, deep, state)
-                    .unwrap_or_else(|error| duplication_failure(error))
-                    .as_raw()
             }
-            SEXPTYPE::EXPRSXP
-            | SEXPTYPE::VECSXP
-            | SEXPTYPE::STRSXP
-            | SEXPTYPE::LGLSXP
-            | SEXPTYPE::INTSXP
-            | SEXPTYPE::REALSXP
-            | SEXPTYPE::CPLXSXP
-            | SEXPTYPE::RAWSXP
-            | SEXPTYPE::OBJSXP => duplicate_value(&source, deep, state, extension, flags)
-                .unwrap_or_else(|error| duplication_failure(error))
-                .as_raw(),
-            _ => UNIMPLEMENTED_TYPE(b"duplicate\0".as_ptr().cast(), s),
-        }
+        } else {
+            s
+        };
+    }
+    let pin = source
+        .pin_runtime()
+        .unwrap_or_else(|error| duplication_failure(error));
+    let original = source
+        .runtime_owner
+        .as_ref()
+        .expect("managed duplication owner");
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(original, |access| {
+            duplicate_iterative(source.clone(), deep, state, access)
+        })
+        .unwrap_or_else(|error| duplication_failure(error))
+        .unwrap_or_else(|error| duplication_failure(error))
+    }));
+    if let Some(pin) = &pin {
+        pin.require_live()
+            .unwrap_or_else(|error| duplication_failure(error));
+    }
+    match outcome {
+        Ok(copy) => copy.as_raw(),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -595,268 +536,237 @@ fn collect_copy<T>(
     Ok(result)
 }
 
-fn duplicate_value<'source>(
+fn prepare_value<'source>(
     source: &Sexp<'source>,
-    deep: c_int,
-    state: &DuplicationState,
     extension: bool,
     flags: crate::sexp::ffi::SxpInfo,
-) -> SexpResult<Sexp<'source>> {
-    let original = source
-        .runtime_owner
-        .as_ref()
-        .ok_or(SexpError::RootUnavailable)?;
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<VectorContinuation<'source>> {
     let domain: crate::sexp::object::NodeDomain<'source> = source.node_factory()?.into();
-    crate::sexp::owner::with_runtime(original, |access| {
-        let node = source.allocation()?;
-        let heap = node.heap_identity();
-        let header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-        let attributes = snapshot_attributes(source, extension)?;
-        let kind = flags.type_of();
-        let (length, truelength) = match header.data {
-            crate::sexp::ffi::NodeBody::Vector(vector) => (
-                usize::try_from(vector.length)
-                    .map_err(|_| SexpError::MissingData { sexptype: kind })?,
-                if flags.gp() & GROWABLE_BIT_MASK == 0 {
-                    vector.truelength
-                } else {
-                    0
-                },
-            ),
-            _ if kind == SEXPTYPE::OBJSXP => (0, 0),
-            _ => {
-                return Err(SexpError::TypeMismatch {
-                    expected: "vector storage",
-                    actual: kind,
-                });
-            }
-        };
-        let element_bytes = match kind {
-            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => std::mem::size_of::<c_int>(),
-            SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-            SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-            SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP => {
-                std::mem::size_of::<Sexp<'source>>()
-            }
-            _ => 0,
-        };
-        let bytes = length
-            .checked_mul(element_bytes)
-            .ok_or(SexpError::AllocationFailed {
-                object: "duplication snapshot size",
-            })?;
-        // This original physical-store admission is passive: it does not lend
-        // an arena or flush pending callbacks before the source snapshot exists.
-        let _reservation =
-            heap.reserve_payload_bytes(node, bytes)
-                .ok_or(SexpError::AllocationFailed {
-                    object: "duplication snapshot budget",
-                })?;
-        let payload = heap.payload_lease(node);
-        let missing = || SexpError::MissingData { sexptype: kind };
-        let values = match kind {
-            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => {
-                CopyValues::Integers(collect_copy(length, |index| {
-                    if let Some(payload) = &payload {
-                        return payload.integer_elt(index).ok_or_else(missing);
-                    }
-                    if kind == SEXPTYPE::LGLSXP {
-                        source.try_logical_elt(index as _)
-                    } else {
-                        source.try_integer_elt(index as _)
-                    }
-                })?)
-            }
-            SEXPTYPE::REALSXP => CopyValues::Reals(collect_copy(length, |index| {
-                if let Some(payload) = &payload {
-                    return payload.real_elt(index).ok_or_else(missing);
-                }
-                source.try_real_elt(index as _)
-            })?),
-            SEXPTYPE::CPLXSXP => CopyValues::Complex(collect_copy(length, |index| {
-                if let Some(payload) = &payload {
-                    return payload.complex_elt(index).ok_or_else(missing);
-                }
-                source.try_complex_elt(index as _)
-            })?),
-            SEXPTYPE::RAWSXP => CopyValues::Bytes(collect_copy(length, |index| {
-                if let Some(payload) = &payload {
-                    return payload.byte_elt(index).ok_or_else(missing);
-                }
-                source.try_raw_elt(index as _)
-            })?),
-            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP => {
-                CopyValues::References(collect_copy(length, |index| {
-                    let value = if let Some(payload) = &payload {
-                        source.checked_child(payload.reference_elt(index).ok_or_else(missing)?)?
-                    } else if kind == SEXPTYPE::STRSXP {
-                        source.try_string_elt(index as _)?
-                    } else {
-                        source.try_vector_elt(index as _)?
-                    };
-                    if kind == SEXPTYPE::STRSXP && value.typeof_() != SEXPTYPE::CHARSXP {
-                        return Err(SexpError::TypeMismatch {
-                            expected: "character element",
-                            actual: value.typeof_(),
-                        });
-                    }
-                    Ok(value)
-                })?)
-            }
-            SEXPTYPE::OBJSXP => CopyValues::Object,
-            _ => {
-                return Err(SexpError::TypeMismatch {
-                    expected: "duplicable vector",
-                    actual: kind,
-                });
-            }
-        };
-        access.require_active()?;
-        let allocator = access.allocator(&domain)?;
-        let copy = allocator.allocate(|arena| {
-            let pointer = if kind == SEXPTYPE::OBJSXP {
-                arena.alloc_node(kind)
+    let node = source.allocation()?;
+    let heap = node.heap_identity();
+    let header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+    let attributes = snapshot_attributes(source, extension)?;
+    let kind = flags.type_of();
+    let (length, truelength) = match header.data {
+        crate::sexp::ffi::NodeBody::Vector(vector) => (
+            usize::try_from(vector.length)
+                .map_err(|_| SexpError::MissingData { sexptype: kind })?,
+            if flags.gp() & GROWABLE_BIT_MASK == 0 {
+                vector.truelength
             } else {
-                arena
-                    .alloc_vector_checked(kind, length.try_into().ok()?)
-                    .ok()?
-            };
-            let allocation = arena.node_token(pointer)?;
-            let copied_heap = allocation.heap_identity();
-            if length != 0 {
-                let destination = copied_heap.payload_lease(&allocation)?;
-                match &values {
-                    CopyValues::Integers(values) => {
-                        for (index, value) in values.iter().enumerate() {
-                            destination.set_integer_elt(index, *value)?;
-                        }
-                    }
-                    CopyValues::Reals(values) => {
-                        for (index, value) in values.iter().enumerate() {
-                            destination.set_real_elt(index, *value)?;
-                        }
-                    }
-                    CopyValues::Complex(values) => {
-                        for (index, value) in values.iter().enumerate() {
-                            destination.set_complex_elt(index, *value)?;
-                        }
-                    }
-                    CopyValues::Bytes(values) => {
-                        for (index, value) in values.iter().enumerate() {
-                            destination.set_byte_elt(index, *value)?;
-                        }
-                    }
-                    // Child values are copied after the initialized parent is
-                    // published, matching GNU's occurrence/order semantics.
-                    CopyValues::References(values) if kind == SEXPTYPE::STRSXP => {
-                        for (index, value) in values.iter().enumerate() {
-                            destination.set_reference_elt(index, domain.link(value).ok()?)?;
-                        }
-                    }
-                    CopyValues::References(_) | CopyValues::Object => {}
-                }
-            }
-            Some(pointer)
+                0
+            },
+        ),
+        _ if kind == SEXPTYPE::OBJSXP => (0, 0),
+        _ => {
+            return Err(SexpError::TypeMismatch {
+                expected: "vector storage",
+                actual: kind,
+            });
+        }
+    };
+    let element_bytes = match kind {
+        SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => std::mem::size_of::<c_int>(),
+        SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
+        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
+        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
+        SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP => {
+            std::mem::size_of::<Sexp<'source>>()
+        }
+        _ => 0,
+    };
+    let bytes = length
+        .checked_mul(element_bytes)
+        .ok_or(SexpError::AllocationFailed {
+            object: "duplication snapshot size",
         })?;
-        if let CopyValues::References(values) = &values
-            && kind != SEXPTYPE::STRSXP
-        {
-            for (index, value) in values.iter().enumerate() {
-                let value = access.with_native(|_| {
-                    domain.wrap(unsafe { duplicate_child(value.as_raw(), deep, state) })
-                })?;
-                access.with_native(|_| {
-                    unsafe {
-                        SET_VECTOR_ELT(copy.as_raw(), index as _, value.as_raw());
+    // This original physical-store admission is passive: it does not lend
+    // an arena or flush pending callbacks before the source snapshot exists.
+    let reservation =
+        heap.reserve_payload_bytes(node, bytes)
+            .ok_or(SexpError::AllocationFailed {
+                object: "duplication snapshot budget",
+            })?;
+    let payload = heap.payload_lease(node);
+    let missing = || SexpError::MissingData { sexptype: kind };
+    let values = match kind {
+        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => {
+            CopyValues::Integers(collect_copy(length, |index| {
+                if let Some(payload) = &payload {
+                    return payload.integer_elt(index).ok_or_else(missing);
+                }
+                if kind == SEXPTYPE::LGLSXP {
+                    source.try_logical_elt(index as _)
+                } else {
+                    source.try_integer_elt(index as _)
+                }
+            })?)
+        }
+        SEXPTYPE::REALSXP => CopyValues::Reals(collect_copy(length, |index| {
+            if let Some(payload) = &payload {
+                return payload.real_elt(index).ok_or_else(missing);
+            }
+            source.try_real_elt(index as _)
+        })?),
+        SEXPTYPE::CPLXSXP => CopyValues::Complex(collect_copy(length, |index| {
+            if let Some(payload) = &payload {
+                return payload.complex_elt(index).ok_or_else(missing);
+            }
+            source.try_complex_elt(index as _)
+        })?),
+        SEXPTYPE::RAWSXP => CopyValues::Bytes(collect_copy(length, |index| {
+            if let Some(payload) = &payload {
+                return payload.byte_elt(index).ok_or_else(missing);
+            }
+            source.try_raw_elt(index as _)
+        })?),
+        SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP => {
+            CopyValues::References(collect_copy(length, |index| {
+                let value = if let Some(payload) = &payload {
+                    source.checked_child(payload.reference_elt(index).ok_or_else(missing)?)?
+                } else if kind == SEXPTYPE::STRSXP {
+                    source.try_string_elt(index as _)?
+                } else {
+                    source.try_vector_elt(index as _)?
+                };
+                if kind == SEXPTYPE::STRSXP && value.typeof_() != SEXPTYPE::CHARSXP {
+                    return Err(SexpError::TypeMismatch {
+                        expected: "character element",
+                        actual: value.typeof_(),
+                    });
+                }
+                Ok(value)
+            })?)
+        }
+        SEXPTYPE::OBJSXP => CopyValues::Object,
+        _ => {
+            return Err(SexpError::TypeMismatch {
+                expected: "duplicable vector",
+                actual: kind,
+            });
+        }
+    };
+    access.require_active()?;
+    let allocator = access.allocator(&domain)?;
+    let copy = allocator.allocate(|arena| {
+        let pointer = if kind == SEXPTYPE::OBJSXP {
+            arena.alloc_node(kind)
+        } else {
+            arena
+                .alloc_vector_checked(kind, length.try_into().ok()?)
+                .ok()?
+        };
+        let allocation = arena.node_token(pointer)?;
+        let copied_heap = allocation.heap_identity();
+        if length != 0 {
+            let destination = copied_heap.payload_lease(&allocation)?;
+            match &values {
+                CopyValues::Integers(values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        destination.set_integer_elt(index, *value)?;
                     }
-                    Ok(())
-                })?;
+                }
+                CopyValues::Reals(values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        destination.set_real_elt(index, *value)?;
+                    }
+                }
+                CopyValues::Complex(values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        destination.set_complex_elt(index, *value)?;
+                    }
+                }
+                CopyValues::Bytes(values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        destination.set_byte_elt(index, *value)?;
+                    }
+                }
+                // Child values are copied after the initialized parent is
+                // published, matching GNU's occurrence/order semantics.
+                CopyValues::References(values) if kind == SEXPTYPE::STRSXP => {
+                    for (index, value) in values.iter().enumerate() {
+                        destination.set_reference_elt(index, domain.link(value).ok()?)?;
+                    }
+                }
+                CopyValues::References(_) | CopyValues::Object => {}
             }
         }
-        if let Some(attributes) = &attributes {
-            let _frame = state.enter(&attributes.source)?;
-            let copied =
-                duplicate_list_snapshot(&attributes.source, &attributes.cells, deep, state)?;
-            access.with_native(|_| {
-                unsafe {
-                    SET_ATTRIB(copy.as_raw(), copied.as_raw());
-                }
-                Ok(())
-            })?;
-        }
-        let allocation = copy.allocation()?;
-        let copied_heap = allocation.heap_identity();
-        let mut copied_header = copied_heap
-            .node_snapshot(allocation)
-            .ok_or(SexpError::StaleAllocation)?;
-        copied_header.sxpinfo.set_obj(flags.obj());
-        copied_header
-            .sxpinfo
-            .set_gp((copied_header.sxpinfo.gp() & !S4_OBJECT_MASK) | (flags.gp() & S4_OBJECT_MASK));
-        if let crate::sexp::ffi::NodeBody::Vector(vector) = &mut copied_header.data {
-            vector.truelength = truelength;
-        }
-        copied_heap
-            .replace_node(allocation, copied_header)
-            .ok_or(SexpError::StaleAllocation)?;
-        access.require_active()?;
-        Ok(copy)
-    })?
+        Some(pointer)
+    })?;
+    Ok(VectorContinuation {
+        copy,
+        values,
+        attributes,
+        flags,
+        truelength,
+        next_value: 0,
+        pending: VectorPending::None,
+        _reservation: reservation,
+    })
+}
+
+fn apply_vector_flags(
+    copy: &Sexp<'_>,
+    flags: crate::sexp::ffi::SxpInfo,
+    truelength: R_xlen_t,
+) -> SexpResult<()> {
+    let allocation = copy.allocation()?;
+    let heap = allocation.heap_identity();
+    let mut header = heap
+        .node_snapshot(allocation)
+        .ok_or(SexpError::StaleAllocation)?;
+    header.sxpinfo.set_obj(flags.obj());
+    header
+        .sxpinfo
+        .set_gp((header.sxpinfo.gp() & !S4_OBJECT_MASK) | (flags.gp() & S4_OBJECT_MASK));
+    if let crate::sexp::ffi::NodeBody::Vector(vector) = &mut header.data {
+        vector.truelength = truelength;
+    }
+    heap.replace_node(allocation, header)
+        .ok_or(SexpError::StaleAllocation)
 }
 
 /// GNU closure duplication shares formals, body, and environment; only
 /// attributes follow the requested deep/shallow duplication policy.
-unsafe fn duplicate_closure<'s>(
-    source: &crate::sexp::object::Sexp<'s>,
-    deep: c_int,
-    state: &DuplicationState,
-) -> crate::sexp::object::Sexp<'s> {
-    let fail = |error: crate::sexp::object::SexpError| -> ! {
-        crate::sexp::context::r_error(error.to_string())
-    };
-    let factory = source.node_factory().unwrap_or_else(|error| fail(error));
-    let formals = source.try_formals().unwrap_or_else(|error| fail(error));
-    let body = source.try_body().unwrap_or_else(|error| fail(error));
-    let environment = source.try_cloenv().unwrap_or_else(|error| fail(error));
-    let attributes = source.try_attrib().unwrap_or_else(|error| fail(error));
-    let source_node = source.allocation().expect("rooted closure allocation");
+fn prepare_closure<'source>(
+    source: &Sexp<'source>,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<ClosureContinuation<'source>> {
+    let domain: crate::sexp::object::NodeDomain<'source> = source.node_factory()?.into();
+    let formals = source.try_formals()?;
+    let body = source.try_body()?;
+    let environment = source.try_cloenv()?;
+    let attributes = snapshot_attributes(source, false)?;
+    let source_node = source.allocation()?;
     let flags = source_node
         .heap_identity()
         .node_snapshot(source_node)
-        .expect("rooted closure header")
+        .ok_or(SexpError::StaleAllocation)?
         .sxpinfo;
-    let formals_link = factory.link(&formals).unwrap_or_else(|error| fail(error));
-    let body_link = factory.link(&body).unwrap_or_else(|error| fail(error));
-    let environment_link = factory
-        .link(&environment)
-        .unwrap_or_else(|error| fail(error));
-    let copy = factory
-        .allocate(|arena| {
-            let projection = arena.alloc_node(SEXPTYPE::CLOSXP);
-            let allocation = arena.node_token(projection)?;
-            let heap = arena.heap_identity();
-            let mut header = heap.node_snapshot(&allocation)?;
-            header.data.closure_mut().formals = formals_link;
-            header.data.closure_mut().body = body_link;
-            header.data.closure_mut().env = environment_link;
-            header.sxpinfo.set_obj(flags.obj());
-            header
-                .sxpinfo
-                .set_gp(flags.gp() & (NOJIT_MASK | MAYBEJIT_MASK | S4_OBJECT_MASK));
-            heap.replace_node(&allocation, header)?;
-            Some(projection)
-        })
-        .unwrap_or_else(|error| fail(error));
-    if !attributes.is_nil() {
-        let copied_attributes = factory
-            .wrap(unsafe { duplicate1_in(attributes.as_raw(), deep, state) })
-            .unwrap_or_else(|error| fail(error));
-        unsafe {
-            SET_ATTRIB(copy.as_raw(), copied_attributes.as_raw());
-        }
-    }
-    copy
+    let formals_link = domain.link(&formals)?;
+    let body_link = domain.link(&body)?;
+    let environment_link = domain.link(&environment)?;
+    let copy = access.allocator(&domain)?.allocate(|arena| {
+        let projection = arena.alloc_node(SEXPTYPE::CLOSXP);
+        let allocation = arena.node_token(projection)?;
+        let heap = arena.heap_identity();
+        let mut header = heap.node_snapshot(&allocation)?;
+        header.data.closure_mut().formals = formals_link;
+        header.data.closure_mut().body = body_link;
+        header.data.closure_mut().env = environment_link;
+        header.sxpinfo.set_obj(flags.obj());
+        header
+            .sxpinfo
+            .set_gp(flags.gp() & (NOJIT_MASK | MAYBEJIT_MASK | S4_OBJECT_MASK));
+        heap.replace_node(&allocation, header)?;
+        Some(projection)
+    })?;
+    Ok(ClosureContinuation {
+        copy,
+        attributes,
+        pending: false,
+    })
 }
 
 /// Deep duplicate an SEXP.
@@ -1040,17 +950,6 @@ pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
     }
 }
 
-/// Helper: call duplicate1 or lazy_duplicate based on deep flag.
-unsafe fn duplicate_child(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP {
-    unsafe {
-        if deep != 0 {
-            duplicate1_in(s, 1, state)
-        } else {
-            lazy_duplicate(s)
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Cycle detection
 // ---------------------------------------------------------------------------
@@ -1203,82 +1102,380 @@ fn apply_pairlist_flags(copy: &Sexp<'_>, flags: crate::sexp::ffi::SxpInfo) -> Se
         .ok_or(SexpError::StaleAllocation)
 }
 
-fn duplicate_list<'source>(
-    source: &Sexp<'source>,
-    deep: c_int,
-    state: &DuplicationState,
-) -> SexpResult<Sexp<'source>> {
-    let original = source
-        .runtime_owner
-        .as_ref()
-        .ok_or(SexpError::RootUnavailable)?;
-    crate::sexp::owner::with_runtime(original, |_access| {
-        let cells = snapshot_pairlist(source)?;
-        duplicate_list_snapshot(source, &cells, deep, state)
-    })?
+/// A suspended copy retains its actual selected values, unfinished output,
+/// original path guard and provider guard. Moving a frame never moves a heap
+/// node, and popping it releases only that occurrence's active-path identity.
+struct OwnedCopyFrame<'operation, 'source> {
+    _source: Sexp<'source>,
+    _path: DuplicationFrame<'operation>,
+    _provider: Option<crate::sexp::altrep::OperationGuard>,
+    body: CopyContinuation<'source>,
 }
 
-fn duplicate_list_snapshot<'source>(
-    source: &Sexp<'source>,
-    cells: &[PairlistCellSnapshot<'source>],
-    deep: c_int,
-    state: &DuplicationState,
-) -> SexpResult<Sexp<'source>> {
-    let original = source
-        .runtime_owner
-        .as_ref()
-        .ok_or(SexpError::RootUnavailable)?;
-    let domain: crate::sexp::object::NodeDomain<'source> = source.node_factory()?.into();
-    crate::sexp::owner::with_runtime(original, |access| {
-        let Some(first) = cells.first() else {
-            return Ok(domain.nil());
+enum CopyContinuation<'source> {
+    Vector(VectorContinuation<'source>),
+    Pairlist(PairlistContinuation<'source>),
+    Closure(ClosureContinuation<'source>),
+}
+
+enum VectorPending {
+    None,
+    Value(usize),
+    Attributes,
+}
+
+struct VectorContinuation<'source> {
+    copy: Sexp<'source>,
+    values: CopyValues<'source>,
+    attributes: Option<AttributeSnapshot<'source>>,
+    flags: crate::sexp::ffi::SxpInfo,
+    truelength: R_xlen_t,
+    next_value: usize,
+    pending: VectorPending,
+    _reservation: crate::sexp::memory::TransientReservation,
+}
+
+enum PairlistPending {
+    None,
+    Value,
+    Attributes,
+}
+
+struct PairlistContinuation<'source> {
+    domain: crate::sexp::object::NodeDomain<'source>,
+    cells: Vec<PairlistCellSnapshot<'source>>,
+    head: Option<Sexp<'source>>,
+    tail: Option<Sexp<'source>>,
+    next_cell: usize,
+    pending: PairlistPending,
+}
+
+struct ClosureContinuation<'source> {
+    copy: Sexp<'source>,
+    attributes: Option<AttributeSnapshot<'source>>,
+    pending: bool,
+}
+
+struct CopyRequest<'source> {
+    source: Sexp<'source>,
+    /// Attribute spines were selected before any provider/allocation callback.
+    /// They must not be traversed again when the parent later suspends.
+    cells: Option<Vec<PairlistCellSnapshot<'source>>>,
+}
+
+impl<'source> CopyRequest<'source> {
+    fn value(source: Sexp<'source>) -> Self {
+        Self {
+            source,
+            cells: None,
+        }
+    }
+
+    fn attributes(snapshot: AttributeSnapshot<'source>) -> Self {
+        Self {
+            source: snapshot.source,
+            cells: Some(snapshot.cells),
+        }
+    }
+}
+
+// Frames move directly into the fallibly reserved continuation vector. Boxing
+// this transient variant would add an infallible allocation for every node.
+#[allow(clippy::large_enum_variant)]
+enum PreparedCopy<'operation, 'source> {
+    Ready(Sexp<'source>),
+    Frame(OwnedCopyFrame<'operation, 'source>),
+}
+
+enum CopyStep<'source> {
+    Child(CopyRequest<'source>),
+    Done(Sexp<'source>),
+}
+
+fn identity_kind(kind: SEXPTYPE) -> bool {
+    matches!(
+        kind,
+        SEXPTYPE::NILSXP
+            | SEXPTYPE::SYMSXP
+            | SEXPTYPE::ENVSXP
+            | SEXPTYPE::SPECIALSXP
+            | SEXPTYPE::BUILTINSXP
+            | SEXPTYPE::BCODESXP
+            | SEXPTYPE::WEAKREFSXP
+            | SEXPTYPE::EXTPTRSXP
+            | SEXPTYPE::CHARSXP
+            | SEXPTYPE::PROMSXP
+    )
+}
+
+fn prepare_copy<'operation, 'source>(
+    request: CopyRequest<'source>,
+    state: &'operation DuplicationState,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<PreparedCopy<'operation, 'source>> {
+    access.require_active()?;
+    let source = request.source;
+    let kind = source.typeof_();
+    if request.cells.is_none() && identity_kind(kind) {
+        return Ok(PreparedCopy::Ready(source));
+    }
+    if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(source.as_raw()) {
+        let copy = if kind == SEXPTYPE::LGLSXP {
+            access.with_native(|_| duplicate_logical_singleton(singleton))?
+        } else {
+            source
         };
-        let allocator = access.allocator(&domain)?;
-        let mut head: Option<Sexp<'source>> = None;
-        let mut tail: Option<Sexp<'source>> = None;
-        for saved in cells {
-            let value = access.with_native(|_| {
-                domain.wrap(unsafe { duplicate_child(saved.value.as_raw(), deep, state) })
-            })?;
-            let cell = allocator.pairlist_cell(&value, &domain.nil(), &saved.tag)?;
-            if let Some(previous) = &tail {
-                access.with_native(|_| {
-                    // Checked owners retain both ends; the native mutation
-                    // supplies the generational write barrier without a loan.
-                    unsafe {
-                        SETCDR(previous.as_raw(), cell.as_raw());
-                    }
+        return Ok(PreparedCopy::Ready(copy));
+    }
+    let path = state.enter(&source)?;
+    let node = source.allocation()?;
+    let flags = match &request.cells {
+        Some(cells) => {
+            cells
+                .first()
+                .ok_or(SexpError::MissingData { sexptype: kind })?
+                .flags
+        }
+        None => {
+            node.heap_identity()
+                .node_snapshot(node)
+                .ok_or(SexpError::StaleAllocation)?
+                .sxpinfo
+        }
+    };
+    let extension = unsafe { crate::sexp::altrep::has_extension_raw(source.as_raw()) };
+    let provider = if extension {
+        Some(crate::sexp::altrep::duplication_guard(&source)?)
+    } else {
+        None
+    };
+    let body = match flags.type_of() {
+        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+            CopyContinuation::Pairlist(PairlistContinuation {
+                domain: source.node_factory()?.into(),
+                cells: match request.cells {
+                    Some(cells) => cells,
+                    None => snapshot_pairlist(&source)?,
+                },
+                head: None,
+                tail: None,
+                next_cell: 0,
+                pending: PairlistPending::None,
+            })
+        }
+        SEXPTYPE::CLOSXP => CopyContinuation::Closure(prepare_closure(&source, access)?),
+        SEXPTYPE::EXPRSXP
+        | SEXPTYPE::VECSXP
+        | SEXPTYPE::STRSXP
+        | SEXPTYPE::LGLSXP
+        | SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::RAWSXP
+        | SEXPTYPE::OBJSXP => {
+            CopyContinuation::Vector(prepare_value(&source, extension, flags, access)?)
+        }
+        actual => {
+            return Err(SexpError::TypeMismatch {
+                expected: "duplicable object",
+                actual,
+            });
+        }
+    };
+    Ok(PreparedCopy::Frame(OwnedCopyFrame {
+        _source: source,
+        _path: path,
+        _provider: provider,
+        body,
+    }))
+}
+
+fn publish_attributes(
+    parent: &Sexp<'_>,
+    child: &Sexp<'_>,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<()> {
+    access.with_native(|_| {
+        unsafe { SET_ATTRIB(parent.as_raw(), child.as_raw()) };
+        Ok(())
+    })
+}
+
+impl<'source> VectorContinuation<'source> {
+    fn step(
+        &mut self,
+        result: Option<Sexp<'source>>,
+        deep: c_int,
+        access: &crate::sexp::owner::RuntimeAccess,
+    ) -> SexpResult<CopyStep<'source>> {
+        if let Some(result) = result {
+            match std::mem::replace(&mut self.pending, VectorPending::None) {
+                VectorPending::Value(index) => access.with_native(|_| {
+                    unsafe { SET_VECTOR_ELT(self.copy.as_raw(), index as _, result.as_raw()) };
                     Ok(())
-                })?;
-            } else {
-                head = Some(cell.clone());
-            }
-            tail = Some(cell.clone());
-            if !saved.attributes.is_nil() {
-                let attributes = access.with_native(|_| {
-                    domain.wrap(unsafe { duplicate1_in(saved.attributes.as_raw(), deep, state) })
-                })?;
-                access.with_native(|_| {
-                    unsafe {
-                        SET_ATTRIB(cell.as_raw(), attributes.as_raw());
-                    }
-                    Ok(())
-                })?;
-                apply_pairlist_flags(&cell, saved.flags)?;
+                })?,
+                VectorPending::Attributes => publish_attributes(&self.copy, &result, access)?,
+                VectorPending::None => unreachable!("no suspended vector child"),
             }
         }
-        let copy = head.ok_or(SexpError::AllocationFailed {
-            object: "pairlist copy",
-        })?;
-        let node = copy.allocation()?;
-        node.heap_identity()
-            .retype_node(node, first.flags.type_of())
-            .ok_or(SexpError::StaleAllocation)?;
-        // GNU always copies head flags; tail flags follow attribute copying.
-        apply_pairlist_flags(&copy, first.flags)?;
+        if let CopyValues::References(values) = &self.values
+            && self.flags.type_of() != SEXPTYPE::STRSXP
+        {
+            while let Some(value) = values.get(self.next_value) {
+                let index = self.next_value;
+                self.next_value += 1;
+                if deep != 0 {
+                    self.pending = VectorPending::Value(index);
+                    return Ok(CopyStep::Child(CopyRequest::value(value.clone())));
+                }
+                access.with_native(|_| {
+                    unsafe {
+                        lazy_duplicate(value.as_raw());
+                        SET_VECTOR_ELT(self.copy.as_raw(), index as _, value.as_raw());
+                    }
+                    Ok(())
+                })?;
+            }
+        }
+        if let Some(attributes) = self.attributes.take() {
+            self.pending = VectorPending::Attributes;
+            return Ok(CopyStep::Child(CopyRequest::attributes(attributes)));
+        }
+        apply_vector_flags(&self.copy, self.flags, self.truelength)?;
         access.require_active()?;
-        Ok(copy)
-    })?
+        Ok(CopyStep::Done(self.copy.clone()))
+    }
+}
+
+impl<'source> PairlistContinuation<'source> {
+    fn step(
+        &mut self,
+        mut result: Option<Sexp<'source>>,
+        deep: c_int,
+        access: &crate::sexp::owner::RuntimeAccess,
+    ) -> SexpResult<CopyStep<'source>> {
+        let domain = &self.domain;
+        loop {
+            if let Some(value) = result.take() {
+                let saved = &self.cells[self.next_cell];
+                match std::mem::replace(&mut self.pending, PairlistPending::None) {
+                    PairlistPending::Value => {
+                        let cell = access.allocator(domain)?.pairlist_cell(
+                            &value,
+                            &domain.nil(),
+                            &saved.tag,
+                        )?;
+                        if let Some(previous) = &self.tail {
+                            access.with_native(|_| {
+                                unsafe { SETCDR(previous.as_raw(), cell.as_raw()) };
+                                Ok(())
+                            })?;
+                        } else {
+                            self.head = Some(cell.clone());
+                        }
+                        self.tail = Some(cell);
+                        if !saved.attributes.is_nil() {
+                            self.pending = PairlistPending::Attributes;
+                            return Ok(CopyStep::Child(CopyRequest::value(
+                                saved.attributes.clone(),
+                            )));
+                        }
+                        self.next_cell += 1;
+                    }
+                    PairlistPending::Attributes => {
+                        let cell = self.tail.as_ref().expect("allocated pairlist cell");
+                        publish_attributes(cell, &value, access)?;
+                        apply_pairlist_flags(cell, saved.flags)?;
+                        self.next_cell += 1;
+                    }
+                    PairlistPending::None => unreachable!("no suspended pairlist child"),
+                }
+            }
+            let Some(saved) = self.cells.get(self.next_cell) else {
+                let copy = self.head.as_ref().expect("nonempty pairlist snapshot");
+                let node = copy.allocation()?;
+                node.heap_identity()
+                    .retype_node(node, self.cells[0].flags.type_of())
+                    .ok_or(SexpError::StaleAllocation)?;
+                apply_pairlist_flags(copy, self.cells[0].flags)?;
+                access.require_active()?;
+                return Ok(CopyStep::Done(copy.clone()));
+            };
+            self.pending = PairlistPending::Value;
+            if deep != 0 {
+                return Ok(CopyStep::Child(CopyRequest::value(saved.value.clone())));
+            }
+            access.with_native(|_| {
+                unsafe { lazy_duplicate(saved.value.as_raw()) };
+                Ok(())
+            })?;
+            result = Some(saved.value.clone());
+        }
+    }
+}
+
+impl<'source> ClosureContinuation<'source> {
+    fn step(
+        &mut self,
+        result: Option<Sexp<'source>>,
+        access: &crate::sexp::owner::RuntimeAccess,
+    ) -> SexpResult<CopyStep<'source>> {
+        if let Some(result) = result {
+            assert!(self.pending, "suspended closure attributes");
+            self.pending = false;
+            publish_attributes(&self.copy, &result, access)?;
+        }
+        if let Some(attributes) = self.attributes.take() {
+            self.pending = true;
+            return Ok(CopyStep::Child(CopyRequest::attributes(attributes)));
+        }
+        access.require_active()?;
+        Ok(CopyStep::Done(self.copy.clone()))
+    }
+}
+
+fn duplicate_iterative<'operation, 'source>(
+    source: Sexp<'source>,
+    deep: c_int,
+    state: &'operation DuplicationState,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<Sexp<'source>> {
+    let mut frames: Vec<OwnedCopyFrame<'operation, 'source>> = Vec::new();
+    let mut next = Some(CopyRequest::value(source));
+    let mut result = None;
+    loop {
+        access.require_active()?;
+        if let Some(request) = next.take() {
+            // Reserve before preparing a child: no allocation/provider runs
+            // unless its owning continuation can be retained fallibly.
+            frames
+                .try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "duplication continuations",
+                })?;
+            match prepare_copy(request, state, access)? {
+                PreparedCopy::Ready(value) => result = Some(value),
+                PreparedCopy::Frame(frame) => frames.push(frame),
+            }
+        }
+        let Some(frame) = frames.last_mut() else {
+            return result.ok_or(SexpError::MissingData {
+                sexptype: SEXPTYPE::NILSXP,
+            });
+        };
+        let step = match &mut frame.body {
+            CopyContinuation::Vector(body) => body.step(result.take(), deep, access)?,
+            CopyContinuation::Pairlist(body) => body.step(result.take(), deep, access)?,
+            CopyContinuation::Closure(body) => body.step(result.take(), access)?,
+        };
+        match step {
+            CopyStep::Child(request) => next = Some(request),
+            CopyStep::Done(value) => {
+                frames.pop();
+                result = Some(value);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2441,3 +2638,7 @@ mod tests {
 #[cfg(test)]
 #[path = "duplicate/owned_graph_tests.rs"]
 mod owned_graph_tests;
+
+#[cfg(test)]
+#[path = "duplicate/owned_depth_tests.rs"]
+mod owned_depth_tests;

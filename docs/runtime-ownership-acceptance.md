@@ -257,3 +257,18 @@ not a universal speedup claim. Unchanged default startup still times out at
 180.26 seconds without a test footer. Its new sample contains marking and
 deserialization work, with no sweep-remapping frames. Completion of startup and
 whole GNU parity remains a separate obligation.
+
+Deep duplication now uses fallibly reserved, owning continuation frames for
+vector children, CAR values and attributes. Frames retain the original runtime
+authority, saved sources and initialized destinations; active-path membership
+is removed on completion, preserving independent copies of repeated siblings
+and cycle rejection. The unchanged recursive implementation overflows on the
+valid 32,768-layer mixed graph; the iterative implementation completes that
+graph on an explicit 2 MiB stack with iterative output validation. All 29 native
+cases pass in 2.01 seconds, including the original 24 ownership controls. Four
+focused strict-provenance Miri cases pass in 442.21 seconds with memory profiling
+and the default alias checker; the native subprocess is excluded by target,
+not counted as an ignored Miri pass. Pinned GNU mixed-depth occurrence checks,
+independent ownership review and formatting pass. Warnings-free all-target
+Clippy with memory profiling passes in 45.19 seconds. All assigned source hashes
+remain frozen throughout those checks.
