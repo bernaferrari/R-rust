@@ -6,7 +6,10 @@
 
 // Private instruction execution owns each operand and publishes initialized
 // scalar and call nodes through the original allocation-domain capability.
-use std::os::raw::{c_double, c_int};
+use std::{
+    collections::HashSet,
+    os::raw::{c_double, c_int},
+};
 
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::object::{NodeAllocator, NodeDomain, Sexp, SexpError};
@@ -2178,13 +2181,49 @@ enum PrivateLoopKind {
         body: usize,
     },
 }
-fn push_private_loop(frames: &mut Vec<PrivateLoop>, frame: PrivateLoop) -> Result<(), String> {
-    frames
-        .try_reserve(1)
-        .map_err(|_| "cannot grow private bytecode loop continuations")?;
-    frames.push(frame);
-    Ok(())
+/// Own the continuations and keep their active opcode origins indexed together.
+/// The index is passive metadata; all runtime values live in the owning frames.
+#[derive(Default)]
+struct PrivateLoopStack {
+    frames: Vec<PrivateLoop>,
+    origins: HashSet<usize>,
 }
+impl PrivateLoopStack {
+    fn check_entry(&self, origin: usize) -> Result<(), String> {
+        if self.origins.contains(&origin) {
+            return Err(format!(
+                "private bytecode recursive loop target cycle at {origin}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn push(&mut self, frame: PrivateLoop) -> Result<(), String> {
+        self.check_entry(frame.origin)?;
+        // Both stores grow fallibly before either publishes an entry. A failed
+        // reserve changes capacities only and leaves the index synchronized.
+        self.frames
+            .try_reserve(1)
+            .map_err(|_| "cannot grow private bytecode loop continuations")?;
+        self.origins
+            .try_reserve(1)
+            .map_err(|_| "cannot grow private bytecode loop origin index")?;
+        self.origins.insert(frame.origin);
+        self.frames.push(frame);
+        Ok(())
+    }
+
+    fn pop(&mut self) -> Result<Option<PrivateLoop>, String> {
+        let Some(frame) = self.frames.pop() else {
+            return Ok(None);
+        };
+        if !self.origins.remove(&frame.origin) {
+            return Err("invalid private bytecode loop origin index".into());
+        }
+        Ok(Some(frame))
+    }
+}
+
 fn next_for_iteration(
     frame: &mut PrivateLoop,
     stack: &mut Vec<Sexp<'static>>,
@@ -2241,13 +2280,13 @@ fn eval_bytecode_loop(
     env: Sexp<'static>,
     execution: &PrivateExecution<'_>,
 ) -> Result<(Sexp<'static>, ControlFlow), String> {
-    let mut frames: Vec<PrivateLoop> = Vec::new();
+    let mut frames = PrivateLoopStack::default();
     let mut current_pc = *pc;
     let mut completed: Option<(Sexp<'static>, ControlFlow)> = None;
     loop {
         execution.require_live()?;
         if let Some((value, control)) = completed.take() {
-            let Some(mut frame) = frames.pop() else {
+            let Some(mut frame) = frames.pop()? else {
                 *pc = current_pc;
                 execution.require_live()?;
                 return Ok((value, control));
@@ -2261,7 +2300,7 @@ fn eval_bytecode_loop(
                         next_for_iteration(&mut frame, stack, &env, execution)?
                     {
                         current_pc = body;
-                        push_private_loop(&mut frames, frame)?;
+                        frames.push(frame)?;
                     } else {
                         current_pc = frame.end;
                     }
@@ -2280,7 +2319,7 @@ fn eval_bytecode_loop(
                         } else {
                             *testing = false;
                             current_pc = *body;
-                            push_private_loop(&mut frames, frame)?;
+                            frames.push(frame)?;
                         }
                     } else if control == ControlFlow::Break {
                         current_pc = frame.end;
@@ -2288,7 +2327,7 @@ fn eval_bytecode_loop(
                     } else {
                         *testing = true;
                         current_pc = *condition;
-                        push_private_loop(&mut frames, frame)?;
+                        frames.push(frame)?;
                     }
                 }
                 PrivateLoopKind::Repeat { body } => {
@@ -2297,7 +2336,7 @@ fn eval_bytecode_loop(
                         completed = Some((value, ControlFlow::Normal));
                     } else {
                         current_pc = *body;
-                        push_private_loop(&mut frames, frame)?;
+                        frames.push(frame)?;
                     }
                 }
             }
@@ -2313,12 +2352,9 @@ fn eval_bytecode_loop(
         )? {
             PrivateStep::Complete(value, control) => completed = Some((value, control)),
             PrivateStep::Loop(mut frame) => {
-                if frames.iter().any(|active| active.origin == frame.origin) {
-                    return Err(format!(
-                        "private bytecode recursive loop target cycle at {}",
-                        frame.origin
-                    ));
-                }
+                // Reject recursive targets before iteration creates an operand
+                // or enters any allocation callback.
+                frames.check_entry(frame.origin)?;
                 let entry = match &frame.kind {
                     PrivateLoopKind::For { .. } => {
                         next_for_iteration(&mut frame, stack, &env, execution)?
@@ -2328,7 +2364,7 @@ fn eval_bytecode_loop(
                 };
                 if let Some(entry) = entry {
                     current_pc = entry;
-                    push_private_loop(&mut frames, frame)?;
+                    frames.push(frame)?;
                 } else {
                     current_pc = frame.end;
                 }
@@ -3136,6 +3172,64 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.real_elt(0), Some(f64::NEG_INFINITY));
+    }
+
+    #[test]
+    fn owned_private_bytecode_reuses_nested_loop_origins_after_next_and_break_gc() {
+        for words in [
+            // A next from the inner while's condition propagates to the for.
+            vec![
+                BCfor, 0, 1, 5, 11, BCwhile, 9, 10, 11, BCnext, BCbreak, BCgvar, 0, BCreturn,
+            ],
+            // An inner repeat's break completes that loop normally, allowing
+            // the enclosing for to re-enter the same repeat opcode each time.
+            vec![
+                BCfor, 0, 1, 5, 9, BCrepeat, 8, 9, BCbreak, BCgvar, 0, BCreturn,
+            ],
+        ] {
+            let session = RSession::new_for_gc_tests();
+            let (variable, sequence) = session.with_active(|| {
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                crate::sexp::owner::with_runtime(&owner, |access| {
+                    let domain = access.domain();
+                    let variable = access
+                        .with_native(|_| {
+                            domain.wrap(unsafe {
+                                crate::sexp::symbol::Rf_install(c"private_loop_reuse".as_ptr())
+                            })
+                        })
+                        .unwrap();
+                    let sequence = access
+                        .allocator(&domain)
+                        .unwrap()
+                        .allocate(|arena| {
+                            let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+                            let heap = arena.heap_identity();
+                            let node = arena.node_token(pointer)?;
+                            let payload = heap.payload_lease(&node)?;
+                            for (index, value) in [17, 23, 29].into_iter().enumerate() {
+                                payload.set_integer_elt(index, value)?;
+                            }
+                            Some(pointer)
+                        })
+                        .unwrap();
+                    (variable, sequence)
+                })
+                .unwrap()
+            });
+            let code = private_code(&session, &words, &[variable, sequence]);
+            let callbacks = collect_and_detach_pool(&session, &code);
+            let result = session
+                .with_active(|| {
+                    eval_bytecode(code, session.global_env().unwrap().into_owned().unwrap())
+                })
+                .unwrap();
+            assert_eq!(result.integer_elt(0), Some(29));
+            assert!(
+                callbacks.get() >= 3,
+                "every resumed for iteration must actually collect"
+            );
+        }
     }
 
     #[test]
