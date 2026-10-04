@@ -1840,9 +1840,9 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            self.inst().output_capture.borrow_mut().start();
+            let capture = super::output::OutputCaptureGuard::start();
             let value = f();
-            let output = self.inst().output_capture.borrow_mut().stop();
+            let output = capture.finish();
             (value, output)
         })
     }
@@ -3111,3 +3111,7 @@ mod tests {
 #[cfg(test)]
 #[path = "gc_owner_teardown_tests.rs"]
 mod gc_owner_teardown_tests;
+
+#[cfg(test)]
+#[path = "session/public_capture_tests.rs"]
+mod public_capture_tests;
