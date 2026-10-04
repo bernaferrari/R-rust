@@ -50,8 +50,18 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if encoding == "unknown" {
             r_error("invalid connection");
         }
+        // GNU identifies anonymous files from the original empty description,
+        // not a generated path or a host process identifier.
+        let anonymous = description.is_empty();
+        let browser_mode = crate::sexp::instance::with_current_instance(|instance| unsafe {
+            (*instance).browser_files_enabled
+        })
+        .unwrap_or(false);
+        if anonymous && (browser_mode || cfg!(target_arch = "wasm32")) {
+            r_error("anonymous browser file connections are not implemented");
+        }
         // GNU file("") is an anonymous temporary opened read/write.
-        if description.is_empty() {
+        if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
                 let msg = std::ffi::CString::new(
                     "file(\"\") only supports open = \"w+\" and open = \"w+b\": using the former",
@@ -61,7 +71,6 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
             description = anonymous_temp_path();
         }
-        let anonymous = description_is_anonymous(&description);
         let deferred = open.is_empty() && !anonymous;
         let open_mode = if anonymous {
             if open == "w+b" {
@@ -77,10 +86,6 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let ncon = next_connection();
         let browser_bytes = crate::mainutils::browser_files::read_current(&description);
-        let browser_mode = crate::sexp::instance::with_current_instance(|instance| unsafe {
-            (*instance).browser_files_enabled
-        })
-        .unwrap_or(false);
         let kind = if browser_bytes.is_some() || browser_mode {
             ConnKind::BrowserFile
         } else {
@@ -205,18 +210,6 @@ pub fn ensure_connection_readable(n: core::ffi::c_int) {
         }
         _ => r_error("connection is not open"),
     }
-}
-
-fn description_is_anonymous(description: &str) -> bool {
-    // file("") temps are Rf<pid><n> in the temp dir. A bare "Rf" prefix also
-    // matched tempfile("Rfwf."), and do_file then opened "w+" and truncated it.
-    let marker = format!("Rf{}", std::process::id());
-    let path = Path::new(description);
-    path.starts_with(std::env::temp_dir())
-        && path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with(&marker))
 }
 
 fn anonymous_temp_path() -> String {
@@ -1332,3 +1325,6 @@ pub unsafe fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         }
     }
 }
+
+#[cfg(test)]
+mod constructor_tests;

@@ -683,3 +683,23 @@ they are recorded as remaining work, not constructor acceptance failures.
 Warnings-denied Clippy across rmath/r-embed targets with memory profiling and
 assigned formatting pass. This configuration seam adds no unsafe code and makes
 no new Miri or full package-compatibility claim.
+
+## Named file construction on native and browser runtimes
+
+File anonymity now follows GNU's original empty description. A nonempty path
+remains a deferred named connection even when it resembles a generated temporary
+filename. Named browser constructors no longer call an unsupported host process-ID
+function. Anonymous browser update files report a recoverable R error before host
+temporary-file operations; their full implementation remains separate work.
+
+The original code fails two of three native controls and all four selected browser
+cases. The repaired code passes all three native controls, all four fresh Chromium
+connection cases and three output/RNG cases against the same Rust Wasm asset.
+Two strict-provenance Miri cases pass in 176.44 seconds with the default alias
+checker, covering the virtual backend and controlled-error recovery. The host-file
+nontruncation case runs natively. The pinned GNU oracle, warnings-denied Clippy and
+assigned formatting pass. The frozen source/artifact ledger distinguishes later
+independent startup and dataset changes; this is not whole-tree certification.
+Anonymous virtual update files and the remaining raw constructor operand lifetime
+audit are tracked separately. Native full-bootstrap output acceptance is still
+pending and is not inferred from browser results.

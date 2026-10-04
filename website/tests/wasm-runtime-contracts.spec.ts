@@ -835,3 +835,43 @@ test("S3 group methods and serialized call tails work in the Wasm worker", async
   })
   expect(result.output.trim()).toBe("group and serialization contracts passed")
 })
+
+test("named virtual file constructors avoid host process assumptions", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const result = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const deferred = await runtime.run(
+        "con<-file('named.txt');before<-isOpen(con);close(con);!before",
+        "console"
+      )
+      const opened = await runtime.run(
+        "con<-file('named-open.txt',open='w');writeLines('hello',con);close(con);identical(readLines('named-open.txt',warn=FALSE),'hello')",
+        "console"
+      )
+      let anonymousError = ""
+      try {
+        await runtime.run("file('')", "console")
+      } catch (error) {
+        anonymousError = String(error)
+      }
+      const recovery = await runtime.run("1+1", "console")
+      return {
+        deferred: deferred.output,
+        opened: opened.output,
+        anonymousError,
+        recovery: recovery.output,
+      }
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(result.deferred).toBe("[1] TRUE\n")
+  expect(result.opened).toBe("[1] TRUE\n")
+  expect(result.anonymousError).toContain("anonymous browser file connections")
+  expect(result.anonymousError).not.toContain("Unexpected interpreter panic")
+  expect(result.recovery).toBe("[1] 2\n")
+})
