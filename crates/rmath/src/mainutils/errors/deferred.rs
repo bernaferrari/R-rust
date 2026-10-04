@@ -296,6 +296,16 @@ mod owned_warning_snapshot_tests {
     use crate::sexp::{instance::RuntimeValue, session::RSession};
     use std::{cell::Cell, rc::Rc};
 
+    fn warnings_session() -> RSession {
+        let session = RSession::new_for_gc_tests();
+        // These ownership cases need at most two entries. A small real pool
+        // keeps strict Miri focused on callback/root behavior rather than size.
+        session.with_active_in(|instance| unsafe {
+            (*instance).error_state.nwarnings = 3;
+        });
+        session
+    }
+
     fn warnings_fixture(
         session: &RSession,
     ) -> (
@@ -337,7 +347,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_snapshots_survive_field_and_child_replacement_during_deparse_gc() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let (warnings, names, original_call, original_message) = warnings_fixture(&session);
         let collected = Rc::new(Cell::new(false));
         let observed = collected.clone();
@@ -410,7 +420,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_collection_keeps_initialized_pool_across_collecting_callbacks() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let collections = Rc::new(Cell::new(0));
         let observed = collections.clone();
         session.with_active_in(|instance| unsafe {
@@ -447,7 +457,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_entry_owns_override_before_first_option_allocation() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let collected = Rc::new(Cell::new(false));
         let observed = collected.clone();
         session.with_active_in(|instance| unsafe {
@@ -491,7 +501,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_integer_levels_and_na_immediate_defaults_match_gnu() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         session.with_active_in(|instance| unsafe {
             crate::mainutils::options::R_SetOptionWarn(2);
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -527,7 +537,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_expression_survives_option_replacement_and_preserves_visibility() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let collected = Rc::new(Cell::new(false));
         let observed = collected.clone();
         session.with_active_in(|instance| unsafe {
@@ -595,7 +605,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_expression_can_clear_itself_and_collect_nested_warning() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let owner = session.owner_token().unwrap();
         let factory = owner.node_factory();
         let expression = owner
@@ -634,7 +644,7 @@ mod owned_warning_snapshot_tests {
 
     #[test]
     fn owned_error_warning_print_flag_cleanup_uses_original_runtime_after_revocation() {
-        let session = RSession::new_for_gc_tests();
+        let session = warnings_session();
         let _fixture = warnings_fixture(&session);
         let revoked = Rc::new(Cell::new(false));
         let observed = revoked.clone();
