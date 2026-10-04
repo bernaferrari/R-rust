@@ -945,10 +945,12 @@ caller environment. Name, environment, mode, fallback and inherits admission
 follow the pinned GNU ordering. Existing sequential promise-forcing tests remain.
 
 All 15 native cases passed (0.20 seconds), with independent pinned GNU controls,
-warning-denied Clippy and formatting completed. The frozen four-file candidate
-is checkpointed so broader CI can run in parallel. Its strict 15-case Miri run
-continues unchanged; no completed strict aggregate or full lookup-family parity
-is claimed here, and rport-wszw.9 remains open until its acceptance checks finish.
+warning-denied Clippy and formatting completed. All 15 cases subsequently passed
+strict-provenance Miri with the default alias checker and isolation (3067.20
+seconds). Four loaded source hashes stayed fixed through the actual aggregate
+and successfully reaped process exit. This completes rport-wszw.9. Full lookup
+family parity remains unclaimed: get/get0 and later-empty-name evaluation order
+are separate remaining items, rport-wszw.13 and rport-wszw.14.
 
 ## Owning na.exclude covariance rows: native candidate (rport-wszw.6.2)
 
