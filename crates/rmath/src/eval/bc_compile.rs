@@ -1084,6 +1084,9 @@ mod tests {
             let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(code.as_raw()));
             // No expression remains for an interpreter fallback.
             crate::sexp::accessors::SET_VECTOR_ELT(pool.as_raw(), 0, R_NilValue());
+            // The parsed tree must not supply incidental roots after the
+            // bytecode pool is detached by the collecting callback.
+            drop(expression);
             let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
             if collect {
                 let captured_pool = pool.clone();
