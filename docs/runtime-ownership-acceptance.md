@@ -210,3 +210,14 @@ nearly flat original small-frame cost. Original GNU metadata source/bytecode
 checks retain their attributes and pass. Unchanged full startup still reaches
 the 180-second bound without a completed test footer. Its samples identify
 nonmoving collection's graph-remapping phase as the next measured obligation.
+
+The C/Fortran structured list-name seam now retains every original payload,
+tag and attribute before executing either name-provider operation. Capturing
+the selected lookup child is followed immediately by an original-runtime check.
+Four genuine collecting/revoking ALTREP fixtures cover the actual kmeans C and
+bvalus Fortran handlers, without incidental roots. All 12 native buffer-dispatch
+controls pass in 0.06 seconds, and all four focused strict-provenance Miri cases
+pass in 364.79 seconds with the default alias checker. Pinned GNU neighbors
+match the expected numeric outputs; warnings-free all-target Clippy passes in
+29.95 seconds. Independent later duplication and collector edits remain outside
+the loaded proof's frozen source ledger.

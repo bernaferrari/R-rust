@@ -38,13 +38,6 @@ impl Operands {
             return Err(failure("the first argument should not be named"));
         }
         let name = arguments.try_car()?.into_owned()?;
-        // Registered-symbol objects carry their lookup name in their first
-        // vector cell. Retain that actual child before control providers run.
-        let lookup_name = if name.typeof_() == SEXPTYPE::VECSXP && name.len() > 0 {
-            name.try_vector_elt(0)?.into_owned()?
-        } else {
-            name.clone()
-        };
         let mut all = Vec::new();
         let mut seen = std::collections::HashSet::new();
         let mut cursor = arguments.try_cdr()?;
@@ -68,6 +61,15 @@ impl Operands {
             });
             cursor = cursor.try_cdr()?;
         }
+        // A structured list-name provider may itself detach the argument
+        // graph. Retain every original payload, tag, and attribute first, then
+        // retain the selected lookup child before control providers can run.
+        let lookup_name = if name.typeof_() == SEXPTYPE::VECSXP && name.len() > 0 {
+            name.try_vector_elt(0)?.into_owned()?
+        } else {
+            name.clone()
+        };
+        access.require_active()?;
         // Capture every edge and attribute before any provider can detach the
         // original graph. Character/control coercions can reenter R.
         let mut payload = Vec::new();
@@ -459,6 +461,7 @@ mod tests {
     };
 
     mod holtwinters;
+    mod lookup_snapshot_tests;
 
     fn real(factory: &SessionNodeFactory<'_>, data: &[f64]) -> Sexp<'static> {
         let output = factory
