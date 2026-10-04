@@ -1159,3 +1159,17 @@ passes in 49.82 seconds. The pinned GNU fixture and all-target rmath/r-embed
 Clippy with memory profiling and denied warnings pass. This two-branch change
 adds no unsafe code and does not claim completion of the pending atomic Miri
 selection or broader scalar-coercion parity.
+
+## Empty graphics colors use the device defaults (rport-jxfp.3.12.3.6.1)
+
+The shared color-vector decoder now returns the caller default for every
+zero-length vector type, following GNU’s admission order. Rectangle borders
+use the current device foreground; empty fills retain transparent fill. The
+genuine four-case baseline failed, while all thirteen final native controls
+pass in 25.33 seconds. Independent GNU PDF drawing operators verify transparent
+fills, a modified red foreground, explicit NA borders and error recovery. The
+managed six-type default-vector invariant passes strict-provenance Miri in
+46.12 seconds with default alias checking; this is one focused case, not a
+complete Scene Miri proof. Render-feature Clippy with denied warnings and
+assigned-source formatting pass. Numeric text colors remain a separate native
+and Wasm compatibility gap in `rport-jxfp.3.12.3.8`.

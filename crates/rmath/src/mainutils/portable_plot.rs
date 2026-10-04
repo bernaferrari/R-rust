@@ -218,7 +218,7 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
         }
         let n = XLENGTH(x);
         if n == 0 {
-            base_error("invalid color specification");
+            return vec![default];
         }
         if !matches!(
             SEXPTYPE(TYPEOF(x)),
@@ -1811,7 +1811,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     return invisible();
                 }
                 let fill = colors(arg(args, "col"), transparent());
-                let border = colors(arg(args, "border"), Color::BLACK);
+                let border = colors(arg(args, "border"), par_color("fg", Color::BLACK));
                 let n = cols.iter().map(Vec::len).max().unwrap();
                 let target = &mut *renderer();
                 target.set_clip(Some(clip_rect(c, args)));
@@ -1968,3 +1968,7 @@ pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         invisible()
     }
 }
+
+#[cfg(all(test, feature = "renderplot-device"))]
+#[path = "portable_plot/color_defaults_tests.rs"]
+mod color_defaults_tests;
