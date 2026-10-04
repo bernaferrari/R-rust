@@ -2483,74 +2483,10 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// look up each name of a character vector, returning a named list.
 /// `envir` may be one environment or a list recycled along `x`; a missing
 /// `ifnotfound` errors for absent bindings, as upstream does.
-pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x_arg = arg_by_name_or_position(args, &["x"], 0);
-        if x_arg.is_null() || x_arg == R_NilValue() || TYPEOF(x_arg) != SEXPTYPE::STRSXP {
-            base_error("invalid first argument");
-        }
-        let n = XLENGTH(x_arg);
-        let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
-        let inherits = named_logical_arg(args, "inherits").unwrap_or(false);
-        let ifnotfound_arg = arg_by_name_or_position(args, &["ifnotfound"], 3);
-
-        // Single environment or recyclable list of environments.
-        let mut env_list: Vec<SEXP> = Vec::new();
-        if !envir_arg.is_null() && envir_arg != R_NilValue() {
-            if TYPEOF(envir_arg) == SEXPTYPE::ENVSXP {
-                env_list.push(envir_arg);
-            } else if TYPEOF(envir_arg) == SEXPTYPE::VECSXP {
-                for i in 0..XLENGTH(envir_arg) {
-                    let env = VECTOR_ELT(envir_arg, i);
-                    if TYPEOF(env) == SEXPTYPE::ENVSXP {
-                        env_list.push(env);
-                    }
-                }
-            }
-        } else {
-            env_list.push(crate::sexp::globals::R_GlobalEnv());
-        }
-        if env_list.is_empty() {
-            base_error("invalid 'envir' argument");
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        let _result_guard = protect(result);
-        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _names_guard = protect(names_vec);
-        for i in 0..n {
-            let name = elt_to_string(x_arg, i);
-            crate::sexp::accessors::SET_STRING_ELT(
-                names_vec,
-                i,
-                Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
-            );
-            let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-            let env = env_list[(i as usize) % env_list.len()];
-            let value = if inherits {
-                crate::sexp::envir::R_findVar(sym, env)
-            } else {
-                crate::sexp::envir::R_findVarInFrame(env, sym)
-            };
-            if !value.is_null() && value != R_UnboundValue() {
-                crate::sexp::accessors::SET_VECTOR_ELT(result, i, value);
-            } else if !ifnotfound_arg.is_null() && ifnotfound_arg != R_NilValue() {
-                let fallback = if TYPEOF(ifnotfound_arg) == SEXPTYPE::VECSXP {
-                    VECTOR_ELT(ifnotfound_arg, (i % XLENGTH(ifnotfound_arg)) as i64)
-                } else {
-                    ifnotfound_arg
-                };
-                crate::sexp::accessors::SET_VECTOR_ELT(result, i, fallback);
-            } else {
-                base_error(format!("value for '{name}' not found"));
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names_vec,
-        );
-        result
+pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    match unsafe { mget::invoke(args) } {
+        Ok(value) => value.as_raw(),
+        Err(error) => base_error(error.to_string()),
     }
 }
 
@@ -3752,3 +3688,8 @@ mod owned_error_trycatch_tests {
         assert!(observed.get() > 0);
     }
 }
+
+#[cfg(test)]
+mod mget_tests;
+
+mod mget;

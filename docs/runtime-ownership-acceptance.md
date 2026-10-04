@@ -831,3 +831,17 @@ limits remain unchanged. Warnings-denied Wasm Clippy, assigned formatting and
 website lint pass. Artifact ledgers distinguish the earlier browser writer
 metadata from later native metadata changes. Host-discovering embedding sessions
 and the remaining showcase cases require their separate full acceptance gates.
+
+## Owning sequential mget promise forcing
+
+The safe mget implementation owns its operands and selected values through name
+providers, promise forcing and result allocation. Each lookup is followed by
+forcing before the next name is looked up, preserving GNU side effects and
+cached-value identity. Original-runtime revocation refuses publication.
+
+Six native cases and all six strict-provenance Miri cases pass. The completed
+Miri selection takes 1489.76 seconds with the default alias checker. Tests detach
+actual argument and binding graphs before collection, exercise reentry and
+remove incidental promise roots. Pinned GNU controls, warnings-denied Clippy and
+assigned formatting pass. Mode filtering, callable fallback and sharing semantics
+remain a separately tracked contract extension.
