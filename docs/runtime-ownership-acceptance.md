@@ -1173,3 +1173,17 @@ managed six-type default-vector invariant passes strict-provenance Miri in
 complete Scene Miri proof. Render-feature Clippy with denied warnings and
 assigned-source formatting pass. Numeric text colors remain a separate native
 and Wasm compatibility gap in `rport-jxfp.3.12.3.8`.
+
+## Sequential later-empty mget admission (rport-wszw.14)
+
+A first empty name still fails before lookup. A later empty name fails at its
+sequential lookup position with GNU’s zero-length-variable-name error, after
+earlier promises or fallback callbacks have produced their side effects. The
+genuine baseline suppressed those side effects and used the wrong error. All
+seventeen final mget native cases pass in 2.55 seconds, including the real-base
+GNU fixture; the new actual-promise regression passes strict-provenance Miri in
+215.27 seconds with default alias checking and isolation. Independent pinned
+GNU controls, denied-warning Clippy and source formatting pass. This one-case
+strict addition complements the prior completed fifteen-case owning mget proof;
+it does not claim seventeen newly rerun Miri cases. Bare callable fallback
+admission remains tracked separately in `rport-wszw.14.1`.

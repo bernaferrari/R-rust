@@ -634,3 +634,36 @@ fn owning_mget_contract_admission_order_matches_gnu() {
         );
     }
 }
+
+#[test]
+fn owning_mget_sequential_later_empty_name_keeps_earlier_side_effect() {
+    let (mut session, promise) = setup("{counter<<-counter+1L;42L}");
+    let error = session
+        .eval_code_with_output_capture("mget(c('x',''),e,ifnotfound=list(7L))")
+        .0
+        .unwrap_err();
+    let count = session.eval_code_with_output_capture("counter").0.unwrap();
+    assert_eq!(
+        count.try_integer_elt(0).unwrap(),
+        1,
+        "the earlier promise must force before the later name fails: {error}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "attempt to use zero-length variable name"
+    );
+    assert_eq!(
+        promise.try_prvalue().unwrap().try_integer_elt(0).unwrap(),
+        42
+    );
+}
+
+#[test]
+fn owning_mget_sequential_first_and_later_errors_match_pinned_admission_order() {
+    let mut session = RSession::new_without_default_packages();
+    let value = session
+        .eval_code_with_output_capture(include_str!("mget-sequential-oracle.R"))
+        .0
+        .unwrap();
+    assert_eq!(value.try_logical_elt(0).unwrap(), 1);
+}
