@@ -432,3 +432,24 @@ alias checker. Warnings-denied all-target Clippy passes in 25.06 seconds and
 assigned formatting passes. The recorded frozen source and interpreter manifest
 define this proof's scope. Recursive evaluation and interrupted-promise restart
 states remain a separate tracked obligation; full methods startup is unresolved.
+
+Heap retention now has exact byte and physical-owner acceptance checks. A small
+owning real value survives while a discarded 257-node graph releases its 64 MiB
+real payload during full GC. Only 30,968 accounted bytes remain, including
+reusable headers; dropping the session retains the small value's physical
+backing, and releasing its last handle destroys that backing and balances the
+arena's byte ledger to zero. Eight repeated sessions release every backing.
+Cloned handles share one root lease; independently wrapped handles release all
+their additional roots without leaving collector nodes alive.
+
+All three native cases pass in 0.37 seconds. Three strict-provenance Miri cases
+pass in 497.31 seconds with the default alias checker and the same ownership
+transitions on smaller buffers. Warnings-denied all-target Clippy passes in
+27.14 seconds and assigned formatting passes. The owned fixtures forbid unsafe
+code; frozen source and interpreter ledgers distinguish later compiler changes.
+These fixtures use the minimal managed collector profile, not default package
+startup. Local measurements report a 120-byte node, a 144-byte handle, and
+median times of 0.914 ms for 10,000 clones and 5.898 ms for 10,000 independent
+wraps. There is no previous-version or GNU performance baseline. Observed
+process RSS remains about 89 MiB after release, so exact heap reclamation does
+not establish immediate return of those resident pages to the operating system.

@@ -2156,6 +2156,9 @@ where
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+mod retention_tests;
+
+#[cfg(test)]
 mod tests {
     fn native_payload(pointer: super::SEXP) -> *mut u8 {
         let (_, node) = super::checked_projection(pointer).expect("fixture allocation");
