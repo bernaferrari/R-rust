@@ -725,9 +725,9 @@ pub(crate) fn invocation_count() -> usize {
 
 pub(crate) mod holtwinters;
 pub(crate) mod multi_burg;
+pub(crate) mod ppr_predict;
 pub(crate) mod stl;
 pub(crate) mod supsmu;
-pub(crate) mod ppr_predict;
 
 /// Port-only base dtrco compatibility, entirely over owned checked buffers.
 pub(crate) fn dtrco_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
@@ -955,8 +955,8 @@ mod holtwinters_tests;
 mod multi_burg_tests;
 
 #[cfg(test)]
+mod ppr_predict_tests;
+#[cfg(test)]
 mod stl_tests;
 #[cfg(test)]
 mod supsmu_tests;
-#[cfg(test)]
-mod ppr_predict_tests;

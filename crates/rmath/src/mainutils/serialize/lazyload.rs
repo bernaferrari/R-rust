@@ -71,10 +71,17 @@ pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
         if path == std::path::Path::new(crate::library::datasets::DATABASE) {
             let result = (|| {
                 let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
-                let file = owner.sexp(file).and_then(crate::sexp::object::Sexp::into_owned).map_err(|e| e.to_string())?;
-                let key = owner.sexp(key).and_then(crate::sexp::object::Sexp::into_owned).map_err(|e| e.to_string())?;
+                let file = owner
+                    .sexp(file)
+                    .and_then(crate::sexp::object::Sexp::into_owned)
+                    .map_err(|e| e.to_string())?;
+                let key = owner
+                    .sexp(key)
+                    .and_then(crate::sexp::object::Sexp::into_owned)
+                    .map_err(|e| e.to_string())?;
                 crate::library::datasets::read_database(file, key)
-            })().unwrap_or_else(|message| error(&message));
+            })()
+            .unwrap_or_else(|message| error(&message));
             return result.expect("exact virtual database path").as_raw();
         }
         if TYPEOF(key) != SEXPTYPE::INTSXP || LENGTH(key) != 2 {
