@@ -57,6 +57,9 @@ mod call;
 mod lang;
 mod safe;
 mod vector;
+mod vectorizable;
+#[cfg(test)]
+mod vectorizable_tests;
 mod warn;
 
 pub use self::as_helpers::*;

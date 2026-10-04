@@ -963,3 +963,32 @@ controls, all-target Clippy and formatting passed. The exact six-file candidate
 is checkpointed while its nine-case strict Miri run continues unchanged; this is
 not a completed strict aggregate, and rport-wszw.6.2 remains open. Exact GNU
 arithmetic warning-call attribution is a separate remaining item, rport-wszw.6.3.
+
+## Checked GNU vectorizable admission (rport-wszw.7.1.1)
+
+A forbid-unsafe helper now admits GNU NULL/list/pairlist categories and vector
+children of length zero or one, while rejecting atomic/expression outer inputs.
+Checked pairlist identities detect cycles and improper tails. List providers use
+original owning values and authority checks after success or unwind, retaining
+selected children through collection and rejecting revoked-runtime publication.
+
+The unchanged production baseline genuinely failed both regression tests before
+repair. The completed candidate passed seven new native tests, the enclosing
+41-case suite, all-target Clippy and formatting. Independent pinned GNU controls
+passed the public coercion cases and its actual native predicate's 12 category
+cases. All seven tests passed strict-provenance Miri with the default alias
+checker and isolation (734.14 seconds), with the five source hashes unchanged
+through the reaped successful footer. An earlier stale cached artifact selected
+zero tests and is explicitly excluded from that proof. This closes predicate
+admission; raw counted string/list coercion paths remain rport-wszw.7.1.1.1.
+
+## Public compiler namespace acceptance (rport-jxfp.3.12.4)
+
+The retained public embedding fixture now completes all four tests with the full
+default constructor (358.86 seconds). It preserves checks for source, formals,
+environment, executable user calls, builtin identity, GNU options, named argument
+matching and rejected duplicate arguments. Its current source and executable
+hashes remained fixed through the successful reaped footer. The preceding pinned
+GNU contract and runtime namespace tests remain independent supporting evidence.
+This completes the formerly bounded/incomplete public gate; it does not claim
+all private compiler operations, every execution path or whole-HEAD CI parity.

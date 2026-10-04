@@ -130,45 +130,29 @@ pub unsafe fn isLanguage(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
-/// Check if an SEXP is "vectorizable" (atomic, or a list of length-1 atomics).
+/// Check GNU list admission using original-owner leases and typed graph edges.
 #[inline]
 pub unsafe fn isVectorizable(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return true;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP
-        {
-            return true;
-        }
-        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
-            let n = crate::sexp::accessors::XLENGTH(x);
-            for i in 0..n {
-                let elt = crate::sexp::accessors::VECTOR_ELT(x, i);
-                if elt.is_null() {
-                    return false;
-                }
-                let et = TYPEOF(elt);
-                if !(et == SEXPTYPE::LGLSXP
-                    || et == SEXPTYPE::INTSXP
-                    || et == SEXPTYPE::REALSXP
-                    || et == SEXPTYPE::CPLXSXP
-                    || et == SEXPTYPE::STRSXP
-                    || et == SEXPTYPE::RAWSXP)
-                    || crate::sexp::accessors::XLENGTH(elt) > 1
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-        false
+    if x.is_null()
+        || crate::sexp::globals::immutable_singleton_lease(x)
+            .is_some_and(|lease| lease.snapshot().sxpinfo.type_of() == SEXPTYPE::NILSXP)
+    {
+        return true;
+    }
+    let result = (|| {
+        // SAFETY: this translated entry supplies the active original owner;
+        // the closed execution scope retains it through provider callbacks.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
+            .weak_owner()
+            .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let value = access.domain().wrap(x)?.into_owned()?;
+            super::vectorizable::check(value, access)
+        })?
+    })();
+    match result {
+        Ok(value) => value,
+        Err(error) => crate::sexp::context::r_error(error.to_string()),
     }
 }
 
