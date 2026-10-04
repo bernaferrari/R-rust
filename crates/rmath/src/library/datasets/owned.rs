@@ -7,6 +7,10 @@ use crate::sexp::{
     owner::{RuntimeAccess, StoredOwner, with_runtime},
 };
 
+#[cfg(test)]
+#[path = "mutation_tests.rs"]
+mod mutation_tests;
+
 fn execute<T>(
     anchor: &Sexp<'static>,
     operation: impl FnOnce(&RuntimeAccess) -> Result<T, String>,
@@ -270,6 +274,9 @@ pub(super) fn value(base: Sexp<'static>, name: &str) -> Result<Option<Sexp<'stat
     execute(&base, |access| {
         let lazy = lazy_in(access, &base).map_err(|e| e.to_string())?;
         let promise = super::lookup(access, &lazy, name).map_err(|e| e.to_string())?;
+        if promise == access.domain().unbound() {
+            return Ok(None);
+        }
         super::force(access, &promise)
             .map(Some)
             .map_err(|e| e.to_string())

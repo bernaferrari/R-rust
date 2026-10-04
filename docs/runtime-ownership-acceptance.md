@@ -1187,3 +1187,22 @@ GNU controls, denied-warning Clippy and source formatting pass. This one-case
 strict addition complements the prior completed fifteen-case owning mget proof;
 it does not claim seventeen newly rerun Miri cases. Bare callable fallback
 admission remains tracked separately in `rport-wszw.14.1`.
+
+## Portable dataset namespace mutation: native candidate (rport-wszw.2.3)
+
+A removed lazy binding is now absent instead of returning the unbound sentinel
+as a value. Public `::` and `:::` report the independently observed GNU missing
+object messages. Dataset lookup and publication require actual environment
+metadata before entering native operations. Corrupted integer metadata produces
+a typed error and permits recovery; GNU crashes on that malformed case, so this
+is an intentional robustness difference rather than a parity claim.
+
+Both fresh public and minimal core baselines failed both tests. The frozen
+candidate passes the two core cases in 0.01 seconds and both public cases in
+4.34 seconds. All eight original native dataset cases and all seven unchanged
+full public cases pass, the latter in 56.77 seconds, preserving all 108 object
+contracts and exact serialized bytes. All-target rmath/r-embed Clippy with
+memory profiling and denied warnings and assigned formatting pass. Two focused
+mutation Miri cases await the existing eight-case dataset run; neither pending
+selection is counted as complete. The five-file ledger authenticates this
+native candidate independently of other agents’ changes.
