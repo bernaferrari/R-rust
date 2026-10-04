@@ -747,9 +747,7 @@ fn bpser(a: f64, b: f64, x: f64, eps: f64, log_p: bool) -> f64 {
             ans += log1p(a * sum);
         } else {
             if ans > ML_NEGINF {
-                crate::error::ml_warn_message(
-                    "pbeta(*, log.p=TRUE) -> bpser() underflow to -Inf",
-                );
+                crate::error::ml_warn_message("pbeta(*, log.p=TRUE) -> bpser() underflow to -Inf");
             }
             ans = ML_NEGINF;
         }

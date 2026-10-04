@@ -2228,27 +2228,23 @@ mod tests {
         unsafe {
             let huge = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             *REAL(huge) = (c_int::MAX as f64) + 1.0;
-            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                GE_LTYpar(huge, 0)
-            }));
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| GE_LTYpar(huge, 0)));
             let message = err
                 .expect_err("huge line code must error")
                 .downcast::<crate::sexp::context::RError>()
                 .expect("R error")
                 .message;
             assert!(message.contains("invalid line type"), "{message}");
-            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                GE_LENDpar(huge, 0)
-            }));
+            let err =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| GE_LENDpar(huge, 0)));
             let message = err
                 .expect_err("huge line end must error")
                 .downcast::<crate::sexp::context::RError>()
                 .expect("R error")
                 .message;
             assert!(message.contains("invalid line end"), "{message}");
-            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                GE_LJOINpar(huge, 0)
-            }));
+            let err =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| GE_LJOINpar(huge, 0)));
             let message = err
                 .expect_err("huge line join must error")
                 .downcast::<crate::sexp::context::RError>()

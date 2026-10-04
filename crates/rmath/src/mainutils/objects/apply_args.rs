@@ -57,7 +57,8 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
                             let tag_bytes = std::ffi::CStr::from_ptr(tag_name_c).to_bytes();
                             if !tag_bytes.is_empty() {
                                 let b_bytes = std::ffi::CStr::from_ptr(b_tag_name_c).to_bytes();
-                                if tag_bytes.starts_with(b_bytes) && tag_bytes.len() > b_bytes.len() {
+                                if tag_bytes.starts_with(b_bytes) && tag_bytes.len() > b_bytes.len()
+                                {
                                     if !s.is_null() {
                                         s = CAR(b_iter); // ambiguous match
                                         break;
@@ -113,7 +114,9 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
         if TYPEOF(s) == SEXPTYPE::PROMSXP {
             s = crate::sexp::envir::forcePromise(s);
         } else if !s.is_null() && s != R_NilValue() && s != R_MissingArg() {
-            let eval_env = if (*cptr).sysparent.as_raw().is_null() || (*cptr).sysparent.as_raw() == R_NilValue() {
+            let eval_env = if (*cptr).sysparent.as_raw().is_null()
+                || (*cptr).sysparent.as_raw() == R_NilValue()
+            {
                 R_BaseEnv()
             } else {
                 (*cptr).sysparent.as_raw()

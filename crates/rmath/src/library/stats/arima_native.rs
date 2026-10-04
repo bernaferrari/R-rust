@@ -13,7 +13,7 @@ fn partrans(p: usize, raw: &[f64], new: &mut [f64]) {
     if p > 100 {
         unsafe {
             crate::main::errors::Rf_error(
-                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char,
+                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
             );
         }
     }
@@ -37,7 +37,7 @@ fn invpartrans(p: usize, phi: &[f64], new: &mut [f64]) {
     if p > 100 {
         unsafe {
             crate::main::errors::Rf_error(
-                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char,
+                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
             );
         }
     }
@@ -155,9 +155,7 @@ pub unsafe extern "C-unwind" fn c_arima_trans_pars(sin: SEXP, sarma: SEXP, stran
 }
 
 pub unsafe extern "C-unwind" fn c_arima_undo_pars(sin: SEXP, sarma: SEXP) -> SEXP {
-    unsafe {
-        transform_ar_blocks(sin, sarma, true)
-    }
+    unsafe { transform_ar_blocks(sin, sarma, true) }
 }
 
 pub unsafe extern "C-unwind" fn c_arima_invtrans(sin: SEXP, sarma: SEXP) -> SEXP {
@@ -202,7 +200,8 @@ pub unsafe extern "C-unwind" fn c_arima_gradtrans(sin: SEXP, sarma: SEXP) -> SEX
         let msp = *arma.add(2) as usize;
         let n = XLENGTH(sin) as usize;
         let raw = std::slice::from_raw_parts(REAL(sin), n);
-        let y = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
+        let y =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, n as i32);
         let a = std::slice::from_raw_parts_mut(REAL(y), n * n);
         for j in 0..n {
             for i in 0..n {
@@ -286,7 +285,11 @@ pub unsafe extern "C-unwind" fn c_arima_css(
         let q = XLENGTH(stheta) as usize;
         let ncond = crate::mainutils::coerce::asInteger(sncond) as usize;
         let phi = if p > 0 { REAL(sphi) } else { std::ptr::null() };
-        let theta = if q > 0 { REAL(stheta) } else { std::ptr::null() };
+        let theta = if q > 0 {
+            REAL(stheta)
+        } else {
+            std::ptr::null()
+        };
         let mut w = vec![0.0; n];
         for l in 0..n {
             w[l] = *y.add(l);
@@ -369,8 +372,16 @@ pub unsafe extern "C-unwind" fn c_arima_like(
         let pstate = REAL(sp);
         let pnew = REAL(spn);
         let phi = if p > 0 { REAL(sphi) } else { std::ptr::null() };
-        let theta = if q > 0 { REAL(stheta) } else { std::ptr::null() };
-        let delta = if d > 0 { REAL(sdelta) } else { std::ptr::null() };
+        let theta = if q > 0 {
+            REAL(stheta)
+        } else {
+            std::ptr::null()
+        };
+        let delta = if d > 0 {
+            REAL(sdelta)
+        } else {
+            std::ptr::null()
+        };
         let mut anew = vec![0.0; rd];
         let mut m = vec![0.0; rd];
         let mut mm = vec![0.0; rd * rd.max(1)];
@@ -597,11 +608,15 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
         let p = XLENGTH(sphi) as usize;
         let q = XLENGTH(stheta) as usize;
         let phi = if p > 0 { REAL(sphi) } else { std::ptr::null() };
-        let theta = if q > 0 { REAL(stheta) } else { std::ptr::null() };
+        let theta = if q > 0 {
+            REAL(stheta)
+        } else {
+            std::ptr::null()
+        };
         let r = p.max(q + 1);
         if r > 350 {
             crate::main::errors::Rf_error(
-                b"maximum supported lag is 350\0".as_ptr() as *const std::os::raw::c_char,
+                b"maximum supported lag is 350\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let np = r * (r + 1) / 2;
@@ -628,11 +643,8 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
                 ind += 1;
             }
         }
-        let res = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            r as i32,
-            r as i32,
-        );
+        let res =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), r as i32, r as i32);
         let pmat = std::slice::from_raw_parts_mut(REAL(res), r * r);
         if r == 1 {
             pmat[0] = if p == 0 {
@@ -676,7 +688,15 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
                         ind2 = 0;
                     }
                     xnext[ind2 as usize] += 1.0;
-                    inclu2(np, &mut xnext, &mut xrow, ynext, pmat, &mut rbar, &mut thetab);
+                    inclu2(
+                        np,
+                        &mut xnext,
+                        &mut xrow,
+                        ynext,
+                        pmat,
+                        &mut rbar,
+                        &mut thetab,
+                    );
                     xnext[ind2 as usize] = 0.0;
                     if i != r - 1 {
                         xnext[indi] = 0.0;
@@ -746,4 +766,3 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
         res
     }
 }
-

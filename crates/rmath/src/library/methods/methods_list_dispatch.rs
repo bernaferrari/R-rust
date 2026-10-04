@@ -34,8 +34,6 @@ fn r_error(message: impl Into<String>) -> ! {
     });
 }
 
-
-
 /// GNU `.InheritForDispatch` (methodsTable.R:744-752): `call. = FALSE`.
 fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -> ! {
     unsafe {
@@ -60,7 +58,6 @@ fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -
         );
     }
 }
-
 
 /// GNU `R_evalHandleError` + `argEvalCleanup`: eval the dispatch argument
 /// and wrap a failure as the method-selection error.
@@ -88,8 +85,6 @@ unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
         }
     }
 }
-
-
 
 unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
     unsafe {
@@ -410,7 +405,6 @@ unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
             .next()
             .map(|(_, method)| method)
             .unwrap_or_else(|| unsafe { R_NilValue() })
-
     }
 }
 
@@ -436,7 +430,9 @@ unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
         for_each_env_binding(table, |symbol, method| {
             let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
             let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
-            if signature.len() != targets.len() || method == R_NilValue() || Rf_isFunction(method) == 0
+            if signature.len() != targets.len()
+                || method == R_NilValue()
+                || Rf_isFunction(method) == 0
             {
                 return;
             }
@@ -464,7 +460,6 @@ unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
         out
     }
 }
-
 
 fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
     // GNU .getBestMethods compares the defined classes by inheritance,
@@ -569,10 +564,6 @@ unsafe fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
     }
 }
 
-
-
-
-
 unsafe fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         if inherits_internal_dispatch_method(method) || is_primitive_function(method) {
@@ -586,8 +577,6 @@ unsafe fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
         }
     }
 }
-
-
 
 unsafe fn install_method_context(
     ev: SEXP,
@@ -666,9 +655,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         if TYPEOF(fdef) == SEXPTYPE::SPECIALSXP || TYPEOF(fdef) == SEXPTYPE::BUILTINSXP {
             let generic = crate::mainutils::objects::R_primitive_generic(fdef);
             if generic.is_null() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
-                r_error(format!(
-                    "failed to get the generic for primitive '{name}'"
-                ));
+                r_error(format!("failed to get the generic for primitive '{name}'"));
             }
             fdef = generic;
         }
@@ -722,7 +709,6 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                 };
                 classes.push(class);
             }
-
         }
         // GNU: findVarInFrame(.AllMTable, label); on miss, do_inherited_table
         // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
@@ -758,7 +744,6 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         };
         install_method_context(ev, &name, mtable, &classes, &selected);
         apply_table_method(method, ev)
-
     }
 }
 
@@ -785,9 +770,8 @@ unsafe fn try_s3_method_for_generic(
         if obj.is_null() || crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             return None;
         }
-        let class = crate::eval::attrib_core::getAttrib(
-            obj,
-            crate::eval::attrib_core::R_ClassSymbol());
+        let class =
+            crate::eval::attrib_core::getAttrib(obj, crate::eval::attrib_core::R_ClassSymbol());
         if class.is_null() || class == R_NilValue() {
             return None;
         }
@@ -814,8 +798,6 @@ unsafe fn try_s3_method_for_generic(
         }
     }
 }
-
-
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
 pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {
@@ -918,7 +900,6 @@ fn is_generic_function(value: SEXP) -> bool {
     }
 }
 
-
 /// R_getGeneric - get the generic function definition for a given name.
 /// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only
 /// genericFunction objects, then falls back to `SYMVALUE`.
@@ -972,7 +953,6 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
     }
 }
 
-
 /// Like R_getGeneric but walks the whole enclosing-environment chain, so a
 /// generic defined in the global environment is found from any caller.
 pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
@@ -1021,7 +1001,6 @@ unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
     }
 }
 
-
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
 pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
@@ -1037,11 +1016,14 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
         }
         let res = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
         let _res_guard = protect(res);
-        *LOGICAL(res).add(0) = if is_missing_arg(symbol, ev) { TRUE } else { FALSE };
+        *LOGICAL(res).add(0) = if is_missing_arg(symbol, ev) {
+            TRUE
+        } else {
+            FALSE
+        };
         res
     }
 }
-
 
 /// R_selectMethod - select a method for the given call.
 pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> SEXP {
@@ -1220,8 +1202,7 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
         // method to the supplied args. GNU NextMethod.R does this via
         // eval(.nextMethod(...), callEnv) after assign(); the primitive
         // path never assigned `.nextMethod` in `ev`.
-        let r_level_call =
-            sexp_to_string(CAR(matched_call)).as_deref() == Some("callNextMethod");
+        let r_level_call = sexp_to_string(CAR(matched_call)).as_deref() == Some("callNextMethod");
         if !prim_case && r_level_call {
             return crate::eval::closure::applyClosure(
                 matched_call,
@@ -1297,7 +1278,6 @@ unsafe fn methods_call_next_method_closure() -> Option<SEXP> {
     }
 }
 
-
 pub(crate) struct MethodsDispatchState {
     n_overrides: c_int,
     table_dispatch_on: c_int,
@@ -1309,7 +1289,6 @@ impl Default for MethodsDispatchState {
             n_overrides: 0,
             table_dispatch_on: 1,
         }
-
     }
 }
 
@@ -1345,7 +1324,6 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 /// Ported from R's R_methodsPackageMetaName() in methods_list_dispatch.c.
 pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     unsafe {
-
         // Extract strings
         let prefix_str =
             if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP && LENGTH(prefix) >= 1 {
@@ -1519,7 +1497,6 @@ mod tests {
             first.methods_dispatch_state.n_overrides = 7;
             let on = Rf_ScalarLogical(1);
             assert_eq!(*LOGICAL(R_set_method_dispatch(on)), 1);
-
 
             assert_eq!(
                 with_methods_dispatch_state(|state| state.table_dispatch_on),
@@ -1849,7 +1826,6 @@ mod tests {
 
     // R_getClassFromCache(. , NULL) is a GNU cache miss (Nil). The old
     // rust register_s4_class table is not .classTable.
-
 }
 
 /// R_identC - test if two single-string objects are identical at the C level.
@@ -1906,8 +1882,6 @@ pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
             // unexpected types as a cache miss (getClassDef falls back to get0).
             R_NilValue()
         }
-
-
     }
 }
 
@@ -1927,7 +1901,6 @@ unsafe fn charsxp_same(a: SEXP, b: SEXP) -> bool {
     let b_name = unsafe { std::ffi::CStr::from_ptr(cb) };
     a_name == b_name
 }
-
 
 /// asChar - local helper to coerce to a single CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {

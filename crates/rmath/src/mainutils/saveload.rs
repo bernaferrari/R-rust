@@ -1199,7 +1199,13 @@ unsafe fn string_vector_from_names(names: &[String]) -> SEXP {
     }
 }
 
-unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envir: SEXP, version: c_int) -> SEXP {
+unsafe fn save_ascii_objects(
+    list: SEXP,
+    file_sexp: SEXP,
+    ascii_flag: SEXP,
+    envir: SEXP,
+    version: c_int,
+) -> SEXP {
     unsafe {
         if file_sexp.is_null() {
             error("'file' must be non-empty string");
@@ -1228,7 +1234,11 @@ unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envi
         };
         let mut writer = BufWriter::new(file);
 
-        let magic = if version <= 2 { R_MAGIC_ASCII_V2 } else { R_MAGIC_ASCII_V3 };
+        let magic = if version <= 2 {
+            R_MAGIC_ASCII_V2
+        } else {
+            R_MAGIC_ASCII_V3
+        };
         let _ = R_WriteMagic(&mut writer, magic);
 
         let n = if list.is_null() {
@@ -1302,7 +1312,11 @@ unsafe fn load_xdr_workspace(reader: &mut impl Read, envir: SEXP) -> SEXP {
                 defineVar(tag, CAR(cell), envir);
                 let pn = PRINTNAME(tag);
                 if !pn.is_null() {
-                    names_vec.push(std::ffi::CStr::from_ptr(CHAR(pn)).to_string_lossy().into_owned());
+                    names_vec.push(
+                        std::ffi::CStr::from_ptr(CHAR(pn))
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
                 }
             }
             cell = CDR(cell);

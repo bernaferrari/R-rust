@@ -469,7 +469,6 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         }
                         fmt[chunk] = 0;
 
-
                         let mut nthis: c_int = -1;
 
                         let fmt_len = c_strlen(fmt.as_ptr());
@@ -701,9 +700,24 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 let spec_b = spec as u8;
                                 if !matches!(
                                     spec_b,
-                                    b'd' | b'i' | b'o' | b'u' | b'x' | b'X' | b'f' | b'F' | b'e'
-                                        | b'E' | b'g' | b'G' | b'a' | b'A' | b'c' | b's' | b'p'
-                                        | b'n' | b'%'
+                                    b'd' | b'i'
+                                        | b'o'
+                                        | b'u'
+                                        | b'x'
+                                        | b'X'
+                                        | b'f'
+                                        | b'F'
+                                        | b'e'
+                                        | b'E'
+                                        | b'g'
+                                        | b'G'
+                                        | b'a'
+                                        | b'A'
+                                        | b'c'
+                                        | b's'
+                                        | b'p'
+                                        | b'n'
+                                        | b'%'
                                 ) {
                                     let shown = std::ffi::CStr::from_ptr(fmtp)
                                         .to_string_lossy()
@@ -826,7 +840,10 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         if nc > MAXLINE as c_int {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
-                                    } else if sprintf_checkfmt(fmtp, b"di\0".as_ptr() as *const c_char) {
+                                    } else if sprintf_checkfmt(
+                                        fmtp,
+                                        b"di\0".as_ptr() as *const c_char,
+                                    ) {
                                         error(b"invalid format '%s'; use format %d or %i for logical objects\0".as_ptr() as *const c_char);
                                     } else if x == NA_LOGICAL {
                                         let fmtp_len = c_strlen(fmtp);
@@ -887,7 +904,8 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         fmtp,
                                         b"aAfeEgG\0".as_ptr() as *const c_char,
                                     ) {
-                                        let shown = std::ffi::CStr::from_ptr(fmtp).to_string_lossy();
+                                        let shown =
+                                            std::ffi::CStr::from_ptr(fmtp).to_string_lossy();
                                         let msg = format!(
                                             "invalid format '{shown}'; use format %f, %e, %g or %a for numeric objects\0"
                                         );

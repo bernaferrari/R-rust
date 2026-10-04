@@ -100,7 +100,5 @@ fn real_det_ge_reserves_caller_scratch_before_allocation_and_recovers() {
         let _ans = protect(ans);
         let modulus = VECTOR_ELT(ans, 0);
         assert!((*REAL(modulus) - 1.0).abs() < 1e-12);
-
     });
 }
-

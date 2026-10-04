@@ -29,7 +29,9 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::mainutils::subscript::{get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat};
+use crate::mainutils::subscript::{
+    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat,
+};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -373,9 +375,6 @@ unsafe fn errorcallNotSubsettable(_x: SEXP, _call: SEXP) {
         message: "object of type is not subsettable".to_string(),
     });
 }
-
-
-
 
 /// Report missing subscript error.
 unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
@@ -939,7 +938,6 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
 /// when the index has the same number of columns as the dimension of x.
 unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
-
         // If s is R_MissingArg, duplicate x
         // R_MissingArg has mark bit set; we check via a special approach
         // If s looks like a symbol with empty name, treat as missing.
@@ -983,7 +981,6 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
                 }
             }
         }
-
 
         /* Convert to a vector of integer subscripts in the range 1:length(x). */
         let mut stretch: R_xlen_t = 1;
@@ -1194,8 +1191,24 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                         },
                     );
                 } else {
-                    SET_VECTOR_ELT(newdimnames, 0, if nrs == 0 { R_NilValue() } else { ExtractSubset(CAR(dimnames), sr, call) });
-                    SET_VECTOR_ELT(newdimnames, 1, if ncs == 0 { R_NilValue() } else { ExtractSubset(CADR(dimnames), sc, call) });
+                    SET_VECTOR_ELT(
+                        newdimnames,
+                        0,
+                        if nrs == 0 {
+                            R_NilValue()
+                        } else {
+                            ExtractSubset(CAR(dimnames), sr, call)
+                        },
+                    );
+                    SET_VECTOR_ELT(
+                        newdimnames,
+                        1,
+                        if ncs == 0 {
+                            R_NilValue()
+                        } else {
+                            ExtractSubset(CADR(dimnames), sc, call)
+                        },
+                    );
                 }
                 setAttrib(newdimnames, sym_Names(), dimnamesnames);
                 setAttrib(result, sym_DimNames(), newdimnames);
@@ -1637,8 +1650,7 @@ unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
             if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
                 errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
             }
-            let name = std::ffi::CStr::from_ptr(CHAR(ch))
-                .to_string_lossy();
+            let name = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
             let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(names).min(ncomp) {
@@ -1672,7 +1684,6 @@ unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
         VECTOR_ELT(x, idx - 1)
     }
 }
-
 
 unsafe fn posixlt_index_preserves_balance(
     x: SEXP,
@@ -1821,9 +1832,6 @@ unsafe fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) 
     }
 }
 
-
-
-
 pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
@@ -1870,10 +1878,7 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         {
             let idx = CADR(ans);
             let rest = CDDR(ans);
-            let j = if !rest.is_null()
-                && rest != R_NilValue()
-                && TAG(rest) != sym_Drop()
-            {
+            let j = if !rest.is_null() && rest != R_NilValue() && TAG(rest) != sym_Drop() {
                 CAR(rest)
             } else {
                 R_NilValue()
@@ -1884,16 +1889,11 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 return posixlt_extract_component(orig, j);
             }
             let only_time_index = !i_missing
-                && (rest.is_null()
-                    || rest == R_NilValue()
-                    || TAG(rest) == sym_Drop()
-                    || j_missing);
+                && (rest.is_null() || rest == R_NilValue() || TAG(rest) == sym_Drop() || j_missing);
             if only_time_index {
                 return subset_posixlt_time(orig, idx, call, op, env);
             }
-
         }
-
 
         let result = do_subset_dflt(call, op, ans, env);
         // Base R ships an S3 `[.factor`:
@@ -2179,9 +2179,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         /// Whether to take the `[.data.frame` emulation path: a data.frame with
         /// exactly two `[` subscripts (`df[i, j]`).
         unsafe fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
-            unsafe {
-                nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP
-            }
+            unsafe { nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP }
         }
 
         /// GNU `.row_names_info(x, 2L)`: compact `c(NA, ±n)` stores nrow in
@@ -2289,7 +2287,6 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
         }
 
-
         /// GNU `[.data.frame` row-subsets a column as
         /// `if (length(dim(xj)) != 2L) xj[i] else xj[i, , drop = FALSE]`.
         /// `[.factor` / `[.POSIXct` / `[.AsIs` restore class plus levels/tzone;
@@ -2361,7 +2358,11 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         `df[,1]`). */
         if data_frame_subset_2(x, nsubs) {
             let ncols = length_int(ax);
-            let first = if ncols > 0 { VECTOR_ELT(ax, 0) } else { R_NilValue() };
+            let first = if ncols > 0 {
+                VECTOR_ELT(ax, 0)
+            } else {
+                R_NilValue()
+            };
             let nrows = data_frame_nrows(x, first);
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _dims_guard = protect(dims);
@@ -2455,7 +2456,15 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
-            let ans = VectorSubset(ax, if nsubs == 1 { CAR(subs) } else { R_MissingArg() }, call);
+            let ans = VectorSubset(
+                ax,
+                if nsubs == 1 {
+                    CAR(subs)
+                } else {
+                    R_MissingArg()
+                },
+                call,
+            );
             let ans_guard = protect(ans);
 
             /* One-dimensional arrays should keep their dimension unless drop && len == 1 */
@@ -2588,7 +2597,6 @@ pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return subset_posixlt_obs(orig, CADR(ans), call, op, rho);
         }
         do_subset2_dflt(call, op, ans, rho)
-
     }
 }
 
@@ -2695,7 +2703,8 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let col = VECTOR_ELT(x, j);
             let nrows = XLENGTH(col);
             let rownames = getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
-            let i = crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, pok, 0, call);
+            let i =
+                crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, pok, 0, call);
             if i < 0 || i >= nrows {
                 errorcall(call, "subscript out of bounds");
             }
@@ -2704,7 +2713,10 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(col).add(i as usize)),
                 t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(col).add(i as usize)),
                 t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(col, i)),
-                _ => { errorcall(call, "incorrect number of subscripts"); R_NilValue() }
+                _ => {
+                    errorcall(call, "incorrect number of subscripts");
+                    R_NilValue()
+                }
             };
         }
         let ndims = length_int(dims);
@@ -2972,7 +2984,6 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
             nlist = crate::sexp::envir::forcePromise(nlist);
         }
 
-
         if isSymbol(nlist) {
             if !syminp.is_null() {
                 *syminp = nlist;
@@ -3082,7 +3093,6 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
             let _extracted = protect(x);
         }
 
-
         /* Pair-list / language / nil case */
         if isPairListOrNil(x) {
             let mut xmatch: SEXP = R_NilValue();
@@ -3173,7 +3183,10 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
         /* Atomic vector case */
         if isVectorAtomic(x) {
             let _ = call;
-            crate::mainutils::errors::errorcall_str(call, "$ operator is invalid for atomic vectors");
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "$ operator is invalid for atomic vectors",
+            );
         }
 
         /* Default: not subsettable */
@@ -3238,8 +3251,7 @@ unsafe fn posixlt_convert_tz(value: SEXP, value_tz: &str, x_tz: &str) -> SEXP {
                 }
             }
         }
-        let converted =
-            crate::mainutils::datetime::convert_posixct_to_posixlt(ct, x_tz);
+        let converted = crate::mainutils::datetime::convert_posixct_to_posixlt(ct, x_tz);
         let _cv = protect(converted);
         if TYPEOF(converted) == SEXPTYPE::VECSXP && XLENGTH(converted) > 0 {
             let dst = VECTOR_ELT(converted, 0);
@@ -3316,7 +3328,11 @@ unsafe fn subassign_posixlt_time(
                 posixlt_convert_tz(value, &value_tz, &x_tz)
             }
         } else {
-            let tz_s = Rf_mkString(std::ffi::CString::new(x_tz.as_str()).unwrap_or_default().as_ptr());
+            let tz_s = Rf_mkString(
+                std::ffi::CString::new(x_tz.as_str())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
             let _z = protect(tz_s);
             crate::mainutils::datetime::do_as_POSIXlt(
                 call,
@@ -3325,7 +3341,6 @@ unsafe fn subassign_posixlt_time(
                 env,
             )
         };
-
 
         let _rhs = protect(rhs);
         let mut rn: R_xlen_t = 0;
@@ -3380,7 +3395,6 @@ unsafe fn subassign_posixlt_time(
         ans
     }
 }
-
 
 pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
@@ -3470,7 +3484,6 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
         crate::mainutils::subassign::do_subassign_dflt(call, op, ans, env)
-
     }
 }
 
@@ -3515,7 +3528,6 @@ pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             }
         }
         crate::mainutils::subassign::do_subassign2_dflt(call, op, ans, env)
-
     }
 }
 

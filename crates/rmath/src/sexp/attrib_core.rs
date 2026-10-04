@@ -10,7 +10,9 @@
 
 use std::os::raw::c_int;
 
-use super::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, XLENGTH};
+use super::accessors::{
+    ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, XLENGTH,
+};
 
 use super::constructors::*;
 use super::ffi::{SEXP, SEXPTYPE};
@@ -134,7 +136,6 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
             }
         }
 
-
         if which == R_NamesSymbol() {
             return names_from_one_dim(x);
         }
@@ -224,7 +225,6 @@ pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
     }
 }
 
-
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
@@ -235,7 +235,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         }
         let t = TYPEOF(x);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let kind = if t == SEXPTYPE::BUILTINSXP { "builtin" } else { "special" };
+            let kind = if t == SEXPTYPE::BUILTINSXP {
+                "builtin"
+            } else {
+                "special"
+            };
             std::panic::panic_any(crate::sexp::context::RError {
                 message: format!("cannot set an attribute on a '{kind}'"),
             });
@@ -253,7 +257,6 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         } else {
             value
         };
-
 
         let attrib = ATTRIB(x);
 
@@ -356,7 +359,6 @@ pub(crate) unsafe fn classgets_normalize(vec: SEXP, klass: SEXP) -> SEXP {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // isObject — check if an object has a class attribute
 // ---------------------------------------------------------------------------
@@ -394,7 +396,6 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 
 // Implicit class lives in eval/attrib_core.rs::R_data_class (GNU lang2str /
 // type2str). Do not add a second table here.
-
 
 // ---------------------------------------------------------------------------
 // R_length_gets — get the length attribute
@@ -466,5 +467,4 @@ mod tests {
             assert!(!class.is_null());
         }
     }
-
 }

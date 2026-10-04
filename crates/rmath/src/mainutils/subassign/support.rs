@@ -137,7 +137,6 @@ pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
     }
 }
 
-
 #[inline]
 pub(crate) unsafe fn isList(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == LISTSXP }
@@ -323,9 +322,7 @@ pub(crate) unsafe fn INCREMENT_NAMED(x: SEXP) {
 /// Check if an object is growable (has truelength > length).
 #[inline]
 pub(crate) unsafe fn IS_GROWABLE(x: SEXP) -> bool {
-    unsafe {
-        !x.is_null() && ((*x).sxpinfo.gp() & (1u16 << 5)) != 0 && XTRUELENGTH(x) > XLENGTH(x)
-    }
+    unsafe { !x.is_null() && ((*x).sxpinfo.gp() & (1u16 << 5)) != 0 && XTRUELENGTH(x) > XLENGTH(x) }
 }
 
 /// Set the growable bit on an object.
@@ -419,7 +416,11 @@ mod singleton_tests {
     #[test]
     fn legacy_named_helpers_preserve_shared_singletons() {
         unsafe {
-            for node in [R_NilValue(), crate::sexp::globals::R_True(), crate::sexp::globals::R_False()] {
+            for node in [
+                R_NilValue(),
+                crate::sexp::globals::R_True(),
+                crate::sexp::globals::R_False(),
+            ] {
                 MARK_NOT_MUTABLE(node);
                 SETTER_CLEAR_NAMED(node);
                 ENSURE_NAMEDMAX(node);
@@ -429,9 +430,18 @@ mod singleton_tests {
                 SET_STDVEC_LENGTH(node, 99);
                 assert_eq!(crate::sexp::accessors::NAMED(node), 2);
             }
-            assert_eq!(crate::sexp::accessors::TYPEOF(R_NilValue()), SEXPTYPE::NILSXP);
-            assert_eq!(crate::sexp::accessors::LOGICAL_ELT(crate::sexp::globals::R_True(), 0), 1);
-            assert_eq!(crate::sexp::accessors::XLENGTH(crate::sexp::globals::R_True()), 1);
+            assert_eq!(
+                crate::sexp::accessors::TYPEOF(R_NilValue()),
+                SEXPTYPE::NILSXP
+            );
+            assert_eq!(
+                crate::sexp::accessors::LOGICAL_ELT(crate::sexp::globals::R_True(), 0),
+                1
+            );
+            assert_eq!(
+                crate::sexp::accessors::XLENGTH(crate::sexp::globals::R_True()),
+                1
+            );
         }
     }
 }
@@ -756,13 +766,10 @@ pub unsafe fn R_getS4DataSlot(x: SEXP, type_: c_int) -> SEXP {
                 value = getAttrib(x, xdata_sym);
             }
         }
-        if !value.is_null()
-            && value != R_NilValue()
-            && (type_ == ANYSXP || TYPEOF(value) == type_)
+        if !value.is_null() && value != R_NilValue() && (type_ == ANYSXP || TYPEOF(value) == type_)
         {
             return value;
         }
         R_NilValue()
-
     }
 }

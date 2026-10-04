@@ -31,11 +31,10 @@ use std::ptr;
 use crate::sexp::accessors::{
     CAR, CDR, OBJECT, SET_VECTOR_ELT, SETCDR, SETTAG, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_lang3, Rf_ScalarInteger};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons, Rf_lang3};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{ProtectGuard, protect};
-
 
 /// True for types whose payload really is `{length, truelength}` followed by
 /// element data, so `XLENGTH` is meaningful.
@@ -63,22 +62,20 @@ unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
             return 0;
         }
         let t = SEXPTYPE(TYPEOF(v));
-        let mut len: R_xlen_t = if t == SEXPTYPE::LISTSXP
-            || t == SEXPTYPE::LANGSXP
-            || t == SEXPTYPE::DOTSXP
-        {
-            let mut n: R_xlen_t = 0;
-            let mut p = v;
-            while !p.is_null() && p != R_NilValue() {
-                n += 1;
-                p = CDR(p);
-            }
-            n
-        } else if is_vector_type(t) {
-            XLENGTH(v)
-        } else {
-            1
-        };
+        let mut len: R_xlen_t =
+            if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
+                let mut n: R_xlen_t = 0;
+                let mut p = v;
+                while !p.is_null() && p != R_NilValue() {
+                    n += 1;
+                    p = CDR(p);
+                }
+                n
+            } else if is_vector_type(t) {
+                XLENGTH(v)
+            } else {
+                1
+            };
         if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
             let length_op = crate::sexp::envir::R_findVar(
                 crate::sexp::symbol::Rf_install(c"length".as_ptr()),
@@ -114,7 +111,6 @@ unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
     }
 }
 
-
 /// Element `idx` of a varying argument, recycled by the caller.
 ///
 /// Vector and pairlist inputs reuse the shared extractor (which boxes atomic
@@ -125,11 +121,7 @@ unsafe fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
         if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
             let i = Rf_ScalarInteger((idx + 1) as i32);
             let _i = protect(i);
-            let call = Rf_lang3(
-                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
-                v,
-                i,
-            );
+            let call = Rf_lang3(crate::sexp::symbol::Rf_install(c"[[".as_ptr()), v, i);
             let _call = protect(call);
             return crate::eval::eval::Rf_eval(call, rho);
         }
@@ -158,7 +150,6 @@ unsafe fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
         }
     }
 }
-
 
 /// `mapply(FUN, ..., MoreArgs=NULL, SIMPLIFY=TRUE, USE.NAMES=TRUE)` — apply
 /// a function to multiple lists/vectors, recycling the shorter ones.
@@ -223,7 +214,10 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // --- Lengths: any zero-length varying short-circuits to list(). ---
-        let lengths: Vec<R_xlen_t> = varyings.iter().map(|&(v, _)| varying_length(v, rho)).collect();
+        let lengths: Vec<R_xlen_t> = varyings
+            .iter()
+            .map(|&(v, _)| varying_length(v, rho))
+            .collect();
 
         let mut longest: R_xlen_t = 0;
         let mut zero = false;
@@ -383,7 +377,6 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let idx = i % lengths[k];
                 push_cell(
                     varying_element(v, idx, rho),
-
                     vtag,
                     &mut call_args,
                     &mut tail,

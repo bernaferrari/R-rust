@@ -188,7 +188,6 @@ unsafe fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
     }
 }
 
-
 unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
     unsafe {
         let mut counts = vec![0_i32; levels.len()];
@@ -234,7 +233,6 @@ unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SE
     }
 }
 
-
 pub unsafe fn format_summary_warnings(x: SEXP) -> String {
     unsafe {
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -245,10 +243,8 @@ pub unsafe fn format_summary_warnings(x: SEXP) -> String {
         if n == 0 {
             return "No warnings\n".to_string();
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let counts = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"counts".as_ptr()));
         let count_of = |i: R_xlen_t| -> i64 {
             if !counts.is_null()
@@ -325,7 +321,6 @@ pub unsafe fn emit_summary_warnings(x: SEXP) {
     }
 }
 
-
 unsafe fn summary_warnings(x: SEXP) -> SEXP {
     unsafe {
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -333,10 +328,8 @@ unsafe fn summary_warnings(x: SEXP) -> SEXP {
         } else {
             XLENGTH(x)
         };
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let mut keys: Vec<String> = Vec::new();
         let mut idxs: Vec<R_xlen_t> = Vec::new();
         let mut counts: Vec<i32> = Vec::new();
@@ -408,9 +401,6 @@ unsafe fn summary_warnings(x: SEXP) -> SEXP {
     }
 }
 
-
-
-
 /// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
 pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -418,10 +408,8 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null()
             && class != R_NilValue()
             && TYPEOF(class) == SEXPTYPE::STRSXP
@@ -457,7 +445,6 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             return summary_factor_result(x, levels, maxsum);
         }
 
-
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP {
             let mut vals: Vec<f64> = Vec::new();
             let mut na_count = 0_i32;
@@ -475,7 +462,9 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
                 }
             }
             let names: Vec<&str> = if na_count > 0 {
-                vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "NAs"]
+                vec![
+                    "Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "NAs",
+                ]
             } else {
                 vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."]
             };
@@ -669,7 +658,6 @@ fn str_class_mod_prefix(class: Option<&str>, type_name: &str) -> String {
     format!("'{cl}' ")
 }
 
-
 /// GNU `strOptions()$digits.d` / `$vec.len` defaults.
 const STR_DIGITS_D: i32 = 3;
 const STR_VEC_LEN: f64 = 4.0;
@@ -766,8 +754,6 @@ unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
     }
 }
 
-
-
 /// GNU str.default S4 non-envRefClass header + `..@ slot :` lines.
 unsafe fn str_s4_formal_class(x: SEXP) {
     unsafe {
@@ -797,22 +783,22 @@ unsafe fn str_s4_formal_class(x: SEXP) {
             ".GlobalEnv".to_string()
         };
         let names: Vec<String> = {
-            let class_name = if cl.is_empty() { None } else { Some(cl.as_str()) };
+            let class_name = if cl.is_empty() {
+                None
+            } else {
+                Some(cl.as_str())
+            };
             let from_gnu = class_name.and_then(|name| {
-                crate::mainutils::objects::gnu_s4_slot_names(name)
-                    .filter(|slots| !slots.is_empty())
+                crate::mainutils::objects::gnu_s4_slot_names(name).filter(|slots| !slots.is_empty())
             });
             let from_def = class_name.and_then(|name| {
-                crate::mainutils::objects::s4_all_slots(name)
-                    .filter(|slots| !slots.is_empty())
+                crate::mainutils::objects::s4_all_slots(name).filter(|slots| !slots.is_empty())
             });
             let mut names = from_gnu.or(from_def).unwrap_or_default();
             // GNU class "signature": `names` is the names attribute of the
             // character data part, not a tagged ATTRIB slot.
-            let names_attr = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names_attr =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             if !names_attr.is_null()
                 && names_attr != R_NilValue()
                 && !names.iter().any(|existing| existing == "names")
@@ -847,17 +833,14 @@ unsafe fn str_s4_formal_class(x: SEXP) {
             let summary = str_atomic_summary(value);
             str_emit_line(&format!("  ..@ {name:width$}: {summary}"));
         }
-
     }
 }
-
 
 unsafe fn str_atomic_summary(x: SEXP) -> String {
     unsafe { str_atomic_summary_opts(x, true, false) }
 }
 
 unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
-
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return "NULL".to_string();
@@ -875,21 +858,20 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> S
             return str_date_summary(x, give_length);
         }
 
-
-
         if sexp_has_class_name(x, "ts") {
             let n = XLENGTH(x);
             let tsp = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"tsp".as_ptr()));
-            let (start, end) = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 2
-            {
-                (
-                    str_format_real(*REAL(tsp)),
-                    str_format_real(*REAL(tsp).add(1)),
-                )
-            } else {
-                ("1".to_string(), n.to_string())
-            };
-            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            let (start, end) =
+                if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 2 {
+                    (
+                        str_format_real(*REAL(tsp)),
+                        str_format_real(*REAL(tsp).add(1)),
+                    )
+                } else {
+                    ("1".to_string(), n.to_string())
+                };
+            let dim =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
             let lestr = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
                 let dims: Vec<String> = (0..XLENGTH(dim))
                     .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
@@ -901,17 +883,13 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> S
             let preview = str_preview_reals_or_ints(x, 0);
             let mid = if give_length { lestr } else { String::new() };
             return format!("Time-Series {mid} from {start} to {end}: {preview}");
-
         }
-
 
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let has_dim = !dim.is_null()
             && dim != R_NilValue()
             && TYPEOF(dim) == SEXPTYPE::INTSXP
@@ -959,8 +937,6 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> S
         } else {
             format!("{class_prefix}{named_prefix}{type_name} [1:{n}] {preview}")
         }
-
-
     }
 }
 
@@ -998,8 +974,6 @@ unsafe fn str_factor_summary(x: SEXP) -> String {
             level_text.push_str(sep);
             level_text.push_str("..");
         }
-
-
 
         let n = XLENGTH(x) as usize;
         let show = n.min(10);
@@ -1135,7 +1109,11 @@ unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
         }
         let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
         let mut out = format!("List of {n}");
-        let show = n.min(STR_LIST_LEN.load(std::sync::atomic::Ordering::Relaxed).max(0));
+        let show = n.min(
+            STR_LIST_LEN
+                .load(std::sync::atomic::Ordering::Relaxed)
+                .max(0),
+        );
         STR_LEVEL.store(level - 1, std::sync::atomic::Ordering::Relaxed);
         for i in 0..show {
             let name = format!("{:<name_width$}", raw_names[i as usize]);
@@ -1155,10 +1133,8 @@ unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
 
 unsafe fn str_child_dimnames_lines(x: SEXP) -> Option<String> {
     unsafe {
-        let dn = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
+        let dn =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
         if dn.is_null() || dn == R_NilValue() || TYPEOF(dn) != SEXPTYPE::VECSXP {
             return None;
         }
@@ -1209,7 +1185,6 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
             n.min(if max == 0 { 10 } else { max }).min(encoded.len())
         };
 
-
         let mut text = encoded[..show].join(" ");
         if n > show {
             text.push_str(" ...");
@@ -1217,8 +1192,6 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
         text
     }
 }
-
-
 
 unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
     unsafe {
@@ -1283,7 +1256,6 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
         let mut d = 0;
         let mut e = 0;
 
-
         crate::mainutils::format::formatRealS(tmp, show as R_xlen_t, &mut w, &mut d, &mut e, 0);
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
@@ -1297,14 +1269,7 @@ unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
                 continue;
             }
 
-
-            let encoded = crate::mainutils::printutils::EncodeReal0(
-                v,
-                w,
-                d,
-                e,
-                STR_OUT_DEC,
-            );
+            let encoded = crate::mainutils::printutils::EncodeReal0(v, w, d, e, STR_OUT_DEC);
             let raw = if encoded.is_null() {
                 String::new()
             } else {
@@ -1338,7 +1303,6 @@ fn str_encode_quoted(s: &str) -> String {
     out
 }
 
-
 fn str_emit_line(line: &str) {
     if crate::sexp::output::is_capturing() {
         crate::sexp::output::capture_stdout(&format!("{line}\n"));
@@ -1354,8 +1318,6 @@ fn emit_print_text(text: &str) {
         print!("{text}");
     }
 }
-
-
 
 unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
     unsafe {
@@ -1387,13 +1349,9 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
     }
 }
 
-
-
-
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::sexp::envir::forcePromise(x);
@@ -1402,16 +1360,12 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             str_emit_line(" NULL");
             return R_NilValue();
         }
-        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0
-            && !sexp_has_class_name(x, "envRefClass")
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && !sexp_has_class_name(x, "envRefClass")
         {
             str_s4_formal_class(x);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
-
-
-
 
         let t = TYPEOF(x);
         let n = crate::sexp::constructors::Rf_length(x) as R_xlen_t;
@@ -1491,8 +1445,7 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 lines = vec![lines[0].clone(), middles.join(";"), lines[last].clone()];
             }
             let prefix = if t == SEXPTYPE::LANGSXP {
-                let mode_chars =
-                    crate::eval::attrib_core::language_implicit_class_chars(x);
+                let mode_chars = crate::eval::attrib_core::language_implicit_class_chars(x);
                 let mode = std::ffi::CStr::from_ptr(CHAR(mode_chars)).to_string_lossy();
                 if mode.as_ref() == "(" {
                     " language, mode \"(\":".to_string()
@@ -1522,22 +1475,19 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let ncol = n;
                 let nrow = if ncol > 0 {
                     let first = VECTOR_ELT(x, 0);
-                    if first.is_null() {
-                        0
-                    } else {
-                        XLENGTH(first)
-                    }
+                    if first.is_null() { 0 } else { XLENGTH(first) }
                 } else {
                     0
                 };
-                let extra_classes: Vec<String> = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                    (0..XLENGTH(class))
-                        .map(|i| elt_to_string(class, i))
-                        .filter(|c| c != "data.frame")
-                        .collect()
-                } else {
-                    Vec::new()
-                };
+                let extra_classes: Vec<String> =
+                    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+                        (0..XLENGTH(class))
+                            .map(|i| elt_to_string(class, i))
+                            .filter(|c| c != "data.frame")
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
                 let var_word = if ncol == 1 { "variable" } else { "variables" };
                 let colon = if ncol > 0 { ":" } else { "" };
                 if extra_classes.is_empty() {
@@ -1582,7 +1532,12 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     p = CDR(p);
                 }
                 let show = ncol.min(list_len);
-                let name_width = raw_names.iter().take(show as usize).map(String::len).max().unwrap_or(0);
+                let name_width = raw_names
+                    .iter()
+                    .take(show as usize)
+                    .map(String::len)
+                    .max()
+                    .unwrap_or(0);
                 for i in 0..show {
                     let name = format!("{:<name_width$}", raw_names[i as usize]);
                     let elem = VECTOR_ELT(x, i as i64);
@@ -1605,7 +1560,11 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 while !p.is_null() && p != R_NilValue() {
                     let tag = TAG(p);
                     if !tag.is_null() && tag != R_NilValue() {
-                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(tag))).to_string_lossy().into_owned();
+                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                            crate::sexp::accessors::PRINTNAME(tag),
+                        ))
+                        .to_string_lossy()
+                        .into_owned();
                         let v = CAR(p);
                         let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
                             *INTEGER(v) as i64
@@ -1642,13 +1601,14 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         len_args,
                         _rho,
                     );
-                    let dispatched = if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
-                        *INTEGER(len_sexp) as i64
-                    } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
-                        *REAL(len_sexp) as i64
-                    } else {
-                        n as i64
-                    };
+                    let dispatched =
+                        if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
+                            *INTEGER(len_sexp) as i64
+                        } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
+                            *REAL(len_sexp) as i64
+                        } else {
+                            n as i64
+                        };
                     if dispatched != n as i64 {
                         header = format!("Class '{cname}'  hidden list of {n}");
                     }
@@ -1681,9 +1641,6 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             str_emit_line(&format!(" {}", str_atomic_summary(x)));
             str_emit_nonstandard_attrs(x, &["class", "tsp", "dim", "levels"]);
         }
-
-
-
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
@@ -1813,9 +1770,8 @@ pub unsafe fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
         let formatted = crate::mainutils::datetime::do_format_POSIXct(call, op, fmt_args, rho);
         let _f = protect(formatted);
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(formatted) {
-            let print_max = max.unwrap_or_else(|| {
-                crate::mainutils::options::GetOptionMaxPrint() as i64
-            });
+            let print_max =
+                max.unwrap_or_else(|| crate::mainutils::options::GetOptionMaxPrint() as i64);
             let old_width = width.map(|w| crate::mainutils::options::R_SetOptionWidth(w));
             let text = crate::sexp::output::format_vector_stock_n(sexp, true, Some(print_max));
             if let Some(old) = old_width {
@@ -1832,9 +1788,6 @@ pub unsafe fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
         x
     }
 }
-
-
-
 
 fn print_data_frame_show_row_names(args: SEXP) -> bool {
     unsafe {
@@ -1904,7 +1857,6 @@ fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
     }
 }
 
-
 /// Explicit `digits=` only. NULL/missing keeps the historical cell text
 /// so default frames stay on `elt_to_string`.
 fn data_frame_print_digits(args: SEXP) -> Option<i32> {
@@ -1948,10 +1900,8 @@ fn plain_numeric_column(col: SEXP) -> bool {
         if col.is_null() || col == R_NilValue() {
             return false;
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            col,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && class != R_NilValue() && XLENGTH(class) > 0 {
             return false;
         }
@@ -1972,12 +1922,16 @@ fn format_plain_numeric_column(col: SEXP, nrow: R_xlen_t, digits: i32) -> Vec<St
         let scientific = Rf_ScalarLogical(NA_LOGICAL);
         let decimal = Rf_mkString(c".".as_ptr());
         let mut guards = Vec::new();
-        for value in [trim, dig, nsmall, width, adj, na_encode, scientific, decimal] {
+        for value in [
+            trim, dig, nsmall, width, adj, na_encode, scientific, decimal,
+        ] {
             guards.push(protect(value));
         }
         // .Internal(format) is positional: trim, digits, nsmall, width, adj, na.encode, scientific, decimal.mark.
         let mut rest = R_NilValue();
-        for value in [decimal, scientific, na_encode, adj, width, nsmall, dig, trim] {
+        for value in [
+            decimal, scientific, na_encode, adj, width, nsmall, dig, trim,
+        ] {
             rest = Rf_cons(value, rest);
             guards.push(protect(rest));
         }
@@ -1989,9 +1943,7 @@ fn format_plain_numeric_column(col: SEXP, nrow: R_xlen_t, digits: i32) -> Vec<St
             args,
             crate::sexp::globals::R_GlobalEnv(),
         );
-        if formatted.is_null()
-            || formatted == R_NilValue()
-            || TYPEOF(formatted) != SEXPTYPE::STRSXP
+        if formatted.is_null() || formatted == R_NilValue() || TYPEOF(formatted) != SEXPTYPE::STRSXP
         {
             return vec![String::new(); nrow.max(0) as usize];
         }
@@ -2070,7 +2022,6 @@ fn print_data_frame_column(col: SEXP) -> bool {
         true
     }
 }
-
 
 fn emit_print_data_frame_line(line: &str) {
     if crate::sexp::output::is_capturing() {
@@ -2166,7 +2117,6 @@ fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
     }
 }
 
-
 /// Derive the row labels of a data.frame for printing.
 ///
 /// Mirrors stock `print.data.frame`: automatic compact row names (`c(NA, n)`
@@ -2186,7 +2136,8 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String
                 let data = INTEGER(row_names);
                 if !data.is_null() {
                     let first = *data;
-                    let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
+                    let is_compact =
+                        XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
                     if !is_compact {
                         return (0..n)
                             .map(|i| data.add(i as usize).read().to_string())
@@ -2202,11 +2153,8 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String
 unsafe fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
     unsafe {
         if !call.is_null() && call != R_NilValue() {
-            let matched = crate::mainutils::match_mod::match_formal_slots(
-                call,
-                args,
-                &["x", "..."],
-            );
+            let matched =
+                crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "..."]);
             if let Some(&x) = matched.first()
                 && !x.is_null()
                 && x != R_NilValue()
@@ -2227,7 +2175,6 @@ unsafe fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
     }
 }
 
-
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
 pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2244,8 +2191,12 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
         let ncol = XLENGTH(x);
         let nrow = {
-            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
-            if !rn.is_null() && rn != R_NilValue()
+            let rn = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            if !rn.is_null()
+                && rn != R_NilValue()
                 && TYPEOF(rn) == SEXPTYPE::INTSXP
                 && XLENGTH(rn) == 2
                 && *INTEGER(rn) == NA_INTEGER
@@ -2500,11 +2451,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 };
                 labels.push(val);
             }
-            let width = labels
-                .iter()
-                .map(|s| s.chars().count())
-                .max()
-                .unwrap_or(0);
+            let width = labels.iter().map(|s| s.chars().count()).max().unwrap_or(0);
             let mut line = String::from("[1]");
             for val in &labels {
                 line.push(' ');
@@ -2541,7 +2488,8 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 pub(crate) unsafe fn factor_validity_message(x: SEXP) -> Option<String> {
     unsafe {
-        let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return None;
         }
@@ -2572,7 +2520,6 @@ pub(crate) unsafe fn factor_validity_message(x: SEXP) -> Option<String> {
         None
     }
 }
-
 
 /// GNU `summary.data.frame` — character table of per-column summaries.
 pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -2625,7 +2572,6 @@ pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
             *header = format!("{}{header}", &blanks[..pad]);
         }
 
-
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol as usize) as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -2647,7 +2593,11 @@ pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrow as R_xlen_t);
         let _rn = protect(rn);
         for i in 0..nrow {
-            SET_STRING_ELT(rn, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
+            SET_STRING_ELT(
+                rn,
+                i as R_xlen_t,
+                crate::sexp::constructors::Rf_mkChar(c"".as_ptr()),
+            );
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
         for j in 0..ncol {
@@ -2662,24 +2612,41 @@ pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
             };
             let ch = {
                 let column = VECTOR_ELT(x, j);
-                let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    column,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
                 let mc = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
                     *INTEGER(dim).add(1)
-                } else { 0 };
+                } else {
+                    0
+                };
                 if mc > 1 {
-                    let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
-                    let cnames = if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 { VECTOR_ELT(dn, 1) } else { R_NilValue() };
+                    let dn = crate::sexp::attrib_core::getAttrib(
+                        column,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    );
+                    let cnames =
+                        if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                            VECTOR_ELT(dn, 1)
+                        } else {
+                            R_NilValue()
+                        };
                     let mut bytes = Vec::new();
                     let outer = CStr::from_ptr(CHAR(ch)).to_bytes();
                     for k in 0..mc as i64 {
                         bytes.extend_from_slice(outer);
                         bytes.push(b'.');
                         if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                            bytes.extend_from_slice(CStr::from_ptr(CHAR(STRING_ELT(cnames, k))).to_bytes());
+                            bytes.extend_from_slice(
+                                CStr::from_ptr(CHAR(STRING_ELT(cnames, k))).to_bytes(),
+                            );
                         }
                     }
                     Rf_mkChar(CString::new(bytes).unwrap_or_default().as_ptr())
-                } else { ch }
+                } else {
+                    ch
+                }
             };
             SET_STRING_ELT(cn, j, ch);
         }
@@ -2726,20 +2693,19 @@ unsafe fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<Strin
         let n = XLENGTH(sms);
         let mut labels = Vec::with_capacity(n as usize);
         for i in 0..n {
-            labels.push(if !names_attr.is_null()
-                && TYPEOF(names_attr) == SEXPTYPE::STRSXP
-                && i < XLENGTH(names_attr)
-            {
-                elt_to_string(names_attr, i)
-            } else {
-                String::new()
-            });
+            labels.push(
+                if !names_attr.is_null()
+                    && TYPEOF(names_attr) == SEXPTYPE::STRSXP
+                    && i < XLENGTH(names_attr)
+                {
+                    elt_to_string(names_attr, i)
+                } else {
+                    String::new()
+                },
+            );
         }
         let lw = labels.iter().map(|s| s.chars().count()).max().unwrap_or(0);
-        let labels: Vec<String> = labels
-            .into_iter()
-            .map(|s| format!("{s:<lw$}"))
-            .collect();
+        let labels: Vec<String> = labels.into_iter().map(|s| format!("{s:<lw$}")).collect();
 
         let digits_s = Rf_ScalarInteger(digits);
         let _ds = protect(digits_s);
@@ -2766,12 +2732,14 @@ unsafe fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<Strin
             } else {
                 String::new()
             };
-            cells.push(format!("{}:{value}  ", labels.get(i as usize).cloned().unwrap_or_default()));
+            cells.push(format!(
+                "{}:{value}  ",
+                labels.get(i as usize).cloned().unwrap_or_default()
+            ));
         }
         (cells, lw)
     }
 }
-
 
 /// R's `format.data.frame(x, ..., justify = "none")`.
 pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -2801,22 +2769,41 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             }
             return result;
         }
-        let frame_names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let frame_names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let mut leaves: Vec<SEXP> = Vec::new();
         let mut leaf_names: Vec<Vec<u8>> = Vec::new();
         let mut changed = false;
         for j in 0..XLENGTH(x) {
             let column = VECTOR_ELT(x, j);
-            let outer = if !frame_names.is_null() && TYPEOF(frame_names) == SEXPTYPE::STRSXP && j < XLENGTH(frame_names) {
+            let outer = if !frame_names.is_null()
+                && TYPEOF(frame_names) == SEXPTYPE::STRSXP
+                && j < XLENGTH(frame_names)
+            {
                 let ch = STRING_ELT(frame_names, j);
-                if ch.is_null() || ch == crate::sexp::globals::R_NaString() { Vec::new() } else {
-                    CStr::from_ptr(crate::sexp::accessors::CHAR(ch)).to_bytes().to_vec()
+                if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                    Vec::new()
+                } else {
+                    CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
+                        .to_bytes()
+                        .to_vec()
                 }
-            } else { Vec::new() };
-            let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
-            let mc = if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+            } else {
+                Vec::new()
+            };
+            let dim = crate::sexp::attrib_core::getAttrib(
+                column,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
+            let mc = if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) >= 2
+            {
                 *INTEGER(dim).add(1)
-            } else { -1 };
+            } else {
+                -1
+            };
             if mc == 0 {
                 changed = true;
                 continue;
@@ -2824,23 +2811,41 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             if mc > 1 {
                 changed = true;
                 let mr = *INTEGER(dim) as i64;
-                let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
-                let cnames = if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 { VECTOR_ELT(dn, 1) } else { R_NilValue() };
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    column,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                let cnames = if !dn.is_null()
+                    && dn != R_NilValue()
+                    && TYPEOF(dn) == SEXPTYPE::VECSXP
+                    && XLENGTH(dn) >= 2
+                {
+                    VECTOR_ELT(dn, 1)
+                } else {
+                    R_NilValue()
+                };
                 for k in 0..mc as i64 {
                     let piece = Rf_allocVector3(TYPEOF(column), mr);
                     for r in 0..mr {
                         let src = (k * mr + r) as usize;
                         if TYPEOF(column) == SEXPTYPE::REALSXP {
                             *REAL(piece).add(r as usize) = *REAL(column).add(src);
-                        } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                        } else if TYPEOF(column) == SEXPTYPE::INTSXP
+                            || TYPEOF(column) == SEXPTYPE::LGLSXP
+                        {
                             *INTEGER(piece).add(r as usize) = *INTEGER(column).add(src);
                         }
                     }
                     leaves.push(piece);
                     let mut name = outer.clone();
                     if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                        if !name.is_empty() { name.push(b'.'); }
-                        name.extend_from_slice(CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k))).to_bytes());
+                        if !name.is_empty() {
+                            name.push(b'.');
+                        }
+                        name.extend_from_slice(
+                            CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k)))
+                                .to_bytes(),
+                        );
                     } else if !name.is_empty() {
                         name.push(b'.');
                         name.extend_from_slice((k + 1).to_string().as_bytes());
@@ -2860,15 +2865,37 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
                 SET_VECTOR_ELT(flat, i as i64, *col);
                 let cs = CString::new(name.clone()).unwrap_or_default();
-                SET_STRING_ELT(nm, i as i64, crate::sexp::constructors::Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    nm,
+                    i as i64,
+                    crate::sexp::constructors::Rf_mkChar(cs.as_ptr()),
+                );
             }
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_NamesSymbol(), nm);
-            let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_ClassSymbol(), class);
-            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                nm,
+            );
+            let class =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            let rn = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn,
+            );
             flat
-        } else { x };
+        } else {
+            x
+        };
         let _base_guard = protect(base);
 
         let rest = format_data_frame_rest_args(args);
@@ -2881,10 +2908,8 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             let _col_args_guard = protect(col_args);
             let formatted = crate::mainutils::essentials::do_format(call, op, col_args, rho);
             let formatted = mark_asis_if_character(formatted);
-            let names = crate::sexp::attrib_core::getAttrib(
-                col,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names =
+                crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_NamesSymbol());
             if !names.is_null() && names != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     formatted,
@@ -2929,7 +2954,11 @@ unsafe fn mark_asis_if_character(x: SEXP) -> SEXP {
             return x;
         }
         let _c = protect(class_vec);
-        SET_STRING_ELT(class_vec, 0, crate::sexp::constructors::Rf_mkChar(c"AsIs".as_ptr()));
+        SET_STRING_ELT(
+            class_vec,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"AsIs".as_ptr()),
+        );
         crate::sexp::attrib_core::setAttrib(
             x,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -3090,7 +3119,14 @@ pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
             let s = STRING_ELT(lines, i);
             let mut text = if !s.is_null() && s != crate::sexp::globals::R_NaString() {
                 let p = CHAR(s);
-                if p.is_null() { String::new() } else { std::ffi::CStr::from_ptr(p).to_str().unwrap_or("").to_string() }
+                if p.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(p)
+                        .to_str()
+                        .unwrap_or("")
+                        .to_string()
+                }
             } else {
                 String::new()
             };
@@ -3098,7 +3134,11 @@ pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
                 let start = (first_col as usize).saturating_sub(1).min(text.len());
                 text = text[start..].to_string();
             }
-            if i == last - 1 && last_col > 0 && (last_col as usize) < text.len() && !(first == last && first_col > 1) {
+            if i == last - 1
+                && last_col > 0
+                && (last_col as usize) < text.len()
+                && !(first == last && first_col > 1)
+            {
                 text.truncate(last_col as usize);
             }
             out.push_str(&text);
@@ -3572,12 +3612,7 @@ mod pairlist_print_tests {
             arguments.push(list.clone(), None).expect("print argument");
             let arguments = arguments.finish().expect("owned print arguments");
             let result = unsafe {
-                do_print_pairlist(
-                    R_NilValue(),
-                    R_NilValue(),
-                    arguments.as_raw(),
-                    R_NilValue(),
-                )
+                do_print_pairlist(R_NilValue(), R_NilValue(), arguments.as_raw(), R_NilValue())
             };
             assert_eq!(result, list.as_raw());
         });

@@ -743,26 +743,15 @@ fn test_write_lines_to_file() {
 fn trunk_r90451_open_rejects_a_mode_longer_than_four_bytes() {
     let _lock = reset_connections();
     unsafe {
-        let description = Rf_mkString(
-            test_ok(CString::new("/tmp/rport-open-mode-too-long")).as_ptr(),
-        );
+        let description =
+            Rf_mkString(test_ok(CString::new("/tmp/rport-open-mode-too-long")).as_ptr());
         let closed = Rf_mkString(test_ok(CString::new("")).as_ptr());
         let file_args = Rf_cons(description, Rf_cons(closed, R_NilValue()));
-        let con = do_file(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            file_args,
-            ptr::null_mut(),
-        );
+        let con = do_file(ptr::null_mut(), ptr::null_mut(), file_args, ptr::null_mut());
         let mode = Rf_mkString(test_ok(CString::new("abcde")).as_ptr());
         let open_args = Rf_cons(con, Rf_cons(mode, R_NilValue()));
         let message = expect_r_error(|| {
-            do_open(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                open_args,
-                ptr::null_mut(),
-            );
+            do_open(ptr::null_mut(), ptr::null_mut(), open_args, ptr::null_mut());
         });
         assert!(message.contains("invalid 'open' argument"), "{message}");
     }

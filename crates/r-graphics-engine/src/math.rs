@@ -5,11 +5,7 @@ use crate::{DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAn
 /// which is the font oracle. A device that stores font size in pixels also
 /// sets `dpi`, and an inch is then that many pixels.
 fn layout_inch(params: &PlotParameters) -> f32 {
-    if params.dpi > 0. {
-        params.dpi
-    } else {
-        72.
-    }
+    if params.dpi > 0. { params.dpi } else { 72. }
 }
 
 #[derive(Clone, Debug, PartialEq)]

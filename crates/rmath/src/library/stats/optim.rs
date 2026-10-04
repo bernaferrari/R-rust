@@ -121,7 +121,11 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 // fminfn -- objective function callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe extern "C-unwind" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
+unsafe extern "C-unwind" fn fminfn(
+    n: c_int,
+    p: *mut c_double,
+    ex: *mut std::ffi::c_void,
+) -> c_double {
     unsafe {
         let os = &mut *(ex as *mut OptStruct);
         let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
@@ -1425,7 +1429,6 @@ pub unsafe fn do_constr_optim(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     }
 }
 
-
 /// GNU `optimHess(par, fn)` — numerical Hessian with `ndeps=0.001`.
 pub unsafe fn do_optim_hess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1460,12 +1463,13 @@ pub unsafe fn do_optim_hess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             R_NilValue(),
             Rf_cons(
                 par,
-                Rf_cons(fn_sexp, Rf_cons(R_NilValue(), Rf_cons(options, R_NilValue()))),
+                Rf_cons(
+                    fn_sexp,
+                    Rf_cons(R_NilValue(), Rf_cons(options, R_NilValue())),
+                ),
             ),
         );
         let _i = protect(internal);
         optimhess(call, op, internal, rho)
     }
 }
-
-

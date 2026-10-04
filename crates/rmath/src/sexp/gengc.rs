@@ -91,9 +91,7 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::heap::NodeLink;
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
-use super::protect::{
-    RootValue, update_preserve_stack_refs_in, update_protect_stack_refs_in,
-};
+use super::protect::{RootValue, update_preserve_stack_refs_in, update_protect_stack_refs_in};
 
 #[path = "gc_trace.rs"]
 mod gc_trace;
@@ -3613,7 +3611,8 @@ mod tests {
 
         instance::with_required_current_instance(|inst| unsafe {
             (*inst).error_state.warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
-            (*inst).objects_state.deferred_default_object = instance::RuntimeValue::from_raw_in(inst, roots[1]);
+            (*inst).objects_state.deferred_default_object =
+                instance::RuntimeValue::from_raw_in(inst, roots[1]);
             unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -3659,7 +3658,11 @@ mod tests {
         instance::with_required_current_instance(|inst| update_instance_roots_in(inst, &remap));
 
         instance::with_required_current_instance(|inst| unsafe {
-            assert_eq!((*inst).error_state.warning_call.as_raw(), roots[0], "owning error fields preserve original allocation identity");
+            assert_eq!(
+                (*inst).error_state.warning_call.as_raw(),
+                roots[0],
+                "owning error fields preserve original allocation identity"
+            );
             assert_eq!(
                 (*inst).objects_state.deferred_default_object.as_raw(),
                 roots[1],

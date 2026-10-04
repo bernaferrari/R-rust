@@ -29,7 +29,6 @@ where
     with_required_current_instance(|instance| f(&mut instance.wilcox_cache))
 }
 
-
 /// cwilcox: count the number of choices with statistic = k
 /// This counts the number of subsets of size n from {1, ..., m+n}
 /// whose Wilcoxon rank sum statistic equals k.

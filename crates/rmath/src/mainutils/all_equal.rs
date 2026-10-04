@@ -12,8 +12,8 @@ use std::os::raw::c_int;
 
 use crate::mainutils::identical::{R_IsNA, R_compute_identical};
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW,
-    REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL_ELT,
+    STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE};
@@ -138,8 +138,6 @@ unsafe fn compare(
             return compare_condition(target, current);
         }
 
-
-
         if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
             || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")
         {
@@ -186,7 +184,6 @@ unsafe fn compare(
                 type_name(current_type)
             ));
         }
-
 
         if target_type == SEXPTYPE::STRSXP {
             for index in 0..LENGTH(target) as usize {
@@ -259,10 +256,8 @@ unsafe fn condition_message(value: SEXP) -> String {
         if TYPEOF(value) != SEXPTYPE::VECSXP || LENGTH(value) < 1 {
             return String::new();
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            value,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
         let mut message = VECTOR_ELT(value, 0);
         if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
             for index in 0..LENGTH(value) {
@@ -323,8 +318,6 @@ unsafe fn formula_length(x: SEXP) -> i32 {
     }
 }
 
-
-
 unsafe fn deparse_joined(x: SEXP) -> String {
     unsafe {
         let dumped = crate::mainutils::deparse::deparse1(
@@ -349,7 +342,6 @@ unsafe fn deparse_joined(x: SEXP) -> String {
         text
     }
 }
-
 
 unsafe fn compare_attributes(
     target: SEXP,
@@ -477,9 +469,7 @@ unsafe fn numeric_components(value: SEXP, index: usize) -> Numeric {
                 }
                 (value as f64, 0.0)
             }
-            t if t == SEXPTYPE::REALSXP => {
-                (REAL_ELT(value, index as c_int), 0.0)
-            },
+            t if t == SEXPTYPE::REALSXP => (REAL_ELT(value, index as c_int), 0.0),
             t if t == SEXPTYPE::CPLXSXP => {
                 let value = *COMPLEX(value).add(index);
                 (value.r, value.i)

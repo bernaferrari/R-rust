@@ -172,7 +172,6 @@ pub unsafe fn isVectorizable(x: SEXP) -> bool {
     }
 }
 
-
 /// Check if a SEXP is numeric (integer or real, but not logical).
 #[inline]
 pub unsafe fn isNumeric(x: SEXP) -> bool {
@@ -378,7 +377,6 @@ impl Drop for CoercionWarningCallGuard {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 
 /// Issue coercion warnings based on the warning flags.
@@ -394,13 +392,13 @@ pub unsafe fn CoercionWarning(warn: c_int) {
         if !override_call.is_null() {
             unsafe {
                 crate::mainutils::errors::warningcall(
-                override_call,
-                msg.as_ptr() as *const core::ffi::c_char,
-            )
+                    override_call,
+                    msg.as_ptr() as *const core::ffi::c_char,
+                )
             };
         } else {
             unsafe {
-            crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char)
+                crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char)
             };
         }
     };

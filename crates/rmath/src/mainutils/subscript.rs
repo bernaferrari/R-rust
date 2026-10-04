@@ -572,7 +572,6 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
             strides.push(strides[d] * dim_val);
         }
 
-
         // Allocate result vector
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr);
         let _ans_guard = protect(ans);
@@ -654,7 +653,6 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
                     }
                     sub_val = val as R_xlen_t;
 
-
                     if sub_val < 0 {
                         error("negative subscripts are not allowed in matrix indexing");
                     }
@@ -669,7 +667,6 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
                     }
                 }
                 idx += (sub_val - 1) * strides[d];
-
             }
 
             if has_na {
@@ -722,9 +719,7 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
                 let col_idx = i + j * nr as usize;
                 let elt = STRING_ELT(s, col_idx as R_xlen_t);
 
-                if elt.is_null()
-                    || elt == R_NilValue()
-                    || elt == crate::sexp::globals::R_NaString()
+                if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString()
                 {
                     *INTEGER(ans).add(col_idx) = NA_INTEGER;
                     continue;
@@ -735,7 +730,6 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
                     *INTEGER(ans).add(col_idx) = NA_INTEGER;
                     continue;
                 }
-
 
                 // Get the dimnames column for this dimension
                 let dn_col = if !dnamelist.is_null() && j < LENGTH(dnamelist) as usize {
@@ -841,9 +835,7 @@ unsafe fn logicalSubscript(
             let msg = if dimno == 0 {
                 "object length is not a multiple of subscript length".to_string()
             } else {
-                format!(
-                    "length of dimension {dimno} is not a multiple of logical subscript length"
-                )
+                format!("length of dimension {dimno} is not a multiple of logical subscript length")
             };
             let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
             crate::mainutils::errors::Rf_warningcall1(call, c_msg.as_ptr());
@@ -1295,7 +1287,14 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         let ans = if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype == SEXPTYPE::LGLSXP {
-            logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, dim + 1)
+            logicalSubscript(
+                s,
+                ns as R_xlen_t,
+                nd as R_xlen_t,
+                &mut stretch,
+                call,
+                dim + 1,
+            )
         } else if stype == SEXPTYPE::INTSXP {
             integerSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
         } else if stype == SEXPTYPE::REALSXP {

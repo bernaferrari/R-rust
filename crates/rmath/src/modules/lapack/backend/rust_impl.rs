@@ -587,8 +587,6 @@ fn multiply_lower_transpose_by_self(inv: &[f64], n: usize) -> Vec<f64> {
     out
 }
 
-
-
 /// DPSTRF — pivoted Cholesky factorization.
 pub unsafe fn dpstrf_(
     uplo: *const u8,
@@ -1649,7 +1647,13 @@ pub unsafe fn dtrcon_(
                         let c = if trans { aij(j, i) } else { aij(i, j) };
                         s -= c * x[j];
                     }
-                    let d = if is_unit { 1.0 } else if trans { aij(i, i) } else { aij(i, i) };
+                    let d = if is_unit {
+                        1.0
+                    } else if trans {
+                        aij(i, i)
+                    } else {
+                        aij(i, i)
+                    };
                     x[i] = if d == 0.0 { 0.0 } else { s / d };
                 }
             } else {
@@ -1695,7 +1699,12 @@ pub unsafe fn dtrcon_(
                         }
                     }
                     2 => {
-                        isave[1] = x.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).map(|(i, _)| i).unwrap_or(0) as i32;
+                        isave[1] = x
+                            .iter()
+                            .enumerate()
+                            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+                            .map(|(i, _)| i)
+                            .unwrap_or(0) as i32;
                         isave[2] = 2;
                         x.fill(0.0);
                         x[isave[1] as usize] = 1.0;
@@ -1726,7 +1735,12 @@ pub unsafe fn dtrcon_(
                     }
                     4 => {
                         let jlast = isave[1] as usize;
-                        isave[1] = x.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).map(|(i, _)| i).unwrap_or(0) as i32;
+                        isave[1] = x
+                            .iter()
+                            .enumerate()
+                            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+                            .map(|(i, _)| i)
+                            .unwrap_or(0) as i32;
                         if x[jlast] != x[isave[1] as usize].abs() && isave[2] < 5 {
                             isave[2] += 1;
                             x.fill(0.0);
@@ -1744,7 +1758,8 @@ pub unsafe fn dtrcon_(
                         }
                     }
                     _ => {
-                        let temp = x.iter().map(|z| z.abs()).sum::<f64>() / (n_val as f64 * 3.0) * 2.0;
+                        let temp =
+                            x.iter().map(|z| z.abs()).sum::<f64>() / (n_val as f64 * 3.0) * 2.0;
                         if temp > est {
                             est = temp;
                         }
@@ -2877,7 +2892,11 @@ pub unsafe fn ztrcon_(
         let mut solve = |x: &mut [Rcomplex], conj_trans: bool| {
             let upper = if conj_trans { !is_upper } else { is_upper };
             let coeff = |row: usize, col: usize| {
-                let z = if conj_trans { aij(col, row) } else { aij(row, col) };
+                let z = if conj_trans {
+                    aij(col, row)
+                } else {
+                    aij(row, col)
+                };
                 if conj_trans {
                     Rcomplex { r: z.r, i: -z.i }
                 } else {
@@ -2918,7 +2937,9 @@ pub unsafe fn ztrcon_(
             if m == 0.0 {
                 *z = Rcomplex { r: 1.0, i: 0.0 };
             } else {
-                *z = Rcomplex { r: z.r / m, i: -z.i / m,
+                *z = Rcomplex {
+                    r: z.r / m,
+                    i: -z.i / m,
                 };
             }
         }

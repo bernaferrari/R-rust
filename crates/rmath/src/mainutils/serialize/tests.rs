@@ -1520,7 +1520,6 @@ fn test_roundtrip_pairlist_with_attributes() {
     }
 }
 
-
 fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
     let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
         .expect_err("expected RError panic");
@@ -1551,10 +1550,14 @@ unsafe extern "C" fn persist_restore_hook(names: SEXP, data: SEXP) -> SEXP {
 static PERSIST_HOOK_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static PERSIST_LAST_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static PERSIST_LAST_DATA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_NAMES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_DATA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_VALUE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_HITS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_NAMES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_DATA: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static PERSIST_RESTORE_VALUE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 fn reset_c_persist_hook_state() {
     PERSIST_HOOK_HITS.store(0, std::sync::atomic::Ordering::SeqCst);
@@ -1605,9 +1608,18 @@ fn c_persist_hook_serializes_an_ordinary_environment_as_persistsxp() {
         let env = R_NewHashedEnv(R_BaseEnv(), 29);
         let raw = serialize_env_with_c_hook(env, ptr::null_mut());
         let _raw_guard = protect(raw);
-        assert_eq!(PERSIST_HOOK_HITS.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert_eq!(PERSIST_LAST_SEEN.load(std::sync::atomic::Ordering::SeqCst), env as usize);
-        assert_eq!(PERSIST_LAST_DATA.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            PERSIST_HOOK_HITS.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        assert_eq!(
+            PERSIST_LAST_SEEN.load(std::sync::atomic::Ordering::SeqCst),
+            env as usize
+        );
+        assert_eq!(
+            PERSIST_LAST_DATA.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
         let payload = persist_payload_after_version3_header(raw);
         let tag = i32::from_ne_bytes(payload[..4].try_into().unwrap());
         assert_eq!(tag, PERSISTSXP);
@@ -1669,8 +1681,14 @@ fn c_persist_hook_unserialize_with_restore_returns_replacement() {
         );
         let restored = R_Unserialize(&mut in_stream);
         assert_eq!(restored, replacement);
-        assert_eq!(PERSIST_RESTORE_HITS.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert_eq!(PERSIST_RESTORE_DATA.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            PERSIST_RESTORE_HITS.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        assert_eq!(
+            PERSIST_RESTORE_DATA.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
         let names = PERSIST_RESTORE_NAMES.load(std::sync::atomic::Ordering::SeqCst) as SEXP;
         assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
         assert_eq!(XLENGTH(names), 1);
@@ -1714,11 +1732,11 @@ fn gnu_deferred_string_altrep_unserializes_to_character() {
         0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 15, 100, 101, 102, 101, 114, 114, 101, 100,
         95, 115, 116, 114, 105, 110, 103, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 4, 98, 97,
         115, 101, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 16, 0, 0, 0, 254, 0, 0, 0, 2, 0, 0,
-        0, 238, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 14, 99, 111, 109, 112, 97, 99, 116, 95,
-        105, 110, 116, 115, 101, 113, 0, 0, 0, 2, 0, 0, 2, 255, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 1,
-        0, 0, 0, 13, 0, 0, 0, 254, 0, 0, 0, 14, 0, 0, 0, 3, 64, 32, 0, 0, 0, 0, 0, 0, 63, 240, 0, 0,
-        0, 0, 0, 0, 63, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 0, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 254,
+        0, 238, 0, 0, 0, 2, 0, 0, 0, 1, 0, 4, 0, 9, 0, 0, 0, 14, 99, 111, 109, 112, 97, 99, 116,
+        95, 105, 110, 116, 115, 101, 113, 0, 0, 0, 2, 0, 0, 2, 255, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0,
+        0, 1, 0, 0, 0, 13, 0, 0, 0, 254, 0, 0, 0, 14, 0, 0, 0, 3, 64, 32, 0, 0, 0, 0, 0, 0, 63,
+        240, 0, 0, 0, 0, 0, 0, 63, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 0, 0, 0, 13, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 254,
     ];
     unsafe {
         let raw = make_raw(&bytes);
@@ -1733,4 +1751,3 @@ fn gnu_deferred_string_altrep_unserializes_to_character() {
         }
     }
 }
-

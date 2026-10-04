@@ -67,7 +67,6 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             vec2buff(slotlist, d, true);
         }
 
-
         // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
         // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
         // do not grow a trailing empty argument.
@@ -77,7 +76,6 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
                 deparse2buff(s3, d);
             }
         }
-
 
         print2buff(b")\0".as_ptr() as *const c_char, d);
         true
@@ -118,9 +116,7 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
         // slot. A still-S4 result would recurse in deparse2buff.
         if slot_name == ".Data"
             && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int()
-            && (value.is_null()
-                || value == R_NilValue()
-                || IS_S4_OBJECT(value) != 0)
+            && (value.is_null() || value == R_NilValue() || IS_S4_OBJECT(value) != 0)
         {
             let data = crate::mainutils::duplicate::duplicate(s);
             if data.is_null() || data == R_NilValue() {
@@ -164,8 +160,6 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
     }
 }
 
-
-
 pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
     unsafe {
         string_attribute_values(s, b"class\0")
@@ -202,7 +196,6 @@ unsafe fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
         slots
     }
 }
-
 
 pub unsafe fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
     unsafe {

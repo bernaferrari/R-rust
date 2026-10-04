@@ -136,9 +136,11 @@ fn compact_empty_vector_pointer_access_stays_valid() {
         assert!(DATAPTR(seq).is_null());
         assert_eq!(ALTREP(seq), 0);
     });
-    assert_r_error(|| session.with_active(|| unsafe {
-        let _ = INTEGER_ELT(seq, 0);
-    }));
+    assert_r_error(|| {
+        session.with_active(|| unsafe {
+            let _ = INTEGER_ELT(seq, 0);
+        })
+    });
 }
 
 #[test]
@@ -267,7 +269,8 @@ fn compact_sequence_automatic_roots_precede_post_lend_compatibility_guards() {
                 super::super::symbol::Rf_install(ALTSEQ_TAG_NAME.as_ptr());
             });
             let before = super::super::protect::R_ProtectCount();
-            let roots_before = super::super::protect::with_protected_objects(|_, roots| roots.len());
+            let roots_before =
+                super::super::protect::with_protected_objects(|_, roots| roots.len());
             let observed = Rc::new(Cell::new(0));
             let notifications = observed.clone();
             let kind = if real {

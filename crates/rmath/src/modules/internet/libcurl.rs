@@ -1590,12 +1590,21 @@ mod tests {
         session.with_active(|| {
             let owner = session.owner_token().expect("live session owner");
             let values = [
-                session.sexp(unsafe { Rf_mkString(c"https://unused.invalid".as_ptr()) })
+                session
+                    .sexp(unsafe { Rf_mkString(c"https://unused.invalid".as_ptr()) })
                     .expect("owned URL"),
-                session.sexp(unsafe { Rf_ScalarLogical(0) }).expect("owned redirect"),
-                session.sexp(unsafe { Rf_ScalarLogical(1) }).expect("owned verify"),
-                session.sexp(unsafe { Rf_ScalarInteger(1) }).expect("owned timeout"),
-                session.sexp(unsafe { Rf_ScalarInteger(42) }).expect("owned invalid TLS"),
+                session
+                    .sexp(unsafe { Rf_ScalarLogical(0) })
+                    .expect("owned redirect"),
+                session
+                    .sexp(unsafe { Rf_ScalarLogical(1) })
+                    .expect("owned verify"),
+                session
+                    .sexp(unsafe { Rf_ScalarInteger(1) })
+                    .expect("owned timeout"),
+                session
+                    .sexp(unsafe { Rf_ScalarInteger(42) })
+                    .expect("owned invalid TLS"),
             ];
             let mut arguments = crate::sexp::object::PairlistBuilder::new_in(owner);
             for value in values {
@@ -1608,7 +1617,9 @@ mod tests {
                 curl_header_tls(arguments.as_raw())
             }));
             let payload = result.expect_err("non-string fifth TLS argument must fail");
-            let error = payload.downcast::<crate::sexp::context::RError>().expect("R TLS error");
+            let error = payload
+                .downcast::<crate::sexp::context::RError>()
+                .expect("R TLS error");
             assert_eq!(error.message, "invalid 'TLS' argument");
         });
     }

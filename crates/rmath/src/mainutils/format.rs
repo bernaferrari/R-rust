@@ -13,8 +13,10 @@
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
-use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP};
+use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
+use crate::sexp::ffi::{
+    NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP,
+};
 
 // ---------------------------------------------------------------------------
 // Print parameters (R_print global)
@@ -51,9 +53,8 @@ fn current_R_print() -> RPrint {
     // Live options("digits") / options("scipen"), unless a caller pinned
     // `format_print.digits` (GNU `R_print.digits = DBL_DIG` around deparse).
     unsafe {
-        let stored = crate::sexp::instance::with_current_instance(|inst| {
-            (*inst).eval_state.format_print
-        });
+        let stored =
+            crate::sexp::instance::with_current_instance(|inst| (*inst).eval_state.format_print);
         let digits = stored
             .map(|p| p.digits)
             .filter(|&d| d > 0)
@@ -66,7 +67,6 @@ fn current_R_print() -> RPrint {
         }
     }
 }
-
 
 pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
@@ -1043,7 +1043,10 @@ fn real_sequence_samples(from: c_double, step: c_double, n: R_xlen_t) -> Vec<c_d
         }
     }
 
-    indices.into_iter().map(|index| real_at_index(from, step, index)).collect()
+    indices
+        .into_iter()
+        .map(|index| real_at_index(from, step, index))
+        .collect()
 }
 
 fn ranges_overlap(a0: f64, a1: f64, b0: f64, b1: f64) -> bool {

@@ -7,7 +7,8 @@ unsafe fn named(list: SEXP, name: &str) -> SEXP {
         if list.is_null() || crate::sexp::accessors::TYPEOF(list) != SEXPTYPE::VECSXP {
             return crate::sexp::globals::R_NilValue();
         }
-        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         let n = crate::sexp::accessors::XLENGTH(list);
         for i in 0..n {
             if crate::sexp::accessors::TYPEOF(names) == SEXPTYPE::STRSXP {
@@ -85,9 +86,21 @@ unsafe fn conv_info(msg: &str, iter: i32, why: i32, conv_new: f64) -> SEXP {
             0,
             crate::sexp::constructors::Rf_ScalarLogical(if why == 0 { 1 } else { 0 }),
         );
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, crate::sexp::constructors::Rf_ScalarInteger(iter));
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 2, crate::sexp::constructors::Rf_ScalarReal(conv_new));
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 3, crate::sexp::constructors::Rf_ScalarInteger(why));
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            ans,
+            1,
+            crate::sexp::constructors::Rf_ScalarInteger(iter),
+        );
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            ans,
+            2,
+            crate::sexp::constructors::Rf_ScalarReal(conv_new),
+        );
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            ans,
+            3,
+            crate::sexp::constructors::Rf_ScalarInteger(why),
+        );
         let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
         crate::sexp::accessors::SET_VECTOR_ELT(
             ans,
@@ -102,7 +115,10 @@ pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg:
     unsafe {
         let do_trace = crate::main::coerce::asLogical(do_trace_arg) == 1;
         if crate::sexp::accessors::TYPEOF(control) != SEXPTYPE::VECSXP {
-            crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), "'control' must be a list");
+            crate::mainutils::errors::errorcall_str(
+                std::ptr::null_mut(),
+                "'control' must be a list",
+            );
         }
         if crate::sexp::accessors::TYPEOF(m) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), "'m' must be a list");
@@ -134,7 +150,8 @@ pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg:
         }
         let mut fac = 1.0;
         let mut converged = false;
-        let mut new_pars = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, n_pars as i64);
+        let mut new_pars =
+            crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, n_pars as i64);
         let _np = crate::sexp::protect::protect(new_pars);
         let mut conv_new = -1.0;
         let mut i = 0i32;

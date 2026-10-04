@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CADDR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
+    ATTRIB, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT,
     LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT,
     SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
     XLENGTH,
@@ -67,8 +67,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 None
             };
-            let is_type = named.as_deref() == Some("type")
-                || (named.is_none() && positional == 0);
+            let is_type = named.as_deref() == Some("type") || (named.is_none() && positional == 0);
             if is_type && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
                 let text = elt_to_string(value, 0);
                 nchar_type = match text.as_str() {
@@ -173,7 +172,6 @@ pub unsafe fn do_file_path_sans_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
         result
     }
 }
-
 
 #[derive(Clone, Copy)]
 enum NcharKind {
@@ -285,9 +283,7 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let ei = if nstop == 0 { 0 } else { i % nstop };
             let start = (real_elt_or_default(start_arg, si, 1.0) as usize).max(1) - 1;
             let missing = crate::sexp::globals::R_MissingArg();
-            let stop_open = stop_arg.is_null()
-                || stop_arg == R_NilValue()
-                || stop_arg == missing;
+            let stop_open = stop_arg.is_null() || stop_arg == R_NilValue() || stop_arg == missing;
             let stop = if stop_open {
                 chars.len()
             } else {
@@ -325,8 +321,7 @@ pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _g = protect(result);
-        let nv = if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP
-        {
+        let nv = if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
             0
         } else {
             XLENGTH(value)
@@ -347,7 +342,11 @@ pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let stop = (stop_raw as isize).max(0) as usize;
             if start == 0 || start > chars.len() || start > stop {
                 let cstr = CString::new(s.as_str()).unwrap_or_default();
-                SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(
+                    result,
+                    i,
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                );
                 continue;
             }
             let end = stop.min(chars.len());
@@ -366,7 +365,11 @@ pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             let out: String = chars.into_iter().collect();
             let cstr = CString::new(out).unwrap_or_default();
-            SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(
+                result,
+                i,
+                crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+            );
         }
         let at = crate::sexp::accessors::ATTRIB(x);
         if !at.is_null() && at != R_NilValue() {
@@ -655,9 +658,6 @@ pub unsafe fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         x
     }
 }
-
-
-
 
 /// R's `substring(text, first, last=NULL)` — base::substring is an R
 /// wrapper over the same internal that rep_lens `text` to the common
@@ -956,12 +956,20 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         if unique {
             let mut order: Vec<usize> = (0..results.len()).collect();
-            order.sort_by_key(|&i| if from_na[i] { 2 } else if originals[i] != results[i] { 1 } else { 0 });
+            order.sort_by_key(|&i| {
+                if from_na[i] {
+                    2
+                } else if originals[i] != results[i] {
+                    1
+                } else {
+                    0
+                }
+            });
             let tmp = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _t = protect(tmp);
             for (j, &i) in order.iter().enumerate() {
-                let c = CString::new(results[i].as_str())
-                    .unwrap_or_else(|_| CString::new("").unwrap());
+                let c =
+                    CString::new(results[i].as_str()).unwrap_or_else(|_| CString::new("").unwrap());
                 SET_STRING_ELT(tmp, j as i64, Rf_mkChar(c.as_ptr()));
             }
             let sep = Rf_mkString(c".".as_ptr());
@@ -1116,9 +1124,7 @@ fn adist_levenshtein(a: &str, b: &str) -> i32 {
         curr[0] = i as i32;
         for j in 1..=m {
             let sub = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + sub);
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + sub);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -1173,7 +1179,6 @@ fn adist_path(a: &str, b: &str) -> (i32, String, i32, i32, i32) {
     ops.reverse();
     (dp[n][m], ops.into_iter().collect(), del, ins, sub)
 }
-
 
 unsafe fn ints_to_char_vector(list: SEXP) -> SEXP {
     unsafe {
@@ -1239,9 +1244,7 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     counts = *LOGICAL(value) == TRUE;
                 }
             } else if named == "y"
-                || (named.is_empty()
-                    && positional == 0
-                    && TYPEOF(value) == SEXPTYPE::STRSXP)
+                || (named.is_empty() && positional == 0 && TYPEOF(value) == SEXPTYPE::STRSXP)
             {
                 y = value;
             }
@@ -1302,7 +1305,11 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _c = protect(cnt);
             for (k, (trafo, del, ins, sub)) in paths.iter().enumerate() {
                 let cstr = std::ffi::CString::new(trafo.as_str()).unwrap_or_default();
-                SET_STRING_ELT(trafos, k as i64, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(
+                    trafos,
+                    k as i64,
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                );
                 *INTEGER(cnt).add(k) = *del;
                 *INTEGER(cnt).add(k + (nx * ny) as usize) = *ins;
                 *INTEGER(cnt).add(k + (2 * nx * ny) as usize) = *sub;
@@ -1316,16 +1323,36 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
             for (i, name) in ["del", "ins", "sub"].iter().enumerate() {
                 let cstr = std::ffi::CString::new(*name).unwrap();
-                SET_STRING_ELT(layer, i as i64, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(
+                    layer,
+                    i as i64,
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                );
             }
             SET_VECTOR_ELT(dnames, 2, layer);
-            crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimNamesSymbol(), dnames);
+            crate::sexp::attrib_core::setAttrib(
+                cnt,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dnames,
+            );
             let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             *INTEGER(tdim).add(0) = nx as i32;
             *INTEGER(tdim).add(1) = ny as i32;
-            crate::sexp::attrib_core::setAttrib(trafos, crate::sexp::attrib_core::R_DimSymbol(), tdim);
-            crate::sexp::attrib_core::setAttrib(mat, crate::sexp::symbol::Rf_install(c"trafos".as_ptr()), trafos);
-            crate::sexp::attrib_core::setAttrib(mat, crate::sexp::symbol::Rf_install(c"counts".as_ptr()), cnt);
+            crate::sexp::attrib_core::setAttrib(
+                trafos,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                tdim,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                mat,
+                crate::sexp::symbol::Rf_install(c"trafos".as_ptr()),
+                trafos,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                mat,
+                crate::sexp::symbol::Rf_install(c"counts".as_ptr()),
+                cnt,
+            );
         }
         mat
     }
@@ -1440,15 +1467,12 @@ pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-
 fn abbreviate_first_char(s: &[u8], i: usize) -> bool {
     i > 0 && s[i - 1].is_ascii_whitespace()
 }
 
 fn abbreviate_last_char(s: &[u8], i: usize) -> bool {
-    i > 0
-        && !s[i - 1].is_ascii_whitespace()
-        && (i + 1 >= s.len() || s[i + 1].is_ascii_whitespace())
+    i > 0 && !s[i - 1].is_ascii_whitespace() && (i + 1 >= s.len() || s[i + 1].is_ascii_whitespace())
 }
 
 fn abbreviate_lc_vowel(c: u8) -> bool {
@@ -1751,8 +1775,7 @@ pub unsafe fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
                 let ch = STRING_ELT(t, 0);
                 if !ch.is_null() {
-                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy();
+                    let s = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
                     if s == "integer" {
                         type_raw = false;
                         type_int = true;
@@ -1845,11 +1868,7 @@ pub unsafe fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *REAL(x).add(i as usize)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
                 let iv = *INTEGER(x).add(i as usize);
-                if iv == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    iv as f64
-                }
+                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 0.0
             };
@@ -1877,11 +1896,7 @@ pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *REAL(x).add(i as usize)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
                 let iv = *INTEGER(x).add(i as usize);
-                if iv == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    iv as f64
-                }
+                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 0.0
             };
@@ -1899,11 +1914,7 @@ pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null()
-            || x == R_NilValue()
-            || TYPEOF(x) != SEXPTYPE::STRSXP
-            || XLENGTH(x) == 0
-        {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) == 0 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "argument must be a character vector of length 1",
@@ -2145,8 +2156,7 @@ pub unsafe fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy();
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
                 name == "domain" || name == "trim"
             } else {
                 false
@@ -2167,7 +2177,6 @@ pub unsafe fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::sprintf_main::do_sprintf(call, op, sprintf_args, rho)
     }
 }
-
 
 /// GNU `ngettext(n, msg1, msg2)` without catalogs.
 pub unsafe fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2199,13 +2208,9 @@ pub unsafe fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-fn bindtextdomain_map()
--> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
-    static MAP: std::sync::LazyLock<
-        std::sync::Mutex<std::collections::HashMap<String, String>>,
-    > = std::sync::LazyLock::new(|| {
-        std::sync::Mutex::new(std::collections::HashMap::new())
-    });
+fn bindtextdomain_map() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    static MAP: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     &MAP
 }
 
@@ -2299,8 +2304,7 @@ fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
                     *INTEGER(out).add(i as usize) = NA_INTEGER;
                     continue;
                 }
-                let s = std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy();
+                let s = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
                 match i32::from_str_radix(s.trim(), base as u32) {
                     Ok(v) if v >= 0 => *INTEGER(out).add(i as usize) = v,
                     _ => return None,
@@ -2403,7 +2407,7 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
 fn copy_mode_structure(out: SEXP, x: SEXP) {
     unsafe {
         use crate::sexp::attrib_core::{
-            getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol,
+            R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
         };
         let dim = getAttrib(x, R_DimSymbol());
         if !dim.is_null() && dim != R_NilValue() {
@@ -2422,7 +2426,11 @@ fn copy_mode_structure(out: SEXP, x: SEXP) {
 
 pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
     unsafe {
-        let n = if TYPEOF(x) == SEXPTYPE::INTSXP { XLENGTH(x) } else { 0 };
+        let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            XLENGTH(x)
+        } else {
+            0
+        };
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
         for i in 0..n {
@@ -2430,7 +2438,11 @@ pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
             let ch = if v == NA_INTEGER {
                 crate::sexp::globals::R_NaString()
             } else {
-                let s = if hex { format!("{v:x}") } else { format!("{v:o}") };
+                let s = if hex {
+                    format!("{v:x}")
+                } else {
+                    format!("{v:o}")
+                };
                 let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
                 Rf_mkChar(c.as_ptr())
             };
@@ -2454,45 +2466,24 @@ pub(crate) fn mode_keep_str(args: SEXP) -> bool {
 }
 
 /// GNU `as.character.hexmode`: unpadded `%x`; copy dim only if `keepStr`.
-pub unsafe fn do_as_character_hexmode(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_character_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { as_character_mode(CAR(args), true, mode_keep_str(args)) }
 }
 
 /// GNU `format.hexmode`: zero-pad to the widest value.
-pub unsafe fn do_format_hexmode(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_format_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { format_mode_ints(CAR(args), true) }
 }
 
 /// GNU `as.character.octmode`: unpadded `%o`; copy dim only if `keepStr`.
-pub unsafe fn do_as_character_octmode(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_character_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { as_character_mode(CAR(args), false, mode_keep_str(args)) }
 }
 
 /// GNU `format.octmode`: zero-pad to the widest value.
-pub unsafe fn do_format_octmode(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_format_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { format_mode_ints(CAR(args), false) }
 }
-
 
 /// GNU `nclass.Sturges(x)` is ceiling(log2(length(x)) + 1).
 pub unsafe fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2593,7 +2584,11 @@ pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len() as f64;
-        let xs: Vec<f64> = x.iter().copied().map(|v| crate::fprec::fprec(v, 5.0)).collect();
+        let xs: Vec<f64> = x
+            .iter()
+            .copied()
+            .map(|v| crate::fprec::fprec(v, 5.0))
+            .collect();
         let mut h = 2.0 * nclass_iqr(xs.clone());
         if h == 0.0 {
             let mut sorted = xs.clone();
@@ -2895,11 +2890,6 @@ pub unsafe fn do_bw_bcv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-
-
-
-
-
 fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
     let s = if upper {
         format!("{v:.digits$E}")
@@ -2961,9 +2951,7 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
                 let decimals = (d as i32 - exp - 1).max(0) as usize;
                 let s = format!("{v:.decimals$}");
                 if !alt && s.contains('.') {
-                    s.trim_end_matches('0')
-                        .trim_end_matches('.')
-                        .to_string()
+                    s.trim_end_matches('0').trim_end_matches('.').to_string()
                 } else {
                     s
                 }
@@ -3021,12 +3009,15 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let width_arg = m.get(2).copied().unwrap_or(missing);
         let format_arg = m.get(3).copied().unwrap_or(missing);
 
-        let digits_missing = digits_arg.is_null()
-            || digits_arg == R_NilValue()
-            || digits_arg == missing;
+        let digits_missing =
+            digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == missing;
         let width_missing =
             width_arg.is_null() || width_arg == R_NilValue() || width_arg == missing;
-        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP { 2i32 } else { 4 };
+        let mut digits = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            2i32
+        } else {
+            4
+        };
         if !digits_missing {
             if TYPEOF(digits_arg) == SEXPTYPE::INTSXP && XLENGTH(digits_arg) > 0 {
                 digits = *INTEGER(digits_arg);
@@ -3108,7 +3099,6 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             cell = CDR(cell);
         }
 
-
         let n = XLENGTH(x);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
@@ -3175,7 +3165,11 @@ fn splice_formatc_zero(field: &str, zero: &str, replace: bool) -> (String, bool)
     let nc = chars.len();
     let z: Vec<char> = zero.chars().collect();
     let nz = z.len();
-    let ind0 = chars.iter().position(|c| *c == '0').map(|i| i + 1).unwrap_or(1);
+    let ind0 = chars
+        .iter()
+        .position(|c| *c == '0')
+        .map(|i| i + 1)
+        .unwrap_or(1);
     let warn = nc < nz;
     let i2 = nc.min(nz.saturating_sub(1).saturating_add(ind0));
     let i1 = 1isize.max(i2 as isize + 1 - nz as isize) as usize;
@@ -3196,7 +3190,6 @@ fn splice_formatc_zero(field: &str, zero: &str, replace: bool) -> (String, bool)
     }
     (out.into_iter().collect(), warn)
 }
-
 
 fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
     if mark.is_empty() || interval == 0 {
@@ -3275,8 +3268,7 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         while !scan.is_null() && scan != R_NilValue() {
             let tag = TAG(scan);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy();
+                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
                 if name == "drop0trailing" {
                     drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
                 }
@@ -3417,9 +3409,7 @@ fn iconv_decode(bytes: &[u8], from: &str, marked: &str) -> Option<Vec<char>> {
                 None
             }
         }
-        _ => std::str::from_utf8(bytes)
-            .ok()
-            .map(|s| s.chars().collect()),
+        _ => std::str::from_utf8(bytes).ok().map(|s| s.chars().collect()),
     }
 }
 
@@ -3524,7 +3514,8 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let from = {
             let a = arg_by_name_or_position(args, &["from"], 1);
-            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0 {
+            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0
+            {
                 String::new()
             } else {
                 elt_to_string(a, 0)
@@ -3532,7 +3523,8 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let to = {
             let a = arg_by_name_or_position(args, &["to"], 2);
-            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0 {
+            if a.is_null() || a == R_NilValue() || TYPEOF(a) != SEXPTYPE::STRSXP || XLENGTH(a) == 0
+            {
                 String::new()
             } else {
                 elt_to_string(a, 0)
@@ -3641,28 +3633,6 @@ pub unsafe fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         out
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
     unsafe {
@@ -3863,7 +3833,11 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, XLENGTH(result));
                 let _out_names = protect(out_names);
                 for (out_idx, src_idx) in index.iter().enumerate() {
-                    SET_STRING_ELT(out_names, out_idx as R_xlen_t, STRING_ELT(src_names, *src_idx));
+                    SET_STRING_ELT(
+                        out_names,
+                        out_idx as R_xlen_t,
+                        STRING_ELT(src_names, *src_idx),
+                    );
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
@@ -3967,7 +3941,11 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let max_distance = agrep_max_distance(args, pattern_arg);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(true);
         let pattern = elt_to_string(pattern_arg, 0);
-        let patterns: Vec<&str> = if fixed { vec![pattern.as_str()] } else { pattern.split('|').collect() };
+        let patterns: Vec<&str> = if fixed {
+            vec![pattern.as_str()]
+        } else {
+            pattern.split('|').collect()
+        };
         let matches = agrep_match_any(x_arg, &patterns, max_distance, ignore_case);
 
         if value {
@@ -3976,7 +3954,10 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let names = crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_NamesSymbol());
+            let names = crate::sexp::attrib_core::getAttrib(
+                x_arg,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
             let out_names = if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -3995,7 +3976,11 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             if out_names != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    out_names,
+                );
             }
             result
         } else {
@@ -4116,9 +4101,10 @@ unsafe fn agrep_match_any(
                 continue;
             }
             let text = elt_to_string(x, i);
-            if patterns.iter().any(|pattern| {
-                approximate_contains(pattern, &text, max_distance, ignore_case)
-            }) {
+            if patterns
+                .iter()
+                .any(|pattern| approximate_contains(pattern, &text, max_distance, ignore_case))
+            {
                 matches.push(i);
             }
         }
@@ -4180,20 +4166,49 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
-        let pattern_is_literal = pattern.bytes().all(|b| !matches!(b, b'.' | b'*' | b'+' | b'?' | b'|' | b'(' | b')' | b'[' | b']' | b'{' | b'}' | b'\\' | b'^' | b'$'));
-        if use_bytes && (fixed || pattern_is_literal) && TYPEOF(x_arg) == SEXPTYPE::STRSXP && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP {
+        let pattern_is_literal = pattern.bytes().all(|b| {
+            !matches!(
+                b,
+                b'.' | b'*'
+                    | b'+'
+                    | b'?'
+                    | b'|'
+                    | b'('
+                    | b')'
+                    | b'['
+                    | b']'
+                    | b'{'
+                    | b'}'
+                    | b'\\'
+                    | b'^'
+                    | b'$'
+            )
+        });
+        if use_bytes
+            && (fixed || pattern_is_literal)
+            && TYPEOF(x_arg) == SEXPTYPE::STRSXP
+            && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP
+        {
             let n = XLENGTH(x_arg);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _result_guard = protect(result);
-            let pat = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(pattern_arg, 0))).to_bytes().to_vec();
-            let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0 {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(replacement_arg, 0))).to_bytes().to_vec()
+            let pat = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(pattern_arg, 0)))
+                .to_bytes()
+                .to_vec();
+            let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0
+            {
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(replacement_arg, 0)))
+                    .to_bytes()
+                    .to_vec()
             } else {
                 Vec::new()
             };
             for i in 0..n {
                 let src_ch = STRING_ELT(x_arg, i);
-                if src_ch.is_null() || src_ch == crate::sexp::globals::R_NaString() || pat.is_empty() {
+                if src_ch.is_null()
+                    || src_ch == crate::sexp::globals::R_NaString()
+                    || pat.is_empty()
+                {
                     SET_STRING_ELT(result, i, src_ch);
                     continue;
                 }
@@ -4206,7 +4221,10 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                         out.extend_from_slice(&rep);
                         p += pat.len();
                         changed = true;
-                        if !global { out.extend_from_slice(&src[p..]); break; }
+                        if !global {
+                            out.extend_from_slice(&src[p..]);
+                            break;
+                        }
                     } else {
                         out.push(src[p]);
                         p += 1;
@@ -4216,7 +4234,11 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                     SET_STRING_ELT(result, i, src_ch);
                 } else {
                     let cstr = std::ffi::CString::new(out).unwrap_or_default();
-                    SET_STRING_ELT(result, i, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()));
+                    SET_STRING_ELT(
+                        result,
+                        i,
+                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    );
                 }
             }
             crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
@@ -4260,7 +4282,11 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             }
             if replacement_missing {
                 let matched = crate::mainutils::grep::ere_replace(
-                    &pattern, &elt_to_string(x_arg, i), "", global, ignore_case,
+                    &pattern,
+                    &elt_to_string(x_arg, i),
+                    "",
+                    global,
+                    ignore_case,
                 )
                 .is_some_and(|trial| trial != elt_to_string(x_arg, i));
                 if matched {
@@ -4297,13 +4323,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
-        let src_names = crate::sexp::attrib_core::getAttrib(
-            x_arg,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        if !src_names.is_null()
-            && TYPEOF(src_names) == SEXPTYPE::STRSXP
-            && XLENGTH(src_names) == n
+        let src_names =
+            crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_NamesSymbol());
+        if !src_names.is_null() && TYPEOF(src_names) == SEXPTYPE::STRSXP && XLENGTH(src_names) == n
         {
             let dup = crate::mainutils::duplicate::Rf_duplicate(src_names);
             let _g = protect(dup);
@@ -4314,7 +4336,6 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             );
         }
         result
-
     }
 }
 
@@ -4525,8 +4546,6 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
         }
 
-
-
         if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
             return format_mode_ints(x, true);
         }
@@ -4663,10 +4682,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
                 && name != R_NilValue()
             {
-                Some(
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
-                        .to_string_lossy(),
-                )
+                Some(std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name)).to_string_lossy())
             } else {
                 None
             };
@@ -4705,7 +4721,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     let d = crate::main::coerce::asInteger(value);
                     if d != NA_INTEGER {
                         digits_opt = Some(d);
-                }
+                    }
                 }
                 2 => {
                     let v = crate::main::coerce::asInteger(value);
@@ -4785,7 +4801,11 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             cell = CDR(cell);
         }
         if decimal_mark.len() != 1 {
-            let which = if decimal_mark.len() > 1 { "more" } else { "less" };
+            let which = if decimal_mark.len() > 1 {
+                "more"
+            } else {
+                "less"
+            };
             let msg = std::ffi::CString::new(format!(
                 "the decimal mark is {which} than one character wide; this will become an error"
             ))
@@ -4793,39 +4813,36 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             crate::mainutils::errors::Rf_warning(msg.as_ptr());
         }
 
-
         // formatReal/formatComplex read the live digits option; honor an
         // explicit digits argument by swapping the option for this call.
-        let digits =
-            digits_opt.unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
+        let digits = digits_opt.unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
         let digits_value = crate::sexp::constructors::Rf_ScalarInteger(digits);
         let _digits_value = protect(digits_value);
-        let saved_digits =
-            crate::mainutils::options::SetOptionByName("digits", digits_value);
+        let saved_digits = crate::mainutils::options::SetOptionByName("digits", digits_value);
         let saved_scipen = if let Some(sci) = sci_opt {
             if sci != NA_INTEGER {
                 let sci_value = crate::sexp::constructors::Rf_ScalarInteger(sci);
                 let _sci_value = protect(sci_value);
-                Some(crate::mainutils::options::SetOptionByName("scipen", sci_value))
+                Some(crate::mainutils::options::SetOptionByName(
+                    "scipen", sci_value,
+                ))
             } else {
                 None
             }
         } else {
             None
         };
-        let pinned_print = crate::mainutils::format::format_set_R_print(
-            crate::mainutils::format::RPrint {
+        let pinned_print =
+            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
                 digits,
                 scipen: crate::mainutils::options::GetOptionScipen(),
                 na_width: 2,
                 na_width_noquote: 2,
-            },
-        );
+            });
 
         // GNU do_format feeds decimal.mark to EncodeReal0 as OutDec.
-        let outdec_owned = CString::new(decimal_mark.as_str()).unwrap_or_else(|_| {
-            CString::new(".").expect("dot")
-        });
+        let outdec_owned =
+            CString::new(decimal_mark.as_str()).unwrap_or_else(|_| CString::new(".").expect("dot"));
         let outdec = outdec_owned.as_ptr();
         let mut wr: c_int = 0;
         let mut dr: c_int = 0;
@@ -4842,9 +4859,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 crate::mainutils::format::formatIntegerS(x, n, &mut w);
             }
             14 => {
-                crate::mainutils::format::formatRealS(
-                    x, n, &mut wr, &mut dr, &mut er, nsmall,
-                );
+                crate::mainutils::format::formatRealS(x, n, &mut wr, &mut dr, &mut er, nsmall);
                 w = wr;
             }
             _ => {
@@ -4892,7 +4907,14 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 _ => {
                     let v = *crate::sexp::accessors::COMPLEX(x).add(i as usize);
                     crate::mainutils::printutils::EncodeComplex(
-                        v, w - wi - 2, dr, er, wi, di, ei, outdec,
+                        v,
+                        w - wi - 2,
+                        dr,
+                        er,
+                        wi,
+                        di,
+                        ei,
+                        outdec,
                     )
                 }
             };
@@ -4928,7 +4950,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         }
         {
             use crate::sexp::attrib_core::{
-                getAttrib, setAttrib, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol,
+                R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
             };
             let names = getAttrib(x, R_NamesSymbol());
             if !names.is_null() && names != R_NilValue() {
@@ -4968,7 +4990,14 @@ fn pretty_num_inplace(
         if s.trim() == "NA" || s.trim() == "NaN" || s.trim() == "Inf" || s.trim() == "-Inf" {
             continue;
         }
-        *s = pretty_num_one(s, big_mark, drop0trailing, decimal_mark, small_mark, small_interval);
+        *s = pretty_num_one(
+            s,
+            big_mark,
+            drop0trailing,
+            decimal_mark,
+            small_mark,
+            small_interval,
+        );
     }
     if let Some(zero) = zero_print {
         for s in strings.iter_mut() {
@@ -4977,10 +5006,11 @@ fn pretty_num_inplace(
             }
         }
     }
-    if !trim && strings
-        .iter()
-        .zip(&before)
-        .any(|(s, old)| s.chars().count() > *old)
+    if !trim
+        && strings
+            .iter()
+            .zip(&before)
+            .any(|(s, old)| s.chars().count() > *old)
     {
         let max_w = strings.iter().map(|s| s.chars().count()).max().unwrap_or(0);
         for s in strings.iter_mut() {
@@ -5040,13 +5070,20 @@ fn pretty_num_one(
             frac.pop();
         }
         if let Some(e) = exp {
-            if e.bytes().skip(1).all(|b| b == b'+' || b == b'-' || b == b'0') {
+            if e.bytes()
+                .skip(1)
+                .all(|b| b == b'+' || b == b'-' || b == b'0')
+            {
                 let marked = insert_small_mark(&frac, small_mark, small_interval);
                 return pretty_num_join(
                     leading,
                     sign,
                     &insert_big_mark(int_part, big_mark),
-                    if marked.is_empty() { None } else { Some(&marked) },
+                    if marked.is_empty() {
+                        None
+                    } else {
+                        Some(&marked)
+                    },
                     None,
                     drop0trailing,
                     decimal_mark,
@@ -5059,7 +5096,11 @@ fn pretty_num_one(
         leading,
         sign,
         &insert_big_mark(int_part, big_mark),
-        if marked.is_empty() { None } else { Some(&marked) },
+        if marked.is_empty() {
+            None
+        } else {
+            Some(&marked)
+        },
         exp,
         drop0trailing,
         decimal_mark,
@@ -5110,7 +5151,6 @@ fn insert_small_mark(frac: &str, mark: &str, interval: usize) -> String {
     out
 }
 
-
 fn insert_big_mark(int_part: &str, mark: &str) -> String {
     if mark.is_empty() {
         return int_part.to_string();
@@ -5119,7 +5159,10 @@ fn insert_big_mark(int_part: &str, mark: &str) -> String {
     if digits.len() <= 3 {
         return int_part.to_string();
     }
-    let prefix: String = int_part.chars().take_while(|c| !c.is_ascii_digit()).collect();
+    let prefix: String = int_part
+        .chars()
+        .take_while(|c| !c.is_ascii_digit())
+        .collect();
     let mut grouped = String::new();
     for (i, ch) in digits.chars().rev().enumerate() {
         if i > 0 && i % 3 == 0 {
@@ -5169,7 +5212,6 @@ fn format_zero_print(original: &str, zero: &str) -> String {
     chars.into_iter().collect()
 }
 
-
 unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
         // GNU format.default: match.arg(justify) defaults to "left" (0).
@@ -5189,10 +5231,7 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
                 && name != R_NilValue()
             {
-                Some(
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
-                        .to_string_lossy(),
-                )
+                Some(std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name)).to_string_lossy())
             } else {
                 None
             };
@@ -5289,7 +5328,6 @@ fn justify_pad(s: &str, field: usize, justify: c_int) -> String {
         _ => format!("{s}{}", " ".repeat(pad)),
     }
 }
-
 
 #[derive(Clone, Copy)]
 enum CalendarLabel {
@@ -5402,11 +5440,8 @@ pub unsafe fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let m = crate::mainutils::match_mod::match_formal_slots(
-            call,
-            args,
-            &["x", "digits", "nsmall"],
-        );
+        let m =
+            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits", "nsmall"]);
         let missing = crate::sexp::globals::R_MissingArg();
         let force = |v: SEXP| -> SEXP {
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
@@ -5431,7 +5466,6 @@ pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         } else {
             nsmall
         };
-
 
         let tail = Rf_cons(nsmall, R_NilValue());
         let _tail_guard = protect(tail);
@@ -5708,10 +5742,7 @@ pub unsafe fn do_is_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             return Rf_ScalarLogical(TRUE);
         }
         if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
-            let data = crate::mainutils::subassign::R_getS4DataSlot(
-                x,
-                SEXPTYPE::ENVSXP.as_c_int(),
-            );
+            let data = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ENVSXP.as_c_int());
             return Rf_ScalarLogical(if TYPEOF(data) == SEXPTYPE::ENVSXP {
                 TRUE
             } else {
@@ -5736,13 +5767,9 @@ pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
         if crate::mainutils::objects::inherits2(x, c"noquote".as_ptr()) == FALSE {
-            let old = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
-            let old_n = if !old.is_null()
-                && old != R_NilValue()
-                && TYPEOF(old) == SEXPTYPE::STRSXP
+            let old =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+            let old_n = if !old.is_null() && old != R_NilValue() && TYPEOF(old) == SEXPTYPE::STRSXP
             {
                 XLENGTH(old)
             } else {
@@ -6465,8 +6492,7 @@ mod fixed_perl_warning_tests {
             },
         );
         assert_eq!(
-            na_pattern,
-            "argument 'perl = TRUE' will be ignored|NA|1|integer",
+            na_pattern, "argument 'perl = TRUE' will be ignored|NA|1|integer",
             "grep(NA, fixed=TRUE, perl=TRUE)"
         );
     }
@@ -6530,4 +6556,3 @@ mod fixed_perl_warning_tests {
         }
     }
 }
-

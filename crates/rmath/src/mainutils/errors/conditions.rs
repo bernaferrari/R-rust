@@ -397,7 +397,8 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
         // tryCatch handlers receive objectNotFoundError rather than a
         // reconstructed simpleError.
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-            (*inst).error_state.signalled_condition = crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
+            (*inst).error_state.signalled_condition =
+                crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
         let msg = translateChar(STRING_ELT(elt, 0));
         errorcall(call, msg);
@@ -475,10 +476,8 @@ pub unsafe fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
                     .unwrap_or_else(|_| String::from("???"))
             }
         };
-        let c_msg = std::ffi::CString::new(format!(
-            "could not find function \"{name}\""
-        ))
-        .unwrap_or_default();
+        let c_msg = std::ffi::CString::new(format!("could not find function \"{name}\""))
+            .unwrap_or_default();
         let call = if call.is_null() {
             crate::sexp::globals::R_NilValue()
         } else {
@@ -584,14 +583,28 @@ fn exiting_handler_result(lease: &crate::sexp::transfer::TransferLease) -> SEXP 
 /// Native error catcher. Callback data must remain live for this dynamic scope.
 /// Rust callbacks declare C-unwind so evaluation can use nonlocal transfers.
 pub unsafe fn R_tryCatchError(
-    body: Option<super::NativeBody>, bdata: *mut c_void,
-    handler: Option<super::NativeHandler>, hdata: *mut c_void,
+    body: Option<super::NativeBody>,
+    bdata: *mut c_void,
+    handler: Option<super::NativeHandler>,
+    hdata: *mut c_void,
 ) -> SEXP {
     let factory = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())).node_factory();
-    let classes = factory.strings(&["error"])
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        .node_factory();
+    let classes = factory
+        .strings(&["error"])
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    unsafe { super::native::catch_native(body, bdata, classes.as_raw(), handler, hdata, None, ptr::null_mut()) }
+    unsafe {
+        super::native::catch_native(
+            body,
+            bdata,
+            classes.as_raw(),
+            handler,
+            hdata,
+            None,
+            ptr::null_mut(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -937,12 +950,7 @@ pub unsafe fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
             c_msg.as_ptr(),
         );
         let _guard = protect(cond);
-        R_setConditionField(
-            cond,
-            2,
-            b"object\0".as_ptr() as *const c_char,
-            x,
-        );
+        R_setConditionField(cond, 2, b"object\0".as_ptr() as *const c_char, x);
         R_signalErrorCondition(cond, call);
         unreachable!()
     }
@@ -1018,17 +1026,23 @@ pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
 /// Callback data remains valid until the scope ends; callback result projections
 /// belong to the live active runtime. Callbacks that evaluate R permit unwinding.
 pub unsafe fn R_tryCatch(
-    body: Option<super::NativeBody>, bdata: *mut c_void, classes: SEXP,
-    handler: Option<super::NativeHandler>, hdata: *mut c_void,
-    finally: Option<super::NativeFinally>, fdata: *mut c_void,
+    body: Option<super::NativeBody>,
+    bdata: *mut c_void,
+    classes: SEXP,
+    handler: Option<super::NativeHandler>,
+    hdata: *mut c_void,
+    finally: Option<super::NativeFinally>,
+    fdata: *mut c_void,
 ) -> SEXP {
     unsafe { super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata) }
 }
 
 /// Native calling error handler. Callback data follows the same scoped contract.
 pub unsafe fn R_withCallingErrorHandler(
-    body: Option<super::NativeBody>, bdata: *mut c_void,
-    handler: Option<super::NativeHandler>, hdata: *mut c_void,
+    body: Option<super::NativeBody>,
+    bdata: *mut c_void,
+    handler: Option<super::NativeHandler>,
+    hdata: *mut c_void,
 ) -> SEXP {
     unsafe { super::native::calling_native(body, bdata, handler, hdata) }
 }
@@ -1081,7 +1095,8 @@ mod condition_construction_tests {
             drop(result);
             drop(condition);
             drop(environment);
-            (*instance).error_state.handler_stack = crate::sexp::instance::RuntimeValue::from_raw_in(instance, nil);
+            (*instance).error_state.handler_stack =
+                crate::sexp::instance::RuntimeValue::from_raw_in(instance, nil);
             (*instance).context_stack.clear();
             owner.full_gc().unwrap();
             assert!(result_node.is_live());

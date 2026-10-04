@@ -45,7 +45,9 @@ unsafe extern "C-unwind" fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sex
 unsafe extern "C-unwind" fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devices::devcontrol(args) }
 }
-unsafe extern "C-unwind" fn c_devdisplaylist(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+unsafe extern "C-unwind" fn c_devdisplaylist(
+    args: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe { devices::devdisplaylist(args) }
 }
 unsafe extern "C-unwind" fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
@@ -111,7 +113,6 @@ unsafe extern "C-unwind" fn c_rgb(
 ) -> crate::sexp::ffi::SEXP {
     unsafe { colors::do_rgb(r, g, b, a, mcv, nam) }
 }
-
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);

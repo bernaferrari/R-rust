@@ -113,7 +113,6 @@ fn imported_gnu_attr_class_loop_copies_function_class() {
     );
 }
 
-
 #[test]
 fn gnu_setter_call_assigns_names_on_returned_value() {
     let mut session = RSession::new().unwrap();
@@ -170,7 +169,9 @@ fn mutated_gnu_attr_setter_executes_over_retained_source() {
     let original = include_bytes!("fixtures/gnu-bytecode-setter-call/attr.rds");
     // GETVAR v; STARTASSIGN x; GETFUN attr<-; PUSHNULLARG; PUSHCONSTARG;
     // SETTER_CALL; ENDASSIGN; POP; GETVAR x; RETURN.
-    let words = [12, 20, 1, 61, 2, 23, 4, 35, 34, 6, 98, 7, 1, 62, 2, 4, 20, 2, 1];
+    let words = [
+        12, 20, 1, 61, 2, 23, 4, 35, 34, 6, 98, 7, 1, 62, 2, 4, 20, 2, 1,
+    ];
     let offset = unique_stream_offset(original, &words);
     let mut changed = original.to_vec();
     // Redirect GETFUN from attr<- to x. Retained source still does attr(x, "a") <- v.
@@ -197,10 +198,7 @@ fn malformed_setter_call_missing_frame_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;
@@ -225,10 +223,7 @@ fn malformed_setter_call_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

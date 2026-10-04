@@ -20,7 +20,11 @@ unsafe fn copy_atomic_payload(from: SEXP, to: SEXP, kind: SEXPTYPE) {
         let source = DATAPTR(from);
         let destination = DATAPTR(to);
         if !source.is_null() && !destination.is_null() {
-            ptr::copy_nonoverlapping(source.cast::<u8>(), destination.cast::<u8>(), length as usize * element_size);
+            ptr::copy_nonoverlapping(
+                source.cast::<u8>(),
+                destination.cast::<u8>(),
+                length as usize * element_size,
+            );
         }
     }
 }

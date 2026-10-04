@@ -368,9 +368,10 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
             t if t == SEXPTYPE::REALSXP => (*REAL(key).add(i))
                 .partial_cmp(&*REAL(key).add(j))
                 .unwrap_or(std::cmp::Ordering::Equal),
-            t if t == SEXPTYPE::STRSXP => {
-                compare_charsxp_for_sort(STRING_ELT(key, i as R_xlen_t), STRING_ELT(key, j as R_xlen_t))
-            }
+            t if t == SEXPTYPE::STRSXP => compare_charsxp_for_sort(
+                STRING_ELT(key, i as R_xlen_t),
+                STRING_ELT(key, j as R_xlen_t),
+            ),
             t if t == SEXPTYPE::RAWSXP => (*RAW(key).add(i)).cmp(&*RAW(key).add(j)),
             _ => elt_real_safe(key, i as R_xlen_t)
                 .partial_cmp(&elt_real_safe(key, j as R_xlen_t))
@@ -659,10 +660,8 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *dst.add(out) = ranks[i];
             out += 1;
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null()
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -1397,12 +1396,20 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 XLENGTH(table)
             };
             for i in 0..tn {
-                let key = if table_lt { posixlt_key(table, i) } else { match_key(table, i, common_type) };
+                let key = if table_lt {
+                    posixlt_key(table, i)
+                } else {
+                    match_key(table, i, common_type)
+                };
                 lookup.entry(key).or_insert((i + 1) as c_int);
             }
         }
         for i in 0..n {
-            let key = if x_lt { posixlt_key(x, i) } else { match_key(x, i, common_type) };
+            let key = if x_lt {
+                posixlt_key(x, i)
+            } else {
+                match_key(x, i, common_type)
+            };
             *dst.add(i as usize) = if incomparable_set.contains(&key) {
                 nomatch
             } else {
@@ -1538,8 +1545,7 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
                         INTEGER_ELT(x, index as c_int) == NA_INTEGER
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        REAL_ELT(x, index as c_int).to_bits()
-                            == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        REAL_ELT(x, index as c_int).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
                     }
                     _ => false,
                 };
@@ -1547,7 +1553,9 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
                     MatchKey::Missing
                 } else if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
                     let days = REAL_ELT(x, index as c_int);
-                    MatchKey::String(super::shared::date_days_to_iso(days).unwrap_or_else(|| "NA".to_string()))
+                    MatchKey::String(
+                        super::shared::date_days_to_iso(days).unwrap_or_else(|| "NA".to_string()),
+                    )
                 } else {
                     MatchKey::String(elt_to_string(x, index))
                 }
@@ -1803,8 +1811,8 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 base_error("invalid 'breaks' argument".to_string());
             }
         }
-        let breaks_missing = breaks_arg.is_null()
-            || breaks_arg == crate::sexp::globals::R_MissingArg();
+        let breaks_missing =
+            breaks_arg.is_null() || breaks_arg == crate::sexp::globals::R_MissingArg();
         if break_pts.len() < 2 {
             if breaks_arg == R_NilValue() || !breaks_missing {
                 base_error("invalid 'breaks' argument".to_string());
@@ -1916,7 +1924,10 @@ fn format_cut_number(value: f64) -> String {
 unsafe fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) != 2
         {
             return None;
         }
@@ -1961,11 +1972,14 @@ unsafe fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
         let _d = protect(out_dim);
         *INTEGER(out_dim) = nkeep as c_int;
         *INTEGER(out_dim).add(1) = ncol as c_int;
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), out_dim);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            out_dim,
+        );
         Some(result)
     }
 }
-
 
 /// R's `unique(x)` — return unique atomic elements in R's retained-index order.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -2329,10 +2343,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
                     let zb = *crate::sexp::accessors::COMPLEX(x).add(b);
                     za.r.partial_cmp(&zb.r)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                        .then(
-                            za.i.partial_cmp(&zb.i)
-                                .unwrap_or(std::cmp::Ordering::Equal),
-                        )
+                        .then(za.i.partial_cmp(&zb.i).unwrap_or(std::cmp::Ordering::Equal))
                 }
                 Kind::Raw => (*RAW(x).add(a)).cmp(&*RAW(x).add(b)),
             };
@@ -2366,9 +2377,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
             match kind {
                 Kind::Int => *INTEGER(values).add(j) = *INTEGER(x).add(i),
                 Kind::Real => *REAL(values).add(j) = *REAL(x).add(i),
-                Kind::Str => {
-                    SET_STRING_ELT(values, j as R_xlen_t, STRING_ELT(x, i as R_xlen_t))
-                }
+                Kind::Str => SET_STRING_ELT(values, j as R_xlen_t, STRING_ELT(x, i as R_xlen_t)),
                 Kind::Cplx => {
                     *crate::sexp::accessors::COMPLEX(values).add(j) =
                         *crate::sexp::accessors::COMPLEX(x).add(i);
@@ -2403,10 +2412,8 @@ unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) 
         if !keep {
             return;
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return;
         }
@@ -2421,11 +2428,7 @@ unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) 
         for (dst, src) in order.iter().enumerate() {
             SET_STRING_ELT(out, dst as R_xlen_t, STRING_ELT(names, *src as R_xlen_t));
         }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            out,
-        );
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), out);
     }
 }
 
@@ -2598,10 +2601,8 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for (i, byte) in vals.iter().enumerate() {
                 *RAW(result).add(i) = *byte;
             }
-            let class = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
+            let class =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
             if !class.is_null() && class != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     result,
@@ -2810,7 +2811,9 @@ unsafe fn logical_arg_value(x: SEXP, index: R_xlen_t) -> Option<c_int> {
                     t if t == SEXPTYPE::ENVSXP.as_c_int() => "environment",
                     _ => "unknown",
                 };
-                base_error(format!("'{kind}' object cannot be coerced to type 'logical'"));
+                base_error(format!(
+                    "'{kind}' object cannot be coerced to type 'logical'"
+                ));
             }
         }
     }
@@ -2941,7 +2944,6 @@ pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-
 /// R's `cumprod(x)` — cumulative product.
 pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -2960,7 +2962,6 @@ pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::cum::do_cumprod(call, op, args, rho)
     }
 }
-
 
 /// R's `cumvar(x)` — cumulative sample variance by Youngs-Cramer algorithm.
 pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -2992,7 +2993,11 @@ pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()),
+        );
         let dst = REAL(result);
         if n == 0 {
             return result;

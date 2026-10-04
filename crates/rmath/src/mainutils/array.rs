@@ -19,10 +19,9 @@ use std::os::raw::c_int;
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
-    SETTAG, SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF,
+    SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF,
     UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
-
 
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -478,7 +477,10 @@ unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
             } else {
                 getAttrib(dimnames, R_NamesSymbol())
             };
-            if dn_names.is_null() || dn_names == R_NilValue() || TYPEOF(dn_names) != SEXPTYPE::STRSXP {
+            if dn_names.is_null()
+                || dn_names == R_NilValue()
+                || TYPEOF(dn_names) != SEXPTYPE::STRSXP
+            {
                 array_error("'perm' is of wrong length");
             }
             let mut values = Vec::with_capacity(ndim);

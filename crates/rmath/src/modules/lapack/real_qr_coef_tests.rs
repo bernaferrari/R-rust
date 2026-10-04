@@ -39,9 +39,21 @@ unsafe fn make_qr(qr: SEXP) -> SEXP {
         SET_VECTOR_ELT(obj, 2, R_NilValue());
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char));
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char));
-        SET_STRING_ELT(names, 2, Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char));
+        SET_STRING_ELT(
+            names,
+            0,
+            Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char),
+        );
+        SET_STRING_ELT(
+            names,
+            1,
+            Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char),
+        );
+        SET_STRING_ELT(
+            names,
+            2,
+            Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char),
+        );
         SET_ATTRIB(obj, {
             let attrs = Rf_cons(names, R_NilValue());
             SETTAG(attrs, R_NamesSymbol());
@@ -77,7 +89,10 @@ fn real_qr_coef_rejects_malformed_dims_and_payload() {
         let message = error_message(catch_unwind(AssertUnwindSafe(|| {
             qr_coef_real(qr, y);
         })));
-        assert!(message.contains("matrix") || message.contains("dimension"), "{message}");
+        assert!(
+            message.contains("matrix") || message.contains("dimension"),
+            "{message}"
+        );
 
         let y = make_matrix(&[2, 1], &[1.0, 2.0]);
         let _y3 = protect(y);

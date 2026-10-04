@@ -53,7 +53,6 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
             c = &*c.nextcontext;
         }
         usable_call(c.call.as_raw())
-
     }
 }
 
@@ -464,7 +463,15 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                     break;
                 }
                 let handler = crate::sexp::context::own_control_value(ENTRY_HANDLER(entry));
-                let condition = crate::sexp::context::own_control_value(super::conditions::make_condition(call, "simpleError", "", 0, &localbuf, "error"));
+                let condition =
+                    crate::sexp::context::own_control_value(super::conditions::make_condition(
+                        call,
+                        "simpleError",
+                        "",
+                        0,
+                        &localbuf,
+                        "error",
+                    ));
                 if super::native::dispatch_calling_handler(handler.as_raw(), condition.as_raw()) {
                     list = findSimpleErrorHandler();
                     continue;
@@ -480,7 +487,15 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                 let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
             } else {
                 let entry = crate::sexp::context::own_control_value(entry);
-                let condition = crate::sexp::context::own_control_value(super::conditions::make_condition(call, "simpleError", "", 0, &localbuf, "error"));
+                let condition =
+                    crate::sexp::context::own_control_value(super::conditions::make_condition(
+                        call,
+                        "simpleError",
+                        "",
+                        0,
+                        &localbuf,
+                        "error",
+                    ));
                 gotoExitingHandler(condition.as_raw(), call, entry.as_raw());
             }
             list = findSimpleErrorHandler();
@@ -1158,7 +1173,9 @@ pub struct MathlibWarningCallGuard {
 impl Drop for MathlibWarningCallGuard {
     fn drop(&mut self) {
         if let Some(previous) = self.previous.take() {
-            unsafe { (*self.owner.as_ptr()).error_state.mathlib_warning_call = previous; }
+            unsafe {
+                (*self.owner.as_ptr()).error_state.mathlib_warning_call = previous;
+            }
         }
     }
 }
@@ -1168,9 +1185,15 @@ pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
     let owner = super::state::error_scope_pin();
     let next = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(owner.as_ptr(), call) };
     let previous = unsafe {
-        std::mem::replace(&mut (*owner.as_ptr()).error_state.mathlib_warning_call, next)
+        std::mem::replace(
+            &mut (*owner.as_ptr()).error_state.mathlib_warning_call,
+            next,
+        )
     };
-    MathlibWarningCallGuard { owner, previous: Some(previous) }
+    MathlibWarningCallGuard {
+        owner,
+        previous: Some(previous),
+    }
 }
 
 pub fn mathlib_warning_call() -> SEXP {

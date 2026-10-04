@@ -363,7 +363,6 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
             need_c = do_names; // GNU: c(a = *) but not c(1)
         }
 
-
         if tlen == 0 {
             match TYPEOF(vector) {
                 10 => print2buff(b"logical(0)\0".as_ptr() as *const c_char, d), // LGLSXP

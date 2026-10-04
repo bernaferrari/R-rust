@@ -547,7 +547,6 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
             return live;
         }
 
-
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
         let _e = protect(env);
         if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
@@ -567,8 +566,7 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
                 if TYPEOF(nm) == SEXPTYPE::STRSXP {
                     for i in 0..XLENGTH(nm) {
                         let raw = CHAR(STRING_ELT(nm, i));
-                        if !raw.is_null()
-                            && std::ffi::CStr::from_ptr(raw).to_string_lossy() == name
+                        if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_string_lossy() == name
                         {
                             key = VECTOR_ELT(refs, i);
                             break;
@@ -581,10 +579,8 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
             return env;
         }
         if TYPEOF(key) == SEXPTYPE::VECSXP {
-            let kn = crate::sexp::attrib_core::getAttrib(
-                key,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let kn =
+                crate::sexp::attrib_core::getAttrib(key, crate::sexp::attrib_core::R_NamesSymbol());
             if TYPEOF(kn) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(kn) {
                     let raw = CHAR(STRING_ELT(kn, i));
@@ -608,10 +604,7 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
         }
         let args = Rf_cons(
             key,
-            Rf_cons(
-                datafile,
-                Rf_cons(compressed, Rf_cons(data, R_NilValue())),
-            ),
+            Rf_cons(datafile, Rf_cons(compressed, Rf_cons(data, R_NilValue()))),
         );
         let _a = protect(args);
         let fetched = do_lazyLoadDBfetch(R_NilValue(), R_NilValue(), args, R_NilValue());
@@ -654,8 +647,6 @@ unsafe fn persist_restore_inner(names: SEXP, data: SEXP) -> SEXP {
     }
 }
 
-
-
 unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
     unsafe {
         !hook.is_null()
@@ -671,7 +662,6 @@ unsafe fn R_unserialize_from_stream_hooks(
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
 ) -> SEXP {
-
     unsafe {
         if icon.is_null() {
             error("read error");

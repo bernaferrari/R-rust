@@ -28,20 +28,18 @@ fn small_hashed_list2env_profiles_match_gnu() {
         .unwrap_or_else(|err| panic!("env profile eval failed: {err}"));
     let report = report.trim();
     assert!(
-        report.lines().any(|line| line == "NCH=106,106,106,106,106,111"),
+        report
+            .lines()
+            .any(|line| line == "NCH=106,106,106,106,106,111"),
         "{report}"
     );
     assert!(
-        report.lines().any(|line| line == "SIZES=146,146,146,146,146,143"),
+        report
+            .lines()
+            .any(|line| line == "SIZES=146,146,146,146,146,143"),
         "{report}"
     );
     assert!(report.lines().any(|line| line == "LS=123"), "{report}");
-    assert!(
-        report.lines().any(|line| line == "NULL1=TRUE"),
-        "{report}"
-    );
-    assert!(
-        report.lines().any(|line| line == "EXISTS=TRUE"),
-        "{report}"
-    );
+    assert!(report.lines().any(|line| line == "NULL1=TRUE"), "{report}");
+    assert!(report.lines().any(|line| line == "EXISTS=TRUE"), "{report}");
 }

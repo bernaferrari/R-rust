@@ -441,16 +441,13 @@ pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             return Rf_ScalarLogical(FALSE);
         }
         let t = TYPEOF(x);
-        Rf_ScalarLogical(
-            if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                TRUE
-            } else {
-                FALSE
-            },
-        )
+        Rf_ScalarLogical(if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            TRUE
+        } else {
+            FALSE
+        })
     }
 }
-
 
 /// R's `is.generic(x)` — check if x is a generic function (simplified).
 /// Returns TRUE for CLOSXP with "generic" in name or with useMethod call.

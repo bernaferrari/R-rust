@@ -81,7 +81,6 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         };
         let _obj = protect(obj);
 
-
         let mut ans: SEXP = ptr::null_mut();
         if usemethod(
             generic_cstr,
@@ -239,7 +238,8 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
 
         // Duplicate the call (parity with C: use shallow_duplicate)
-        let mut newcall = crate::mainutils::duplicate::shallow_duplicate((*found_cptr).call.as_raw());
+        let mut newcall =
+            crate::mainutils::duplicate::shallow_duplicate((*found_cptr).call.as_raw());
         if newcall.is_null() || newcall == R_NilValue() {
             return R_NilValue();
         }
@@ -301,13 +301,15 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         let formals = FORMALS(s_callfun);
         // Use patchArgsByActuals instead of raw promiseargs
-        let supplied_args =
-            if (*found_cptr).promiseargs.as_raw().is_null() || (*found_cptr).promiseargs.as_raw() == R_NilValue() {
-                CDR((*found_cptr).call.as_raw())
-            } else {
-                (*found_cptr).promiseargs.as_raw()
-            };
-        let mut matchedarg = patchArgsByActuals(formals, supplied_args, (*found_cptr).cloenv.as_raw());
+        let supplied_args = if (*found_cptr).promiseargs.as_raw().is_null()
+            || (*found_cptr).promiseargs.as_raw() == R_NilValue()
+        {
+            CDR((*found_cptr).call.as_raw())
+        } else {
+            (*found_cptr).promiseargs.as_raw()
+        };
+        let mut matchedarg =
+            patchArgsByActuals(formals, supplied_args, (*found_cptr).cloenv.as_raw());
         let mut _matchedarg_guard = protect(matchedarg);
 
         // Handle ... arguments (C: s = CADDR(args), check R_DotsSymbol)
@@ -364,7 +366,10 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                     crate::sexp::accessors::PRINTNAME(called),
                 ))
                 .to_string_lossy();
-                let bare = name.rsplit_once('.').map(|(head, _)| head).unwrap_or(name.as_ref());
+                let bare = name
+                    .rsplit_once('.')
+                    .map(|(head, _)| head)
+                    .unwrap_or(name.as_ref());
                 let c_name = std::ffi::CString::new(bare).unwrap_or_default();
                 generic = crate::sexp::constructors::Rf_mkString(c_name.as_ptr());
             }

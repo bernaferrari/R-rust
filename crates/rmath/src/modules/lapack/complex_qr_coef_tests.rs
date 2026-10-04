@@ -3,7 +3,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::lapack_impl::qr_coef_cmplx;
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol};
-use crate::sexp::accessors::{COMPLEX, INTEGER, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG};
+use crate::sexp::accessors::{
+    COMPLEX, INTEGER, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG,
+};
 use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_mkChar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -48,9 +50,21 @@ unsafe fn make_qr(qr: SEXP) -> SEXP {
         SET_VECTOR_ELT(obj, 2, qraux);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char));
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char));
-        SET_STRING_ELT(names, 2, Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char));
+        SET_STRING_ELT(
+            names,
+            0,
+            Rf_mkChar(b"qr\0".as_ptr() as *const std::os::raw::c_char),
+        );
+        SET_STRING_ELT(
+            names,
+            1,
+            Rf_mkChar(b"rank\0".as_ptr() as *const std::os::raw::c_char),
+        );
+        SET_STRING_ELT(
+            names,
+            2,
+            Rf_mkChar(b"qraux\0".as_ptr() as *const std::os::raw::c_char),
+        );
         SET_ATTRIB(obj, {
             let attrs = Rf_cons(names, R_NilValue());
             SETTAG(attrs, R_NamesSymbol());

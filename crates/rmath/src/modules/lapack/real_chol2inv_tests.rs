@@ -74,9 +74,7 @@ fn real_chol2inv_rejects_malformed_dims_and_payload() {
             La_chol2inv(input, bad_size, R_NilValue());
         })));
         assert!(
-            message.contains("matrix")
-                || message.contains("dimension")
-                || message.contains("size"),
+            message.contains("matrix") || message.contains("dimension") || message.contains("size"),
             "{message}"
         );
     });

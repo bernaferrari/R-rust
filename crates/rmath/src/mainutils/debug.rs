@@ -183,11 +183,7 @@ unsafe fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
             -1
         } else if TYPEOF(s) == SEXPTYPE::LGLSXP && !s.is_null() {
             let data = crate::sexp::accessors::DATAPTR(s) as *mut c_int;
-            if !data.is_null() {
-                *data
-            } else {
-                0
-            }
+            if !data.is_null() { *data } else { 0 }
         } else {
             0
         };
@@ -206,14 +202,12 @@ unsafe fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
     }
 }
 
-
 pub unsafe fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let debugging = PRIMVAL(op) == 1;
         trace_or_debug_state(args, !debugging)
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // R_current_debug_state — return this session's debugging state
@@ -296,9 +290,7 @@ fn memory_profiling_enabled() -> bool {
 
 unsafe fn reject_without_memory_profiling() {
     unsafe {
-        Rf_error(
-            c"R was not compiled with support for memory profiling".as_ptr() as *const _,
-        );
+        Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
     }
 }
 
@@ -406,9 +398,8 @@ pub struct BuiltinTryTrace;
 
 impl BuiltinTryTrace {
     pub fn enter() -> Self {
-        let depth = unsafe {
-            crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext())
-        };
+        let depth =
+            unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) };
         BUILTIN_TRY_ENTRIES.with(|entries| entries.borrow_mut().push(depth));
         Self
     }

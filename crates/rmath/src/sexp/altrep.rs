@@ -11,7 +11,7 @@ use super::{
     ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::{OwnerToken, StoredOwner},
-    session::{with_instance_active, RSession},
+    session::{RSession, with_instance_active},
 };
 use std::{ffi::CString, rc::Rc};
 
@@ -19,9 +19,9 @@ mod bridge;
 mod registry;
 mod storage;
 pub(crate) use bridge::{has_extension_raw, lazy_raw, materialize_raw, rooted_raw};
-pub(crate) use registry::{class_handle, AltrepRuntimeState, OperationGuard};
-use registry::{enter_operation, lookup, register, Operation, RegisteredClass};
-use storage::{allocate, owner, InstanceStorage, Metadata};
+pub(crate) use registry::{AltrepRuntimeState, OperationGuard, class_handle};
+use registry::{Operation, RegisteredClass, enter_operation, lookup, register};
+use storage::{InstanceStorage, Metadata, allocate, owner};
 
 /// A copied element, or an independently rooted string/list element.
 #[derive(Debug)]

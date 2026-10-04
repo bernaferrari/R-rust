@@ -361,7 +361,6 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
         };
 
-
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let expr = CAR(current);
@@ -384,15 +383,15 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 && !tag.is_null()
                 && tag != R_NilValue()
                 && matches!(
-                    CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy().as_ref(),
+                    CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                        .to_string_lossy()
+                        .as_ref(),
                     "exprObject" | "local"
                 )
             {
                 // GNU formals, not conditions.
             } else {
                 fail(crate::eval::eval::Rf_eval(expr, rho));
-
-
             }
             current = CDR(current);
         }
@@ -400,7 +399,6 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         R_NilValue()
     }
 }
-
 
 /// R's `nargs()` — number of arguments in the current call.
 pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
@@ -574,7 +572,12 @@ fn scan_error(message: impl Into<String>) -> ! {
     });
 }
 
-fn split_scan_fields(contents: &str, sep: &str, quote: &str, nmax: i64, strip_white: bool,
+fn split_scan_fields(
+    contents: &str,
+    sep: &str,
+    quote: &str,
+    nmax: i64,
+    strip_white: bool,
 ) -> Vec<String> {
     let limit = if nmax > 0 { nmax as usize } else { usize::MAX };
     let spec = TableParseSpec {
@@ -670,63 +673,66 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if file_arg.is_null() || file_arg == R_NilValue() || file_arg == R_MissingArg() {
                 scan_error("scan() requires a file path in the Android/headless runtime");
             }
-            let (filename, from_conn) = if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
-                let idx = *INTEGER(file_arg);
-                let quote_chars = {
-                    let quote_arg = by_slot(&["quote"], 5);
-                    if quote_arg.is_null() || quote_arg == R_NilValue() {
-                        "\"'".to_string()
-                    } else {
-                        elt_to_string(quote_arg, 0)
-                    }
-                };
-                let sep_for_lines = {
-                    let sep_arg = by_slot(&["sep"], 3);
-                    if sep_arg.is_null() || sep_arg == R_NilValue() {
-                        String::new()
-                    } else {
-                        elt_to_string(sep_arg, 0)
-                    }
-                };
-                let mut bytes = Vec::new();
-                let mut lines_read = 0i64;
-                let mut in_quote: u8 = 0;
-                let mut at_token_start = true;
-                loop {
-                    let b = crate::mainutils::connections::connection_fgetc(idx);
-                    if b < 0 {
-                        break;
-                    }
-                    let byte = b as u8;
-                    bytes.push(byte);
-                    if in_quote == 0 {
-                        if byte == b' ' || byte == b'\t' || byte == b'\n' || byte == b'\r' {
-                            at_token_start = true;
-                            if nlines >= 0 && byte == b'\n' {
-                                lines_read += 1;
-                                if lines_read >= nlines {
-                                    break;
-                                }
-                            }
-                        } else if quote_chars.as_bytes().contains(&byte)
-                            && (at_token_start || !sep_for_lines.is_empty())
-                        {
-                            in_quote = byte;
-                            at_token_start = false;
+            let (filename, from_conn) =
+                if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
+                    let idx = *INTEGER(file_arg);
+                    let quote_chars = {
+                        let quote_arg = by_slot(&["quote"], 5);
+                        if quote_arg.is_null() || quote_arg == R_NilValue() {
+                            "\"'".to_string()
                         } else {
-                            at_token_start = false;
+                            elt_to_string(quote_arg, 0)
                         }
-                    } else if byte == in_quote {
-                        in_quote = 0;
+                    };
+                    let sep_for_lines = {
+                        let sep_arg = by_slot(&["sep"], 3);
+                        if sep_arg.is_null() || sep_arg == R_NilValue() {
+                            String::new()
+                        } else {
+                            elt_to_string(sep_arg, 0)
+                        }
+                    };
+                    let mut bytes = Vec::new();
+                    let mut lines_read = 0i64;
+                    let mut in_quote: u8 = 0;
+                    let mut at_token_start = true;
+                    loop {
+                        let b = crate::mainutils::connections::connection_fgetc(idx);
+                        if b < 0 {
+                            break;
+                        }
+                        let byte = b as u8;
+                        bytes.push(byte);
+                        if in_quote == 0 {
+                            if byte == b' ' || byte == b'\t' || byte == b'\n' || byte == b'\r' {
+                                at_token_start = true;
+                                if nlines >= 0 && byte == b'\n' {
+                                    lines_read += 1;
+                                    if lines_read >= nlines {
+                                        break;
+                                    }
+                                }
+                            } else if quote_chars.as_bytes().contains(&byte)
+                                && (at_token_start || !sep_for_lines.is_empty())
+                            {
+                                in_quote = byte;
+                                at_token_start = false;
+                            } else {
+                                at_token_start = false;
+                            }
+                        } else if byte == in_quote {
+                            in_quote = 0;
+                        }
                     }
-                }
-                (String::from_utf8_lossy(&bytes).into_owned(), Some((idx, bytes)),
+                    (
+                        String::from_utf8_lossy(&bytes).into_owned(),
+                        Some((idx, bytes)),
                     )
-            } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
-                scan_error("scan() currently supports character file paths only");
-            } else {
-                (elt_to_string(file_arg, 0), None)
-            };
+                } else if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
+                    scan_error("scan() currently supports character file paths only");
+                } else {
+                    (elt_to_string(file_arg, 0), None)
+                };
             if from_conn.is_none() && filename.is_empty() {
                 scan_error("scan() cannot read from an interactive console in this runtime");
             }
@@ -805,7 +811,9 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let na_strings: Vec<String> = if na_arg.is_null() || na_arg == R_NilValue() {
             vec!["NA".to_string()]
         } else if TYPEOF(na_arg) == SEXPTYPE::STRSXP {
-            (0..XLENGTH(na_arg)).map(|i| elt_to_string(na_arg, i)).collect()
+            (0..XLENGTH(na_arg))
+                .map(|i| elt_to_string(na_arg, i))
+                .collect()
         } else {
             vec!["NA".to_string()]
         };
@@ -820,7 +828,11 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             Some(v) if !v.is_null() && v != R_NilValue() => real_or_default(v, 0.0) != 0.0,
             _ => false,
         };
-        let field_cap = if what_type == SEXPTYPE::VECSXP { -1 } else { item_cap };
+        let field_cap = if what_type == SEXPTYPE::VECSXP {
+            -1
+        } else {
+            item_cap
+        };
         let values = split_scan_fields(&contents, &sep, &quote, field_cap, strip_white);
         if let Some(idx) = scan_conn_idx {
             if field_cap >= 0 {
@@ -952,11 +964,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 col_types.push(ty);
             }
-            let nrec = if nmax >= 0 {
-                nmax as R_xlen_t
-            } else {
-                n / nc
-            };
+            let nrec = if nmax >= 0 { nmax as R_xlen_t } else { n / nc };
             let take = nrec * nc;
             let result = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
             let _p = protect(result);
@@ -1302,10 +1310,18 @@ pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 pub unsafe fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let output = condition_message_text(args, &["domain", "appendLF"]);
-        let message = if output.ends_with('\n') { output } else { format!("{output}\n") };
+        let message = if output.ends_with('\n') {
+            output
+        } else {
+            format!("{output}\n")
+        };
         let condition = super::conditions::simple_condition(
             &message,
-            &["packageStartupMessage", "simpleMessage", "message", "condition",
+            &[
+                "packageStartupMessage",
+                "simpleMessage",
+                "message",
+                "condition",
             ],
         );
         let _c = protect(condition);
@@ -1657,7 +1673,10 @@ pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
                 };
                 if name == "classes" {
                     let value = crate::eval::eval::Rf_eval(CAR(cell), rho);
-                    if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP {
+                    if !value.is_null()
+                        && value != R_NilValue()
+                        && TYPEOF(value) == SEXPTYPE::STRSXP
+                    {
                         let mut names = Vec::new();
                         for i in 0..XLENGTH(value) {
                             let elt = crate::sexp::accessors::STRING_ELT(value, i);
@@ -1717,7 +1736,9 @@ pub unsafe fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
                 };
                 if name == "classes" {
                     let value = crate::eval::eval::Rf_eval(CAR(cell), rho);
-                    if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP
+                    if !value.is_null()
+                        && value != R_NilValue()
+                        && TYPEOF(value) == SEXPTYPE::STRSXP
                     {
                         let mut names = Vec::new();
                         for i in 0..XLENGTH(value) {
@@ -2104,9 +2125,8 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
         let mut declared: Vec<Option<TableColClass>> = vec![None; ncols];
         if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(arg) as usize;
-            let names = crate::sexp::attrib_core::getAttrib(
-                arg,
-                crate::sexp::attrib_core::R_NamesSymbol());
+            let names =
+                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
             let named = !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -2119,15 +2139,15 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
                     }
                     let nm = elt_to_string(names, src as R_xlen_t);
                     if let Some(j) = col_names.iter().position(|c| c == &nm) {
-                        declared[j] = Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
+                        declared[j] =
+                            Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
                     } else {
                         missing = true;
                     }
                 }
                 if missing {
-                    let msg = std::ffi::CString::new(
-                        "not all columns named in 'colClasses' exist")
-                    .unwrap_or_default();
+                    let msg = std::ffi::CString::new("not all columns named in 'colClasses' exist")
+                        .unwrap_or_default();
                     crate::mainutils::errors::Rf_warning(msg.as_ptr());
                 }
             } else if n > 0 {
@@ -2136,9 +2156,7 @@ unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableC
                     if is_string_na(arg, src as R_xlen_t) {
                         continue;
                     }
-                    declared[j] = Some(table_col_class_name(&elt_to_string(
-                        arg,
-                        src as R_xlen_t)));
+                    declared[j] = Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
                 }
             }
         }
@@ -2332,9 +2350,10 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 }
                 bytes.push(c as u8);
             }
-            crate::mainutils::browser_files::admit_text(String::from_utf8_lossy(&bytes).into_owned(),
+            crate::mainutils::browser_files::admit_text(
+                String::from_utf8_lossy(&bytes).into_owned(),
             )
-                .unwrap_or_else(|error| scan_error(error.to_string()))
+            .unwrap_or_else(|error| scan_error(error.to_string()))
         } else {
             if file_arg.is_null()
                 || file_arg == R_NilValue()
@@ -2420,8 +2439,6 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             taken_row_names = Some(names);
         }
-
-
 
         let mut ncols = col_names.len();
         for row in &data {
@@ -2621,7 +2638,10 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let _labels_guard = protect(labels);
             for (i, name) in names.iter().enumerate() {
                 let cstr = CString::new(name.as_str()).unwrap_or_default();
-                SET_STRING_ELT(labels, i as R_xlen_t, crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                SET_STRING_ELT(
+                    labels,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
                 );
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), labels);
@@ -2990,7 +3010,9 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let tag = TAG(cell);
             let named = !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP;
             let name = if named {
-                CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy().into_owned()
+                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned()
             } else {
                 String::new()
             };
@@ -3001,7 +3023,6 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             arg_i += 1;
             cell = CDR(cell);
         }
-
 
         // Read file
         let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
@@ -3017,11 +3038,18 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let header_names = if header && !lines.is_empty() {
-            lines[0].split_whitespace().map(|s| s.to_string()).collect::<Vec<_>>()
+            lines[0]
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
         } else {
             Vec::new()
         };
-        let data_lines: Vec<&str> = if header { lines.iter().skip(1).copied().collect() } else { lines };
+        let data_lines: Vec<&str> = if header {
+            lines.iter().skip(1).copied().collect()
+        } else {
+            lines
+        };
         let ncols = widths.iter().filter(|&&width| width >= 0).count();
         let nrows = data_lines.len();
         let mut col_text: Vec<Vec<String>> = vec![vec![String::new(); nrows]; ncols];
@@ -3087,7 +3115,10 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 col
             };
             SET_VECTOR_ELT(result, j as R_xlen_t, col);
-            let label = header_names.get(j).cloned().unwrap_or_else(|| format!("V{}", j + 1));
+            let label = header_names
+                .get(j)
+                .cloned()
+                .unwrap_or_else(|| format!("V{}", j + 1));
             let cstr = CString::new(label).unwrap_or_default();
             SET_STRING_ELT(names_vec, j as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
         }
@@ -3161,15 +3192,11 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 crate::mainutils::connections::ConnKind::File => {
                     crate::mainutils::connections::open_maybe_compressed(conn, "rb")
                 }
-                _ => Err(std::io::Error::other(
-                    "connection is not open",
-                )),
+                _ => Err(std::io::Error::other("connection is not open")),
             };
             conn.mode = saved_mode;
             if let Err(e) = result {
-                crate::mainutils::connections::r_error(&format!(
-                    "cannot open the connection: {e}"
-                ));
+                crate::mainutils::connections::r_error(&format!("cannot open the connection: {e}"));
             }
             true
         }
@@ -3184,8 +3211,8 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
             if byte == 0 {
                 unsafe {
                     crate::mainutils::errors::Rf_warning(
-                    c"truncating string with embedded nuls".as_ptr(),
-                )
+                        c"truncating string with embedded nuls".as_ptr(),
+                    )
                 };
                 break;
             }

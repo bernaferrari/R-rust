@@ -47,7 +47,9 @@ fn imported_gnu_log_preserves_values_and_visibility() {
     );
     assert_eq!(
         session
-            .eval("isTRUE(all.equal(f(c(1, exp(1))), c(0, 1))) && identical(typeof(f(1)), 'double')")
+            .eval(
+                "isTRUE(all.equal(f(c(1, exp(1))), c(0, 1))) && identical(typeof(f(1)), 'double')"
+            )
             .unwrap()
             .trim(),
         "[1] TRUE"
@@ -103,10 +105,7 @@ fn malformed_log_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

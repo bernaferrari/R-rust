@@ -93,16 +93,30 @@ unsafe fn eval_bind_internal_args<'s>(
     rho: crate::sexp::object::Sexp<'s>,
 ) -> (i32, crate::sexp::object::Sexp<'s>) {
     unsafe {
-        if args.is_nil() { return (1, args); }
+        if args.is_nil() {
+            return (1, args);
+        }
         let dl_val = eval_if_needed(CAR(args.as_raw()), rho.as_raw());
-        let _dl_value = factory.wrap(dl_val).expect("evaluated bind level remains live");
+        let _dl_value = factory
+            .wrap(dl_val)
+            .expect("evaluated bind level remains live");
         let dl = crate::mainutils::coerce::asInteger(dl_val);
-        let dl = if dl == crate::sexp::ffi::NA_INTEGER { 1 } else { dl };
-        let rest = CDR(args.as_raw());
-        let rest = if rest.is_null() { factory.nil() } else {
-            factory.wrap(rest).expect("bind data expressions remain live")
+        let dl = if dl == crate::sexp::ffi::NA_INTEGER {
+            1
+        } else {
+            dl
         };
-        if rest.is_nil() { return (dl, rest); }
+        let rest = CDR(args.as_raw());
+        let rest = if rest.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(rest)
+                .expect("bind data expressions remain live")
+        };
+        if rest.is_nil() {
+            return (dl, rest);
+        }
         let promised = crate::eval::dispatch::promiseArgs(factory, rest, rho);
         (dl, promised)
     }
@@ -128,7 +142,8 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
                 let head = CAR(seen);
                 if TYPEOF(head) == SEXPTYPE::SYMSXP {
                     let pname = crate::sexp::accessors::PRINTNAME(head);
-                    let label = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname)).to_string_lossy();
+                    let label = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                        .to_string_lossy();
                     if label == generic {
                         user_args = CDR(seen);
                         break;
@@ -140,7 +155,8 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
         let mut a = args;
         while !a.is_null() && a != R_NilValue() {
             let obj = force_bind_arg(a);
-            let class = crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
+            let class =
+                crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
             if TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
                 let name = super::super::shared::elt_to_string(class, 0);
                 if let Some(sym) = crate::mainutils::objects::s3_method_symbol(generic, &name) {
@@ -180,23 +196,26 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
     }
 }
 
-
-
-
-
-
-
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
-        let arguments = if args.is_null() { factory.nil() } else {
-            factory.wrap(args).expect("bind arguments belong to the active heap")
+        let arguments = if args.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(args)
+                .expect("bind arguments belong to the active heap")
         };
-        let environment = if rho.is_null() { factory.nil() } else {
-            factory.wrap(rho).expect("bind environment belongs to the active heap")
+        let environment = if rho.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(rho)
+                .expect("bind environment belongs to the active heap")
         };
-        let (deparse_level, promised) = eval_bind_internal_args(&factory, call, arguments, environment);
+        let (deparse_level, promised) =
+            eval_bind_internal_args(&factory, call, arguments, environment);
         // Ownership survives all forcing, dispatch and expression-name derivation.
         let args = promised.as_raw();
         if let Some(ans) = try_s3_bind(call, args, rho, "cbind") {
@@ -243,7 +262,9 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if entries.len() >= 2
-            && entries.iter().all(|(arg, _, _, _)| sexp_has_class(*arg, "ts"))
+            && entries
+                .iter()
+                .all(|(arg, _, _, _)| sexp_has_class(*arg, "ts"))
         {
             let phase = |arg: SEXP| unsafe {
                 let tsp = crate::sexp::attrib_core::getAttrib(
@@ -260,7 +281,9 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             if let Some(first) = phase(entries[0].0) {
                 if entries.iter().skip(1).any(|(arg, _, _, _)| {
-                    phase(*arg).is_none_or(|(p, f)| (p - first.0).abs() > 1e-8 || (f - first.1).abs() > 1e-8)
+                    phase(*arg).is_none_or(|(p, f)| {
+                        (p - first.0).abs() > 1e-8 || (f - first.1).abs() > 1e-8
+                    })
                 }) {
                     base_error("not all series have the same phase".to_string());
                 }
@@ -360,18 +383,26 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
-        let arguments = if args.is_null() { factory.nil() } else {
-            factory.wrap(args).expect("bind arguments belong to the active heap")
+        let arguments = if args.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(args)
+                .expect("bind arguments belong to the active heap")
         };
-        let environment = if rho.is_null() { factory.nil() } else {
-            factory.wrap(rho).expect("bind environment belongs to the active heap")
+        let environment = if rho.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(rho)
+                .expect("bind environment belongs to the active heap")
         };
-        let (deparse_level, promised) = eval_bind_internal_args(&factory, call, arguments, environment);
+        let (deparse_level, promised) =
+            eval_bind_internal_args(&factory, call, arguments, environment);
         // Ownership survives all forcing, dispatch and expression-name derivation.
         let args = promised.as_raw();
         if deparse_level >= 0
@@ -492,7 +523,6 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
-
         let col_names = first_rbind_colnames(&entries, ncols);
         let has_col_names = !col_names.is_null() && col_names != R_NilValue();
 
@@ -598,7 +628,6 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
             .map(|i| string_at_or_empty(template_names, i))
             .collect();
 
-
         // A source vector and index for every result cell, grouped by column.
         let mut cells: Vec<Vec<(SEXP, R_xlen_t)>> = vec![Vec::new(); ncols as usize];
         let mut result_row_names = Vec::new();
@@ -608,7 +637,6 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
         while !current.is_null() && current != R_NilValue() {
             let value = force_bind_arg(current);
             if value.is_null() || value == R_NilValue() {
-
                 current = CDR(current);
                 continue;
             }
@@ -674,7 +702,11 @@ unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
                             .find(|&j| string_at_or_empty(value_names, j) == *wanted)
                             .unwrap_or(out_col as R_xlen_t)
                     } else {
-                        if ni == 0 { 0 } else { (out_col as R_xlen_t) % ni }
+                        if ni == 0 {
+                            0
+                        } else {
+                            (out_col as R_xlen_t) % ni
+                        }
                     };
                     cells[out_col].push((value, source_col));
                 }
@@ -838,7 +870,6 @@ unsafe fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
     }
 }
 
-
 /// GNU cbind/rbind names: tag always; else level 1 = symbol, level 2 = deparse.
 unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> String {
     unsafe {
@@ -869,7 +900,6 @@ unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -
         crate::mainutils::essentials::elt_to_string(lines, 0)
     }
 }
-
 
 unsafe fn symbol_printname(sym: SEXP) -> String {
     unsafe {
@@ -920,7 +950,6 @@ unsafe fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
     }
 }
 
-
 unsafe fn first_rbind_colnames(
     entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
     ncols: R_xlen_t,
@@ -930,10 +959,8 @@ unsafe fn first_rbind_colnames(
             return R_NilValue();
         }
         for &(arg, _, arg_ncol, _) in entries {
-            let dim = crate::sexp::attrib_core::getAttrib(
-                arg,
-                crate::sexp::attrib_core::R_DimSymbol(),
-            );
+            let dim =
+                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
             if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2 {
                 let dn = crate::sexp::attrib_core::getAttrib(
                     arg,
@@ -954,10 +981,8 @@ unsafe fn first_rbind_colnames(
             if arg_ncol != ncols {
                 continue;
             }
-            let names = crate::sexp::attrib_core::getAttrib(
-                arg,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names =
+                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -970,17 +995,17 @@ unsafe fn first_rbind_colnames(
     }
 }
 
-
-unsafe fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nrows: R_xlen_t) -> SEXP {
+unsafe fn first_vector_names(
+    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
+    nrows: R_xlen_t,
+) -> SEXP {
     unsafe {
         for &(arg, arg_nrow, arg_ncol, _) in entries {
             if arg_ncol != 1 || arg_nrow != nrows {
                 continue;
             }
-            let names = crate::sexp::attrib_core::getAttrib(
-                arg,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names =
+                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -995,20 +1020,15 @@ unsafe fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nro
 
 unsafe fn is_bind_matrix(arg: SEXP) -> bool {
     unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(
-            arg,
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
         !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2
     }
 }
 
 unsafe fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
     unsafe {
-        let dn = crate::sexp::attrib_core::getAttrib(
-            arg,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
+        let dn =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimNamesSymbol());
         if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) <= axis {
             return None;
         }
@@ -1020,7 +1040,11 @@ unsafe fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> O
         {
             return None;
         }
-        Some((0..expected).map(|i| string_at_or_empty(labels, i)).collect())
+        Some(
+            (0..expected)
+                .map(|i| string_at_or_empty(labels, i))
+                .collect(),
+        )
     }
 }
 
@@ -1052,7 +1076,6 @@ unsafe fn first_cbind_rownames(
         first_vector_names(entries, nrows)
     }
 }
-
 
 unsafe fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
     unsafe {
@@ -1098,7 +1121,11 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
                     arg,
                     crate::sexp::attrib_core::R_DimNamesSymbol(),
                 );
-                let cnames = if !cn.is_null() && cn != R_NilValue() && TYPEOF(cn) == SEXPTYPE::VECSXP && XLENGTH(cn) >= 2 {
+                let cnames = if !cn.is_null()
+                    && cn != R_NilValue()
+                    && TYPEOF(cn) == SEXPTYPE::VECSXP
+                    && XLENGTH(cn) >= 2
+                {
                     VECTOR_ELT(cn, 1)
                 } else {
                     R_NilValue()
@@ -1107,7 +1134,11 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
                     columns.push(matrix_column_vector(arg, j, arg_nrow));
                     let child = string_at_or_empty(cnames, j);
                     names.push(if child.is_empty() {
-                        if arg_ncol == 1 { name.clone() } else { format!("{name}{j}") }
+                        if arg_ncol == 1 {
+                            name.clone()
+                        } else {
+                            format!("{name}{j}")
+                        }
                     } else {
                         child
                     });
@@ -1134,7 +1165,6 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
         result
     }
 }
-
 
 pub unsafe fn copy_bind_value(
     dst: SEXP,
@@ -1166,10 +1196,7 @@ pub unsafe fn copy_bind_value(
                     SEXPTYPE::INTSXP => {
                         let v = INTEGER_ELT(src, src_i as c_int);
                         if v == NA_INTEGER {
-                            Rcomplex {
-                                r: NA_REAL,
-                                i: 0.0,
-                            }
+                            Rcomplex { r: NA_REAL, i: 0.0 }
                         } else {
                             Rcomplex {
                                 r: v as f64,
@@ -1180,10 +1207,7 @@ pub unsafe fn copy_bind_value(
                     SEXPTYPE::LGLSXP => {
                         let v = LOGICAL_ELT(src, src_i as c_int);
                         if v == NA_INTEGER {
-                            Rcomplex {
-                                r: NA_REAL,
-                                i: 0.0,
-                            }
+                            Rcomplex { r: NA_REAL, i: 0.0 }
                         } else {
                             Rcomplex {
                                 r: v as f64,
@@ -1264,24 +1288,28 @@ pub unsafe fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) 
             if raw.is_null() {
                 factory.nil()
             } else {
-                factory.wrap(raw).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                })
+                factory
+                    .wrap(raw)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             }
         };
         // Capture every input before allocation can run collection callbacks.
         let result = owned(result);
         let rows = owned(row_names);
         let cols = owned(col_names);
-        let dimnames = factory.allocate(|arena| {
-            let raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-            (!raw.is_null()).then_some(raw)
-        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let dimnames = factory
+            .allocate(|arena| {
+                let raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+                (!raw.is_null()).then_some(raw)
+            })
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let mut dimnames = crate::sexp::object::SexpMut::try_from_checked(dimnames)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        dimnames.try_set_vector_elt(0, rows)
+        dimnames
+            .try_set_vector_elt(0, rows)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        dimnames.try_set_vector_elt(1, cols)
+        dimnames
+            .try_set_vector_elt(1, cols)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let dimnames = dimnames.freeze();
         crate::sexp::attrib_core::setAttrib(
@@ -1492,11 +1520,7 @@ unsafe fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
             t if t == SEXPTYPE::REALSXP => *REAL(x).add(index as usize),
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 let v = *INTEGER(x).add(index as usize);
-                if v == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    v as f64
-                }
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             }
             _ => NA_REAL,
         }
@@ -1644,11 +1668,7 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 *REAL(x).add(i as usize)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    v as f64
-                }
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };
@@ -1683,7 +1703,6 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-
 /// R's `cummin(x)` — cumulative minimum.
 pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1716,7 +1735,11 @@ pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()),
+        );
 
         if result_type == SEXPTYPE::INTSXP {
             let dst = INTEGER(result);
@@ -1790,7 +1813,11 @@ pub unsafe fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol()),
+        );
 
         if result_type == SEXPTYPE::INTSXP {
             let dst = INTEGER(result);
@@ -1870,7 +1897,6 @@ mod rbind_data_frame_tests {
         );
     }
 
-
     #[test]
     fn rbind_preserves_data_frame_shape_and_binds_columns_independently() {
         assert_r_true(
@@ -1902,32 +1928,43 @@ mod rbind_data_frame_tests {
              identical(dimnames(rbind(x0, 2*x0)), list(c('x0', ''), NULL))",
         );
     }
-
 }
-
 
 #[cfg(test)]
 mod owned_bind_argument_tests {
     use super::*;
-    use crate::sexp::{object::{Sexp, PairlistBuilder}, session::RSession};
+    use crate::sexp::{
+        object::{PairlistBuilder, Sexp},
+        session::RSession,
+    };
     use std::{cell::Cell, rc::Rc};
 
     fn inputs<'s>(session: &'s RSession, generic: &std::ffi::CStr) -> (Sexp<'s>, Sexp<'s>) {
         let factory = session.owner_token().unwrap().node_factory();
-        let integer = |values: &[i32]| factory.allocate(|arena| {
-            let raw = arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as _);
-            if raw.is_null() { return None; }
-            unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), INTEGER(raw), values.len()); }
-            Some(raw)
-        }).unwrap();
+        let integer = |values: &[i32]| {
+            factory
+                .allocate(|arena| {
+                    let raw = arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as _);
+                    if raw.is_null() {
+                        return None;
+                    }
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(values.as_ptr(), INTEGER(raw), values.len());
+                    }
+                    Some(raw)
+                })
+                .unwrap()
+        };
         let level = integer(&[1]);
         let x = integer(&[1, 2]);
         let y = integer(&[3, 4]);
         let (generic, x_symbol, y_symbol, label) = unsafe {
-            (factory.wrap(Rf_install(generic.as_ptr())).unwrap(),
-             factory.wrap(Rf_install(c"x".as_ptr())).unwrap(),
-             factory.wrap(Rf_install(c"y".as_ptr())).unwrap(),
-             factory.wrap(Rf_install(c"labelled".as_ptr())).unwrap())
+            (
+                factory.wrap(Rf_install(generic.as_ptr())).unwrap(),
+                factory.wrap(Rf_install(c"x".as_ptr())).unwrap(),
+                factory.wrap(Rf_install(c"y".as_ptr())).unwrap(),
+                factory.wrap(Rf_install(c"labelled".as_ptr())).unwrap(),
+            )
         };
         let environment = session.global_env().unwrap();
         unsafe {
@@ -1968,15 +2005,22 @@ mod owned_bind_argument_tests {
             let factory = session.owner_token().unwrap().node_factory();
             let before = crate::sexp::protect::R_ProtectCount();
             let notifications = collect_at_every_allocation(&session);
-            let (level, promised) = eval_bind_internal_args(&factory, call.as_raw(), arguments,
-                session.global_env().unwrap());
+            let (level, promised) = eval_bind_internal_args(
+                &factory,
+                call.as_raw(),
+                arguments,
+                session.global_env().unwrap(),
+            );
             drop(call);
             assert_eq!(level, 1);
             assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
             crate::sexp::gengc::full_gc();
             let first = promised.try_car().unwrap();
             assert_eq!(first.try_prcode().unwrap().typeof_(), SEXPTYPE::SYMSXP);
-            assert_eq!(first.try_prvalue().unwrap().as_raw(), factory.unbound().as_raw());
+            assert_eq!(
+                first.try_prvalue().unwrap().as_raw(),
+                factory.unbound().as_raw()
+            );
             let second_cell = promised.try_cdr().unwrap();
             assert_eq!(tag_name(second_cell.as_raw()).as_deref(), Some("labelled"));
             let first_value = factory.wrap(force_bind_arg(promised.as_raw())).unwrap();
@@ -1990,31 +2034,56 @@ mod owned_bind_argument_tests {
 
     #[test]
     fn owned_bind_handlers_keep_gnu_names_and_values_during_full_gc_callbacks() {
-        for (generic, expected, names_dimension) in [
-            (c"cbind", [1, 2, 3, 4], 1),
-            (c"rbind", [1, 3, 2, 4], 0),
-        ] {
+        for (generic, expected, names_dimension) in
+            [(c"cbind", [1, 2, 3, 4], 1), (c"rbind", [1, 3, 2, 4], 0)]
+        {
             let session = RSession::new_for_gc_tests();
             session.with_active(|| unsafe {
                 let (call, arguments) = inputs(&session, generic);
                 let factory = session.owner_token().unwrap().node_factory();
                 let notifications = collect_at_every_allocation(&session);
                 let raw = if generic == c"cbind" {
-                    do_cbind(call.as_raw(), R_NilValue(), arguments.as_raw(), session.global_env().unwrap().as_raw())
+                    do_cbind(
+                        call.as_raw(),
+                        R_NilValue(),
+                        arguments.as_raw(),
+                        session.global_env().unwrap().as_raw(),
+                    )
                 } else {
-                    do_rbind(call.as_raw(), R_NilValue(), arguments.as_raw(), session.global_env().unwrap().as_raw())
+                    do_rbind(
+                        call.as_raw(),
+                        R_NilValue(),
+                        arguments.as_raw(),
+                        session.global_env().unwrap().as_raw(),
+                    )
                 };
                 let result = factory.wrap(raw).unwrap();
                 drop(call);
                 drop(arguments);
                 crate::sexp::gengc::full_gc();
                 assert_eq!(result.clone().iter_integer().collect::<Vec<_>>(), expected);
-                let dims = factory.wrap(crate::sexp::attrib_core::getAttrib(result.as_raw(), crate::sexp::attrib_core::R_DimSymbol())).unwrap();
+                let dims = factory
+                    .wrap(crate::sexp::attrib_core::getAttrib(
+                        result.as_raw(),
+                        crate::sexp::attrib_core::R_DimSymbol(),
+                    ))
+                    .unwrap();
                 assert_eq!(dims.iter_integer().collect::<Vec<_>>(), [2, 2]);
-                let names = factory.wrap(crate::sexp::attrib_core::getAttrib(result.as_raw(), crate::sexp::attrib_core::R_DimNamesSymbol())).unwrap();
+                let names = factory
+                    .wrap(crate::sexp::attrib_core::getAttrib(
+                        result.as_raw(),
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    ))
+                    .unwrap();
                 let labels = names.try_vector_elt(names_dimension).unwrap();
-                assert_eq!(labels.try_string_value_elt(0).unwrap().as_deref(), Some("x"));
-                assert_eq!(labels.try_string_value_elt(1).unwrap().as_deref(), Some("labelled"));
+                assert_eq!(
+                    labels.try_string_value_elt(0).unwrap().as_deref(),
+                    Some("x")
+                );
+                assert_eq!(
+                    labels.try_string_value_elt(1).unwrap().as_deref(),
+                    Some("labelled")
+                );
                 assert!(notifications.get() >= 4);
             });
         }

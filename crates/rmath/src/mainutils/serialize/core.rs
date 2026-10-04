@@ -288,7 +288,6 @@ pub struct BinaryReader<'a> {
     persist_hook: SEXP,
     persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
 
-
     persist_hook_data: SEXP,
     persist_cache: std::collections::HashMap<String, SEXP>,
 }
@@ -347,7 +346,11 @@ mod vector_length_fits_tests {
 
     #[test]
     fn extremes_match_the_admission_rule() {
-        assert!(vector_length_fits(i32::MIN, 0, 1, false).unwrap_err().contains("negative"));
+        assert!(
+            vector_length_fits(i32::MIN, 0, 1, false)
+                .unwrap_err()
+                .contains("negative")
+        );
         assert_eq!(vector_length_fits(0, 0, 4, false).unwrap(), 0);
         assert!(vector_length_fits(i32::MAX, 4, 4, false).is_err());
     }
@@ -411,7 +414,6 @@ impl<'a> BinaryReader<'a> {
     pub fn set_c_persist_hook(
         &mut self,
         func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-
 
         data: SEXP,
     ) {
@@ -766,9 +768,7 @@ fn altrep_symbol_name(sym: SEXP) -> String {
         if raw.is_null() {
             return String::new();
         }
-        std::ffi::CStr::from_ptr(raw)
-            .to_string_lossy()
-            .into_owned()
+        std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
     }
 }
 
@@ -853,7 +853,6 @@ unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
                 for i in 0..n as isize {
                     let v = *data.offset(i);
                     if v == crate::sexp::NA_INTEGER {
-
                         SET_STRING_ELT(s, i as R_xlen_t, crate::sexp::globals::R_NaString());
                     } else {
                         let text = v.to_string();
@@ -897,7 +896,6 @@ unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
     }
 }
 
-
 unsafe fn altrep_unserialize_ex(
     info: SEXP,
     state: SEXP,
@@ -924,8 +922,8 @@ unsafe fn altrep_unserialize_ex(
             "compact_realseq" => expand_compact_realseq(state)?,
             "deferred_string" => expand_deferred_string(state)?,
 
-            "wrap_integer" | "wrap_real" | "wrap_logical" | "wrap_string"
-            | "wrap_complex" | "wrap_raw" | "wrap_list" => {
+            "wrap_integer" | "wrap_real" | "wrap_logical" | "wrap_string" | "wrap_complex"
+            | "wrap_raw" | "wrap_list" => {
                 if TYPEOF(state) != SEXPTYPE::LISTSXP {
                     return Err("invalid ALTREP wrapper state".into());
                 }
@@ -956,8 +954,6 @@ unsafe fn altrep_unserialize_ex(
         Ok(val)
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Reference index packing/unpacking
@@ -1236,9 +1232,12 @@ pub unsafe fn WriteItemInternal(
         let _item_guard = protect(s);
         {
             if crate::sexp::altrep::has_extension_raw(s) {
-                let object = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
-                let _operation = crate::sexp::altrep::serialization_guard(&object).unwrap_or_else(|e| error(&e.to_string()));
-                let copy = crate::sexp::altrep::materialized_copy(&object).unwrap_or_else(|e| error(&e.to_string()));
+                let object =
+                    crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
+                let _operation = crate::sexp::altrep::serialization_guard(&object)
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                let copy = crate::sexp::altrep::materialized_copy(&object)
+                    .unwrap_or_else(|e| error(&e.to_string()));
                 WriteItemInternal(copy.clone().as_raw(), ref_table, writer);
                 return;
             }
@@ -1374,7 +1373,11 @@ pub unsafe fn WriteItemInternal(
         if stype == SEXPTYPE::CHARSXP {
             // GNU serializes the full gp field here (ASCII/UTF8/BYTES).
             // Do not use the 2-bit ARGUSED LEVELS() helper.
-            let levs = if s.is_null() { 0 } else { (*s).sxpinfo.gp() as c_int };
+            let levs = if s.is_null() {
+                0
+            } else {
+                (*s).sxpinfo.gp() as c_int
+            };
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };
@@ -1631,22 +1634,16 @@ unsafe fn read_packed_string_vec(
 
 fn first_string_elt(names: SEXP) -> String {
     unsafe {
-        if names.is_null()
-            || TYPEOF(names) != SEXPTYPE::STRSXP
-            || XLENGTH(names) < 1
-        {
+        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) < 1 {
             return String::new();
         }
         let raw = CHAR(STRING_ELT(names, 0));
         if raw.is_null() {
             return String::new();
         }
-        std::ffi::CStr::from_ptr(raw)
-            .to_string_lossy()
-            .into_owned()
+        std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
     }
 }
-
 
 unsafe fn read_item_body(
     reader: &mut BinaryReader,
@@ -1711,8 +1708,6 @@ unsafe fn read_item_body(
             return Ok(restored);
         } else if stype == NILVALUE_SXP {
             Ok(R_NilValue())
-
-
         } else if stype == GLOBALENV_SXP {
             Ok(R_GlobalEnv())
         } else if stype == UNBOUNDVALUE_SXP {
@@ -2016,7 +2011,6 @@ unsafe fn read_item_body(
                 R_NilValue(),
                 R_NilValue(),
                 0,
-
             );
             let _s_guard = protect(s);
             ref_table.add(s);
@@ -2027,7 +2021,6 @@ unsafe fn read_item_body(
             }
             Ok(s)
         } else if stype == SEXPTYPE::S4SXP {
-
             // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
             let s = allocSExp(SEXPTYPE::S4SXP);
             let _s_guard = protect(s);
@@ -2049,8 +2042,6 @@ unsafe fn read_item_body(
         } else {
             Err(format!("ReadItem: unknown type {}", stype))
         }
-
-
     }
 }
 

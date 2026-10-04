@@ -279,9 +279,7 @@ fn rdqelg(
     }
 
     if *nres >= 4 {
-        *abserr = fabs(*result - res3la[2])
-            + fabs(*result - res3la[1])
-            + fabs(*result - res3la[0]);
+        *abserr = fabs(*result - res3la[2]) + fabs(*result - res3la[1]) + fabs(*result - res3la[0]);
         res3la[0] = res3la[1];
         res3la[1] = res3la[2];
         res3la[2] = *result;

@@ -208,7 +208,9 @@ fn flush_uniroot_warnings() {
             );
         }
         if pos > 0 {
-            crate::mainutils::errors::Rf_warning1(c"Inf replaced by maximum positive value".as_ptr());
+            crate::mainutils::errors::Rf_warning1(
+                c"Inf replaced by maximum positive value".as_ptr(),
+            );
         }
     }
 }
@@ -217,9 +219,13 @@ static UNIROOT_NOTE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32
 static UNIROOT_NEG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static UNIROOT_POS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-
 /// GNU `uniroot(f, interval)`.
-pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+pub unsafe fn do_uniroot(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
@@ -266,7 +272,12 @@ pub unsafe fn do_uniroot(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::S
 }
 
 /// GNU `optimize(f, interval)` golden-section min.
-pub unsafe fn do_optimize(_call: crate::sexp::ffi::SEXP, _op: crate::sexp::ffi::SEXP, args: crate::sexp::ffi::SEXP, rho: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+pub unsafe fn do_optimize(
+    _call: crate::sexp::ffi::SEXP,
+    _op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    rho: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
@@ -328,7 +339,7 @@ unsafe fn nlm_eval(
 ) -> (f64, Vec<f64>) {
     unsafe {
         use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_lang2, Rf_ScalarReal};
+        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3, Rf_lang2};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
         let n = x.len();
@@ -397,7 +408,11 @@ unsafe fn nlm_value_only(
         } else {
             crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
         };
-        if XLENGTH(value) >= 1 { *REAL(value) } else { f64::NAN }
+        if XLENGTH(value) >= 1 {
+            *REAL(value)
+        } else {
+            f64::NAN
+        }
     }
 }
 
@@ -593,7 +608,6 @@ pub unsafe extern "C-unwind" fn c_nlm(
     unsafe { do_nlm(call, op, crate::sexp::accessors::CDR(args), rho) }
 }
 
-
 /// GNU `nlminb(start, objective)` 1-d via nlm.
 pub unsafe fn do_nlminb(
     call: crate::sexp::ffi::SEXP,
@@ -640,7 +654,6 @@ unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
         finite_uniroot(crate::mainutils::coerce::asReal(result))
     }
 }
-
 
 /// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
 pub unsafe fn zeroin2(
@@ -699,7 +712,13 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
     let mut e: f64 = 0.0;
     let eval = |z: f64| {
         let y = unsafe { zeroin_call(z, info) };
-        if y.is_finite() { y } else if y == f64::NEG_INFINITY { f64::MIN } else { f64::MAX }
+        if y.is_finite() {
+            y
+        } else if y == f64::NEG_INFINITY {
+            f64::MIN
+        } else {
+            f64::MAX
+        }
     };
     let mut fx = eval(x);
     let mut fv = fx;
@@ -720,7 +739,11 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
             q = (x - v) * (fx - fw);
             p = (x - v) * q - (x - w) * r;
             q = (q - r) * 2.0;
-            if q > 0.0 { p = -p; } else { q = -q; }
+            if q > 0.0 {
+                p = -p;
+            } else {
+                q = -q;
+            }
             r = e;
             e = d;
         }
@@ -734,26 +757,46 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
                 d = if x >= xm { -tol1 } else { tol1 };
             }
         }
-        let u = if d.abs() >= tol1 { x + d } else if d > 0.0 { x + tol1 } else { x - tol1 };
+        let u = if d.abs() >= tol1 {
+            x + d
+        } else if d > 0.0 {
+            x + tol1
+        } else {
+            x - tol1
+        };
         let fu = eval(u);
         if fu <= fx {
-            if u < x { b = x; } else { a = x; }
-            v = w; w = x; x = u;
-            fv = fw; fw = fx; fx = fu;
+            if u < x {
+                b = x;
+            } else {
+                a = x;
+            }
+            v = w;
+            w = x;
+            x = u;
+            fv = fw;
+            fw = fx;
+            fx = fu;
         } else {
-            if u < x { a = u; } else { b = u; }
+            if u < x {
+                a = u;
+            } else {
+                b = u;
+            }
             if fu <= fw || w == x {
-                v = w; fv = fw;
-                w = u; fw = fu;
+                v = w;
+                fv = fw;
+                w = u;
+                fw = fu;
             } else if fu <= fv || v == x || v == w {
-                v = u; fv = fu;
+                v = u;
+                fv = fu;
             }
         }
     }
     let _ = eps;
     x
 }
-
 
 /// `.External2(C_do_fmin, f, lower, upper, tol)` — scalar minimizer.
 pub unsafe fn do_fmin(
@@ -783,7 +826,3 @@ pub unsafe fn do_fmin(
         out
     }
 }
-
-
-
-

@@ -107,7 +107,12 @@ pub extern "C" fn R_pretty(
                 "R_pretty(): very small range 'cell'={cell}, increased to {subsmall}"
             ))
             .unwrap_or_default();
-            unsafe { crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr()); }
+            unsafe {
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    msg.as_ptr(),
+                );
+            }
         }
         cell = subsmall;
     } else if cell > dbL_MAX / max_f {
@@ -116,7 +121,9 @@ pub extern "C" fn R_pretty(
             "R_pretty(): very large range 'cell'={cell}, decreased to {shrunk}"
         ))
         .unwrap_or_default();
-        unsafe { crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr()); }
+        unsafe {
+            crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
+        }
         cell = shrunk;
     }
 
@@ -139,8 +146,20 @@ pub extern "C" fn R_pretty(
         }
     }
 
-    let lo_use = if lo_.is_finite() { lo_ } else if lo_.is_sign_negative() { -cell } else { cell };
-    let up_use = if up_.is_finite() { up_ } else if up_.is_sign_negative() { -cell } else { cell };
+    let lo_use = if lo_.is_finite() {
+        lo_
+    } else if lo_.is_sign_negative() {
+        -cell
+    } else {
+        cell
+    };
+    let up_use = if up_.is_finite() {
+        up_
+    } else if up_.is_sign_negative() {
+        -cell
+    } else {
+        cell
+    };
     let mut ns = floor(lo_use / unit + ROUNDING_EPS);
     let mut nu = ceil(up_use / unit - ROUNDING_EPS);
     if !ns.is_finite() {

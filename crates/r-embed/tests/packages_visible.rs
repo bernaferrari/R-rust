@@ -62,11 +62,10 @@ fn packages_visible_matches_gnu_membership() {
         1,
         "path.package(\"stats\") length, got {stats_paths:?}"
     );
-    let path = stats_paths[0].as_deref().expect("path.package(\"stats\") was NA");
-    assert!(
-        !path.is_empty(),
-        "path.package(\"stats\") was empty"
-    );
+    let path = stats_paths[0]
+        .as_deref()
+        .expect("path.package(\"stats\") was NA");
+    assert!(!path.is_empty(), "path.package(\"stats\") was empty");
 
     session
         .eval_result("path.package(\"notapackage\", quiet = TRUE)")

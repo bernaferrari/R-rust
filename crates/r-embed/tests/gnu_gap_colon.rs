@@ -10,7 +10,11 @@ use r_embed::RSession;
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
         "as.raw(c({}))",
-        bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
+        bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
     )
 }
 
@@ -21,24 +25,52 @@ fn load(session: &mut RSession, bytes: &[u8]) {
 }
 
 fn unique_stream_offset(bytes: &[u8], words: &[i32]) -> usize {
-    let encoded = words.iter().flat_map(|word| word.to_be_bytes()).collect::<Vec<_>>();
+    let encoded = words
+        .iter()
+        .flat_map(|word| word.to_be_bytes())
+        .collect::<Vec<_>>();
     let offsets = bytes
         .windows(encoded.len())
         .enumerate()
         .filter_map(|(offset, candidate)| (candidate == encoded).then_some(offset))
         .collect::<Vec<_>>();
-    assert_eq!(offsets.len(), 1, "fixture must contain one exact instruction stream");
+    assert_eq!(
+        offsets.len(),
+        1,
+        "fixture must contain one exact instruction stream"
+    );
     offsets[0]
 }
 
 #[test]
 fn interpreted_colon_values_and_typeof_match_gnu() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("identical(1:5, 1:5) && typeof(1:5) == 'integer'").unwrap().trim(), "[1] TRUE");
-    assert_eq!(session.eval("identical(5:1, as.integer(c(5,4,3,2,1))) && typeof(5:1) == 'integer'").unwrap().trim(), "[1] TRUE");
+    assert_eq!(
+        session
+            .eval("identical(1:5, 1:5) && typeof(1:5) == 'integer'")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval("identical(5:1, as.integer(c(5,4,3,2,1))) && typeof(5:1) == 'integer'")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
     // GNU constant-folds 1:5.5 to integer 1:5.
-    assert_eq!(session.eval("identical(1:5.5, 1:5) && typeof(1:5.5) == 'integer'").unwrap().trim(), "[1] TRUE");
-    assert_eq!(session.eval("identical(1:5, seq_len(5))").unwrap().trim(), "[1] TRUE");
+    assert_eq!(
+        session
+            .eval("identical(1:5.5, 1:5) && typeof(1:5.5) == 'integer'")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session.eval("identical(1:5, seq_len(5))").unwrap().trim(),
+        "[1] TRUE"
+    );
 }
 
 #[test]
@@ -74,7 +106,9 @@ fn interpreted_seq_along_and_seq_len_match_gnu() {
     );
     assert_eq!(
         session
-            .eval("identical(seq_along(c(a=10,b=20)), 1:2) && is.null(names(seq_along(c(a=10,b=20))))")
+            .eval(
+                "identical(seq_along(c(a=10,b=20)), 1:2) && is.null(names(seq_along(c(a=10,b=20))))"
+            )
             .unwrap()
             .trim(),
         "[1] TRUE"
@@ -93,7 +127,9 @@ fn rport_cmpfun_colon_and_seq_match_gnu_values() {
     );
     assert_eq!(
         session
-            .eval("g <- compiler::cmpfun(function(x) seq_along(x)); identical(g(letters[1:3]), 1:3)")
+            .eval(
+                "g <- compiler::cmpfun(function(x) seq_along(x)); identical(g(letters[1:3]), 1:3)"
+            )
             .unwrap()
             .trim(),
         "[1] TRUE"

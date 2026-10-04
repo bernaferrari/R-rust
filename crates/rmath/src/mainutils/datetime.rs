@@ -100,11 +100,7 @@ pub(crate) unsafe fn posixlt_real_elt(col: SEXP, i: usize) -> f64 {
             *REAL(col).add(i)
         } else if TYPEOF(col) == SEXPTYPE::INTSXP || TYPEOF(col) == SEXPTYPE::LGLSXP {
             let v = *INTEGER(col).add(i);
-            if v == NA_INTEGER {
-                NA_REAL
-            } else {
-                v as f64
-            }
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
         } else {
             NA_REAL
         }
@@ -158,10 +154,6 @@ pub(crate) unsafe fn recycle_posixlt_component(x: SEXP, n: R_xlen_t) -> SEXP {
         y
     }
 }
-
-
-
-
 
 /// POSIXlt component names.
 pub static ltnames: [&str; 11] = [
@@ -893,7 +885,6 @@ fn tz_is_utc(tz: &str) -> bool {
     )
 }
 
-
 unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
     unsafe {
         if lt.is_null() || lt == R_NilValue() || TYPEOF(lt) != SEXPTYPE::VECSXP {
@@ -941,7 +932,6 @@ unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
     }
 }
 
-
 /// GNU `as.POSIXlt.default` uses `missing(tz)`. A supplied non-empty tz
 /// only relabels `tzone` on an existing POSIXlt.
 unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
@@ -949,12 +939,9 @@ unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
-            let named_tz = !tag.is_null()
-                && tag != R_NilValue()
-                && TYPEOF(tag) == SEXPTYPE::SYMSXP
-                && {
-                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                        .to_string_lossy();
+            let named_tz =
+                !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP && {
+                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
                     name == "tz"
                 };
             let positional = tag.is_null() || tag == R_NilValue();
@@ -974,10 +961,13 @@ unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
     }
 }
 
-
 unsafe fn set_posixlt_balanced(ans: SEXP) {
     unsafe {
-        setAttrib(ans, Rf_install(c"balanced".as_ptr()), Rf_ScalarLogical(TRUE));
+        setAttrib(
+            ans,
+            Rf_install(c"balanced".as_ptr()),
+            Rf_ScalarLogical(TRUE),
+        );
     }
 }
 
@@ -1027,7 +1017,8 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
         let tzsi = TzSetup::prepare();
         if !is_utc {
             if tz.is_empty() {
-                if let Some(env_tz) = crate::tzone::timezone_override().or_else(|| std::env::var("TZ").ok())
+                if let Some(env_tz) =
+                    crate::tzone::timezone_override().or_else(|| std::env::var("TZ").ok())
                 {
                     tzsi.set(&env_tz);
                 }
@@ -1092,7 +1083,6 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
             setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), names);
         }
         ans
-
     }
 }
 
@@ -1118,7 +1108,6 @@ pub unsafe fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
         )
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // do_asPOSIXlt -- .Internal(as.POSIXlt(x, tz))
@@ -1228,13 +1217,11 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 // GNU datetime.c:1240-1259 (no errno): -1 is NA unless
                 // this is the epoch-minus-one gotcha (sec==59) or the
                 // sec=58 probe returns -2.
-                let failed = tmp == -1.0
-                    && tm.tm_sec != 59
-                    && {
-                        let mut probe = tm;
-                        probe.tm_sec = 58;
-                        mktime0(&mut probe, !is_utc) != -2.0
-                    };
+                let failed = tmp == -1.0 && tm.tm_sec != 59 && {
+                    let mut probe = tm;
+                    probe.tm_sec = 58;
+                    mktime0(&mut probe, !is_utc) != -2.0
+                };
                 *REAL(ans).add(iu) = if failed {
                     NA_REAL
                 } else {
@@ -1254,8 +1241,6 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         ans
     }
 }
-
-
 
 fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
     let np = digits.min(6);
@@ -1278,7 +1263,14 @@ fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
     np
 }
 
-fn expand_os_format(fmt: &str, secs: f64, fsecs: f64, tm_sec: i32, digits: i32, ns0: &mut i32) -> String {
+fn expand_os_format(
+    fmt: &str,
+    secs: f64,
+    fsecs: f64,
+    tm_sec: i32,
+    digits: i32,
+    ns0: &mut i32,
+) -> String {
     let Some(pos) = fmt.find("%OS") else {
         return fmt.to_string();
     };
@@ -1300,7 +1292,11 @@ fn expand_os_format(fmt: &str, secs: f64, fsecs: f64, tm_sec: i32, digits: i32, 
         let s = tm_sec as f64 + (secs - fsecs);
         let t = 10f64.powi(ns);
         let s = ((s * t) as i32) as f64 / t;
-        out.push_str(&format!("{s:0width$.prec$}", width = (ns + 3) as usize, prec = ns as usize));
+        out.push_str(&format!(
+            "{s:0width$.prec$}",
+            width = (ns + 3) as usize,
+            prec = ns as usize
+        ));
         out.push_str(&fmt[pos + nused..]);
     } else {
         out.push_str("%S");
@@ -1316,7 +1312,8 @@ unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
         let mut positional = R_NilValue();
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
-            let tagged = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let tagged = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
+            {
                 std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
                     .to_string_lossy()
                     .into_owned()
@@ -1343,9 +1340,6 @@ unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
 unsafe fn match_named_then_positional(call: SEXP, args: SEXP, formals: &[&str]) -> Vec<SEXP> {
     unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, formals) }
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))
@@ -1482,8 +1476,6 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             ctm.tm_yday = posixlt_int_elt(VECTOR_ELT(x, 7), iu);
             ctm.tm_isdst = posixlt_int_elt(VECTOR_ELT(x, 8), iu);
 
-
-
             if !R_FINITE(secs) {
                 // NA, NaN, Inf, -Inf — GNU datetime.c uses NA_STRING for NA.
                 if R_IsNA(secs) {
@@ -1537,14 +1529,8 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                             .to_str()
                             .unwrap_or("%Y-%m-%d %H:%M:%S")
                     };
-                    let fmt_exp = expand_os_format(
-                        fmt_raw,
-                        secs,
-                        fsecs,
-                        ctm.tm_sec,
-                        digits,
-                        &mut ns0,
-                    );
+                    let fmt_exp =
+                        expand_os_format(fmt_raw, secs, fsecs, ctm.tm_sec, digits, &mut ns0);
 
                     let mut sf_tm_ctm: sf_tm = std::mem::zeroed();
                     sf_tm_ctm.tm_sec = ctm.tm_sec;
@@ -1570,10 +1556,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     if res == 0 {
                         // GNU datetime.c: overflow is an error except formats
                         // that may legitimately produce zero bytes.
-                        if fmt_exp != "%Z"
-                            && fmt_exp != "%z"
-                            && fmt_exp != "%P"
-                            && fmt_exp != "%p"
+                        if fmt_exp != "%Z" && fmt_exp != "%z" && fmt_exp != "%P" && fmt_exp != "%p"
                         {
                             std::panic::panic_any(RError {
                                 message: "output string exceeded 2048 bytes".to_string(),
@@ -1581,9 +1564,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                         }
                         let mut out = String::new();
                         if usetz {
-                            if let Some(zone) =
-                                posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
-                            {
+                            if let Some(zone) = posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn) {
                                 out.push(' ');
                                 out.push_str(&zone);
                             }
@@ -1594,9 +1575,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                         let s = std::str::from_utf8(&buf[..res as usize]).unwrap_or("");
                         let mut out = s.to_string();
                         if usetz {
-                            if let Some(zone) =
-                                posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn)
-                            {
+                            if let Some(zone) = posixlt_usetz_zone(x, tzone, iu, ctm.tm_isdst, nn) {
                                 out.push(' ');
                                 out.push_str(&zone);
                             }
@@ -1606,7 +1585,6 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     }
                 }
             }
-
         }
 
         ans
@@ -1883,8 +1861,6 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                             tm.tm_isdst = tm2.tm_isdst;
                         }
                     }
-
-
                 }
                 invalid = validate_tm(&mut tm) != 0;
             }
@@ -1938,7 +1914,6 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         }
         set_posixlt_balanced(ans);
 
-
         // The base closure post-processes non-finite inputs: elements of
         // 'x' equal to "Inf" / "-Inf" are replaced by
         // as.POSIXlt.POSIXct(.POSIXct(+-Inf)), i.e. sec = +-Inf with all
@@ -1984,18 +1959,12 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-
         ans
     }
 }
 
 /// GNU `as.POSIXlt(x, tz="")`.
-pub unsafe fn do_as_POSIXlt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -2051,7 +2020,6 @@ pub unsafe fn do_as_POSIXlt(
             || TYPEOF(x) == SEXPTYPE::INTSXP
             || TYPEOF(x) == SEXPTYPE::LGLSXP
         {
-
             if tz_s.is_empty() {
                 let attr = getAttrib(x, Rf_install(c"tzone".as_ptr()));
                 if !attr.is_null()
@@ -2126,7 +2094,6 @@ pub unsafe fn do_as_POSIXlt(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "character string is not in a standard unambiguous format",
             );
-
         }
         let (text, fmt) = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
             let formatted = crate::mainutils::essentials::do_format_Date(
@@ -2151,19 +2118,11 @@ pub unsafe fn do_as_POSIXlt(
             Rf_cons(text, Rf_cons(fmt_s, Rf_cons(tz, R_NilValue()))),
             env,
         )
-
-
     }
 }
 
-
 /// GNU `format.POSIXlt(x, format, usetz, digits)`.
-pub unsafe fn do_format_POSIXlt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_format_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut format = format_posix_named_arg(args, "format", 0);
@@ -2200,7 +2159,10 @@ pub unsafe fn do_format_POSIXlt(
         } else {
             opt_digits
         };
-        if explicit_digits && digits != opt_digits && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1
+        if explicit_digits
+            && digits != opt_digits
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+            && XLENGTH(x) >= 1
         {
             let mut bare_os = false;
             for i in 0..nf {
@@ -2306,7 +2268,10 @@ pub unsafe fn do_format_POSIXlt(
         let out = do_formatPOSIXlt(
             call,
             op,
-            Rf_cons(x, Rf_cons(format, Rf_cons(usetz, Rf_cons(digs, R_NilValue())))),
+            Rf_cons(
+                x,
+                Rf_cons(format, Rf_cons(usetz, Rf_cons(digs, R_NilValue()))),
+            ),
             env,
         );
         let _out = protect(out);
@@ -2331,12 +2296,7 @@ pub unsafe fn do_format_POSIXlt(
 }
 
 /// GNU `format.POSIXct(x, format, tz, usetz, digits)`.
-pub unsafe fn do_format_POSIXct(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_format_POSIXct(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let format = format_posix_named_arg(args, "format", 0);
@@ -2390,8 +2350,6 @@ pub unsafe fn do_format_POSIXct(
     }
 }
 
-
-
 unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
@@ -2403,12 +2361,7 @@ unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
 }
 
 /// GNU `weekdays.POSIXt(x)`.
-pub unsafe fn do_weekdays_POSIXt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_weekdays_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_weekdays(call, op, Rf_cons(x, CDR(args)), env)
@@ -2416,12 +2369,7 @@ pub unsafe fn do_weekdays_POSIXt(
 }
 
 /// GNU `months.POSIXt(x)`.
-pub unsafe fn do_months_POSIXt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_months_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_months(call, op, Rf_cons(x, CDR(args)), env)
@@ -2429,12 +2377,7 @@ pub unsafe fn do_months_POSIXt(
 }
 
 /// GNU `quarters.POSIXt(x)`.
-pub unsafe fn do_quarters_POSIXt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_quarters_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_quarters(call, op, Rf_cons(x, CDR(args)), env)
@@ -2442,15 +2385,9 @@ pub unsafe fn do_quarters_POSIXt(
 }
 
 /// GNU `as.character.POSIXt(x, digits, OutDec)`.
-pub unsafe fn do_as_character_POSIXt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_character_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let matched = match_named_then_positional(call, args, &["x", "digits", "OutDec", "..."]);
-
 
         let x = matched[0];
         let digits_arg = matched[1];
@@ -2477,9 +2414,7 @@ pub unsafe fn do_as_character_POSIXt(
             ".".to_string()
         };
 
-
         let lt = if is_lt {
-
             x
         } else {
             do_as_POSIXlt(call, op, Rf_cons(x, R_NilValue()), env)
@@ -2541,12 +2476,7 @@ pub unsafe fn do_as_character_POSIXt(
             } else if !ok {
                 Some(as_character_real(call, op, env, s, &outdec))
             } else {
-                let date = format!(
-                    "{}-{:02}-{:02}",
-                    1900 + year,
-                    mon + 1,
-                    mday
-                );
+                let date = format!("{}-{:02}-{:02}", 1900 + year, mon + 1, mday);
                 if time == 0.0 {
                     Some(date)
                 } else {
@@ -2585,7 +2515,6 @@ pub unsafe fn do_as_character_POSIXt(
             }
         }
         out
-
     }
 }
 
@@ -2603,7 +2532,6 @@ impl Drop for ScipenGuard {
         }
     }
 }
-
 
 fn r_round_digits(x: f64, digits: i32) -> f64 {
     if !x.is_finite() {
@@ -2638,12 +2566,7 @@ unsafe fn as_character_real(call: SEXP, op: SEXP, env: SEXP, value: f64, outdec:
 }
 
 /// GNU `as.double.POSIXlt <- function(x, ...) as.double(as.POSIXct(x))`.
-pub unsafe fn do_as_double_POSIXt(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_double_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
@@ -2651,12 +2574,7 @@ pub unsafe fn do_as_double_POSIXt(
         {
             x
         } else {
-            crate::mainutils::essentials::do_as_POSIXct(
-                call,
-                op,
-                Rf_cons(x, R_NilValue()),
-                env,
-            )
+            crate::mainutils::essentials::do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), env)
         };
         let _ct = protect(ct);
         let n = XLENGTH(ct);
@@ -2669,7 +2587,11 @@ pub unsafe fn do_as_double_POSIXt(
         } else if TYPEOF(ct) == SEXPTYPE::INTSXP {
             for i in 0..n {
                 let v = *INTEGER(ct).add(i as usize);
-                *REAL(out).add(i as usize) = if v == NA_INTEGER { NA_REAL } else { f64::from(v) };
+                *REAL(out).add(i as usize) = if v == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    f64::from(v)
+                };
             }
         }
 
@@ -2680,11 +2602,6 @@ pub unsafe fn do_as_double_POSIXt(
         out
     }
 }
-
-
-
-
-
 
 /// Build a CString from an owned string (helper for the code above).
 fn mk_char_str(s: &str) -> CString {
@@ -2731,11 +2648,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 *REAL(x).add(iu)
             } else {
                 let v = *INTEGER(x).add(iu);
-                if v == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    v as f64
-                }
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             };
             let mut tm = stm::new();
             let valid = julian2dtime(x_i, &mut tm);
@@ -2812,7 +2725,6 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         for i in 0..n {
             let iu = i as usize;
             let secs = posixlt_real_elt(VECTOR_ELT(x, 0), iu);
-
 
             let fsecs = secs.floor();
 
@@ -2914,7 +2826,8 @@ unsafe fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {
             }
         }
         let nm = getAttrib(src, R_NamesSymbol());
-        if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP && XLENGTH(nm) > 0 {
+        if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP && XLENGTH(nm) > 0
+        {
             let nmi = XLENGTH(nm);
             let out_nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _g = protect(out_nm);
@@ -2940,7 +2853,11 @@ unsafe fn balance_posixlt_fill_only(
         for i in 0..nn {
             let iu = i as usize;
             if nlen[iu] != n {
-                SET_VECTOR_ELT(ans, i as R_xlen_t, recycle_vector_mod(VECTOR_ELT(x, i as R_xlen_t), n));
+                SET_VECTOR_ELT(
+                    ans,
+                    i as R_xlen_t,
+                    recycle_vector_mod(VECTOR_ELT(x, i as R_xlen_t), n),
+                );
             }
         }
         recycle_posixlt_year_names(ans, x, n);
@@ -2955,7 +2872,6 @@ unsafe fn balance_posixlt_fill_only(
         ans
     }
 }
-
 
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
 pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -2987,8 +2903,6 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             return out;
         }
 
-
-
         let n_comp = LENGTH(x);
         if n_comp < 9 {
             std::panic::panic_any(RError {
@@ -3010,7 +2924,6 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         if fill_only {
             return balance_posixlt_fill_only(x, n, &nlen, nn, keep_class);
         }
-
 
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t);
         let _ans_guard = protect(ans);
@@ -3126,7 +3039,6 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                 };
                 *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = if valid { gmtoff } else { NA_INTEGER };
             }
-
         }
 
         setAttrib(ans, R_NamesSymbol(), ansnames);
@@ -3147,7 +3059,6 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             Rf_ScalarLogical(TRUE),
         );
         ans
-
     }
 }
 

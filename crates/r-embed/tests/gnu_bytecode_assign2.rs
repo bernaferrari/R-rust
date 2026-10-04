@@ -44,11 +44,17 @@ fn imported_gnu_assign2_dollar_writes_parent_binding() {
         include_bytes!("fixtures/gnu-bytecode-assign2/dollar.rds"),
     );
     assert_eq!(
-        session.eval("identical(f(), list(a=1L, b=2L))").unwrap().trim(),
+        session
+            .eval("identical(f(), list(a=1L, b=2L))")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
     assert_eq!(
-        session.eval("identical(x, list(a=1L, b=2L))").unwrap().trim(),
+        session
+            .eval("identical(x, list(a=1L, b=2L))")
+            .unwrap()
+            .trim(),
         "[1] TRUE"
     );
 }
@@ -108,10 +114,7 @@ fn malformed_startassign2_empty_stack_fails_before_source_fallback() {
 
     let mut session = RSession::new().unwrap();
     session.eval("x <- list(a=0L)").unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

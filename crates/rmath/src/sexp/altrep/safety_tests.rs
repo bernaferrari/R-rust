@@ -2,8 +2,8 @@
 //! closure has returned its new node to the checked handle layer.
 use super::*;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 fn collect_again_after_each_allocation(session: &RSession) {

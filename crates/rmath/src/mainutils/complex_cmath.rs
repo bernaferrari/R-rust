@@ -112,7 +112,6 @@ pub fn mycpow_rcomplex(x: Rcomplex, y: Rcomplex) -> Rcomplex {
     from_complex(mycpow(to_complex(&x), to_complex(&y)))
 }
 
-
 // ---------------------------------------------------------------------------
 // Complex math fallback implementations
 // ---------------------------------------------------------------------------
@@ -691,7 +690,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         *py.add(i) = (*px.add(i)).r;
                     }
                     return keep_shape(y, x);
-
                 }
                 2 => {
                     // Im
@@ -704,7 +702,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         *py.add(i) = (*px.add(i)).i;
                     }
                     return keep_shape(y, x);
-
                 }
                 3 | 6 => {
                     // Mod / abs
@@ -718,7 +715,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         *py.add(i) = xi.r.hypot(xi.i);
                     }
                     return keep_shape(y, x);
-
                 }
                 4 => {
                     // Arg
@@ -732,7 +728,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         *py.add(i) = xi.i.atan2(xi.r);
                     }
                     return keep_shape(y, x);
-
                 }
                 5 => {
                     // Conj
@@ -747,7 +742,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         (*py.add(i)).i = -xi.i;
                     }
                     return keep_shape(y, x);
-
                 }
                 _ => {
                     // Default: treat as Re
@@ -760,7 +754,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                         *py.add(i) = (*px.add(i)).r;
                     }
                     return keep_shape(y, x);
-
                 }
             }
         } else if xtype == SEXPTYPE::REALSXP
@@ -771,8 +764,7 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             let x = if xtype == SEXPTYPE::REALSXP {
                 x
             } else {
-                coerced_holder =
-                    crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.0);
+                coerced_holder = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.0);
                 coerced_holder
             };
             let _guard = protect(x);
@@ -823,7 +815,6 @@ pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 }
             }
             keep_shape(y, x)
-
         } else {
             R_NilValue()
         }

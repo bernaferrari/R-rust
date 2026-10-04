@@ -602,7 +602,11 @@ mod tests {
         session.with_protected(|| {
             for &p in &[0.0, 0.125, 0.5, 0.875, 1.0] {
                 assert_eq!(qpois_inner(p, 0.0, true, false), 0.0, "qpois({p}, 0)");
-                assert_eq!(qpois_inner(p, 0.0, false, false), 0.0, "qpois({p}, 0, lower=F)");
+                assert_eq!(
+                    qpois_inner(p, 0.0, false, false),
+                    0.0,
+                    "qpois({p}, 0, lower=F)"
+                );
             }
             assert_eq!(qpois_inner(1.0, 1.0, true, false), f64::INFINITY);
             assert_eq!(qpois_inner(0.0, 1.0, true, false), 0.0);

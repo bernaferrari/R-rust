@@ -306,7 +306,6 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "lockBinding"
             | "lockEnvironment"
             | "makeActiveBinding"
-
             | "attach"
             | "detach"
             | "source"
@@ -314,8 +313,6 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "withAutoprint"
             | "dput"
             | "layout"
-
-
     )
 }
 

@@ -905,7 +905,8 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
                     *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
                         crate::sexp::ffi::NA_INTEGER;
-                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) =
+                        crate::sexp::ffi::NA_INTEGER;
                     *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
                     *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
                     *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
@@ -1643,10 +1644,7 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         for i in 0..n as usize {
             let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null()
-                || elt == R_NilValue()
-                || elt == crate::sexp::globals::R_NaString()
-            {
+            if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString() {
                 *pa.add(i) = -1;
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
@@ -2060,8 +2058,7 @@ mod tests {
             let too_long = "a".repeat(libc::PATH_MAX as usize);
             let bytes = std::ffi::CString::new(too_long).unwrap();
             let path = crate::sexp::constructors::Rf_mkString(bytes.as_ptr());
-            let args =
-                crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
+            let args = crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
             let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 do_dircreate(
                     std::ptr::null_mut(),
@@ -2086,7 +2083,6 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
-
 
         let s = CAR(args);
         let n = LENGTH(s);
@@ -2198,7 +2194,10 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             return ans;
         }
         let what = crate::sexp::accessors::CAR(_args);
-        if what.is_null() || what == crate::sexp::globals::R_NilValue() || what == crate::sexp::globals::R_MissingArg() {
+        if what.is_null()
+            || what == crate::sexp::globals::R_NilValue()
+            || what == crate::sexp::globals::R_MissingArg()
+        {
             return ans;
         }
         let nwhat = crate::sexp::accessors::XLENGTH(what);
@@ -2229,7 +2228,8 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
                 }
             }
             if !found {
-                *crate::sexp::accessors::LOGICAL(out).add(i as usize) = crate::sexp::ffi::NA_LOGICAL;
+                *crate::sexp::accessors::LOGICAL(out).add(i as usize) =
+                    crate::sexp::ffi::NA_LOGICAL;
             }
             SET_STRING_ELT(
                 out_names,
@@ -2237,7 +2237,11 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
                 Rf_mkChar(CString::new(wanted).unwrap_or_default().as_ptr()),
             );
         }
-        crate::eval::attrib_core::setAttrib(out, crate::eval::attrib_core::R_NamesSymbol(), out_names);
+        crate::eval::attrib_core::setAttrib(
+            out,
+            crate::eval::attrib_core::R_NamesSymbol(),
+            out_names,
+        );
         out
     }
 }

@@ -14,7 +14,6 @@ use crate::mainutils::format::{
     compact_int_width, compact_real_field, formatComplex, formatComplexS, formatInteger,
     formatIntegerS, formatLogicalS, formatRaw, formatRawS, formatReal, formatRealS, formatStringS,
 };
-use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
 use crate::mainutils::printutils::{
     EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0,
     EncodeString as encode_string, Rprt_adj,
@@ -23,6 +22,7 @@ use crate::sexp::accessors::{
     CHAR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL,
     REAL_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
+use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;

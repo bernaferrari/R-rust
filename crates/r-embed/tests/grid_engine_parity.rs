@@ -3,9 +3,7 @@
 use r_embed::RSession;
 
 fn report(session: &mut RSession, width: u32, height: u32, code: &str) -> String {
-    session
-        .render_with_dimensions(code, width, height)
-        .unwrap();
+    session.render_with_dimensions(code, width, height).unwrap();
     // `eval` prints a length-1 character as `[1] "..."`. `cat` is the value.
     session.eval("cat(parity)").unwrap().trim().to_string()
 }
@@ -14,7 +12,11 @@ fn report(session: &mut RSession, width: u32, height: u32, code: &str) -> String
 fn named_viewport_navigation_matches_gnu_r_4_6_1() {
     // 192x96 px at 96 dpi is a 2 by 1 inch device, so inch units stay exact.
     let mut session = RSession::new().unwrap();
-    let parity = report(&mut session, 192, 96, r#"
+    let parity = report(
+        &mut session,
+        192,
+        96,
+        r#"
         library(grid)
         grid.newpage()
         pushViewport(viewport(name='outer', width=unit(1,'inches')))
@@ -114,7 +116,8 @@ fn named_viewport_navigation_matches_gnu_r_4_6_1() {
             up_path, up_name, up0, up0_name, auto,
             push_err, down_err, stay_name, fmt(stay_w), up_neg, pop_neg, up_far, up_far_name,
             sep='|')
-    "#);
+    "#,
+    );
     assert_eq!(
         parity,
         [
@@ -139,7 +142,11 @@ fn string_and_grob_widths_match_gnu_r_4_6_1() {
     // this engine's own string metrics (DejaVu), which is what GNU scales too.
     // Absolute Helvetica inches are not the contract.
     let mut session = RSession::new().unwrap();
-    let parity = report(&mut session, 192, 96, r#"
+    let parity = report(
+        &mut session,
+        192,
+        96,
+        r#"
         library(grid)
         grid.newpage()
         near <- function(a, b) isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance=1e-4))
@@ -211,7 +218,8 @@ fn string_and_grob_widths_match_gnu_r_4_6_1() {
         empty <- tryCatch(stringWidth(character(0)), error=function(e) conditionMessage(e))
         nulls <- tryCatch(stringWidth(NULL), error=function(e) conditionMessage(e))
         parity <- paste(c(ifelse(flags, 'T', 'F'), empty, nulls), collapse='|')
-    "#);
+    "#,
+    );
     let mut expected = vec!["T"; 35];
     expected.push("'x' and 'units' must have length > 0");
     expected.push("'x' and 'units' must have length > 0");

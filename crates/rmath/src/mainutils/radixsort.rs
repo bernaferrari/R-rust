@@ -1124,7 +1124,10 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             *o = -1;
         }
         let xtype = TYPEOF(x);
-        let xd: *mut c_void = if matches!(SEXPTYPE(xtype), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP) {
+        let xd: *mut c_void = if matches!(
+            SEXPTYPE(xtype),
+            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP
+        ) {
             DATAPTR(x)
         } else {
             ptr::null_mut()

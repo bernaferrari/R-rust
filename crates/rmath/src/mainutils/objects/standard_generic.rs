@@ -103,7 +103,8 @@ pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> S
         let mut cptr = R_GlobalContext();
         while !cptr.is_null() {
             let cf = (*cptr).callflag;
-            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 && (*cptr).cloenv.as_raw() == env
+            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
+                && (*cptr).cloenv.as_raw() == env
             {
                 break;
             }

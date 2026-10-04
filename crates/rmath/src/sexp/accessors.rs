@@ -65,8 +65,8 @@ fn header_read(pointer: SEXP, failure: &str) -> Option<HeaderRead> {
             origin: HeaderOrigin::Singleton(singleton),
         });
     }
-    let (projection, node, snapshot) = super::memory::checked_header(pointer)
-        .unwrap_or_else(|| super::context::r_error(failure));
+    let (projection, node, snapshot) =
+        super::memory::checked_header(pointer).unwrap_or_else(|| super::context::r_error(failure));
     Some(HeaderRead {
         snapshot,
         origin: HeaderOrigin::Managed { projection, node },

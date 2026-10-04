@@ -1374,7 +1374,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         let _atom = 1e-3 * (zmax - zmin);
 
         /* Contour drawing is not implemented. Validation already matched
-           the GNU argument checks, so a headless run can continue. */
+        the GNU argument checks, so a headless run can continue. */
         R_NilValue()
     }
 }

@@ -317,11 +317,7 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
                 range_lo = Some(a.min(b));
                 range_hi = Some(a.max(b));
-            } else if key == "n.points"
-                && !v.is_null()
-                && v != R_NilValue()
-                && XLENGTH(v) > 0
-            {
+            } else if key == "n.points" && !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
                 n_points = if TYPEOF(v) == SEXPTYPE::INTSXP {
                     (*INTEGER(v)).max(1) as usize
                 } else {
@@ -431,7 +427,6 @@ pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         ksmooth(xs, ys, xp, krn, sbw)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

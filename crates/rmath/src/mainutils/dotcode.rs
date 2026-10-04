@@ -211,7 +211,6 @@ unsafe fn ported_call_name(op: SEXP) -> Option<String> {
     }
 }
 
-
 unsafe fn warning(msg: &str) {
     eprintln!("WARNING: {}", msg);
 }
@@ -684,7 +683,8 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
                 f(args[0])
             }
             2 => {
-                let f: unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP = std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP =
+                    std::mem::transmute_copy(&fun);
                 f(args[0], args[1])
             }
             3 => {
@@ -708,15 +708,30 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
                 f(args[0], args[1], args[2], args[3], args[4], args[5])
             }
             7 => {
-                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
-                    std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn(
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                ) -> SEXP = std::mem::transmute_copy(&fun);
                 f(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6],
                 )
             }
             8 => {
-                let f: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP =
-                    std::mem::transmute_copy(&fun);
+                let f: unsafe extern "C-unwind" fn(
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                    SEXP,
+                ) -> SEXP = std::mem::transmute_copy(&fun);
                 f(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
                 )
@@ -734,8 +749,7 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
                     SEXP,
                 ) -> SEXP = std::mem::transmute_copy(&fun);
                 f(
-                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
-                    args[8],
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8],
                 )
             }
             10 => {
@@ -764,7 +778,6 @@ unsafe fn dispatch_dotcall(fun: DL_FUNC, args: &[SEXP], call: SEXP) -> SEXP {
     }
 }
 
-
 /// Dispatch a .C/.Fortran void function by argument count.
 unsafe fn dispatch_wide(fun: DL_FUNC, args: &[*mut c_void]) -> bool {
     unsafe {
@@ -783,12 +796,25 @@ unsafe fn dispatch_wide(fun: DL_FUNC, args: &[*mut c_void]) -> bool {
             15 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14),
             16 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
             18 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
-            19 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18),
-            20 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19),
-            21 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20),
-            22 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21),
-            23 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22),
-            24 => call_n!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23),
+            19 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
+            ),
+            20 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+            ),
+            21 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+            ),
+            22 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+            ),
+            23 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
+            ),
+            24 => call_n!(
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                23
+            ),
             _ => return false,
         }
         true
@@ -885,8 +911,7 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
                     *mut c_void,
                 ) = std::mem::transmute_copy(&fun);
                 f(
-                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
-                    args[8],
+                    args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8],
                 )
             }
             10 => {
@@ -909,9 +934,23 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
             }
             17 => {
                 let f: unsafe extern "C" fn(
-                    *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void,
-                    *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void,
-                    *mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
+                    *mut c_void,
                 ) = std::mem::transmute_copy(&fun);
                 f(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
@@ -928,7 +967,6 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // R_doDotCall — the .Call dispatcher
@@ -1184,9 +1222,7 @@ unsafe fn invoke_native_handler(
                     let list = operands.argument_list(&allocator, false, &domain.nil())?;
                     if interface == NativeInterface::External {
                         access.require_active()?;
-                        unsafe {
-                            routine.invoke_external1(list.as_raw(), operands.payload.len())
-                        }
+                        unsafe { routine.invoke_external1(list.as_raw(), operands.payload.len()) }
                     } else {
                         let operator = match operator_identity {
                             Some((name, kind)) => access.with_native(|owner| {
@@ -1332,12 +1368,15 @@ mod native_inventory;
 
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;
-    let interface = if unsafe { PRIMVAL(op) } == 0 { BufferInterface::C } else { BufferInterface::Fortran };
+    let interface = if unsafe { PRIMVAL(op) } == 0 {
+        BufferInterface::C
+    } else {
+        BufferInterface::Fortran
+    };
     unsafe { buffer_dispatch::invoke(call, op, args, env, interface) }
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         .as_raw()
 }
-
 
 /// .C() (op=0) or .Fortran() (op=1) handler.
 /// This is the most complex function — marshals R arguments to C types,
@@ -1396,7 +1435,6 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
             pa = CDR(pa);
         }
 
-
         // Build the result vector
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, nargs as c_int);
         if have_names {
@@ -1418,7 +1456,6 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
                 pa = CDR(pa);
             }
             setAttrib(ans, Rf_install(b"names\0".as_ptr() as *const c_char), names);
-
         }
 
         // Marshal arguments to C types

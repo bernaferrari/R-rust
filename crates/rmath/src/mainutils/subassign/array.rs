@@ -99,7 +99,6 @@ pub(crate) unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEX
             }
         }
 
-
         let _x_guard = protect(x);
         let _y_guard = if x == y {
             y = shallow_duplicate(y);

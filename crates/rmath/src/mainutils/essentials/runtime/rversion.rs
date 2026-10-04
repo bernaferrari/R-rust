@@ -169,7 +169,10 @@ pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
-            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(
+                _call,
+                c"argument is not a function".as_ptr(),
+            );
             return R_NilValue();
         }
         let t = TYPEOF(fn_arg);
@@ -297,17 +300,18 @@ unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
         if n == 0 {
             return R_NilValue();
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            value,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
         let _names_guard = crate::sexp::protect::protect(names);
         let pargs = crate::sexp::constructors::Rf_allocList(n);
         let _pargs_guard = crate::sexp::protect::protect(pargs);
         let mut current = pargs;
         for i in 0..n {
             crate::sexp::accessors::SETCAR(current, VECTOR_ELT(value, i as i64));
-            if names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP && (i as i64) < XLENGTH(names) {
+            if names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && (i as i64) < XLENGTH(names)
+            {
                 let name_elt = STRING_ELT(names, i as i64);
                 if !name_elt.is_null() && name_elt != R_NilValue() {
                     let c = CHAR(name_elt);
@@ -335,7 +339,10 @@ pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && TYPEOF(fn_arg) != SEXPTYPE::BUILTINSXP
                 && TYPEOF(fn_arg) != SEXPTYPE::SPECIALSXP)
         {
-            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(
+                _call,
+                c"argument is not a function".as_ptr(),
+            );
             return R_NilValue();
         }
         if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {

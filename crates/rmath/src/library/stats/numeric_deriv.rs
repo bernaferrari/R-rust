@@ -20,12 +20,12 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
     unsafe {
         if TYPEOF(theta) != SEXPTYPE::STRSXP {
             crate::main::errors::Rf_error(
-                b"'theta' should be of type character\0".as_ptr() as *const std::os::raw::c_char,
+                b"'theta' should be of type character\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         if TYPEOF(rho) != SEXPTYPE::ENVSXP {
             crate::main::errors::Rf_error(
-                b"'rho' should be an environment\0".as_ptr() as *const std::os::raw::c_char,
+                b"'rho' should be an environment\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         let dir = if TYPEOF(dir) == SEXPTYPE::REALSXP {
@@ -55,7 +55,7 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
             let found = R_findVar(sym, rho);
             if found == R_UnboundValue() || TYPEOF(found) != SEXPTYPE::REALSXP {
                 crate::main::errors::Rf_error(
-                    b"variable is not numeric\0".as_ptr() as *const std::os::raw::c_char,
+                    b"variable is not numeric\0".as_ptr() as *const std::os::raw::c_char
                 );
             }
             let copy = crate::mainutils::duplicate::duplicate(found);

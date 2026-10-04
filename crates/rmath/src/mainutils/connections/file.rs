@@ -547,7 +547,10 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         let _compression = CAR(args);
 
         let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+        let open = if sopen.is_null()
+            || sopen == R_NilValue()
+            || sopen == crate::sexp::globals::R_MissingArg()
+        {
             String::new()
         } else {
             check_string_arg(sopen, "open")
@@ -614,7 +617,6 @@ pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // do_bzfile — bzfile(description, open, compression)
 // ---------------------------------------------------------------------------
@@ -625,7 +627,10 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let scmd = CAR(args);
         let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
         let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+        let open = if sopen.is_null()
+            || sopen == R_NilValue()
+            || sopen == crate::sexp::globals::R_MissingArg()
+        {
             String::new()
         } else {
             check_string_arg(sopen, "open")
@@ -665,7 +670,10 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let scmd = CAR(args);
         let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
         let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null() || sopen == R_NilValue() || sopen == crate::sexp::globals::R_MissingArg() {
+        let open = if sopen.is_null()
+            || sopen == R_NilValue()
+            || sopen == crate::sexp::globals::R_MissingArg()
+        {
             String::new()
         } else {
             check_string_arg(sopen, "open")
@@ -1042,7 +1050,6 @@ pub unsafe fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
     }
 }
 
-
 pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
@@ -1058,7 +1065,10 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         args = CDR(args);
         let origin_arg = CAR(args);
         let origin = if TYPEOF(origin_arg) == SEXPTYPE::STRSXP {
-            match CStr::from_ptr(CHAR(STRING_ELT(origin_arg, 0))).to_string_lossy().as_ref() {
+            match CStr::from_ptr(CHAR(STRING_ELT(origin_arg, 0)))
+                .to_string_lossy()
+                .as_ref()
+            {
                 "start" => 1,
                 "current" => 2,
                 "end" => 3,

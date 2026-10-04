@@ -173,9 +173,7 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
         // GNU uses LAPACK only when useLAPACK is TRUE.
-        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP
-            && XLENGTH(lap) == 1
-            && LOGICAL_ELT(lap, 0) != 0;
+        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) != 0;
         if lap {
             let kk = XLENGTH(qraux) as c_int;
             if kk < 0 || kk as usize > n_us.min(p_us) {
@@ -430,7 +428,11 @@ unsafe fn finish(
             for i in 0..p {
                 let dest = *INTEGER(pivot).add(i as usize);
                 if dest >= 1 && dest <= p {
-                    SET_STRING_ELT(out, (dest - 1) as R_xlen_t, STRING_ELT(xnames, i as R_xlen_t));
+                    SET_STRING_ELT(
+                        out,
+                        (dest - 1) as R_xlen_t,
+                        STRING_ELT(xnames, i as R_xlen_t),
+                    );
                 }
             }
             out
@@ -448,7 +450,11 @@ unsafe fn finish(
             let _dn = protect(dn);
             SET_VECTOR_ELT(dn, 0, row_names);
             SET_VECTOR_ELT(dn, 1, ynames);
-            setAttrib(coef, crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()), dn);
+            setAttrib(
+                coef,
+                crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()),
+                dn,
+            );
         } else if row_names != R_NilValue() && !row_names.is_null() {
             setAttrib(coef, R_NamesSymbol(), row_names);
         }

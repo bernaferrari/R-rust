@@ -2234,7 +2234,13 @@ fn next_for_iteration(
     let PrivateLoopKind::For(state) = &mut frame.kind else {
         return Err("invalid private for-loop continuation".into());
     };
-    let PrivateFor { variable, sequence, body, length, next } = state.as_mut();
+    let PrivateFor {
+        variable,
+        sequence,
+        body,
+        length,
+        next,
+    } = state.as_mut();
     if *next >= *length {
         return Ok(None);
     }
@@ -2955,7 +2961,10 @@ mod tests {
         let collect = || session.with_active(|| session.owner_token().unwrap().full_gc().unwrap());
         collect();
         assert!(session.sexp(variable_pointer).is_some());
-        assert_eq!(session.sexp(sequence_pointer).unwrap().integer_elt(0), Some(0));
+        assert_eq!(
+            session.sexp(sequence_pointer).unwrap().integer_elt(0),
+            Some(0)
+        );
         drop(frame);
         collect();
         assert!(session.sexp(variable_pointer).is_none());
@@ -3185,14 +3194,23 @@ mod tests {
             crate::sexp::owner::with_runtime(&owner, |access| access.domain().nil()).unwrap()
         });
         for opcode in [BCcall, BCbuiltin, BCspecial] {
-            let error = run_private(&session, &[opcode, 0, c_int::MAX, BCreturn], std::slice::from_ref(&nil))
-                .unwrap_err();
+            let error = run_private(
+                &session,
+                &[opcode, 0, c_int::MAX, BCreturn],
+                std::slice::from_ref(&nil),
+            )
+            .unwrap_err();
             assert!(error.contains("argument stack underflow"), "{error}");
         }
         let min = fixture_integer(&session, c_int::MIN);
         let minus_one = fixture_integer(&session, -1);
         let zero = fixture_integer(&session, 0);
-        let result = run_private(&session, &[BCpush, 0, BCneg, BCreturn], std::slice::from_ref(&min)).unwrap();
+        let result = run_private(
+            &session,
+            &[BCpush, 0, BCneg, BCreturn],
+            std::slice::from_ref(&min),
+        )
+        .unwrap();
         assert_eq!(result.integer_elt(0), Some(c_int::MIN));
         let result = run_private(
             &session,
@@ -3340,7 +3358,8 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(0));
         let original_false = session.with_active(|| {
             let owner = session.owner_token().unwrap().weak_owner().unwrap();
-            crate::sexp::owner::with_runtime(&owner, |access| access.domain().logical(false)).unwrap()
+            crate::sexp::owner::with_runtime(&owner, |access| access.domain().logical(false))
+                .unwrap()
         });
         assert_eq!(result.as_raw(), original_false.as_raw());
     }

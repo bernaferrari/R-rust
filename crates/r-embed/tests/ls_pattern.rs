@@ -64,26 +64,14 @@ fn ls_pattern_filters_names_and_warns_for_non_environment() {
         report.lines().any(|line| line == "KIND=closure"),
         "{report}"
     );
-    assert!(
-        report.lines().any(|line| line == "TINY=TRUE"),
-        "{report}"
-    );
+    assert!(report.lines().any(|line| line == "TINY=TRUE"), "{report}");
     assert!(
         report.lines().any(|line| line == "TINY_ENV=TRUE"),
         "{report}"
     );
-    assert!(
-        report.lines().any(|line| line == "FIL_OK=TRUE"),
-        "{report}"
-    );
-    assert!(
-        report.lines().any(|line| line == "EMPTY=TRUE"),
-        "{report}"
-    );
-    assert!(
-        report.lines().any(|line| line == "BASE=TRUE"),
-        "{report}"
-    );
+    assert!(report.lines().any(|line| line == "FIL_OK=TRUE"), "{report}");
+    assert!(report.lines().any(|line| line == "EMPTY=TRUE"), "{report}");
+    assert!(report.lines().any(|line| line == "BASE=TRUE"), "{report}");
     assert!(report.lines().any(|line| line == "TOP=TRUE"), "{report}");
     let warning = report
         .lines()

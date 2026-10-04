@@ -39,7 +39,6 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::errors::set_error_call_less(false);
         let _try_nframe = TryCatchNframeGuard::push();
 
-
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // GNU try() is a closure chain. Keep that chain on tracemem
             // output while this builtin evaluates its expression.
@@ -70,14 +69,15 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // with it (a later unrelated error must not inherit it).
                 // Consume the call-less flag first: verrorcall_dflt records
                 // it on the same error that produced this payload.
-                let call_less = crate::mainutils::errors::take_error_call_less()
-                    || {
-                        let buf = crate::mainutils::errors::R_GetErrorBuf();
-                        crate::mainutils::errors::error_was_last_rendered(&message)
-                            && buf.starts_with("Error: ")
-                    };
+                let call_less = crate::mainutils::errors::take_error_call_less() || {
+                    let buf = crate::mainutils::errors::R_GetErrorBuf();
+                    crate::mainutils::errors::error_was_last_rendered(&message)
+                        && buf.starts_with("Error: ")
+                };
                 let slot_cond_owner = signalled_condition_owned();
-                let slot_cond = slot_cond_owner.as_ref().map_or(std::ptr::null_mut(), |value| value.as_raw());
+                let slot_cond = slot_cond_owner
+                    .as_ref()
+                    .map_or(std::ptr::null_mut(), |value| value.as_raw());
                 set_signalled_condition(std::ptr::null_mut());
 
                 let silent = as_bool_arg(silent_arg, rho);
@@ -130,7 +130,10 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         prefix.push_str("\n  ");
                     }
                     let caught_call = caught_error_call();
-                    let built = simple_error_condition_at(&message, caught_call.as_ref().map(|value| value.as_raw()));
+                    let built = simple_error_condition_at(
+                        &message,
+                        caught_call.as_ref().map(|value| value.as_raw()),
+                    );
                     let condition = if !slot_cond.is_null()
                         && condition_message_of(slot_cond).as_deref() == Some(message.as_str())
                     {
@@ -234,9 +237,7 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
                 _call,
                 "argument \"expr\" is missing, with no default",
             );
-
         }
-
 
         let old_stack = condition_handler_stack();
         let new_stack = calling_handler_stack_from_args(handler_args, rho, old_stack);
@@ -339,14 +340,8 @@ unsafe fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
     }
 }
 
-
 /// GNU `globalCallingHandlers(...)` — register/inspect/clear global calling handlers.
-pub unsafe fn do_globalCallingHandlers(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    rho: SEXP) -> SEXP {
-
+pub unsafe fn do_globalCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             crate::sexp::globals::set_R_Visible(TRUE);
@@ -405,7 +400,8 @@ fn global_handlers_list() -> SEXP {
 
 fn set_global_handlers_list(list: SEXP) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.global_calling_handlers = crate::sexp::instance::RuntimeValue::from_raw_in(inst, list);
+        (*inst).error_state.global_calling_handlers =
+            crate::sexp::instance::RuntimeValue::from_raw_in(inst, list);
     });
 }
 
@@ -445,8 +441,10 @@ unsafe fn named_list_from_dots(mut args: SEXP) -> SEXP {
 unsafe fn validate_named_handlers(list: SEXP) {
     unsafe {
         let n = XLENGTH(list);
-        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
-        if n > 0 && (names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP) {
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        if n > 0 && (names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP)
+        {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "condition handlers must be specified with a condition class".to_string(),
             });
@@ -486,7 +484,8 @@ unsafe fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
         let _out = protect(out);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, nn + no);
         let _names = protect(names);
-        let new_names = crate::sexp::attrib_core::getAttrib(new, crate::sexp::attrib_core::R_NamesSymbol());
+        let new_names =
+            crate::sexp::attrib_core::getAttrib(new, crate::sexp::attrib_core::R_NamesSymbol());
         let old_names = if old.is_null() || old == R_NilValue() {
             R_NilValue()
         } else {
@@ -648,10 +647,6 @@ unsafe fn pairlist_len(mut p: SEXP) -> i64 {
     }
 }
 
-
-
-
-
 /// GNU `simpleCondition(message, call = NULL)`.
 pub unsafe fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -685,8 +680,6 @@ pub unsafe fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Exiting handlers (tryCatch) for warning conditions
 // ---------------------------------------------------------------------------
@@ -696,7 +689,8 @@ pub unsafe fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
 /// field owns its original allocation while an unwind is in flight.
 pub(crate) fn set_signalled_condition(cond: SEXP) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.signalled_condition = crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
+        (*inst).error_state.signalled_condition =
+            crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
     });
 }
 
@@ -767,7 +761,8 @@ fn condition_handler_stack() -> SEXP {
 
 fn set_condition_handler_stack(stack: SEXP) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.handler_stack = crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
+        (*inst).error_state.handler_stack =
+            crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
     });
 }
 
@@ -1120,7 +1115,9 @@ impl ScopedRestartStack {
     fn restore(&self) {
         // Cleanup retains the original physical runtime even after revocation.
         unsafe {
-            (*self.pin.as_ptr()).error_state.restart_stack = self.previous.clone()
+            (*self.pin.as_ptr()).error_state.restart_stack = self
+                .previous
+                .clone()
                 .map(crate::sexp::instance::RuntimeValue::from_owned)
                 .unwrap_or_default();
         }
@@ -1247,7 +1244,8 @@ fn restart_stack() -> SEXP {
 
 fn set_restart_stack(stack: SEXP) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.restart_stack = crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
+        (*inst).error_state.restart_stack =
+            crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
     });
 }
 
@@ -1508,7 +1506,6 @@ unsafe fn named_call_dot(args: SEXP) -> bool {
     }
 }
 
-
 pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _ctx = crate::sexp::context::begin_context_guard(
@@ -1562,8 +1559,6 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         crate::mainutils::errors::save_error_traceback();
         crate::mainutils::errors::errorcall_str(call, &s);
-
-
     }
 }
 
@@ -1572,7 +1567,10 @@ fn condition_object(value: SEXP) -> SEXP {
         if value.is_null() || value == R_NilValue() {
             return std::ptr::null_mut();
         }
-        if condition_classes(value).iter().any(|class| class == "condition") {
+        if condition_classes(value)
+            .iter()
+            .any(|class| class == "condition")
+        {
             value
         } else {
             std::ptr::null_mut()
@@ -1602,7 +1600,9 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         ];
         let first = CAR(args);
         if !first.is_null() && first != R_NilValue() {
-            let class = crate::eval::attrib_core::getAttrib(first, crate::eval::attrib_core::R_ClassSymbol(),
+            let class = crate::eval::attrib_core::getAttrib(
+                first,
+                crate::eval::attrib_core::R_ClassSymbol(),
             );
             if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 cond_classes.clear();
@@ -1610,7 +1610,9 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                     let elt = STRING_ELT(class, i);
                     if !elt.is_null() {
                         cond_classes.push(
-                            std::ffi::CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned(),
+                            std::ffi::CStr::from_ptr(CHAR(elt))
+                                .to_string_lossy()
+                                .into_owned(),
                         );
                     }
                 }
@@ -1682,37 +1684,30 @@ pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let sym = Rf_install(c"last.warning".as_ptr());
         let mut last = crate::sexp::accessors::SYMVALUE(sym);
-        if last.is_null()
-            || last == R_NilValue()
-            || last == crate::sexp::globals::R_UnboundValue()
+        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
         {
             last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
         }
-        if last.is_null()
-            || last == R_NilValue()
-            || last == crate::sexp::globals::R_UnboundValue()
+        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
         {
             last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
         }
-        if last.is_null()
-            || last == R_NilValue()
-            || last == crate::sexp::globals::R_UnboundValue()
+        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
         {
             last = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
         let _last = protect(last);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _class = protect(class);
-        SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()),
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()),
         );
-        crate::sexp::attrib_core::setAttrib(
-            last,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class);
+        crate::sexp::attrib_core::setAttrib(last, crate::sexp::attrib_core::R_ClassSymbol(), class);
         last
     }
 }
-
 
 /// R's `message(...)` — print message.
 pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1724,7 +1719,11 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         } else {
             condition_message_text(args, &["domain", "appendLF"])
         };
-        let message = if text.ends_with('\n') { text } else { format!("{text}\n") };
+        let message = if text.ends_with('\n') {
+            text
+        } else {
+            format!("{text}\n")
+        };
         let condition = if !passed.is_null() {
             passed
         } else {
@@ -1878,11 +1877,7 @@ unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
         if which > 0 {
             let scalar = Rf_ScalarInteger(which);
             let _g = protect(scalar);
-            crate::mainutils::errors::R_setConditionField(
-                cond,
-                2,
-                c"subscript".as_ptr(),
-                scalar);
+            crate::mainutils::errors::R_setConditionField(cond, 2, c"subscript".as_ptr(), scalar);
         }
         cond
     }
@@ -2258,8 +2253,6 @@ unsafe fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
     }
 }
 
-
-
 /// R's `exists(x, envir)` — check name exists.
 pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -2334,7 +2327,6 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
-
         if numeric {
             return find_numeric_result(&matches);
         }
@@ -2408,9 +2400,7 @@ fn value_matches_mode(value: SEXP, mode: &str) -> bool {
             "list" => ty == SEXPTYPE::VECSXP,
             "environment" => ty == SEXPTYPE::ENVSXP,
             "function" => {
-                ty == SEXPTYPE::CLOSXP
-                || ty == SEXPTYPE::BUILTINSXP
-                || ty == SEXPTYPE::SPECIALSXP
+                ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP
             }
             _ => true,
         }
@@ -2647,7 +2637,6 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
 
-
         let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
             super::shared::frame_binding_names(env, all_names)
         } else {
@@ -2657,7 +2646,6 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if sorted {
             names.sort_by(|a, b| super::sets::collate_str(a, b));
         }
-
 
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
         for (i, name) in names.iter().enumerate() {
@@ -2736,10 +2724,7 @@ pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         // Constant-folded string like '"x"' may arrive as a
                         // call node; evaluate it and accept a string.
                         let val = crate::eval::eval::Rf_eval(expr, rho);
-                        if !val.is_null()
-                            && TYPEOF(val) == SEXPTYPE::STRSXP
-                            && XLENGTH(val) == 1
-                        {
+                        if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) == 1 {
                             let pn = crate::sexp::accessors::STRING_ELT(val, 0);
                             if !pn.is_null() && pn != crate::sexp::globals::R_NaString() {
                                 names.push(
@@ -2894,7 +2879,11 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         }
         SET_VECTOR_ELT(result, 0, msg_vec);
-        let stored_call = if call_arg.is_null() { R_NilValue() } else { call_arg };
+        let stored_call = if call_arg.is_null() {
+            R_NilValue()
+        } else {
+            call_arg
+        };
         SET_VECTOR_ELT(result, 1, stored_call);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !names.is_null() {
@@ -3281,7 +3270,9 @@ pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
         }));
         match caught {
             Err(payload) => {
-                if payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                if payload
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
                     || matches!(
                         payload.downcast_ref::<crate::sexp::context::RSignal>(),
                         Some(crate::sexp::context::RSignal::Error { .. })
@@ -3314,7 +3305,9 @@ pub unsafe fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
         let warned = crate::mainutils::errors::collect_warnings() > before;
         match caught {
             Err(payload) => {
-                let is_error = payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                let is_error = payload
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
                     || matches!(
                         payload.downcast_ref::<crate::sexp::context::RSignal>(),
                         Some(crate::sexp::context::RSignal::Error { .. })
@@ -3359,7 +3352,9 @@ pub unsafe fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) 
         let warned = crate::mainutils::errors::collect_warnings() > before;
         match caught {
             Err(payload) => {
-                if payload.downcast_ref::<crate::sexp::context::RError>().is_some()
+                if payload
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
                     || matches!(
                         payload.downcast_ref::<crate::sexp::context::RSignal>(),
                         Some(crate::sexp::context::RSignal::Error { .. })
@@ -3385,8 +3380,6 @@ pub unsafe fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) 
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

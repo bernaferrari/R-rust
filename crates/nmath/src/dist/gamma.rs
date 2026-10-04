@@ -500,7 +500,12 @@ pub fn dgamma_inner(x: f64, shape: f64, scale: f64, give_log: bool) -> f64 {
     if shape < 1.0 {
         pr = dpois_raw(shape, x / scale, give_log);
         if std::env::var_os("DPOIS_TRACE").is_some() {
-            eprintln!("dgamma pr={pr} logshape={} logx={} ratio_finite={}", log(shape), log(x), r_finite(shape / x));
+            eprintln!(
+                "dgamma pr={pr} logshape={} logx={} ratio_finite={}",
+                log(shape),
+                log(x),
+                r_finite(shape / x)
+            );
         }
         return if give_log {
             // NB: currently *always* shape/x > 0 if shape < 1:

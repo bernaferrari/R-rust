@@ -113,8 +113,8 @@ fn hclust_body(
                 } else if iopt == 7 {
                     let mi = membr[(i2 - 1) as usize];
                     let mj = membr[(j2 - 1) as usize];
-                    diss[ind1] = (mi * diss[ind1] + mj * diss[ind2] - mi * mj * d12 / (mi + mj))
-                        / (mi + mj);
+                    diss[ind1] =
+                        (mi * diss[ind1] + mj * diss[ind2] - mi * mj * d12 / (mi + mj)) / (mi + mj);
                 }
                 if i2 < k {
                     if diss[ind1] < dmin {
@@ -156,7 +156,14 @@ fn hclust_body(
     }
 }
 
-fn hcass2_body(n: i32, ia: &[i32], ib: &[i32], iorder: &mut [i32], iia: &mut [i32], iib: &mut [i32]) {
+fn hcass2_body(
+    n: i32,
+    ia: &[i32],
+    ib: &[i32],
+    iorder: &mut [i32],
+    iia: &mut [i32],
+    iib: &mut [i32],
+) {
     let n = n as usize;
     for i in 0..n {
         iia[i] = ia[i];

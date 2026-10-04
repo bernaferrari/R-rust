@@ -48,8 +48,6 @@ pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
         mark_posixlt_dollar_balanced(result, CADDR(ans), old_n);
         result
-
-
     }
 }
 
@@ -100,9 +98,6 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R
         }
     }
 }
-
-
-
 
 /// Port of `R_subassign3_dflt()` -- default `$<-` implementation.
 pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {

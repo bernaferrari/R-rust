@@ -88,9 +88,8 @@ fn real_dtrcon_rejects_malformed_dims_and_payload() {
 #[test]
 fn real_dtrcon_reserves_caller_scratch_before_allocation_and_recovers() {
     let mut session = RSession::new();
-    let (input, norm) = session.with_active(|| unsafe {
-        (make_input(&[2, 2], &[1.0, 0.0, 0.0, 1.0]), one_norm())
-    });
+    let (input, norm) =
+        session.with_active(|| unsafe { (make_input(&[2, 2], &[1.0, 0.0, 0.0, 1.0]), one_norm()) });
     session.set_arena_budget(ArenaBudget::new(1, 0));
     session.with_active(|| unsafe {
         let _guard = protect(input);

@@ -39,9 +39,7 @@ struct HandlerStackScope {
 }
 impl HandlerStackScope {
     fn capture(pin: OwnerPin) -> Self {
-        let previous = unsafe {
-            (*pin.as_ptr()).error_state.handler_stack.clone()
-        };
+        let previous = unsafe { (*pin.as_ptr()).error_state.handler_stack.clone() };
         Self {
             pin,
             previous: Some(previous),

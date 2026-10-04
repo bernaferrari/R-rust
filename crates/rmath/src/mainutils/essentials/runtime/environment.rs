@@ -66,9 +66,8 @@ pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
-        let missing = parent_arg.is_null()
-            || parent_arg == R_NilValue()
-            || parent_arg == R_MissingArg();
+        let missing =
+            parent_arg.is_null() || parent_arg == R_NilValue() || parent_arg == R_MissingArg();
         let parent = if missing {
             // GNU `parent = parent.frame()`: for a builtin, the caller frame.
             if _rho.is_null() || _rho == R_NilValue() {
@@ -94,11 +93,7 @@ pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             crate::sexp::accessors::INTEGER_ELT(size_arg, 0)
         };
-        let env = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            parent,
-            R_NilValue(),
-        );
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
         if hash {
             crate::sexp::env_hash::mark_hashed(env, size);
         }
@@ -196,8 +191,7 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if env == crate::sexp::globals::R_EmptyEnv() {
             return Rf_mkString(c"R_EmptyEnv".as_ptr());
         }
-        if env == crate::sexp::globals::R_BaseEnv()
-            || env == crate::sexp::envir::R_BaseNamespace()
+        if env == crate::sexp::globals::R_BaseEnv() || env == crate::sexp::envir::R_BaseNamespace()
         {
             return Rf_mkString(c"base".as_ptr());
         }

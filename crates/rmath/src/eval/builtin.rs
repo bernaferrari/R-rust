@@ -52,12 +52,12 @@ pub unsafe fn R_mkPrim(_name: *const std::os::raw::c_char, offset: c_int, kind: 
     unsafe {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         memory::with_arena(|arena| {
-        let prim = arena.alloc_node(sexptype);
-        if !prim.is_null() {
-            unsafe { SET_PRIMOFFSET(prim, offset) };
-        }
-        prim
-    })
+            let prim = arena.alloc_node(sexptype);
+            if !prim.is_null() {
+                unsafe { SET_PRIMOFFSET(prim, offset) };
+            }
+            prim
+        })
     }
 }
 
@@ -92,8 +92,6 @@ pub(crate) fn builtin_primitive_kind(name: &str) -> Option<SEXPTYPE> {
         None
     }
 }
-
-
 
 /// Return whether the Rust evaluator has a builtin implementation for `name`.
 ///
@@ -153,7 +151,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_stopifnot,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "callNextMethod",
         handler: crate::library::methods::methods_list_dispatch::do_callNextMethod,
@@ -164,7 +161,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::seq::do_rep,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "pretty.default",
         handler: crate::mainutils::pretty::do_pretty_default,
@@ -205,8 +201,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
         restore_visibility_always: false,
     },
-
-
     UnevaluatedBuiltin {
         name: "barplot",
         handler: crate::mainutils::graphics_highlevel::do_barplot,
@@ -549,8 +543,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_at_set,
         restore_visibility_always: false,
     },
-
-
     UnevaluatedBuiltin {
         name: "on.exit",
         handler: crate::mainutils::builtin::do_onexit,
@@ -571,8 +563,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_example,
         restore_visibility_always: false,
     },
-
-
     UnevaluatedBuiltin {
         name: "suppressWarnings",
         handler: crate::mainutils::essentials::do_suppress_warnings,
@@ -593,7 +583,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_withCallingHandlers,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "try",
         handler: crate::mainutils::essentials::do_try,
@@ -614,7 +603,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_transform,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "assertError",
         handler: crate::mainutils::essentials::do_assertError,
@@ -630,8 +618,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_assertCondition,
         restore_visibility_always: false,
     },
-
-
     UnevaluatedBuiltin {
         name: "save",
         handler: crate::mainutils::saveload::do_save_user,
@@ -657,7 +643,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_replicate,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "vapply",
         handler: crate::mainutils::essentials::do_vapply,
@@ -748,7 +733,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         // `local(expr, envir)` must receive `expr` UNEVALUATED (like
         // `with`): the evaluated table would eval the block in the caller
@@ -784,7 +768,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_match_arg,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "model.extract",
         handler: crate::library::stats::filter::do_model_extract,
@@ -800,7 +783,6 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_system_time,
         restore_visibility_always: false,
     },
-
     UnevaluatedBuiltin {
         name: "call",
         handler: crate::mainutils::coerce::do_call,
@@ -1001,13 +983,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "retracemem",
         handler: crate::mainutils::debug::do_retracemem,
     },
-
     EvaluatedBuiltin {
         name: ".isMethodsDispatchOn",
         handler: crate::mainutils::objects::do_S4on,
     },
-
-
     EvaluatedBuiltin {
         name: ".cache_class",
         handler: crate::mainutils::essentials::do_cache_class,
@@ -1424,7 +1403,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "mode<-",
         handler: crate::mainutils::essentials::do_storage_mode_set,
     },
-
     EvaluatedBuiltin {
         name: "identity",
         handler: crate::mainutils::essentials::do_identity,
@@ -1433,7 +1411,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "globalCallingHandlers",
         handler: crate::mainutils::essentials::do_globalCallingHandlers,
     },
-
     EvaluatedBuiltin {
         name: "is.na",
         handler: crate::mainutils::essentials::do_is_na,
@@ -1442,7 +1419,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "is.na.POSIXlt",
         handler: crate::mainutils::essentials::do_is_na_POSIXlt,
     },
-
     EvaluatedBuiltin {
         name: "names",
         handler: crate::mainutils::essentials::do_names,
@@ -1507,9 +1483,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: ".POSIXct",
         handler: crate::mainutils::essentials::do_dot_POSIXct,
     },
-
-
-
     EvaluatedBuiltin {
         name: "as.POSIXct",
         handler: crate::mainutils::essentials::do_as_POSIXct,
@@ -1746,7 +1719,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "formatC",
         handler: crate::mainutils::essentials::do_formatC,
     },
-
     EvaluatedBuiltin {
         name: "geterrmessage",
         handler: crate::mainutils::errors::do_geterrmessage,
@@ -1819,7 +1791,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "balancePOSIXlt",
         handler: crate::mainutils::datetime::do_balancePOSIXlt,
     },
-
     EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
@@ -1856,7 +1827,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "dQuote",
         handler: crate::mainutils::essentials::do_dQuote,
     },
-
     EvaluatedBuiltin {
         name: "runif",
         handler: crate::library::stats::random::do_runif_r,
@@ -2229,7 +2199,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "AIC.default",
         handler: crate::mainutils::essentials::do_aic,
     },
-
     EvaluatedBuiltin {
         name: "BIC",
         handler: crate::mainutils::essentials::do_bic,
@@ -3374,7 +3343,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: ".rport_toeplitz",
         handler: crate::mainutils::essentials::do_toeplitz,
     },
-
     EvaluatedBuiltin {
         name: "toeplitz2",
         handler: crate::mainutils::essentials::do_toeplitz2,
@@ -3523,7 +3491,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "as.numeric.POSIXt",
         handler: crate::mainutils::datetime::do_as_double_POSIXt,
     },
-
     EvaluatedBuiltin {
         name: "mean.Date",
         handler: crate::mainutils::essentials::do_mean_Date,
@@ -3671,7 +3638,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "is.nan.POSIXlt",
         handler: crate::mainutils::essentials::do_is_nan_POSIXlt,
     },
-
     EvaluatedBuiltin {
         name: "is.matrix",
         handler: crate::mainutils::essentials::do_is_matrix,
@@ -3688,7 +3654,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "chartr",
         handler: crate::mainutils::essentials::do_chartr,
     },
-
     EvaluatedBuiltin {
         name: "weekdays",
         handler: crate::mainutils::essentials::do_weekdays,
@@ -3817,12 +3782,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "gettextf",
         handler: crate::mainutils::essentials::do_gettextf,
     },
-
     EvaluatedBuiltin {
         name: "topenv",
         handler: crate::mainutils::objects::do_topenv,
     },
-
     EvaluatedBuiltin {
         name: "sys.call",
         handler: crate::eval::context::do_sys,
@@ -4019,7 +3982,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "gzcon",
         handler: crate::mainutils::connections::do_gzcon,
     },
-
     EvaluatedBuiltin {
         name: "bzfile",
         handler: crate::mainutils::connections::do_bzfile,
@@ -4136,7 +4098,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "unlist",
         handler: crate::mainutils::essentials::do_unlist,
     },
-
     EvaluatedBuiltin {
         name: "print.default",
         handler: crate::mainutils::essentials::do_print_default,
@@ -4145,7 +4106,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "print.Date",
         handler: crate::mainutils::essentials::do_print_Date,
     },
-
     EvaluatedBuiltin {
         name: "print.data.frame",
         handler: crate::mainutils::essentials::do_print_data_frame,
@@ -4250,10 +4210,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "La_ztrcon3",
         handler: crate::mainutils::essentials::do_la_ztrcon3,
     },
-
-
-
-
     EvaluatedBuiltin {
         name: "solve",
         handler: crate::mainutils::essentials::do_solve,
@@ -4346,7 +4302,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "removeSource",
         handler: crate::mainutils::srcref::do_remove_source,
     },
-
     EvaluatedBuiltin {
         name: "charmatch",
         handler: crate::mainutils::essentials::do_charmatch,
@@ -4387,7 +4342,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "eval",
         handler: crate::mainutils::essentials::do_eval,
     },
-
     EvaluatedBuiltin {
         // parse()/source() file-parse path: strict newline-else (gram.y
         // context-stack semantics); the interactive eval path stays lenient.
@@ -4426,7 +4380,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "signalCondition",
         handler: crate::mainutils::essentials::do_signalCondition_r,
     },
-
     EvaluatedBuiltin {
         name: "isS4",
         handler: crate::mainutils::essentials::do_isS4,
@@ -4459,7 +4412,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "as.function.default",
         handler: crate::mainutils::coerce::do_asfunction,
     },
-
     EvaluatedBuiltin {
         name: "setClass",
         handler: crate::mainutils::essentials::do_setClass,
@@ -4480,7 +4432,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "validObject",
         handler: crate::mainutils::essentials::do_validObject,
     },
-
     EvaluatedBuiltin {
         name: "show",
         handler: crate::mainutils::essentials::do_show,
@@ -4932,7 +4883,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "isNamespace",
         handler: crate::mainutils::essentials::do_isNamespace,
     },
-
     EvaluatedBuiltin {
         name: "suppressWarnings",
         handler: crate::mainutils::essentials::do_suppress_warnings,
@@ -5433,8 +5383,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "getRegisteredNamespace",
         handler: crate::mainutils::essentials::do_get_registered_namespace,
     },
-
-
     EvaluatedBuiltin {
         name: "data",
         handler: crate::mainutils::essentials::do_data,
@@ -5735,7 +5683,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "char.expand",
         handler: crate::mainutils::essentials::do_char_expand,
     },
-
     EvaluatedBuiltin {
         name: "type.convert",
         handler: crate::mainutils::essentials::do_type_convert,
@@ -5800,7 +5747,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "matrix_impl",
         handler: crate::mainutils::essentials::do_matrix,
     },
-
     EvaluatedBuiltin {
         name: "array",
         handler: crate::mainutils::essentials::do_array,
@@ -5893,7 +5839,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "objects",
         handler: crate::mainutils::essentials::do_ls,
     },
-
     EvaluatedBuiltin {
         name: "%in%",
         handler: crate::mainutils::essentials::do_in_operator,
@@ -5910,12 +5855,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "nameOfClass.default",
         handler: crate::mainutils::objects::do_nameOfClass_default,
     },
-
     EvaluatedBuiltin {
         name: "stop",
         handler: crate::mainutils::essentials::do_stop,
     },
-
     EvaluatedBuiltin {
         name: "warning",
         handler: crate::mainutils::essentials::do_warning,
@@ -5924,7 +5867,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         name: "warnings",
         handler: crate::mainutils::essentials::do_warnings,
     },
-
     EvaluatedBuiltin {
         name: "message",
         handler: crate::mainutils::essentials::do_message,

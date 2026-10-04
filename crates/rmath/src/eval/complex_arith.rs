@@ -143,10 +143,18 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     let na = crate::sexp::ffi::NA_REAL;
                     let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
                     Rcomplex {
-                        r: if r_na(x.r) || r_na(y.r) { na } else { x.r + y.r },
-                        i: if r_na(x.i) || r_na(y.i) { na } else { x.i + y.i },
+                        r: if r_na(x.r) || r_na(y.r) {
+                            na
+                        } else {
+                            x.r + y.r
+                        },
+                        i: if r_na(x.i) || r_na(y.i) {
+                            na
+                        } else {
+                            x.i + y.i
+                        },
                     }
-                },
+                }
                 "-" => Rcomplex {
                     r: x.r - y.r,
                     i: x.i - y.i,
@@ -185,8 +193,6 @@ fn complex_pow(z: Rcomplex, w: Rcomplex) -> Rcomplex {
     }
     crate::mainutils::complex_cmath::mycpow_rcomplex(z, w)
 }
-
-
 
 /// Complex absolute value |z| = sqrt(r^2 + i^2)
 #[inline]
@@ -296,7 +302,6 @@ pub fn complex_tan(z: Rcomplex) -> Rcomplex {
     apply_z_fn(z, crate::mainutils::complex_cmath::z_tan)
 }
 
-
 /// Complex hyperbolic sine.
 pub fn complex_sinh(z: Rcomplex) -> Rcomplex {
     Rcomplex {
@@ -366,7 +371,6 @@ pub fn complex_acosh(z: Rcomplex) -> Rcomplex {
 pub fn complex_atanh(z: Rcomplex) -> Rcomplex {
     apply_z_fn(z, crate::mainutils::complex_cmath::z_atanh)
 }
-
 
 // ---------------------------------------------------------------------------
 // Tests

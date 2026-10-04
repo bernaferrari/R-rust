@@ -181,11 +181,9 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     let mut xmax = f64::NEG_INFINITY;
     for (i, &value) in x.iter().enumerate() {
         if !R_FINITE(value) {
-            let msg = std::ffi::CString::new(format!(
-                "non-finite x[{}] in bandwidth calculation",
-                i + 1
-            ))
-            .unwrap();
+            let msg =
+                std::ffi::CString::new(format!("non-finite x[{}] in bandwidth calculation", i + 1))
+                    .unwrap();
             unsafe {
                 Rf_error(msg.as_ptr());
             }

@@ -380,7 +380,10 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         }
 
-        let class_name = table[n].as_ref().map(|conn| conn.class.clone()).unwrap_or_else(|| "connection".to_string());
+        let class_name = table[n]
+            .as_ref()
+            .map(|conn| conn.class.clone())
+            .unwrap_or_else(|| "connection".to_string());
         drop(table);
         let ans = Rf_ScalarInteger(n as c_int);
         set_connection_class(ans, &class_name);
@@ -469,10 +472,7 @@ pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             let val = CString::new(*value).unwrap_or_default();
             SET_VECTOR_ELT(ans, idx as R_xlen_t, Rf_mkString(val.as_ptr()));
         }
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names);
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
         ans
     }
 }

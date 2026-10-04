@@ -725,8 +725,6 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
-
-
     // ===== Binary Operators (primitives) =====
     FunTabEntry::new(
         b"+\0",
@@ -1174,7 +1172,6 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         2,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
-
     FunTabEntry::new(
         b"cbind\0",
         None,
@@ -3520,7 +3517,6 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         0,
         -1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
-
     ),
     FunTabEntry::new(
         b"rep.int\0",
@@ -3950,7 +3946,6 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         3,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
-
     FunTabEntry::new(
         b"radixsort\0",
         None,

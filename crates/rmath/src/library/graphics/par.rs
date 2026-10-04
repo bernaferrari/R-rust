@@ -1326,7 +1326,10 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                                 "\"{qname}\" is not a graphical parameter"
                                             ))
                                             .unwrap_or_default();
-                                            crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                            crate::mainutils::errors::warningcall(
+                                                call,
+                                                msg.as_ptr(),
+                                            );
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
                                                 .push((qname, false));
@@ -1362,11 +1365,14 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     list_slots.get_or_insert_with(Vec::new).push((name, true));
                                     continue;
                                 }
-                                list_slots.get_or_insert_with(Vec::new).push((name.clone(), true));
+                                list_slots
+                                    .get_or_insert_with(Vec::new)
+                                    .push((name.clone(), true));
                                 let raw = VECTOR_ELT(value, i);
                                 if name == "usr" && XLENGTH(raw) != 4 {
                                     par_error(
-                                        "graphical parameter \"usr\" has the wrong length".to_string(),
+                                        "graphical parameter \"usr\" has the wrong length"
+                                            .to_string(),
                                     );
                                 }
                                 set_names.push(name);
@@ -1392,20 +1398,14 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 "argument 1 does not name a graphical parameter",
                             )
                             .unwrap_or_default();
-                            crate::mainutils::errors::warningcall(
-                                call,
-                                msg.as_ptr(),
-                            );
+                            crate::mainutils::errors::warningcall(call, msg.as_ptr());
                         }
                     } else {
                         let msg = std::ffi::CString::new(format!(
                             "argument {arg_n} does not name a graphical parameter"
                         ))
                         .unwrap_or_default();
-                        crate::mainutils::errors::warningcall(
-                            call,
-                            msg.as_ptr(),
-                        );
+                        crate::mainutils::errors::warningcall(call, msg.as_ptr());
                     }
                 }
             }

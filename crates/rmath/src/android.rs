@@ -15,13 +15,13 @@
 //! - **Zero-cost.** The safe wrappers compile down to the same operations
 //!   as the internal code.
 
-pub(crate) mod result_budget;
-#[cfg(test)]
-#[path = "android/output_contract_tests.rs"]
-mod output_contract_tests;
 #[cfg(test)]
 #[path = "android/focused_console_ownership_tests.rs"]
 mod focused_console_ownership_tests;
+#[cfg(test)]
+#[path = "android/output_contract_tests.rs"]
+mod output_contract_tests;
+pub(crate) mod result_budget;
 
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
@@ -263,20 +263,14 @@ impl RSession {
     }
 
     /// Evaluate and retain a value in private owning engine storage.
-    pub fn define_retained(
-        &mut self,
-        code: &str,
-    ) -> Result<RetainedValueId, String> {
+    pub fn define_retained(&mut self, code: &str) -> Result<RetainedValueId, String> {
         self.core
             .define_retained(code)
             .map_err(|error| error.message)
     }
 
     /// Copy the retained value directly, without R lookup or auto-printing.
-    pub fn retained_snapshot(
-        &self,
-        id: RetainedValueId,
-    ) -> Result<RValue, String> {
+    pub fn retained_snapshot(&self, id: RetainedValueId) -> Result<RValue, String> {
         self.core
             .with_retained_value(id, |value| {
                 if let Some(limit) = self.result_limit {
@@ -296,39 +290,25 @@ impl RSession {
             .map_err(|error| error.message)
     }
 
-    pub fn validate_retained(
-        &self,
-        id: RetainedValueId,
-    ) -> Result<(), String> {
+    pub fn validate_retained(&self, id: RetainedValueId) -> Result<(), String> {
         self.core
             .validate_retained(id)
             .map_err(|error| error.message)
     }
 
-    pub fn set_retained(
-        &mut self,
-        id: RetainedValueId,
-        code: &str,
-    ) -> Result<(), String> {
+    pub fn set_retained(&mut self, id: RetainedValueId, code: &str) -> Result<(), String> {
         self.core
             .set_retained(id, code)
             .map_err(|error| error.message)
     }
 
-    pub fn update_retained(
-        &mut self,
-        id: RetainedValueId,
-        code: &str,
-    ) -> Result<(), String> {
+    pub fn update_retained(&mut self, id: RetainedValueId, code: &str) -> Result<(), String> {
         self.core
             .update_retained(id, code)
             .map_err(|error| error.message)
     }
 
-    pub fn remove_retained(
-        &mut self,
-        id: RetainedValueId,
-    ) -> Result<(), String> {
+    pub fn remove_retained(&mut self, id: RetainedValueId) -> Result<(), String> {
         self.core.remove_retained(id).map_err(|error| error.message)
     }
 

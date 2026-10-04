@@ -634,8 +634,8 @@ fn try_s4_dispatch<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::eval::eval_safe;
     use super::*;
+    use crate::eval::eval_safe;
     use crate::eval::parser;
     use crate::sexp::envir::defineVar;
     use crate::sexp::session::RSession;

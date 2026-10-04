@@ -16,9 +16,7 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::eval::attrib_core::{R_SrcRefSymbol, getAttrib};
-use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF,
-};
+use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -1054,7 +1052,6 @@ pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::mainutils::seq::check1arg(args, call, c"expr".as_ptr());
             eval_exec_call(args, rho)
         } else {
-
             eval_tailcall_call(args, rho)
         }
     }

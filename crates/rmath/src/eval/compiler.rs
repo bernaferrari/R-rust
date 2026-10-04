@@ -126,7 +126,6 @@ pub unsafe fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
     unsafe { crate::sexp::constructors::Rf_ScalarInteger(12) }
 }
 
-
 /// on every closure invocation.
 pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -172,9 +171,10 @@ unsafe fn new_compiler_environment() -> SEXP {
 pub(crate) unsafe fn namespace() -> SEXP {
     unsafe {
         if let Some(env) = with_required_current_instance(|inst| {
-            (*inst).package_namespace_cache.get("compiler").and_then(|(dir, env)| {
-                (dir.as_os_str() == "<builtin:compiler>").then_some(*env)
-            })
+            (*inst)
+                .package_namespace_cache
+                .get("compiler")
+                .and_then(|(dir, env)| (dir.as_os_str() == "<builtin:compiler>").then_some(*env))
         }) {
             return env;
         }
@@ -258,7 +258,6 @@ pub unsafe fn do_getconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         ans
     }
 }
-
 
 #[cfg(test)]
 mod tests {

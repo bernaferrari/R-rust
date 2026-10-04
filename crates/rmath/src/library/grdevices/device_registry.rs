@@ -961,9 +961,9 @@ unsafe fn open_default_device() {
             && crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::STRSXP
             && crate::sexp::accessors::XLENGTH(defdev) > 0
         {
-            let name = crate::sexp::symbol::Rf_install(
-                crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(defdev, 0)),
-            );
+            let name = crate::sexp::symbol::Rf_install(crate::sexp::accessors::CHAR(
+                crate::sexp::accessors::STRING_ELT(defdev, 0),
+            ));
             let call = crate::sexp::constructors::Rf_cons(name, R_NilValue());
             if !call.is_null() {
                 crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());

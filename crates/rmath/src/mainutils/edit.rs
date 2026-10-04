@@ -63,7 +63,8 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!("redit-{}-{}", std::process::id(), n));
-            let cpath = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
+            let cpath =
+                std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
             file = crate::sexp::constructors::Rf_mkString(cpath.as_ptr());
         }
         let _file = crate::sexp::protect::protect(file);
@@ -78,26 +79,15 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let deparse = Rf_lang2(Rf_install(c"deparse".as_ptr()), x);
             let src = crate::eval::eval::Rf_eval(deparse, env);
             let _src = crate::sexp::protect::protect(src);
-            let write = Rf_lang3(
-                Rf_install(c"writeLines".as_ptr()),
-                src,
-                file,
-            );
+            let write = Rf_lang3(Rf_install(c"writeLines".as_ptr()), src, file);
             let _ = crate::eval::eval::Rf_eval(write, env);
         }
-        let status = Rf_lang3(
-            Rf_install(c"system2".as_ptr()),
-            editor,
-            file,
-        );
+        let status = Rf_lang3(Rf_install(c"system2".as_ptr()), editor, file);
         let rc = crate::eval::eval::Rf_eval(status, env);
         if TYPEOF(rc) == SEXPTYPE::INTSXP && crate::sexp::accessors::INTEGER(rc).read() != 0 {
             crate::main::errors::errorcall(call, c"problem running editor".as_ptr());
         }
-        let parsed = crate::eval::eval::Rf_eval(
-            Rf_lang2(Rf_install(c"parse".as_ptr()), file),
-            env,
-        );
+        let parsed = crate::eval::eval::Rf_eval(Rf_lang2(Rf_install(c"parse".as_ptr()), file), env);
         crate::eval::eval::Rf_eval(
             Rf_lang2(Rf_install(c"eval".as_ptr()), parsed),
             R_GlobalEnv(),

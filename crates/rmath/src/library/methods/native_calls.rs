@@ -63,7 +63,6 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "new_object",
 ];
 
-
 unsafe extern "C-unwind" fn c_r_get_generic(name: SEXP, must: SEXP, env: SEXP, pkg: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_getGeneric(name, must, env, pkg) }
 }
@@ -72,7 +71,11 @@ unsafe extern "C-unwind" fn c_r_ident_c(e1: SEXP, e2: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_identC(e1, e2) }
 }
 
-unsafe extern "C-unwind" fn c_r_methods_package_meta_name(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
+unsafe extern "C-unwind" fn c_r_methods_package_meta_name(
+    prefix: SEXP,
+    name: SEXP,
+    pkg: SEXP,
+) -> SEXP {
     unsafe { super::methods_list_dispatch::R_methodsPackageMetaName(prefix, name, pkg) }
 }
 
@@ -96,12 +99,9 @@ unsafe extern "C-unwind" fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> 
     unsafe { crate::mainutils::essentials::R_do_slot_assign(obj, name, value) }
 }
 
-
-
 unsafe extern "C-unwind" fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe { crate::mainutils::essentials::R_has_slot(obj, name) }
 }
-
 
 unsafe extern "C-unwind" fn c_r_init_method_dispatch(envir: SEXP) -> SEXP {
     unsafe { super::methods_list_dispatch::R_initMethodDispatch(envir) }
@@ -111,7 +111,12 @@ unsafe extern "C-unwind" fn c_r_standard_generic(fname: SEXP, ev: SEXP, fdef: SE
     unsafe { super::methods_list_dispatch::R_standardGeneric(fname, ev, fdef) }
 }
 
-unsafe extern "C-unwind" fn c_r_select_method(fname: SEXP, ev: SEXP, mlist: SEXP, eval_args: SEXP) -> SEXP {
+unsafe extern "C-unwind" fn c_r_select_method(
+    fname: SEXP,
+    ev: SEXP,
+    mlist: SEXP,
+    eval_args: SEXP,
+) -> SEXP {
     unsafe { super::methods_list_dispatch::R_selectMethod(fname, ev, mlist, eval_args) }
 }
 
@@ -170,8 +175,6 @@ unsafe extern "C-unwind" fn c_r_clear_method_selection() -> SEXP {
 unsafe extern "C-unwind" fn c_r_set_method_dispatch(on_off: SEXP) -> SEXP {
     super::methods_list_dispatch::R_set_method_dispatch(on_off)
 }
-
-
 
 /// Resolve a methods `.Call` name (`C_R_getGeneric` or `R_getGeneric`).
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {

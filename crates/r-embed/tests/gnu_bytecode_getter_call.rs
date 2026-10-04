@@ -176,17 +176,17 @@ fn malformed_getter_call_missing_frame_fails_before_source_fallback() {
     let original = include_bytes!("fixtures/gnu-bytecode-getter-call/names.rds");
     let offset = unique_stream_offset(original, &NAMES_WORDS);
     let mut malformed = original.to_vec();
-    let replacement = [12_i32, 99, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let replacement = [
+        12_i32, 99, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1,
+    ];
     for (i, word) in replacement.iter().enumerate() {
         let at = offset + i * 4;
         malformed[at..at + 4].copy_from_slice(&word.to_be_bytes());
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;
@@ -203,17 +203,17 @@ fn malformed_swap_empty_stack_fails_before_source_fallback() {
     let original = include_bytes!("fixtures/gnu-bytecode-getter-call/names.rds");
     let offset = unique_stream_offset(original, &NAMES_WORDS);
     let mut malformed = original.to_vec();
-    let replacement = [12_i32, 100, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let replacement = [
+        12_i32, 100, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1,
+    ];
     for (i, word) in replacement.iter().enumerate() {
         let at = offset + i * 4;
         malformed[at..at + 4].copy_from_slice(&word.to_be_bytes());
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

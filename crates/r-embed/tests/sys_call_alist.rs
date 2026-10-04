@@ -111,10 +111,7 @@ fn base_alist_keeps_missing_tags_as_symbols() {
             .trim(),
         "[1] \"\""
     );
-    assert_eq!(
-        session.eval("alist(a=1, b=)[[1]]").unwrap().trim(),
-        "[1] 1"
-    );
+    assert_eq!(session.eval("alist(a=1, b=)[[1]]").unwrap().trim(), "[1] 1");
     assert_eq!(
         session.eval("deparse(body(alist))").unwrap().trim(),
         "[1] \"as.list(sys.call())[-1L]\""

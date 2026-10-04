@@ -152,9 +152,8 @@ unsafe fn list_elt(list: SEXP, name: &str) -> SEXP {
         if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            list,
-            crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }

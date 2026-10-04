@@ -18,8 +18,6 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
-
-
 unsafe extern "C-unwind" fn c_rchisq(n: SEXP, a: SEXP) -> SEXP {
     unsafe { do_rchisq(n, a) }
 }
@@ -148,12 +146,24 @@ unsafe extern "C-unwind" fn c_fft(z: SEXP, inverse: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     unsafe { super::fourier::mvfft(z, inverse) }
 }
-unsafe extern "C-unwind" fn c_approx_test(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP,
+unsafe extern "C-unwind" fn c_approx_test(
+    x: SEXP,
+    y: SEXP,
+    method: SEXP,
+    f: SEXP,
+    na_rm: SEXP,
 ) -> SEXP {
     unsafe { super::approx::ApproxTest(x, y, method, f, na_rm) }
 }
 unsafe extern "C-unwind" fn c_approx(
-    x: SEXP, y: SEXP, v: SEXP, method: SEXP, yleft: SEXP, yright: SEXP, f: SEXP, na_rm: SEXP,
+    x: SEXP,
+    y: SEXP,
+    v: SEXP,
+    method: SEXP,
+    yleft: SEXP,
+    yright: SEXP,
+    f: SEXP,
+    na_rm: SEXP,
 ) -> SEXP {
     unsafe { super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm) }
 }
@@ -189,10 +199,7 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
         if x.is_null() || x == R_NilValue() || TYPEOF(x) == SEXPTYPE::NILSXP {
             Rf_error(c"'x' is NULL".as_ptr());
         }
-        if TYPEOF(kendall) == SEXPTYPE::LGLSXP
-            && XLENGTH(kendall) > 0
-            && *LOGICAL(kendall) != 0
-        {
+        if TYPEOF(kendall) == SEXPTYPE::LGLSXP && XLENGTH(kendall) > 0 && *LOGICAL(kendall) != 0 {
             Rf_error(c"Kendall covariance is not implemented".as_ptr());
         }
         let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
@@ -235,7 +242,10 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
                 let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                 *INTEGER(dims) = ncx as i32;
                 *INTEGER(dims).add(1) = ncx as i32;
-                crate::sexp::attrib_core::setAttrib(m, crate::sexp::attrib_core::R_DimSymbol(), dims,
+                crate::sexp::attrib_core::setAttrib(
+                    m,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                    dims,
                 );
                 m
             };
@@ -295,12 +305,10 @@ unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
     unsafe {
         reject_var_on_factor(x);
         reject_var_on_factor(y);
-        let kendall = TYPEOF(kendall) == SEXPTYPE::LGLSXP
-            && XLENGTH(kendall) > 0
-            && *LOGICAL(kendall) != 0;
-        let x_names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_DimNamesSymbol());
+        let kendall =
+            TYPEOF(kendall) == SEXPTYPE::LGLSXP && XLENGTH(kendall) > 0 && *LOGICAL(kendall) != 0;
+        let x_names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
         let y_names = if y.is_null() || y == R_NilValue() {
             x_names
         } else {
@@ -446,7 +454,15 @@ unsafe fn kendall_complete_pair(
     coly: usize,
 ) -> f64 {
     unsafe {
-        let sign = |d: f64| -> f64 { if d > 0.0 { 1.0 } else if d < 0.0 { -1.0 } else { 0.0 } };
+        let sign = |d: f64| -> f64 {
+            if d > 0.0 {
+                1.0
+            } else if d < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }
+        };
         let mut sum = 0.0;
         let mut xsd = 0.0;
         let mut ysd = 0.0;
@@ -518,24 +534,117 @@ unsafe fn cov_complete_pair(
     }
 }
 
-
-
 const RAND_CALL_NAMES: &[&str] = &[
-    "C_rchisq", "C_rexp", "C_rgeom", "C_rpois", "C_rt", "C_rsignrank", "C_rbeta", "C_rbinom",
-    "C_rcauchy", "C_rf", "C_rgamma", "C_rlnorm", "C_rlogis", "C_rnbinom", "C_rnorm", "C_runif",
-    "C_rweibull", "C_rwilcox", "C_rnchisq", "C_rnbinom_mu", "C_rhyper", "C_rmultinom", "C_r2dtable",
-    "C_termsform", "C_modelframe", "C_modelmatrix", "C_updateform", "C_Cdqrls", "C_compcases", "C_influence",
-    "C_cov", "C_cor", "C_Cdist", "C_hclust", "C_hcass2", "C_rbart", "C_bvalus", "C_numeric_deriv", "C_optim", "C_optimhess", "C_nlm",
-    "C_ARIMA_transPars", "C_ARIMA_CSS", "C_ARIMA_Like", "C_ARIMA_Invtrans", "C_ARIMA_undoPars", "C_ARIMA_Gradtrans", "C_TSconv", "C_getQ0",
-    "C_doD", "C_deriv", "C_fft", "C_mvfft",
-    "C_ApproxTest", "C_Approx", "C_zeroin2", "C_do_fmin", "C_Fisher_sim", "C_kmns", "C_eureka", "C_multi_yw", "C_call_dqags", "C_call_dqagi",
-    "C_loess_raw", "C_loess_dfit", "C_loess_ifit", "C_loess_ise", "C_loess_dfitse", "C_lowesw", "C_lowesp", "C_lowess",
-    "C_kmeans_Lloyd", "C_kmeans_MacQueen", "C_Rsm", "C_acf", "C_pacf1", "C_SWilk", "C_nls_iter", "C_tukeyline", "C_pRho", "C_pKendall", "C_ksmooth", "C_rfilter", "C_cfilter", "C_arma0_kfore", "C_KalmanFore", "C_KalmanLike", "C_KalmanSmooth", "C_psmirnov_exact", "C_rWishart", "C_ar2ma",
-    "C_dpermdist1", "C_dpermdist2",
-    "C_setup_starma", "C_free_starma", "C_Starma_method", "C_arma0fa",
-    "C_get_s2", "C_get_resid", "C_set_trans", "C_Invtrans", "C_Dotrans", "C_Gradtrans", "C_Fexact",
-    "C_SplineCoef", "C_SplineEval",
-    "C_logit_link", "C_logit_linkinv", "C_logit_mu_eta", "C_binomial_dev_resids",
+    "C_rchisq",
+    "C_rexp",
+    "C_rgeom",
+    "C_rpois",
+    "C_rt",
+    "C_rsignrank",
+    "C_rbeta",
+    "C_rbinom",
+    "C_rcauchy",
+    "C_rf",
+    "C_rgamma",
+    "C_rlnorm",
+    "C_rlogis",
+    "C_rnbinom",
+    "C_rnorm",
+    "C_runif",
+    "C_rweibull",
+    "C_rwilcox",
+    "C_rnchisq",
+    "C_rnbinom_mu",
+    "C_rhyper",
+    "C_rmultinom",
+    "C_r2dtable",
+    "C_termsform",
+    "C_modelframe",
+    "C_modelmatrix",
+    "C_updateform",
+    "C_Cdqrls",
+    "C_compcases",
+    "C_influence",
+    "C_cov",
+    "C_cor",
+    "C_Cdist",
+    "C_hclust",
+    "C_hcass2",
+    "C_rbart",
+    "C_bvalus",
+    "C_numeric_deriv",
+    "C_optim",
+    "C_optimhess",
+    "C_nlm",
+    "C_ARIMA_transPars",
+    "C_ARIMA_CSS",
+    "C_ARIMA_Like",
+    "C_ARIMA_Invtrans",
+    "C_ARIMA_undoPars",
+    "C_ARIMA_Gradtrans",
+    "C_TSconv",
+    "C_getQ0",
+    "C_doD",
+    "C_deriv",
+    "C_fft",
+    "C_mvfft",
+    "C_ApproxTest",
+    "C_Approx",
+    "C_zeroin2",
+    "C_do_fmin",
+    "C_Fisher_sim",
+    "C_kmns",
+    "C_eureka",
+    "C_multi_yw",
+    "C_call_dqags",
+    "C_call_dqagi",
+    "C_loess_raw",
+    "C_loess_dfit",
+    "C_loess_ifit",
+    "C_loess_ise",
+    "C_loess_dfitse",
+    "C_lowesw",
+    "C_lowesp",
+    "C_lowess",
+    "C_kmeans_Lloyd",
+    "C_kmeans_MacQueen",
+    "C_Rsm",
+    "C_acf",
+    "C_pacf1",
+    "C_SWilk",
+    "C_nls_iter",
+    "C_tukeyline",
+    "C_pRho",
+    "C_pKendall",
+    "C_ksmooth",
+    "C_rfilter",
+    "C_cfilter",
+    "C_arma0_kfore",
+    "C_KalmanFore",
+    "C_KalmanLike",
+    "C_KalmanSmooth",
+    "C_psmirnov_exact",
+    "C_rWishart",
+    "C_ar2ma",
+    "C_dpermdist1",
+    "C_dpermdist2",
+    "C_setup_starma",
+    "C_free_starma",
+    "C_Starma_method",
+    "C_arma0fa",
+    "C_get_s2",
+    "C_get_resid",
+    "C_set_trans",
+    "C_Invtrans",
+    "C_Dotrans",
+    "C_Gradtrans",
+    "C_Fexact",
+    "C_SplineCoef",
+    "C_SplineEval",
+    "C_logit_link",
+    "C_logit_linkinv",
+    "C_logit_mu_eta",
+    "C_binomial_dev_resids",
     "C_DoubleCentre",
     "C_cutree",
     "C_monoFC_m",
@@ -552,8 +661,7 @@ const RAND_CALL_NAMES: &[&str] = &[
 ];
 
 unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
-    unsafe { super::massdist::BinDist(sx, sw, slo, shi, sn)
-}
+    unsafe { super::massdist::BinDist(sx, sw, slo, shi, sn) }
 }
 
 unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
@@ -977,8 +1085,6 @@ pub unsafe fn install_stats_call_symbols(env: SEXP) {
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Type aliases for random number generator function pointers
 // ---------------------------------------------------------------------------
@@ -1212,11 +1318,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 + 1
-                } else {
-                    0
-                };
+                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
                 for i in start..n {
                     *rx.add(i as usize) = fn_ptr(*ra.add((i % na) as usize));
                     if ISNAN(*rx.add(i as usize)) {
@@ -1309,11 +1411,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 + 1
-                } else {
-                    0
-                };
+                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
                 for i in start..n {
                     *rx.add(i as usize) =
                         fn_ptr(*ra.add((i % na) as usize), *rb.add((i % nb) as usize));
@@ -1415,11 +1513,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                     x
                 };
                 let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 + 1
-                } else {
-                    0
-                };
+                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
                 for i in start..n {
                     *rx.add(i as usize) = fn_ptr(
                         *ra.add((i % na) as usize),
@@ -1909,7 +2003,6 @@ unsafe fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
     slot
 }
 
-
 /// `x` or a ScalarReal(default) when the argument is absent; freshly
 /// allocated defaults are protected via `guards` for the adapter's scope.
 unsafe fn with_default(
@@ -2027,7 +2120,9 @@ pub unsafe fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let m = match_formals(call, args, &["n", "prob"]);
-        do_rgeom(require_slot(call, m[0], "n"), require_slot(call, m[1], "prob"),
+        do_rgeom(
+            require_slot(call, m[0], "n"),
+            require_slot(call, m[1], "prob"),
         )
     }
 }
@@ -2071,7 +2166,9 @@ pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let m = match_formals(call, args, &["nn", "n"]);
-        do_rsignrank(require_slot(call, m[0], "nn"), require_slot(call, m[1], "n"),
+        do_rsignrank(
+            require_slot(call, m[0], "nn"),
+            require_slot(call, m[1], "n"),
         )
     }
 }

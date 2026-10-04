@@ -71,23 +71,19 @@ pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     XLENGTH(elem) as i32
                 };
             }
-
         } else {
             for i in 0..n {
                 *dst.add(i as usize) = 1;
             }
         }
         let use_names = {
-            let arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["use.names"], 1);
-            arg.is_null()
-                || arg == R_NilValue()
-                || crate::main::coerce::asLogical(arg) != 0
+            let arg =
+                crate::mainutils::essentials::arg_by_name_or_position(args, &["use.names"], 1);
+            arg.is_null() || arg == R_NilValue() || crate::main::coerce::asLogical(arg) != 0
         };
         if use_names {
-            let names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -163,16 +159,13 @@ pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         copy_datetime_class(x, result);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
-
     }
 }
 
 unsafe fn copy_datetime_class(from: SEXP, to: SEXP) {
     unsafe {
-        let class = crate::sexp::attrib_core::getAttrib(
-            from,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(from, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && class != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 to,
@@ -207,10 +200,8 @@ unsafe fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
         for j in 0..ncomp {
             SET_VECTOR_ELT(ans, j, resize_vector(VECTOR_ELT(x, j), new_len));
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 ans,
@@ -228,8 +219,6 @@ unsafe fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
         ans
     }
 }
-
-
 
 pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
     unsafe {
@@ -440,9 +429,18 @@ pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEX
         }
         let result_len = if rows { leading } else { trailing };
 
-
         if TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            return complex_margin_summary(x, rows, mean, na_rm, leading, trailing, result_len, &result_axes, dim_attr);
+            return complex_margin_summary(
+                x,
+                rows,
+                mean,
+                na_rm,
+                leading,
+                trailing,
+                result_len,
+                &result_axes,
+                dim_attr,
+            );
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
         if result.is_null() {
@@ -494,21 +492,50 @@ unsafe fn complex_margin_summary(
             let mut im_na = false;
             let count = if rows { trailing } else { leading };
             for k in 0..count {
-                let cell = if rows { index + k * leading } else { index * leading + k };
+                let cell = if rows {
+                    index + k * leading
+                } else {
+                    index * leading + k
+                };
                 let z = *COMPLEX(x).add(cell as usize);
                 let bad = part_na(z.r) || part_na(z.i);
                 if na_rm && bad {
                     continue;
                 }
-                if part_na(z.r) { re_na = true; } else { sr += z.r; nr += 1.0; }
-                if part_na(z.i) { im_na = true; } else { si += z.i; ni += 1.0; }
+                if part_na(z.r) {
+                    re_na = true;
+                } else {
+                    sr += z.r;
+                    nr += 1.0;
+                }
+                if part_na(z.i) {
+                    im_na = true;
+                } else {
+                    si += z.i;
+                    ni += 1.0;
+                }
             }
             let finish = |na: bool, sum: f64, n: f64| -> f64 {
-                if na { if mean { f64::NAN } else { crate::sexp::ffi::NA_REAL } }
-                else if mean { if n == 0.0 { crate::sexp::ffi::NA_REAL } else { sum / n } }
-                else { sum }
+                if na {
+                    if mean {
+                        f64::NAN
+                    } else {
+                        crate::sexp::ffi::NA_REAL
+                    }
+                } else if mean {
+                    if n == 0.0 {
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        sum / n
+                    }
+                } else {
+                    sum
+                }
             };
-            Rcomplex { r: finish(re_na, sr, nr), i: finish(im_na, si, ni) }
+            Rcomplex {
+                r: finish(re_na, sr, nr),
+                i: finish(im_na, si, ni),
+            }
         };
         if rows {
             for row in 0..leading {

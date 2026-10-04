@@ -2185,8 +2185,6 @@ pub unsafe fn do_RNGversion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
     }
 }
 
-
-
 /// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL,
 /// binom.kind = NULL)`.
 ///

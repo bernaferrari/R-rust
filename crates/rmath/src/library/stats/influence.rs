@@ -142,7 +142,6 @@ unsafe extern "C" {
 // Pure rust-backend lminfl (LAPACK QR / dormqr convention)
 // ---------------------------------------------------------------------------
 
-
 /// Core algorithm matching GNU `lminfl.f` on a LINPACK QR from `dqrdc2`.
 ///
 /// `qr` is column-major with leading dimension `ldx`. `qraux` is the
@@ -403,7 +402,6 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
 #[cfg(all(test, not(feature = "fortran-backend")))]
 mod tests {
     use super::lminfl_compute;
-
 
     /// Factor X (column-major n×p) with LINPACK `dqrdc2`.
     fn factor_qr(x: &[f64], n: usize, p: usize, tol: f64) -> (Vec<f64>, Vec<f64>, usize) {

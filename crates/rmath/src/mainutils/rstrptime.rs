@@ -677,9 +677,8 @@ fn strptime_internal(
             // `del >= 0` selects the week origin. The old `yday < 0`
             // adjustment double-counted a negative weekday offset.
             let del = save_wday - w_offset;
-            tm.tm_yday = (7 - (tm.tm_wday - w_offset)) % 7
-                + (week_no - c_int::from(del >= 0)) * 7
-                + del;
+            tm.tm_yday =
+                (7 - (tm.tm_wday - w_offset)) % 7 + (week_no - c_int::from(del >= 0)) * 7 + del;
         }
 
         if !have_mday || !have_mon {

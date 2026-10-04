@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
-use super::*;
 use super::builtins::new_sequence;
+use super::*;
 use crate::sexp::{accessors::*, memory::ArenaBudget};
 use std::cell::Cell;
 
@@ -284,9 +284,10 @@ fn serialize_falls_back_to_plain_values_without_internal_metadata() {
         assert_eq!(copy.len(), 5);
         assert_eq!(copy.real_elt(4), Some(12.0));
         assert!(!is_altrep(&copy));
-        assert!(copy
-            .attrib()
-            .is_none_or(|v| v.typeof_() == SEXPTYPE::NILSXP));
+        assert!(
+            copy.attrib()
+                .is_none_or(|v| v.typeof_() == SEXPTYPE::NILSXP)
+        );
         assert!(!is_materialized(&x));
     });
 }
@@ -297,11 +298,13 @@ fn zero_negative_and_invalid_scalar_lengths_are_handled() {
         .register_altrep_class("repeat", RepeatClass(SEXPTYPE::REALSXP))
         .unwrap();
     for length in [-1.0, f64::NAN, f64::INFINITY, 0.5, i64::MAX as f64] {
-        assert!(AltrepBuilder::new(cls.clone())
-            .data1(real(&s, 1.0))
-            .data2(real(&s, length))
-            .build()
-            .is_err());
+        assert!(
+            AltrepBuilder::new(cls.clone())
+                .data1(real(&s, 1.0))
+                .data2(real(&s, length))
+                .build()
+                .is_err()
+        );
     }
     let empty = AltrepBuilder::new(cls)
         .data1(real(&s, 1.0))
@@ -508,17 +511,21 @@ fn serialization_cycle_fails_cleanly_and_resets_rust_operation_guard() {
         })
     }))
     .unwrap_err();
-    assert!(error
-        .downcast_ref::<crate::sexp::context::RError>()
-        .is_some());
+    assert!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .is_some()
+    );
     assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         s.with_active(|| unsafe { crate::mainutils::duplicate::Rf_duplicate(x.clone().as_raw()) })
     }))
     .unwrap_err();
-    assert!(error
-        .downcast_ref::<crate::sexp::context::RError>()
-        .is_some());
+    assert!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .is_some()
+    );
     assert!(registry::operations_are_idle(s.owner_token().unwrap()));
     force_materialization(&x).unwrap();
     s.gc();

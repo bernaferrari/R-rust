@@ -40,7 +40,6 @@ impl RuntimePathPolicy {
             library_paths.extend(discover_host_r_libraries());
         }
 
-
         dedupe_paths(&mut library_paths);
 
         RuntimePathPolicy {

@@ -233,13 +233,8 @@ pub fn pnbinom_mu_inner(x: f64, size: f64, mu: f64, lower_tail: bool, log_p: boo
     let x = floor(x + 1e-7);
     // GNU passes mu/(size+mu) separately: size/(size+mu) is 1 for huge size,
     // and 1 - pr would be 0.
-    let (w, wc, _ierr) = crate::special::toms708::bratio(
-        size,
-        x + 1.0,
-        size / (size + mu),
-        mu / (size + mu),
-        log_p,
-    );
+    let (w, wc, _ierr) =
+        crate::special::toms708::bratio(size, x + 1.0, size / (size + mu), mu / (size + mu), log_p);
     if lower_tail { w } else { wc }
 }
 

@@ -441,5 +441,3 @@ pub unsafe extern "C-unwind" fn c_kmns(
         );
     }
 }
-
-

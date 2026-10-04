@@ -4,7 +4,6 @@ use super::*;
 use std::collections::HashMap;
 use std::ffi::CString;
 
-
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
@@ -57,9 +56,8 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if ns == base_ns && ns != crate::sexp::globals::R_BaseEnv() {
             return Rf_ScalarLogical(TRUE);
         }
-        let info = crate::sexp::envir::R_findVarInFrame(
-            ns,
-            Rf_install(c".__NAMESPACE__.".as_ptr()));
+        let info =
+            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".__NAMESPACE__.".as_ptr()));
         Rf_ScalarLogical(
             if !info.is_null()
                 && info != crate::sexp::globals::R_UnboundValue()
@@ -72,7 +70,6 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         )
     }
 }
-
 
 /// R's `is(x, class2)` — type/class check.
 pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -306,8 +303,6 @@ unsafe fn s4_prototype_for_type(type_name: &str) -> SEXP {
     }
 }
 
-
-
 unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
     unsafe {
         let mut current = CDR(args);
@@ -355,17 +350,10 @@ unsafe fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
     }
 }
 
-
 pub unsafe fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = methods_exported_closure(c"setClass") {
-            return crate::eval::closure::applyClosure(
-                call,
-                fun,
-                args,
-                rho,
-                R_NilValue(),
-                TRUE);
+            return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
         }
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
@@ -407,10 +395,8 @@ unsafe fn s4_class_generator(class_name: &str) -> SEXP {
             Rf_mkString(cstr.as_ptr())
         };
         let _class_str = protect(class_str);
-        let body = crate::sexp::constructors::Rf_lang3(
-            Rf_install(c"new".as_ptr()),
-            class_str,
-            dots);
+        let body =
+            crate::sexp::constructors::Rf_lang3(Rf_install(c"new".as_ptr()), class_str, dots);
         let _body = protect(body);
         crate::mainutils::dstruct::mkCLOSXP(formals, body, crate::sexp::globals::R_BaseEnv())
     }
@@ -428,7 +414,6 @@ pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         method
     }
 }
-
 
 /// R's `isVirtualClass(Class)` — check if a registered S4 class is virtual.
 pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -477,26 +462,16 @@ unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
     }
 }
 
-
 /// Use the GNU `methods::new` closure once that namespace is loaded.
 unsafe fn methods_new_closure() -> Option<SEXP> {
     unsafe { methods_exported_closure(c"new") }
 }
 
-
-
-
 /// GNU `new(Class, ...)` — construct an S4 object.
 pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = methods_new_closure() {
-            return crate::eval::closure::applyClosure(
-                call,
-                fun,
-                args,
-                rho,
-                R_NilValue(),
-                TRUE);
+            return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
         }
         let class_arg = CAR(args);
 
@@ -530,7 +505,11 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if data.is_null() || data == R_NilValue() {
                 if class_def.contains.iter().any(|parent| parent == "list") {
                     data = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-                } else if class_def.contains.iter().any(|parent| parent == "expression") {
+                } else if class_def
+                    .contains
+                    .iter()
+                    .any(|parent| parent == "expression")
+                {
                     data = Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
                 } else if class_def.contains.iter().any(|parent| parent == "integer") {
                     data = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
@@ -540,7 +519,11 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .any(|parent| parent == "numeric" || parent == "double")
                 {
                     data = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-                } else if class_def.contains.iter().any(|parent| parent == "character") {
+                } else if class_def
+                    .contains
+                    .iter()
+                    .any(|parent| parent == "character")
+                {
                     data = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
                 } else if class_def.contains.iter().any(|parent| parent == "logical") {
                     data = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
@@ -605,7 +588,6 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let finished = finish_s4_object(result, &class_name);
         drop(proto_guards);
         finished
-
     }
 }
 
@@ -633,10 +615,19 @@ unsafe fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
 pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::objects::with_objects_runtime(|access| {
         let domain = access.domain();
-        let args = if args.is_null() { domain.nil() } else { domain.wrap(args)? };
-        let environment = if rho.is_null() { domain.nil() } else { domain.wrap(rho)? };
+        let args = if args.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(args)?
+        };
+        let environment = if rho.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(rho)?
+        };
         valid_object_owned(access, &args, &environment)
-    }).as_raw()
+    })
+    .as_raw()
 }
 
 fn valid_object_owned(
@@ -650,19 +641,29 @@ fn valid_object_owned(
     if object.is_nil() {
         return Ok(domain.logical(true));
     }
-    if let Some(message) = access.with_native(|_| Ok(unsafe { super::print::factor_validity_message(object.as_raw()) }))? {
+    if let Some(message) = access
+        .with_native(|_| Ok(unsafe { super::print::factor_validity_message(object.as_raw()) }))?
+    {
         return Err(SexpError::EvaluationFailed { message });
     }
     let class_val = access.with_native(|owner| {
-        let value = unsafe { crate::sexp::attrib_core::getAttrib(object.as_raw(), crate::sexp::attrib_core::R_ClassSymbol()) };
+        let value = unsafe {
+            crate::sexp::attrib_core::getAttrib(
+                object.as_raw(),
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            )
+        };
         owner.sexp(value)?.into_owned()
     })?;
     if class_val.typeof_() != SEXPTYPE::STRSXP || class_val.len() < 1 {
         return Ok(domain.logical(true));
     }
     let class_name = class_val.try_string_value_elt(0)?.unwrap_or_default();
-    let method = access.with_native(|_| Ok(crate::mainutils::objects::s4_validity_fn(&class_name)))?;
-    let Some(method) = method else { return Ok(domain.logical(true)); };
+    let method =
+        access.with_native(|_| Ok(crate::mainutils::objects::s4_validity_fn(&class_name)))?;
+    let Some(method) = method else {
+        return Ok(domain.logical(true));
+    };
     let allocator = access.allocator(&domain)?;
     let argument = allocator.evaluated_promise(&object, environment)?;
     let arguments = allocator.pairlist_cell(&argument, &domain.nil(), &domain.nil())?;
@@ -670,7 +671,9 @@ fn valid_object_owned(
     let result = crate::mainutils::objects::evaluate_s4_value(access, &call, environment)?;
     if result.typeof_() == SEXPTYPE::LGLSXP {
         if result.len() < 1 || result.try_logical_elt(0)? != TRUE {
-            return Err(SexpError::EvaluationFailed { message: format!("invalid class \"{class_name}\" object") });
+            return Err(SexpError::EvaluationFailed {
+                message: format!("invalid class \"{class_name}\" object"),
+            });
         }
     } else if result.typeof_() == SEXPTYPE::STRSXP && result.len() > 0 {
         let message = result.try_string_value_elt(0)?.unwrap_or_default();
@@ -680,7 +683,6 @@ fn valid_object_owned(
     }
     Ok(domain.logical(true))
 }
-
 
 /// R's `show(object)` — GNU `showDefault`.
 ///
@@ -814,7 +816,8 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
         }
         let data = crate::mainutils::duplicate::Rf_duplicate(value);
         crate::sexp::accessors::UNSET_S4_OBJECT(data);
-        let dim = crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
+        let dim =
+            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
         let keep_dim = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2;
         if keep_dim {
             // GNU getDataPart for matrix/array: drop slots/class, keep dim.
@@ -823,9 +826,15 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_ClassSymbol(),
                 R_NilValue(),
             );
-            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"className".as_ptr()), R_NilValue(),
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                Rf_install(c"className".as_ptr()),
+                R_NilValue(),
             );
-            crate::sexp::attrib_core::setAttrib(data, Rf_install(c"package".as_ptr()), R_NilValue(),
+            crate::sexp::attrib_core::setAttrib(
+                data,
+                Rf_install(c"package".as_ptr()),
+                R_NilValue(),
             );
         } else {
             // GNU getDataPart for numeric/integer/...: attributes(object) <- NULL
@@ -887,8 +896,6 @@ impl Drop for SetDataPartGuard {
     }
 }
 
-
-
 unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
     unsafe {
         let data_sym = Rf_install(c".Data".as_ptr());
@@ -907,9 +914,8 @@ unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
             if !xdata.is_null() && xdata != R_NilValue() {
                 return strip_s4_data_part(unmap_slot_pseudo_null(xdata));
             }
-            let class_val = crate::sexp::attrib_core::getAttrib(
-                obj,
-                crate::sexp::attrib_core::R_ClassSymbol());
+            let class_val =
+                crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
             if TYPEOF(class_val) == SEXPTYPE::STRSXP && XLENGTH(class_val) > 0 {
                 let class_name = elt_to_string(class_val, 0);
                 if crate::mainutils::objects::s4_class(&class_name).is_some_and(|class_def| {
@@ -940,7 +946,6 @@ unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
         obj
     }
 }
-
 
 /// R's `slotNames(Class)` — get the names of slots of an S4 class.
 pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -998,7 +1003,6 @@ pub unsafe fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         R_do_slot(object, name_arg)
     }
 }
-
 
 /// Look up a slot stored as a named vector element (port S4
 /// representation). Exact, non-partial name matching.
@@ -1325,7 +1329,6 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
                         let val = crate::eval::eval::Rf_eval(call, methods);
                         let _val = protect(val);
                         return val;
-
                     }
                 }
             }
@@ -1354,7 +1357,6 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     }
 }
 
-
 /// R's `set_slot(object, name, value)` — set the value of a slot.
 pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1371,7 +1373,6 @@ pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         R_do_slot_assign(object, name_arg, value)
     }
 }
-
 
 /// R's `extends(class1, class2)` — check if class1 extends class2.
 pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

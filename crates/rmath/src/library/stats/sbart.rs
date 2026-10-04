@@ -523,7 +523,6 @@ unsafe fn sslvrg(
                     + *p1ip.add(3 + (j + 3) * ld4) * b3 * b3)
                     * *ws.add(i)
                     * *ws.add(i);
-
             }
             // Evaluate criterion
             let mut df = 0.0;

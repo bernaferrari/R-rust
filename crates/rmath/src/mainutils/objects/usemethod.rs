@@ -355,10 +355,8 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         let search_start = ENCLOS(top);
 
         if !search_start.is_null() && search_start != R_EmptyEnv() {
-            let val3 = force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(
-                method,
-                search_start,
-            ));
+            let val3 =
+                force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(method, search_start));
             if val3 != R_UnboundValue() {
                 return val3;
             }
@@ -379,7 +377,6 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         }
 
         R_UnboundValue()
-
     }
 }
 
@@ -398,10 +395,7 @@ pub(crate) fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
 
 unsafe fn force_s3_method_value(method: SEXP) -> SEXP {
     unsafe {
-        if method.is_null()
-            || method == R_NilValue()
-            || method == R_UnboundValue()
-        {
+        if method.is_null() || method == R_NilValue() || method == R_UnboundValue() {
             return method;
         }
         if TYPEOF(method) == SEXPTYPE::PROMSXP {
@@ -412,7 +406,6 @@ unsafe fn force_s3_method_value(method: SEXP) -> SEXP {
         }
     }
 }
-
 
 pub(crate) unsafe fn lookup_s3_method_symbol(
     method_symbol: SEXP,
@@ -455,8 +448,6 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
         R_UnboundValue()
     }
 }
-
-
 
 pub(crate) unsafe fn lookup_s3_method_for_class(
     generic: &str,
@@ -503,8 +494,6 @@ unsafe fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
     }
 }
 
-
-
 pub(crate) unsafe fn lookup_s3_method_for_classes(
     generic: &str,
     classes: SEXP,
@@ -546,7 +535,6 @@ pub(crate) unsafe fn lookup_s3_method_for_classes(
                     class_index: Some(i),
                 });
             }
-
         }
 
         if include_default {
@@ -569,9 +557,8 @@ unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SE
         while !current.is_null() && current != R_EmptyEnv() {
             let table = crate::sexp::envir::R_findVarInFrame(current, S3MethodsTable_symbol());
             if !table.is_null() && table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
-                let method = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(
-                    table, method_sym,
-                ));
+                let method =
+                    force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method_sym));
                 if isFunction(method) != FALSE {
                     return method;
                 }
@@ -708,7 +695,6 @@ pub unsafe fn findmethod(
                 *method = sxp;
                 return i + 1; // 1-based index
             }
-
         }
 
         // Try default

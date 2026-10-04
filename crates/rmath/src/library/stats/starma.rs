@@ -67,11 +67,15 @@ pub(super) struct StarmaModel {
 impl StarmaModel {
     /// Bound packed arithmetic and buffer sizes before allocating any workspace.
     pub(super) fn new(
-        orders: [i32; 5], n: i32, m: i32, ncond: i32, trans: i32, delta: f64,
+        orders: [i32; 5],
+        n: i32,
+        m: i32,
+        ncond: i32,
+        trans: i32,
+        delta: f64,
     ) -> Result<Self, ForecastError> {
         let [mp, mq, msp, msq, ns] = orders;
-        if orders.into_iter().any(|order| order < 0) || n < 0 || m < 0
-            || ncond < 0 || ncond > n {
+        if orders.into_iter().any(|order| order < 0) || n < 0 || m < 0 || ncond < 0 || ncond > n {
             return Err(ForecastError::Dimensions);
         }
         let size = |value: i64| i32::try_from(value).map_err(|_| ForecastError::PackedOverflow);
@@ -80,24 +84,52 @@ impl StarmaModel {
         let r = size(i64::from(p).max(i64::from(q) + 1))?;
         let np = size(i64::from(r) * (i64::from(r) + 1) / 2)?;
         let nrbar = size((i64::from(np) * (i64::from(np) - 1) / 2).max(1))?;
-        let npar = size(i64::from(mp) + i64::from(mq) + i64::from(msp)
-            + i64::from(msq) + i64::from(m))?;
+        let npar =
+            size(i64::from(mp) + i64::from(mq) + i64::from(msp) + i64::from(msq) + i64::from(m))?;
         let reg_len = size(i64::from(n) * i64::from(m) + 1)?;
         let zeros = |length: i32| forecast_zeros(length.max(1) as usize);
         Ok(Self {
-            p, q, r, np, nrbar, n, ncond, m, trans, delta,
-            method: 0, nused: 0, mp, mq, msp, msq, ns, s2: 0.0,
-            params: zeros(npar)?, phi: zeros(r)?, theta: zeros(r)?, a: zeros(r)?,
-            P: zeros(np)?, V: zeros(np)?, thetab: zeros(np)?, xnext: zeros(np)?,
-            xrow: zeros(np)?, rbar: zeros(nrbar)?, w: zeros(n)?, wkeep: zeros(n)?,
-            resid: zeros(n)?, reg: zeros(reg_len)?,
+            p,
+            q,
+            r,
+            np,
+            nrbar,
+            n,
+            ncond,
+            m,
+            trans,
+            delta,
+            method: 0,
+            nused: 0,
+            mp,
+            mq,
+            msp,
+            msq,
+            ns,
+            s2: 0.0,
+            params: zeros(npar)?,
+            phi: zeros(r)?,
+            theta: zeros(r)?,
+            a: zeros(r)?,
+            P: zeros(np)?,
+            V: zeros(np)?,
+            thetab: zeros(np)?,
+            xnext: zeros(np)?,
+            xrow: zeros(np)?,
+            rbar: zeros(nrbar)?,
+            w: zeros(n)?,
+            wkeep: zeros(n)?,
+            resid: zeros(n)?,
+            reg: zeros(reg_len)?,
         })
     }
 
     pub(super) fn try_clone(&self) -> Result<Self, ForecastError> {
         fn copy(values: &[f64]) -> Result<Vec<f64>, ForecastError> {
             let mut result = Vec::new();
-            result.try_reserve_exact(values.len()).map_err(|_| ForecastError::Allocation)?;
+            result
+                .try_reserve_exact(values.len())
+                .map_err(|_| ForecastError::Allocation)?;
             result.extend_from_slice(values);
             Ok(result)
         }
@@ -373,7 +405,13 @@ pub(super) fn starma(G: &mut StarmaModel, ifault: &mut c_int) {
 }
 
 /// Update Kalman filter by inclusion of data values w(1) to w(n).
-pub(super) fn karma(G: &mut StarmaModel, sumlog: &mut f64, ssq: &mut f64, iupd: c_int, nit: &mut c_int) {
+pub(super) fn karma(
+    G: &mut StarmaModel,
+    sumlog: &mut f64,
+    ssq: &mut f64,
+    iupd: c_int,
+    nit: &mut c_int,
+) {
     let p = G.p;
     let q = G.q;
     let r = G.r;
@@ -436,13 +474,15 @@ pub(super) fn karma(G: &mut StarmaModel, sumlog: &mut f64, ssq: &mut f64, iupd: 
                         let phijdt = phij * dt_p;
                         for l in j..r {
                             ind += 1;
-                            P[ind as usize] =
-                                V[ind as usize] + phi[l as usize] * phijdt;
+                            P[ind as usize] = V[ind as usize] + phi[l as usize] * phijdt;
                             if j < r - 1 {
-                                P[ind as usize] = P[ind as usize] + work[(j + 1) as usize] * phi[l as usize];
+                                P[ind as usize] =
+                                    P[ind as usize] + work[(j + 1) as usize] * phi[l as usize];
                             }
                             if l < r - 1 {
-                                P[ind as usize] = P[ind as usize] + work[(l + 1) as usize] * phij + P[indn as usize];
+                                P[ind as usize] = P[ind as usize]
+                                    + work[(l + 1) as usize] * phij
+                                    + P[indn as usize];
                                 indn += 1;
                             }
                         }
@@ -551,17 +591,27 @@ impl std::fmt::Display for ForecastError {
 
 /// Bound every remaining signed packed-index product before allocation.
 pub(super) fn forecast_dimensions(r: i32, n: i32, d: i32) -> Result<(i32, i32), ForecastError> {
-    if r < 1 || d < 0 || n < 1 { return Err(ForecastError::Dimensions); }
-    if d >= n { return Err(ForecastError::History); }
+    if r < 1 || d < 0 || n < 1 {
+        return Err(ForecastError::Dimensions);
+    }
+    if d >= n {
+        return Err(ForecastError::History);
+    }
     let rd = i64::from(r) + i64::from(d);
-    let product = rd.checked_mul(rd + 1).ok_or(ForecastError::PackedOverflow)?;
-    if product > i64::from(i32::MAX) { return Err(ForecastError::PackedOverflow); }
+    let product = rd
+        .checked_mul(rd + 1)
+        .ok_or(ForecastError::PackedOverflow)?;
+    if product > i64::from(i32::MAX) {
+        return Err(ForecastError::PackedOverflow);
+    }
     Ok((rd as i32, (product / 2) as i32))
 }
 
 fn forecast_zeros(length: usize) -> Result<Vec<f64>, ForecastError> {
     let mut values = Vec::new();
-    values.try_reserve_exact(length).map_err(|_| ForecastError::Allocation)?;
+    values
+        .try_reserve_exact(length)
+        .map_err(|_| ForecastError::Allocation)?;
     values.resize(length, 0.0);
     Ok(values)
 }
@@ -576,15 +626,24 @@ pub(super) fn forkal(
     il: i32,
     delta: &[f64],
 ) -> Result<(Vec<f64>, Vec<f64>), ForecastError> {
-    if il < 1 { return Err(ForecastError::Kernel(11)); }
+    if il < 1 {
+        return Err(ForecastError::Kernel(11));
+    }
     let (rd, rz) = forecast_dimensions(source.r, source.n, d)?;
-    if delta.len() != d as usize || source.p < 0 || source.q < 0
+    if delta.len() != d as usize
+        || source.p < 0
+        || source.q < 0
         || i64::from(source.r) != i64::from(source.p).max(i64::from(source.q) + 1)
         || i64::from(source.np) != i64::from(source.r) * (i64::from(source.r) + 1) / 2
         || source.nrbar < 1
-        || (source.r > 1 && i64::from(source.nrbar) != i64::from(source.np) * (i64::from(source.np) - 1) / 2)
-    { return Err(ForecastError::Dimensions); }
-    if source.p == 0 && source.q == 0 { return Err(ForecastError::Kernel(4)); }
+        || (source.r > 1
+            && i64::from(source.nrbar) != i64::from(source.np) * (i64::from(source.np) - 1) / 2)
+    {
+        return Err(ForecastError::Dimensions);
+    }
+    if source.p == 0 && source.q == 0 {
+        return Err(ForecastError::Kernel(4));
+    }
     let mut G = source.try_clone()?;
     G.a = forecast_zeros(rd as usize)?;
     G.P = forecast_zeros(rz as usize)?;
@@ -627,7 +686,9 @@ pub(super) fn forkal(
         G.P[0] = 1.0 / (1.0 - G.phi[0] * G.phi[0]);
     } else {
         starma(&mut G, &mut ifault);
-        if ifault != 0 { return Err(ForecastError::Kernel(ifault)); }
+        if ifault != 0 {
+            return Err(ForecastError::Kernel(ifault));
+        }
     }
 
     // GNU R stats/src/starma.c stores G.w[n-j-2], including its one-observation
@@ -659,7 +720,15 @@ pub(super) fn forkal(
         karma(&mut G, &mut sumlog, &mut ssq_val, 1, &mut nit_val);
     }
 
-    let StarmaModel { phi, mut a, mut P, V, mut xrow, resid, .. } = G;
+    let StarmaModel {
+        phi,
+        mut a,
+        mut P,
+        V,
+        mut xrow,
+        resid,
+        ..
+    } = G;
 
     /* Calculate m.l.e. of sigma squared */
     sigma2 = 0.0;
@@ -740,14 +809,13 @@ pub(super) fn forkal(
                     }
                 }
                 for j in 0..d - 1 {
-                    P[(jkl + j + 1) as usize] =
-                        store[j as usize] + P[(r + j) as usize];
+                    P[(jkl + j + 1) as usize] = store[j as usize] + P[(r + j) as usize];
                 }
             }
             P[jkl as usize] = P[0];
             for i in 0..d {
-                P[jkl as usize] = P[jkl as usize] + delta[i as usize]
-                    * (store[i as usize] + 2.0 * P[(r + i) as usize]);
+                P[jkl as usize] = P[jkl as usize]
+                    + delta[i as usize] * (store[i as usize] + 2.0 * P[(r + i) as usize]);
             }
             for i in 0..d {
                 store[i as usize] = P[(r + i) as usize];
@@ -808,7 +876,8 @@ pub(super) fn forkal(
                 }
                 if i < r - 1 {
                     ind1 += 1;
-                    P[ind2 as usize] = P[ind2 as usize] + store[(i + 1) as usize] * phij + P[ind1 as usize];
+                    P[ind2 as usize] =
+                        P[ind2 as usize] + store[(i + 1) as usize] * phij + P[ind1 as usize];
                 }
                 ind += 1;
             }
@@ -826,16 +895,12 @@ pub(super) fn forkal(
             for j in 0..d {
                 k = r * (i45 - r) / 2 + j * (2 * d + 1 - j) / 2;
                 tmp = delta[j as usize];
-                ams_val +=
-                    2.0 * tmp * P[(r + j) as usize] + P[k as usize] * tmp * tmp;
+                ams_val += 2.0 * tmp * P[(r + j) as usize] + P[k as usize] * tmp * tmp;
             }
             for j in 0..d - 1 {
                 k = r * (i45 - r) / 2 + 1 + j * (2 * d + 1 - j) / 2;
                 for i in j + 1..d {
-                    ams_val += 2.0
-                        * delta[i as usize]
-                        * delta[j as usize]
-                        * P[k as usize];
+                    ams_val += 2.0 * delta[i as usize] * delta[j as usize] * P[k as usize];
                     k += 1;
                 }
             }
@@ -859,11 +924,26 @@ mod tests {
 
     #[test]
     fn owned_model_rejects_invalid_and_overflowing_dimensions_before_allocation() {
-        assert!(matches!(StarmaModel::new([-1, 0, 0, 0, 0], 3, 0, 0, 0, 0.0), Err(ForecastError::Dimensions)));
-        assert!(matches!(StarmaModel::new([1, 0, 0, 0, 0], 3, 0, 4, 0, 0.0), Err(ForecastError::Dimensions)));
-        assert!(matches!(StarmaModel::new([1024, 0, 0, 0, 0], 3, 0, 0, 0, 0.0), Err(ForecastError::PackedOverflow)));
-        assert!(matches!(StarmaModel::new([1, 0, i32::MAX, 0, 2], 3, 0, 0, 0, 0.0), Err(ForecastError::PackedOverflow)));
-        assert!(matches!(StarmaModel::new([1, 0, 0, 0, 0], i32::MAX, 1, 0, 0, 0.0), Err(ForecastError::PackedOverflow)));
+        assert!(matches!(
+            StarmaModel::new([-1, 0, 0, 0, 0], 3, 0, 0, 0, 0.0),
+            Err(ForecastError::Dimensions)
+        ));
+        assert!(matches!(
+            StarmaModel::new([1, 0, 0, 0, 0], 3, 0, 4, 0, 0.0),
+            Err(ForecastError::Dimensions)
+        ));
+        assert!(matches!(
+            StarmaModel::new([1024, 0, 0, 0, 0], 3, 0, 0, 0, 0.0),
+            Err(ForecastError::PackedOverflow)
+        ));
+        assert!(matches!(
+            StarmaModel::new([1, 0, i32::MAX, 0, 2], 3, 0, 0, 0, 0.0),
+            Err(ForecastError::PackedOverflow)
+        ));
+        assert!(matches!(
+            StarmaModel::new([1, 0, 0, 0, 0], i32::MAX, 1, 0, 0, 0.0),
+            Err(ForecastError::PackedOverflow)
+        ));
     }
 
     #[test]
@@ -873,13 +953,30 @@ mod tests {
         // The AR covariance follows the Yule-Walker equations, independently
         // of AS154's packed-state initializer and inclusion regression.
         for (orders, phi, theta, residuals, ssq_expected, determinant) in [
-            ([0, 1, 0, 0, 0], vec![], vec![0.5],
-                [1.0 / (5.0_f64 / 4.0).sqrt(), (8.0 / 5.0) / (21.0_f64 / 20.0).sqrt(),
-                 (47.0 / 21.0) / (85.0_f64 / 84.0).sqrt()],
-                4.0 / 5.0 + 256.0 / 105.0 + 8836.0 / 1785.0, 85.0_f64 / 64.0),
-            ([2, 0, 0, 0, 0], vec![0.5, 0.25], vec![],
-                [1.0 / (48.0_f64 / 25.0).sqrt(), (4.0 / 3.0) / (16.0_f64 / 15.0).sqrt(), 7.0 / 4.0],
-                21.0 / 4.0, 256.0_f64 / 125.0),
+            (
+                [0, 1, 0, 0, 0],
+                vec![],
+                vec![0.5],
+                [
+                    1.0 / (5.0_f64 / 4.0).sqrt(),
+                    (8.0 / 5.0) / (21.0_f64 / 20.0).sqrt(),
+                    (47.0 / 21.0) / (85.0_f64 / 84.0).sqrt(),
+                ],
+                4.0 / 5.0 + 256.0 / 105.0 + 8836.0 / 1785.0,
+                85.0_f64 / 64.0,
+            ),
+            (
+                [2, 0, 0, 0, 0],
+                vec![0.5, 0.25],
+                vec![],
+                [
+                    1.0 / (48.0_f64 / 25.0).sqrt(),
+                    (4.0 / 3.0) / (16.0_f64 / 15.0).sqrt(),
+                    7.0 / 4.0,
+                ],
+                21.0 / 4.0,
+                256.0_f64 / 125.0,
+            ),
         ] {
             let mut model = model(orders, &[1.0, 2.0, 3.0]);
             model.phi[..phi.len()].copy_from_slice(&phi);
@@ -890,7 +987,10 @@ mod tests {
             let (mut logdet, mut ssq, mut iteration) = (0.0, 0.0, 0);
             karma(&mut model, &mut logdet, &mut ssq, 1, &mut iteration);
             for (actual, expected) in model.resid.iter().zip(residuals) {
-                assert!((actual - expected).abs() < 1e-12, "orders={orders:?}: {actual} vs {expected}");
+                assert!(
+                    (actual - expected).abs() < 1e-12,
+                    "orders={orders:?}: {actual} vs {expected}"
+                );
             }
             assert!((ssq - ssq_expected).abs() < 1e-12);
             assert!((logdet - determinant.ln()).abs() < 1e-12);
@@ -941,5 +1041,4 @@ mod tests {
         assert_eq!(variances, [16.0, 20.0, 21.0]);
         assert_eq!(source, original);
     }
-
 }

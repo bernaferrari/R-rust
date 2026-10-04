@@ -284,7 +284,6 @@ fn test_dgetrf_zero_matrix_reports_singular_info() {
     assert_eq!(info, 1, "dgetrf zero matrix info");
 }
 
-
 // ════════════════════════════════════════════════════════════════
 // dgesv_  –  solve Ax = B via LU
 // ════════════════════════════════════════════════════════════════
@@ -1444,7 +1443,11 @@ fn test_dpotri_extreme_scale_stays_finite() {
     }
     assert_eq!(info, 0, "dpotri 1e155 info");
     assert!(a[0].is_finite(), "dpotri 1e155 inverse finite");
-    assert!((a[0] - 1e-310).abs() / 1e-310 < 1e-12, "dpotri 1e155 inverse {}", a[0]);
+    assert!(
+        (a[0] - 1e-310).abs() / 1e-310 < 1e-12,
+        "dpotri 1e155 inverse {}",
+        a[0]
+    );
 }
 
 #[test]
@@ -1459,10 +1462,17 @@ fn test_dpotri_lower_leaves_upper_untouched() {
     }
     assert_eq!(info, 0, "dpotri lower info");
     assert_eq!(a[2], 9.9, "dpotri upper triangle untouched");
-    assert!((a[0] - 0.25).abs() < 1e-15, "dpotri L inverse diag {}", a[0]);
-    assert!((a[3] - 0.25).abs() < 1e-15, "dpotri L inverse diag {}", a[3]);
+    assert!(
+        (a[0] - 0.25).abs() < 1e-15,
+        "dpotri L inverse diag {}",
+        a[0]
+    );
+    assert!(
+        (a[3] - 0.25).abs() < 1e-15,
+        "dpotri L inverse diag {}",
+        a[3]
+    );
 }
-
 
 #[test]
 fn test_dpotri_inverse_residual() {

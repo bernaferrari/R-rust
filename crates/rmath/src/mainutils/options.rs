@@ -19,10 +19,10 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::OwnerToken;
+use crate::sexp::protect::protect;
+use crate::sexp::symbol::Rf_install;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OptionsInitialization {
@@ -47,7 +47,11 @@ impl OptionsInitializationGuard {
             let availability = crate::sexp::instance::instance_liveness(owner);
             let pin = require_options(OwnerToken::from_raw(owner).pin());
             (*owner).options_initialization = OptionsInitialization::Initializing;
-            Some(Self { owner, availability, _pin: pin })
+            Some(Self {
+                owner,
+                availability,
+                _pin: pin,
+            })
         }
     }
 }
@@ -66,7 +70,11 @@ impl Drop for OptionsInitializationGuard {
 }
 
 fn require_options<T>(result: SexpResult<T>) -> T {
-    result.unwrap_or_else(|error| std::panic::panic_any(RError { message: error.to_string() }))
+    result.unwrap_or_else(|error| {
+        std::panic::panic_any(RError {
+            message: error.to_string(),
+        })
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -477,10 +485,8 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
             };
             match warn {
                 iWARN => {
-                    let msg = std::ffi::CString::new(format!(
-                        "invalid 'scipen' {d}, used {dnew}"
-                    ))
-                    .unwrap_or_default();
+                    let msg = std::ffi::CString::new(format!("invalid 'scipen' {d}, used {dnew}"))
+                        .unwrap_or_default();
                     crate::mainutils::errors::Rf_warning(msg.as_ptr());
                     return dnew;
                 }
@@ -592,19 +598,25 @@ fn options_pairlist<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>
 /// Own the selected values before any R allocation or callback can replace them.
 fn options_snapshot(factory: &SessionNodeFactory<'_>) -> SexpResult<Vec<(String, Sexp<'static>)>> {
     factory.require_active()?;
-    let mut entries: Vec<(String, Sexp<'static>)> = crate::sexp::instance::with_required_current_instance(
-        |owner| unsafe {
-            (*owner).options.iter().map(|(name, value)| (name.clone(), value.clone())).collect()
-        },
-    );
+    let mut entries: Vec<(String, Sexp<'static>)> =
+        crate::sexp::instance::with_required_current_instance(|owner| unsafe {
+            (*owner)
+                .options
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect()
+        });
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(entries)
 }
 
 fn options_vector<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>> {
     let entries = options_snapshot(factory)?;
-    let length = R_xlen_t::try_from(entries.len())
-        .map_err(|_| crate::sexp::object::SexpError::AllocationFailed { object: "options list" })?;
+    let length = R_xlen_t::try_from(entries.len()).map_err(|_| {
+        crate::sexp::object::SexpError::AllocationFailed {
+            object: "options list",
+        }
+    })?;
     let value = factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, length)))?;
     let mut value = SexpMut::try_from_checked(value)?;
     let keys: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
@@ -627,7 +639,9 @@ unsafe fn refresh_options_binding() {
     let options = require_options(options_pairlist(&factory));
     let symbol = require_options(factory.wrap(options_symbol()));
     require_options(factory.require_active());
-    unsafe { defineVar(symbol.as_raw(), options.as_raw(), R_BaseEnv()); }
+    unsafe {
+        defineVar(symbol.as_raw(), options.as_raw(), R_BaseEnv());
+    }
 }
 
 /// Find a tagged item in the options (equivalent to C's FindTaggedItem).
@@ -852,15 +866,25 @@ fn set_option_names<'s>(
     attributes.push(names, Some(tag))?;
     let attributes = attributes.finish()?;
     factory.require_active()?;
-    unsafe { SET_ATTRIB(value.as_raw(), attributes.as_raw()); }
+    unsafe {
+        SET_ATTRIB(value.as_raw(), attributes.as_raw());
+    }
     Ok(())
 }
 
 /// Detached owning defaults stay alive across every allocation and callback.
 fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<String, Sexp<'s>>> {
     let mut options = HashMap::new();
-    let pi = |value| option_scalar(factory, SEXPTYPE::INTSXP, |scalar| scalar.try_set_integer_elt(0, value));
-    let pl = |value| option_scalar(factory, SEXPTYPE::LGLSXP, |scalar| scalar.try_set_logical_elt(0, value));
+    let pi = |value| {
+        option_scalar(factory, SEXPTYPE::INTSXP, |scalar| {
+            scalar.try_set_integer_elt(0, value)
+        })
+    };
+    let pl = |value| {
+        option_scalar(factory, SEXPTYPE::LGLSXP, |scalar| {
+            scalar.try_set_logical_elt(0, value)
+        })
+    };
     let pm = |text: &str| factory.strings(&[text]);
     let val = pm("> ")?;
     options.insert("prompt".to_string(), val);
@@ -915,7 +939,12 @@ fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<
     options.insert("scipen".to_string(), pi(0)?);
     options.insert("height".to_string(), pi(60)?);
     options.insert("add.smooth".to_string(), pl(TRUE)?);
-    options.insert("ts.eps".to_string(), option_scalar(factory, SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, 1e-5))?);
+    options.insert(
+        "ts.eps".to_string(),
+        option_scalar(factory, SEXPTYPE::REALSXP, |value| {
+            value.try_set_real_elt(0, 1e-5)
+        })?,
+    );
     let contrasts = factory.strings(&["contr.treatment", "contr.poly"])?;
     let cnames = factory.strings(&["unordered", "ordered"])?;
     set_option_names(factory, &contrasts, cnames)?;
@@ -927,7 +956,8 @@ fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
     let owner = require_options(unsafe { OwnerToken::current() });
-    let Some(_initialization) = (unsafe { OptionsInitializationGuard::begin(owner.as_ptr()) }) else {
+    let Some(_initialization) = (unsafe { OptionsInitializationGuard::begin(owner.as_ptr()) })
+    else {
         return;
     };
     let factory = owner.node_factory();
@@ -938,13 +968,19 @@ pub unsafe fn InitOptions() {
     unsafe {
         let options = &mut (*owner.as_ptr()).options;
         for (name, value) in defaults {
-            options.entry(name).or_insert(require_options(value.into_owned()));
+            options
+                .entry(name)
+                .or_insert(require_options(value.into_owned()));
         }
     }
-    unsafe { refresh_options_binding(); }
+    unsafe {
+        refresh_options_binding();
+    }
     require_options(define_platform_binding(&factory));
     require_options(factory.require_active());
-    unsafe { (*owner.as_ptr()).options_initialization = OptionsInitialization::Initialized; }
+    unsafe {
+        (*owner.as_ptr()).options_initialization = OptionsInitialization::Initialized;
+    }
 }
 
 /// Build the base `.Platform` list without borrowing any interpreter field.
@@ -954,13 +990,21 @@ fn define_platform_binding(factory: &SessionNodeFactory<'_>) -> SexpResult<()> {
         ("file.sep", "/"),
         ("dynlib.ext", ".so"),
         ("GUI", "unknown"),
-        ("endian", if cfg!(target_endian = "little") { "little" } else { "big" }),
+        (
+            "endian",
+            if cfg!(target_endian = "little") {
+                "little"
+            } else {
+                "big"
+            },
+        ),
         ("type", "unix"),
         ("pkgType", "source"),
         ("path.sep", ":"),
         ("r_arch", ""),
     ];
-    let platform = factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, fields.len() as _)))?;
+    let platform =
+        factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, fields.len() as _)))?;
     let mut platform = SexpMut::try_from_checked(platform)?;
     for (index, (_, text)) in fields.iter().enumerate() {
         let value = factory.strings(&[text])?;
@@ -972,7 +1016,9 @@ fn define_platform_binding(factory: &SessionNodeFactory<'_>) -> SexpResult<()> {
     set_option_names(factory, &platform, names)?;
     let symbol = factory.wrap(unsafe { Rf_install(c".Platform".as_ptr()) })?;
     factory.require_active()?;
-    unsafe { defineVar(symbol.as_raw(), platform.as_raw(), R_BaseEnv()); }
+    unsafe {
+        defineVar(symbol.as_raw(), platform.as_raw(), R_BaseEnv());
+    }
     Ok(())
 }
 
@@ -1052,7 +1098,6 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::main::coerce::set_coercion_warning_call(call);
         let _coercion_call = crate::main::coerce::CoercionWarningCallGuard;
 
-
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {
             let owner = require_options(OwnerToken::current());
@@ -1070,9 +1115,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let single_arg_tag = if n == 1 { TAG(args) } else { R_NilValue() };
         let single = if n == 1 { CAR(args) } else { R_NilValue() };
         if n == 1
-            && (single == R_NilValue()
-                || isPairList(single) != 0
-                || isVectorList(single) != 0)
+            && (single == R_NilValue() || isPairList(single) != 0 || isVectorList(single) != 0)
             && (single_arg_tag.is_null() || single_arg_tag == R_NilValue())
         {
             // options(NULL) and options(list()) set nothing.
@@ -1374,8 +1417,9 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes().len()
                     };
                     if nchars != 1 {
-                        let msg = std::ffi::CString::new("'OutDec' must be a string of one character")
-                            .unwrap_or_default();
+                        let msg =
+                            std::ffi::CString::new("'OutDec' must be a string of one character")
+                                .unwrap_or_default();
                         crate::mainutils::errors::Rf_warning(msg.as_ptr());
                     }
                     let new_val = duplicate_sexp(argi);
@@ -1596,10 +1640,32 @@ mod tests {
             let result = options_vector(&factory).unwrap();
             assert!(cleared.get());
             let names = result.try_attrib().unwrap().try_car().unwrap();
-            assert_eq!(names.try_string_value_elt(0).unwrap().as_deref(), Some("alpha"));
-            assert_eq!(names.try_string_value_elt(1).unwrap().as_deref(), Some("zeta"));
-            assert_eq!(result.try_vector_elt(0).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("first"));
-            assert_eq!(result.try_vector_elt(1).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("last"));
+            assert_eq!(
+                names.try_string_value_elt(0).unwrap().as_deref(),
+                Some("alpha")
+            );
+            assert_eq!(
+                names.try_string_value_elt(1).unwrap().as_deref(),
+                Some("zeta")
+            );
+            assert_eq!(
+                result
+                    .try_vector_elt(0)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap()
+                    .as_deref(),
+                Some("first")
+            );
+            assert_eq!(
+                result
+                    .try_vector_elt(1)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap()
+                    .as_deref(),
+                Some("last")
+            );
         });
     }
 
@@ -1610,7 +1676,11 @@ mod tests {
         session.with_active_in(|instance| unsafe {
             let factory = session.owner_token().unwrap().node_factory();
             (*instance).options_initialization = OptionsInitialization::Initialized;
-            let old = factory.strings(&["previous"]).unwrap().into_owned().unwrap();
+            let old = factory
+                .strings(&["previous"])
+                .unwrap()
+                .into_owned()
+                .unwrap();
             let old_node = old.allocation().unwrap().clone();
             (*instance).options.insert("owned_option".into(), old);
             let replacement = factory.strings(&["replacement"]).unwrap();
@@ -1623,12 +1693,20 @@ mod tests {
             }));
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
-            let previous = factory.wrap(SetOptionByName("owned_option", replacement.as_raw())).unwrap();
+            let previous = factory
+                .wrap(SetOptionByName("owned_option", replacement.as_raw()))
+                .unwrap();
             assert!(collected.get());
-            assert_eq!(previous.try_string_value_elt(0).unwrap().as_deref(), Some("previous"));
+            assert_eq!(
+                previous.try_string_value_elt(0).unwrap().as_deref(),
+                Some("previous")
+            );
             drop(previous);
             crate::sexp::gengc::full_gc_in(instance);
-            assert!(!old_node.is_live(), "replacement must release the old option root");
+            assert!(
+                !old_node.is_live(),
+                "replacement must release the old option root"
+            );
         });
     }
 
@@ -1645,12 +1723,23 @@ mod tests {
             drop(value);
             crate::sexp::gengc::full_gc_in(instance);
             assert!(node.is_live());
-            let old = factory.wrap(SetOptionByName("owned_removed_option", factory.nil().as_raw())).unwrap();
-            assert_eq!(old.try_string_value_elt(0).unwrap().as_deref(), Some("released option"));
+            let old = factory
+                .wrap(SetOptionByName(
+                    "owned_removed_option",
+                    factory.nil().as_raw(),
+                ))
+                .unwrap();
+            assert_eq!(
+                old.try_string_value_elt(0).unwrap().as_deref(),
+                Some("released option")
+            );
             drop(old);
             crate::sexp::gengc::full_gc_in(instance);
             assert!(!node.is_live());
-            assert_eq!((*instance).preserve_stack.checked_entries_snapshot().len(), preserved);
+            assert_eq!(
+                (*instance).preserve_stack.checked_entries_snapshot().len(),
+                preserved
+            );
         });
     }
 
@@ -1683,25 +1772,64 @@ mod tests {
             assert_eq!(asInteger(GetOptionByName("max.print")), 99999);
             let owner = session.owner_token().unwrap();
             assert_eq!((*owner.as_ptr()).options.len(), 45);
-            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Initialized);
+            assert_eq!(
+                (*owner.as_ptr()).options_initialization,
+                OptionsInitialization::Initialized
+            );
 
             let prompt = session.sexp(GetOptionByName("prompt")).unwrap();
-            assert_eq!(prompt.try_string_value_elt(0).unwrap().as_deref(), Some("> "));
+            assert_eq!(
+                prompt.try_string_value_elt(0).unwrap().as_deref(),
+                Some("> ")
+            );
             let contrasts = session.sexp(GetOptionByName("contrasts")).unwrap();
-            assert_eq!(contrasts.try_string_value_elt(0).unwrap().as_deref(), Some("contr.treatment"));
-            assert_eq!(contrasts.try_string_value_elt(1).unwrap().as_deref(), Some("contr.poly"));
-            let names = session.sexp(getAttrib(contrasts.as_raw(), R_NamesSymbol())).unwrap();
-            assert_eq!(names.try_string_value_elt(0).unwrap().as_deref(), Some("unordered"));
-            assert_eq!(names.try_string_value_elt(1).unwrap().as_deref(), Some("ordered"));
+            assert_eq!(
+                contrasts.try_string_value_elt(0).unwrap().as_deref(),
+                Some("contr.treatment")
+            );
+            assert_eq!(
+                contrasts.try_string_value_elt(1).unwrap().as_deref(),
+                Some("contr.poly")
+            );
+            let names = session
+                .sexp(getAttrib(contrasts.as_raw(), R_NamesSymbol()))
+                .unwrap();
+            assert_eq!(
+                names.try_string_value_elt(0).unwrap().as_deref(),
+                Some("unordered")
+            );
+            assert_eq!(
+                names.try_string_value_elt(1).unwrap().as_deref(),
+                Some("ordered")
+            );
 
             let binding = crate::sexp::envir::R_findVarInFrame(R_BaseEnv(), options_symbol());
             assert_eq!(Rf_length(binding), 45);
-            let platform = session.sexp(crate::sexp::envir::R_findVarInFrame(
-                R_BaseEnv(), Rf_install(c".Platform".as_ptr()),
-            )).unwrap();
+            let platform = session
+                .sexp(crate::sexp::envir::R_findVarInFrame(
+                    R_BaseEnv(),
+                    Rf_install(c".Platform".as_ptr()),
+                ))
+                .unwrap();
             assert_eq!(platform.len(), 9);
-            assert_eq!(platform.try_vector_elt(0).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("unix"));
-            assert_eq!(platform.try_vector_elt(3).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("unknown"));
+            assert_eq!(
+                platform
+                    .try_vector_elt(0)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap()
+                    .as_deref(),
+                Some("unix")
+            );
+            assert_eq!(
+                platform
+                    .try_vector_elt(3)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap()
+                    .as_deref(),
+                Some("unknown")
+            );
             crate::sexp::gengc::full_gc();
             assert_eq!(GetOptionWidth(), 123);
             assert!(contrasts.is_live());
@@ -1725,9 +1853,15 @@ mod tests {
             crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
             assert!(result.is_err());
             let owner = session.owner_token().unwrap();
-            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Uninitialized);
+            assert_eq!(
+                (*owner.as_ptr()).options_initialization,
+                OptionsInitialization::Uninitialized
+            );
             InitOptions();
-            assert_eq!((*owner.as_ptr()).options_initialization, OptionsInitialization::Initialized);
+            assert_eq!(
+                (*owner.as_ptr()).options_initialization,
+                OptionsInitialization::Initialized
+            );
             assert_eq!(GetOptionWidth(), 80);
             assert_eq!(GetOptionDigits(), 7);
         });

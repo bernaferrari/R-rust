@@ -12,9 +12,7 @@ use super::constructors::{
 use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use super::globals::{R_EmptyEnv, R_MissingArg, R_NilValue, R_UnboundValue};
-use super::instance::{
-    RInstance, current_instance_ptr, with_required_current_instance,
-};
+use super::instance::{RInstance, current_instance_ptr, with_required_current_instance};
 use super::symbol::Rf_install_in;
 use std::ffi::CString;
 
@@ -360,7 +358,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              if (is.character(file) && !isTRUE(all)) return(.Internal(readDCF(file, fields, keep.white)))\n\
              stop(\"read.dcf(all = TRUE) is not implemented\")\n\
              }",
-
         );
 
         eval_base_binding(

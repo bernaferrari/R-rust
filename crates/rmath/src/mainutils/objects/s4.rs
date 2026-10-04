@@ -234,8 +234,7 @@ pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
             let virtual_sym = crate::sexp::symbol::Rf_install(c"virtual".as_ptr());
             let prototype_sym = crate::sexp::symbol::Rf_install(c"prototype".as_ptr());
             let class_name_sym = crate::sexp::symbol::Rf_install(c"className".as_ptr());
-            let virtual_flag =
-                crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
+            let virtual_flag = crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
             if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
                 let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
                 let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
@@ -243,11 +242,9 @@ pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
                     "trying to generate an object from a virtual class (\"{shown}\")"
                 ));
             }
-            let class_name =
-                crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+            let class_name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
             let _class_name_guard = protect(class_name);
-            let prototype =
-                crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
+            let prototype = crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
 
             let value = crate::mainutils::duplicate::duplicate(prototype);
             let _value_guard = protect(value);
@@ -292,7 +289,6 @@ pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
         asS4(out, TRUE, 0)
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // S4 object manipulation

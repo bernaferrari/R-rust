@@ -878,9 +878,13 @@ pub unsafe fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let log_p = dpq_flag(&slots, &filled, 5, false);
         if dpq_supplied(&slots, &filled, 3) {
             let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
-            dpq_evaluate(call, &[q, df1, df2, ncp], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::nf_dist::pnf_inner(v[0], v[1], v[2], v[3], lt, lp)
-            })
+            dpq_evaluate(
+                call,
+                &[q, df1, df2, ncp],
+                lower_tail,
+                log_p,
+                &mut |v, lt, lp| crate::dist::nf_dist::pnf_inner(v[0], v[1], v[2], v[3], lt, lp),
+            )
         } else {
             dpq_evaluate(call, &[q, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
                 crate::dist::f_dist::pf_inner(v[0], v[1], v[2], lt, lp)
@@ -901,9 +905,13 @@ pub unsafe fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let log_p = dpq_flag(&slots, &filled, 5, false);
         if dpq_supplied(&slots, &filled, 3) {
             let ncp = dpq_num(&slots, &filled, &names, 3, None, DPQ_NONNUM);
-            dpq_evaluate(call, &[p, df1, df2, ncp], lower_tail, log_p, &mut |v, lt, lp| {
-                crate::dist::nf_dist::qnf_inner(v[0], v[1], v[2], v[3], lt, lp)
-            })
+            dpq_evaluate(
+                call,
+                &[p, df1, df2, ncp],
+                lower_tail,
+                log_p,
+                &mut |v, lt, lp| crate::dist::nf_dist::qnf_inner(v[0], v[1], v[2], v[3], lt, lp),
+            )
         } else {
             dpq_evaluate(call, &[p, df1, df2], lower_tail, log_p, &mut |v, lt, lp| {
                 crate::dist::f_dist::qf_inner(v[0], v[1], v[2], lt, lp)

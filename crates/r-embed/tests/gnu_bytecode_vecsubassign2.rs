@@ -91,7 +91,9 @@ fn mutated_gnu_vecsubassign2_instruction_runs_over_retained_source() {
     let original = include_bytes!("fixtures/gnu-bytecode-vecsubassign2/vecsubassign2.rds");
     // GETVAR v; STARTASSIGN x; STARTSUBASSIGN2_N; GETVAR_MISSOK i=6; VECSUBASSIGN2.
     // Flip the index symbol 6 -> 1 (v). Retained source still assigns x[[i]].
-    let words = [12, 20, 1, 61, 2, 111, 4, 12, 92, 6, 108, 4, 62, 2, 4, 20, 2, 1];
+    let words = [
+        12, 20, 1, 61, 2, 111, 4, 12, 92, 6, 108, 4, 62, 2, 4, 20, 2, 1,
+    ];
     let offset = unique_stream_offset(original, &words);
     let mut changed = original.to_vec();
     // const 1 is v, so the mutated stream does x[[v]] <- v.
@@ -112,23 +114,20 @@ fn mutated_gnu_vecsubassign2_instruction_runs_over_retained_source() {
 #[test]
 fn malformed_vecsubassign2_empty_stack_fails_before_source_fallback() {
     let original = include_bytes!("fixtures/gnu-bytecode-vecsubassign2/vecsubassign2.rds");
-    let words = [12, 20, 1, 61, 2, 111, 4, 12, 92, 6, 108, 4, 62, 2, 4, 20, 2, 1];
+    let words = [
+        12, 20, 1, 61, 2, 111, 4, 12, 92, 6, 108, 4, 62, 2, 4, 20, 2, 1,
+    ];
     let offset = unique_stream_offset(original, &words);
     let mut malformed = original.to_vec();
     // Keep the 18-int code vector length: version, VECSUBASSIGN2, RETURN, padding.
-    let replacement = [
-        12_i32, 108, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    ];
+    let replacement = [12_i32, 108, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     for (i, word) in replacement.iter().enumerate() {
         let at = offset + i * 4;
         malformed[at..at + 4].copy_from_slice(&word.to_be_bytes());
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;

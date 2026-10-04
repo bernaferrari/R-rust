@@ -60,7 +60,10 @@ fn nested_show_stop_stays_inside_trycatch() {
         out.contains("An object of class \"Outer\""),
         "outer header missing: {out}"
     );
-    assert!(out.contains("Slot \"i\":"), "inner slot header missing: {out}");
+    assert!(
+        out.contains("Slot \"i\":"),
+        "inner slot header missing: {out}"
+    );
     assert!(out.contains("CAUGHT"), "handler did not run: {out}");
     assert!(out.contains("inner-boom"), "caught message missing: {out}");
 }

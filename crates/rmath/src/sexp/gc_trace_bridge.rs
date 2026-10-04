@@ -9,10 +9,7 @@ use super::{
     EDGE_PROM_EXPR, EDGE_PROM_VALUE, EDGE_SYM_VALUE, EDGE_TAG, EDGE_VECTOR, child_mask,
 };
 use crate::sexp::heap::NodeLink;
-use crate::sexp::{
-    ffi::EdgeField,
-    heap::CheckedNode,
-};
+use crate::sexp::{ffi::EdgeField, heap::CheckedNode};
 
 pub(super) struct ChildSnapshot {
     fixed: [NodeLink; 4],
@@ -229,8 +226,8 @@ mod tests {
     use super::*;
     use crate::sexp::{
         ffi::SEXPTYPE,
-        heap::ReferenceChild,
         gengc::gc_trace::TraceWorklist,
+        heap::ReferenceChild,
         memory::{RArena, checked_projection, checked_snapshot},
     };
     use std::rc::Rc;
@@ -284,7 +281,9 @@ mod tests {
         assert!(!original.is_live());
         assert!(parent_value.is_live());
         let factory = crate::sexp::object::SessionNodeFactory::new(session.owner_token().unwrap());
-        let replacement_value = factory.allocate(|arena| Some(arena.alloc_node(SEXPTYPE::LISTSXP))).unwrap();
+        let replacement_value = factory
+            .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::LISTSXP)))
+            .unwrap();
         let replacement = replacement_value.as_raw();
         assert_eq!(child.addr(), replacement.addr());
         // Exercise a copied stale capability; no pointer reconstruction can
@@ -316,8 +315,18 @@ mod tests {
         let token = checked_projection(parent).unwrap().1;
         let first_token = checked_projection(first).unwrap().1;
         let second_token = checked_projection(second).unwrap().1;
-        heap.set_edge(&token, EdgeField::ListCar, ReferenceChild::Node(&first_token)).unwrap();
-        heap.set_edge(&token, EdgeField::ListCdr, ReferenceChild::Node(&second_token)).unwrap();
+        heap.set_edge(
+            &token,
+            EdgeField::ListCar,
+            ReferenceChild::Node(&first_token),
+        )
+        .unwrap();
+        heap.set_edge(
+            &token,
+            EdgeField::ListCdr,
+            ReferenceChild::Node(&second_token),
+        )
+        .unwrap();
         let original = heap.node_snapshot(&token).unwrap();
         let first_link = checked_projection(first).unwrap().1.link().unwrap();
         let second_link = checked_projection(second).unwrap().1.link().unwrap();

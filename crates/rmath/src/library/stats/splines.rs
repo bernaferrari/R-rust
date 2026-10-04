@@ -588,10 +588,7 @@ pub unsafe fn do_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xout);
         SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
 }
@@ -611,7 +608,10 @@ pub unsafe fn do_splinefun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let vsym = crate::sexp::symbol::Rf_install(c"v".as_ptr());
         let formals = Rf_cons(R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
-        let body = Rf_lang2(crate::sexp::symbol::Rf_install(c".spline_apply".as_ptr()), vsym);
+        let body = Rf_lang2(
+            crate::sexp::symbol::Rf_install(c".spline_apply".as_ptr()),
+            vsym,
+        );
         crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
     }
 }
@@ -633,6 +633,3 @@ pub unsafe extern "C-unwind" fn c_spline_coef(method: SEXP, x: SEXP, y: SEXP) ->
 pub unsafe extern "C-unwind" fn c_spline_eval(xout: SEXP, z: SEXP) -> SEXP {
     unsafe { SplineEval(xout, z) }
 }
-
-
-

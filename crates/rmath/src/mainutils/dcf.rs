@@ -531,12 +531,14 @@ pub unsafe fn do_compareNumericVersion(_call: SEXP, _op: SEXP, args: SEXP, _env:
         let ans = Rf_allocVector(SEXPTYPE::INTSXP, na);
         let _g = protect(ans);
         for i in 0..na as usize {
-            *INTEGER(ans).add(i) = cmp_one(VECTOR_ELT(x, (i % nx as usize) as R_xlen_t), VECTOR_ELT(y, (i % ny as usize) as R_xlen_t));
+            *INTEGER(ans).add(i) = cmp_one(
+                VECTOR_ELT(x, (i % nx as usize) as R_xlen_t),
+                VECTOR_ELT(y, (i % ny as usize) as R_xlen_t),
+            );
         }
         ans
     }
 }
-
 
 #[cfg(test)]
 mod tests {

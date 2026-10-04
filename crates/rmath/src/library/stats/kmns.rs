@@ -108,12 +108,30 @@ pub fn kmns(
     let mut qtran_hit = false;
     for step in 1..=*iter {
         ij = step;
-        optra(a, m, n, c, k, ic1, ic2, nc, an1, an2, ncp, d, itran, live, &mut indx);
+        optra(
+            a, m, n, c, k, ic1, ic2, nc, an1, an2, ncp, d, itran, live, &mut indx,
+        );
         if indx == m as i32 {
             break;
         }
         let mut max_qtr = imax_qtr;
-        qtran(a, m, n, c, k, ic1, ic2, nc, an1, an2, ncp, d, itran, &mut indx, &mut max_qtr);
+        qtran(
+            a,
+            m,
+            n,
+            c,
+            k,
+            ic1,
+            ic2,
+            nc,
+            an1,
+            an2,
+            ncp,
+            d,
+            itran,
+            &mut indx,
+            &mut max_qtr,
+        );
         if max_qtr < 0 {
             *ifault = 4;
             qtran_hit = true;
@@ -154,9 +172,21 @@ pub fn kmns(
 }
 
 fn optra(
-    a: &[f64], m: usize, n: usize, c: &mut [f64], k: usize,
-    ic1: &mut [i32], ic2: &mut [i32], nc: &mut [i32], an1: &mut [f64], an2: &mut [f64],
-    ncp: &mut [i32], d: &mut [f64], itran: &mut [i32], live: &mut [i32], indx: &mut i32,
+    a: &[f64],
+    m: usize,
+    n: usize,
+    c: &mut [f64],
+    k: usize,
+    ic1: &mut [i32],
+    ic2: &mut [i32],
+    nc: &mut [i32],
+    an1: &mut [f64],
+    an2: &mut [f64],
+    ncp: &mut [i32],
+    d: &mut [f64],
+    itran: &mut [i32],
+    live: &mut [i32],
+    indx: &mut i32,
 ) {
     for l in 0..k {
         if itran[l] == 1 {
@@ -242,9 +272,21 @@ fn optra(
 }
 
 fn qtran(
-    a: &[f64], m: usize, n: usize, c: &mut [f64], k: usize,
-    ic1: &mut [i32], ic2: &mut [i32], nc: &mut [i32], an1: &mut [f64], an2: &mut [f64],
-    ncp: &mut [i32], d: &mut [f64], itran: &mut [i32], indx: &mut i32, imax_qtr: &mut i32,
+    a: &[f64],
+    m: usize,
+    n: usize,
+    c: &mut [f64],
+    k: usize,
+    ic1: &mut [i32],
+    ic2: &mut [i32],
+    nc: &mut [i32],
+    an1: &mut [f64],
+    an2: &mut [f64],
+    ncp: &mut [i32],
+    d: &mut [f64],
+    itran: &mut [i32],
+    indx: &mut i32,
+    imax_qtr: &mut i32,
 ) {
     let mut icoun = 0i32;
     let mut istep = 0i32;
@@ -292,8 +334,10 @@ fn qtran(
                         let alt = al2 + 1.0;
                         for j in 1..=n {
                             let ai = a[(i - 1) + (j - 1) * m];
-                            c[(l1 - 1) + (j - 1) * k] = (c[(l1 - 1) + (j - 1) * k] * al1 - ai) / alw;
-                            c[(l2 - 1) + (j - 1) * k] = (c[(l2 - 1) + (j - 1) * k] * al2 + ai) / alt;
+                            c[(l1 - 1) + (j - 1) * k] =
+                                (c[(l1 - 1) + (j - 1) * k] * al1 - ai) / alw;
+                            c[(l2 - 1) + (j - 1) * k] =
+                                (c[(l2 - 1) + (j - 1) * k] * al2 + ai) / alt;
                         }
                         nc[l1 - 1] -= 1;
                         nc[l2 - 1] += 1;

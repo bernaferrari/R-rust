@@ -44,7 +44,6 @@ pub(crate) fn srcref_lloc(src: &str, start: usize, end: usize) -> [i32; 8] {
     [fl, fc, ll, lc, fc, lc, fl, ll]
 }
 
-
 /// Build the srcfile environment. `copy` produces class `srcfilecopy`
 /// with a `lines` binding so `as.character.srcref` can recover text
 /// (GNU `srcfilecopy()`, used by `source(textConnection, keep.source)`).
@@ -72,10 +71,8 @@ unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
             if lines.last() == Some(&"") {
                 lines.pop();
             }
-            let line_vec = crate::sexp::constructors::Rf_allocVector3(
-                SEXPTYPE::STRSXP,
-                lines.len() as i64,
-            );
+            let line_vec =
+                crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as i64);
             let _lg = crate::sexp::protect::protect(line_vec);
             for (i, line) in lines.iter().enumerate() {
                 let c = std::ffi::CString::new(*line).unwrap_or_default();
@@ -166,7 +163,6 @@ pub(crate) unsafe fn make_srcref(src: &str, start: usize, end: usize, srcfile: S
     }
 }
 
-
 /// Attach srcrefs using explicit byte spans (parser's
 /// parse_top_level_with_spans output).
 pub(crate) unsafe fn attach_srcrefs_with_spans(
@@ -218,9 +214,7 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
             let head = CAR(expr);
             if !head.is_null()
                 && TYPEOF(head) == SEXPTYPE::SYMSXP
-                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(head)))
-                    .to_bytes()
-                    == b"function"
+                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(head))).to_bytes() == b"function"
             {
                 let mut sr = crate::sexp::attrib_core::getAttrib(
                     expr,
@@ -329,7 +323,11 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
         );
         let text = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let src_c = std::ffi::CString::new(src).unwrap_or_default();
-        SET_STRING_ELT(text, 0, crate::sexp::constructors::Rf_mkChar(src_c.as_ptr()));
+        SET_STRING_ELT(
+            text,
+            0,
+            crate::sexp::constructors::Rf_mkChar(src_c.as_ptr()),
+        );
         SET_STRING_ELT(text, 1, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
         crate::sexp::attrib_core::setAttrib(
             mat,
@@ -343,7 +341,6 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
         );
     }
 }
-
 
 /// Record the srcref location of the top-level expression about to be
 /// evaluated (None clears it) for the error renderer.
@@ -431,9 +428,7 @@ pub unsafe fn do_remove_source(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == crate::sexp::globals::R_NilValue() {
-            crate::sexp::context::r_error(
-                "argument is not a function or language object:NULL",
-            );
+            crate::sexp::context::r_error("argument is not a function or language object:NULL");
         }
         let ty = TYPEOF(x);
         if ty == SEXPTYPE::CLOSXP {
@@ -454,7 +449,6 @@ pub unsafe fn do_remove_source(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         }
     }
 }
-
 
 unsafe fn strip_function_source(fun: SEXP) -> SEXP {
     unsafe {
@@ -522,4 +516,3 @@ unsafe fn clear_source_attrs(x: SEXP) {
         );
     }
 }
-

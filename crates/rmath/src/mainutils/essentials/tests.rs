@@ -168,12 +168,13 @@ fn export_pattern_matches_hidden_class_meta_names() {
         directives.export_patterns,
         vec!["^\\.__C__".to_string(), "^\\.__M__".to_string()]
     );
-    assert!(directives
-        .export_patterns
-        .iter()
-        .any(|p| super::simple_namespace_pattern_matches(p, ".__C__numeric")));
+    assert!(
+        directives
+            .export_patterns
+            .iter()
+            .any(|p| super::simple_namespace_pattern_matches(p, ".__C__numeric"))
+    );
 }
-
 
 #[test]
 fn adversarial_namespace_inputs_do_not_panic() {

@@ -318,7 +318,6 @@ unsafe fn isMethodsDispatchOn() -> c_int {
     unsafe { crate::mainutils::objects::isMethodsDispatchOn() }
 }
 
-
 unsafe fn isByteCode(_x: SEXP) -> c_int {
     0
 }
@@ -713,14 +712,13 @@ unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
 unsafe fn print_srcref_value(s: SEXP) {
     unsafe {
         let srcfile = getAttrib(s, Rf_install(c"srcfile".as_ptr()));
-        let lines = if !srcfile.is_null()
-            && srcfile != R_NilValue()
-            && TYPEOF(srcfile) == SEXPTYPE::ENVSXP
-        {
-            crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()))
-        } else {
-            R_NilValue()
-        };
+        let lines =
+            if !srcfile.is_null() && srcfile != R_NilValue() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP
+            {
+                crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()))
+            } else {
+                R_NilValue()
+            };
         if lines.is_null()
             || lines == R_NilValue()
             || lines == R_UnboundValue()
@@ -764,7 +762,6 @@ unsafe fn print_srcref_value(s: SEXP) {
     }
 }
 
-
 unsafe fn sexp_class_is(s: SEXP, name: &str) -> bool {
     unsafe {
         let class = getAttrib(s, R_ClassSymbol());
@@ -785,7 +782,6 @@ unsafe fn sexp_class_is(s: SEXP, name: &str) -> bool {
         false
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Internal: PrintObjectS3
@@ -825,8 +821,6 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
         let _call_guard = protect(call);
         let _ = crate::eval::eval::Rf_eval(call, mask);
         crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
-
-
     }
 }
 
@@ -869,7 +863,6 @@ unsafe fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
     }
 }
 
-
 unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
     unsafe {
         let depth = with_print_runtime(|state| state.active_values.len());
@@ -902,16 +895,6 @@ unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
     unsafe {
         let mut save = [0u8; TAGBUFLEN0 * 2];
@@ -932,8 +915,6 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
         restore_tagbuf(&save);
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Internal: PrintGenericVector
@@ -1300,26 +1281,26 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     );
                 }
             } else {
-                let named = names != R_NilValue()
-                    || {
-                        let mut cell = crate::sexp::accessors::ATTRIB(s);
-                        let mut found = false;
-                        while !cell.is_null() && cell != R_NilValue() {
-                            let tag = crate::sexp::accessors::TAG(cell);
-                            if !tag.is_null() && tag != R_NilValue() {
-                                let pn = crate::sexp::accessors::PRINTNAME(tag);
-                                if !pn.is_null() {
-                                    let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn));
-                                    if name.to_bytes() == b"names" {
-                                        found = true;
-                                        break;
-                                    }
+                let named = names != R_NilValue() || {
+                    let mut cell = crate::sexp::accessors::ATTRIB(s);
+                    let mut found = false;
+                    while !cell.is_null() && cell != R_NilValue() {
+                        let tag = crate::sexp::accessors::TAG(cell);
+                        if !tag.is_null() && tag != R_NilValue() {
+                            let pn = crate::sexp::accessors::PRINTNAME(tag);
+                            if !pn.is_null() {
+                                let name =
+                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn));
+                                if name.to_bytes() == b"names" {
+                                    found = true;
+                                    break;
                                 }
                             }
-                            cell = crate::sexp::accessors::CDR(cell);
                         }
-                        found
-                    };
+                        cell = crate::sexp::accessors::CDR(cell);
+                    }
+                    found
+                };
                 if named {
                     print!("named ");
                 }
@@ -1689,7 +1670,6 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             return;
         }
 
-
         match TYPEOF(s) {
             t if t == SEXPTYPE::NILSXP => {
                 println!("NULL");
@@ -1946,8 +1926,6 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         let mut missing_arg_ptr = LOGICAL(missings_vec);
         let mut all_missing: c_int = 1;
-
-
 
         let orig = Rf_cons(R_NilValue(), wrapped_args);
         let _orig_guard = protect(orig);

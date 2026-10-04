@@ -815,9 +815,8 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             && CAR(alternatives) == crate::sexp::symbol::R_DotsSymbol()
             && isNull(CDR(alternatives))
         {
-            let dots = crate::sexp::envir::R_findVarInFrame(
-                rho,
-                crate::sexp::symbol::R_DotsSymbol());
+            let dots =
+                crate::sexp::envir::R_findVarInFrame(rho, crate::sexp::symbol::R_DotsSymbol());
             if TYPEOF(dots) == SEXPTYPE::DOTSXP {
                 alternatives = dots;
             }
@@ -826,8 +825,7 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if TYPEOF(arg) == SEXPTYPE::STRSXP {
             let target = STRING_ELT(arg, 0);
-            let target_bytes = if target.is_null() || target == crate::sexp::globals::R_NaString()
-            {
+            let target_bytes = if target.is_null() || target == crate::sexp::globals::R_NaString() {
                 None
             } else {
                 Some(std::ffi::CStr::from_ptr(CHAR(target)).to_bytes())

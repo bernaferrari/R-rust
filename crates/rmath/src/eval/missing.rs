@@ -29,8 +29,8 @@ use std::ptr;
 
 use crate::eval::attrib_core::{R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME, SET_NAMED,
-    SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME,
+    SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 
 use crate::sexp::constructors::*;
@@ -96,7 +96,6 @@ unsafe fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
     }
 }
 
-
 fn dots_context_error(message: &str) -> ! {
     std::panic::panic_any(RError {
         message: message.to_string(),
@@ -118,8 +117,6 @@ unsafe fn current_dots(rho: SEXP) -> SEXP {
         dots
     }
 }
-
-
 
 unsafe fn dots_len(dots: SEXP) -> c_int {
     unsafe {
@@ -331,16 +328,21 @@ pub unsafe fn DispatchAnyOrEval(
 
         if has_methods != FALSE {
             let factory = crate::sexp::object::SessionNodeFactory::new(
-                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                }),
+                crate::sexp::owner::OwnerToken::current()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
             );
-            let args_owner = factory.wrap(args).unwrap_or_else(|error| {
-                crate::sexp::context::r_error(error.to_string())
-            });
+            let args_owner = factory
+                .wrap(args)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let arg_value_owner = if argsevald == 0 {
-                super::dispatch::evalList(args_owner,
-                    factory.wrap(rho).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())), None, 0)
+                super::dispatch::evalList(
+                    args_owner,
+                    factory
+                        .wrap(rho)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    None,
+                    0,
+                )
             } else {
                 args_owner
             };
@@ -354,7 +356,6 @@ pub unsafe fn DispatchAnyOrEval(
                         call, op, argValue, rho, TRUE,
                     );
                     if !value.is_null() {
-
                         if !ans.is_null() {
                             *ans = value;
                         }
@@ -408,11 +409,7 @@ unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
             return op;
         }
         let found = R_findVarInFrame(super::runtime::base_env(), generic_sym);
-        if dispatch_op_usable(found) {
-            found
-        } else {
-            op
-        }
+        if dispatch_op_usable(found) { found } else { op }
     }
 }
 
@@ -465,8 +462,7 @@ pub(crate) unsafe fn tryDispatch(
         if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
             && crate::mainutils::objects::R_has_methods(op) != FALSE
         {
-            let value =
-                crate::mainutils::objects::R_possible_dispatch(call, op, pargs, rho, TRUE);
+            let value = crate::mainutils::objects::R_possible_dispatch(call, op, pargs, rho, TRUE);
             if !value.is_null() {
                 if !pv.is_null() {
                     *pv = value;
@@ -509,8 +505,6 @@ pub(crate) unsafe fn tryDispatch(
         if dispatched != FALSE { TRUE } else { FALSE }
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // tryAssignDispatch -- try S3 method dispatch for assignment
@@ -678,8 +672,6 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             actuals = cell;
             actual_guards.push(guard);
         }
-
-
 
         let _actuals_guard = protect(actuals);
 
@@ -933,9 +925,7 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
         };
         crate::mainutils::errors::errorcall_cpy(
             call,
-            std::ffi::CString::new(msg)
-                .unwrap_or_default()
-                .as_ptr(),
+            std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
         );
     }
 }

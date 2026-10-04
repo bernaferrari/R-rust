@@ -197,8 +197,7 @@ pub unsafe fn bsplvd(
 
             let mut _ldummy: usize = 1;
             while _ldummy <= kp1mm as usize {
-                let factor = fkp1mm
-                    / (*t.offset(il + kp1mm as isize - 1) - *t.offset(il - 1));
+                let factor = fkp1mm / (*t.offset(il + kp1mm as isize - 1) - *t.offset(il - 1));
                 let mut j = 1usize;
                 while j <= i {
                     *a.add(i - 1 + (j - 1) * k_u) =

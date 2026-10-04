@@ -44,9 +44,18 @@ pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP)
     super::instance::with_required_current_instance(|owner| unsafe {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
         header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
-            frame: (*owner).persistent_nodes.link_from_projection(frame).expect("environment frame belongs to its heap"),
-            enclos: (*owner).persistent_nodes.link_from_projection(enclos).expect("environment enclosure belongs to its heap"),
-            hashtab: (*owner).persistent_nodes.link_from_projection(hashtab).expect("environment table belongs to its heap"),
+            frame: (*owner)
+                .persistent_nodes
+                .link_from_projection(frame)
+                .expect("environment frame belongs to its heap"),
+            enclos: (*owner)
+                .persistent_nodes
+                .link_from_projection(enclos)
+                .expect("environment enclosure belongs to its heap"),
+            hashtab: (*owner)
+                .persistent_nodes
+                .link_from_projection(hashtab)
+                .expect("environment table belongs to its heap"),
         });
         let value = (*owner)
             .persistent_nodes
@@ -151,8 +160,10 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
 pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP) -> SEXP {
     let mut header = SexprecCore::new(SEXPTYPE::LISTSXP);
     header.data = super::ffi::NodeBody::List(super::ffi::Listsxp {
-        carval: unsafe { (*instance).persistent_nodes.link_from_projection(car) }.expect("cons child belongs to its heap"),
-        cdrval: unsafe { (*instance).persistent_nodes.link_from_projection(cdr) }.expect("cons tail belongs to its heap"),
+        carval: unsafe { (*instance).persistent_nodes.link_from_projection(car) }
+            .expect("cons child belongs to its heap"),
+        cdrval: unsafe { (*instance).persistent_nodes.link_from_projection(cdr) }
+            .expect("cons tail belongs to its heap"),
         tagval: super::heap::NodeLink::null(),
     });
     let ptr = unsafe { (*instance).persistent_nodes.allocate_header(header) }

@@ -18,7 +18,6 @@ pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) 
             }
         };
 
-
         if TYPEOF(x) == target_type {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
@@ -171,10 +170,7 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
-        if !value.is_null()
-            && value != R_NilValue()
-            && TYPEOF(value) != SEXPTYPE::STRSXP
-        {
+        if !value.is_null() && value != R_NilValue() && TYPEOF(value) != SEXPTYPE::STRSXP {
             value = crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.as_c_int());
         }
         let _value = protect(value);
@@ -301,7 +297,6 @@ unsafe fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
         }
     }
 }
-
 
 /// Normalize and install an array's dimnames using GNU R's `dimnamesgets`
 /// contract.  In particular, axis labels are character vectors regardless of
@@ -637,8 +632,6 @@ pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Attribute access helpers
 // ---------------------------------------------------------------------------
@@ -825,7 +818,6 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
 
-
         let attr_name = elt_to_string(which, 0);
         let value = if attr_name == "names" && TYPEOF(value) == SEXPTYPE::LISTSXP {
             crate::eval::attrib_core::pairlist_to_names(value)
@@ -841,7 +833,6 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         x
     }
 }
-
 
 /// R's `attributes(x) <- value` — replace all attributes from a named list.
 pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -874,7 +865,6 @@ pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
-
 
         let names =
             crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
@@ -925,7 +915,6 @@ pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         crate::sexp::attrib_core::setAttrib(x, comment_symbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
-
     }
 }
 
@@ -935,17 +924,13 @@ pub unsafe fn comment_symbol() -> SEXP {
 
 unsafe fn force_namespace_value(value: SEXP) -> SEXP {
     unsafe {
-        if !value.is_null()
-            && value != R_UnboundValue()
-            && TYPEOF(value) == SEXPTYPE::PROMSXP
-        {
+        if !value.is_null() && value != R_UnboundValue() && TYPEOF(value) == SEXPTYPE::PROMSXP {
             crate::sexp::envir::forcePromise(value)
         } else {
             value
         }
     }
 }
-
 
 pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -982,7 +967,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             let namespace = crate::mainutils::portable_grid::namespace();
             return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
-
         }
 
         if package_name == "compiler" {
@@ -994,7 +978,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             let namespace = crate::eval::compiler::namespace();
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
             return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
-
         }
 
         if package_name == "tools" {
@@ -1036,7 +1019,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                     }
                 }
             }
-
         }
 
         if package_name != "base" {
@@ -1101,7 +1083,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
             return force_namespace_value(value);
-
         }
 
         let value = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
@@ -1112,7 +1093,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
         force_namespace_value(value)
-
     }
 }
 

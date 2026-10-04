@@ -1596,7 +1596,9 @@ struct MethodsMetadataSourceBody<'s> {
 
 impl Drop for MethodsMetadataSourceBody<'_> {
     fn drop(&mut self) {
-        let original = self.original.allocation()
+        let original = self
+            .original
+            .allocation()
             .expect("compiled body has an allocation");
         if self.availability.is_live() {
             // Both nodes remain owned; no storage loan or callback crosses the
@@ -1689,7 +1691,9 @@ unsafe fn eval_methods_ns_fun(
         }
         let _source_body = if name == c"cacheMetaData" {
             methods_metadata_source_body(fun)
-        } else { None };
+        } else {
+            None
+        };
         let call = if let Some(attach) = attach {
             crate::sexp::constructors::Rf_lang3(fun, where_env, attach)
         } else {
@@ -4735,22 +4739,39 @@ mod methods_startup_tests {
         );
         session.with_active(|| unsafe {
             let factory = session.owner_token().unwrap().node_factory();
-            let namespace = factory.wrap(load_package_namespace_by_name("stats")
-                .expect("stats namespace must load independently of default attachments")).unwrap();
+            let namespace = factory
+                .wrap(
+                    load_package_namespace_by_name("stats")
+                        .expect("stats namespace must load independently of default attachments"),
+                )
+                .unwrap();
             assert_eq!(namespace.typeof_(), SEXPTYPE::ENVSXP);
-            let table = factory.wrap(crate::sexp::envir::R_findVarInFrame(
-                namespace.as_raw(), Rf_install(c".__S3MethodsTable__.".as_ptr()),
-            )).unwrap();
+            let table = factory
+                .wrap(crate::sexp::envir::R_findVarInFrame(
+                    namespace.as_raw(),
+                    Rf_install(c".__S3MethodsTable__.".as_ptr()),
+                ))
+                .unwrap();
             assert_eq!(table.typeof_(), SEXPTYPE::ENVSXP);
             let method_symbol = factory.wrap(Rf_install(c"predict.lm".as_ptr())).unwrap();
-            let method = crate::sexp::envir::find_var_in_frame_result(
-                table.clone(), method_symbol.clone(),
-            ).unwrap().expect("stats must register predict.lm");
+            let method =
+                crate::sexp::envir::find_var_in_frame_result(table.clone(), method_symbol.clone())
+                    .unwrap()
+                    .expect("stats must register predict.lm");
             assert!(is_function_value(method.as_raw()));
             session.owner_token().unwrap().full_gc().unwrap();
-            assert_eq!(crate::sexp::envir::find_var_in_frame_result(table, method_symbol)
-                .unwrap().unwrap(), method);
-            assert_eq!(factory.wrap(cached_namespace_by_name("stats").unwrap()).unwrap(), namespace);
+            assert_eq!(
+                crate::sexp::envir::find_var_in_frame_result(table, method_symbol)
+                    .unwrap()
+                    .unwrap(),
+                method
+            );
+            assert_eq!(
+                factory
+                    .wrap(cached_namespace_by_name("stats").unwrap())
+                    .unwrap(),
+                namespace
+            );
         });
     }
 
@@ -4768,9 +4789,15 @@ mod methods_startup_tests {
         session.with_active(|| unsafe {
             crate::eval::jit::set_R_jit_enabled(3);
             let owner = session.owner_token().unwrap();
-            let function = owner.node_factory().wrap(
-                allocation.heap_identity().node_projection(&allocation).unwrap()
-            ).unwrap();
+            let function = owner
+                .node_factory()
+                .wrap(
+                    allocation
+                        .heap_identity()
+                        .node_projection(&allocation)
+                        .unwrap(),
+                )
+                .unwrap();
             crate::eval::jit::set_R_min_jit_score_in(owner.as_ptr(), 0);
             assert!(crate::eval::jit::R_cmpfun(function.as_raw()));
             let original = function.try_body().unwrap();
@@ -4782,10 +4809,15 @@ mod methods_startup_tests {
                 observed.set(observed.get() + 1);
                 let heap = inspected.heap_identity();
                 let body = heap.node_snapshot(&inspected).unwrap().data.closure().body;
-                let Some(crate::sexp::heap::ResolvedLink::Node { allocation, .. }) = heap.resolve_link(body) else {
+                let Some(crate::sexp::heap::ResolvedLink::Node { allocation, .. }) =
+                    heap.resolve_link(body)
+                else {
                     panic!("metadata source body must retain its exact language allocation");
                 };
-                assert_eq!(heap.node_snapshot(&allocation).unwrap().sxpinfo.type_of(), SEXPTYPE::LANGSXP);
+                assert_eq!(
+                    heap.node_snapshot(&allocation).unwrap().sxpinfo.type_of(),
+                    SEXPTYPE::LANGSXP
+                );
                 assert_eq!(crate::eval::jit::get_R_jit_enabled(), 0);
             }));
             {
@@ -4795,7 +4827,8 @@ mod methods_startup_tests {
                 let mut call = crate::sexp::object::PairlistBuilder::new_in(owner);
                 call.push(function.clone(), None).unwrap();
                 let call = call.finish_as_type(SEXPTYPE::LANGSXP).unwrap();
-                let raw = crate::eval::eval::Rf_eval(call.as_raw(), crate::sexp::globals::R_GlobalEnv());
+                let raw =
+                    crate::eval::eval::Rf_eval(call.as_raw(), crate::sexp::globals::R_GlobalEnv());
                 let result = owner.node_factory().wrap(raw).unwrap();
                 assert_eq!(result.try_integer_elt(0).unwrap(), 1);
                 assert_eq!(function.try_body().unwrap().typeof_(), SEXPTYPE::LANGSXP);
@@ -4862,7 +4895,10 @@ mod methods_startup_tests {
                     .expect("compiled cacheMetaData has its stored language expression");
                 assert_eq!(function.try_body().unwrap().typeof_(), SEXPTYPE::LANGSXP);
                 assert_eq!(crate::eval::jit::get_R_jit_enabled(), 0);
-                assert_eq!(crate::eval::jit::R_CheckJIT(function.as_raw()), crate::sexp::ffi::FALSE);
+                assert_eq!(
+                    crate::eval::jit::R_CheckJIT(function.as_raw()),
+                    crate::sexp::ffi::FALSE
+                );
                 crate::sexp::gengc::full_gc();
                 assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
                 crate::sexp::context::r_error("metadata evaluation unwind regression");

@@ -14,9 +14,10 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_isInteger, Rf_isNull,
     Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{
+    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP, SEXPTYPE,
+};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-
 
 // ---------------------------------------------------------------------------
 // cross_colon: cross product of two factors
@@ -192,7 +193,6 @@ pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // do_seq: seq.int() primitive
 // ---------------------------------------------------------------------------
-
 
 pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -604,7 +604,6 @@ pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
         check1arg(args, call, b"along.with\0".as_ptr() as *const c_char);
 
-
         let x = CAR(args);
         let mut dispatched = false;
         let mut len: R_xlen_t = 0;
@@ -657,7 +656,6 @@ pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // do_seq_len: seq_len()

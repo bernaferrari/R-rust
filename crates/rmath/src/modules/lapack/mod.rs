@@ -53,7 +53,6 @@ mod lapack;
     non_camel_case_types
 )]
 pub(crate) mod lapack_impl;
-mod workspace_size;
 #[allow(
     dead_code,
     unused_imports,
@@ -63,6 +62,7 @@ mod workspace_size;
     non_camel_case_types
 )]
 mod veclib_g95c;
+mod workspace_size;
 
 #[cfg(test)]
 mod backend_tests;

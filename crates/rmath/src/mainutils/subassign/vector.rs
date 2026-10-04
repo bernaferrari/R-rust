@@ -191,10 +191,7 @@ pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> b
         let args = Rf_cons(*x, Rf_cons(mode, R_NilValue()));
         let _args = protect(args);
         let mut ans = R_NilValue();
-        let op = crate::eval::primitive::make_primitive_binding(
-            "as.vector",
-            SEXPTYPE::BUILTINSXP,
-        );
+        let op = crate::eval::primitive::make_primitive_binding("as.vector", SEXPTYPE::BUILTINSXP);
         if crate::eval::dispatch::DispatchOrEval(
             call,
             op,
@@ -213,7 +210,6 @@ pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> b
         }
     }
 }
-
 
 /// Port of `SubassignTypeFix()` -- coerces LHS/RHS to compatible types
 /// for subassignment. Returns the type code `100 * TYPEOF(x) + TYPEOF(y)`.
@@ -452,7 +448,8 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
                 let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
                 if !isNull(names) && TYPEOF(names) == STRSXP {
                     for i in 0..XLENGTH(names) {
-                        let col = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_string_lossy();
+                        let col =
+                            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_string_lossy();
                         if col == name {
                             let which = Rf_ScalarInteger((i + 1) as i32);
                             let _w = protect(which);
@@ -477,7 +474,12 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             };
             let args = Rf_cons(x, Rf_cons(s, Rf_cons(y, R_NilValue())));
             let _a = protect(args);
-            return crate::mainutils::essentials::do_dollar_set(R_NilValue(), R_NilValue(), args, rho);
+            return crate::mainutils::essentials::do_dollar_set(
+                R_NilValue(),
+                R_NilValue(),
+                args,
+                rho,
+            );
         }
         use crate::eval::attrib_core::R_DimSymbol;
 
@@ -599,10 +601,9 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
         // NULL and must not VECTOR_ELT(y, 0) on a zero-length pool.
         if n > 0 && ny == 0 {
             crate::mainutils::errors::Rf_error(
-                b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char,
+                b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char
             );
         }
-
 
         // Warn about non-multiple recycling
         if ny != 0 && n % ny != 0 {

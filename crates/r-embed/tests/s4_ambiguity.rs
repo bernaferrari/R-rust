@@ -59,4 +59,3 @@ fn subclass_method_wins_despite_shortcut_to_ancestor() {
         "subclass C method must win, got {result}"
     );
 }
-

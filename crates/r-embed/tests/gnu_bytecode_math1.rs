@@ -114,10 +114,7 @@ fn malformed_math1_empty_stack_fails_before_source_fallback() {
     }
 
     let mut session = RSession::new().unwrap();
-    let loaded = session.eval(&format!(
-        "f <- unserialize({})",
-        raw_expression(&malformed)
-    ));
+    let loaded = session.eval(&format!("f <- unserialize({})", raw_expression(&malformed)));
     if loaded.is_err() {
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
         return;
@@ -221,12 +218,7 @@ fn gnu_log_logbase_and_math1_match_na_and_empty_vectors() {
         "f(c(a=1, b=NA_real_))",
         "c(a=0, b=NA_real_)",
     );
-    assert_identical(
-        &mut session,
-        "log scalar NA",
-        "f(NA_real_)",
-        "NA_real_",
-    );
+    assert_identical(&mut session, "log scalar NA", "f(NA_real_)", "NA_real_");
     assert_identical(
         &mut session,
         "log named empty",
@@ -264,12 +256,7 @@ fn gnu_log_logbase_and_math1_match_na_and_empty_vectors() {
         "f(c(a=1, b=NA_real_, c=10))",
         "c(a=0, b=NA_real_, c=1)",
     );
-    assert_identical(
-        &mut session,
-        "log10 scalar NA",
-        "f(NA_real_)",
-        "NA_real_",
-    );
+    assert_identical(&mut session, "log10 scalar NA", "f(NA_real_)", "NA_real_");
 
     load(
         &mut session,

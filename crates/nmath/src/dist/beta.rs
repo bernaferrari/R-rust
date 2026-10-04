@@ -436,8 +436,7 @@ fn qbeta_raw(
 
         if u0_maybe
             && u0
-                < (t * LOG_EPS_C
-                    - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))))
+                < (t * LOG_EPS_C - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))))
                     / 2.0
         {
             // MM's one-step correction

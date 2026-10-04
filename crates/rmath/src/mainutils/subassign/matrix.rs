@@ -70,7 +70,6 @@ pub(crate) unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             );
         }
 
-
         let n = (nrs as R_xlen_t) * (ncs as R_xlen_t);
 
         if n > 0 && ny == 0 {

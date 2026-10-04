@@ -12,7 +12,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use super::accessors::{CHAR, PRINTNAME, TYPEOF};
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, NodeBody};
+use super::ffi::{NodeBody, R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::instance::RInstance;
 
 // ---------------------------------------------------------------------------
@@ -23,8 +23,8 @@ use super::instance::RInstance;
 /// # Safety
 /// The owner must be live and no callback may overlap these short field lends.
 pub(crate) unsafe fn persistent_charsxp_from_bytes_in(inst: *mut RInstance, bytes: &[u8]) -> SEXP {
-    let value = unsafe { (*inst).persistent_nodes.allocate_chars(bytes) }
-        .unwrap_or(ptr::null_mut());
+    let value =
+        unsafe { (*inst).persistent_nodes.allocate_chars(bytes) }.unwrap_or(ptr::null_mut());
     if !value.is_null() {
         unsafe { (*inst).symbol_nodes.push(value) };
     }
@@ -38,19 +38,27 @@ fn intern_symbol_with_pname(
     name_str: String,
     pname: SEXP,
 ) -> SEXP {
-    if let Some(&existing) = symbols.get(&name_str) { return existing; }
-    if pname.is_null() { return ptr::null_mut(); }
+    if let Some(&existing) = symbols.get(&name_str) {
+        return existing;
+    }
+    if pname.is_null() {
+        return ptr::null_mut();
+    }
     let header = SexprecCore {
         sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
         attrib: super::heap::NodeLink::NULL,
         payload: super::payload::PayloadLink::EMPTY,
         data: NodeBody::Symbol(super::ffi::Symsxp {
-            pname: persistent.link_from_projection(pname).expect("permanent symbol name"),
+            pname: persistent
+                .link_from_projection(pname)
+                .expect("permanent symbol name"),
             value: super::heap::NodeLink::NULL,
             internal: super::heap::NodeLink::NULL,
         }),
     };
-    let sexp = persistent.allocate_header(header).unwrap_or(ptr::null_mut());
+    let sexp = persistent
+        .allocate_header(header)
+        .unwrap_or(ptr::null_mut());
     if !sexp.is_null() {
         symbols.insert(name_str, sexp);
         nodes.push(sexp);
@@ -138,7 +146,9 @@ pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) ->
             Err(_) => return ptr::null_mut(),
         };
 
-        if let Some(&existing) = (*inst).symbols.get(&name_str) { return existing; }
+        if let Some(&existing) = (*inst).symbols.get(&name_str) {
+            return existing;
+        }
         // Allocate the printed name before borrowing the projection list;
         // its short field lends end before interning touches that list again.
         let pname = persistent_charsxp_from_bytes_in(inst, cstr.to_bytes());
@@ -167,7 +177,9 @@ pub(crate) unsafe fn Rf_installChar_in(
     if name.is_null() || len < 0 {
         return ptr::null_mut();
     }
-    let Ok(length) = usize::try_from(len) else { return ptr::null_mut() };
+    let Ok(length) = usize::try_from(len) else {
+        return ptr::null_mut();
+    };
     let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, length) };
     let name_str = match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
@@ -176,7 +188,9 @@ pub(crate) unsafe fn Rf_installChar_in(
 
     // No interpreter callback runs during these owned allocations.
     unsafe {
-        if let Some(&existing) = (*inst).symbols.get(&name_str) { return existing; }
+        if let Some(&existing) = (*inst).symbols.get(&name_str) {
+            return existing;
+        }
         let pname = persistent_charsxp_from_bytes_in(inst, bytes);
         intern_symbol_with_pname(
             &mut (*inst).symbols,

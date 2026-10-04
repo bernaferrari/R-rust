@@ -653,7 +653,11 @@ unsafe fn f2xact(
                                 tmp = 0.;
                                 for idx_i in 0..nro2 as usize {
                                     tmp += fact_term(fact, *irn.add(nrb as usize + idx_i), "irn")
-                                        - fact_term(fact, *irn.add(nrb as usize + idx_i) - 1, "irn-1");
+                                        - fact_term(
+                                            fact,
+                                            *irn.add(nrb as usize + idx_i) - 1,
+                                            "irn-1",
+                                        );
                                 }
                                 tmp *= (k1 - 1) as c_double;
                                 for idx_j in 1..=k1 as usize {
@@ -977,8 +981,8 @@ unsafe fn f3xact(
                 *nr.add(lev as usize) -= 1;
 
                 loop {
-                    *alen.add(lev as usize) =
-                        *alen.add((lev - 1) as usize) + fact_term(fact, *lb.add(lev as usize), "lb");
+                    *alen.add(lev as usize) = *alen.add((lev - 1) as usize)
+                        + fact_term(fact, *lb.add(lev as usize), "lb");
                     if lev >= nc1s {
                         break;
                     }
@@ -1569,7 +1573,6 @@ unsafe fn f5xact(
 
         let mut ipn = *ipoin.add(itp_val as usize);
 
-
         let test1 = pastp - tol;
         let test2 = pastp + tol;
 
@@ -2000,7 +2003,6 @@ pub unsafe fn fexact(
             *prt = amiss;
             return;
         }
-
 
         // nco := max(nrow, ncol), nro := min(nrow, ncol)
         if ncol > nrow {

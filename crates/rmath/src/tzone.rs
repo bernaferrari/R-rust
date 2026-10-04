@@ -555,7 +555,6 @@ fn settzname(g: &mut TzGlobals) {
         }
     }
 
-
     g.sync_tzname_ptrs();
 }
 

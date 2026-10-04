@@ -65,8 +65,6 @@ pub unsafe fn do_hist_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     }
 }
 
-
-
 /// The public `barplot` generic.
 pub unsafe fn do_barplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

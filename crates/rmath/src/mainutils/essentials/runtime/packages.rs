@@ -78,8 +78,6 @@ pub unsafe fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) 
     )
 }
 
-
-
 unsafe fn attach_recommended_package_stub(package: &str) {
     unsafe {
         if package_attached(package) {
@@ -90,13 +88,8 @@ unsafe fn attach_recommended_package_stub(package: &str) {
             let package_dir = Path::new(&lib_path);
             let mut loading = vec![package.to_string()];
             match load_package_namespace(package, package_dir, &mut loading) {
-
                 Ok((namespace, directives)) => {
-                    match make_package_attach_env_lenient(
-                        package,
-                        directives.as_ref(),
-                        namespace,
-                    ) {
+                    match make_package_attach_env_lenient(package, directives.as_ref(), namespace) {
                         Ok(attach_env) => {
                             attach_package_env(attach_env);
                             return;
@@ -124,7 +117,6 @@ unsafe fn attach_recommended_package_stub(package: &str) {
                     }
                 }
             }
-
         }
         let env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
@@ -139,8 +131,6 @@ unsafe fn attach_recommended_package_stub(package: &str) {
         attach_package_env(env);
     }
 }
-
-
 
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -173,7 +163,6 @@ pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             package_error(format!("there is no package called '{}'", package_name));
         }
         match load_pure_r_package(&package_name, Path::new(&lib_path)) {
-
             Ok(()) => {
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 R_NilValue()
@@ -286,7 +275,6 @@ unsafe fn attached_package_paths() -> SEXP {
     }
 }
 
-
 /// R's `packageVersion(pkg)` — read a package version from DESCRIPTION.
 pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -299,13 +287,14 @@ pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             && XLENGTH(lib_arg) > 0
         {
             let lib = elt_to_string(lib_arg, 0);
-            let description = std::path::Path::new(&lib).join(&package).join("DESCRIPTION");
+            let description = std::path::Path::new(&lib)
+                .join(&package)
+                .join("DESCRIPTION");
             let content = match std::fs::read_to_string(&description) {
                 Ok(content) => content,
-                Err(err) => package_error(format!(
-                    "there is no package called '{}': {err}",
-                    package
-                )),
+                Err(err) => {
+                    package_error(format!("there is no package called '{}': {err}", package))
+                }
             };
             crate::mainutils::essentials::shared::description_fields(&content)
         } else {
@@ -407,7 +396,9 @@ unsafe fn list_named_version(list: SEXP, name: &str) -> Vec<i32> {
         if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) > 0 {
             let parts = VECTOR_ELT(value, 0);
             if TYPEOF(parts) == SEXPTYPE::INTSXP {
-                return (0..XLENGTH(parts)).map(|i| INTEGER_ELT(parts, i as i32)).collect();
+                return (0..XLENGTH(parts))
+                    .map(|i| INTEGER_ELT(parts, i as i32))
+                    .collect();
             }
         }
         parse_version(&elt_to_string(value, 0))
@@ -419,7 +410,8 @@ unsafe fn list_named(list: SEXP, name: &str) -> Option<SEXP> {
         if TYPEOF(list) != SEXPTYPE::VECSXP {
             return None;
         }
-        let names = crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         for i in 0..XLENGTH(list) {
             if TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == name {
                 return Some(VECTOR_ELT(list, i));
@@ -549,9 +541,7 @@ pub unsafe fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
         crate::mainutils::essentials::shared::uncache_package_namespace(&package);
         let label = format!("package:{package}");
-        let label_sexp = Rf_mkString(
-            std::ffi::CString::new(label).unwrap_or_default().as_ptr(),
-        );
+        let label_sexp = Rf_mkString(std::ffi::CString::new(label).unwrap_or_default().as_ptr());
         let _label_guard = protect(label_sexp);
         let cell = Rf_cons(label_sexp, R_NilValue());
         let _cell_guard = protect(cell);
@@ -564,12 +554,7 @@ pub unsafe fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// `.Internal(getRegisteredNamespace(name))` — loaded namespace or NULL.
-pub unsafe fn do_get_registered_namespace(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let name = CAR(args);
         let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
@@ -588,18 +573,12 @@ pub unsafe fn do_get_registered_namespace(
         }
 
         crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
-
             .unwrap_or_else(|| R_NilValue())
     }
 }
 
 /// `.Internal(isRegisteredNamespace(name))` — TRUE if the namespace is loaded.
-pub unsafe fn do_is_registered_namespace(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ns = do_get_registered_namespace(call, op, args, rho);
         Rf_ScalarLogical(if ns.is_null() || ns == R_NilValue() {
@@ -609,10 +588,6 @@ pub unsafe fn do_is_registered_namespace(
         })
     }
 }
-
-
-
-
 
 /// R's `data(..., package, envir)` — load package data.
 ///
@@ -653,10 +628,7 @@ pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 fn package_data_index(packages: &[String], items: &[String]) -> SEXP {
     unsafe {
-        let package_name = packages
-            .first()
-            .cloned()
-            .unwrap_or_else(|| ".".to_string());
+        let package_name = packages.first().cloned().unwrap_or_else(|| ".".to_string());
         let n = items.len();
         let matrix = Rf_allocVector3(SEXPTYPE::STRSXP, (n * 4) as i64);
         let _matrix = protect(matrix);
@@ -682,11 +654,7 @@ fn package_data_index(packages: &[String], items: &[String]) -> SEXP {
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         SET_VECTOR_ELT(dimnames, 0, R_NilValue());
         SET_VECTOR_ELT(dimnames, 1, colnames);
-        crate::sexp::attrib_core::setAttrib(
-            matrix,
-            Rf_install(c"dimnames".as_ptr()),
-            dimnames,
-        );
+        crate::sexp::attrib_core::setAttrib(matrix, Rf_install(c"dimnames".as_ptr()), dimnames);
 
         let out = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _out = protect(out);
@@ -702,12 +670,7 @@ fn package_data_index(packages: &[String], items: &[String]) -> SEXP {
         ]);
         crate::sexp::attrib_core::setAttrib(out, Rf_install(c"names".as_ptr()), names);
         let class = Rf_mkString(c"packageIQR".as_ptr());
-        crate::sexp::attrib_core::setAttrib(
-            out,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_ClassSymbol(), class);
         out
     }
 }
-

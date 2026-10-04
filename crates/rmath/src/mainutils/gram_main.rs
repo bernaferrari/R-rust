@@ -206,9 +206,9 @@ unsafe fn with_parse_runtime<T>(
 ) -> T {
     let token = unsafe { OwnerToken::current() }
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    let owner = token.weak_owner().unwrap_or_else(|| {
-        crate::sexp::context::r_error("parsing requires a managed runtime")
-    });
+    let owner = token
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("parsing requires a managed runtime"));
     with_runtime(&owner, operation)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
@@ -461,7 +461,6 @@ mod tests {
 
     #[test]
     fn owned_parser_rejects_publication_after_collecting_callback_closes_runtime() {
-
         use std::cell::RefCell;
         use std::rc::Rc;
         let session = Rc::new(RefCell::new(

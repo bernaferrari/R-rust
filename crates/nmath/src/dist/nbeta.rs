@@ -182,7 +182,15 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
 
 /// pnbeta2: pnbeta with o_x parameter (1 - x, for accuracy)
 /// Ported from pnbeta.c -- pnbeta2
-pub(crate) fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
+pub(crate) fn pnbeta2(
+    x: f64,
+    o_x: f64,
+    a: f64,
+    b: f64,
+    ncp: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> f64 {
     let ans = pnbeta_raw(x, o_x, a, b, ncp);
 
     if lower_tail {

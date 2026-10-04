@@ -973,9 +973,13 @@ mod tests {
     #[test]
     fn test_compute_identical_integer_arrays() {
         let mut first = crate::sexp::memory::RArena::new();
-        let x = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut first).unwrap();
+        let x = crate::sexp::builder::IntVector::new(&[42, 99])
+            .build_in(&mut first)
+            .unwrap();
         let mut second = crate::sexp::memory::RArena::new();
-        let y = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut second).unwrap();
+        let y = crate::sexp::builder::IntVector::new(&[42, 99])
+            .build_in(&mut second)
+            .unwrap();
         // Each owning value retains the actual initialized allocation.
         assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
     }
@@ -983,9 +987,13 @@ mod tests {
     #[test]
     fn test_compute_identical_integer_arrays_differ() {
         let mut first = crate::sexp::memory::RArena::new();
-        let x = crate::sexp::builder::IntVector::new(&[42, 99]).build_in(&mut first).unwrap();
+        let x = crate::sexp::builder::IntVector::new(&[42, 99])
+            .build_in(&mut first)
+            .unwrap();
         let mut second = crate::sexp::memory::RArena::new();
-        let y = crate::sexp::builder::IntVector::new(&[42, 100]).build_in(&mut second).unwrap();
+        let y = crate::sexp::builder::IntVector::new(&[42, 100])
+            .build_in(&mut second)
+            .unwrap();
         // Each owning value retains the actual initialized allocation.
         assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
     }
@@ -993,9 +1001,13 @@ mod tests {
     #[test]
     fn test_compute_identical_raw_arrays() {
         let mut first = crate::sexp::memory::RArena::new();
-        let x = crate::sexp::builder::RawVector::new(&[1, 2, 3]).build_in(&mut first).unwrap();
+        let x = crate::sexp::builder::RawVector::new(&[1, 2, 3])
+            .build_in(&mut first)
+            .unwrap();
         let mut second = crate::sexp::memory::RArena::new();
-        let y = crate::sexp::builder::RawVector::new(&[1, 2, 3]).build_in(&mut second).unwrap();
+        let y = crate::sexp::builder::RawVector::new(&[1, 2, 3])
+            .build_in(&mut second)
+            .unwrap();
         // Each owning value retains the actual initialized allocation.
         assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
     }

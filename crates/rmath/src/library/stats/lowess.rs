@@ -337,22 +337,24 @@ pub unsafe extern "C-unwind" fn c_lowess(
     unsafe { lowess(x, y, f, iter, delta) }
 }
 
-
 /// GNU `lowess(x, y=NULL, f=2/3, iter=3, delta=0.01*diff(range(x)))`.
 pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use std::ffi::CString;
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, SETTAG, SET_VECTOR_ELT};
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT, SETTAG};
         use crate::sexp::constructors::{
             Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
         };
         use crate::sexp::ffi::R_xlen_t;
         use crate::sexp::globals::{R_MissingArg, R_NilValue};
         use crate::sexp::symbol::Rf_install;
+        use std::ffi::CString;
         let mut formals = R_NilValue();
         for name in ["delta", "iter", "f", "y", "x"] {
             let cell = Rf_cons(R_MissingArg(), formals);
-            SETTAG(cell, Rf_install(CString::new(name).unwrap_or_default().as_ptr()));
+            SETTAG(
+                cell,
+                Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
+            );
             formals = cell;
         }
         let _formals = protect(formals);
@@ -370,7 +372,10 @@ pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut y0 = slots[1];
         let absent = |s: SEXP| s.is_null() || s == R_NilValue() || s == R_MissingArg();
         if absent(x0) {
-            crate::mainutils::errors::errorcall_str(call, "argument \"x\" is missing, with no default");
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "argument \"x\" is missing, with no default",
+            );
         }
         if absent(y0) {
             let n = crate::sexp::accessors::XLENGTH(x0);
@@ -421,7 +426,7 @@ pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 xmin = xmin.min(xv);
                 xmax = xmax.max(xv);
             }
-        };
+        }
         let delta = if absent(slots[4]) {
             0.01 * (xmax - xmin)
         } else {
@@ -439,10 +444,7 @@ pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xd);
         SET_VECTOR_ELT(result, 1, ys);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
 }
@@ -496,5 +498,3 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         do_lowess(_call, _op, call_args, rho)
     }
 }
-
-

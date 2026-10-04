@@ -70,7 +70,8 @@ unsafe fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
         }
         let keep = drop.iter().filter(|d| !**d).count();
         let out = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, keep as i32);
-        let names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
         let new_names = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, keep as i32);
         let mut w = 0i64;
         for j in 0..ncol {
@@ -79,24 +80,43 @@ unsafe fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
             }
             SET_VECTOR_ELT(out, w, VECTOR_ELT(frame, j));
             if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && j < XLENGTH(names) {
-                crate::sexp::accessors::SET_STRING_ELT(new_names, w, crate::sexp::accessors::STRING_ELT(names, j));
+                crate::sexp::accessors::SET_STRING_ELT(
+                    new_names,
+                    w,
+                    crate::sexp::accessors::STRING_ELT(names, j),
+                );
             }
             w += 1;
         }
-        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), new_names);
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            new_names,
+        );
         crate::sexp::attrib_core::setAttrib(
             out,
             crate::sexp::attrib_core::R_ClassSymbol(),
             crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()),
         );
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let nrow = if XLENGTH(frame) > 0 { XLENGTH(VECTOR_ELT(frame, 0)) } else { 0 };
+        let nrow = if XLENGTH(frame) > 0 {
+            XLENGTH(VECTOR_ELT(frame, 0))
+        } else {
+            0
+        };
         *INTEGER(dim) = nrow as i32;
         *INTEGER(dim).add(1) = keep as i32;
         crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+        let rn = crate::sexp::attrib_core::getAttrib(
+            frame,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
         if !rn.is_null() && rn != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+            crate::sexp::attrib_core::setAttrib(
+                out,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn,
+            );
         }
         out
     }
@@ -125,7 +145,11 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
             }
         }
         let col_index = CADR(subs);
-        if TYPEOF(col_index) == SEXPTYPE::STRSXP || TYPEOF(col_index) == SEXPTYPE::INTSXP || TYPEOF(col_index) == SEXPTYPE::REALSXP || max_row > nrows {
+        if TYPEOF(col_index) == SEXPTYPE::STRSXP
+            || TYPEOF(col_index) == SEXPTYPE::INTSXP
+            || TYPEOF(col_index) == SEXPTYPE::REALSXP
+            || max_row > nrows
+        {
             frame = crate::mainutils::duplicate::shallow_duplicate(frame);
             if max_row > nrows {
                 for j in 0..XLENGTH(frame) {
@@ -135,11 +159,18 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
                 let rn = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::INTSXP, 2);
                 crate::sexp::accessors::SET_INTEGER_ELT(rn, 0, NA_INTEGER);
                 crate::sexp::accessors::SET_INTEGER_ELT(rn, 1, -max_row as c_int);
-                crate::sexp::attrib_core::setAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+                crate::sexp::attrib_core::setAttrib(
+                    frame,
+                    crate::sexp::attrib_core::R_RowNamesSymbol(),
+                    rn,
+                );
                 nrows = max_row;
             }
             if TYPEOF(col_index) == SEXPTYPE::STRSXP {
-                let mut names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+                let mut names = crate::sexp::attrib_core::getAttrib(
+                    frame,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
                 for i in 0..XLENGTH(col_index) {
                     let want = elt_to_string(col_index, i);
                     let mut found = false;
@@ -168,23 +199,55 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
                     } else {
                         SEXPTYPE::REALSXP
                     };
-                    let col = lengthen_with_na(crate::sexp::constructors::Rf_allocVector(ty, 0), nrows);
-                    let wider = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, (XLENGTH(frame) + 1) as i32);
+                    let col =
+                        lengthen_with_na(crate::sexp::constructors::Rf_allocVector(ty, 0), nrows);
+                    let wider = crate::sexp::constructors::Rf_allocVector(
+                        SEXPTYPE::VECSXP,
+                        (XLENGTH(frame) + 1) as i32,
+                    );
                     for j in 0..XLENGTH(frame) {
                         SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
                     }
                     SET_VECTOR_ELT(wider, XLENGTH(frame), col);
-                    let new_names = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, XLENGTH(wider) as i32);
+                    let new_names = crate::sexp::constructors::Rf_allocVector(
+                        SEXPTYPE::STRSXP,
+                        XLENGTH(wider) as i32,
+                    );
                     for j in 0..XLENGTH(names) {
-                        crate::sexp::accessors::SET_STRING_ELT(new_names, j, crate::sexp::accessors::STRING_ELT(names, j));
+                        crate::sexp::accessors::SET_STRING_ELT(
+                            new_names,
+                            j,
+                            crate::sexp::accessors::STRING_ELT(names, j),
+                        );
                     }
-                    crate::sexp::accessors::SET_STRING_ELT(new_names, XLENGTH(frame), crate::sexp::constructors::Rf_mkChar(std::ffi::CString::new(want).unwrap_or_default().as_ptr()));
-                    crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_NamesSymbol(), new_names);
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        new_names,
+                        XLENGTH(frame),
+                        crate::sexp::constructors::Rf_mkChar(
+                            std::ffi::CString::new(want).unwrap_or_default().as_ptr(),
+                        ),
+                    );
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        new_names,
+                    );
                     let klass = crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr());
-                    crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_ClassSymbol(), klass);
-                    let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_ClassSymbol(),
+                        klass,
+                    );
+                    let rn = crate::sexp::attrib_core::getAttrib(
+                        frame,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                    );
                     if !rn.is_null() && rn != R_NilValue() {
-                        crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+                        crate::sexp::attrib_core::setAttrib(
+                            wider,
+                            crate::sexp::attrib_core::R_RowNamesSymbol(),
+                            rn,
+                        );
                     }
                     frame = wider;
                     names = new_names;
@@ -194,40 +257,86 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
                 let mut max_col = XLENGTH(frame);
                 for i in 0..XLENGTH(col_index) {
                     let v = crate::mainutils::essentials::elt_real_safe(col_index, i);
-                    if v.is_finite() && v as i64 > max_col { max_col = v as i64; }
+                    if v.is_finite() && v as i64 > max_col {
+                        max_col = v as i64;
+                    }
                 }
-                let vnames = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+                let vnames = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
                 let mut added = 0i64;
                 while XLENGTH(frame) < max_col {
-                    let src = if TYPEOF(value) == SEXPTYPE::VECSXP && added < XLENGTH(value) { VECTOR_ELT(value, added) } else { value };
-                    let col = lengthen_with_na(crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP, 0), nrows);
-                    let wider = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, (XLENGTH(frame) + 1) as i32);
-                    for j in 0..XLENGTH(frame) { SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j)); }
-                    SET_VECTOR_ELT(wider, XLENGTH(frame), col);
-                    let old = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
-                    let new_names = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, XLENGTH(wider) as i32);
-                    for j in 0..XLENGTH(old) {
-                        crate::sexp::accessors::SET_STRING_ELT(new_names, j, crate::sexp::accessors::STRING_ELT(old, j));
+                    let src = if TYPEOF(value) == SEXPTYPE::VECSXP && added < XLENGTH(value) {
+                        VECTOR_ELT(value, added)
+                    } else {
+                        value
+                    };
+                    let col = lengthen_with_na(
+                        crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP, 0),
+                        nrows,
+                    );
+                    let wider = crate::sexp::constructors::Rf_allocVector(
+                        SEXPTYPE::VECSXP,
+                        (XLENGTH(frame) + 1) as i32,
+                    );
+                    for j in 0..XLENGTH(frame) {
+                        SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
                     }
-                    let label = if !vnames.is_null() && TYPEOF(vnames) == SEXPTYPE::STRSXP && added < XLENGTH(vnames) {
+                    SET_VECTOR_ELT(wider, XLENGTH(frame), col);
+                    let old = crate::sexp::attrib_core::getAttrib(
+                        frame,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                    );
+                    let new_names = crate::sexp::constructors::Rf_allocVector(
+                        SEXPTYPE::STRSXP,
+                        XLENGTH(wider) as i32,
+                    );
+                    for j in 0..XLENGTH(old) {
+                        crate::sexp::accessors::SET_STRING_ELT(
+                            new_names,
+                            j,
+                            crate::sexp::accessors::STRING_ELT(old, j),
+                        );
+                    }
+                    let label = if !vnames.is_null()
+                        && TYPEOF(vnames) == SEXPTYPE::STRSXP
+                        && added < XLENGTH(vnames)
+                    {
                         crate::sexp::accessors::STRING_ELT(vnames, added)
                     } else {
                         let label_s = format!("V{}", XLENGTH(frame) + 1);
-                        crate::sexp::constructors::Rf_mkChar(std::ffi::CString::new(label_s).unwrap().as_ptr())
+                        crate::sexp::constructors::Rf_mkChar(
+                            std::ffi::CString::new(label_s).unwrap().as_ptr(),
+                        )
                     };
                     crate::sexp::accessors::SET_STRING_ELT(new_names, XLENGTH(frame), label);
-                    crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_NamesSymbol(), new_names);
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        new_names,
+                    );
                     let klass = crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr());
-                    crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_ClassSymbol(), klass);
-                    let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_ClassSymbol(),
+                        klass,
+                    );
+                    let rn = crate::sexp::attrib_core::getAttrib(
+                        frame,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                    );
                     if !rn.is_null() && rn != R_NilValue() {
-                        crate::sexp::attrib_core::setAttrib(wider, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+                        crate::sexp::attrib_core::setAttrib(
+                            wider,
+                            crate::sexp::attrib_core::R_RowNamesSymbol(),
+                            rn,
+                        );
                     }
                     frame = wider;
                     added += 1;
                 }
             }
-
         }
         let rows = if TYPEOF(row_index) == SEXPTYPE::STRSXP {
             let rn = crate::sexp::attrib_core::getAttrib(
@@ -289,16 +398,36 @@ unsafe fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
         }
         let ty = TYPEOF(col);
         let out = crate::sexp::constructors::Rf_allocVector(
-            if ty == SEXPTYPE::INTSXP { SEXPTYPE::INTSXP } else if ty == SEXPTYPE::LGLSXP { SEXPTYPE::LGLSXP } else if ty == SEXPTYPE::STRSXP { SEXPTYPE::STRSXP } else { SEXPTYPE::REALSXP },
+            if ty == SEXPTYPE::INTSXP {
+                SEXPTYPE::INTSXP
+            } else if ty == SEXPTYPE::LGLSXP {
+                SEXPTYPE::LGLSXP
+            } else if ty == SEXPTYPE::STRSXP {
+                SEXPTYPE::STRSXP
+            } else {
+                SEXPTYPE::REALSXP
+            },
             n as i32,
         );
         for i in 0..XLENGTH(col) {
             if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                crate::sexp::accessors::SET_INTEGER_ELT(out, i as i32, crate::sexp::accessors::INTEGER_ELT(col, i as i32));
+                crate::sexp::accessors::SET_INTEGER_ELT(
+                    out,
+                    i as i32,
+                    crate::sexp::accessors::INTEGER_ELT(col, i as i32),
+                );
             } else if ty == SEXPTYPE::STRSXP {
-                crate::sexp::accessors::SET_STRING_ELT(out, i, crate::sexp::accessors::STRING_ELT(col, i));
+                crate::sexp::accessors::SET_STRING_ELT(
+                    out,
+                    i,
+                    crate::sexp::accessors::STRING_ELT(col, i),
+                );
             } else {
-                crate::sexp::accessors::SET_REAL_ELT(out, i as i32, crate::sexp::accessors::REAL_ELT(col, i as i32));
+                crate::sexp::accessors::SET_REAL_ELT(
+                    out,
+                    i as i32,
+                    crate::sexp::accessors::REAL_ELT(col, i as i32),
+                );
             }
         }
         for i in XLENGTH(col)..n {
@@ -316,7 +445,8 @@ unsafe fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
 
 unsafe fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEXP> {
     unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(index, crate::sexp::attrib_core::R_DimSymbol());
+        let dim =
+            crate::sexp::attrib_core::getAttrib(index, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) != 2 || *INTEGER(dim).add(1) != 2 {
             return None;
         }
@@ -338,7 +468,8 @@ unsafe fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Opt
 
 unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
     unsafe {
-        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
+        {
             return Some((0..n).collect());
         }
         let mut out = Vec::new();
@@ -355,12 +486,17 @@ unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
             }
             Some(out)
         } else if TYPEOF(index) == SEXPTYPE::LGLSXP {
-            if XLENGTH(index) == 1 && crate::sexp::accessors::LOGICAL_ELT(index, 0) == crate::sexp::ffi::TRUE {
+            if XLENGTH(index) == 1
+                && crate::sexp::accessors::LOGICAL_ELT(index, 0) == crate::sexp::ffi::TRUE
+            {
                 Some((0..n).collect())
             } else {
                 let mut out = Vec::new();
                 for i in 0..n {
-                    let bit = crate::sexp::accessors::LOGICAL_ELT(index, (i % XLENGTH(index).max(1)) as i32);
+                    let bit = crate::sexp::accessors::LOGICAL_ELT(
+                        index,
+                        (i % XLENGTH(index).max(1)) as i32,
+                    );
                     if bit == crate::sexp::ffi::TRUE {
                         out.push(i);
                     }
@@ -375,7 +511,8 @@ unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
 
 unsafe fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
     unsafe {
-        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
+        {
             return Some((0..XLENGTH(frame)).collect());
         }
         if TYPEOF(index) == SEXPTYPE::STRSXP {
@@ -407,10 +544,8 @@ unsafe fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
 unsafe fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> SEXP {
     unsafe {
         let col = crate::mainutils::duplicate::shallow_duplicate(col);
-        let levels = crate::sexp::attrib_core::getAttrib(
-            col,
-            crate::sexp::attrib_core::R_LevelsSymbol(),
-        );
+        let levels =
+            crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_LevelsSymbol());
         let factor = TYPEOF(col) == SEXPTYPE::INTSXP
             && !levels.is_null()
             && TYPEOF(levels) == SEXPTYPE::STRSXP;
@@ -504,7 +639,6 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             x = CAR(args);
         }
 
-
         let s4 = IS_S4_OBJECT(x);
         let mut oldtype = 0;
 
@@ -544,14 +678,18 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 if row == crate::sexp::globals::R_MissingArg() || isNull(row) {
                     let col = CADR(subs);
                     let index = if TYPEOF(col) == SEXPTYPE::STRSXP {
-                        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+                        let names = crate::sexp::attrib_core::getAttrib(
+                            x,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                        );
                         let which = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(col));
                         for i in 0..XLENGTH(col) {
                             let want = crate::mainutils::essentials::elt_to_string(col, i);
                             let mut found = NA_INTEGER;
                             if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
                                 for j in 0..XLENGTH(names) {
-                                    if crate::mainutils::essentials::elt_to_string(names, j) == want {
+                                    if crate::mainutils::essentials::elt_to_string(names, j) == want
+                                    {
                                         found = (j as i32) + 1;
                                         break;
                                     }
@@ -580,7 +718,8 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                     return drop_data_frame_columns(x, idx);
                 }
                 let cell2 = crate::sexp::constructors::Rf_cons(idx, R_NilValue());
-                let pair = crate::sexp::constructors::Rf_cons(crate::sexp::globals::R_MissingArg(), cell2);
+                let pair =
+                    crate::sexp::constructors::Rf_cons(crate::sexp::globals::R_MissingArg(), cell2);
                 if let Some(updated) = data_frame_assign_cells(x, pair, y) {
                     return updated;
                 }
@@ -695,7 +834,8 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             let levels = getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
             if !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP {
                 let n = XLENGTH(x);
-                let idx = crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), n, 0, 0, call);
+                let idx =
+                    crate::mainutils::subscript::get1index(CAR(subs), R_NilValue(), n, 0, 0, call);
                 if idx >= 0 && idx < n {
                     let text = crate::mainutils::essentials::elt_to_string(y, 0);
                     let mut code = NA_INTEGER;
@@ -725,9 +865,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         } else {
             ptr::null()
         };
-        if nsubs == 2
-            && crate::mainutils::subset::is_data_frame(x)
-            && TYPEOF(x) == SEXPTYPE::VECSXP
+        if nsubs == 2 && crate::mainutils::subset::is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP
         {
             let ncols = XLENGTH(x);
             let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
@@ -834,8 +972,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                         R_NilValue()
                     };
                     if i < len - 2
-                        && (TYPEOF(child) == SEXPTYPE::VECSXP
-                            || TYPEOF(child) == SEXPTYPE::EXPRSXP)
+                        && (TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP)
                     {
                         let copy = crate::mainutils::duplicate::duplicate(child);
                         SET_VECTOR_ELT(parent, indx, copy);

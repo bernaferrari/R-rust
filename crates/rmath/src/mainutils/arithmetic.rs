@@ -19,9 +19,7 @@
 use std::os::raw::c_int;
 
 use crate::fprec::{fprec, fround};
-use crate::sexp::accessors::{
-    CADR, CAR, COMPLEX, INTEGER, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
-};
+use crate::sexp::accessors::{CADR, CAR, COMPLEX, INTEGER, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
@@ -59,7 +57,6 @@ pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
         0
     }
 }
-
 
 /// Check if a value is R's NA.
 pub extern "C" fn R_IsNA(x: f64) -> c_int {

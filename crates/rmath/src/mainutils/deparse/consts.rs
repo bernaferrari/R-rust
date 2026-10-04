@@ -110,10 +110,9 @@ pub fn deparse_opts_from_names(names: &[String]) -> c_int {
         return 0;
     }
     let has = |prefix: &str| {
-        names.iter().any(|name| {
-            name == prefix
-                || (!name.is_empty() && prefix.starts_with(name.as_str()))
-        })
+        names
+            .iter()
+            .any(|name| name == prefix || (!name.is_empty() && prefix.starts_with(name.as_str())))
     };
     let all = has("all");
     let exact = has("exact");
@@ -154,7 +153,6 @@ pub fn deparse_opts_from_names(names: &[String]) -> c_int {
     }
     opts
 }
-
 
 // ---------------------------------------------------------------------------
 // Precedence constants (local aliases for names.rs values)

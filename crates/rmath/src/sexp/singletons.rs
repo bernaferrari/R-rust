@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Thread-confined immutable values with genuine owned headers and payloads.
 
-use super::super::ffi::{NodeBody, SexprecCore, Vecsxp, SEXP, SEXPTYPE};
+use super::super::ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,

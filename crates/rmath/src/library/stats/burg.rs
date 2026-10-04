@@ -159,11 +159,9 @@ pub unsafe extern "C-unwind" fn c_eureka(
             v += *a.add(l - 1) * d;
             *f.add(at(l, l)) = (*g.add(l) - q) / v;
             for j in 1..l {
-                *f.add(at(l, j)) =
-                    *f.add(at(l - 1, j)) + *f.add(at(l, l)) * *a.add(l - j);
+                *f.add(at(l, j)) = *f.add(at(l - 1, j)) + *f.add(at(l, l)) * *a.add(l - j);
             }
-            *varp.add(l - 1) =
-                *varp.add(l - 2) * (1.0 - *f.add(at(l, l)) * *f.add(at(l, l)));
+            *varp.add(l - 1) = *varp.add(l - 2) * (1.0 - *f.add(at(l, l)) * *f.add(at(l, l)));
             if l == lr {
                 return;
             }

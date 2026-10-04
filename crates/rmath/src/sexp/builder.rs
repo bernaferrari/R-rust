@@ -179,13 +179,21 @@ impl RealVector {
         }
         let mut values = Vec::new();
         let mut value = start;
-        while if step > 0.0 { value <= end } else { value >= end } {
+        while if step > 0.0 {
+            value <= end
+        } else {
+            value >= end
+        } {
             R_xlen_t::try_from(values.len().checked_add(1)?).ok()?;
             values.try_reserve(1).ok()?;
             values.push(value);
-            if value == end { break; }
+            if value == end {
+                break;
+            }
             let next = value + step;
-            if next == value { return None; }
+            if next == value {
+                return None;
+            }
             value = next;
         }
         Some(RealVector { values })
@@ -382,8 +390,8 @@ impl<'a> GenericVector<'a> {
     pub fn try_set_value(mut self, index: usize, value: Sexp<'a>) -> SexpResult<Self> {
         let len = self.elements.len() as R_xlen_t;
         let slot = self.elements.get_mut(index).ok_or(SexpError::OutOfBounds {
-                index: index as R_xlen_t,
-                len,
+            index: index as R_xlen_t,
+            len,
         })?;
         *slot = value;
         Ok(self)
@@ -462,7 +470,10 @@ impl<'a> PairlistBuilder<'a> {
         for (car, tag) in self.elements.iter().rev() {
             // SAFETY: every child was checked above; no GC runs during this arena lend.
             result = unsafe {
-                arena.cons(car.clone().as_raw(), result, tag.as_ref()
+                arena.cons(
+                    car.clone().as_raw(),
+                    result,
+                    tag.as_ref()
                         .map_or(ptr::null_mut(), |tag| tag.clone().as_raw()),
                 )
             };
@@ -492,10 +503,10 @@ pub(crate) fn int_sequence_current(start: c_int, end: c_int) -> Option<SEXP> {
     unsafe {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         memory::with_arena(|arena| {
-        IntVector::sequence(start, end)
-            .and_then(|builder| builder.build_in(arena))
-            .map(|value| value.as_raw())
-    })
+            IntVector::sequence(start, end)
+                .and_then(|builder| builder.build_in(arena))
+                .map(|value| value.as_raw())
+        })
     }
 }
 
@@ -598,7 +609,9 @@ pub fn scalar_complex_in<'arena>(
 ) -> Option<Sexp<'arena>> {
     let value = arena.alloc_vector_sexp(SEXPTYPE::CPLXSXP, 1)?;
     let mut value = SexpMut::try_from_checked(value).ok()?;
-    value.try_set_complex_elt(0, super::ffi::Rcomplex { r, i }).ok()?;
+    value
+        .try_set_complex_elt(0, super::ffi::Rcomplex { r, i })
+        .ok()?;
     finish_scalar(value.freeze())
 }
 
@@ -629,18 +642,26 @@ pub fn lang2_in<'arena>(
     let arg = arg.link_in(&heap).ok()?;
     let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
     let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if cdr.is_null() { return None; }
+    if cdr.is_null() {
+        return None;
+    }
     unsafe {
         (*cdr).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-            carval: arg, cdrval: nil, tagval: crate::sexp::heap::NodeLink::NULL,
+            carval: arg,
+            cdrval: nil,
+            tagval: crate::sexp::heap::NodeLink::NULL,
         });
     }
     let cdr = arena.link_from_projection(cdr)?;
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if head.is_null() { return None; }
+    if head.is_null() {
+        return None;
+    }
     unsafe {
         (*head).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-            carval: car, cdrval: cdr, tagval: crate::sexp::heap::NodeLink::NULL,
+            carval: car,
+            cdrval: cdr,
+            tagval: crate::sexp::heap::NodeLink::NULL,
         });
     }
     arena.sexp(head)
@@ -658,26 +679,38 @@ pub fn lang3_in<'arena>(
     let arg2 = arg2.link_in(&heap).ok()?;
     let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
     let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if c2.is_null() { return None; }
+    if c2.is_null() {
+        return None;
+    }
     unsafe {
         (*c2).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-            carval: arg2, cdrval: nil, tagval: crate::sexp::heap::NodeLink::NULL,
+            carval: arg2,
+            cdrval: nil,
+            tagval: crate::sexp::heap::NodeLink::NULL,
         });
     }
     let c2 = arena.link_from_projection(c2)?;
     let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if c1.is_null() { return None; }
+    if c1.is_null() {
+        return None;
+    }
     unsafe {
         (*c1).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-            carval: arg1, cdrval: c2, tagval: crate::sexp::heap::NodeLink::NULL,
+            carval: arg1,
+            cdrval: c2,
+            tagval: crate::sexp::heap::NodeLink::NULL,
         });
     }
     let c1 = arena.link_from_projection(c1)?;
     let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-    if head.is_null() { return None; }
+    if head.is_null() {
+        return None;
+    }
     unsafe {
         (*head).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-            carval: car, cdrval: c1, tagval: crate::sexp::heap::NodeLink::NULL,
+            carval: car,
+            cdrval: c1,
+            tagval: crate::sexp::heap::NodeLink::NULL,
         });
     }
     arena.sexp(head)
@@ -759,7 +792,11 @@ mod tests {
     #[test]
     fn test_real_vector_seq() {
         let mut arena = RArena::new();
-        let vec = some(RealVector::seq(0.0, 1.0, 0.25).unwrap().build_in(&mut arena));
+        let vec = some(
+            RealVector::seq(0.0, 1.0, 0.25)
+                .unwrap()
+                .build_in(&mut arena),
+        );
         assert_eq!(vec.clone().len(), 5);
         assert!((some(vec.clone().real_elt(0)) - 0.0).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(4)) - 1.0).abs() < f64::EPSILON);
@@ -913,10 +950,14 @@ mod tests {
         ] {
             assert!(RealVector::seq(start, end, step).is_none());
         }
-        assert_eq!(RealVector::seq(0.0, 1.0, 0.25).unwrap().values,
-            [0.0, 0.25, 0.5, 0.75, 1.0]);
-        assert_eq!(RealVector::seq(1.0, 0.0, -0.25).unwrap().values,
-            [1.0, 0.75, 0.5, 0.25, 0.0]);
+        assert_eq!(
+            RealVector::seq(0.0, 1.0, 0.25).unwrap().values,
+            [0.0, 0.25, 0.5, 0.75, 1.0]
+        );
+        assert_eq!(
+            RealVector::seq(1.0, 0.0, -0.25).unwrap().values,
+            [1.0, 0.75, 0.5, 0.25, 0.0]
+        );
         assert!(RealVector::seq(1.0, 0.0, 0.25).unwrap().values.is_empty());
         assert_eq!(RealVector::seq(1e16, 1e16, 1.0).unwrap().values, [1e16]);
     }
@@ -927,25 +968,37 @@ mod tests {
         let value = IntVector::new(&[]).build_in(&mut arena).unwrap();
         assert_eq!(value.typeof_(), SEXPTYPE::INTSXP);
         assert_eq!(value.len(), 0);
-        assert!(matches!(value.try_integer_elt(0), Err(SexpError::OutOfBounds { .. })));
+        assert!(matches!(
+            value.try_integer_elt(0),
+            Err(SexpError::OutOfBounds { .. })
+        ));
 
         let mut arena = RArena::new();
         let value = RealVector::new(&[]).build_in(&mut arena).unwrap();
         assert_eq!(value.typeof_(), SEXPTYPE::REALSXP);
         assert_eq!(value.len(), 0);
-        assert!(matches!(value.try_real_elt(0), Err(SexpError::OutOfBounds { .. })));
+        assert!(matches!(
+            value.try_real_elt(0),
+            Err(SexpError::OutOfBounds { .. })
+        ));
 
         let mut arena = RArena::new();
         let value = LogicalVector::new(&[]).build_in(&mut arena).unwrap();
         assert_eq!(value.typeof_(), SEXPTYPE::LGLSXP);
         assert_eq!(value.len(), 0);
-        assert!(matches!(value.try_logical_elt(0), Err(SexpError::OutOfBounds { .. })));
+        assert!(matches!(
+            value.try_logical_elt(0),
+            Err(SexpError::OutOfBounds { .. })
+        ));
 
         let mut arena = RArena::new();
         let value = RawVector::new(&[]).build_in(&mut arena).unwrap();
         assert_eq!(value.typeof_(), SEXPTYPE::RAWSXP);
         assert_eq!(value.len(), 0);
-        assert!(matches!(value.try_raw_elt(0), Err(SexpError::OutOfBounds { .. })));
+        assert!(matches!(
+            value.try_raw_elt(0),
+            Err(SexpError::OutOfBounds { .. })
+        ));
     }
 
     #[test]
@@ -985,7 +1038,10 @@ mod tests {
         let c = some(mk_char_in(&mut arena, b"hello"));
         assert!(c.clone().is_charsxp());
         assert_eq!(c.as_string().as_deref(), Some("hello"));
-        assert_eq!(c.as_string().map(String::into_bytes), Some(b"hello".to_vec()));
+        assert_eq!(
+            c.as_string().map(String::into_bytes),
+            Some(b"hello".to_vec())
+        );
     }
 
     #[test]

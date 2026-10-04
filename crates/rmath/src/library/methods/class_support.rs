@@ -11,8 +11,6 @@ use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::*;
 use crate::sexp::memory_ext::allocSExp;
 
-
-
 /// R_get_primname - get the name of a primitive function.
 /// Delegates to getPRIMNAME in main/names.rs.
 pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
@@ -47,4 +45,3 @@ pub unsafe fn Rf_allocS4Object() -> SEXP {
         s
     }
 }
-

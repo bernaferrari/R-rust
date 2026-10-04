@@ -103,7 +103,6 @@ pub struct RConn {
     /// Complete lines already stored in the bound STRSXP.
     pub text_published: usize,
 
-
     /// Child process (for pipe connections).
     pub child: Option<Child>,
     /// File handle (for file connections).
@@ -190,8 +189,6 @@ impl RConn {
             self.text_published = complete;
         }
     }
-
-
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +754,6 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
         }
         ConnKind::RawConnection => conn.raw_data.extend_from_slice(bytes),
         ConnKind::TextConnection => append_text_connection_write(conn, bytes),
-
 
         ConnKind::Terminal(name) if name == "stdout" => {
             let stdout = io::stdout();

@@ -34,9 +34,7 @@ use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
     REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{
-    Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_length,
-};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -89,7 +87,8 @@ pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
             return 0;
         }
         if crate::sexp::accessors::IS_BYTES(x) != 0 || crate::sexp::accessors::IS_BYTES(y) != 0 {
-            if crate::sexp::accessors::IS_BYTES(x) != 0 && crate::sexp::accessors::IS_BYTES(y) != 0 {
+            if crate::sexp::accessors::IS_BYTES(x) != 0 && crate::sexp::accessors::IS_BYTES(y) != 0
+            {
                 let cx = CHAR(x);
                 let cy = CHAR(y);
                 if cx.is_null() || cy.is_null() {
@@ -644,7 +643,6 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
         }
 
         R_compute_identical(x, y, 16) != 0
-
     }
 }
 
@@ -915,7 +913,6 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 let _yg = protect(yf);
                 x = string_relop(PRIMVAL(op), xf, yf);
             } else if isString(x) != 0 || isString(y) != 0 {
-
                 x = string_relop(PRIMVAL(op), x, y);
             } else if isComplex(x) != 0 || isComplex(y) != 0 {
                 x = complex_relop(PRIMVAL(op), x, y, call);
@@ -946,7 +943,6 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             } else {
                 relop_error("comparison of these types is not implemented");
             }
-
         } else {
             x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
@@ -1700,15 +1696,14 @@ pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe { bitwiseShiftR(CAR(args), CADR(args)) }
 }
 
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use crate::sexp::constructors::Rf_cons;
     use crate::sexp::accessors::*;
+    use crate::sexp::constructors::Rf_cons;
 
     use super::*;
 

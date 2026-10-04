@@ -329,12 +329,7 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                 named = true;
                             }
                             if !named {
-                                let filled = c_arg_elem_name(
-                                    TAG(current),
-                                    arg_names,
-                                    i,
-                                    n,
-                                );
+                                let filled = c_arg_elem_name(TAG(current), arg_names, i, n);
                                 if !filled.is_null() && filled != R_NilValue() {
                                     SET_STRING_ELT(names, offset + i, filled);
                                 }
@@ -534,7 +529,6 @@ unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) 
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // do_seq — generate sequences
 // ---------------------------------------------------------------------------
@@ -721,18 +715,33 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
         }
         copy_pminmax_shape(arg_vecs[0], result, max_len);
         if crate::mainutils::essentials::sexp_has_class(arg_vecs[0], "difftime") {
-            let class = crate::sexp::attrib_core::getAttrib(arg_vecs[0], crate::sexp::attrib_core::R_ClassSymbol());
-            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            let class = crate::sexp::attrib_core::getAttrib(
+                arg_vecs[0],
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
             let units_sym = crate::sexp::symbol::Rf_install(c"units".as_ptr());
-            crate::sexp::attrib_core::setAttrib(result, units_sym, crate::sexp::attrib_core::getAttrib(arg_vecs[0], units_sym));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                units_sym,
+                crate::sexp::attrib_core::getAttrib(arg_vecs[0], units_sym),
+            );
         }
         result
     }
 }
 fn difftime_unit_seconds(x: SEXP) -> f64 {
     unsafe {
-        let units = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"units".as_ptr()));
-        let name = if units.is_null() || units == R_NilValue() || TYPEOF(units) != SEXPTYPE::STRSXP {
+        let units = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+        );
+        let name = if units.is_null() || units == R_NilValue() || TYPEOF(units) != SEXPTYPE::STRSXP
+        {
             "secs"
         } else {
             let p = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(units, 0));
@@ -808,9 +817,10 @@ unsafe fn pminmax_factor_result(
     na_rm: bool,
 ) -> Option<SEXP> {
     unsafe {
-        let owner = arg_vecs.iter().copied().find(|arg| {
-            crate::mainutils::apply::isFactor(*arg) != 0
-        })?;
+        let owner = arg_vecs
+            .iter()
+            .copied()
+            .find(|arg| crate::mainutils::apply::isFactor(*arg) != 0)?;
         let levels = crate::sexp::attrib_core::getAttrib(owner, Rf_install(c"levels".as_ptr()));
         if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
             return None;
@@ -873,11 +883,13 @@ unsafe fn pminmax_factor_result(
                 best
             };
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            owner,
+        let class =
+            crate::sexp::attrib_core::getAttrib(owner, crate::sexp::attrib_core::R_ClassSymbol());
+        crate::sexp::attrib_core::setAttrib(
+            result,
             crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
         );
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"levels".as_ptr()), levels);
         Some(result)
     }
@@ -889,32 +901,21 @@ unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
         if XLENGTH(first) != max_len {
             return;
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            first,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        if !names.is_null()
-            && names != R_NilValue()
-            && XLENGTH(names) == max_len
-        {
+        let names =
+            crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && XLENGTH(names) == max_len {
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_NamesSymbol(),
                 names,
             );
         }
-        let dim = crate::sexp::attrib_core::getAttrib(
-            first,
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
+        let dim =
+            crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
             return;
         }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            dim,
-        );
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let dimnames = crate::sexp::attrib_core::getAttrib(
             first,
             crate::sexp::attrib_core::R_DimNamesSymbol(),
@@ -928,7 +929,6 @@ unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
         }
     }
 }
-
 
 /// R's `which.min(x)` — 1-based index of minimum element.
 pub unsafe fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1014,8 +1014,12 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             for i in after..n {
                 SET_VECTOR_ELT(result, i + vlen, VECTOR_ELT(x, i));
             }
-            let xn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            let vn = crate::sexp::attrib_core::getAttrib(values, crate::sexp::attrib_core::R_NamesSymbol());
+            let xn =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let vn = crate::sexp::attrib_core::getAttrib(
+                values,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
             if (!xn.is_null() && xn != R_NilValue()) || (!vn.is_null() && vn != R_NilValue()) {
                 let names = Rf_allocVector3(SEXPTYPE::STRSXP, total);
                 for i in 0..total {
@@ -1026,14 +1030,19 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     } else {
                         (xn, i - vlen)
                     };
-                    let ch = if src.0.is_null() || src.0 == R_NilValue() || src.1 >= XLENGTH(src.0) {
+                    let ch = if src.0.is_null() || src.0 == R_NilValue() || src.1 >= XLENGTH(src.0)
+                    {
                         crate::sexp::constructors::Rf_mkChar(c"".as_ptr())
                     } else {
                         STRING_ELT(src.0, src.1)
                     };
                     SET_STRING_ELT(names, i, ch);
                 }
-                crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
             }
             return result;
         }
@@ -1389,13 +1398,7 @@ pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // Type checking: is.finite, is.infinite, is.nan, is.matrix, is.array, is.list
 // ---------------------------------------------------------------------------
 
-unsafe fn dispatch_is(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-    generic: &[u8],
-) -> Option<SEXP> {
+unsafe fn dispatch_is(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) -> Option<SEXP> {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -1419,11 +1422,14 @@ unsafe fn dispatch_is(
 /// GNU `copyDimAndNames`: dim+dimnames if array, else names.
 unsafe fn copy_dim_and_names(src: SEXP, dst: SEXP) {
     unsafe {
-        let dims = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        let dims =
+            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
         if !dims.is_null() && dims != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dims);
-            let dimnames =
-                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimNamesSymbol());
+            let dimnames = crate::sexp::attrib_core::getAttrib(
+                src,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
             if !dimnames.is_null() && dimnames != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     dst,
@@ -1444,7 +1450,6 @@ unsafe fn copy_dim_and_names(src: SEXP, dst: SEXP) {
         }
     }
 }
-
 
 /// R's `is.finite(x)` — check for finite values.
 pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1483,8 +1488,6 @@ pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         copy_dim_and_names(x, result);
         result
-
-
     }
 }
 
@@ -1519,8 +1522,6 @@ pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         }
         copy_dim_and_names(x, result);
         result
-
-
     }
 }
 
@@ -1580,12 +1581,8 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         copy_dim_and_names(x, result);
         result
-
-
     }
 }
-
-
 
 /// R's `is.matrix(x)` — check if x has a dim attribute with exactly 2 dimensions.
 pub unsafe fn do_is_matrix(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1667,7 +1664,8 @@ unsafe fn is_data_frame(x: SEXP) -> bool {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return false;
         }
-        let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
@@ -1689,28 +1687,44 @@ unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
         for i in 0..ncol {
             let column = VECTOR_ELT(frame, i);
             let nrow = XLENGTH(column);
-            let short = arg_vecs.iter().any(|arg| {
-                !is_data_frame(*arg) && XLENGTH(*arg) != nrow && XLENGTH(*arg) > 0
-            });
+            let short = arg_vecs
+                .iter()
+                .any(|arg| !is_data_frame(*arg) && XLENGTH(*arg) != nrow && XLENGTH(*arg) > 0);
             let value = if short {
                 pminmax_frame_column(column, arg_vecs, i, is_min)
             } else {
                 let mut cell = R_NilValue();
                 for &arg in arg_vecs.iter().rev() {
-                    let value = if is_data_frame(arg) { VECTOR_ELT(arg, i) } else { arg };
+                    let value = if is_data_frame(arg) {
+                        VECTOR_ELT(arg, i)
+                    } else {
+                        arg
+                    };
                     cell = Rf_cons(value, cell);
                 }
                 do_pminmax(cell, is_min)
             };
             SET_VECTOR_ELT(out, i, value);
         }
-        let names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+            crate::sexp::attrib_core::setAttrib(
+                out,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
-        let rows = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
+        let rows = crate::sexp::attrib_core::getAttrib(
+            frame,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
         if !rows.is_null() && rows != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rows);
+            crate::sexp::attrib_core::setAttrib(
+                out,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rows,
+            );
         }
         crate::sexp::attrib_core::setAttrib(
             out,
@@ -1721,7 +1735,12 @@ unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
     }
 }
 
-unsafe fn pminmax_frame_column(column: SEXP, arg_vecs: &[SEXP], _index: R_xlen_t, is_min: bool) -> SEXP {
+unsafe fn pminmax_frame_column(
+    column: SEXP,
+    arg_vecs: &[SEXP],
+    _index: R_xlen_t,
+    is_min: bool,
+) -> SEXP {
     unsafe {
         let current = crate::mainutils::duplicate::Rf_duplicate(column);
         let _g = protect(current);
@@ -1748,7 +1767,11 @@ unsafe fn pminmax_frame_column(column: SEXP, arg_vecs: &[SEXP], _index: R_xlen_t
                     continue;
                 }
                 let missing = i >= olen;
-                let value = if missing { NA_REAL } else { elt_real_safe(arg, i) };
+                let value = if missing {
+                    NA_REAL
+                } else {
+                    elt_real_safe(arg, i)
+                };
                 if TYPEOF(current) == SEXPTYPE::INTSXP && !missing {
                     *INTEGER(current).add(i as usize) = value as c_int;
                 } else if TYPEOF(current) == SEXPTYPE::INTSXP {
@@ -1894,14 +1917,21 @@ mod head_tail_n_tests {
                 let cs = CString::new(*name).unwrap();
                 SET_STRING_ELT(class, i as i64, Rf_mkChar(cs.as_ptr()));
             }
-            crate::sexp::attrib_core::setAttrib(input.as_raw(), crate::sexp::attrib_core::R_ClassSymbol(), class);
+            crate::sexp::attrib_core::setAttrib(
+                input.as_raw(),
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
             input.as_raw()
         }
     }
 
     unsafe fn list_of(elts: &[SEXP]) -> SEXP {
         unsafe {
-            let inputs: Vec<_> = elts.iter().map(|value| crate::sexp::context::own_control_value(*value)).collect();
+            let inputs: Vec<_> = elts
+                .iter()
+                .map(|value| crate::sexp::context::own_control_value(*value))
+                .collect();
             let v = Rf_allocVector3(SEXPTYPE::VECSXP, elts.len() as i64);
             for (i, elt) in inputs.iter().enumerate() {
                 SET_VECTOR_ELT(v, i as i64, elt.as_raw());

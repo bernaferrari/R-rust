@@ -1,8 +1,6 @@
 //! GNU `stats/src/model.c` `updateform`: replace `.` in a formula update.
 
-use crate::sexp::accessors::{
-    CADR, CAR, CADDR, CDR, SETCAR, SETCDR, SET_ATTRIB, TYPEOF,
-};
+use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, TYPEOF};
 use crate::sexp::constructors::{Rf_cons, Rf_lang2};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -22,7 +20,6 @@ unsafe fn setcadr(x: SEXP, y: SEXP) {
 unsafe fn setcaddr(x: SEXP, y: SEXP) {
     unsafe { SETCAR(CDR(CDR(x)), y) }
 }
-
 
 fn lang_len(object: SEXP) -> i32 {
     unsafe { crate::sexp::constructors::Rf_length(object) }
@@ -64,7 +61,7 @@ unsafe fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
         let n = lang_len(object);
         let bad = || {
             crate::main::errors::Rf_error(
-                b"invalid formula in 'update'\0".as_ptr() as *const std::os::raw::c_char,
+                b"invalid formula in 'update'\0".as_ptr() as *const std::os::raw::c_char
             );
         };
         if head == sym("+") {
@@ -101,8 +98,14 @@ unsafe fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
             if n != 3 {
                 bad();
             }
-            setcadr(object,
-            maybe_paren(CADR(object), value, is_sum(op) || op == sym("*") || op == sym("/")),);
+            setcadr(
+                object,
+                maybe_paren(
+                    CADR(object),
+                    value,
+                    is_sum(op) || op == sym("*") || op == sym("/"),
+                ),
+            );
             setcaddr(object, maybe_paren(CADDR(object), value, is_sum(op)));
             return object;
         }
@@ -110,12 +113,14 @@ unsafe fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
             if n != 3 {
                 bad();
             }
-            setcadr(object,
-            maybe_paren(
-                CADR(object),
-                value,
-                is_sum(op) || op == sym("*") || op == sym("/") || op == sym(":"),
-            ),);
+            setcadr(
+                object,
+                maybe_paren(
+                    CADR(object),
+                    value,
+                    is_sum(op) || op == sym("*") || op == sym("/") || op == sym(":"),
+                ),
+            );
             setcaddr(object, maybe_paren(CADDR(object), value, is_sum(op)));
             return object;
         }
@@ -138,7 +143,7 @@ pub unsafe fn updateform(old: SEXP, new: SEXP) -> SEXP {
             || CAR(new) != tilde
         {
             crate::main::errors::Rf_error(
-                b"formula expected\0".as_ptr() as *const std::os::raw::c_char,
+                b"formula expected\0".as_ptr() as *const std::os::raw::c_char
             );
         }
         if lang_len(old) == 3 {

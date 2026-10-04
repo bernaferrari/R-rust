@@ -38,7 +38,9 @@ unsafe fn external_routine_name(args: SEXP) -> String {
         if chars.is_null() {
             return String::new();
         }
-        std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+        std::ffi::CStr::from_ptr(chars)
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
@@ -212,7 +214,6 @@ unsafe extern "C-unwind" fn c_play_snapshot(call: SEXP, op: SEXP, args: SEXP, rh
     }
 }
 
-
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
@@ -301,7 +302,43 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 
 pub unsafe fn install_call_symbols(env: SEXP) {
     unsafe {
-        for name in ["C_par", "C_plot_new", "C_plot_window", "C_plotXY", "C_title", "C_text", "C_mtext", "C_axis", "C_box", "C_segments", "C_rect", "C_polygon", "C_abline", "C_strWidth", "C_strHeight", "C_BinCount", "C_contourDef", "C_contour", "C_image", "C_layout", "C_filledcontour", "C_persp", "C_arrows", "C_clip", "C_convertX", "C_convertY", "C_dend", "C_dendwindow", "C_erase", "C_path", "C_raster", "C_symbols", "C_xspline", "C_locator", "C_identify", "C_StemLeaf",
+        for name in [
+            "C_par",
+            "C_plot_new",
+            "C_plot_window",
+            "C_plotXY",
+            "C_title",
+            "C_text",
+            "C_mtext",
+            "C_axis",
+            "C_box",
+            "C_segments",
+            "C_rect",
+            "C_polygon",
+            "C_abline",
+            "C_strWidth",
+            "C_strHeight",
+            "C_BinCount",
+            "C_contourDef",
+            "C_contour",
+            "C_image",
+            "C_layout",
+            "C_filledcontour",
+            "C_persp",
+            "C_arrows",
+            "C_clip",
+            "C_convertX",
+            "C_convertY",
+            "C_dend",
+            "C_dendwindow",
+            "C_erase",
+            "C_path",
+            "C_raster",
+            "C_symbols",
+            "C_xspline",
+            "C_locator",
+            "C_identify",
+            "C_StemLeaf",
         ] {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(

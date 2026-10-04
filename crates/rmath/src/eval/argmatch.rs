@@ -88,7 +88,9 @@ fn match_states(
                 while supplied_index < supplied.len() {
                     if let Some(tag) = supplied[supplied_index].tag {
                         if tag == name {
-                            if formal_state[formal_index] == 2 || supplied_state[supplied_index] == 2 {
+                            if formal_state[formal_index] == 2
+                                || supplied_state[supplied_index] == 2
+                            {
                                 return Err(MatchError::MultipleExact);
                             }
                             chosen[formal_index] = Some(supplied_index as u8);
@@ -115,7 +117,9 @@ fn match_states(
                     if supplied_state[supplied_index] != 2 {
                         if let Some(tag) = supplied[supplied_index].tag {
                             if tag != name && is_prefix(name, tag) {
-                                if supplied_state[supplied_index] != 0 || formal_state[formal_index] == 1 {
+                                if supplied_state[supplied_index] != 0
+                                    || formal_state[formal_index] == 1
+                                {
                                     return Err(MatchError::MultiplePartial);
                                 }
                                 chosen[formal_index] = Some(supplied_index as u8);
@@ -285,7 +289,12 @@ mod tests {
 
     #[test]
     fn argmatch_oracle() {
-        type OracleCase<'a> = (&'a [&'a str], bool, &'a [Option<&'a str>], Result<Vec<Binding>, MatchError>);
+        type OracleCase<'a> = (
+            &'a [&'a str],
+            bool,
+            &'a [Option<&'a str>],
+            Result<Vec<Binding>, MatchError>,
+        );
         let cases: &[OracleCase<'_>] = &[
             (
                 &["a", "b"],
@@ -299,7 +308,12 @@ mod tests {
                 &[None, None],
                 Ok(vec![actual(0), actual(1)]),
             ),
-            (&["foo", "bar"], false, &[Some("f")], Ok(vec![actual(0), Binding::Missing])),
+            (
+                &["foo", "bar"],
+                false,
+                &[Some("f")],
+                Ok(vec![actual(0), Binding::Missing]),
+            ),
             (
                 &["fumble", "fooey"],
                 false,
@@ -316,7 +330,11 @@ mod tests {
                 &["a", "...", "b"],
                 true,
                 &[Some("bb")],
-                Ok(vec![Binding::Missing, Binding::Dots(vec![0]), Binding::Missing]),
+                Ok(vec![
+                    Binding::Missing,
+                    Binding::Dots(vec![0]),
+                    Binding::Missing,
+                ]),
             ),
             (
                 &["a", "...", "b"],
@@ -350,7 +368,10 @@ mod tests {
                 .iter()
                 .map(|name| if *name == "..." { dots() } else { formal(name) })
                 .collect();
-            assert_eq!(formals.iter().any(|formal| formal.is_dots), *has_dots || names.contains(&"..."));
+            assert_eq!(
+                formals.iter().any(|formal| formal.is_dots),
+                *has_dots || names.contains(&"...")
+            );
             let supplied: Vec<Supplied> = tags
                 .iter()
                 .map(|tag| match tag {
@@ -358,7 +379,11 @@ mod tests {
                     None => positional(),
                 })
                 .collect();
-            assert_eq!(match_formals(&formals, &supplied), *expected, "case {index}");
+            assert_eq!(
+                match_formals(&formals, &supplied),
+                *expected,
+                "case {index}"
+            );
         }
         assert_eq!(
             match_formals(&[dots(), dots()], &[positional()]),
@@ -462,13 +487,7 @@ mod tests {
         for (names, tags) in rows {
             let formals_pure: Vec<Formal<'_>> = names
                 .iter()
-                .map(|name| {
-                    if *name == "..." {
-                        dots()
-                    } else {
-                        formal(name)
-                    }
-                })
+                .map(|name| if *name == "..." { dots() } else { formal(name) })
                 .collect();
             let supplied_pure: Vec<Supplied<'_>> = tags
                 .iter()
@@ -562,8 +581,20 @@ mod tests {
                         is_dots: true,
                     },
                 ),
-                1 => (formal(NAMES[0]), NameFormal { name: Some(0), is_dots: false }),
-                _ => (formal(NAMES[1]), NameFormal { name: Some(1), is_dots: false }),
+                1 => (
+                    formal(NAMES[0]),
+                    NameFormal {
+                        name: Some(0),
+                        is_dots: false,
+                    },
+                ),
+                _ => (
+                    formal(NAMES[1]),
+                    NameFormal {
+                        name: Some(1),
+                        is_dots: false,
+                    },
+                ),
             }
         };
         let supplied_of = |choice: u8| -> (Supplied<'static>, NameSupplied) {
@@ -582,7 +613,10 @@ mod tests {
                         let (left_supplied, left_tag) = supplied_of(s0);
                         let (right_supplied, right_tag) = supplied_of(s1);
                         assert_eq!(
-                            match_formals(&[left_formal, right_formal], &[left_supplied, right_supplied]),
+                            match_formals(
+                                &[left_formal, right_formal],
+                                &[left_supplied, right_supplied]
+                            ),
                             match_ids(
                                 &[left_id, right_id],
                                 &[left_tag, right_tag],
@@ -606,7 +640,10 @@ mod kani_proofs {
     fn argmatch_spec() {
         // Ids 0 and 1 stand for "a" and "ab". The unit test checks that table
         // against `str::starts_with`. This harness never builds a string.
-        let mut formals = [NameFormal { name: None, is_dots: false }; 2];
+        let mut formals = [NameFormal {
+            name: None,
+            is_dots: false,
+        }; 2];
         let mut supplied = [NameSupplied { tag: None }; 2];
         let mut index = 0usize;
         while index < 2 {
@@ -687,8 +724,14 @@ mod kani_proofs {
             ));
         }
         kani::cover(result.is_ok(), "success");
-        kani::cover(matches!(result, Err(MatchError::MultipleExact)), "multiple exact");
-        kani::cover(matches!(result, Err(MatchError::MultiplePartial)), "multiple partial");
+        kani::cover(
+            matches!(result, Err(MatchError::MultipleExact)),
+            "multiple exact",
+        );
+        kani::cover(
+            matches!(result, Err(MatchError::MultiplePartial)),
+            "multiple partial",
+        );
         kani::cover(matches!(result, Err(MatchError::Unused)), "unused");
         kani::cover(dots_at.is_some() && result.is_ok(), "dots");
         kani::cover(supplied[0].tag.is_none() && result.is_ok(), "positional");

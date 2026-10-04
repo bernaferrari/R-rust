@@ -6,12 +6,7 @@ use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
-pub unsafe extern "C-unwind" fn c_parse_rd(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe extern "C-unwind" fn c_parse_rd(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let arg = CAR(CDR(args));
         let text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
@@ -88,7 +83,6 @@ fn strip_rd_comments(input: &str) -> String {
     out
 }
 
-
 fn expand_user_macros(input: &str, extra: &[(String, String)]) -> (String, Vec<(String, String)>) {
     expand_user_macros_depth(input, extra, 0)
 }
@@ -114,7 +108,11 @@ fn expand_user_macros_depth(
             continue;
         }
         if starts_with(&chars, i, "\\newcommand") || starts_with(&chars, i, "\\renewcommand") {
-            let key = if starts_with(&chars, i, "\\renewcommand") { "\\renewcommand" } else { "\\newcommand" };
+            let key = if starts_with(&chars, i, "\\renewcommand") {
+                "\\renewcommand"
+            } else {
+                "\\newcommand"
+            };
             i += key.chars().count();
             if let Some((name, next)) = read_braced(&chars, i) {
                 let name = name.trim_start_matches('\\').to_string();
@@ -415,9 +413,18 @@ fn rd_text(text: &str, macro_env: SEXP) -> SEXP {
                 for (k, (child_tag, child_body)) in children.iter().enumerate() {
                     let text_elt = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
                     let _text = protect(text_elt);
-                    let c = std::ffi::CString::new(child_body.replace('\0', "")).unwrap_or_default();
-                    SET_STRING_ELT(text_elt, 0, crate::sexp::constructors::Rf_mkChar(c.as_ptr()));
-                    let inner_tag = if child_tag.starts_with('\\') { "RCODE" } else { child_tag.as_str() };
+                    let c =
+                        std::ffi::CString::new(child_body.replace('\0', "")).unwrap_or_default();
+                    SET_STRING_ELT(
+                        text_elt,
+                        0,
+                        crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                    );
+                    let inner_tag = if child_tag.starts_with('\\') {
+                        "RCODE"
+                    } else {
+                        child_tag.as_str()
+                    };
                     let inner_c = std::ffi::CString::new(inner_tag).unwrap_or_default();
                     crate::sexp::attrib_core::setAttrib(
                         text_elt,

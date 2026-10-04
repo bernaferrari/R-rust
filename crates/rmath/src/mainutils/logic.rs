@@ -444,7 +444,6 @@ unsafe fn copy_logic_shape(src: SEXP, dst: SEXP) {
     }
 }
 
-
 /// Binary logical AND/OR on logical vectors with element recycling.
 ///
 /// `code`: 1 = AND (&), 2 = OR (|).
@@ -595,16 +594,27 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         let is_frame = |s: SEXP| unsafe {
-            let class = crate::sexp::attrib_core::getAttrib(s, crate::sexp::symbol::Rf_install(c"class".as_ptr()));
-            if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {
+            let class = crate::sexp::attrib_core::getAttrib(
+                s,
+                crate::sexp::symbol::Rf_install(c"class".as_ptr()),
+            );
+            if class.is_null()
+                || class == R_NilValue()
+                || TYPEOF(class) != SEXPTYPE::STRSXP
+                || XLENGTH(class) < 1
+            {
                 return false;
             }
             let p = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(class, 0));
             !p.is_null() && std::ffi::CStr::from_ptr(p).to_bytes() == b"data.frame"
         };
         if is_frame(x) && is_frame(y) && XLENGTH(x) == 0 && XLENGTH(y) == 0 {
-            let rn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()));
-            let compact = TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER;
+            let rn = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            );
+            let compact =
+                TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER;
             let nr = if compact {
                 (*INTEGER(rn).add(1) as i64).unsigned_abs()
             } else if rn.is_null() || rn == R_NilValue() {
@@ -618,32 +628,70 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             *INTEGER(d).add(1) = 0;
             crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimSymbol(), d);
             let row_names = if compact { R_NilValue() } else { rn };
-            let cn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            let col_names = if TYPEOF(cn) == SEXPTYPE::STRSXP { cn } else { Rf_allocVector3(SEXPTYPE::STRSXP, 0) };
+            let cn =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let col_names = if TYPEOF(cn) == SEXPTYPE::STRSXP {
+                cn
+            } else {
+                Rf_allocVector3(SEXPTYPE::STRSXP, 0)
+            };
             let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
             crate::sexp::accessors::SET_VECTOR_ELT(dn, 0, row_names);
             crate::sexp::accessors::SET_VECTOR_ELT(dn, 1, col_names);
-            crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+            crate::sexp::attrib_core::setAttrib(
+                out,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
+            );
             return out;
         }
-        let inherits_oct = |s: SEXP| unsafe {
-            crate::mainutils::objects::inherits2(s, c"octmode".as_ptr()) != 0
-        };
+        let inherits_oct =
+            |s: SEXP| unsafe { crate::mainutils::objects::inherits2(s, c"octmode".as_ptr()) != 0 };
         if inherits_oct(x) || inherits_oct(y) {
             let a = crate::mainutils::essentials::do_as_octmode(
-                call, op, crate::sexp::constructors::Rf_cons(x, R_NilValue()), env,
+                call,
+                op,
+                crate::sexp::constructors::Rf_cons(x, R_NilValue()),
+                env,
             );
             let b = crate::mainutils::essentials::do_as_octmode(
-                call, op, crate::sexp::constructors::Rf_cons(y, R_NilValue()), env,
+                call,
+                op,
+                crate::sexp::constructors::Rf_cons(y, R_NilValue()),
+                env,
             );
             let combined = if code == 1 {
-                crate::mainutils::relop::do_bitwAnd(call, op, crate::sexp::constructors::Rf_cons(a, crate::sexp::constructors::Rf_cons(b, R_NilValue())), env)
+                crate::mainutils::relop::do_bitwAnd(
+                    call,
+                    op,
+                    crate::sexp::constructors::Rf_cons(
+                        a,
+                        crate::sexp::constructors::Rf_cons(b, R_NilValue()),
+                    ),
+                    env,
+                )
             } else {
-                crate::mainutils::relop::do_bitwOr(call, op, crate::sexp::constructors::Rf_cons(a, crate::sexp::constructors::Rf_cons(b, R_NilValue())), env)
+                crate::mainutils::relop::do_bitwOr(
+                    call,
+                    op,
+                    crate::sexp::constructors::Rf_cons(
+                        a,
+                        crate::sexp::constructors::Rf_cons(b, R_NilValue()),
+                    ),
+                    env,
+                )
             };
             let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            crate::sexp::accessors::SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"octmode".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(combined, crate::sexp::attrib_core::R_ClassSymbol(), class);
+            crate::sexp::accessors::SET_STRING_ELT(
+                class,
+                0,
+                crate::sexp::constructors::Rf_mkChar(c"octmode".as_ptr()),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                combined,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
             return combined;
         }
         let x_valid = x.is_null() || x == R_NilValue() || is_number(x);

@@ -405,7 +405,6 @@ pub unsafe extern "C-unwind" fn c_runmed(
     unsafe { runmed(sx, stype, sk, end, naAct, printLev) }
 }
 
-
 /// GNU `runmed(x, k)` Stuetzle, odd k.
 pub unsafe fn do_runmed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -458,4 +457,3 @@ pub unsafe fn do_runmed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         ans
     }
 }
-

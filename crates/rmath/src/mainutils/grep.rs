@@ -852,7 +852,11 @@ pub(crate) fn perl_replace(
         let chars: Vec<char> = text.chars().collect();
         let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
         let mut out = String::new();
-        let last = if global { chars.len() } else { chars.len().min(1) };
+        let last = if global {
+            chars.len()
+        } else {
+            chars.len().min(1)
+        };
         let mut used = false;
         for i in 0..=chars.len() {
             let left = i > 0 && word(chars[i - 1]);
@@ -1379,7 +1383,6 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(ans, text);
         ans
-
     }
 }
 
@@ -1787,8 +1790,16 @@ mod tests {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
         session.with_active(|| {
             for (pattern_type, text_type, error) in [
-                (SEXPTYPE::STRSXP, SEXPTYPE::RAWSXP, Some("'pattern' must be a raw vector")),
-                (SEXPTYPE::RAWSXP, SEXPTYPE::VECSXP, Some("'text' must be a raw vector")),
+                (
+                    SEXPTYPE::STRSXP,
+                    SEXPTYPE::RAWSXP,
+                    Some("'pattern' must be a raw vector"),
+                ),
+                (
+                    SEXPTYPE::RAWSXP,
+                    SEXPTYPE::VECSXP,
+                    Some("'text' must be a raw vector"),
+                ),
                 (SEXPTYPE::RAWSXP, SEXPTYPE::RAWSXP, None),
             ] {
                 let raw_args = unsafe {
@@ -1801,12 +1812,19 @@ mod tests {
                         [pattern, text, nil, no, yes, no, no, no]
                             .into_iter()
                             .rev()
-                            .fold(nil, |tail, value| arena.cons(value, tail, std::ptr::null_mut()))
+                            .fold(nil, |tail, value| {
+                                arena.cons(value, tail, std::ptr::null_mut())
+                            })
                     })
                 };
                 let args = session.sexp(raw_args).expect("owned grepRaw arguments");
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    do_grepraw(R_NilValue(), R_NilValue(), args.clone().as_raw(), R_NilValue())
+                    do_grepraw(
+                        R_NilValue(),
+                        R_NilValue(),
+                        args.clone().as_raw(),
+                        R_NilValue(),
+                    )
                 }));
                 match error {
                     Some(expected) => {
@@ -1815,7 +1833,9 @@ mod tests {
                         assert_eq!(error.message, expected);
                     }
                     None => {
-                        let value = session.sexp(result.expect("valid raw search")).expect("owned result");
+                        let value = session
+                            .sexp(result.expect("valid raw search"))
+                            .expect("owned result");
                         assert_eq!(value.integer_elt(0), Some(1));
                     }
                 }

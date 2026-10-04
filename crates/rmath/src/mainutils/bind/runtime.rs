@@ -427,7 +427,11 @@ pub unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                 // Upstream coerceVector: non-string sources become NA_STRING
                 // entries (never a raw NULL CHARSXP slot).
                 for i in 0..n {
-                    crate::sexp::accessors::SET_STRING_ELT(ans, i as R_xlen_t, crate::sexp::globals::R_NaString());
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        ans,
+                        i as R_xlen_t,
+                        crate::sexp::globals::R_NaString(),
+                    );
                 }
             }
             RAWSXP_I => match t {

@@ -226,9 +226,7 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                                 }
                                 if TYPEOF(expr) == SEXPTYPE::BCODESXP {
                                     let source = crate::eval::bc_eval::BCODE_EXPR(expr);
-                                    if source.is_null()
-                                        || source == R_NilValue()
-                                        || source == expr
+                                    if source.is_null() || source == R_NilValue() || source == expr
                                     {
                                         break;
                                     }

@@ -44,11 +44,17 @@ pub(crate) fn checked_predictor_width() -> Result<usize, String> {
         .weak_owner()
         .ok_or_else(|| "LOESS prediction requires a managed runtime".to_owned())?;
     let matches = PREDICT_OWNER.with(|slot| {
-        slot.borrow().as_ref().is_some_and(|owner| owner.is_live() && owner.same_owner(&current))
+        slot.borrow()
+            .as_ref()
+            .is_some_and(|owner| owner.is_live() && owner.same_owner(&current))
     });
-    if !matches { return Err("no LOESS model for the original runtime".to_owned()); }
+    if !matches {
+        return Err("no LOESS model for the original runtime".to_owned());
+    }
     PREDICT_MODEL.with(|slot| {
-        slot.borrow().as_ref().and_then(|model| model.x.first().map(Vec::len))
+        slot.borrow()
+            .as_ref()
+            .and_then(|model| model.x.first().map(Vec::len))
             .filter(|width| *width > 0)
             .ok_or_else(|| "no LOESS model to interpolate".to_owned())
     })
@@ -123,7 +129,11 @@ fn fit_loess_model(
         parametric,
         drop_square: drop,
         interpolate,
-        cell: if cell.is_finite() && cell > 0.0 { cell } else { 0.2 },
+        cell: if cell.is_finite() && cell > 0.0 {
+            cell
+        } else {
+            0.2
+        },
         iterations: 1,
         exact,
         approximate_trace,
@@ -143,7 +153,8 @@ fn store_predict_model(model: super::loess::Model) {
         return;
     }
     let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .ok().and_then(|owner| owner.weak_owner());
+        .ok()
+        .and_then(|owner| owner.weak_owner());
     PREDICT_MODEL.with(|slot| *slot.borrow_mut() = Some(model));
     PREDICT_OWNER.with(|slot| *slot.borrow_mut() = owner);
 }
@@ -161,11 +172,9 @@ fn write_fit(dest: *mut c_double, values: &[f64]) {
 
 fn same_rows(model: &super::loess::Model, queries: &[Vec<f64>]) -> bool {
     model.x.len() == queries.len()
-        && model
-            .x
-            .iter()
-            .zip(queries)
-            .all(|(left, right)| left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a == b))
+        && model.x.iter().zip(queries).all(|(left, right)| {
+            left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a == b)
+        })
 }
 
 fn predict_model(model: &super::loess::Model, queries: &[Vec<f64>]) -> Result<Vec<f64>, String> {
@@ -193,8 +202,19 @@ fn engine_loess_se(
 ) {
     unsafe {
         let model = fit_loess_model(
-            y, x, weights, *d, *n, *span, *degree, *nonparametric, drop_square,
-            0.2, false, false, false,
+            y,
+            x,
+            weights,
+            *d,
+            *n,
+            *span,
+            *degree,
+            *nonparametric,
+            drop_square,
+            0.2,
+            false,
+            false,
+            false,
         );
         let model = match model {
             Ok(model) => model,
@@ -218,10 +238,20 @@ fn engine_loess_se(
         for i in 0..(mm.saturating_mul(nn)) {
             *leverages.add(i) = 0.0;
         }
-        let j0 = (0..nn).find(|&j| !weights.is_null() && *weights.add(j) > 0.0).unwrap_or(0);
-        let wj = if weights.is_null() || nn == 0 { 1.0 } else { *weights.add(j0) };
+        let j0 = (0..nn)
+            .find(|&j| !weights.is_null() && *weights.add(j) > 0.0)
+            .unwrap_or(0);
+        let wj = if weights.is_null() || nn == 0 {
+            1.0
+        } else {
+            *weights.add(j0)
+        };
         let scale = if wj > 0.0 { wj.sqrt() } else { 1.0 };
-        let s = if model.s.is_finite() && model.s > 0.0 { model.s } else { 1.0 };
+        let s = if model.s.is_finite() && model.s > 0.0 {
+            model.s
+        } else {
+            1.0
+        };
         for i in 0..mm {
             *leverages.add(i + j0 * mm) = se.get(i).copied().unwrap_or(0.0) / s * scale;
         }
@@ -257,7 +287,11 @@ fn engine_loess_raw(
 ) {
     unsafe {
         let surf = surf_text(surf_stat);
-        let weight_ptr = if surf.ends_with("/none") { robust } else { weights };
+        let weight_ptr = if surf.ends_with("/none") {
+            robust
+        } else {
+            weights
+        };
         let span_v = *span;
         let cell_v = if span_v > 0.0 { *cell / span_v } else { *cell };
         let model = fit_loess_model(
@@ -284,7 +318,11 @@ fn engine_loess_raw(
             *tr_l = model.trace;
         }
         if !one_delta.is_null() {
-            *one_delta = if model.delta1 == 0.0 { 1.0 } else { model.delta1 };
+            *one_delta = if model.delta1 == 0.0 {
+                1.0
+            } else {
+                model.delta1
+            };
         }
         if !two_delta.is_null() {
             *two_delta = model.delta2;
@@ -429,8 +467,6 @@ pub unsafe extern "C-unwind" fn c_lowesp(
     }
     SKIP_PREDICT_STORE.with(|flag| flag.set(true));
 }
-
-
 
 pub(crate) struct LoessWorkspaceState {
     iv: Vec<c_int>,
@@ -652,8 +688,23 @@ pub unsafe extern "C-unwind" fn loess_raw(
 ) {
     unsafe {
         engine_loess_raw(
-            y, x, weights, robust, d, n, span, degree, nonparametric, drop_square, cell,
-            surf_stat, surface, parameter, trL, one_delta, two_delta,
+            y,
+            x,
+            weights,
+            robust,
+            d,
+            n,
+            span,
+            degree,
+            nonparametric,
+            drop_square,
+            cell,
+            surf_stat,
+            surface,
+            parameter,
+            trL,
+            one_delta,
+            two_delta,
         );
     }
 }
@@ -676,7 +727,18 @@ pub unsafe extern "C-unwind" fn loess_dfit(
     unsafe {
         let _ = (sum_drop_sqr,);
         engine_loess_dfit(
-            y, x, x_evaluate, weights, span, degree, nonparametric, drop_square, d, n, m, fit,
+            y,
+            x,
+            x_evaluate,
+            weights,
+            span,
+            degree,
+            nonparametric,
+            drop_square,
+            d,
+            n,
+            m,
+            fit,
         );
     }
 }
@@ -840,8 +902,19 @@ pub unsafe extern "C-unwind" fn c_loess_ise(
 ) {
     unsafe {
         engine_loess_se(
-            y, x, x_evaluate, weights, span, degree, nonparametric, drop_square,
-            d, n, m, fit, L,
+            y,
+            x,
+            x_evaluate,
+            weights,
+            span,
+            degree,
+            nonparametric,
+            drop_square,
+            d,
+            n,
+            m,
+            fit,
+            L,
         );
     }
 }
@@ -871,8 +944,19 @@ pub unsafe extern "C-unwind" fn c_loess_dfitse(
             weights
         };
         engine_loess_se(
-            y, x, x_evaluate, w, span, degree, nonparametric, drop_square,
-            d, n, m, fit, L,
+            y,
+            x,
+            x_evaluate,
+            w,
+            span,
+            degree,
+            nonparametric,
+            drop_square,
+            d,
+            n,
+            m,
+            fit,
+            L,
         );
     }
 }

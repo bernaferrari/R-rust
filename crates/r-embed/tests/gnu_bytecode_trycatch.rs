@@ -162,7 +162,10 @@ fn compiled_trycatch_leaves_stop_and_unbound_symbol_unevaluated() {
         ("H_CODE", "bytecode"),
         ("KIND_CODE", "bytecode"),
         ("META_CODE", "bytecode"),
-        ("F_SER", "cannot serialize private bytecode dialect as GNU R BCODESXP"),
+        (
+            "F_SER",
+            "cannot serialize private bytecode dialect as GNU R BCODESXP",
+        ),
         ("F_VAL", "caught"),
         ("G_VAL", "caught"),
         ("H_VAL", "caught"),

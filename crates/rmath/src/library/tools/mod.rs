@@ -7,12 +7,12 @@ mod http;
 mod init;
 mod install;
 mod md5;
+pub(crate) mod native_calls;
 mod pdscan;
 mod rmd5;
 mod rsha256;
 mod sha256;
 mod signals;
-pub(crate) mod native_calls;
 
-mod text;
 mod parse_rd;
+mod text;

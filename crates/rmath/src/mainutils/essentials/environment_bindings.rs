@@ -154,7 +154,6 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             cell = CDR(cell);
         }
 
-
         let x_type = TYPEOF(x);
         let is_list = x_type == SEXPTYPE::VECSXP.as_c_int();
         let is_pairlist =
@@ -181,7 +180,11 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if tag.is_null() || tag == R_NilValue() {
                     base_error("'x' must be a named list or pairlist");
                 }
-                crate::sexp::envir::defineVar(tag, crate::mainutils::duplicate::duplicate(CAR(cell)), envir);
+                crate::sexp::envir::defineVar(
+                    tag,
+                    crate::mainutils::duplicate::duplicate(CAR(cell)),
+                    envir,
+                );
                 cell = CDR(cell);
             }
         } else {
@@ -201,7 +204,11 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     base_error("'x' must be a named list or pairlist");
                 };
                 let sym = Rf_install(name_cstr.as_ptr());
-                crate::sexp::envir::defineVar(sym, crate::mainutils::duplicate::duplicate(VECTOR_ELT(x, i)), envir);
+                crate::sexp::envir::defineVar(
+                    sym,
+                    crate::mainutils::duplicate::duplicate(VECTOR_ELT(x, i)),
+                    envir,
+                );
             }
         }
         let nbind = if is_pairlist {

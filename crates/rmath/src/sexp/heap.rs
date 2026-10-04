@@ -456,10 +456,12 @@ impl HeapIdentity {
         });
         result?;
         let prepend = super::env_hash::prepare_binding_prepend(self, &original, &value);
-        owners
-            .binding_tables
-            .borrow_mut()
-            .invalidate_node(node.link()?, &original, &value, prepend.as_ref());
+        owners.binding_tables.borrow_mut().invalidate_node(
+            node.link()?,
+            &original,
+            &value,
+            prepend.as_ref(),
+        );
         Some(())
     }
 

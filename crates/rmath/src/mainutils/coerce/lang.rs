@@ -42,7 +42,6 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         let n = LENGTH(arglist);
 
-
         if n < 1 {
             error("argument must have length at least 1");
         }
@@ -142,10 +141,8 @@ pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let x = CAR(args);
         match TYPEOF(x) {
-
             t if t == SEXPTYPE::LANGSXP => x,
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-
                 let n = LENGTH(x);
                 if n == 0 {
                     error("invalid length 0 argument");

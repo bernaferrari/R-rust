@@ -101,7 +101,6 @@ pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
             return Rf_ScalarLogical(FALSE);
         }
 
-
         if isString(what) == FALSE {
             std::panic::panic_any(crate::sexp::context::RError {
                 message:
@@ -172,15 +171,9 @@ pub unsafe fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `nameOfClass.default <- function(x) NULL`
-pub unsafe fn do_nameOfClass_default(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
-
 
 // ---------------------------------------------------------------------------
 // do_inherits -- inherits() primitive

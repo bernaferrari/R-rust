@@ -11,11 +11,8 @@ use std::ffi::CStr;
 use std::os::raw::c_int;
 use std::ptr;
 
-
-
 use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, PRINTNAME, SETCAR, STRING_ELT, TAG, TYPEOF,
-    XLENGTH,
+    BODY, CAR, CDR, CHAR, PRINTNAME, SETCAR, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -56,7 +53,9 @@ pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<S
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>,
+pub unsafe fn create_env_safe<'a>(
+    bindings: Sexp<'a>,
+    parent: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let env = unsafe { NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut()) };
     unsafe { Sexp::try_from_raw(env) }.map_err(|err| sexp_err("failed to create environment", err))
@@ -436,8 +435,6 @@ unsafe fn collect_unwrap_methods_closures(methods: SEXP) -> Vec<SEXP> {
             // Private JIT / GNU methods bytecode drops attr(funNames, "package")
             // so cacheMetaData's rep(packages, ...) sees a non-vector NULL.
             c".getGenerics",
-
-
         ] {
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,
@@ -465,10 +462,7 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         };
         let hit = crate::sexp::instance::with_required_current_instance(|inst| {
             if (*inst).unwrap_methods_ns == methods {
-                Some(
-                    (*inst)
-                        .unwrap_methods_closures.contains(&op),
-                )
+                Some((*inst).unwrap_methods_closures.contains(&op))
             } else {
                 (*inst).unwrap_methods_ns = methods;
                 (*inst).unwrap_methods_closures.clear();
@@ -481,13 +475,10 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         let built = collect_unwrap_methods_closures(methods);
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).unwrap_methods_closures = built;
-            (*inst)
-                .unwrap_methods_closures.contains(&op)
+            (*inst).unwrap_methods_closures.contains(&op)
         })
-
     }
 }
-
 
 unsafe fn methods_matchsignature_source(op: SEXP, body: SEXP) -> Option<SEXP> {
     unsafe {
@@ -506,18 +497,10 @@ unsafe fn methods_matchsignature_source(op: SEXP, body: SEXP) -> Option<SEXP> {
     }
 }
 
-
-
-
 fn is_function_sexp(value: SEXP) -> bool {
     let kind = unsafe { TYPEOF(value) };
     kind == SEXPTYPE::CLOSXP || kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP
 }
-
-
-
-
-
 
 /// This is a helper that separates environment creation from body evaluation.
 unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
@@ -590,7 +573,6 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
                     Ok(e) => super::dispatch::argument_value(&factory, e.as_raw()),
                     Err(_) => return R_NilValue(),
                 };
-
 
                 install_default_promises(formals.as_raw(), matched, new_env.clone().as_raw());
 
@@ -988,8 +970,8 @@ pub unsafe fn R_execClosure(
 
 #[cfg(test)]
 mod owned_matcher_tests {
-    use crate::sexp::accessors::SETCDR;
     use super::*;
+    use crate::sexp::accessors::SETCDR;
     use crate::sexp::session::RSession;
     use std::{cell::Cell, rc::Rc};
 

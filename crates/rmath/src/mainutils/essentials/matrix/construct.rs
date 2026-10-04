@@ -525,10 +525,8 @@ pub unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Resu
         for i in 0..XLENGTH(value) {
             *INTEGER(dim).add(i as usize) = dimension_component(value, i);
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            value,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null()
             && names != R_NilValue()
             && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -840,10 +838,8 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
                 let raw = CHAR(STRING_ELT(class, i));
@@ -860,11 +856,16 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     0
                 };
                 if n < 1 {
-                    let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 0, 0);
+                    let mat =
+                        crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 0, 0);
                     let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                     *INTEGER(dims) = 0;
                     *INTEGER(dims).add(1) = 0;
-                    crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_DimSymbol(), dims);
+                    crate::sexp::attrib_core::setAttrib(
+                        mat,
+                        crate::sexp::attrib_core::R_DimSymbol(),
+                        dims,
+                    );
                     return mat;
                 }
                 let mat = crate::mainutils::array::allocMatrix(
@@ -1009,7 +1010,6 @@ pub unsafe fn do_is_symmetric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-
 unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
     unsafe {
         let force = if rownames_force.is_null() || rownames_force == R_NilValue() {
@@ -1086,7 +1086,8 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let mut leaves: Vec<SEXP> = Vec::new();
         let mut leaf_names: Vec<String> = Vec::new();
-        let frame_names = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        let frame_names =
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
         let mut changed = false;
         for j in 0..XLENGTH(frame) {
             let column = VECTOR_ELT(frame, j);
@@ -1106,7 +1107,10 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             } else {
                 String::new()
             };
-            let dim = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimSymbol());
+            let dim = crate::sexp::attrib_core::getAttrib(
+                column,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
             let matrix_cols = if !dim.is_null()
                 && dim != R_NilValue()
                 && TYPEOF(dim) == SEXPTYPE::INTSXP
@@ -1122,8 +1126,15 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                     continue;
                 }
                 let mr = *INTEGER(dim) as i64;
-                let dn = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_DimNamesSymbol());
-                let cnames = if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    column,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                let cnames = if !dn.is_null()
+                    && dn != R_NilValue()
+                    && TYPEOF(dn) == SEXPTYPE::VECSXP
+                    && XLENGTH(dn) >= 2
+                {
                     VECTOR_ELT(dn, 1)
                 } else {
                     R_NilValue()
@@ -1134,21 +1145,29 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                         let src = (k * mr + r) as usize;
                         if TYPEOF(column) == SEXPTYPE::REALSXP {
                             *REAL(piece).add(r as usize) = *REAL(column).add(src);
-                        } else if TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::LGLSXP {
+                        } else if TYPEOF(column) == SEXPTYPE::INTSXP
+                            || TYPEOF(column) == SEXPTYPE::LGLSXP
+                        {
                             *INTEGER(piece).add(r as usize) = *INTEGER(column).add(src);
                         }
                     }
                     leaves.push(piece);
                     let inner = if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                        std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(cnames, k)))
-                            .to_string_lossy()
-                            .into_owned()
+                        std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(
+                            cnames, k,
+                        )))
+                        .to_string_lossy()
+                        .into_owned()
                     } else {
                         format!("{}", k + 1)
                     };
                     let labeled = TYPEOF(cnames) == SEXPTYPE::STRSXP;
                     leaf_names.push(if mc == 1 {
-                        if outer.is_empty() { inner } else { outer.clone() }
+                        if outer.is_empty() {
+                            inner
+                        } else {
+                            outer.clone()
+                        }
                     } else if outer.is_empty() {
                         inner
                     } else {
@@ -1159,7 +1178,10 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             }
             if crate::mainutils::objects::inherits2(column, c"data.frame".as_ptr()) != 0 {
                 changed = true;
-                let inner_names = crate::sexp::attrib_core::getAttrib(column, crate::sexp::attrib_core::R_NamesSymbol());
+                let inner_names = crate::sexp::attrib_core::getAttrib(
+                    column,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
                 for k in 0..XLENGTH(column) {
                     leaves.push(VECTOR_ELT(column, k));
                     let inner = if !inner_names.is_null()
@@ -1173,7 +1195,13 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                     } else {
                         String::new()
                     };
-                    leaf_names.push(if inner.is_empty() { outer.clone() } else if outer.is_empty() { inner } else { format!("{outer}.{inner}") });
+                    leaf_names.push(if inner.is_empty() {
+                        outer.clone()
+                    } else if outer.is_empty() {
+                        inner
+                    } else {
+                        format!("{outer}.{inner}")
+                    });
                 }
             } else {
                 leaves.push(column);
@@ -1187,14 +1215,37 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
                 SET_VECTOR_ELT(flat, i as i64, *col);
                 let cs = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-                SET_STRING_ELT(nm, i as i64, crate::sexp::constructors::Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    nm,
+                    i as i64,
+                    crate::sexp::constructors::Rf_mkChar(cs.as_ptr()),
+                );
             }
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_NamesSymbol(), nm);
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                nm,
+            );
             let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            SET_STRING_ELT(class, 0, crate::sexp::constructors::Rf_mkChar(c"data.frame".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_ClassSymbol(), class);
-            let rn = crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
-            crate::sexp::attrib_core::setAttrib(flat, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+            SET_STRING_ELT(
+                class,
+                0,
+                crate::sexp::constructors::Rf_mkChar(c"data.frame".as_ptr()),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+            let rn = crate::sexp::attrib_core::getAttrib(
+                frame,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                flat,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn,
+            );
             return data_frame_as_matrix(flat);
         }
         let nrow = data_frame_row_count(frame);
@@ -1210,8 +1261,14 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                 any_factor = true;
             }
             match TYPEOF(column) {
-                t if t == SEXPTYPE::STRSXP && !factor => { any_char = true; all_logical = false; }
-                t if t == SEXPTYPE::REALSXP => { any_real = true; all_logical = false; }
+                t if t == SEXPTYPE::STRSXP && !factor => {
+                    any_char = true;
+                    all_logical = false;
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    any_real = true;
+                    all_logical = false;
+                }
                 t if t == SEXPTYPE::LGLSXP => {}
                 _ => all_logical = false,
             }
@@ -1235,7 +1292,11 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             let offset = j * nrow;
             let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
             for row in 0..nrow {
-                let src = if XLENGTH(column) == 0 { 0 } else { row % XLENGTH(column) };
+                let src = if XLENGTH(column) == 0 {
+                    0
+                } else {
+                    row % XLENGTH(column)
+                };
                 let at = (offset + row) as usize;
                 if result_type == SEXPTYPE::STRSXP {
                     let text = if XLENGTH(column) == 0 {
@@ -1324,7 +1385,6 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
         result
     }
 }
-
 
 /// R's `data.matrix(frame, rownames.force = NA)`.
 /// first-occurrence integer codes, and logical/real columns select double
@@ -1440,7 +1500,6 @@ pub unsafe fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     unsafe { do_as_double(call, op, args, rho) }
 }
 
-
 /// GNU `embed(x, dimension)`.
 pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1459,11 +1518,7 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
         let nrow = n - dimension + 1;
-        let ans = crate::mainutils::array::allocMatrix(
-            TYPEOF(x),
-            nrow as i32,
-            dimension as i32,
-        );
+        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), nrow as i32, dimension as i32);
         let _a = protect(ans);
         for col in 0..dimension {
             let src0 = dimension - 1 - col;
@@ -1484,20 +1539,16 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
 pub unsafe fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let m = crate::mainutils::match_mod::match_formal_slots(
-            call,
-            args,
-            &["x", "r", "symmetric"],
-        );
+        let m =
+            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "r", "symmetric"]);
         let x = m[0];
         if x.is_null() || x == R_NilValue() {
             crate::mainutils::errors::errorcall_str(call, "'x' is not a vector");
         }
         let n = XLENGTH(x) as isize;
         let r = m[1];
-        let r_absent = r.is_null()
-            || r == R_NilValue()
-            || r == crate::sexp::globals::R_MissingArg();
+        let r_absent =
+            r.is_null() || r == R_NilValue() || r == crate::sexp::globals::R_MissingArg();
         let symmetric = if m[2].is_null()
             || m[2] == R_NilValue()
             || m[2] == crate::sexp::globals::R_MissingArg()
@@ -1525,8 +1576,8 @@ pub unsafe fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let nc = XLENGTH(r) as isize;
         if n > 0 && nc > 0 && !atomic_elt_equal(x, 0, r, 0) {
-            let msg = std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal")
-                .unwrap_or_default();
+            let msg =
+                std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal").unwrap_or_default();
             crate::mainutils::errors::warningcall(call, msg.as_ptr());
         }
         let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, nc as i32);
@@ -1579,7 +1630,6 @@ unsafe fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
     }
 }
 
-
 /// GNU `toeplitz2(x, nrow)` — banded Toeplitz, ncol = length(x)+1-nrow.
 pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1620,7 +1670,6 @@ pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-
 /// GNU `diffinv(x, xi=0)`.
 pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1652,8 +1701,6 @@ pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         ans
     }
 }
-
-
 
 #[cfg(test)]
 mod data_matrix_tests {

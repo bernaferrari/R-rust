@@ -57,10 +57,8 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     assert!(s.eval("file('missing', 'r+')").is_err());
     assert!(s.eval("readLines('/etc/hosts')").is_err());
 
-    let probe = std::env::temp_dir().join(format!(
-        "rport-browser-host-probe-{}",
-        std::process::id()
-    ));
+    let probe =
+        std::env::temp_dir().join(format!("rport-browser-host-probe-{}", std::process::id()));
     std::fs::write(&probe, b"HOSTSECRET").unwrap();
     struct DeleteOnDrop(std::path::PathBuf);
     impl Drop for DeleteOnDrop {

@@ -29,8 +29,7 @@ use crate::sexp::accessors::{
 use crate::sexp::altseq::{unexpanded_int, unexpanded_real};
 use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{
-    NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP,
-    SEXPTYPE,
+    NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
 };
 
 use crate::mainutils::format::{
@@ -528,9 +527,7 @@ pub unsafe fn EncodeRealDrop0(
         // Drop trailing zeros after the decimal in the mantissa only — GNU
         // EncodeRealDrop0 must not eat the exponent's units digit (`e-10`).
         let mut trimmed: Vec<u8> = formatted.bytes().collect();
-        let exp_pos = trimmed
-            .iter()
-            .position(|&b| b == b'e' || b == b'E');
+        let exp_pos = trimmed.iter().position(|&b| b == b'e' || b == b'E');
         let mantissa_end = exp_pos.unwrap_or(trimmed.len());
         if let Some(dot_pos) = trimmed[..mantissa_end].iter().position(|&b| b == b'.') {
             let mut last_nonzero = dot_pos + 1;
@@ -817,7 +814,6 @@ pub unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
     })
 }
 
-
 /// Encode an external pointer SEXP for display.
 pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
@@ -848,7 +844,11 @@ pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
         let mut e: c_int = 0;
         let mut mark = [b'.' as c_char, 0];
         let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
-        if !opt.is_null() && opt != crate::sexp::globals::R_NilValue() && TYPEOF(opt) == SEXPTYPE::STRSXP && LENGTH(opt) >= 1 {
+        if !opt.is_null()
+            && opt != crate::sexp::globals::R_NilValue()
+            && TYPEOF(opt) == SEXPTYPE::STRSXP
+            && LENGTH(opt) >= 1
+        {
             let ch = STRING_ELT(opt, 0);
             if !ch.is_null() {
                 let p = CHAR(ch);

@@ -19,8 +19,6 @@ use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
 
-
-
 // ---------------------------------------------------------------------------
 // rep2: rep.int(x, times) for a vector times
 // ---------------------------------------------------------------------------
@@ -941,7 +939,6 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             XLENGTH(x)
         };
 
-
         // Parse length.out
         let length_out_arg = CADDR(args);
         if TYPEOF(length_out_arg) != INTSXP_VAL {
@@ -1100,9 +1097,7 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
         }
 
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-            && TYPEOF(x) == VECSXP_VAL
-        {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") && TYPEOF(x) == VECSXP_VAL {
             let ncomp = XLENGTH(x);
             let out = Rf_allocVector(VECSXP_VAL, ncomp as c_int);
             let _o = protect(out);
@@ -1130,7 +1125,11 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             let tzone = getAttrib(x, Rf_install_stub(b"tzone\0".as_ptr() as *const c_char));
             if !tzone.is_null() && tzone != R_NilValue() {
-                setAttrib(out, Rf_install_stub(b"tzone\0".as_ptr() as *const c_char), tzone);
+                setAttrib(
+                    out,
+                    Rf_install_stub(b"tzone\0".as_ptr() as *const c_char),
+                    tzone,
+                );
             }
             let bal = getAttrib(x, Rf_install_stub(b"balanced\0".as_ptr() as *const c_char));
             if !bal.is_null()
@@ -1170,7 +1169,6 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let units = crate::sexp::symbol::Rf_install(c"units".as_ptr());
             setAttrib(ans, units, getAttrib(x, units));
         }
-
 
         if XLENGTH(xn) > 0 {
             setAttrib(ans, R_NamesSymbol(), rep4(xn, times, len, each, nt));

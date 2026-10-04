@@ -1,5 +1,5 @@
-use super::header::NodeBody;
 use super::Sexp;
+use super::header::NodeBody;
 #[cfg(test)]
 use super::{SexpResult, SexpView};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};

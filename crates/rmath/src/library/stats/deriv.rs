@@ -28,7 +28,10 @@ unsafe fn constant(x: f64) -> SEXP {
 
 unsafe fn is_numeric_const(s: SEXP) -> bool {
     unsafe {
-        matches!(ty(s), SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) && LENGTH(s) >= 1
+        matches!(
+            ty(s),
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+        ) && LENGTH(s) >= 1
     }
 }
 
@@ -136,12 +139,20 @@ unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
                 constant(0.0)
             }
             SEXPTYPE::SYMSXP => {
-                if expr == var { constant(1.0) } else { constant(0.0) }
+                if expr == var {
+                    constant(1.0)
+                } else {
+                    constant(0.0)
+                }
             }
             SEXPTYPE::LANGSXP => {
                 let head = CAR(expr);
                 let a = CADR(expr);
-                let b = if LENGTH(expr) >= 3 { CADDR(expr) } else { R_MissingArg() };
+                let b = if LENGTH(expr) >= 3 {
+                    CADDR(expr)
+                } else {
+                    R_MissingArg()
+                };
                 if head == sym("(") {
                     deriv_expr(a, var)
                 } else if head == sym("+") {
@@ -189,9 +200,17 @@ unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
                         simplify(sym("*"), expr, simplify(sym("digamma"), a, R_MissingArg())),
                     )
                 } else if head == sym("lgamma") {
-                    simplify(sym("*"), deriv_expr(a, var), simplify(sym("digamma"), a, R_MissingArg()))
+                    simplify(
+                        sym("*"),
+                        deriv_expr(a, var),
+                        simplify(sym("digamma"), a, R_MissingArg()),
+                    )
                 } else if head == sym("digamma") {
-                    simplify(sym("*"), deriv_expr(a, var), simplify(sym("trigamma"), a, R_MissingArg()))
+                    simplify(
+                        sym("*"),
+                        deriv_expr(a, var),
+                        simplify(sym("trigamma"), a, R_MissingArg()),
+                    )
                 } else if head == sym("trigamma") {
                     simplify(
                         sym("*"),
@@ -199,15 +218,27 @@ unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
                         Rf_lang3(sym("psigamma"), a, Rf_ScalarInteger(2)),
                     )
                 } else if head == sym("psigamma") {
-                    let order = if b == R_MissingArg() { Rf_ScalarInteger(1) } else { b };
+                    let order = if b == R_MissingArg() {
+                        Rf_ScalarInteger(1)
+                    } else {
+                        b
+                    };
                     let next = if is_numeric_const(order) {
                         Rf_ScalarInteger(as_real(order) as i32 + 1)
                     } else {
                         Rf_lang3(sym("+"), order, Rf_ScalarInteger(1))
                     };
-                    simplify(sym("*"), deriv_expr(a, var), Rf_lang3(sym("psigamma"), a, next))
+                    simplify(
+                        sym("*"),
+                        deriv_expr(a, var),
+                        Rf_lang3(sym("psigamma"), a, next),
+                    )
                 } else if head == sym("sin") {
-                    simplify(sym("*"), simplify(sym("cos"), a, R_MissingArg()), deriv_expr(a, var))
+                    simplify(
+                        sym("*"),
+                        simplify(sym("cos"), a, R_MissingArg()),
+                        deriv_expr(a, var),
+                    )
                 } else if head == sym("cos") {
                     simplify(
                         sym("*"),
@@ -349,7 +380,10 @@ unsafe fn accumulate_new(expr: SEXP, exprlist: SEXP) {
 unsafe fn find_subexprs(expr: SEXP, exprlist: SEXP, tag: &str) -> i32 {
     unsafe {
         match ty(expr) {
-            SEXPTYPE::SYMSXP | SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+            SEXPTYPE::SYMSXP
+            | SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
             | SEXPTYPE::CPLXSXP => 0,
             SEXPTYPE::LANGSXP => {
                 if CAR(expr) == sym("(") {
@@ -386,7 +420,11 @@ unsafe fn replace(symbol: SEXP, expr: SEXP, lst: SEXP) -> SEXP {
     unsafe {
         match ty(lst) {
             SEXPTYPE::SYMSXP => {
-                if lst == symbol { expr } else { lst }
+                if lst == symbol {
+                    expr
+                } else {
+                    lst
+                }
             }
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                 SETCAR(lst, replace(symbol, expr, CAR(lst)));
@@ -416,10 +454,25 @@ unsafe fn create_grad(names: SEXP) -> SEXP {
             _ => Rf_lang3(sym("c"), args[0], args[1]),
         };
         let _ = names_call;
-        let dimnames = Rf_lang3(sym("list"), R_NilValue(), 
-            if n == 2 { Rf_lang3(sym("c"), args[0], args[1]) } else { Rf_lang2(sym("c"), args[0]) });
-        let dim = Rf_lang3(sym("c"), Rf_lang2(sym("length"), sym(".value")), Rf_ScalarInteger(n));
-        Rf_lang3(sym("<-"), sym(".grad"), Rf_lang4(sym("array"), constant(0.0), dim, dimnames))
+        let dimnames = Rf_lang3(
+            sym("list"),
+            R_NilValue(),
+            if n == 2 {
+                Rf_lang3(sym("c"), args[0], args[1])
+            } else {
+                Rf_lang2(sym("c"), args[0])
+            },
+        );
+        let dim = Rf_lang3(
+            sym("c"),
+            Rf_lang2(sym("length"), sym(".value")),
+            Rf_ScalarInteger(n),
+        );
+        Rf_lang3(
+            sym("<-"),
+            sym(".grad"),
+            Rf_lang4(sym("array"), constant(0.0), dim, dimnames),
+        )
     }
 }
 
@@ -439,7 +492,11 @@ unsafe fn add_grad() -> SEXP {
     unsafe {
         Rf_lang3(
             sym("<-"),
-            Rf_lang3(sym("attr"), sym(".value"), Rf_mkString(c"gradient".as_ptr())),
+            Rf_lang3(
+                sym("attr"),
+                sym(".value"),
+                Rf_mkString(c"gradient".as_ptr()),
+            ),
             sym(".grad"),
         )
     }
@@ -451,7 +508,11 @@ unsafe fn prune(lst: SEXP) -> SEXP {
             return lst;
         }
         SETCDR(lst, prune(CDR(lst)));
-        if CAR(lst) == R_MissingArg() { CDR(lst) } else { lst }
+        if CAR(lst) == R_MissingArg() {
+            CDR(lst)
+        } else {
+            lst
+        }
     }
 }
 
@@ -461,10 +522,7 @@ unsafe fn closure_with_formals(names: SEXP, body: SEXP) -> SEXP {
         let mut formals = R_NilValue();
         for i in (0..n).rev() {
             let cell = Rf_cons(R_MissingArg(), formals);
-            crate::sexp::accessors::SETTAG(
-                cell,
-                sym(&string_at(names, i as R_xlen_t)),
-            );
+            crate::sexp::accessors::SETTAG(cell, sym(&string_at(names, i as R_xlen_t)));
             formals = cell;
         }
         crate::mainutils::dstruct::R_mkClosure(formals, body, crate::sexp::globals::R_GlobalEnv())
@@ -527,12 +585,18 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
             i += 1;
             ans = CDR(ans);
         }
-        SETCAR(ans, Rf_lang3(sym("<-"), sym(".value"), add_parens(CAR(ans))));
+        SETCAR(
+            ans,
+            Rf_lang3(sym("<-"), sym(".value"), add_parens(CAR(ans))),
+        );
         ans = CDR(ans);
         SETCAR(ans, create_grad(names));
         ans = CDR(ans);
         for i in 0..nderiv {
-            SETCAR(ans, deriv_assign(STRING_ELT(names, i as R_xlen_t), add_parens(CAR(ans))));
+            SETCAR(
+                ans,
+                deriv_assign(STRING_ELT(names, i as R_xlen_t), add_parens(CAR(ans))),
+            );
             ans = CDR(ans);
         }
         SETCAR(ans, add_grad());

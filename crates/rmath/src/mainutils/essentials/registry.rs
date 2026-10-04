@@ -25,15 +25,12 @@ pub(super) const ALL_FNS: &[&str] = &[
     "print",
     "typeof",
     "invisible",
-
     "storage.mode",
     "storage.mode<-",
     "mode<-",
-
     "identity",
     "is.na",
     "is.na.POSIXlt",
-
     "names",
     "logical",
     "integer",
@@ -73,7 +70,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "as.function",
     "as.function.default",
     "as.symbol",
-
     "as.name",
     "as.call",
     "length",
@@ -112,7 +108,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     ".primTrace",
     ".primUntrace",
     "tracingState",
-
     ".cache_class",
     "...elt",
     "...length",
@@ -136,7 +131,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "is.finite.POSIXlt",
     "is.infinite.POSIXlt",
     "is.nan.POSIXlt",
-
     "is.matrix",
     "is.array",
     "is.list",
@@ -267,8 +261,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "parent.frame",
     "topenv",
     "gettextf",
-
-
     "sys.call",
     "sys.frame",
     "sys.parent",
@@ -304,7 +296,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "lapply",
     "sapply",
     "replicate",
-
     "vapply",
     "Map",
     "Filter",
@@ -358,8 +349,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "sQuote",
     "dQuote",
     "balancePOSIXlt",
-
-
     "runif",
     "rnorm",
     "rpois",
@@ -442,7 +431,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "args",
     "formals",
     "body",
-
     "charmatch",
     "pmatch",
     "charToRaw",
@@ -481,7 +469,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "eval",
     "evalq",
     "eval.parent",
-
     "substitute",
     "quote",
     "parse",
@@ -496,15 +483,12 @@ pub(super) const ALL_FNS: &[&str] = &[
     "asS4",
     "isNamespace",
     ".asS4",
-
     ".OBJSXP",
     "setClass",
-
     "setValidity",
     "isVirtualClass",
     "new",
     "validObject",
-
     "show",
     "slotNames",
     "slot",
@@ -565,7 +549,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "assign",
     "ls",
     "objects",
-
     "rm",
     "remove",
     "dyn.load",
@@ -578,12 +561,10 @@ pub(super) const ALL_FNS: &[&str] = &[
     "withVisible",
     "proc.time",
     "system.time",
-
     "stop",
     "warning",
     "warnings",
     "message",
-
     "stopifnot",
     "suppressWarnings",
     "suppressMessages",
@@ -701,7 +682,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "load",
     "withCallingHandlers",
     "globalCallingHandlers",
-
     "try",
     "computeRestarts",
     "findRestart",
@@ -726,7 +706,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "getRegisteredNamespace",
     "isRegisteredNamespace",
     "isNamespaceLoaded",
-
     "data",
     "attach",
     "detach",
@@ -735,7 +714,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "source",
     "sys.source",
     "withAutoprint",
-
     "demo",
     "example",
     "colSums",
@@ -745,9 +723,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "col",
     "row",
     ".rport_toeplitz",
-
     "toeplitz2",
-
     "cbind",
     "rbind",
     "t",
@@ -820,8 +796,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "%%",
     "%/%",
     "<",
-
-
     ">",
     "<=",
     ">=",
@@ -848,7 +822,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     ".Fortran",
     "lazyLoadDBfetch",
     "unCfillPOSIXlt",
-
 ];
 
 #[cfg(test)]
@@ -870,8 +843,10 @@ mod tests {
         // specials ($<-, @<-) are installed by register_special_forms.
         // Stats replacements are not base bindings.
         let all: std::collections::HashSet<&str> = ALL_FNS.iter().copied().collect();
-        let specials: std::collections::HashSet<&str> =
-            crate::sexp::init::LANGUAGE_ELEMENTS.iter().copied().collect();
+        let specials: std::collections::HashSet<&str> = crate::sexp::init::LANGUAGE_ELEMENTS
+            .iter()
+            .copied()
+            .collect();
         let exceptions: std::collections::HashSet<&str> =
             ["contrasts<-", "window<-"].into_iter().collect();
         let mut missing = Vec::new();

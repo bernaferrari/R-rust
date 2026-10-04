@@ -113,8 +113,8 @@ impl<'a> EvalContext<'a> {
         unsafe {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_expr(expr, self.env)
+        }
     }
-}
 }
 
 /// Evaluate an expression using owner-scoped Rust handles.
@@ -344,9 +344,7 @@ pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Se
             None => match primitive_for_symbol(fun.clone()) {
                 Some(primitive) => primitive,
                 None => unsafe {
-                    crate::mainutils::errors::R_FunctionNotFoundError(
-                        fun.as_raw(),
-                        e.as_raw())
+                    crate::mainutils::errors::R_FunctionNotFoundError(fun.as_raw(), e.as_raw())
                 },
             },
         }
@@ -373,7 +371,6 @@ pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Se
 }
 
 pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
-
     let name = unsafe { get_symbol_name(symbol.as_raw()) };
     if crate::eval::builtin::is_hidden_builtin_name(&name) {
         return None;
@@ -473,7 +470,6 @@ pub(crate) unsafe fn find_var_result<'a>(
         return Ok(Some(value));
     }
 
-
     // GNU Rf_eval SYMSXP: findVar is unforced. A MissingArg *binding* is
     // a missing formal. A promise whose forced value is the empty symbol
     // (lapply/vapply over formals) is a real value.
@@ -493,7 +489,6 @@ pub(crate) unsafe fn find_var_result<'a>(
     }
     mark_named_on_read(binding.clone().as_raw());
     Ok(Some(binding))
-
 }
 fn mark_named_on_read(x: SEXP) {
     unsafe {
@@ -502,7 +497,6 @@ fn mark_named_on_read(x: SEXP) {
         }
     }
 }
-
 
 /// Safe promise evaluation.
 unsafe fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
@@ -819,8 +813,11 @@ mod tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let nil = R_NilValue();
             let environment = session.global_env().unwrap();
-            let closure =
-                crate::mainutils::dstruct::mkCLOSXP(nil, Rf_ScalarInteger(73), environment.as_raw());
+            let closure = crate::mainutils::dstruct::mkCLOSXP(
+                nil,
+                Rf_ScalarInteger(73),
+                environment.as_raw(),
+            );
             let closure = owner.sexp(closure).unwrap().into_owned().unwrap();
             let identity_call = Rf_lang2(Rf_install(c"identity".as_ptr()), closure.as_raw());
             let identity_call = owner.sexp(identity_call).unwrap().into_owned().unwrap();
@@ -1088,7 +1085,6 @@ mod tests {
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn methods_new_classrepresentation_is_s4() {
         let mut session = RSession::new();
@@ -1169,7 +1165,6 @@ identical(as.numeric(t2@x), as.numeric(1:4)) &&
   identical(as.numeric(t2@y), as.numeric(5:8)) &&
   identical(as.numeric(t2@smooth), as.numeric(9:12))
 "#,
-
         );
         let result = result.expect("new(Class, super, slot=) must copy superclass slots");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -1194,7 +1189,6 @@ identical(as.numeric(o@x), as.numeric(1:3)) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn register_s3method_is_invisible() {
         let mut session = RSession::new();
@@ -1212,9 +1206,6 @@ identical(withVisible(registerS3method("print", "RegInv2", function(x) x))$visib
         );
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
 
     #[test]
     fn methods_externalptr_typeof_and_class() {
@@ -1286,8 +1277,6 @@ identical(typeof(rnorm), "closure") && identical(a, b) && isTRUE(all.equal(a, 10
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
     #[test]
     fn language_implicit_class_follows_gnu_lang2str() {
         let mut session = RSession::new();
@@ -1335,8 +1324,6 @@ identical(mode(quote((x))), "(") &&
   identical(mode(formals(function(a = 1) NULL)), "pairlist") &&
   identical(class(new.env()), "environment")
 "#,
-
-
         );
         let result = result.expect("mode() of calls is ( vs call; class uses type2str");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -1390,11 +1377,10 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
     #[test]
     fn print_digits_argument_is_honored() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(c(2.44140624e-04, 8), digits = 1)\n");
+        let (_, captured, _) =
+            session.eval_script_with_output_capture("print(c(2.44140624e-04, 8), digits = 1)\n");
         assert!(
-            captured.stdout.contains("[1] 2e-04 8e+00")
-                || captured.stdout.contains("[1] 0.0002 8"),
+            captured.stdout.contains("[1] 2e-04 8e+00") || captured.stdout.contains("[1] 0.0002 8"),
             "print(..., digits=1) must honor digits, got {:?}",
             captured.stdout
         );
@@ -1462,8 +1448,8 @@ identical(format(m[, 1], digits = 1), format(m[, 2], digits = 1)) &&
     #[test]
     fn cat_uses_scientific_for_large_whole_doubles() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "cat(signif(1.234567891234567e27, 1), \"\\n\")\n");
+        let (_, captured, _) = session
+            .eval_script_with_output_capture("cat(signif(1.234567891234567e27, 1), \"\\n\")\n");
         assert!(
             captured.stdout.contains("1e+27"),
             "cat of signif(1e27, 1) must be scientific, got {:?}",
@@ -1541,7 +1527,6 @@ invisible(NULL)
             "noquote must not mutate m1; later print must still quote, got {:?}",
             captured.stdout
         );
-
     }
 
     #[test]
@@ -1591,10 +1576,8 @@ is.data.frame(a) && is.data.frame(b) &&
 
     #[test]
     fn summary_data_frame_returns_gnu_table() {
-
         let mut session = RSession::new();
         let (result, captured, _) = session.eval_script_with_output_capture(
-
             r#"
 dd <- data.frame(event = c(1, 9, 18, 14.74, 20, 23),
                  station = factor(c("117","1028","113","117","135","117")))
@@ -1626,7 +1609,9 @@ invisible(NULL)
 "#,
         );
         assert!(
-            captured.stdout.contains("stop(\"should not be evaluated\")")
+            captured
+                .stdout
+                .contains("stop(\"should not be evaluated\")")
                 && captured.stdout.contains("attr(,\"class\")")
                 && captured.stdout.contains("[1] \"foo\""),
             "language objects must print deparsed call plus class, got {:?}",
@@ -1662,7 +1647,9 @@ invisible(NULL)
             captured.stdout
         );
         assert!(
-            !captured.stdout.contains("stop(\"should not be evaluated\")"),
+            !captured
+                .stdout
+                .contains("stop(\"should not be evaluated\")"),
             "default language print must not run after print.foo, got {:?}",
             captured.stdout
         );
@@ -1693,7 +1680,6 @@ invisible(NULL)
         );
     }
 
-
     #[test]
     fn recursive_print_forwards_user_print_arguments() {
         let mut session = RSession::new();
@@ -1718,8 +1704,8 @@ invisible(NULL)
     #[test]
     fn print_primitive_includes_argsenv_formals() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(base::list)\ninvisible(NULL)\n");
+        let (_, captured, _) =
+            session.eval_script_with_output_capture("print(base::list)\ninvisible(NULL)\n");
         assert_eq!(
             captured.stdout.trim_end(),
             "function (...)  .Primitive(\"list\")",
@@ -1730,10 +1716,9 @@ invisible(NULL)
 
     #[test]
     fn dots_length_treats_empty_dots_as_zero() {
-
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
-            "h <- function(...) ...length(); identical(h(), 0L)");
+        let (result, _, _) = session
+            .eval_script_with_output_capture("h <- function(...) ...length(); identical(h(), 0L)");
         let result = result.expect("empty ... must have length 0");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -1777,22 +1762,20 @@ invisible(NULL)
     #[test]
     fn summary_true_prints_like_gnu() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "summary(TRUE)\ninvisible(NULL)\n");
+        let (_, captured, _) =
+            session.eval_script_with_output_capture("summary(TRUE)\ninvisible(NULL)\n");
         assert_eq!(
-            captured.stdout,
-            "   Mode    TRUE \nlogical       1 \n",
+            captured.stdout, "   Mode    TRUE \nlogical       1 \n",
             "summary(TRUE) must match GNU print.summaryDefault, got {:?}",
             captured.stdout
         );
-
     }
 
     #[test]
     fn summary_pi_prints_gnu_digits() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "options(digits=7); summary(pi)\ninvisible(NULL)\n");
+        let (_, captured, _) = session
+            .eval_script_with_output_capture("options(digits=7); summary(pi)\ninvisible(NULL)\n");
         assert!(
             captured.stdout.contains("3.142"),
             "named numeric summaryDefault must use digits=max(3,digits-3), got {:?}",
@@ -1825,7 +1808,9 @@ invisible(NULL)
             captured.stdout
         );
         assert!(
-            captured.stdout.contains("112 118 132 129 121 135 148 148 136 119 ..."),
+            captured
+                .stdout
+                .contains("112 118 132 129 121 135 148 148 136 119 ..."),
             "integer-like ts preview is vec.len*2.5, got {:?}",
             captured.stdout
         );
@@ -1845,8 +1830,8 @@ invisible(NULL)
     #[test]
     fn print_noquote_empty_character_omits_class() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "print(noquote(character(0)))\ninvisible(NULL)\n");
+        let (_, captured, _) = session
+            .eval_script_with_output_capture("print(noquote(character(0)))\ninvisible(NULL)\n");
         assert_eq!(
             captured.stdout.trim_end(),
             "character(0)",
@@ -1871,7 +1856,9 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
 "#,
         );
         assert_eq!(
-            result.expect("rnorm matching should evaluate").logical_elt(0),
+            result
+                .expect("rnorm matching should evaluate")
+                .logical_elt(0),
             Some(TRUE),
             "stdout={:?} stderr={:?}",
             captured.stdout,
@@ -1882,8 +1869,8 @@ identical(a, b) && identical(a, c) && isTRUE(all.equal(a, 10)) &&
     #[test]
     fn str_named_character_quotes_like_gnu() {
         let mut session = RSession::new();
-        let (_, captured, _) = session.eval_script_with_output_capture(
-            "str(c(F=0.3, `Tail area`=60))\ninvisible(NULL)\n");
+        let (_, captured, _) = session
+            .eval_script_with_output_capture("str(c(F=0.3, `Tail area`=60))\ninvisible(NULL)\n");
         assert!(
             captured.stdout.contains("chr [1:2] \"F\" \"Tail area\""),
             "str() of character names must quote, got {:?}",
@@ -1943,9 +1930,6 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
-
     #[test]
     fn str_data_frame_aligns_names_and_omits_column_length() {
         let mut session = RSession::new();
@@ -1980,19 +1964,28 @@ invisible(NULL)
         );
         assert!(
             captured.stdout.contains("$ Time  : num  1 2 3 4 5 7")
-                && captured.stdout.contains("$ demand: num  8.3 10.3 19 16 15.6 19.8")
-                && captured.stdout.contains("- attr(*, \"reference\")= chr \"A1.4, p. 270\""),
+                && captured
+                    .stdout
+                    .contains("$ demand: num  8.3 10.3 19 16 15.6 19.8")
+                && captured
+                    .stdout
+                    .contains("- attr(*, \"reference\")= chr \"A1.4, p. 270\""),
             "data.frame str must align names, omit [1:n], print extra attrs, got {:?}",
             captured.stdout
         );
         assert!(
-            captured.stdout.matches("Ord.factor w/ 3 levels \"Qn1\"<\"Qn2\"<\"Qn3\": 1 1 2").count()
+            captured
+                .stdout
+                .matches("Ord.factor w/ 3 levels \"Qn1\"<\"Qn2\"<\"Qn3\": 1 1 2")
+                .count()
                 >= 2,
             "both ordered() and factor(ordered=TRUE) must be Ord.factor, got {:?}",
             captured.stdout
         );
         assert!(
-            captured.stdout.contains("Class 'formula'  language uptake ~ conc | Plant")
+            captured
+                .stdout
+                .contains("Class 'formula'  language uptake ~ conc | Plant")
                 && captured.stdout.contains(".Environment")
                 && captured.stdout.contains("R_EmptyEnv"),
             "formula str must match GNU Class/language header, got {:?}",
@@ -2000,35 +1993,32 @@ invisible(NULL)
         );
         assert!(
             captured.stdout.contains("- attr(*, \"labels\")=List of 2")
-                && captured.stdout.contains("$ x: chr \"Ambient carbon dioxide concentration\"")
+                && captured
+                    .stdout
+                    .contains("$ x: chr \"Ambient carbon dioxide concentration\"")
                 && captured.stdout.contains("$ y: chr \"CO2 uptake rate\""),
             "named list attrs must be List of N with $ children, got {:?}",
             captured.stdout
         );
         assert!(
             captured.stdout.contains("$ cov   : int [1:2, 1:2]")
-                && captured.stdout.contains("  ..- attr(*, \"dimnames\")=List of 2")
+                && captured
+                    .stdout
+                    .contains("  ..- attr(*, \"dimnames\")=List of 2")
                 && captured.stdout.contains("$ center:"),
             "list matrix components must carry nested dimnames, got {:?}",
             captured.stdout
         );
         assert!(
-            captured.stdout.contains("Date[1:2], format: \"2007-11-11\" NA")
+            captured
+                .stdout
+                .contains("Date[1:2], format: \"2007-11-11\" NA")
                 && captured.stdout.contains("num [1:2] 1.5 NA")
                 && captured.stdout.contains("chr [1:2] \"MALE\" NA"),
             "Date/NA str must match GNU, got {:?}",
             captured.stdout
         );
-
-
-
-
-
-
     }
-
-
-
 
     #[test]
     fn summary_mixed_range_shares_common_decimals() {
@@ -2044,12 +2034,12 @@ invisible(NULL)
             captured.stdout
         );
         assert!(
-            !captured.stdout.contains("   1 ") && !captured.stdout.split_whitespace().any(|w| w == "1"),
+            !captured.stdout.contains("   1 ")
+                && !captured.stdout.split_whitespace().any(|w| w == "1"),
             "must not trim 1.00 to 1, got {:?}",
             captured.stdout
         );
     }
-
 
     #[test]
     fn options_max_print_inf_warns_then_errors() {
@@ -2064,40 +2054,14 @@ inherits(e1, "error")
         assert_eq!(result.logical_elt(0), Some(TRUE));
         let text = format!("{}{}", captured.stdout, captured.stderr);
         assert!(
-            text.contains("In options(max.print = Inf) : NAs introduced by coercion to integer range"),
+            text.contains(
+                "In options(max.print = Inf) : NAs introduced by coercion to integer range"
+            ),
             "asInteger(Inf) must warn with the options() call like GNU, got stdout={:?} stderr={:?}",
             captured.stdout,
             captured.stderr
         );
-
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn try_catch_finally_runs_after_body() {
@@ -2112,8 +2076,8 @@ inherits(e1, "error")
     #[test]
     fn deparse_pi_uses_dbl_dig_not_options_digits() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(deparse(pi), \"3.14159265358979\")");
+        let (result, _, _) =
+            session.eval_script_with_output_capture("identical(deparse(pi), \"3.14159265358979\")");
         let result = result.expect("deparse must pin R_print.digits to DBL_DIG");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -2180,12 +2144,13 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
             captured.stdout
         );
         assert!(
-            captured.stderr.contains("Error: test of 'options(catch.script.errors = TRUE)'"),
+            captured
+                .stderr
+                .contains("Error: test of 'options(catch.script.errors = TRUE)'"),
             "stderr={:?}",
             captured.stderr
         );
     }
-
 
     #[test]
     fn print_factor_pads_to_widest_label_like_gnu() {
@@ -2234,7 +2199,6 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
         let result = result.expect("as.double must dispatch S3 on classed numeric");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
 
     #[test]
     fn print_table_1d_keeps_gnu_trailing_column_space() {
@@ -2310,7 +2274,6 @@ test <- 1:10
 tryCatch(test[2:4] <- ls, error = function(e) NULL)
 !exists("*tmp*", inherits = FALSE)
 "#,
-
         );
         let result = result.expect("failed [<- must not leave *tmp*");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -2364,7 +2327,6 @@ identical(A, id_epd(A), ignore.environment = TRUE, ignore.bytecode = TRUE, ignor
         );
         let result = result.expect("check_EPD function identical must ignore env/srcref");
         assert_eq!(result.logical_elt(0), Some(TRUE));
-
     }
 
     #[test]
@@ -2431,7 +2393,6 @@ identical(w, "deparse may be incomplete")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn summary_warnings_collapses_identical_deparse_warnings() {
         let mut session = RSession::new();
@@ -2484,10 +2445,6 @@ identical(names(iNA), c("A", "NA", NA)) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
-
-
     #[test]
     fn all_equal_s4_formula_subclass_uses_language_path() {
         let mut session = RSession::new();
@@ -2504,10 +2461,6 @@ isTRUE(all.equal(mf, id_epd(mf), check.environment = FALSE))
         let result = result.expect("S4 formula subclass all.equal must follow language/deparse");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
-
 
     #[test]
     fn s4_class_representations_compare_slots() {
@@ -2541,10 +2494,6 @@ extends("mFormIdent", "oldClass") &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
-
-
     #[test]
     fn s4_list_dput_includes_data_part() {
         let mut session = RSession::new();
@@ -2561,15 +2510,6 @@ grepl(".Data", out, fixed = TRUE) && grepl("prec = 1L", out, fixed = TRUE)
         let result = result.expect("dput of a list-class S4 object must emit .Data");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn capture_output_writes_local_text_connection() {
@@ -2589,7 +2529,6 @@ grepl(".Data", out, fixed = TRUE) && grepl("prec = 1L", out, fixed = TRUE)
 out <- capture.output(print(function(fun, envir, value) NULL))
 length(out) >= 1L && grepl("^function", out[1])
 "#,
-
         );
         let result = result.expect("capture.output(print.function) must capture the signature");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -2616,11 +2555,13 @@ identical(out[1], "        x        ")
                 output.stdout, output.stderr
             )
         });
-        assert_eq!(result.logical_elt(0), Some(TRUE), "stdout={}", output.stdout);
+        assert_eq!(
+            result.logical_elt(0),
+            Some(TRUE),
+            "stdout={}",
+            output.stdout
+        );
     }
-
-
-
 
     #[test]
     fn print_character_matrix_honors_quote_false() {
@@ -2742,7 +2683,6 @@ gnu <- "Reference class object of class \"envRefClass\""
 identical(capture.output(show(x)), gnu) &&
   identical(capture.output(print(x)), gnu)
 "#,
-
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -2882,8 +2822,6 @@ identical(first, c("[1] 1 2 3", 'attr(,"id")', '[1] "An Example"')) &&
         );
     }
 
-
-
     #[test]
     fn str_s4_formal_class_matches_gnu() {
         let mut session = RSession::new();
@@ -2952,40 +2890,6 @@ identical(
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn message_writes_stderr_not_stdout() {
         let mut session = RSession::new();
@@ -3008,10 +2912,6 @@ identical(out, character(0))
             output.stderr
         );
     }
-
-
-
-
 
     #[test]
     fn with_autoprint_capture_output_splits_gnu_lines() {
@@ -3042,8 +2942,6 @@ is.function(withAutoprint) &&
         let result = result.expect("withAutoprint must be GNU's source() wrapper");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
 
     #[test]
     fn unlist_recursive_false_keeps_list_of_lists() {
@@ -3110,13 +3008,8 @@ local({
 
         );
         let result = result.expect("example(new) must look up topic new, not evaluate new");
-        assert_eq!(
-            result.logical_elt(0),
-            Some(TRUE),
-            "output={output:?}"
-        );
+        assert_eq!(result.logical_elt(0), Some(TRUE), "output={output:?}");
     }
-
 
     #[test]
     fn find_package_null_lists_attached_methods() {
@@ -3131,9 +3024,6 @@ any(grepl("/methods$", find.package(NULL)))
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
-
     #[test]
     fn utils_namespace_loads_without_windows_s3_methods() {
         let mut session = RSession::new();
@@ -3143,8 +3033,6 @@ any(grepl("/methods$", find.package(NULL)))
         let result = result.expect("utils namespace must load with lazy S3 methods");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
 
     #[test]
     fn rep_is_gnu_special() {
@@ -3487,7 +3375,6 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn unlist_empty_lists_keep_gnu_type() {
         let mut session = RSession::new();
@@ -3521,8 +3408,8 @@ isClass("bar") && extends("bar", "foo")
     #[test]
     fn seq_int_named_to_before_from_matches_gnu() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(seq.int(to = 3, from = 1), 1:3)");
+        let (result, _, _) =
+            session.eval_script_with_output_capture("identical(seq.int(to = 3, from = 1), 1:3)");
         let result = result.expect("seq.int must matchArgs, not check1arg the first tag");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -3738,8 +3625,6 @@ identical(3, BaseGeneric(1, 2)) &&
   grepl('x = "numeric", y = "missing"', attr(err1, "condition")$message) &&
   identical(err1, err1Y)
 "#,
-
-
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -3756,7 +3641,6 @@ identical(3, BaseGeneric(1, 2)) &&
         );
     }
 
-
     #[test]
     fn try_call_less_errors_are_identical_across_expressions() {
         let mut session = RSession::new();
@@ -3772,8 +3656,6 @@ identical(e1, e2) &&
         let result = result.expect("try() call-less errors share GNU Error : prefix");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
 
     #[test]
     fn classes_methods_sealclass() {
@@ -3958,7 +3840,10 @@ any(grepl("showMethods(`body<-`)", out, fixed=TRUE))
 "#,
         );
         let result = result.unwrap_or_else(|e| {
-            panic!("show(`body<-`) after methods load: {e}\nstdout={}", output.stdout)
+            panic!(
+                "show(`body<-`) after methods load: {e}\nstdout={}",
+                output.stdout
+            )
         });
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -4024,7 +3909,6 @@ identical(off, 0L) && identical(on, 2L)
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn classes_methods_setis_simple_as() {
         let mut session = RSession::new();
@@ -4088,7 +3972,6 @@ identical(names(formals(g)), c("x", "...")) &&
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
     #[test]
     fn classes_methods_trace_coerce_signature() {
         let mut session = RSession::new();
@@ -4124,7 +4007,6 @@ is(m0, "MethodDefinition") &&
             output.stderr
         );
     }
-
 
     #[test]
     fn class_attribute_is_namedmax_on_return() {
@@ -4235,7 +4117,10 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
 "#,
         );
         let result = result.unwrap_or_else(|e| {
-            panic!("signature@names: {e}\nstdout={}\nstderr={}", output.stdout, output.stderr)
+            panic!(
+                "signature@names: {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
         });
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -4261,7 +4146,6 @@ identical(md@target@names, "x") && identical(md@defined@names, "x")
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "classes-methods.R GNU skip path (Matrix omitted): {e}\nstdout={}\nstderr={}",
-
                 output.stdout, output.stderr
             )
         });
@@ -4286,8 +4170,6 @@ any(grepl("showMethods(`body<-`)", capture.output(show(`body<-`)), fixed=TRUE))
         });
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
 
     #[test]
     fn methods_package_slot_assign_sets_attribute() {
@@ -4333,7 +4215,10 @@ isS4(a) && identical(as.character(class(a))[1], "myfunWithTrace")
 "#,
         );
         let result = result.unwrap_or_else(|e| {
-            panic!("new(myfunWithTrace, def): {e}\nstdout={}\nstderr={}", output.stdout, output.stderr)
+            panic!(
+                "new(myfunWithTrace, def): {e}\nstdout={}\nstderr={}",
+                output.stdout, output.stderr
+            )
         });
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -4422,29 +4307,6 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
         result.unwrap_or_else(|e| {
             panic!(
                 "reg-S4.R through EOF: {e}\nstdout={}\nstderr={}",
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                 output.stdout, output.stderr
             )
         });
@@ -4459,8 +4321,6 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
         result.unwrap_or_else(|e| {
             panic!(
                 "classes-methods.R through sealClass: {e}\nstdout={}\nstderr={}",
-
-
                 output.stdout, output.stderr
             )
         });
@@ -4478,23 +4338,6 @@ identical(m, methods:::cbind(m)) && identical(m, cbind(m))
             )
         });
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn reg_s4_rbind_after_setgeneric_dots() {
@@ -4521,7 +4364,6 @@ identical(rbind(1), matrix(1,1,1))
             output.stderr
         );
     }
-
 
     #[test]
     fn reg_s4_median_list_subclass() {
@@ -4556,11 +4398,6 @@ identical(rbind(1), matrix(1,1,1))
             output.stderr
         );
     }
-
-
-
-
-
 
     #[test]
     fn reg_s4_list_class_subset_keeps_class() {
@@ -4998,15 +4835,6 @@ identical(x, 42L)
         );
     }
 
-
-
-
-
-
-
-
-
-
     #[test]
     fn reg_s4_getsrcref_on_sourced_function() {
         let mut session = RSession::new();
@@ -5240,7 +5068,6 @@ if (!isTRUE(ok)) {
     all(c("mle", "profile.mle", "summary.mle") %in% cl4)
 }
 "#,
-
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -5249,7 +5076,6 @@ if (!isTRUE(ok)) {
             )
         });
         assert_eq!(
-
             result.logical_elt(0),
             Some(TRUE),
             "stdout={}\nstderr={}",
@@ -5261,13 +5087,12 @@ if (!isTRUE(ok)) {
     #[test]
     fn reg_s4_signature_obj_after_removeclass() {
         let mut session = RSession::new();
-        let (result, output, _) = session.eval_script_with_output_capture(
-            concat!(
-                "invisible(require(methods, quietly=TRUE))\n",
-                "setClass(\"SIG\", contains=\"signature\")\n",
-                "invisible(lapply(getClasses(globalenv()), removeClass))\n",
-                "validObject(new(\"signature\", obj = \"mle\"))\n",
-            ));
+        let (result, output, _) = session.eval_script_with_output_capture(concat!(
+            "invisible(require(methods, quietly=TRUE))\n",
+            "setClass(\"SIG\", contains=\"signature\")\n",
+            "invisible(lapply(getClasses(globalenv()), removeClass))\n",
+            "validObject(new(\"signature\", obj = \"mle\"))\n",
+        ));
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "signature after removeClass: {e}\nstdout={}\nstderr={}",
@@ -5287,13 +5112,12 @@ if (!isTRUE(ok)) {
     #[test]
     fn exists_search_name_is_where_not_mode() {
         let mut session = RSession::new();
-        let (result, output, _) = session.eval_script_with_output_capture(
-            concat!(
-                "invisible(require(methods, quietly=TRUE))\n",
-                "exists(\".__C__signature\", \"package:methods\", inherits=FALSE) &&\n",
-                "  exists(\"pi\", \"package:base\") &&\n",
-                "  !exists(\".__C__signature\", \".GlobalEnv\", inherits=FALSE)\n",
-            ));
+        let (result, output, _) = session.eval_script_with_output_capture(concat!(
+            "invisible(require(methods, quietly=TRUE))\n",
+            "exists(\".__C__signature\", \"package:methods\", inherits=FALSE) &&\n",
+            "  exists(\"pi\", \"package:base\") &&\n",
+            "  !exists(\".__C__signature\", \".GlobalEnv\", inherits=FALSE)\n",
+        ));
         let result = result.unwrap_or_else(|e| {
             panic!(
                 "exists where-string: {e}\nstdout={}\nstderr={}",
@@ -5308,12 +5132,6 @@ if (!isTRUE(ok)) {
             output.stderr
         );
     }
-
-
-
-
-
-
 
     #[test]
     fn reg_s4_slot_assign_without_methods() {
@@ -5411,7 +5229,6 @@ identical(formals(getGeneric("as.vector")), formals(base::as.vector)) &&
 
     #[test]
     fn reg_s4_virtual_integer_subclass() {
-
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
@@ -5437,7 +5254,6 @@ TRUE
             output.stderr
         );
     }
-
 
     #[test]
     fn reg_s4_s3_dispatch_without_methods_attached() {
@@ -5534,86 +5350,6 @@ alsofirstclass <- methods:::.resolveClassList(class.list,.GlobalEnv, package="pa
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn cbind2_default_negative_deparse_level_does_not_redispatch() {
         let mut session = RSession::new();
@@ -5639,10 +5375,6 @@ identical(as.vector(cbind(a)), 1:3) && identical(as.vector(cbind2(a)), 1:3)
             output.stderr
         );
     }
-
-
-
-
 
     #[test]
     fn show_print_s4_bit_on_matrix_does_not_recurse() {
@@ -5682,7 +5414,6 @@ TRUE
             "recursion-guard stub still printed: {}",
             output.stdout
         );
-
     }
 
     #[test]
@@ -5745,7 +5476,6 @@ identical(r$a, 1:2)
 x <- 1:3
 identical(colnames(cbind(x)), "x") && identical(rownames(rbind(x)), "x")
 "#,
-
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -5901,12 +5631,6 @@ stopifnot(isTRUE(all.equal(getOption("ts.eps"), 1e-5)),
           identical(tt2@x, t2), identical(tt2@y, t.))
 TRUE
 "#,
-
-
-
-
-
-
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -6162,19 +5886,6 @@ identical(rbind(1), matrix(1,1,1))
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn getgenerics_stats4_lists_exported_generics() {
         let mut session = RSession::new();
@@ -6216,13 +5927,6 @@ TRUE
             output.stderr
         );
     }
-
-
-
-
-
-
-
 
     #[test]
     fn as_double_uses_as_numeric_s4_method() {
@@ -6292,29 +5996,6 @@ identical(AIC(pfit(1:10)), AIC.pfit(pfit(1:10)))
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn callgeneric_after_unclass_uses_default() {
         let mut session = RSession::new();
@@ -6381,17 +6062,6 @@ identical(Gfun(m2, extrarg = FALSE), 3)
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn rematch_definition_wraps_extra_formals_in_local() {
         let mut session = RSession::new();
@@ -6423,30 +6093,6 @@ isRematched(getMethod("Gfun", "mmat2"))
             output.stderr
         );
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn hashed_env_names_include_hash_bindings() {
@@ -6559,35 +6205,6 @@ generic_ok && prim_ok
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn stats4_hasmethods_coef_after_require() {
         let mut session = RSession::new();
@@ -6597,11 +6214,8 @@ invisible(require(methods, quietly=TRUE))
 invisible(require(stats4, quietly=TRUE))
 isTRUE(isGeneric("coef")) && isTRUE(hasMethods("coef"))
 "#,
-
-
         );
         let result = result.unwrap_or_else(|e| {
-
             panic!(
                 "stats4 hasMethods(coef): {e}\nstdout={}\nstderr={}",
                 output.stdout, output.stderr
@@ -6616,10 +6230,8 @@ isTRUE(isGeneric("coef")) && isTRUE(hasMethods("coef"))
         );
     }
 
-
     #[test]
     fn as_environment_null_is_defunct_like_gnu() {
-
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
@@ -6711,70 +6323,6 @@ TRUE
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn t_and_f_are_symbols_bound_to_logicals() {
         let mut session = RSession::new();
@@ -6789,31 +6337,10 @@ identical(T, TRUE) && identical(F, FALSE) &&
   ) &&
   { F <- 5; identical(F, 5) }
 "#,
-
         );
         let result = result.expect("GNU T/F are symbols, not parser keywords");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn methods_namespace_exports_body_assign() {
@@ -6858,17 +6385,6 @@ isS4(obj) && identical(as.character(obj@generic)[1], "body<-")
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn methods_namespace_has_no_empty_c_or_rep() {
         let mut session = RSession::new();
@@ -6882,9 +6398,6 @@ invisible(require(methods, quietly=TRUE))
         let result = result.expect("methods namespace must not bind empty c/rep");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
 
     #[test]
     fn gnu_norm_rcond_are_closures_with_implicit_methods() {
@@ -6926,15 +6439,6 @@ TRUE
         );
     }
 
-
-
-
-
-
-
-
-
-
     #[test]
     fn methods_setclass_defines_s4_class() {
         let mut session = RSession::new();
@@ -6951,7 +6455,8 @@ TRUE
         let (result, _, _) = session.eval_script_with_output_capture(
             "invisible(require(methods, quietly=TRUE)); x <- new(\"classRepresentation\"); x@validity <- NULL; is.null(x@validity) && isTRUE(methods:::.hasSlot(x, \"validity\"))",
         );
-        let result = result.expect("NULL slots must store GNU pseudo_NULL and still count as present");
+        let result =
+            result.expect("NULL slots must store GNU pseudo_NULL and still count as present");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
@@ -6975,8 +6480,6 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
     #[test]
     fn methods_new_accepts_named_slots() {
         let mut session = RSession::new();
@@ -6997,13 +6500,11 @@ TRUE
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
-
-
     #[test]
     fn class_of_null_is_null_string() {
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(
-            "identical(class(NULL), \"NULL\")");
+        let (result, _, _) =
+            session.eval_script_with_output_capture("identical(class(NULL), \"NULL\")");
         let result = result.expect("class(NULL) must be GNU's implicit NULL class");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
@@ -7017,11 +6518,4 @@ TRUE
         let result = result.expect("setdiff(NULL, *) must be NULL with length 0");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
-
-
-
-
-
-
-
 }

@@ -14,7 +14,7 @@ use crate::mainutils::printvector::GetMatrixDimnames;
 use crate::sexp::accessors::{
     COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::altseq::{unexpanded_int, unexpanded_real, CompactSeq};
+use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::ffi::R_xlen_t;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, Rcomplex, SEXP};
 use crate::sexp::globals::R_NilValue;
@@ -84,8 +84,8 @@ unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
 // ---------------------------------------------------------------------------
 
 use crate::mainutils::format::{
-    compact_int_width, compact_real_field, formatComplex, formatInteger, formatLogical, formatRaw,
-    formatReal, integer_field_width, real_field, RealField,
+    RealField, compact_int_width, compact_real_field, formatComplex, formatInteger, formatLogical,
+    formatRaw, formatReal, integer_field_width, real_field,
 };
 use crate::mainutils::printutils::IndexWidth_xlen as IndexWidth;
 use crate::mainutils::printutils::{
@@ -631,7 +631,12 @@ fn real_format_at(
     })
 }
 
-fn real_at(seq: Option<CompactSeq>, data: *mut c_double, len: R_xlen_t, index: R_xlen_t) -> c_double {
+fn real_at(
+    seq: Option<CompactSeq>,
+    data: *mut c_double,
+    len: R_xlen_t,
+    index: R_xlen_t,
+) -> c_double {
     if let Some(seq) = seq {
         return seq.real_or_na(index);
     }
@@ -896,15 +901,8 @@ unsafe fn print_complex_matrix(
                 let start = column_start(offset, j as R_xlen_t, rows);
                 let col_ptr = in_column(base, len, start, rows);
                 formatComplex(
-                    col_ptr,
-                    rows,
-                    &mut wr[j],
-                    &mut dr[j],
-                    &mut er[j],
-                    &mut wi[j],
-                    &mut di[j],
-                    &mut ei[j],
-                    0,
+                    col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j], &mut di[j],
+                    &mut ei[j], 0,
                 );
                 w[j] = wr[j] + wi[j] + 2;
             } else {
@@ -1018,10 +1016,8 @@ unsafe fn print_string_matrix(
             if print_ij {
                 let mut max_w: c_int = 0;
                 for i in 0..r as R_xlen_t {
-                    let elem = STRING_ELT(
-                        sx,
-                        element_index(offset, j as R_xlen_t, i, r as R_xlen_t),
-                    );
+                    let elem =
+                        STRING_ELT(sx, element_index(offset, j as R_xlen_t, i, r as R_xlen_t));
                     let l = if elem == NA_STRING() {
                         if quote != 0 {
                             rp.na_width

@@ -61,7 +61,6 @@ pub unsafe fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
-
     unsafe {
         if TYPEOF(data) == SEXPTYPE::ENVSXP {
             return data;
@@ -121,7 +120,12 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let data = if TYPEOF(data) != SEXPTYPE::VECSXP {
             let cell = Rf_cons(data, R_NilValue());
             let _g = protect(cell);
-            crate::mainutils::essentials::s3::do_as_data_frame(R_NilValue(), R_NilValue(), cell, rho)
+            crate::mainutils::essentials::s3::do_as_data_frame(
+                R_NilValue(),
+                R_NilValue(),
+                cell,
+                rho,
+            )
         } else {
             data
         };
@@ -157,14 +161,12 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         };
         let mut columns: Vec<(String, SEXP)> = Vec::with_capacity(old_n as usize + extras.len());
         for i in 0..old_n {
-            let name = if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-            {
-                elt_to_string(names, i)
-            } else {
-                String::new()
-            };
+            let name =
+                if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                    elt_to_string(names, i)
+                } else {
+                    String::new()
+                };
             columns.push((name, VECTOR_ELT(data, i)));
         }
         for (name, val) in extras {
@@ -205,4 +207,3 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         result
     }
 }
-

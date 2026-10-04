@@ -257,10 +257,8 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             crate::sexp::attrib_core::R_TspSymbol(),
             R_NilValue(),
         );
-        let class = crate::sexp::attrib_core::getAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(result, crate::sexp::attrib_core::R_ClassSymbol());
         if TYPEOF(class) == SEXPTYPE::STRSXP {
             let n = XLENGTH(class);
             let mut ts = false;
@@ -460,14 +458,9 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 crate::sexp::attrib_core::R_TspSymbol(),
                 R_NilValue(),
             );
-            let class = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
-            if !class.is_null()
-                && class != R_NilValue()
-                && TYPEOF(class) == SEXPTYPE::STRSXP
-            {
+            let class =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+            if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 let n = XLENGTH(class);
                 let mut keep = Vec::new();
                 for i in 0..n {
@@ -513,7 +506,8 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let end = *REAL(tsp).add(1);
         let frequency = *REAL(tsp).add(2);
         let n = {
-            let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            let dim =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
             if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) >= 1 {
                 INTEGER_ELT(dim, 0) as R_xlen_t
             } else {
@@ -534,9 +528,7 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             1e-5
         };
-        if frequency.is_finite()
-            && (end - start - (n - 1) as f64 / frequency).abs() > eps
-        {
+        if frequency.is_finite() && (end - start - (n - 1) as f64 / frequency).abs() > eps {
             std::panic::panic_any(RError {
                 message: "invalid time series parameters specified (1)".to_string(),
             });

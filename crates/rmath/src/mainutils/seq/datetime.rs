@@ -61,7 +61,6 @@ unsafe fn posix_time_length(x: SEXP) -> R_xlen_t {
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
             && TYPEOF(x) == VECSXP_VAL
             && XLENGTH(x) > 0
-
         {
             let sec = VECTOR_ELT(x, 0);
             if !sec.is_null() && sec != R_NilValue() {
@@ -86,7 +85,6 @@ unsafe fn posix_as_seconds(call: SEXP, x: SEXP) -> c_double {
         asReal(x)
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum DatetimeKind {
@@ -389,7 +387,6 @@ pub unsafe fn datetime_seq(
                     );
                 }
             }
-
         } else if !by_given && (miss_from || miss_to) && !have_lout {
             // seq.Date without 'by'.
             errorcall(
@@ -504,11 +501,9 @@ pub unsafe fn datetime_seq(
                         rby /= 86_400.0;
                     }
                 }
-
             } else {
                 errorcall(call, b"invalid mode for 'by'\0".as_ptr() as *const c_char);
             }
-
         }
 
         // Endpoints as raw numbers (days for Date, seconds for POSIXct).
@@ -526,7 +521,6 @@ pub unsafe fn datetime_seq(
         } else {
             asReal(to)
         };
-
 
         let build = |first: c_double, step: c_double, n: usize| -> Vec<c_double> {
             (0..n).map(|i| first + i as c_double * step).collect()
@@ -632,8 +626,6 @@ pub unsafe fn datetime_seq(
                     }
                 }
 
-
-
                 // seq.int(from, to, by) keeps the endpoint type; length.out
                 // of integer-valued seconds becomes INTSXP (GNU R >= 4.5).
                 // Calendar steps go through POSIXlt and keep endpoint type.
@@ -642,9 +634,7 @@ pub unsafe fn datetime_seq(
                         || ((miss_from || TYPEOF(from) == INTSXP_VAL)
                             && (miss_to || TYPEOF(to) == INTSXP_VAL))
                 }
-
             };
-
 
         let ans = if keep_int {
             let ans = Rf_allocVector(INTSXP_VAL, values.len() as c_int);
@@ -666,6 +656,5 @@ pub unsafe fn datetime_seq(
             kind,
             if miss_from { to } else { from },
         ))
-
     }
 }

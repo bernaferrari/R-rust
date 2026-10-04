@@ -1,8 +1,8 @@
 //! Holt-Winters filtering algorithm.
 //! Port of r-source/src/library/stats/src/HoltWinters.c
 
-use core::ffi::{c_double, c_int, c_void};
 use crate::sexp::ffi::SEXP;
+use core::ffi::{c_double, c_int, c_void};
 
 /// Holt-Winters filtering.
 ///
@@ -135,7 +135,11 @@ fn hw_golden_min(lo: f64, hi: f64, steps: usize, mut f: impl FnMut(f64) -> f64) 
 fn hw_additive_start(x: &[f64], period: usize) -> (f64, f64, Vec<f64>) {
     let wind = 2 * period;
     if period < 2 || x.len() < wind {
-        return (x.first().copied().unwrap_or(0.0), 0.0, vec![0.0; period.max(1)]);
+        return (
+            x.first().copied().unwrap_or(0.0),
+            0.0,
+            vec![0.0; period.max(1)],
+        );
     }
     let flen = period + 1;
     let mut filt = vec![1.0; flen];
@@ -250,10 +254,7 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let x0 = CAR(args);
         let n = XLENGTH(x0) as c_int;
         let tsp = crate::sexp::attrib_core::getAttrib(x0, Rf_install(c"tsp".as_ptr()));
-        let period = if !tsp.is_null()
-            && TYPEOF(tsp) == SEXPTYPE::REALSXP
-            && XLENGTH(tsp) >= 3
-        {
+        let period = if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 3 {
             *REAL(tsp).add(2) as c_int
         } else {
             12
@@ -282,7 +283,17 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 hw_additive_sse(&x, t, beta, gamma, a0, b0, &s0, start_time, period as usize)
             });
             beta = hw_golden_min(0.0, 1.0, 50, |t| {
-                hw_additive_sse(&x, alpha, t, gamma, a0, b0, &s0, start_time, period as usize)
+                hw_additive_sse(
+                    &x,
+                    alpha,
+                    t,
+                    gamma,
+                    a0,
+                    b0,
+                    &s0,
+                    start_time,
+                    period as usize,
+                )
             });
             gamma = hw_golden_min(0.0, 1.0, 50, |t| {
                 hw_additive_sse(&x, alpha, beta, t, a0, b0, &s0, start_time, period as usize)
@@ -389,4 +400,3 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         result
     }
 }
-

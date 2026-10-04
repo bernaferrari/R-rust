@@ -120,12 +120,28 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let ans = methods_function(string_vector(&methods));
             let info = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
             let info_class = Rf_mkString(c"data.frame".as_ptr());
-            crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_ClassSymbol(), info_class);
+            crate::sexp::attrib_core::setAttrib(
+                info,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                info_class,
+            );
             let info_names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-            crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), info_names);
+            crate::sexp::attrib_core::setAttrib(
+                info,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                info_names,
+            );
             let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-            crate::sexp::attrib_core::setAttrib(info, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()), row_names);
-            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::symbol::Rf_install(c"info".as_ptr()), info);
+            crate::sexp::attrib_core::setAttrib(
+                info,
+                crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+                row_names,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::symbol::Rf_install(c"info".as_ptr()),
+                info,
+            );
             return ans;
         }
         if generic_arg.is_null() || generic_arg == R_NilValue() {
@@ -185,10 +201,26 @@ pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let inames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         SET_STRING_ELT(inames, 0, Rf_mkChar(c"from".as_ptr()));
         SET_STRING_ELT(inames, 1, Rf_mkChar(c"visible".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), inames);
-        crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_ClassSymbol(), Rf_mkString(c"data.frame".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(info, crate::sexp::symbol::Rf_install(c"row.names".as_ptr()), rows);
-        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::symbol::Rf_install(c"info".as_ptr()), info);
+        crate::sexp::attrib_core::setAttrib(
+            info,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            inames,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            info,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            Rf_mkString(c"data.frame".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            info,
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            rows,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::symbol::Rf_install(c"info".as_ptr()),
+            info,
+        );
         ans
     }
 }
@@ -206,11 +238,7 @@ unsafe fn methods_function(ans: SEXP) -> SEXP {
     unsafe {
         let class = Rf_mkString(c"MethodsFunction".as_ptr());
         let _g = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_ClassSymbol(), class);
         ans
     }
 }
@@ -229,7 +257,6 @@ pub unsafe fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 pub unsafe fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::eval::missing::do_missing(call, op, args, rho) }
 }
-
 
 /// R's `parent.frame(n)` — get enclosing environment.
 ///
@@ -279,7 +306,6 @@ pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
     }
 }
-
 
 /// Find a function context at or older than `cptr` executing in `envir`
 /// (upstream `R_findExecContext` — powers `parent.frame()`).
@@ -657,16 +683,31 @@ pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let recursive = {
             let flag = CADR(args);
-            !flag.is_null() && flag != R_NilValue() && TYPEOF(flag) == SEXPTYPE::LGLSXP && XLENGTH(flag) > 0 && *LOGICAL(flag) != 0
+            !flag.is_null()
+                && flag != R_NilValue()
+                && TYPEOF(flag) == SEXPTYPE::LGLSXP
+                && XLENGTH(flag) > 0
+                && *LOGICAL(flag) != 0
         };
         let mut failed = false;
         for i in 0..n {
             let path = elt_to_string(x, i);
             let targets = if path.contains('*') || path.contains('?') {
-                let dir = std::path::Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
-                let pat = std::path::Path::new(&path).file_name().and_then(|s| s.to_str()).unwrap_or(&path).to_string();
+                let dir = std::path::Path::new(&path)
+                    .parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or(std::path::Path::new("."));
+                let pat = std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&path)
+                    .to_string();
                 match std::fs::read_dir(dir) {
-                    Ok(entries) => entries.filter_map(|e| e.ok()).filter(|e| unlink_glob(&pat, &e.file_name().to_string_lossy())).map(|e| e.path()).collect(),
+                    Ok(entries) => entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| unlink_glob(&pat, &e.file_name().to_string_lossy()))
+                        .map(|e| e.path())
+                        .collect(),
                     Err(_) => Vec::new(),
                 }
             } else {
@@ -674,7 +715,11 @@ pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             for p in targets {
                 let result = if p.is_dir() {
-                    if recursive { std::fs::remove_dir_all(&p) } else { std::fs::remove_dir(&p) }
+                    if recursive {
+                        std::fs::remove_dir_all(&p)
+                    } else {
+                        std::fs::remove_dir(&p)
+                    }
                 } else {
                     std::fs::remove_file(&p)
                 };
@@ -686,7 +731,6 @@ pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         let result = Rf_ScalarInteger(if failed { 1 } else { 0 });
-
 
         crate::sexp::globals::set_R_Visible(FALSE);
         result
@@ -892,11 +936,21 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         }
         if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
             x = crate::mainutils::duplicate::shallow_duplicate(x);
-            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), R_NilValue());
-            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
         }
 
-        if TYPEOF(x) == SEXPTYPE::VECSXP && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
+        if TYPEOF(x) == SEXPTYPE::VECSXP
+            && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+        {
             return list_as_data_frame(x);
         }
 
@@ -955,11 +1009,7 @@ unsafe fn empty_data_frame() -> SEXP {
         let _r = protect(rn);
         *INTEGER(rn) = crate::sexp::ffi::NA_INTEGER;
         *INTEGER(rn).add(1) = 0;
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(c"row.names".as_ptr()),
-            rn,
-        );
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), rn);
         result
     }
 }
@@ -2003,11 +2053,7 @@ pub unsafe fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let class_name = elt_to_string(class_arg, 0);
         match class_name.as_str() {
-            "numeric"
-                if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP =>
-            {
-                x
-            }
+            "numeric" if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP => x,
             "numeric" | "double" => do_as_double(_call, _op, args, _rho),
             "integer" => do_as_integer(_call, _op, args, _rho),
             "logical" => do_as_logical(_call, _op, args, _rho),
@@ -2268,7 +2314,6 @@ pub(crate) unsafe fn is_function_value(value: SEXP) -> bool {
             }
     }
 }
-
 
 unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
     unsafe {

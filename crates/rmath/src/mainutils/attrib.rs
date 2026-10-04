@@ -28,7 +28,6 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
@@ -215,7 +214,9 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             ))
             .to_string_lossy()
             .into_owned();
-            if text == "names" && crate::sexp::accessors::TYPEOF(val) == crate::sexp::ffi::SEXPTYPE::LISTSXP {
+            if text == "names"
+                && crate::sexp::accessors::TYPEOF(val) == crate::sexp::ffi::SEXPTYPE::LISTSXP
+            {
                 val = crate::eval::attrib_core::pairlist_to_names(val);
             }
             crate::sexp::symbol::Rf_install(

@@ -374,7 +374,6 @@ pub unsafe fn R_init_splines(_dll: *mut c_void) {
     // Since our functions are #[unsafe(no_mangle)] and directly linked, no registration needed.
 }
 
-
 const SPLINE_CALL_NAMES: &[&str] = &["C_spline_basis", "C_spline_value"];
 
 unsafe extern "C-unwind" fn c_spline_basis(
@@ -395,7 +394,6 @@ unsafe extern "C-unwind" fn c_spline_value(
 ) -> SEXP {
     unsafe { spline_value(knots, coeff, order, x, deriv) }
 }
-
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);

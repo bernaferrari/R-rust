@@ -371,8 +371,7 @@ pub struct RInstance {
     /// The permanent preserve stack for this instance.
     pub(crate) preserve_stack: super::protect::PreservedRoots,
     /// Cached closures own their exact GC roots until eviction or teardown.
-    pub(crate) base_wrappers:
-        RefCell<HashMap<&'static str, super::object::Sexp<'static>>>,
+    pub(crate) base_wrappers: RefCell<HashMap<&'static str, super::object::Sexp<'static>>>,
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
     pub(crate) context_stack: Vec<Rc<std::cell::UnsafeCell<super::context::RCNTXT>>>,

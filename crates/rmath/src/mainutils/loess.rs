@@ -981,8 +981,11 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             grid.push(t);
             queries.push(vec![t]);
         }
-        let pred = match model.predict_with_execution(&queries, false, &Execution::new(&check_execution))
-        {
+        let pred = match model.predict_with_execution(
+            &queries,
+            false,
+            &Execution::new(&check_execution),
+        ) {
             Ok((fit, _)) => fit,
             Err(_) => return R_NilValue(),
         };
@@ -998,11 +1001,7 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xout);
         SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
 }
-

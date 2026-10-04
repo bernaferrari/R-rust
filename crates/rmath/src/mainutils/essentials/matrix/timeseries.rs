@@ -268,7 +268,10 @@ pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 unsafe fn series_tsp(x: SEXP) -> (f64, f64, f64) {
     unsafe {
         let tsp = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol());
-        if !tsp.is_null() && tsp != R_NilValue() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 3
+        if !tsp.is_null()
+            && tsp != R_NilValue()
+            && TYPEOF(tsp) == SEXPTYPE::REALSXP
+            && XLENGTH(tsp) >= 3
         {
             return (*REAL(tsp), *REAL(tsp).add(1), *REAL(tsp).add(2));
         }
@@ -311,7 +314,8 @@ unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
         let n = ((end - start) * freq + 1.01).floor() as usize;
         let na = XLENGTH(a) as usize;
         let nb = XLENGTH(b) as usize;
-        let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+        let result =
+            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
         let _r = protect(result);
         let off_a = ((sa - start) * freq).round() as isize;
         let off_b = ((sb - start) * freq).round() as isize;
@@ -347,7 +351,10 @@ unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
         let _c = protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"mts".as_ptr()));
         SET_STRING_ELT(class, 1, Rf_mkChar(c"ts".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class,
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
         );
         result
     }
@@ -362,7 +369,6 @@ pub unsafe fn do_ts_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_ts_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { cbind_ts(args, false) }
 }
-
 
 #[cfg(test)]
 mod tests {

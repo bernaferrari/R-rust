@@ -17,8 +17,8 @@ use std::ffi::{CStr, CString};
 
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX_ELT, INTEGER_ELT, LENGTH, LOGICAL_ELT, PRINTNAME, RAW_ELT, REAL_ELT,
-    SETCDR, SETTAG, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT,
+    SET_VECTOR_ELT, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 
 use crate::sexp::attrib_core::{
@@ -65,8 +65,9 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if sa == R_NilValue() || sb == R_NilValue() {
             let complex = (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::CPLXSXP)
                 || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::CPLXSXP);
-            let other_real = (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::REALSXP)
-                || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::REALSXP);
+            let other_real =
+                (!sa.is_null() && sa != R_NilValue() && TYPEOF(sa) == SEXPTYPE::REALSXP)
+                    || (!sb.is_null() && sb != R_NilValue() && TYPEOF(sb) == SEXPTYPE::REALSXP);
             let kind = if complex {
                 SEXPTYPE::CPLXSXP
             } else if op == "/" || op == "^" || other_real {
@@ -96,23 +97,33 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let n = a.clone().recycled_len_with(b.clone());
         let use_real = op == "/" || op == "^" || a.clone().needs_real_with(b.clone());
         if n == 0 {
-            let kind = if use_real { SEXPTYPE::REALSXP } else { SEXPTYPE::INTSXP };
+            let kind = if use_real {
+                SEXPTYPE::REALSXP
+            } else {
+                SEXPTYPE::INTSXP
+            };
             let empty = Rf_allocVector3(kind, 0);
             let _empty_guard = protect(empty);
             propagate_arithmetic_attributes(empty, sa, sb, 0);
             return empty;
         }
         let integer_overflow_can_warn = matches!(op, "+" | "-" | "*");
-        let sa_dim = crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
-        let sb_dim = crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
+        let sa_dim =
+            crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
+        let sb_dim =
+            crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
         let sa_arr = !sa_dim.is_null() && sa_dim != R_NilValue();
         let sb_arr = !sb_dim.is_null() && sb_dim != R_NilValue();
         let al = XLENGTH(sa);
         let bl = XLENGTH(sb);
         if sa_arr && !sb_arr && al == 1 && bl > 1 {
-            warn_simple("Recycling array of length 1 in array-vector arithmetic is deprecated.\n  Use c() or as.vector() instead.");
+            warn_simple(
+                "Recycling array of length 1 in array-vector arithmetic is deprecated.\n  Use c() or as.vector() instead.",
+            );
         } else if sb_arr && !sa_arr && bl == 1 && al > 1 {
-            warn_simple("Recycling array of length 1 in vector-array arithmetic is deprecated.\n  Use c() or as.vector() instead.");
+            warn_simple(
+                "Recycling array of length 1 in vector-array arithmetic is deprecated.\n  Use c() or as.vector() instead.",
+            );
         }
         let result_raw = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP, n)
@@ -203,8 +214,10 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(b) = NumericVector::from_raw(sb) else {
             arithmetic_error("comparison of these types is not implemented");
         };
-        let sa_dim = crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
-        let sb_dim = crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
+        let sa_dim =
+            crate::sexp::attrib_core::getAttrib(sa, crate::sexp::attrib_core::R_DimSymbol());
+        let sb_dim =
+            crate::sexp::attrib_core::getAttrib(sb, crate::sexp::attrib_core::R_DimSymbol());
         let sa_arr = !sa_dim.is_null() && sa_dim != R_NilValue();
         let sb_arr = !sb_dim.is_null() && sb_dim != R_NilValue();
         let al = XLENGTH(sa);
@@ -213,7 +226,9 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             || (sb_arr && !sa_arr && bl > 0 && al > 1 && bl % al != 0)
         {
             let (prod, obj) = if sa_arr { (al, bl) } else { (bl, al) };
-            arithmetic_error(format!("dims [product {prod}] do not match the length of object [{obj}]"));
+            arithmetic_error(format!(
+                "dims [product {prod}] do not match the length of object [{obj}]"
+            ));
         }
         let n = a.clone().recycled_len_with(b.clone());
         if n == 0 {
@@ -503,12 +518,7 @@ unsafe fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
     }
 }
 
-unsafe fn coerce_summary_posixlt_args(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+unsafe fn coerce_summary_posixlt_args(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut out = R_NilValue();
         let mut tail: SEXP = std::ptr::null_mut();
@@ -544,11 +554,7 @@ unsafe fn coerce_summary_posixlt_args(
         let _guards = guards;
         out
     }
-
 }
-
-
-
 
 unsafe fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
     unsafe {
@@ -700,7 +706,6 @@ unsafe fn is_numeric_version(x: SEXP) -> bool {
     }
 }
 
-
 unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
     unsafe {
         if is_numeric_version(x) && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1 {
@@ -710,7 +715,6 @@ unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
                 let mut out = Vec::with_capacity(n as usize);
                 for i in 0..n {
                     out.push(INTEGER_ELT(elt, i as std::os::raw::c_int));
-
                 }
                 return Some(out);
             }
@@ -721,8 +725,7 @@ unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
             if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
                 return None;
             }
-            let text = std::ffi::CStr::from_ptr(CHAR(ch))
-                .to_string_lossy();
+            let text = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
             let mut out = Vec::new();
             for part in text.split(['.', '-']) {
                 if part.is_empty() {
@@ -752,7 +755,6 @@ unsafe fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
                 ord = if x < y { -1 } else { 1 };
                 break;
             }
-
         }
         let yes = match op {
             "<" => ord < 0,
@@ -766,7 +768,6 @@ unsafe fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
         Some(Rf_ScalarLogical(if yes { TRUE } else { FALSE }))
     }
 }
-
 
 unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
@@ -805,8 +806,6 @@ unsafe fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
         }
     }
 }
-
-
 
 unsafe fn posixct_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
@@ -1249,7 +1248,6 @@ unsafe fn rewritten_level_labels(f: SEXP) -> Vec<String> {
     }
 }
 
-
 /// Coerce a relop operand to character following the stock ladder; only
 /// logical/integer/real/complex/raw make it (the rest error like stock's
 /// final else).
@@ -1601,7 +1599,6 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
             return result;
         }
 
-
         if let Some(result) = difftime_binary_comparison(op_name, a, b) {
             return result;
         }
@@ -1659,8 +1656,12 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
         if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
             return complex_relop(op_name, a, b);
         }
-        if (TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(a) == SEXPTYPE::REALSXP || TYPEOF(a) == SEXPTYPE::LGLSXP)
-            && (TYPEOF(b) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::REALSXP || TYPEOF(b) == SEXPTYPE::LGLSXP)
+        if (TYPEOF(a) == SEXPTYPE::INTSXP
+            || TYPEOF(a) == SEXPTYPE::REALSXP
+            || TYPEOF(a) == SEXPTYPE::LGLSXP)
+            && (TYPEOF(b) == SEXPTYPE::INTSXP
+                || TYPEOF(b) == SEXPTYPE::REALSXP
+                || TYPEOF(b) == SEXPTYPE::LGLSXP)
         {
             return binary_compare(op_name, a, b);
         }
@@ -1693,7 +1694,6 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
             return binary_compare(op_name, a, b);
         }
         arithmetic_error("comparison of these types is not implemented");
-
     }
 }
 
@@ -1786,14 +1786,22 @@ unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
         if !rows.is_null() && rows != R_NilValue() {
             setAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol(), rows);
         }
-        setAttrib(out, crate::sexp::attrib_core::R_ClassSymbol(), crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()));
+        setAttrib(
+            out,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()),
+        );
         Some(out)
     }
 }
 
 unsafe fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
     unsafe {
-        if is_frame || value == R_NilValue() || TYPEOF(value) == SEXPTYPE::NILSXP || TYPEOF(value) != SEXPTYPE::VECSXP {
+        if is_frame
+            || value == R_NilValue()
+            || TYPEOF(value) == SEXPTYPE::NILSXP
+            || TYPEOF(value) != SEXPTYPE::VECSXP
+        {
             return;
         }
         let len = XLENGTH(value);
@@ -1892,8 +1900,16 @@ unsafe fn unary_plus_logical(x: SEXP) -> SEXP {
         }
         propagate_unary_vector_attributes(result, x, n);
         if has_class(x, "ts") || has_class(x, "mts") {
-            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
-            crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), R_NilValue());
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_TspSymbol(),
+                R_NilValue(),
+            );
         }
         result
     }
@@ -1937,8 +1953,16 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         if TYPEOF(x) == SEXPTYPE::LGLSXP {
             propagate_unary_vector_attributes(result_raw, x, n);
             if has_class(x, "ts") || has_class(x, "mts") {
-                crate::sexp::attrib_core::setAttrib(result_raw, crate::sexp::attrib_core::R_ClassSymbol(), R_NilValue());
-                crate::sexp::attrib_core::setAttrib(result_raw, crate::sexp::attrib_core::R_TspSymbol(), R_NilValue());
+                crate::sexp::attrib_core::setAttrib(
+                    result_raw,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result_raw,
+                    crate::sexp::attrib_core::R_TspSymbol(),
+                    R_NilValue(),
+                );
             }
         } else {
             copy_all_attrib(result_raw, x);
@@ -2238,7 +2262,11 @@ pub unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
                     *crate::sexp::accessors::REAL(s).add(i as usize)
                 } else if TYPEOF(s) == SEXPTYPE::INTSXP || TYPEOF(s) == SEXPTYPE::LGLSXP {
                     let iv = *crate::sexp::accessors::INTEGER(s).add(i as usize);
-                    if iv == crate::sexp::ffi::NA_INTEGER { crate::sexp::ffi::NA_REAL } else { iv as f64 }
+                    if iv == crate::sexp::ffi::NA_INTEGER {
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        iv as f64
+                    }
                 } else {
                     crate::sexp::ffi::NA_REAL
                 };
@@ -2502,7 +2530,6 @@ pub unsafe fn do_length(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return Rf_ScalarInteger(0);
         }
 
-
         #[cfg(feature = "renderplot-device")]
         if crate::mainutils::essentials::sexp_has_class(x, "unit") {
             return crate::mainutils::portable_grid::unit_value_length(x);
@@ -2563,8 +2590,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-
-
     }
 }
 
@@ -2670,7 +2695,6 @@ unsafe fn parse_summary_finite(args: SEXP) -> bool {
         finite
     }
 }
-
 
 unsafe fn summary_logical_arg(x: SEXP) -> bool {
     unsafe {
@@ -2958,7 +2982,11 @@ unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
                     extreme = Some(match extreme {
                         None => v,
                         Some(prev) => {
-                            if op == SummaryOp::Min { prev.min(v) } else { prev.max(v) }
+                            if op == SummaryOp::Min {
+                                prev.min(v)
+                            } else {
+                                prev.max(v)
+                            }
                         }
                     });
                 }
@@ -2971,7 +2999,9 @@ unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
                     best = Some(match best {
                         None => text,
                         Some(prev) => {
-                            if (op == SummaryOp::Min && text < prev) || (op == SummaryOp::Max && text > prev) {
+                            if (op == SummaryOp::Min && text < prev)
+                                || (op == SummaryOp::Max && text > prev)
+                            {
                                 text
                             } else {
                                 prev
@@ -2995,12 +3025,16 @@ unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
                     SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
                     return out;
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
+                    std::ffi::CStr::from_ptr(CHAR(s))
+                        .to_string_lossy()
+                        .into_owned()
                 };
                 best = Some(match best {
                     None => text,
                     Some(prev) => {
-                        if (op == SummaryOp::Min && text < prev) || (op == SummaryOp::Max && text > prev) {
+                        if (op == SummaryOp::Min && text < prev)
+                            || (op == SummaryOp::Max && text > prev)
+                        {
                             text
                         } else {
                             prev
@@ -3453,7 +3487,6 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "switch",
             "on.exit",
             "$",
-
             "$<-",
             "[",
             "[<-",
@@ -3466,15 +3499,11 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "~",
             ":",
             ".Internal",
-
-
             "expression",
             "call",
             "Exec",
             "Tailcall",
-
         ];
-
 
         let frame = crate::sexp::accessors::FRAME(env);
         let mut chain = frame;

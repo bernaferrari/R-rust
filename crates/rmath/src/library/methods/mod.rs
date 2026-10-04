@@ -4,8 +4,8 @@ pub mod class_support;
 pub mod do_substitute_direct;
 pub mod init;
 pub mod methods_list_dispatch;
+pub mod native_calls;
 pub mod slot;
 pub mod tests;
-pub mod native_calls;
 
 pub mod utils_methods;

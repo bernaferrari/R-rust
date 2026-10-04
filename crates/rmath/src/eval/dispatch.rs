@@ -1229,8 +1229,8 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
 
 #[cfg(test)]
 mod owned_argument_tests {
-    use crate::sexp::context::RError;
     use super::*;
+    use crate::sexp::context::RError;
     use crate::sexp::{object::PairlistIter, session::RSession};
     use std::{cell::Cell, rc::Rc};
 

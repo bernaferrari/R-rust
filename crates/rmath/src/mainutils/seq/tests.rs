@@ -605,10 +605,8 @@ unsafe fn attribute_list(value: SEXP) -> SEXP {
 
 fn attribute_name(shown: SEXP) -> String {
     unsafe {
-        let names = crate::sexp::attrib_core::getAttrib(
-            shown,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(shown, crate::sexp::attrib_core::R_NamesSymbol());
         let chars = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(names, 0));
         std::ffi::CStr::from_ptr(chars)
             .to_str()
@@ -841,10 +839,7 @@ fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
             "formula leaked into print: {}",
             printed.stdout
         );
-        assert!(
-            (*seq).payload.is_empty(),
-            "printing allocated the payload"
-        );
+        assert!((*seq).payload.is_empty(), "printing allocated the payload");
     }
 }
 
@@ -987,8 +982,13 @@ fn altseq_failed_allocation_keeps_the_formula() {
         crate::sexp::memory::with_arena(|_arena| unsafe {
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let _ = INTEGER(lent);
-            })).expect_err("nonempty compact payload access must raise an R error");
-            assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+            }))
+            .expect_err("nonempty compact payload access must raise an R error");
+            assert!(
+                error
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
             assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
             assert!((*lent).payload.is_empty());
             assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
@@ -1088,12 +1088,8 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
 
         let (mut wr_l, mut dr_l, mut er_l) = (0, 0, 0);
         let (mut wr_p, mut dr_p, mut er_p) = (0, 0, 0);
-        crate::mainutils::printarray::formatRealMatrix(
-            lazy_r, 4, &mut wr_l, &mut dr_l, &mut er_l,
-        );
-        crate::mainutils::printarray::formatRealMatrix(
-            plain_r, 4, &mut wr_p, &mut dr_p, &mut er_p,
-        );
+        crate::mainutils::printarray::formatRealMatrix(lazy_r, 4, &mut wr_l, &mut dr_l, &mut er_l);
+        crate::mainutils::printarray::formatRealMatrix(plain_r, 4, &mut wr_p, &mut dr_p, &mut er_p);
         assert_eq!((wr_l, dr_l, er_l), (wr_p, dr_p, er_p));
         assert!(wr_l > 0);
         assert!(still_lazy(lazy_r));
@@ -1378,7 +1374,10 @@ fn altseq_long_real_colon_stays_lazy() {
         assert!(still_lazy(via));
         let via_view = crate::sexp::Sexp::from_raw(via).unwrap();
         assert_eq!(via_view.try_real_elt(0), Ok(1.0));
-        assert_eq!(via_view.try_real_elt(n - 1), Ok((c_int::MAX as c_double) + 1.0));
+        assert_eq!(
+            via_view.try_real_elt(n - 1),
+            Ok((c_int::MAX as c_double) + 1.0)
+        );
         assert!(still_lazy(via));
 
         // `(-2147483649):1` does not fit in an integer sequence.
@@ -1464,9 +1463,7 @@ fn unwind_message(payload: Box<dyn std::any::Any + Send>) -> String {
 }
 
 fn still_lazy(value: SEXP) -> bool {
-    unsafe {
-        crate::sexp::accessors::ALTREP(value) == 1 && (*value).payload.is_empty()
-    }
+    unsafe { crate::sexp::accessors::ALTREP(value) == 1 && (*value).payload.is_empty() }
 }
 
 unsafe fn set_matrix_dim(x: SEXP, nrow: c_int, ncol: c_int) -> SEXP {

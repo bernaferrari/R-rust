@@ -36,7 +36,9 @@ fn grid_ls_matches_gnu_listing_and_recording_false_omits_grobs() {
     // and indents gTree children by two spaces. An empty display list prints one blank line.
     // grid.newpage(recording=FALSE) clears the page but keeps the display list.
     let mut session = RSession::new().unwrap();
-    let out = report(&mut session, r#"
+    let out = report(
+        &mut session,
+        r#"
         library(grid)
         grid.newpage()
         grid.text('hi', name='label')
@@ -89,7 +91,8 @@ fn grid_ls_matches_gnu_listing_and_recording_false_omits_grobs() {
         final_ls <- paste(capture.output(grid.ls()), collapse='\n')
 
         out <- paste(scene, length(empty_lines), empty_first, drawn_false, drawn_true, kept, still, tree, nav, final_ls, sep='||')
-    "#);
+    "#,
+    );
     assert_eq!(
         out,
         [
@@ -124,7 +127,9 @@ fn current_viewport_inches_follow_the_pushed_viewport() {
     // of unit(0.5,'npc'), unit(0.5,'npc'), unit(0.5,'npc'), unit(0.25,'npc') on that
     // device are 1, 0.5, 1, 0.25 inches. ROOT is the full page (centre 1, 0.5; size 2 by 1).
     let mut session = RSession::new().unwrap();
-    let out = report(&mut session, r#"
+    let out = report(
+        &mut session,
+        r#"
         library(grid)
         grid.newpage()
         root <- current.viewport()
@@ -136,7 +141,8 @@ fn current_viewport_inches_follow_the_pushed_viewport() {
         out <- paste(root$name, fmt(root$x), fmt(root$y), fmt(root$width), fmt(root$height), root_near,
             inner$name, fmt(inner$x), fmt(inner$y), fmt(inner$width), fmt(inner$height), near,
             sep='|')
-    "#);
+    "#,
+    );
     assert_eq!(
         out,
         "ROOT|1.00000000|0.50000000|2.00000000|1.00000000|TRUE|inner|1.00000000|0.50000000|1.00000000|0.25000000|TRUE"
@@ -150,7 +156,9 @@ fn fractional_up_and_pop_truncate_toward_zero_like_gnu() {
     // Exact 0 means the whole stack. n < 0 stops. Five steps past a depth of
     // four stops. up(1) at ROOT is left as this port's top-level stop.
     let mut session = RSession::new().unwrap();
-    let out = report(&mut session, r#"
+    let out = report(
+        &mut session,
+        r#"
         library(grid)
         step <- function(label, which, n) {
           grid.newpage()
@@ -195,7 +203,8 @@ fn fractional_up_and_pop_truncate_toward_zero_like_gnu() {
           step('pop5', 'pop', 5),
           root_pop
         ), collapse='|')
-    "#);
+    "#,
+    );
     let expected = [
         "up-1=ERR:must navigate up at least one viewport",
         "pop-1=ERR:must pop at least one viewport",

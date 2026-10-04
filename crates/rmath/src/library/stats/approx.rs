@@ -193,9 +193,7 @@ pub unsafe fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, xout);
         SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()]);
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         let _ = INTEGER;
         result
     }

@@ -738,7 +738,10 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         );
 
     session.load_package("corpbase").expect("load corpbase");
-    assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10\n");
+    assert_eq!(
+        session.eval("base_value()").expect("base value"),
+        "[1] 10\n"
+    );
     assert_eq!(
         session
             .eval("corp_generic(make_corp())")
@@ -764,7 +767,10 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         "[1] 15\n"
     );
     session.load_package("corpfrom").expect("load importFrom");
-    assert_eq!(session.eval("from_value()").expect("from value"), "[1] 17\n");
+    assert_eq!(
+        session.eval("from_value()").expect("from value"),
+        "[1] 17\n"
+    );
     session.load_package("corpcollate").expect("load collate");
     assert_eq!(
         session

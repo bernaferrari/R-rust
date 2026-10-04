@@ -108,7 +108,10 @@ mod tests {
         let mut session = RSession::new_for_gc_tests();
         let guard = VisibilityGuard::new();
         let original = guard.instance;
-        let inspection_pin = unsafe { (*original).runtime_owner.clone() }.unwrap().pin().unwrap();
+        let inspection_pin = unsafe { (*original).runtime_owner.clone() }
+            .unwrap()
+            .pin()
+            .unwrap();
         let saved = guard.saved;
         set_visible(1 - saved);
         session.close();

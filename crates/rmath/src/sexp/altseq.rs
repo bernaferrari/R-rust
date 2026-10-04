@@ -19,9 +19,7 @@ use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_double, c_int};
 
-use super::accessors::{
-    ATTRIB, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF,
-};
+use super::accessors::{ATTRIB, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF};
 use super::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::{self, with_arena};
 use super::object::{LeadingScalars, NodeBody, Sexp, copy_leading_scalars};
@@ -381,7 +379,11 @@ impl Sexp<'_> {
 
     /// Formula element. `require_unexpanded` matches the C accessors, which
     /// ignore a formula once a buffer pointer is present and read that buffer.
-    pub(crate) fn read_compact_int(&self, i: R_xlen_t, require_unexpanded: bool) -> LazyRead<c_int> {
+    pub(crate) fn read_compact_int(
+        &self,
+        i: R_xlen_t,
+        require_unexpanded: bool,
+    ) -> LazyRead<c_int> {
         let Some(seq) = self.compact_seq() else {
             return LazyRead::Absent;
         };
@@ -431,24 +433,45 @@ fn unexpanded(x: SEXP) -> Option<CompactSeq> {
 /// # Safety
 /// `x` is a live node, with no overlapping native payload loan.
 pub(crate) unsafe fn materialize(x: SEXP) {
-    let Some((_, parent)) = memory::checked_projection(x) else { return; };
-    let Some(_root) = parent.root_lease() else { return; };
+    let Some((_, parent)) = memory::checked_projection(x) else {
+        return;
+    };
+    let Some(_root) = parent.root_lease() else {
+        return;
+    };
     let heap = parent.heap_identity();
-    let Some(header) = heap.node_snapshot(&parent) else { return; };
-    if !header.sxpinfo.alt() { return; }
-    let key = x as usize;
-    if MATERIALIZE_ADDR.with(|open| open.get()) == key { return; }
-    if !header.payload.is_empty() {
-        unsafe { finish(x); }
+    let Some(header) = heap.node_snapshot(&parent) else {
+        return;
+    };
+    if !header.sxpinfo.alt() {
         return;
     }
-    let Some(formula) = (unsafe { read_formula(x) }) else { return; };
-    let Ok(n) = usize::try_from(header.vecsxp_length()) else { return; };
+    let key = x as usize;
+    if MATERIALIZE_ADDR.with(|open| open.get()) == key {
+        return;
+    }
+    if !header.payload.is_empty() {
+        unsafe {
+            finish(x);
+        }
+        return;
+    }
+    let Some(formula) = (unsafe { read_formula(x) }) else {
+        return;
+    };
+    let Ok(n) = usize::try_from(header.vecsxp_length()) else {
+        return;
+    };
     let prev = MATERIALIZE_ADDR.with(|open| open.replace(key));
     let _restore = RestoreMaterializing(prev);
-    let committed = n == 0 || memory::attach_initialized_payload(&parent,
-        |payload| fill(payload, &formula, n)).is_some();
-    if committed { unsafe { finish(x); } }
+    let committed = n == 0
+        || memory::attach_initialized_payload(&parent, |payload| fill(payload, &formula, n))
+            .is_some();
+    if committed {
+        unsafe {
+            finish(x);
+        }
+    }
 }
 
 /// Keep a still-lazy sequence's formula at the head of `v`.
@@ -471,11 +494,16 @@ pub(crate) unsafe fn keep_formula_replace_tail(x: SEXP, v: SEXP) {
 unsafe fn replace_metadata_tail(x: SEXP, rest: SEXP) {
     let (_, parent) = memory::checked_projection(x).expect("checked compact sequence");
     let heap = parent.heap_identity();
-    let link = heap.link_from_projection(rest).expect("compact sequence attribute child");
+    let link = heap
+        .link_from_projection(rest)
+        .expect("compact sequence attribute child");
     super::gengc::attrib_write_barrier(x, rest);
-    let mut header = heap.node_snapshot(&parent).expect("live compact sequence header");
+    let mut header = heap
+        .node_snapshot(&parent)
+        .expect("live compact sequence header");
     header.attrib = link;
-    heap.replace_node(&parent, header).expect("compact sequence attribute publication");
+    heap.replace_node(&parent, header)
+        .expect("compact sequence attribute publication");
 }
 
 /// Drop every `.InternalAltSeq` cell from an attribute list.
@@ -535,14 +563,22 @@ fn fill(payload: &super::payload::PayloadLease, formula: &Formula, n: usize) -> 
 /// nested `SET_ATTRIB` cannot call back into [`materialize`].
 unsafe fn finish(x: SEXP) {
     unsafe {
-        let Some((_, parent)) = memory::checked_projection(x) else { return; };
+        let Some((_, parent)) = memory::checked_projection(x) else {
+            return;
+        };
         let heap = parent.heap_identity();
-        let Some(mut header) = heap.node_snapshot(&parent) else { return; };
+        let Some(mut header) = heap.node_snapshot(&parent) else {
+            return;
+        };
         let n = header.vecsxp_length();
-        if n < 0 || (n > 0 && heap.payload_lease(&parent).is_none()) { return; }
+        if n < 0 || (n > 0 && heap.payload_lease(&parent).is_none()) {
+            return;
+        }
         header.sxpinfo.set_alt(false);
         header.data.vector_mut().truelength = n;
-        if heap.replace_node(&parent, header).is_none() { return; }
+        if heap.replace_node(&parent, header).is_none() {
+            return;
+        }
         let cell = ATTRIB(x);
         if is_list(cell) && is_formula_tag(TAG(cell)) {
             let rest = CDR(cell);

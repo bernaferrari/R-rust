@@ -139,7 +139,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         }
         let t = TYPEOF(x);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let kind = if t == SEXPTYPE::BUILTINSXP { "builtin" } else { "special" };
+            let kind = if t == SEXPTYPE::BUILTINSXP {
+                "builtin"
+            } else {
+                "special"
+            };
             std::panic::panic_any(crate::sexp::context::RError {
                 message: format!("cannot set an attribute on a '{kind}'"),
             });
@@ -153,7 +157,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             let elt = |i: i64| -> f64 {
                 if TYPEOF(value) == SEXPTYPE::INTSXP {
                     let n = crate::sexp::accessors::INTEGER_ELT(value, i as i32);
-                    if n == crate::sexp::ffi::NA_INTEGER { f64::NAN } else { n as f64 }
+                    if n == crate::sexp::ffi::NA_INTEGER {
+                        f64::NAN
+                    } else {
+                        n as f64
+                    }
                 } else {
                     crate::sexp::accessors::REAL_ELT(value, i as i32)
                 }
@@ -162,7 +170,8 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             let end = elt(1);
             let frequency = elt(2);
             let n = {
-                let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+                let dim =
+                    crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
                 if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) >= 1 {
                     crate::sexp::accessors::INTEGER_ELT(dim, 0) as i64
                 } else {
@@ -178,14 +187,15 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             } else {
                 1e-5
             };
-            if n > 0 && frequency.is_finite() && (end - start - (n - 1) as f64 / frequency).abs() > eps
+            if n > 0
+                && frequency.is_finite()
+                && (end - start - (n - 1) as f64 / frequency).abs() > eps
             {
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "invalid time series parameters specified (1)".to_string(),
                 });
             }
         }
-
 
         let value = if which == R_ClassSymbol() {
             crate::sexp::attrib_core::classgets_normalize(x, value)
@@ -368,8 +378,7 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
             let n = XLENGTH(klass);
             let is_matrix = |i: i64| {
                 let ch = STRING_ELT(klass, i);
-                !ch.is_null()
-                    && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"matrix"
+                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"matrix"
             };
             let is_array = |i: i64| {
                 let ch = STRING_ELT(klass, i);
@@ -474,7 +483,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                     } else {
                         "object"
                     }
-                },
+                }
                 _ => "unknown",
             };
 

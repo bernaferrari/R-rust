@@ -22,7 +22,6 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
 use crate::sexp::symbol::Rf_install;
 
-
 // ---------------------------------------------------------------------------
 // Local helper macros and functions
 // ---------------------------------------------------------------------------
@@ -692,9 +691,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                 // Already matched by tag — skip to next formal
                 f = CDR(f);
                 a = CDR(a);
-            } else if ARGUSED(b) != 0
-                || (!TAG(b).is_null() && TAG(b) != R_NilValue())
-            {
+            } else if ARGUSED(b) != 0 || (!TAG(b).is_null() && TAG(b) != R_NilValue()) {
                 // Used or genuinely tagged (GNU: TAG != R_NilValue).
                 // Lazy-load pairlists store untagged args as a null TAG,
                 // which must still take a positional slot.
@@ -842,7 +839,6 @@ pub unsafe fn match_formal_slots(call: SEXP, args: SEXP, names: &[&str]) -> Vec<
         out
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Tests

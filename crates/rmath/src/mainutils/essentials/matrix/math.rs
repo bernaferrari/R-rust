@@ -46,7 +46,6 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 unsafe fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
     unsafe {
-
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
             c"Math".as_ptr(),
@@ -94,11 +93,7 @@ pub unsafe fn real_math1(
                 *REAL(x).add(i as usize)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    v as f64
-                }
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };
@@ -319,7 +314,6 @@ pub unsafe fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
 
-
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
@@ -363,7 +357,6 @@ pub unsafe fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-
             return R_NilValue();
         }
 
@@ -459,7 +452,6 @@ pub unsafe fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
@@ -468,7 +460,6 @@ pub unsafe fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 crate::eval::complex_arith::complex_asin,
             );
         }
-
 
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {

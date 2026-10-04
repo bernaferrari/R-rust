@@ -331,10 +331,14 @@ pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 let old = (*ctxt).conexit.as_raw();
                 if is_null(old) || add == FALSE {
-                    (*ctxt).conexit.replace_from_raw(Rf_cons(expr, R_NilValue()));
+                    (*ctxt)
+                        .conexit
+                        .replace_from_raw(Rf_cons(expr, R_NilValue()));
                 } else if after != FALSE {
                     let copied = crate::mainutils::duplicate::shallow_duplicate(old);
-                    (*ctxt).conexit.replace_from_raw(list_append(copied, Rf_cons(expr, R_NilValue())));
+                    (*ctxt)
+                        .conexit
+                        .replace_from_raw(list_append(copied, Rf_cons(expr, R_NilValue())));
                 } else {
                     (*ctxt).conexit.replace_from_raw(Rf_cons(expr, old));
                 }

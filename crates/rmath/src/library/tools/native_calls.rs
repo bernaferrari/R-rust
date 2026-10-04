@@ -8,7 +8,6 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::symbol::Rf_install;
 
-
 use super::text::{delim_match, doTabExpand, nonASCII, splitString};
 
 const TOOLS_CALL_NAMES: &[&str] = &[

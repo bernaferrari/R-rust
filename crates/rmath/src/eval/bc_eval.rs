@@ -2335,7 +2335,8 @@ unsafe fn eval_gnu_adapter(
                             // The instruction fixes primitive identity; mutable
                             // base bindings and retained call text cannot change it.
                             let op = own_operand(super::primitive::make_primitive_binding(
-                                symbol.to_str().unwrap(), SEXPTYPE::BUILTINSXP,
+                                symbol.to_str().unwrap(),
+                                SEXPTYPE::BUILTINSXP,
                             ));
                             let tail = Rf_cons(b, R_NilValue());
                             let _tail = own_operand(tail);
@@ -3895,7 +3896,11 @@ unsafe fn bc_eval_owned(
                         let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
                         let srcref = own_operand(crate::attrib_core::getAttrib(src, srcref_symbol));
                         if srcref.as_raw() != R_NilValue() {
-                            crate::attrib_core::setAttrib(call.as_raw(), srcref_symbol, srcref.as_raw());
+                            crate::attrib_core::setAttrib(
+                                call.as_raw(),
+                                srcref_symbol,
+                                srcref.as_raw(),
+                            );
                         }
                     }
                     let result = match eval_nested_call(call.as_raw(), rho, &stack, &loop_stack) {
@@ -3912,8 +3917,10 @@ unsafe fn bc_eval_owned(
                 }
 
                 opcodes::OP_REPLACEMENT => {
-                    let setter_idx = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT function");
-                    let symbol_idx = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT object");
+                    let setter_idx =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT function");
+                    let symbol_idx =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT object");
                     let count = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT arguments");
                     let rhs_expr_idx =
                         read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT RHS expression");
@@ -3932,7 +3939,9 @@ unsafe fn bc_eval_owned(
                         symbol_idx as i64,
                         "REPLACEMENT object",
                     ));
-                    if function.typeof_() != SEXPTYPE::SYMSXP || symbol.typeof_() != SEXPTYPE::SYMSXP {
+                    if function.typeof_() != SEXPTYPE::SYMSXP
+                        || symbol.typeof_() != SEXPTYPE::SYMSXP
+                    {
                         bc_error("REPLACEMENT constants must be symbols");
                     }
                     let top = stack.depth();
@@ -3979,7 +3988,6 @@ unsafe fn bc_eval_owned(
                     stack.push_owned(rhs);
                     super::runtime::set_visible(FALSE);
                 }
-
 
                 opcodes::OP_STARTASSIGN => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "STARTASSIGN");

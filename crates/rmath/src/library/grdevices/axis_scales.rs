@@ -149,7 +149,11 @@ fn create_log_at_vector(mut axp: [f64; 3], usr: [f64; 2], nint: c_int, style: c_
     if style == 1 {
         let decade = |x: f64| {
             let l = x.log10();
-            if (l - l.round()).abs() < 1e-6 { l.round() as i32 } else { l.floor() as i32 }
+            if (l - l.round()).abs() < 1e-6 {
+                l.round() as i32
+            } else {
+                l.floor() as i32
+            }
         };
         let lo = decade(axp[0]);
         let hi = decade(axp[1]);

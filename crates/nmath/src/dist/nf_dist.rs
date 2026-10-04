@@ -631,7 +631,10 @@ mod pnf_tests {
     fn pnf_large_x_ncp_log_survival_stays_finite() {
         let x = 1e16 * 1.1_f64.powi(0);
         let p = pnf_inner(x, 1.0, 1.0, 20.0, false, true);
-        assert!(p.is_finite(), "pnf({x}, 1, 1, ncp=20, lower=F, log=T) = {p}");
+        assert!(
+            p.is_finite(),
+            "pnf({x}, 1, 1, ncp=20, lower=F, log=T) = {p}"
+        );
         assert!(p < 0.0);
         assert!((-18.0..-16.0).contains(&p), "got {p}");
     }

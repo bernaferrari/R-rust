@@ -89,8 +89,7 @@ unsafe fn own_trace_value(
 }
 
 fn trace_projection(value: Option<&crate::sexp::object::Sexp<'static>>) -> SEXP {
-    value
-        .map_or(ptr::null_mut(), |value| value.as_raw())
+    value.map_or(ptr::null_mut(), |value| value.as_raw())
 }
 
 /// R_GetTracebackOnly — return traceback without deparsing calls.
@@ -108,7 +107,8 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
         crate::sexp::context::require_context_owner_live(pin.as_ref());
         let mut cell = trace_projection(result.as_ref());
         for frame in frames {
-            let call = crate::mainutils::duplicate::Rf_duplicate(trace_projection(frame.call.as_ref()));
+            let call =
+                crate::mainutils::duplicate::Rf_duplicate(trace_projection(frame.call.as_ref()));
             crate::sexp::context::require_context_owner_live(pin.as_ref());
             let call = own_trace_value(instance, call);
             let source = trace_projection(frame.srcref.as_ref());

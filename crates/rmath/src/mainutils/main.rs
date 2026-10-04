@@ -720,13 +720,11 @@ pub unsafe fn R_GetMaxNSize() -> u64 {
 }
 
 pub unsafe fn R_GetVSize() -> u64 {
-    unsafe { crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64)
-}
+    unsafe { crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64) }
 }
 
 pub unsafe fn R_GetNSize() -> u64 {
-    unsafe {
-    crate::sexp::memory::with_arena(|a| a.node_count() as u64) }
+    unsafe { crate::sexp::memory::with_arena(|a| a.node_count() as u64) }
 }
 
 // ---------------------------------------------------------------------------
@@ -736,7 +734,7 @@ pub unsafe fn R_GetNSize() -> u64 {
 #[cfg(test)]
 mod tests {
     use crate::sexp::accessors::TYPEOF;
-    use crate::sexp::constructors::{Rf_cons, Rf_ScalarLogical};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons};
 
     use crate::mainutils::rfile::{r_fclose, r_fopen};
     use std::path::PathBuf;

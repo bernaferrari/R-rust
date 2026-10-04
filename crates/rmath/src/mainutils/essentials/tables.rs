@@ -249,7 +249,11 @@ pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             cell = CDR(cell);
         }
-        if !file.is_null() && file != R_NilValue() && TYPEOF(file) == SEXPTYPE::STRSXP && XLENGTH(file) >= 1 {
+        if !file.is_null()
+            && file != R_NilValue()
+            && TYPEOF(file) == SEXPTYPE::STRSXP
+            && XLENGTH(file) >= 1
+        {
             let path = CStr::from_ptr(CHAR(STRING_ELT(file, 0)))
                 .to_string_lossy()
                 .into_owned();
@@ -257,7 +261,10 @@ pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 let n = XLENGTH(x) as usize;
                 let mut parts = Vec::with_capacity(n);
                 for i in 0..n {
-                    parts.push(format!("{}", crate::mainutils::essentials::elt_real_safe(x, i as i64)));
+                    parts.push(format!(
+                        "{}",
+                        crate::mainutils::essentials::elt_real_safe(x, i as i64)
+                    ));
                 }
                 let _ = std::fs::write(&path, parts.join(" "));
             }
@@ -297,7 +304,6 @@ pub unsafe fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         result
     }
 }
-
 
 unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
     unsafe {
@@ -816,14 +822,10 @@ pub unsafe fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, gcol);
         SET_VECTOR_ELT(result, 1, ycol);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string()],
-        );
+        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
 }
-
 
 #[derive(Clone, Copy)]
 pub(crate) enum AggregateSummary {
@@ -1352,10 +1354,7 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let tag = TAG(cursor);
             let is_fun = if !tag.is_null() && tag != R_NilValue() {
                 let p = PRINTNAME(tag);
-                !p.is_null()
-                    && std::ffi::CStr::from_ptr(CHAR(p))
-                        .to_string_lossy()
-                        == "FUN"
+                !p.is_null() && std::ffi::CStr::from_ptr(CHAR(p)).to_string_lossy() == "FUN"
             } else {
                 false
             };
@@ -1836,7 +1835,6 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             );
         }
 
-
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -1861,7 +1859,8 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             *dst.add(i as usize) = code;
         }
         set_factor_attrs_with_optional_levels(result, &levels);
-        let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -1878,7 +1877,6 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             set_ordered_factor_class(result);
         }
         result
-
     }
 }
 

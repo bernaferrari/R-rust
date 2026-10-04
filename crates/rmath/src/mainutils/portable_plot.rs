@@ -241,7 +241,12 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
 }
 unsafe fn point_size(args: SEXP) -> f32 {
     unsafe {
-        scalar(args, "cex", par_numbers("cex").first().copied().unwrap_or(1.)) as f32 * 3.
+        scalar(
+            args,
+            "cex",
+            par_numbers("cex").first().copied().unwrap_or(1.),
+        ) as f32
+            * 3.
     }
 }
 unsafe fn style(args: SEXP, size: f32) -> Style {
@@ -402,11 +407,18 @@ fn install(coords: Coordinates) {
     set_plot_parameter("usr", ParValue::Real(coords.limits.to_vec()));
     // R-side layout and string metrics must see the dimensions of this
     // device/figure/plot, rather than the registry's default seven-inch page.
-    for (name, rect) in [("din", coords.device), ("fin", coords.figure), ("pin", coords.rect)] {
-        set_plot_parameter(name, ParValue::Real(vec![
-            f64::from(rect[2] - rect[0]) / 72.,
-            f64::from(rect[3] - rect[1]) / 72.,
-        ]));
+    for (name, rect) in [
+        ("din", coords.device),
+        ("fin", coords.figure),
+        ("pin", coords.rect),
+    ] {
+        set_plot_parameter(
+            name,
+            ParValue::Real(vec![
+                f64::from(rect[2] - rect[0]) / 72.,
+                f64::from(rect[3] - rect[1]) / 72.,
+            ]),
+        );
     }
     set_plot_parameter("xlog", ParValue::Logical(vec![i32::from(coords.log[0])]));
     set_plot_parameter("ylog", ParValue::Logical(vec![i32::from(coords.log[1])]));
@@ -1680,7 +1692,11 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
         }
         let c = current();
         // Text has GNU's own cex normalization and does not use point radii.
-        let size = if matches!(name, "text" | "text.default") { 3. } else { point_size(args) };
+        let size = if matches!(name, "text" | "text.default") {
+            3.
+        } else {
+            point_size(args)
+        };
         let style = style(args, size);
         match name {
             "lines" | "lines.default" | "points" | "points.default" => {
@@ -1863,7 +1879,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
                 let count = x.len().max(y.len());
-                let parameters = crate::library::graphics::text_metrics::drawing_parameters(args, count);
+                let parameters =
+                    crate::library::graphics::text_metrics::drawing_parameters(args, count);
                 let target = &mut *renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for (i, mut text_params) in parameters.into_iter().enumerate() {
