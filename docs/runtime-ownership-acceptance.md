@@ -784,3 +784,18 @@ serialization; scalar rounding and malformed-input cases remain independent.
 Warnings-denied facade Clippy and assigned formatting pass. Earlier incomplete
 or failed proof attempts are retained separately. Later writer-version metadata
 and symbol encoding changes are separate units.
+
+## Owning portable model covariance ratios
+
+The public `covratio` entry now uses a safe owning Rust kernel. QR-backed models
+use their actual QR factors, rank and original influence calculation. Supplied
+influence/residual arguments, recycling, names and exceptional numeric results
+follow the independent GNU controls. Portable `lm` retains the original response
+and row labels through callbacks and publishes matching fitted/residual names.
+
+Eight native cases pass, as does the unchanged public GNU comparison of all 32
+mtcars values and names. Seven strict-provenance Miri cases pass in 531.07 seconds
+with the default alias checker and isolation. The full public bootstrap case
+remains native acceptance. Warnings-denied facade Clippy, assigned formatting and
+reproducible GNU fixtures pass. GLM dispersion and weighted preprocessing are
+tracked separately and are not certified by this linear-model checkpoint.

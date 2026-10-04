@@ -25,6 +25,9 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 mod conditions;
+mod covratio;
+#[cfg(test)]
+mod covratio_tests;
 mod functional;
 mod io;
 mod mathstats;

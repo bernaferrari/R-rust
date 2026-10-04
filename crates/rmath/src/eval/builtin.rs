@@ -2500,6 +2500,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_family,
     },
     EvaluatedBuiltin {
+        name: "covratio",
+        handler: crate::mainutils::essentials::do_covratio,
+    },
+    EvaluatedBuiltin {
         name: "lm.influence",
         handler: crate::mainutils::essentials::do_lm_influence,
     },

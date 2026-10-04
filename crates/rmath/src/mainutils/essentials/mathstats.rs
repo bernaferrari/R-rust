@@ -6168,6 +6168,17 @@ unsafe fn lm_named_call(call: SEXP) -> SEXP {
 /// GNU `lm(y ~ x)` intercept + slope.
 pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _arguments = owner
+            .sexp(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let mut row_data = None;
+        let mut row_labels = Vec::new();
+        let mut response_roots = Vec::new();
         let first = CAR(args);
         let eval_rho = {
             let mut data = R_NilValue();
@@ -6191,6 +6202,12 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 p = CDR(p);
             }
             if !data.is_null() && data != R_NilValue() {
+                row_data = Some(
+                    owner
+                        .sexp(data)
+                        .and_then(crate::sexp::object::Sexp::into_owned)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+                );
                 crate::mainutils::essentials::data_environment(data, rho)
             } else {
                 rho
@@ -6205,6 +6222,19 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if !lhs.is_null() && lhs != R_NilValue() {
                 y = crate::eval::eval::Rf_eval(lhs, eval_rho);
             }
+            let response = owner
+                .sexp(y)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            response_roots.push(response.clone());
+            let weak = owner
+                .weak_owner()
+                .unwrap_or_else(|| crate::sexp::context::r_error("lm requires a managed runtime"));
+            row_labels = crate::sexp::owner::with_runtime(&weak, |access| {
+                super::covratio::row_labels(access, row_data, response.clone())
+            })
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e));
 
             fn collect_plus(expr: SEXP, out: &mut Vec<SEXP>) {
                 unsafe {
@@ -6275,6 +6305,11 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     *REAL(adjusted).add(i) = v;
                 }
                 y = adjusted;
+                response_roots.push(
+                    owner
+                        .sexp(adjusted)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+                );
             }
         } else {
             let x = CAR(CDR(args));
@@ -6400,6 +6435,16 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     "qr".to_string(),
                 ],
             );
+            if row_labels.len() >= n {
+                set_string_names(resid, &row_labels[..n]);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                set_string_names(fitted, &row_labels[..n]);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            }
             let class = Rf_mkString(c"lm".as_ptr());
             let _cl = protect(class);
             crate::sexp::attrib_core::setAttrib(
@@ -6514,6 +6559,16 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "call".to_string(),
             ],
         );
+        if row_labels.len() >= n {
+            set_string_names(resid, &row_labels[..n]);
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            set_string_names(fitted, &row_labels[..n]);
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        }
         let class = Rf_mkString(c"lm".as_ptr());
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
@@ -9763,50 +9818,42 @@ pub unsafe fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// GNU `covratio(lm)`.
+/// Checked native boundary for GNU `covratio(model, infl, res)`.
 pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let obj = CAR(args);
-        let resid = list_named_elt(obj, "residuals");
-        let hat = list_named_elt(obj, "hat");
-        let sigma = list_named_elt(obj, "sigma");
-        let rank = list_named_elt(obj, "rank");
-        if resid == R_NilValue() || hat == R_NilValue() || sigma == R_NilValue() {
-            return R_NilValue();
+        use crate::sexp::owner::OwnerToken;
+        let owner =
+            OwnerToken::current().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let arguments = owner
+            .sexp(args)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let weak = owner.weak_owner().unwrap_or_else(|| {
+            crate::sexp::context::r_error("covratio requires a managed runtime")
+        });
+        let names = owner
+            .sexp(crate::sexp::attrib_core::R_NamesSymbol())
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::sexp::owner::with_runtime(&weak, |access| {
+                super::covratio::evaluate(access, arguments, names)
+            })
+        }));
+        // Preserve live callback panics, but never authenticate a result or
+        // panic with a replacement runtime after the original was revoked.
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match outcome {
+            Ok(Ok(Ok(value))) => value.as_raw(),
+            Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
+            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
-        let n = XLENGTH(resid).min(XLENGTH(hat));
-        let p = if rank == R_NilValue() {
-            2.0
-        } else {
-            elt_real_safe(rank, 0)
-        };
-        let s = elt_real_safe(sigma, 0);
-        let sse = s * s * (n as f64 - p);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let e = elt_real_safe(resid, i);
-            let h = elt_real_safe(hat, i);
-            let omh = 1.0 - h;
-            let infl_s2 = if omh > 0.0 && n as f64 - p - 1.0 > 0.0 {
-                (sse - e * e / omh) / (n as f64 - p - 1.0)
-            } else {
-                f64::NAN
-            };
-            let infl_s = infl_s2.max(0.0).sqrt();
-            let estar = if infl_s > 0.0 && omh > 0.0 {
-                e / (infl_s * omh.sqrt())
-            } else {
-                f64::NAN
-            };
-            let inner = (n as f64 - p - 1.0 + estar * estar) / (n as f64 - p);
-            *REAL(result).add(i as usize) = if omh > 0.0 && inner.is_finite() {
-                1.0 / (omh * inner.powf(p))
-            } else {
-                f64::NAN
-            };
-        }
-        result
     }
 }
 
