@@ -36,6 +36,560 @@ use crate::sexp::protect::protect;
 #[allow(unused_imports)]
 use crate::sexp::symbol::Rf_install;
 
+#[cfg(test)]
+mod eval_expression_tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn owned_eval_expression_null_and_visibility_match_gnu() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        // Pinned GNU R bac583951b728e97b9786804d3b4081f0fe18df5.
+        for (script, visible) in [
+            ("eval(expression())", TRUE),
+            ("eval(expression(1L,NULL))", TRUE),
+            ("eval(expression(invisible(1L),NULL))", TRUE),
+            ("eval(expression(1L,invisible(NULL)))", FALSE),
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            unsafe {
+                let value = owner
+                    .sexp(crate::eval::eval::Rf_eval(
+                        expression.as_raw(),
+                        environment.as_raw(),
+                    ))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                assert!(value.is_nil(), "source {script}");
+                assert_eq!(
+                    crate::sexp::globals::R_Visible(),
+                    visible,
+                    "source {script}"
+                );
+                let code = owner
+                    .sexp(
+                        crate::eval::bc_compile::compile_expr(
+                            expression.as_raw(),
+                            environment.as_raw(),
+                        )
+                        .expect("eval call must compile"),
+                    )
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                SET_VECTOR_ELT(
+                    crate::eval::bc_eval::BCODE_CONSTS(code.as_raw()),
+                    0,
+                    R_NilValue(),
+                );
+                let value = owner
+                    .sexp(crate::eval::bc_eval::bcEval(
+                        code.as_raw(),
+                        environment.as_raw(),
+                    ))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                assert!(value.is_nil(), "source-erased private bytecode {script}");
+                assert_eq!(
+                    crate::sexp::globals::R_Visible(),
+                    visible,
+                    "private {script}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn owned_eval_expression_gnu_fixture_preserves_null_and_visibility() {
+        let mut session = RSession::new_for_gc_tests();
+        let bytes = include_bytes!(
+            "../../../../../r-embed/tests/fixtures/gnu-bytecode-eval-expression/eval.rds"
+        );
+        let raw = bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let (result, _, _) = session
+            .eval_code_with_output_capture(&format!("f<-unserialize(as.raw(c({raw})));NULL"));
+        assert!(result.unwrap().is_nil());
+        unsafe {
+            let owner = session.owner_token().unwrap();
+            let function = owner
+                .sexp(crate::sexp::envir::R_findVar(
+                    Rf_install(c"f".as_ptr()),
+                    session.global_env().unwrap().as_raw(),
+                ))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let body = owner
+                .sexp(crate::sexp::accessors::BODY(function.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert!(crate::eval::bc_eval::BCODE_IS_GNU(body.as_raw()));
+            let instructions = owner
+                .sexp(VECTOR_ELT(body.as_raw(), 0))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let words = (0..instructions.len())
+                .map(|index| instructions.integer_elt(index).unwrap())
+                .collect::<Vec<_>>();
+            let constants = owner
+                .sexp(crate::eval::bc_eval::BCODE_CONSTS(body.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert!(
+                crate::eval::bytecode::validate_gnu_adapter_with_constants(
+                    &words,
+                    constants.as_raw()
+                )
+                .unwrap()
+            );
+            // GNU constant zero is also the CALL's syntax operand; retain it.
+            // Invoke the verified tagged GNU body directly: bcEval dispatches
+            // to the hard-fail adapter and has no retained-source fallback.
+            let quote = owner
+                .with_arena(|arena| {
+                    crate::eval::parser::parse(
+                        "quote(return(7L))",
+                        arena,
+                        owner.node_factory().domain(),
+                    )
+                })
+                .unwrap()
+                .unwrap();
+            let environment = session.global_env().unwrap().into_owned().unwrap();
+            let argument = owner
+                .sexp(crate::eval::eval::Rf_eval(
+                    quote.as_raw(),
+                    environment.as_raw(),
+                ))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            crate::sexp::envir::defineVar(
+                Rf_install(c"e".as_ptr()),
+                argument.as_raw(),
+                environment.as_raw(),
+            );
+            let value = owner
+                .sexp(crate::eval::bc_eval::bcEval(
+                    body.as_raw(),
+                    environment.as_raw(),
+                ))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert_eq!(
+                value.integer_elt(0),
+                Some(7),
+                "direct supported GNU bytecode backend"
+            );
+        }
+        for (script, expected, visible) in [
+            ("f(expression())", None, TRUE),
+            ("f(expression(1L,NULL))", None, TRUE),
+            ("f(expression(invisible(1L),NULL))", None, TRUE),
+            ("f(expression(1L,invisible(NULL)))", None, FALSE),
+            ("f(quote(return(7L)))", Some(7), TRUE),
+            ("f(quote(return(invisible(7L))))", Some(7), FALSE),
+            ("f(expression(return(7L),9L))", Some(7), TRUE),
+        ] {
+            let (result, _, _) = session.eval_code_with_output_capture(script);
+            let result = result.unwrap();
+            if let Some(expected) = expected {
+                assert_eq!(result.integer_elt(0), Some(expected), "{script}");
+            } else {
+                assert!(result.is_nil(), "{script}");
+            }
+            assert_eq!(crate::sexp::globals::R_Visible(), visible, "{script}");
+        }
+    }
+
+    #[test]
+    fn owned_eval_environment_conversion_matches_gnu() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        // GNU's public eval wrapper contributes a frame for negative numeric
+        // envir. This primitive-only fixture installs that wrapper explicitly.
+        let wrapper = owner.with_arena(|arena| {
+            crate::eval::parser::parse(
+                "eval.gnu<-function(expr,envir,enclos=baseenv()).Internal(eval(expr,envir,enclos))",
+                arena,factory.domain(),
+            )
+        }).unwrap().unwrap();
+        unsafe {
+            let _ = crate::eval::eval::Rf_eval(wrapper.as_raw(), environment.as_raw());
+        }
+        for (script, expected) in [
+            ("eval(quote(x),list(x=7L))", 7),
+            ("eval(quote(x),pairlist(x=7L))", 7),
+            ("{x<-7L;eval(quote(x),0L)}", 7),
+            ("{x<-7L;eval(quote(x),0)}", 7),
+            ("{x<-7L;eval(quote(x),NULL,environment())}", 7),
+            (
+                "{x<-11L;f<-function(){x<-7L;eval.gnu(quote(x),0L)};f()}",
+                11,
+            ),
+            (
+                "{x<-11L;f<-function(){x<-7L;eval.gnu(quote(x),-1L)};f()}",
+                7,
+            ),
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            unsafe {
+                let value = owner
+                    .sexp(crate::eval::eval::Rf_eval(
+                        expression.as_raw(),
+                        environment.as_raw(),
+                    ))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                assert_eq!(value.integer_elt(0), Some(expected), "{script}");
+            }
+        }
+        for script in [
+            "eval(1L,TRUE)",
+            "eval(NULL,TRUE)",
+            "eval(expression(),TRUE)",
+            "eval(1L,c(0L,1L))",
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
+            }))
+            .expect_err(script);
+            assert!(
+                error.downcast_ref::<RError>().is_some()
+                    || matches!(
+                        error.downcast_ref::<crate::sexp::context::RSignal>(),
+                        Some(crate::sexp::context::RSignal::Error { .. })
+                    ),
+                "{script}"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_eval_return_is_local_to_exact_eval_context() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        for (script, expected, visible) in [
+            ("eval(quote(return(7L)))", 7, TRUE),
+            ("eval(quote(return(invisible(7L))))", 7, FALSE),
+            ("eval(expression(return(7L),9L))", 7, TRUE),
+            ("{f<-function(){eval(quote(return(7L)));9L};f()}", 9, TRUE),
+            (
+                "{f<-function(){eval(quote({gc();return(7L)}));9L};f()}",
+                9,
+                TRUE,
+            ),
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            session.with_active(|| unsafe {
+                let result = crate::eval::eval::eval_expr(expression.clone(), environment.clone());
+                let value = result.unwrap();
+                assert_eq!(value.integer_elt(0), Some(expected), "source {script}");
+                assert_eq!(
+                    crate::sexp::globals::R_Visible(),
+                    visible,
+                    "source {script}"
+                );
+                let code = owner
+                    .sexp(
+                        crate::eval::bc_compile::compile_expr(
+                            expression.as_raw(),
+                            environment.as_raw(),
+                        )
+                        .expect("eval return call must compile"),
+                    )
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                SET_VECTOR_ELT(
+                    crate::eval::bc_eval::BCODE_CONSTS(code.as_raw()),
+                    0,
+                    R_NilValue(),
+                );
+                let value = owner
+                    .sexp(crate::eval::bc_eval::bcEval(
+                        code.as_raw(),
+                        environment.as_raw(),
+                    ))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                assert_eq!(value.integer_elt(0), Some(expected), "private {script}");
+                assert_eq!(
+                    crate::sexp::globals::R_Visible(),
+                    visible,
+                    "private {script}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn owned_eval_native_direct_entry_installs_and_releases_original_transfer_scope() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        assert!(crate::sexp::transfer::active_owner_pin().is_err());
+        for script in [
+            "eval(quote(return(7L)))",
+            "eval(quote(eval(quote(return(7L)))))",
+        ] {
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            // Deliberately use the native entry with the current managed owner
+            // and no with_active scope. eval must provide its local protocol.
+            let result =
+                unsafe { crate::eval::eval::eval_expr(expression, environment.clone()) }.unwrap();
+            assert_eq!(result.integer_elt(0), Some(7), "{script}");
+            assert!(
+                crate::sexp::transfer::active_owner_pin().is_err(),
+                "native scope must clean up"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_eval_preserves_unmatched_original_return_ticket_after_full_gc() {
+        use crate::sexp::{context::RSignal, transfer::OwnedTransfer};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse("{gc();9L}", arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        let value = unsafe {
+            owner
+                .sexp(Rf_ScalarInteger(7))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        };
+        let pending = std::rc::Rc::new(std::cell::RefCell::new(Some(value)));
+        session.with_active(|| unsafe {
+            let outer = crate::sexp::context::begin_context_guard(
+                crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                    | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                R_NilValue(),
+                environment.as_raw(),
+                environment.as_raw(),
+                None,
+                R_NilValue(),
+                R_NilValue(),
+            );
+            let target = outer.context();
+            let callback_value = pending.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                let Some(value) = callback_value.borrow_mut().take() else {
+                    return;
+                };
+                let ticket = crate::sexp::context::return_transfer(target, value.as_raw());
+                (*target).returnValue.replace_from_raw(R_NilValue());
+                crate::sexp::gengc::full_gc();
+                std::panic::panic_any(RSignal::Return(ticket));
+            }));
+            let args = owner
+                .sexp(Rf_cons(expression.as_raw(), R_NilValue()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                do_eval(
+                    R_NilValue(),
+                    R_NilValue(),
+                    args.as_raw(),
+                    environment.as_raw(),
+                )
+            }))
+            .expect_err("eval must rethrow a return targeting the original outer context");
+            assert!(pending.borrow().is_none());
+            let signal = payload
+                .downcast::<RSignal>()
+                .expect("original return signal");
+            let RSignal::Return(ticket) = *signal else {
+                panic!("original return signal");
+            };
+            let lease = ticket.take().unwrap();
+            lease.require_live().unwrap();
+            let OwnedTransfer::Return {
+                target: Some(original),
+                value,
+            } = lease.data()
+            else {
+                panic!("original return target/value");
+            };
+            assert_eq!(original.get(), target);
+            crate::sexp::gengc::full_gc();
+            assert_eq!(value.integer_elt(0), Some(7));
+        });
+    }
+
+    #[test]
+    fn owned_eval_selected_expression_survives_detachment_and_full_gc() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        let source = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "expression({gc();list(value=7L)})",
+                    arena,
+                    factory.domain(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let expression = unsafe {
+            owner
+                .sexp(crate::eval::eval::Rf_eval(
+                    source.as_raw(),
+                    environment.as_raw(),
+                ))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        };
+        drop(source);
+        let original = owner.weak_owner().unwrap();
+        let count = std::rc::Rc::new(std::cell::Cell::new(0));
+        let captured_count = count.clone();
+        let captured_expression = expression.clone();
+        session.with_active_in(|instance| unsafe {
+            (*instance).error_state.current_srcref_location = Some(("outer.R".into(), 17));
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if captured_count.replace(1) == 0 {
+                    SET_VECTOR_ELT(captured_expression.as_raw(), 0, R_NilValue());
+                    crate::sexp::gengc::full_gc();
+                }
+            }));
+        });
+        let result = crate::sexp::owner::with_runtime(&original, |access| {
+            let domain = access.domain();
+            let allocator = access.allocator(&domain).unwrap();
+            let args = allocator
+                .pairlist_cell(&expression, &domain.nil(), &domain.nil())
+                .unwrap();
+            drop(expression);
+            eval_owned(access, &domain.nil(), &domain.nil(), &args, &environment)
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            count.get(),
+            1,
+            "the selected expression must really collect"
+        );
+        assert_eq!(result.try_vector_elt(0).unwrap().integer_elt(0), Some(7));
+        session.with_active_in(|instance| unsafe {
+            assert_eq!(
+                (*instance).error_state.current_srcref_location,
+                Some(("outer.R".into(), 17))
+            );
+        });
+    }
+
+    #[test]
+    fn owned_eval_revoked_runtime_restores_original_location_without_success() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let original = owner.weak_owner().unwrap();
+        let pin = original.pin().unwrap();
+        let factory = owner.node_factory();
+        let environment = session.global_env().unwrap().into_owned().unwrap();
+        let source = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse("expression({gc();7L})", arena, factory.domain())
+            })
+            .unwrap()
+            .unwrap();
+        let expression = unsafe {
+            owner
+                .sexp(crate::eval::eval::Rf_eval(
+                    source.as_raw(),
+                    environment.as_raw(),
+                ))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        };
+        let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
+        let observed = revoked.clone();
+        session.with_active_in(|instance| unsafe {
+            (*instance).error_state.current_srcref_location = Some(("caller.R".into(), 23));
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    assert!(!(*instance).context_stack.is_empty());
+                    assert!((*instance).error_state.current_srcref_location.is_none());
+                    crate::sexp::instance::revoke_instance_availability(instance);
+                }
+            }));
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::sexp::owner::with_runtime(&original, |access| {
+                    let domain = access.domain();
+                    let allocator = access.allocator(&domain).unwrap();
+                    let args = allocator
+                        .pairlist_cell(&expression, &domain.nil(), &domain.nil())
+                        .unwrap();
+                    eval_owned(access, &domain.nil(), &domain.nil(), &args, &environment)
+                })
+            }));
+            assert!(
+                revoked.get(),
+                "the GC callback must really revoke the runtime"
+            );
+            assert!(
+                !matches!(outcome, Ok(Ok(Ok(_)))),
+                "revoked eval cannot publish success"
+            );
+        });
+        assert!(original.pin().is_err());
+        unsafe {
+            assert_eq!(
+                (*pin.as_ptr()).error_state.current_srcref_location,
+                Some(("caller.R".into(), 23))
+            );
+            assert!((*pin.as_ptr()).context_stack.is_empty());
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Complete R runtime: eval, substitute, quote, parse
 // ---------------------------------------------------------------------------
@@ -65,140 +619,305 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let expr = CAR(args);
-        let mut env = CADR(args);
-        let mut encl = CADDR(args);
-        if expr.is_null() || expr == R_NilValue() {
-            return R_NilValue();
-        }
-        // GNU eval.R always supplies three arguments. A leftover 1-arg
-        // builtin call still evaluates in the caller (`rho`).
-        let nargs = {
-            let mut n = 0;
-            let mut cell = args;
-            while !cell.is_null() && cell != R_NilValue() {
-                n += 1;
-                cell = CDR(cell);
-            }
-            n
-        };
-        if encl.is_null() || encl == R_NilValue() || encl == R_MissingArg() {
-            encl = crate::eval::runtime::base_env();
-        } else if TYPEOF(encl) != SEXPTYPE::ENVSXP {
-            std::panic::panic_any(RError {
-                message: "invalid 'enclos' argument".into(),
+/// Native adapter: retain all inputs before environment conversion or R callbacks.
+pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{OwnerToken, with_runtime},
+    };
+    let result = (|| {
+        let token = unsafe { OwnerToken::current()? };
+        let original = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
+        with_runtime(&original, |access| {
+            // Native direct callers can have a current managed runtime without
+            // an outer session activation. Reuse the canonical original-owner
+            // transfer scope so eval-local returns can publish owning tickets.
+            let _transfers = crate::sexp::transfer::TransferScopeGuard::enter(original.clone())?;
+            let domain = access.domain();
+            let own = |raw: SEXP| {
+                if raw.is_null() {
+                    Ok(domain.nil())
+                } else {
+                    domain.wrap(raw)
+                }
+            };
+            let call = own(call)?;
+            let op = own(op)?;
+            let args = own(args)?;
+            let rho = own(rho)?;
+            eval_owned(access, &call, &op, &args, &rho)
+        })?
+    })();
+    result
+        .unwrap_or_else(|error: SexpError| {
+            let message = match error {
+                SexpError::EvaluationFailed { message } => message,
+                other => format!("eval failed: {other}"),
+            };
+            std::panic::panic_any(RError { message })
+        })
+        .as_raw()
+}
+
+fn eval_owned(
+    access: &crate::sexp::owner::RuntimeAccess,
+    call: &crate::sexp::object::Sexp<'static>,
+    op: &crate::sexp::object::Sexp<'static>,
+    args: &crate::sexp::object::Sexp<'static>,
+    rho: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    use crate::sexp::object::SexpError;
+    let domain = access.domain();
+    let _inputs = (
+        domain.link(call)?,
+        domain.link(op)?,
+        domain.link(args)?,
+        domain.link(rho)?,
+    );
+    // Snapshot actual argument values before allocation can detach their cells.
+    let mut values = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cell = args.clone();
+    while !cell.is_nil() {
+        seen.try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "eval arguments",
+            })?;
+        if !seen.insert(cell.as_raw().addr()) {
+            return Err(SexpError::EvaluationFailed {
+                message: "cyclic eval arguments".into(),
             });
         }
-        if nargs < 2 || env.is_null() || env == R_MissingArg() {
-            env = _rho;
+        values
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "eval arguments",
+            })?;
+        values.push(cell.try_car()?);
+        cell = cell.try_cdr()?;
+    }
+    let expr = values.first().cloned().unwrap_or_else(|| domain.nil());
+    let mut env = values.get(1).cloned().unwrap_or_else(|| domain.missing());
+    let mut encl = values.get(2).cloned().unwrap_or_else(|| domain.nil());
+    let missing = domain.missing();
+    let caller_call = access.with_native(|owner| {
+        let context = unsafe { crate::sexp::context::R_GlobalContext() };
+        if context.is_null() {
+            return Ok(call.clone());
+        }
+        let raw = unsafe { (*context).call.as_raw() };
+        if raw.is_null() || raw == domain.nil().as_raw() {
+            Ok(call.clone())
         } else {
-            match TYPEOF(env) {
-                t if t == SEXPTYPE::NILSXP => env = encl,
-                t if t == SEXPTYPE::ENVSXP => {}
-                t if t == SEXPTYPE::LISTSXP => {
-                    let dup = crate::mainutils::duplicate::Rf_duplicate(env);
-                    let _dup = protect(dup);
-                    env = crate::sexp::memory_ext::NewEnvironment(dup, encl, R_NilValue());
-                }
-                t if t == SEXPTYPE::VECSXP => {
-                    let x = crate::eval::missing::VectorToPairListNamed(env);
-                    let _x = protect(x);
-                    let mut xptr = x;
-                    while !xptr.is_null() && xptr != R_NilValue() {
-                        SET_NAMED(CAR(xptr), 2);
-                        xptr = CDR(xptr);
+            owner.sexp(raw)?.into_owned()
+        }
+    })?;
+    if encl.is_nil() || encl.as_raw() == missing.as_raw() {
+        encl = access
+            .with_native(|owner| owner.sexp(crate::eval::runtime::base_env())?.into_owned())?;
+    } else if encl.typeof_() != SEXPTYPE::ENVSXP {
+        return Err(SexpError::EvaluationFailed {
+            message: "invalid 'enclos' argument".into(),
+        });
+    }
+    if values.len() < 2 || env.as_raw() == missing.as_raw() {
+        env = rho.clone();
+    } else {
+        match env.typeof_() {
+            SEXPTYPE::NILSXP => env = encl.clone(),
+            SEXPTYPE::ENVSXP => {}
+            SEXPTYPE::LISTSXP | SEXPTYPE::VECSXP => {
+                let frame = access.with_native(|owner| {
+                    let raw = unsafe {
+                        if env.typeof_() == SEXPTYPE::LISTSXP {
+                            crate::mainutils::duplicate::Rf_duplicate(env.as_raw())
+                        } else {
+                            crate::eval::missing::VectorToPairListNamed(env.as_raw())
+                        }
+                    };
+                    owner.sexp(raw)?.into_owned()
+                })?;
+                if env.typeof_() == SEXPTYPE::VECSXP {
+                    let mut cell = frame.clone();
+                    while !cell.is_nil() {
+                        let value = cell.try_car()?;
+                        unsafe { SET_NAMED(value.as_raw(), 2) };
+                        cell = cell.try_cdr()?;
                     }
-                    env = crate::sexp::memory_ext::NewEnvironment(x, encl, R_NilValue());
                 }
-                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
-                    if XLENGTH(env) != 1 {
-                        std::panic::panic_any(RError {
-                            message: "numeric 'envir' arg not of length one".into(),
-                        });
-                    }
-                    let frame = crate::mainutils::coerce::asInteger(env);
-                    if frame == NA_INTEGER {
-                        std::panic::panic_any(RError {
-                            message: "invalid 'envir' argument".into(),
-                        });
-                    }
-                    env = crate::eval::context::R_sysframe(frame, std::ptr::null_mut());
+                env = access.with_native(|owner| {
+                    owner
+                        .sexp(unsafe {
+                            crate::sexp::memory_ext::NewEnvironment(
+                                frame.as_raw(),
+                                encl.as_raw(),
+                                domain.nil().as_raw(),
+                            )
+                        })?
+                        .into_owned()
+                })?;
+            }
+            SEXPTYPE::INTSXP | SEXPTYPE::REALSXP => {
+                if env.len() != 1 {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "numeric 'envir' arg not of length one".into(),
+                    });
                 }
-                _ => {
-                    std::panic::panic_any(RError {
+                let frame = access.with_native(|_| {
+                    Ok(unsafe { crate::mainutils::coerce::asInteger(env.as_raw()) })
+                })?;
+                if frame == NA_INTEGER {
+                    return Err(SexpError::EvaluationFailed {
                         message: "invalid 'envir' argument".into(),
                     });
                 }
+                env = access.with_native(|owner| {
+                    owner
+                        .sexp(unsafe {
+                            crate::eval::context::R_sysframe(frame, std::ptr::null_mut())
+                        })?
+                        .into_owned()
+                })?;
+            }
+            _ => {
+                return Err(SexpError::EvaluationFailed {
+                    message: "invalid 'envir' argument".into(),
+                });
             }
         }
-        let _env_guard = protect(env);
-        let caller_call = {
-            let ctx = crate::sexp::context::R_GlobalContext();
-            if ctx.is_null() {
-                call
-            } else {
-                let top = (*ctx).call.as_raw();
-                if top.is_null() || top == R_NilValue() {
-                    call
-                } else {
-                    top
+    }
+    let evalable = matches!(
+        expr.typeof_(),
+        SEXPTYPE::LANGSXP | SEXPTYPE::SYMSXP | SEXPTYPE::BCODESXP | SEXPTYPE::EXPRSXP
+    );
+    let _context = if evalable {
+        Some(access.with_native(|_| {
+            Ok(unsafe {
+                crate::sexp::context::begin_context_guard(
+                    crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                        | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                    caller_call.as_raw(),
+                    env.as_raw(),
+                    rho.as_raw(),
+                    None,
+                    op.as_raw(),
+                    args.as_raw(),
+                )
+            })
+        })?)
+    } else {
+        None
+    };
+    let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        eval_body_owned(access, &expr, &env)
+    }));
+    match evaluated {
+        Ok(value) => value,
+        Err(payload) => {
+            use crate::sexp::{context::RSignal, transfer::OwnedTransfer};
+            if let (Some(context), Some(RSignal::Return(ticket))) =
+                (_context.as_ref(), payload.downcast_ref::<RSignal>())
+            {
+                let lease = ticket.resolve()?;
+                lease.require_live()?;
+                if matches!(lease.data(), OwnedTransfer::Return { target: Some(target), .. }
+                    if target.get() == context.context())
+                {
+                    // Only this original context cell may consume the ticket.
+                    // The taken lease retains the actual returned value until
+                    // it has an independent owning result; unmatched signals
+                    // keep their original ticket and continue unwinding.
+                    let signal = payload.downcast::<RSignal>().expect("matched eval return");
+                    let RSignal::Return(ticket) = *signal else {
+                        unreachable!()
+                    };
+                    let lease = ticket.take()?;
+                    lease.require_live()?;
+                    let OwnedTransfer::Return { value, .. } = lease.data() else {
+                        unreachable!()
+                    };
+                    let value = value.clone();
+                    access.require_active()?;
+                    return Ok(value);
                 }
             }
-        };
-        let evalable = TYPEOF(expr) == SEXPTYPE::LANGSXP
-            || TYPEOF(expr) == SEXPTYPE::SYMSXP
-            || TYPEOF(expr) == SEXPTYPE::BCODESXP
-            || TYPEOF(expr) == SEXPTYPE::EXPRSXP;
-        let _eval_ctx = if evalable {
-            Some(crate::sexp::context::begin_context_guard(
-                crate::sexp::context::ctxt_flags::CTXT_FUNCTION
-                    | crate::sexp::context::ctxt_flags::CTXT_RETURN,
-                caller_call,
-                env,
-                _rho,
-                None,
-                op,
-                args,
-            ))
-        } else {
-            None
-        };
+            std::panic::resume_unwind(payload)
+        }
+    }
+}
 
-        // eval.c do_eval(): language/symbol/bytecode values evaluate in
-        // `envir`; expression vectors evaluate element-wise returning the
-        // last value; any other value is returned unchanged (Rf_eval no
-        // longer treats expression vectors as evaluable).
-        let bcode = SEXPTYPE::BCODESXP;
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP
-            || TYPEOF(expr) == SEXPTYPE::SYMSXP
-            || TYPEOF(expr) == bcode
-        {
-            return crate::eval::eval::Rf_eval(expr, env);
+fn eval_body_owned(
+    access: &crate::sexp::owner::RuntimeAccess,
+    expr: &crate::sexp::object::Sexp<'static>,
+    env: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    use crate::sexp::object::SexpError;
+    let domain = access.domain();
+    if matches!(
+        expr.typeof_(),
+        SEXPTYPE::LANGSXP | SEXPTYPE::SYMSXP | SEXPTYPE::BCODESXP
+    ) {
+        return access.with_native(|owner| {
+            owner
+                .sexp(unsafe { crate::eval::eval::Rf_eval(expr.as_raw(), env.as_raw()) })?
+                .into_owned()
+        });
+    }
+    if expr.typeof_() == SEXPTYPE::EXPRSXP {
+        let _location = access.with_native(|owner| {
+            let instance = owner.as_ptr();
+            Ok(EvalSrcrefGuard {
+                instance,
+                previous: unsafe { (*instance).error_state.current_srcref_location.clone() },
+                _pin: owner.pin()?.ok_or(SexpError::RootUnavailable)?,
+            })
+        })?;
+        let mut result = domain.nil();
+        access.with_native(|_| {
+            crate::sexp::globals::set_R_Visible(TRUE);
+            Ok(())
+        })?;
+        for index in 0..expr.len() {
+            // NULL is an evaluable element too: it replaces the prior result
+            // and restores visibility. Own the selected child before srcref
+            // setup or evaluation can replace its slot and collect the graph.
+            let element = expr.try_vector_elt(index)?;
+            access.with_native(|_| {
+                crate::mainutils::srcref::set_current_srcref_location(
+                    element.as_raw(),
+                    expr.as_raw(),
+                    index as usize,
+                );
+                Ok(())
+            })?;
+            result = access.with_native(|owner| {
+                owner
+                    .sexp(unsafe { crate::eval::eval::Rf_eval(element.as_raw(), env.as_raw()) })?
+                    .into_owned()
+            })?;
         }
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
-            let n = XLENGTH(expr);
-            let mut result = R_NilValue();
-            for i in 0..n {
-                let element = VECTOR_ELT(expr, i);
-                if element.is_null() || element == R_NilValue() {
-                    continue;
-                }
-                // eval.c's expression loop updates R_Srcref per element
-                // (srcref-level show.error.locations: `eval(parse(...))`
-                // errors carry `(from <file>#<line>)`).
-                crate::mainutils::srcref::set_current_srcref_location(element, expr, i as usize);
-                result = crate::eval::eval::Rf_eval(element, env);
-            }
-            crate::mainutils::srcref::set_current_srcref_location(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                0,
-            );
-            return result;
+        access.require_active()?;
+        return Ok(result);
+    }
+    access.with_native(|_| {
+        crate::sexp::globals::set_R_Visible(TRUE);
+        Ok(())
+    })?;
+    Ok(expr.clone())
+}
+
+struct EvalSrcrefGuard {
+    instance: *mut crate::sexp::instance::RInstance,
+    previous: Option<(String, i32)>,
+    _pin: crate::sexp::owner::OwnerPin,
+}
+
+impl Drop for EvalSrcrefGuard {
+    fn drop(&mut self) {
+        // Restore the original pinned runtime even after callback revocation.
+        unsafe {
+            (*self.instance).error_state.current_srcref_location = self.previous.take();
         }
-        expr
     }
 }
 
