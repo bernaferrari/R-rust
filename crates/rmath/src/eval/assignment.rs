@@ -17,7 +17,6 @@ use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
-
 use super::eval::Rf_eval;
 
 fn error(msg: &str) -> ! {
@@ -68,6 +67,220 @@ impl Drop for SourceAssignCall {
 // ---------------------------------------------------------------------------
 // do_set — handle assignment operators (<-, <<-, =)
 // ---------------------------------------------------------------------------
+
+/// Snapshot source arguments before the RHS can run collecting callbacks.
+/// These are actual owning expressions, separate from the evaluated values.
+struct FlatReplacement {
+    function: Sexp<'static>,
+    object: Sexp<'static>,
+    extras: Vec<(Sexp<'static>, Sexp<'static>)>,
+}
+
+impl FlatReplacement {
+    fn capture(lhs: &Sexp<'static>) -> crate::sexp::object::SexpResult<Option<Self>> {
+        if lhs.typeof_() != SEXPTYPE::LANGSXP {
+            return Ok(None);
+        }
+        let first = lhs.try_cdr()?;
+        if first.is_nil() {
+            return Ok(None);
+        }
+        let object = first.try_car()?.into_owned()?;
+        if !object.is_symbol() {
+            return Ok(None);
+        }
+        let function = lhs.try_car()?.into_owned()?;
+        let mut extras = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut current = first.try_cdr()?;
+        while !current.is_nil() {
+            let node = current
+                .allocation()?
+                .link()
+                .ok_or(crate::sexp::object::SexpError::StaleAllocation)?;
+            seen.try_reserve(1)
+                .map_err(|_| crate::sexp::object::SexpError::AllocationFailed {
+                    object: "replacement source arguments",
+                })?;
+            if !seen.insert(node) {
+                return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                    message: "cyclic replacement source arguments".into(),
+                });
+            }
+            extras.try_reserve(1).map_err(|_| {
+                crate::sexp::object::SexpError::AllocationFailed {
+                    object: "replacement source arguments",
+                }
+            })?;
+            extras.push((
+                current.try_car()?.into_owned()?,
+                current.try_tag()?.into_owned()?,
+            ));
+            current = current.try_cdr()?;
+        }
+        Ok(Some(Self {
+            function,
+            object,
+            extras,
+        }))
+    }
+}
+
+/// Resolve a setter once, keeping its execution identity separate from the
+/// source call exposed to the setter. Known primitive fast paths remain local.
+fn apply_custom_replacement(
+    syntax: &FlatReplacement,
+    setter: &Sexp<'static>,
+    object: &Sexp<'static>,
+    rhs: &Sexp<'static>,
+    rhs_expression: &Sexp<'static>,
+    environment: &Sexp<'static>,
+) -> crate::sexp::object::SexpResult<Option<Sexp<'static>>> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{StoredOwner, with_runtime},
+    };
+    let owner = StoredOwner::from_value(environment)?
+        .managed()
+        .ok_or(SexpError::RootUnavailable)?;
+    with_runtime(&owner, |access| {
+        let function = access.with_native(|owner| {
+            let function = if setter.is_symbol() {
+                unsafe { crate::sexp::envir::find_fun_result(setter.clone(), environment.clone()) }
+                    .map_err(|message| SexpError::EvaluationFailed { message })?
+            } else {
+                let result = unsafe { Rf_eval(setter.as_raw(), environment.as_raw()) };
+                unsafe { Sexp::from_raw(result) }
+            };
+            let Some(function) = function else {
+                return Err(SexpError::EvaluationFailed {
+                    message: format!(
+                        "could not find function \"{}\"",
+                        unsafe { symbol_name(setter.as_raw()) }.unwrap_or_default(),
+                    ),
+                });
+            };
+            if function.is_closure() {
+                return Ok(Some(owner.sexp(function.as_raw())?.into_owned()?));
+            }
+            if !function.is_primitive() {
+                return Err(SexpError::EvaluationFailed {
+                    message: "attempt to apply non-function".into(),
+                });
+            }
+            // Immortal primitive projections need not belong to this session's
+            // heap. Snapshot only their immutable dispatch identity before
+            // allocation, then publish a fresh primitive in the original heap.
+            let kind = function.typeof_();
+            let descriptor =
+                crate::eval::primitive::PrimitiveDescriptor::from_sexp(function.clone());
+            let canonical_kind = descriptor.as_ref().is_some_and(|descriptor| {
+                crate::eval::primitive::fun_tab_descriptor(descriptor.table_index).is_some_and(
+                    |entry| crate::eval::primitive::primitive_kind_for_eval(entry.eval) == kind,
+                )
+            });
+            let name = descriptor
+                .map(|descriptor| descriptor.name.to_owned())
+                .or_else(|| crate::eval::primitive::portable_primitive_name(function))
+                .ok_or_else(|| SexpError::EvaluationFailed {
+                    message: "replacement primitive has no dispatch identity".into(),
+                })?;
+            if canonical_kind
+                && setter.is_symbol()
+                && unsafe { symbol_name(setter.as_raw()) }.as_deref() == Some(name.as_str())
+                && matches!(
+                    name.as_str(),
+                    "[<-"
+                        | "[[<-"
+                        | "$<-"
+                        | "@<-"
+                        | "names<-"
+                        | "dim<-"
+                        | "tsp<-"
+                        | "length<-"
+                        | "levels<-"
+                        | "storage.mode<-"
+                        | "mode<-"
+                        | "dimnames<-"
+                )
+            {
+                // These paths apply the selected primitive directly below;
+                // they never resolve the setter symbol a second time.
+                return Ok(None);
+            }
+            let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
+            Ok(Some(owner.sexp(primitive)?.into_owned()?))
+        })?;
+        let Some(function) = function else {
+            return Ok(None);
+        };
+        let domain = access.domain();
+        let allocator = access.allocator(&domain)?;
+        let (temporary, value_tag) = access.with_native(|owner| {
+            Ok((
+                owner
+                    .sexp(unsafe { Rf_install(c"*tmp*".as_ptr()) })?
+                    .into_owned()?,
+                owner
+                    .sexp(unsafe { Rf_install(c"value".as_ptr()) })?
+                    .into_owned()?,
+            ))
+        })?;
+        // GNU replacement promises retain syntax independently of PRVALUE.
+        let value =
+            allocator.evaluated_promise_with_expression(rhs_expression, environment, rhs)?;
+        let mut source_arguments = allocator.pairlist_cell(&value, &domain.nil(), &value_tag)?;
+        for (expression, tag) in syntax.extras.iter().rev() {
+            source_arguments = allocator.pairlist_cell(expression, &source_arguments, tag)?;
+        }
+        access.require_active()?;
+        unsafe {
+            crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+            // The assignment still owns and returns the original RHS after
+            // the setter returns; its formal must not mutate that value.
+            crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
+        }
+        let target =
+            allocator.evaluated_promise_with_expression(&temporary, environment, object)?;
+        // GNU's replacement call substitutes an unnamed *tmp* argument,
+        // even when the original getter's first argument was named.
+        // applyClosure creates owning lazy promises from these expressions;
+        // leaving extras as syntax also preserves its expansion of `...`.
+        let arguments = allocator.pairlist_cell(&target, &source_arguments, &domain.nil())?;
+        source_arguments = allocator.pairlist_cell(&temporary, &source_arguments, &domain.nil())?;
+        let call = allocator.call(setter, &source_arguments)?;
+        access.with_native(|owner| {
+            let result = if function.is_closure() {
+                let result = unsafe {
+                    crate::eval::closure::applyClosure(
+                        call.as_raw(),
+                        function.as_raw(),
+                        arguments.as_raw(),
+                        environment.as_raw(),
+                        domain.nil().as_raw(),
+                        0,
+                    )
+                };
+                owner.sexp(result)?.into_owned()?
+            } else {
+                let apply = if function.typeof_() == SEXPTYPE::SPECIALSXP {
+                    crate::eval::apply::apply_special_safe
+                } else {
+                    crate::eval::apply::apply_builtin_safe
+                };
+                apply(
+                    function.clone(),
+                    call.clone(),
+                    arguments.clone(),
+                    environment.clone(),
+                )
+                .map_err(|message| SexpError::EvaluationFailed { message })?
+                .into_owned()?
+            };
+            Ok(Some(result))
+        })
+    })?
+}
 
 /// Handle assignment: lhs <- rhs, lhs <<- rhs, lhs = rhs.
 /// Matches C's `do_set()` in eval.c line 3565.
@@ -192,13 +405,42 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
 /// Ported from applydefine() in eval.c:3367.
 pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let expr = CAR(args);
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let factory = owner.node_factory();
+        let own = |raw| {
+            factory
+                .wrap(raw)
+                .and_then(Sexp::into_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        let _call = own(call);
+        let arguments = own(args);
+        let environment = own(rho);
+        let lhs = arguments
+            .try_car()
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let rhs_expression = arguments
+            .try_cdr()
+            .and_then(|cell| cell.try_car())
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let flat = FlatReplacement::capture(&lhs)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let expr = lhs.as_raw();
         if expr.is_null() || expr == R_NilValue() {
             error("invalid complex assignment");
         }
 
-        let rhs = Rf_eval(CADR(args), rho);
-        let _rhs_guard = protect(rhs);
+        let rhs_owned = own(Rf_eval(rhs_expression.as_raw(), environment.as_raw()));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let rhs = rhs_owned.as_raw();
         // GNU begincontext(CTXT_CCODE) happens after the RHS eval, so a
         // direct `[[<-` in the right-hand side keeps its own call.
         let _source_call = SourceAssignCall::enter(call);
@@ -274,28 +516,39 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
             super::runtime::set_visible(FALSE);
             rhs
-
         } else {
             // Simple single-level assignment: x[i] <- val
             let lhs = expr;
-            let func_sym = CAR(lhs);
+            let func_sym = flat
+                .as_ref()
+                .map_or_else(|| CAR(lhs), |syntax| syntax.function.as_raw());
 
-
-            let assign_fn = replacement_fun_head(func_sym);
+            let assign_fn_owned = own(replacement_fun_head(func_sym));
+            let assign_fn = assign_fn_owned.as_raw();
 
             if assign_fn == R_NilValue() {
                 return rhs;
             }
 
-
-            let target_env = if forcelocal == 0 && TYPEOF(CADR(lhs)) == SEXPTYPE::SYMSXP {
+            let object_expression = flat
+                .as_ref()
+                .map_or_else(|| CADR(lhs), |syntax| syntax.object.as_raw());
+            let target_env = if forcelocal == 0 && TYPEOF(object_expression) == SEXPTYPE::SYMSXP {
                 let enc = crate::sexp::accessors::ENCLOS(rho);
-                if enc.is_null() || enc == R_NilValue() { rho } else { enc }
+                if enc.is_null() || enc == R_NilValue() {
+                    rho
+                } else {
+                    enc
+                }
             } else {
                 rho
             };
-            let target_expr = Rf_eval(CADR(lhs), target_env);
-            let var_sym_early = CADR(lhs);
+            let target_owned = own(Rf_eval(object_expression, target_env));
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let target_expr = target_owned.as_raw();
+            let var_sym_early = object_expression;
             let mut target_expr = target_expr;
             if TYPEOF(var_sym_early) == SEXPTYPE::SYMSXP
                 && crate::sexp::envir::binding_is_locked_raw(rho, var_sym_early)
@@ -305,6 +558,32 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             let _target_guard = protect(target_expr);
+
+            if let Some(syntax) = &flat {
+                let target = own(target_expr);
+                if let Some(result) = apply_custom_replacement(
+                    syntax,
+                    &assign_fn_owned,
+                    &target,
+                    &rhs_owned,
+                    &rhs_expression,
+                    &environment,
+                )
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                {
+                    bind_assignment(
+                        syntax.object.as_raw(),
+                        result.as_raw(),
+                        primval,
+                        environment.as_raw(),
+                    );
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    super::runtime::set_visible(FALSE);
+                    return rhs_owned.as_raw();
+                }
+            }
 
             if symbol_name(func_sym).as_deref() == Some("$")
                 && TYPEOF(target_expr) == SEXPTYPE::ENVSXP
@@ -351,7 +630,9 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                 .wrap(crate::sexp::constructors::Rf_mkString(
                                     crate::sexp::accessors::CHAR(name),
                                 ))
-                                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                                .unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(&error.to_string())
+                                });
                             crate::sexp::accessors::SETCAR(cell, value.as_raw());
                         }
                     }
@@ -360,8 +641,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             let result = if symbol_name(func_sym).as_deref() == Some("[")
-                && let Some(result) =
-                    try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+                && let Some(result) = try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
             {
                 result
             } else {
@@ -428,10 +708,7 @@ unsafe fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
 unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let wrap_lang = |x: SEXP| match TYPEOF(x) {
-            t if t == SEXPTYPE::LANGSXP
-                || t == SEXPTYPE::SYMSXP
-                || t == SEXPTYPE::EXPRSXP =>
-            {
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP => {
                 crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), x)
             }
             _ => x,
@@ -474,7 +751,6 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
         };
 
         match name {
-
             "[<-" => crate::mainutils::subset::do_subassign(call, assign_fn, args, rho),
             "[[<-" => crate::mainutils::subset::do_subassign2(call, assign_fn, args, rho),
 
@@ -493,7 +769,6 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
                 crate::mainutils::essentials::do_dimnames_set(call, assign_fn, args, rho)
             }
             _ => Rf_eval(call, rho),
-
         }
     }
 }
@@ -679,8 +954,188 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
 #[cfg(test)]
 mod owned_source_assignment_tests {
     use super::*;
+    use crate::sexp::accessors::SETCAR;
     use crate::sexp::{instance::RuntimeValue, owner::OwnerToken, session::RSession};
     use std::{cell::Cell, rc::Rc};
+
+    fn source_value(session: &RSession, script: &str) -> Sexp<'static> {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        unsafe {
+            factory.wrap(Rf_eval(
+                expression.as_raw(),
+                session.global_env().unwrap().as_raw(),
+            ))
+        }
+        .unwrap()
+        .into_owned()
+        .unwrap()
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_preserves_lazy_argument_expression() {
+        let session = RSession::new_for_gc_tests();
+        let value = source_value(
+            &session,
+            "{x<-1L;`stamp<-`<-function(x,label,value){attr(x,'expression')<-substitute(label);x};stamp(x,unbound_label)<-7L;identical(attr(x,'expression'),quote(unbound_label))}",
+        );
+        assert_eq!(value.logical_elt(0), Some(1));
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_discards_original_object_tag_like_gnu() {
+        let session = RSession::new_for_gc_tests();
+        let value = source_value(
+            &session,
+            "{x<-1L;`stamp<-`<-function(label,object,value){list(label=label,object=object)};stamp(object=x,'mark')<-7L;identical(x,list(label=1L,object='mark'))}",
+        );
+        assert_eq!(value.logical_elt(0), Some(1));
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_preserves_object_and_rhs_source() {
+        let session = RSession::new_for_gc_tests();
+        let value = source_value(
+            &session,
+            "{x<-1L;`stamp<-`<-function(x,value){attr(x,'object')<-substitute(x);attr(x,'rhs')<-substitute(value);x};stamp(x)<-quote(y);identical(attr(x,'object'),quote(`*tmp*`))&&identical(attr(x,'rhs'),quote(quote(y)))}",
+        );
+        assert_eq!(value.logical_elt(0), Some(1));
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_exposes_original_syntax_call() {
+        let session = RSession::new_for_gc_tests();
+        let value = source_value(
+            &session,
+            "{sys.call<-function(which=0L).Internal(sys.call(which));x<-1L;`stamp<-`<-function(x,label,value){attr(x,'observed')<-sys.call();x};stamp(x,unbound_label)<-{1L;7L};observed<-attr(x,'observed');identical(observed[[1L]],quote(`stamp<-`))&&identical(observed[[2L]],quote(`*tmp*`))&&identical(observed[[3L]],quote(unbound_label))&&identical(typeof(observed[[4L]]),'promise')}",
+        );
+        assert_eq!(value.logical_elt(0), Some(1));
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_resolves_active_primitive_once() {
+        for script in [
+            "{n<-0L;x<-c(1L,2L);makeActiveBinding('stamp<-',function(){n<<-n+1L;if(n==1L)`[<-` else `[[<-`},globalenv());stamp(x,1L)<-9L;identical(n,1L)&&identical(x,c(9L,2L))}",
+            "{n<-0L;x<-1L;makeActiveBinding('stamp<-',function(){n<<-n+1L;if(n==1L)`attr<-` else `[<-`},globalenv());stamp(x,'mark')<-7L;identical(n,1L)&&identical(attr(x,'mark'),7L)}",
+            "{n<-0L;x<-list();makeActiveBinding('stamp<-',function(){n<<-n+1L;`$<-`},globalenv());stamp(x,unbound_label)<-7L;identical(n,1L)&&identical(x$unbound_label,7L)}",
+            "{n<-0L;x<-1L;makeActiveBinding('stamp<-',function(){n<<-n+1L;if(n==1L)0L else function(x,value)value},globalenv());failed<-FALSE;tryCatch(stamp(x)<-9L,error=function(e){failed<<-TRUE});identical(failed,TRUE)&&identical(n,1L)&&identical(x,1L)}",
+        ] {
+            let session = RSession::new_for_gc_tests();
+            assert_eq!(
+                source_value(&session, script).logical_elt(0),
+                Some(1),
+                "{script}"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_preserves_sharing_and_error_isolation() {
+        for script in [
+            "{x<-c(1L,2L);y<-x;`stamp<-`<-function(x,value){x[1L]<-value;x};stamp(x)<-9L;identical(y,c(1L,2L))&&identical(x,c(9L,2L))}",
+            "{x<-c(1L,2L);`stamp<-`<-function(x,value){x[1L]<-value;stop('abort setter')};tryCatch(stamp(x)<-9L,error=function(e)NULL);identical(x,c(1L,2L))}",
+            "{x<-1L;rhs<-7L;`stamp<-`<-function(x,value){attr(value,'modified')<-TRUE;value};result<-withVisible(stamp(x)<-rhs);identical(result$value,rhs)&&is.null(attributes(rhs))&&!result$visible&&identical(attr(x,'modified'),TRUE)}",
+            "{x<-1L;rhs<-c(7L,8L);`stamp<-`<-function(x,value){value[1L]<-9L;value};result<-withVisible(stamp(x)<-rhs);identical(result$value,rhs)&&identical(rhs,c(7L,8L))&&!result$visible&&identical(x,c(9L,8L))}",
+        ] {
+            let session = RSession::new_for_gc_tests();
+            assert_eq!(
+                source_value(&session, script).logical_elt(0),
+                Some(1),
+                "{script}"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_returns_invisible_rhs_after_ordered_evaluation() {
+        let session = RSession::new_for_gc_tests();
+        source_value(
+            &session,
+            "{trace<-0L;x<-1L;`stamp<-`<-function(x,label,value){attr(x,label)<-value;x}}",
+        );
+        let value = source_value(
+            &session,
+            "stamp(x,{trace<-trace*10L+2L;'mark'})<-{trace<-trace*10L+1L;quote(retained_rhs)}",
+        );
+        assert!(value.is_symbol());
+        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, FALSE);
+        assert_eq!(source_value(&session, "trace").integer_elt(0), Some(12));
+        assert_eq!(
+            source_value(&session, "identical(attr(x,'mark'),quote(retained_rhs))").logical_elt(0),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn owned_source_custom_replacement_keeps_detached_source_promises_through_gc() {
+        let session = RSession::new_for_gc_tests();
+        source_value(
+            &session,
+            "{x<-1L;`stamp<-`<-function(x,label,value){gc();attr(x,'object')<-substitute(x);attr(x,'label')<-substitute(label);attr(x,'rhs')<-substitute(value);x}}",
+        );
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let expression = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "stamp(x,unbound_label)<-{gc();quote(retained_rhs)}",
+                    arena,
+                    factory.domain(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let source_arguments = expression.try_cdr().unwrap().into_owned().unwrap();
+        let lhs_arguments = source_arguments
+            .try_car()
+            .unwrap()
+            .try_cdr()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let extra_arguments = lhs_arguments.try_cdr().unwrap().into_owned().unwrap();
+        let rhs_cell = source_arguments.try_cdr().unwrap().into_owned().unwrap();
+        let called = Rc::new(Cell::new(false));
+        let observed = called.clone();
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(true) {
+                    return;
+                }
+                (*instance).memory_state.gc_force_gap = 0;
+                (*instance).eval_state.current_expr = RuntimeValue::empty();
+                SETCAR(lhs_arguments.as_raw(), R_NilValue());
+                SETCAR(extra_arguments.as_raw(), R_NilValue());
+                SETCAR(rhs_cell.as_raw(), R_NilValue());
+                crate::sexp::gengc::full_gc_in(instance);
+            }));
+            // The explicit RHS collection happens after applydefine captures
+            // the source arguments. The setter collects again after the
+            // initialized source-expression promises have been published.
+        });
+        let value = unsafe {
+            factory.wrap(Rf_eval(
+                expression.as_raw(),
+                session.global_env().unwrap().as_raw(),
+            ))
+        }
+        .unwrap();
+        assert!(
+            called.get(),
+            "must detach the original source during a collecting callback"
+        );
+        assert!(value.is_symbol());
+        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, FALSE);
+        let checked = source_value(
+            &session,
+            "identical(attr(x,'object'),quote(`*tmp*`))&&identical(attr(x,'label'),quote(unbound_label))&&identical(attr(x,'rhs'),quote({gc();quote(retained_rhs)}))",
+        );
+        assert_eq!(checked.logical_elt(0), Some(1));
+    }
 
     #[test]
     fn owned_source_attribution_restores_after_collecting_callback_and_unwind() {
