@@ -1046,6 +1046,8 @@ The final enclosing suite passed all 51 native tests, and four existing owning
 deparse tests passed. Independent GNU integer, NA, attribute and precision
 controls confirmed that deparse1line uses simple options; its previous options
 were repaired without rewriting or normalizing expected strings. All-target
-Clippy and assigned formatting passed. The six safety tests are running strict
-Miri against frozen authored sources, with no completed aggregate yet; the
-pairlist item remains open. Raw atomic conversions remain rport-wszw.7.1.1.2.
+Clippy and formatting passed. All six safety tests subsequently passed strict
+Miri with strict provenance, the default alias checker and default isolation
+(466.85 seconds). Their six authored source hashes stayed fixed through the
+actual aggregate and successfully reaped process exit. This completes the
+string/list coercion item. Raw atomic conversions remain rport-wszw.7.1.1.2.
