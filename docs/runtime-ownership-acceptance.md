@@ -959,10 +959,12 @@ name precedence, exact NA bits, warning counts and warn=2 error recovery.
 
 The enclosing native suite passed all 22 tests (3.11 seconds), preserving the
 earlier 13 assertions and adding nine omission/ownership cases. Independent GNU
-controls, all-target Clippy and formatting passed. The exact six-file candidate
-is checkpointed while its nine-case strict Miri run continues unchanged; this is
-not a completed strict aggregate, and rport-wszw.6.2 remains open. Exact GNU
-arithmetic warning-call attribution is a separate remaining item, rport-wszw.6.3.
+controls, all-target Clippy and formatting passed. All nine cases subsequently
+passed strict-provenance Miri with the default alias checker and isolation. The
+six loaded source hashes remained fixed through the actual aggregate and reaped
+successful process exit. This completes rport-wszw.6.2, without claiming a proof
+of unrelated concurrent changes. Exact GNU arithmetic warning-call attribution
+and portable intercept-only model construction remain rport-wszw.6.3 and .6.4.
 
 ## Checked GNU vectorizable admission (rport-wszw.7.1.1)
 
