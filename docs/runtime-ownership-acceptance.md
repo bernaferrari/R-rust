@@ -1070,3 +1070,26 @@ and shared-vector updates. Values remain in engine-private owning storage;
 existence and reading do not parse printed R output. This closes the host-handle
 storage milestone, while broader browser/output acceptance and runtime borrowing
 remain separate work.
+
+## Checked atomic pairlist coercion: native candidate (rport-wszw.7.1.1.2)
+
+The shared forbid-unsafe pairlist snapshot now handles logical, integer, double,
+complex and raw results. Every selected value and tag owns its storage before
+allocation or scalar-provider entry. Native conversion returns a typed copied
+scalar; the original runtime is rechecked before checked output writes. A
+mismatched callback result is rejected, and no raw CAR/CDR cursor or numerical
+output pointer survives these callbacks. GNU child admission, invalid-child
+errors, warnings and pairlist raw-byte wrapping are preserved. The thin scalar
+adapters still invoke existing Rust native helpers, and other vector coercion
+paths remain separate work.
+
+A genuine unchanged production regression fails when an integer ALTREP provider
+detaches the source graph and performs full GC: a selected later child is lost.
+The repaired enclosing coercion group passes all 57 tests in 0.42 seconds, with
+zero failures or ignored tests. Independent pinned GNU controls pass for all
+five target modes, warning messages, empty scalar vectors, invalid children and
+generic/expression children. All-target Clippy with denied warnings passes.
+Six atomic strict-provenance Miri cases are running; this is a verified native
+candidate, not a completed Miri checkpoint. The separately discovered GNU
+raw-child errors in the existing asReal/asComplex helpers are tracked in
+`rport-wszw.7.1.1.3`.

@@ -398,6 +398,30 @@ pub unsafe fn coerceToPairList(v: SEXP) -> SEXP {
 
 struct PairlistNative;
 impl super::pairlist::Native for PairlistNative {
+    fn scalar(
+        &mut self,
+        access: &crate::sexp::owner::RuntimeAccess,
+        value: &Sexp<'static>,
+        target: SEXPTYPE,
+    ) -> crate::sexp::SexpResult<super::pairlist::Scalar> {
+        use super::pairlist::Scalar;
+        access.with_native(|_| unsafe {
+            Ok(match target {
+                SEXPTYPE::LGLSXP => Scalar::Logical(asLogical(value.as_raw())),
+                SEXPTYPE::INTSXP => Scalar::Integer(asInteger(value.as_raw())),
+                SEXPTYPE::REALSXP => Scalar::Real(asReal(value.as_raw())),
+                SEXPTYPE::CPLXSXP => Scalar::Complex(asComplex(value.as_raw())),
+                // GNU coercePairList uses the integer cast here, including
+                // wrapping -1 and 256. Vector-list raw coercion differs.
+                SEXPTYPE::RAWSXP => Scalar::Raw(asInteger(value.as_raw()) as Rbyte),
+                _ => {
+                    return Err(crate::sexp::SexpError::EvaluationFailed {
+                        message: "unsupported pairlist scalar target".into(),
+                    });
+                }
+            })
+        })
+    }
     fn deparse(
         &mut self,
         access: &crate::sexp::owner::RuntimeAccess,
@@ -450,50 +474,7 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             return rval;
         }
 
-        if matches!(type_, SEXPTYPE::STRSXP | SEXPTYPE::VECSXP) {
-            return checked_pairlist(v, type_);
-        }
-
-        if isVectorizable(v) {
-            let n = LENGTH(v);
-            let rval = Rf_allocVector3(type_.0, n as R_xlen_t);
-            let _rval_guard = protect(rval);
-            let mut vp = v;
-            for i in 0..n {
-                match type_.0 {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(rval).add(i as usize) = asLogical(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(rval).add(i as usize) = asInteger(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        *REAL(rval).add(i as usize) = asReal(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(rval).add(i as usize) = asComplex(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(rval).add(i as usize) = asInteger(CAR(vp)) as Rbyte;
-                    }
-                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
-                }
-                vp = CDR(vp);
-            }
-            return rval;
-        }
-
-        let from = unsafe {
-            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(v) as i32))
-                .to_string_lossy()
-        };
-        let to = unsafe {
-            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(type_.0 as i32))
-                .to_string_lossy()
-        };
-        error(&format!(
-            "cannot coerce type '{from}' to vector of type '{to}'"
-        ));
+        checked_pairlist(v, type_)
     }
 }
 

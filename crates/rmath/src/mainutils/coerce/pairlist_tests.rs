@@ -117,6 +117,14 @@ fn pairlist_and_list_simple_deparse_follow_independent_gnu_controls() {
 
 struct NoNative;
 impl super::pairlist::Native for NoNative {
+    fn scalar(
+        &mut self,
+        _: &RuntimeAccess,
+        _: &Sexp<'static>,
+        _: SEXPTYPE,
+    ) -> SexpResult<super::pairlist::Scalar> {
+        panic!("unexpected scalar callback before checked admission")
+    }
     fn deparse(&mut self, _: &RuntimeAccess, _: &Sexp<'static>) -> SexpResult<Sexp<'static>> {
         panic!("unexpected deparse before checked admission")
     }
@@ -233,10 +241,11 @@ struct DetachingString {
     calls: Rc<Cell<usize>>,
     second: crate::sexp::heap::CheckedNode,
     action: u8,
+    kind: SEXPTYPE,
 }
 impl AltrepClass for DetachingString {
     fn vector_type(&self) -> SEXPTYPE {
-        SEXPTYPE::STRSXP
+        self.kind
     }
     fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
         Ok(1)
@@ -274,11 +283,22 @@ impl AltrepClass for DetachingString {
         if self.action != 0 {
             std::panic::panic_any(479_u32);
         }
-        Ok(AltrepElement::String(character))
+        Ok(match self.kind {
+            SEXPTYPE::INTSXP => AltrepElement::Integer(101),
+            SEXPTYPE::LGLSXP => AltrepElement::Logical(1),
+            SEXPTYPE::REALSXP => AltrepElement::Real(101.0),
+            SEXPTYPE::CPLXSXP => AltrepElement::Complex(crate::sexp::Rcomplex { r: 101.0, i: 0.0 }),
+            SEXPTYPE::RAWSXP => AltrepElement::Raw(101),
+            _ => AltrepElement::String(character),
+        })
     }
 }
 
 fn detaching_provider(action: u8) {
+    detaching_provider_kind(action, SEXPTYPE::STRSXP);
+}
+
+fn detaching_provider_kind(action: u8, kind: SEXPTYPE) {
     let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
     let calls = Rc::new(Cell::new(0));
     let (owner, input) = {
@@ -287,7 +307,13 @@ fn detaching_provider(action: u8) {
         session.with_active(|| {
             let owner = session.owner_token().unwrap().weak_owner().unwrap();
             let factory = owner.node_factory().unwrap();
-            let second = factory.strings(&["later"]).unwrap();
+            let second = factory
+                .strings(&[if kind != SEXPTYPE::STRSXP {
+                    "202"
+                } else {
+                    "later"
+                }])
+                .unwrap();
             let class = session
                 .register_altrep_class(
                     "pairlist.detaching.string",
@@ -296,6 +322,7 @@ fn detaching_provider(action: u8) {
                         calls: calls.clone(),
                         second: second.allocation().unwrap().clone(),
                         action,
+                        kind,
                     },
                 )
                 .unwrap()
@@ -317,13 +344,48 @@ fn detaching_provider(action: u8) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::sexp::session::with_instance_active(pin.as_ptr(), || {
             with_runtime(&owner, |access| {
-                super::pairlist::coerce(input, SEXPTYPE::STRSXP, access, &mut NoNative)
+                if kind != SEXPTYPE::STRSXP {
+                    access.with_native(|owner| {
+                        owner
+                            .sexp(super::coercePairList(input.as_raw(), kind))?
+                            .into_owned()
+                    })
+                } else {
+                    super::pairlist::coerce(input, kind, access, &mut NoNative)
+                }
             })
         })
     }));
     assert_eq!(calls.get(), 1);
     assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
     match action {
+        0 if kind != SEXPTYPE::STRSXP => {
+            let output = result.unwrap().unwrap().unwrap();
+            match kind {
+                SEXPTYPE::INTSXP => {
+                    assert_eq!(output.try_integer_elt(0).unwrap(), 101);
+                    assert_eq!(output.try_integer_elt(1).unwrap(), 202);
+                }
+                SEXPTYPE::LGLSXP => {
+                    assert_eq!(output.try_logical_elt(0).unwrap(), 1);
+                    assert_eq!(output.try_logical_elt(1).unwrap(), crate::sexp::NA_LOGICAL);
+                }
+                SEXPTYPE::REALSXP => {
+                    assert_eq!(output.try_real_elt(0).unwrap(), 101.0);
+                    assert_eq!(output.try_real_elt(1).unwrap(), 202.0);
+                }
+                SEXPTYPE::CPLXSXP => {
+                    assert_eq!(output.try_complex_elt(0).unwrap().r, 101.0);
+                    assert_eq!(output.try_complex_elt(1).unwrap().r, 202.0);
+                    assert_eq!(output.try_complex_elt(1).unwrap().i, 0.0);
+                }
+                SEXPTYPE::RAWSXP => {
+                    assert_eq!(output.try_raw_elt(0).unwrap(), 101);
+                    assert_eq!(output.try_raw_elt(1).unwrap(), 202);
+                }
+                _ => unreachable!(),
+            }
+        }
         0 => {
             let output = result.unwrap().unwrap().unwrap();
             assert_eq!(
@@ -337,7 +399,15 @@ fn detaching_provider(action: u8) {
         }
         1 => assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 479),
         _ => {
-            assert!(matches!(result.unwrap(), Err(SexpError::RootUnavailable)));
+            if kind == SEXPTYPE::STRSXP {
+                assert!(matches!(result.unwrap(), Err(SexpError::RootUnavailable)));
+            } else {
+                let error = result.unwrap_err();
+                let error = error
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .unwrap();
+                assert_eq!(error.message, SexpError::RootUnavailable.to_string());
+            }
             let mut replacement = RSession::new_for_gc_tests();
             assert_eq!(
                 replacement
@@ -363,4 +433,91 @@ fn pairlist_checked_snapshot_preserves_live_provider_unwind_and_gc_cleanup() {
 #[test]
 fn pairlist_checked_snapshot_rejects_revoked_owner_before_provider_unwind() {
     detaching_provider(2);
+}
+
+#[test]
+fn pairlist_atomic_snapshot_retains_later_value_after_provider_detachment_and_gc() {
+    detaching_provider_kind(0, SEXPTYPE::INTSXP);
+}
+
+#[test]
+fn pairlist_atomic_snapshot_covers_every_scalar_target_after_detachment_and_gc() {
+    for kind in [
+        SEXPTYPE::LGLSXP,
+        SEXPTYPE::REALSXP,
+        SEXPTYPE::CPLXSXP,
+        SEXPTYPE::RAWSXP,
+    ] {
+        detaching_provider_kind(0, kind);
+    }
+}
+
+#[test]
+fn pairlist_atomic_snapshot_preserves_live_provider_unwind_and_gc_cleanup() {
+    detaching_provider_kind(1, SEXPTYPE::INTSXP);
+}
+
+#[test]
+fn pairlist_atomic_snapshot_rejects_revoked_owner_before_provider_unwind() {
+    detaching_provider_kind(2, SEXPTYPE::INTSXP);
+}
+
+#[test]
+fn pairlist_atomic_public_values_warnings_and_admission_match_pinned_gnu() {
+    let mut session = RSession::new_for_gc_tests();
+    let result = session
+        .eval_code_with_output_capture(include_str!("fixtures/pairlist-atomic.R"))
+        .0
+        .unwrap();
+    assert_eq!(result.try_logical_elt(0).unwrap(), 1);
+}
+
+#[test]
+fn pairlist_atomic_checked_admission_rejects_invalid_children_and_graphs_before_native_calls() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let factory = owner.node_factory().unwrap();
+        for child in [
+            factory.nil(),
+            factory.strings(&["first", "second"]).unwrap(),
+        ] {
+            let input = factory
+                .pairlist_cell(&child, &factory.nil(), &factory.nil())
+                .unwrap();
+            let error = with_runtime(&owner, |access| {
+                super::pairlist::coerce(input, SEXPTYPE::INTSXP, access, &mut NoNative)
+            })
+            .unwrap()
+            .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "'pairlist' object cannot be coerced to type 'integer'"
+            );
+        }
+        let scalar = factory.strings(&["202"]).unwrap();
+        let cell = factory
+            .pairlist_cell(&scalar, &scalar, &factory.nil())
+            .unwrap();
+        let error = with_runtime(&owner, |access| {
+            super::pairlist::coerce(cell.clone(), SEXPTYPE::INTSXP, access, &mut NoNative)
+        })
+        .unwrap()
+        .unwrap_err();
+        assert!(error.to_string().contains("improper pairlist"));
+        replace_rest(&cell, &cell);
+        let error = with_runtime(&owner, |access| {
+            super::pairlist::coerce(cell.clone(), SEXPTYPE::INTSXP, access, &mut NoNative)
+        })
+        .unwrap()
+        .unwrap_err();
+        replace_rest(&cell, &factory.nil());
+        assert!(error.to_string().contains("cyclic pairlist"));
+        let error = with_runtime(&owner, |access| {
+            super::pairlist::coerce(cell, SEXPTYPE::ENVSXP, access, &mut NoNative)
+        })
+        .unwrap()
+        .unwrap_err();
+        assert!(error.to_string().contains("unsupported checked pairlist"));
+    });
 }

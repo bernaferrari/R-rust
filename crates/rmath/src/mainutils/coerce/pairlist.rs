@@ -1,13 +1,19 @@
-//! Owning pairlist snapshots for string and list coercion.
+//! Owning pairlist snapshots for vector coercion.
 #![forbid(unsafe_code)]
 
 use crate::sexp::{
-    SEXPTYPE,
+    Rcomplex, SEXPTYPE,
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::RuntimeAccess,
 };
 
 pub(super) trait Native {
+    fn scalar(
+        &mut self,
+        access: &RuntimeAccess,
+        value: &Sexp<'static>,
+        target: SEXPTYPE,
+    ) -> SexpResult<Scalar>;
     fn deparse(
         &mut self,
         access: &RuntimeAccess,
@@ -19,6 +25,26 @@ pub(super) trait Native {
         value: &Sexp<'static>,
         names: &Sexp<'static>,
     ) -> SexpResult<()>;
+}
+
+/// Callback results are copied values, never references into native storage.
+pub(super) enum Scalar {
+    Logical(i32),
+    Integer(i32),
+    Real(f64),
+    Complex(Rcomplex),
+    Raw(u8),
+}
+
+fn atomic_name(target: SEXPTYPE) -> Option<&'static str> {
+    match target {
+        SEXPTYPE::LGLSXP => Some("logical"),
+        SEXPTYPE::INTSXP => Some("integer"),
+        SEXPTYPE::REALSXP => Some("double"),
+        SEXPTYPE::CPLXSXP => Some("complex"),
+        SEXPTYPE::RAWSXP => Some("raw"),
+        _ => None,
+    }
 }
 
 fn failure(message: &str) -> SexpError {
@@ -47,7 +73,8 @@ pub(super) fn coerce(
     access.require_active()?;
     let domain = access.domain();
     let value = domain.wrap(value.as_raw())?.into_owned()?;
-    if !matches!(target, SEXPTYPE::STRSXP | SEXPTYPE::VECSXP) {
+    let atomic = atomic_name(target);
+    if !matches!(target, SEXPTYPE::STRSXP | SEXPTYPE::VECSXP) && atomic.is_none() {
         return Err(failure("unsupported checked pairlist coercion"));
     }
     let language = value.typeof_() == SEXPTYPE::LANGSXP;
@@ -85,6 +112,17 @@ pub(super) fn coerce(
         selected.push((child, name));
         cursor = cursor.try_cdr()?.into_owned()?;
     }
+    if let Some(target_name) = atomic
+        && (language
+            || selected
+                .iter()
+                .any(|(child, _)| !child.is_vector() || child.len() > 1))
+    {
+        let source = if language { "language" } else { "pairlist" };
+        return Err(failure(&format!(
+            "'{source}' object cannot be coerced to type '{target_name}'"
+        )));
+    }
     let length = selected
         .len()
         .try_into()
@@ -95,6 +133,26 @@ pub(super) fn coerce(
     for (index, (child, _)) in selected.iter().enumerate() {
         if target == SEXPTYPE::VECSXP {
             result.try_set_vector_elt(index as _, child.clone())?;
+        } else if atomic.is_some() {
+            let scalar = callback(access, || native.scalar(access, child, target))?;
+            match (target, scalar) {
+                (SEXPTYPE::LGLSXP, Scalar::Logical(value)) => {
+                    result.try_set_logical_elt(index as _, value)?
+                }
+                (SEXPTYPE::INTSXP, Scalar::Integer(value)) => {
+                    result.try_set_integer_elt(index as _, value)?
+                }
+                (SEXPTYPE::REALSXP, Scalar::Real(value)) => {
+                    result.try_set_real_elt(index as _, value)?
+                }
+                (SEXPTYPE::CPLXSXP, Scalar::Complex(value)) => {
+                    result.try_set_complex_elt(index as _, value)?
+                }
+                (SEXPTYPE::RAWSXP, Scalar::Raw(value)) => {
+                    result.try_set_raw_elt(index as _, value)?
+                }
+                _ => return Err(failure("invalid pairlist scalar callback result")),
+            }
         } else {
             let character = if language && index == 0 && child.typeof_() == SEXPTYPE::SYMSXP {
                 child.try_printname()?.into_owned()?
