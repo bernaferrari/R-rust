@@ -573,3 +573,31 @@ default alias checker and strict provenance (420.51 seconds). Clippy with
 warnings denied and formatting pass. One old declaration-change fixture was
 updated to reach canonical private metadata instead of public attributes;
 its mutation, rejection, cache, and retry assertions remain intact.
+
+## Owned foreign routine declarations and library leases
+
+Foreign registration now copies names, interface, arity and primitive argument
+types into a Rust registry that forbids unsafe code. Resolution owns a
+declaration snapshot and retains the physical loaded library through invocation;
+re-registration, visible unload and session retirement cannot invalidate that
+snapshot. The DLL table ends its mutable loan before initialization, unload or
+physical loader destruction can execute host code. Registered wrong interface,
+arity and primitive type requests are rejected before the handler runs.
+
+A counter-only wrong-arity fixture genuinely failed before the repair while
+using a compatible one-list External ABI. The final seven selected native cases
+pass, including actual buffer type admission and re-registration/unload/session
+retirement. The same seven cases pass strict-provenance Miri with the default
+alias checker in two completed selections (three in 237.82 seconds and four in
+255.27 seconds). Warnings-denied Clippy and assigned formatting pass. An initial
+Miri run stopped at an unsupported platform strcmp call; final path comparisons
+use CStr byte equality. The separate existing default-session DLL controls did
+not complete within their bounded startup observation and are not counted as
+passing.
+
+The foreign input and invocation seam remains explicitly unsafe: declarations
+cannot authenticate arbitrary host addresses, actual ABI signatures or foreign
+package global state. Dynamic unregistered lookup remains a trusted host
+facility. Registered single-precision buffers are rejected before invocation
+until proper float marshalling exists; authenticated R-visible native symbol
+handles and full foreign API semantics remain tracked in rport-wpdk.3.2.

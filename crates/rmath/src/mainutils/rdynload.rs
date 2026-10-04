@@ -9,6 +9,11 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+use std::ptr::NonNull;
+use std::rc::Rc;
+
+mod registered;
+use registered::{Interface, Registry, Routine};
 
 use crate::mainutils::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
 use crate::mainutils::relop::checkArity;
@@ -70,40 +75,6 @@ const FILESEP: &[u8] = b"/\0";
 // Registered symbol tables per DLL
 // ---------------------------------------------------------------------------
 
-/// A single registered .C symbol entry.
-#[repr(C)]
-struct DotCSymbol {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-    types: *mut c_int,
-}
-
-/// A single registered .Call symbol entry.
-#[repr(C)]
-struct DotCallSymbol {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-}
-
-/// A single registered .Fortran symbol entry.
-#[repr(C)]
-struct DotFortranSymbol {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-    types: *mut c_int,
-}
-
-/// A single registered .External symbol entry.
-#[repr(C)]
-struct DotExternalSymbol {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-}
-
 // ---------------------------------------------------------------------------
 // DllInfo — tracks a loaded shared library and its registered symbols
 // ---------------------------------------------------------------------------
@@ -118,18 +89,7 @@ pub struct DllInfo {
     pub use_dynamic_lookup: bool,
     pub force_symbols: bool,
 
-    // Registered symbol tables
-    num_c_symbols: c_int,
-    c_symbols: *mut DotCSymbol,
-
-    num_call_symbols: c_int,
-    call_symbols: *mut DotCallSymbol,
-
-    num_fortran_symbols: c_int,
-    fortran_symbols: *mut DotFortranSymbol,
-
-    num_external_symbols: c_int,
-    external_symbols: *mut DotExternalSymbol,
+    registrations: Registry,
 }
 
 impl DllInfo {
@@ -140,15 +100,65 @@ impl DllInfo {
             handle,
             use_dynamic_lookup: true,
             force_symbols: false,
-            num_c_symbols: 0,
-            c_symbols: ptr::null_mut(),
-            num_call_symbols: 0,
-            call_symbols: ptr::null_mut(),
-            num_fortran_symbols: 0,
-            fortran_symbols: ptr::null_mut(),
-            num_external_symbols: 0,
-            external_symbols: ptr::null_mut(),
+            registrations: Registry::default(),
         }
+    }
+}
+
+/// Physical DLL storage is retained by each resolved invocation. Removal from
+/// the visible registry does not invalidate its metadata or unmap executing
+/// code. Final destruction never calls an R unload hook.
+struct LoadedDll {
+    info: NonNull<DllInfo>,
+}
+impl LoadedDll {
+    unsafe fn from_owned(info: *mut DllInfo) -> Rc<Self> {
+        Rc::new(Self {
+            info: NonNull::new(info).expect("owned DLL allocation"),
+        })
+    }
+    fn pointer(&self) -> *mut DllInfo {
+        self.info.as_ptr()
+    }
+}
+impl Drop for LoadedDll {
+    fn drop(&mut self) {
+        // SAFETY: this is the unique physical owner; every resolved invocation
+        // retains an Rc and copied declarations before callbacks are possible.
+        unsafe {
+            let handle = (*self.pointer()).handle;
+            if !handle.is_null() {
+                #[cfg(not(target_arch = "wasm32"))]
+                unsafe extern "C" {
+                    fn dlclose(handle: *mut c_void) -> c_int;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                dlclose(handle);
+                #[cfg(target_arch = "wasm32")]
+                crate::unix::dynload::dlclose(handle);
+            }
+            free_dll_info(self.pointer());
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct ResolvedForeignRoutine {
+    function: DL_FUNC,
+    declaration: Option<Routine>,
+    _library: Rc<LoadedDll>,
+}
+impl ResolvedForeignRoutine {
+    pub(crate) fn function(&self) -> DL_FUNC {
+        self.function
+    }
+    pub(crate) fn validate(&self, interface: c_int, count: usize) -> Result<(), String> {
+        self.declaration
+            .as_ref()
+            .map_or(Ok(()), |routine| routine.validate(interface, count))
+    }
+    pub(crate) fn argument_types(&self) -> Option<&[c_int]> {
+        self.declaration.as_ref()?.types.as_deref()
     }
 }
 
@@ -164,7 +174,7 @@ impl DllInfo {
 /// lets Android host multiple independent R sessions without process-global R
 /// registry mutation.
 pub(crate) struct DynloadState {
-    pub loaded_dll: Vec<*mut DllInfo>,
+    loaded_dll: Vec<Rc<LoadedDll>>,
     pub dll_info_eptrs: SEXP,
     pub symbol_eptrs: SEXP,
     pub dll_error: [u8; 4000],
@@ -255,12 +265,15 @@ pub struct R_ExternalMethodDef {
 
 /// Initialize the DLL table. Called once at R startup.
 fn init_loaded_dll() {
-    with_dynload_state(|state| {
-        state.loaded_dll.clear();
+    let retired = with_dynload_state(|state| {
+        let retired = std::mem::take(&mut state.loaded_dll);
         state.dll_info_eptrs = ptr::null_mut();
         state.symbol_eptrs = ptr::null_mut();
         state.max_num_dlls = MAX_NUM_DLLS_DEFAULT;
+        retired
     });
+    // OS loader destructors can execute host code. End the state loan first.
+    drop(retired);
 }
 
 /// Called at R startup to initialize dynamic loading.
@@ -271,13 +284,10 @@ pub unsafe fn InitDynload() {
         let base_path = b"base\0".as_ptr() as *const c_char;
         let _idx = add_dll(base_path, base_path, ptr::null_mut());
 
-        with_dynload_state(|state| {
-            if let Some(&dll) = state.loaded_dll.first() {
-                crate::mainutils::registration::R_init_base(
-                    dll as *mut crate::mainutils::registration::DllInfo,
-                );
-            }
-        });
+        let base = with_dynload_state(|state| state.loaded_dll.first().cloned());
+        if let Some(base) = base {
+            crate::mainutils::registration::R_init_base(base.pointer());
+        }
 
         InitFunctionHashing();
     }
@@ -305,7 +315,7 @@ unsafe fn add_dll(dpath: *const c_char, dllname: *const c_char, handle: *mut c_v
 
         with_dynload_state(|state| {
             let idx = state.loaded_dll.len() as isize;
-            state.loaded_dll.push(info);
+            state.loaded_dll.push(LoadedDll::from_owned(info));
             idx
         })
     }
@@ -452,8 +462,9 @@ unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
 pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
     unsafe {
         with_dynload_state(|state| {
-            for &dll in state.loaded_dll.iter() {
-                if !dll.is_null() && strcmp((*dll).path, path) == 0 {
+            for library in state.loaded_dll.iter() {
+                let dll = library.pointer();
+                if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
                     return dll;
                 }
             }
@@ -465,7 +476,8 @@ pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
 /// Find the index of a DllInfo in the table.
 unsafe fn R_getDllIndex(info: *mut DllInfo) -> isize {
     with_dynload_state(|state| {
-        for (i, &dll) in state.loaded_dll.iter().enumerate() {
+        for (i, library) in state.loaded_dll.iter().enumerate() {
+            let dll = library.pointer();
             if dll == info {
                 return i as isize;
             }
@@ -520,118 +532,16 @@ pub unsafe fn R_forceSymbols(info: *mut DllInfo, value: bool) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Symbol registration helpers
+// Registration is an explicitly unsafe, null-terminated foreign input seam.
+// All accepted names, arities and primitive types become owned Rust values.
 // ---------------------------------------------------------------------------
 
-unsafe fn set_primitive_arg_types(croutine: &R_FortranMethodDef, sym: *mut DotFortranSymbol) {
-    unsafe {
-        let n = croutine.num_args;
-        if n <= 0 {
-            return;
-        }
-        let n_usize = n as usize;
-        let types = libc_malloc(n_usize * std::mem::size_of::<c_int>()) as *mut c_int;
-        if types.is_null() {
-            error("allocation failure in set_primitive_arg_types");
-        }
-        if !croutine.types.is_null() {
-            memcpy(
-                types as *mut c_void,
-                croutine.types as *const c_void,
-                n_usize * std::mem::size_of::<c_int>(),
-            );
-        }
-        (*sym).types = types;
+unsafe fn copy_types(types: *const c_int, count: c_int) -> Option<Vec<c_int>> {
+    if types.is_null() || count < 0 {
+        return None;
     }
+    Some(unsafe { std::slice::from_raw_parts(types, count as usize) }.to_vec())
 }
-
-unsafe fn add_c_routine(info: *mut DllInfo, croutine: &R_CMethodDef, sym: *mut DotCSymbol) {
-    unsafe {
-        (*sym).name = strdup(croutine.name);
-        (*sym).fun = croutine.fun;
-        (*sym).num_args = if croutine.num_args > -1 {
-            croutine.num_args
-        } else {
-            -1
-        };
-        if !croutine.types.is_null() {
-            // Need to create a FortranMethodDef-like wrapper for the type copy.
-            // For .C routines, types are the same as for Fortran.
-            let n = croutine.num_args;
-            if n > 0 {
-                let n_usize = n as usize;
-                let types = libc_malloc(n_usize * std::mem::size_of::<c_int>()) as *mut c_int;
-                if types.is_null() {
-                    error("allocation failure in add_c_routine");
-                }
-                memcpy(
-                    types as *mut c_void,
-                    croutine.types as *const c_void,
-                    n_usize * std::mem::size_of::<c_int>(),
-                );
-                (*sym).types = types;
-            }
-        }
-    }
-}
-
-unsafe fn add_call_routine(
-    info: *mut DllInfo,
-    croutine: &R_CallMethodDef,
-    sym: *mut DotCallSymbol,
-) {
-    unsafe {
-        let _ = info;
-        (*sym).name = strdup(croutine.name);
-        (*sym).fun = croutine.fun;
-        (*sym).num_args = if croutine.num_args > -1 {
-            croutine.num_args
-        } else {
-            -1
-        };
-    }
-}
-
-unsafe fn add_fortran_routine(
-    info: *mut DllInfo,
-    croutine: &R_FortranMethodDef,
-    sym: *mut DotFortranSymbol,
-) {
-    unsafe {
-        let _ = info;
-        (*sym).name = strdup(croutine.name);
-        (*sym).fun = croutine.fun;
-        (*sym).num_args = if croutine.num_args > -1 {
-            croutine.num_args
-        } else {
-            -1
-        };
-        if !croutine.types.is_null() {
-            set_primitive_arg_types(croutine, sym);
-        }
-    }
-}
-
-unsafe fn add_external_routine(
-    info: *mut DllInfo,
-    croutine: &R_ExternalMethodDef,
-    sym: *mut DotExternalSymbol,
-) {
-    unsafe {
-        let _ = info;
-        (*sym).name = strdup(croutine.name);
-        (*sym).fun = croutine.fun;
-        (*sym).num_args = if croutine.num_args > -1 {
-            croutine.num_args
-        } else {
-            -1
-        };
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_registerRoutines — the main registration entry point
-// ---------------------------------------------------------------------------
 
 pub unsafe fn R_registerRoutines(
     info: *mut DllInfo,
@@ -644,259 +554,134 @@ pub unsafe fn R_registerRoutines(
         if info.is_null() {
             error("R_registerRoutines called with invalid DllInfo object.");
         }
-
-        // Default: look in registered, then dynamic (unless no handle like base/embedded)
+        // Capture every supplied table before publication. A replacement does
+        // not alter declarations already captured by an active invocation.
+        let mut replacements = Vec::new();
+        macro_rules! table {
+            ($table:expr, $interface:expr, $types:expr) => {
+                if !$table.is_null() {
+                    let mut entries = Vec::new();
+                    let mut cursor = $table;
+                    while !(*cursor).name.is_null() {
+                        let definition = &*cursor;
+                        entries.push(Routine {
+                            name: CStr::from_ptr(definition.name).to_owned(),
+                            function: definition.fun,
+                            interface: $interface,
+                            arity: registered::Arity::from_native(definition.num_args),
+                            types: $types(definition),
+                        });
+                        cursor = cursor.add(1);
+                    }
+                    replacements.push(($interface, entries));
+                }
+            };
+        }
+        table!(croutines, Interface::C, |d: &R_CMethodDef| copy_types(
+            d.types, d.num_args
+        ));
+        table!(call_routines, Interface::Call, |_: &R_CallMethodDef| None);
+        table!(
+            fortran_routines,
+            Interface::Fortran,
+            |d: &R_FortranMethodDef| copy_types(d.types, d.num_args)
+        );
+        table!(
+            external_routines,
+            Interface::External,
+            |_: &R_ExternalMethodDef| None
+        );
+        for (interface, entries) in replacements {
+            (*info).registrations.replace(interface, entries);
+        }
         (*info).use_dynamic_lookup = !(*info).handle.is_null();
         (*info).force_symbols = false;
-
-        // Register .C routines
-        if !croutines.is_null() {
-            let num = count_null_terminated_routines(
-                croutines as *const c_void,
-                std::mem::size_of::<R_CMethodDef>(),
-            ) as c_int;
-            let sym_table =
-                libc_calloc(num as usize, std::mem::size_of::<DotCSymbol>()) as *mut DotCSymbol;
-            if sym_table.is_null() && num > 0 {
-                error("allocation failure in R_registerRoutines");
-            }
-            (*info).num_c_symbols = num;
-            (*info).c_symbols = sym_table;
-            for i in 0..num {
-                let cr = &*croutines.add(i as usize);
-                add_c_routine(info, cr, sym_table.add(i as usize));
-            }
-        }
-
-        // Register .Fortran routines
-        if !fortran_routines.is_null() {
-            let num = count_null_terminated_routines(
-                fortran_routines as *const c_void,
-                std::mem::size_of::<R_FortranMethodDef>(),
-            ) as c_int;
-            let sym_table = libc_calloc(num as usize, std::mem::size_of::<DotFortranSymbol>())
-                as *mut DotFortranSymbol;
-            if sym_table.is_null() && num > 0 {
-                // Free previously allocated C symbols
-                if !(*info).c_symbols.is_null() {
-                    libc_free((*info).c_symbols as *mut c_void);
-                    (*info).c_symbols = ptr::null_mut();
-                    (*info).num_c_symbols = 0;
-                }
-                error("allocation failure in R_registerRoutines");
-            }
-            (*info).num_fortran_symbols = num;
-            (*info).fortran_symbols = sym_table;
-            for i in 0..num {
-                let fr = &*fortran_routines.add(i as usize);
-                add_fortran_routine(info, fr, sym_table.add(i as usize));
-            }
-        }
-
-        // Register .Call routines
-        if !call_routines.is_null() {
-            let num = count_null_terminated_routines(
-                call_routines as *const c_void,
-                std::mem::size_of::<R_CallMethodDef>(),
-            ) as c_int;
-            let sym_table = libc_calloc(num as usize, std::mem::size_of::<DotCallSymbol>())
-                as *mut DotCallSymbol;
-            if sym_table.is_null() && num > 0 {
-                if !(*info).c_symbols.is_null() {
-                    libc_free((*info).c_symbols as *mut c_void);
-                }
-                if !(*info).fortran_symbols.is_null() {
-                    libc_free((*info).fortran_symbols as *mut c_void);
-                }
-                error("allocation failure in R_registerRoutines");
-            }
-            (*info).num_call_symbols = num;
-            (*info).call_symbols = sym_table;
-            for i in 0..num {
-                let cr = &*call_routines.add(i as usize);
-                add_call_routine(info, cr, sym_table.add(i as usize));
-            }
-        }
-
-        // Register .External routines
-        if !external_routines.is_null() {
-            let num = count_null_terminated_routines(
-                external_routines as *const c_void,
-                std::mem::size_of::<R_ExternalMethodDef>(),
-            ) as c_int;
-            let sym_table = libc_calloc(num as usize, std::mem::size_of::<DotExternalSymbol>())
-                as *mut DotExternalSymbol;
-            if sym_table.is_null() && num > 0 {
-                if !(*info).c_symbols.is_null() {
-                    libc_free((*info).c_symbols as *mut c_void);
-                }
-                if !(*info).fortran_symbols.is_null() {
-                    libc_free((*info).fortran_symbols as *mut c_void);
-                }
-                if !(*info).call_symbols.is_null() {
-                    libc_free((*info).call_symbols as *mut c_void);
-                }
-                error("allocation failure in R_registerRoutines");
-            }
-            (*info).num_external_symbols = num;
-            (*info).external_symbols = sym_table;
-            for i in 0..num {
-                let er = &*external_routines.add(i as usize);
-                add_external_routine(info, er, sym_table.add(i as usize));
-            }
-        }
-
         1
     }
 }
 
-/// Count entries in a null-terminated array of routine definitions.
-/// Each entry is `entry_size` bytes; the terminator has name == NULL.
-unsafe fn count_null_terminated_routines(base: *const c_void, entry_size: usize) -> usize {
-    unsafe {
-        let mut count = 0usize;
-        let mut ptr = base;
-        loop {
-            // The first field of each struct is name: *const c_char
-            let name_ptr = *(ptr as *const *const c_char);
-            if name_ptr.is_null() {
-                break;
-            }
-            count += 1;
-            ptr = ptr.add(entry_size);
-        }
-        count
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Symbol lookup — registered symbols
-// ---------------------------------------------------------------------------
-
-unsafe fn lookup_registered_c_symbol(
-    info: *const DllInfo,
-    name: *const c_char,
-) -> *const DotCSymbol {
-    unsafe {
-        let n = (*info).num_c_symbols;
-        if n <= 0 || (*info).c_symbols.is_null() {
-            return ptr::null();
-        }
-        for i in 0..n as usize {
-            let sym = (*info).c_symbols.add(i);
-            if !(*sym).name.is_null() && strcmp((*sym).name, name) == 0 {
-                return sym;
-            }
-        }
-        ptr::null()
-    }
-}
-
-unsafe fn lookup_registered_call_symbol(
-    info: *const DllInfo,
-    name: *const c_char,
-) -> *const DotCallSymbol {
-    unsafe {
-        let n = (*info).num_call_symbols;
-        if n <= 0 || (*info).call_symbols.is_null() {
-            return ptr::null();
-        }
-        for i in 0..n as usize {
-            let sym = (*info).call_symbols.add(i);
-            if !(*sym).name.is_null() && strcmp((*sym).name, name) == 0 {
-                return sym;
-            }
-        }
-        ptr::null()
-    }
-}
-
-unsafe fn lookup_registered_fortran_symbol(
-    info: *const DllInfo,
-    name: *const c_char,
-) -> *const DotFortranSymbol {
-    unsafe {
-        let n = (*info).num_fortran_symbols;
-        if n <= 0 || (*info).fortran_symbols.is_null() {
-            return ptr::null();
-        }
-        for i in 0..n as usize {
-            let sym = (*info).fortran_symbols.add(i);
-            if !(*sym).name.is_null() && strcmp((*sym).name, name) == 0 {
-                return sym;
-            }
-        }
-        ptr::null()
-    }
-}
-
-unsafe fn lookup_registered_external_symbol(
-    info: *const DllInfo,
-    name: *const c_char,
-) -> *const DotExternalSymbol {
-    unsafe {
-        let n = (*info).num_external_symbols;
-        if n <= 0 || (*info).external_symbols.is_null() {
-            return ptr::null();
-        }
-        for i in 0..n as usize {
-            let sym = (*info).external_symbols.add(i);
-            if !(*sym).name.is_null() && strcmp((*sym).name, name) == 0 {
-                return sym;
-            }
-        }
-        ptr::null()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_getDLLRegisteredSymbol — look up a symbol in registered tables
-// ---------------------------------------------------------------------------
-
-/// Look up a registered native routine in a DLL.
-/// If found and `symbol` is non-null, fills in the symbol info.
-/// Returns the function pointer or None.
 pub unsafe fn R_getDLLRegisteredSymbol(
     info: *const DllInfo,
     name: *const c_char,
     sym_type: c_int,
 ) -> DL_FUNC {
-    unsafe {
-        // .C
-        if (sym_type == R_ANY_SYM || sym_type == R_C_SYM) && (*info).num_c_symbols > 0 {
-            let sym = lookup_registered_c_symbol(info, name);
-            if !sym.is_null() {
-                return (*sym).fun;
-            }
-        }
-
-        // .Call
-        if (sym_type == R_ANY_SYM || sym_type == R_CALL_SYM) && (*info).num_call_symbols > 0 {
-            let sym = lookup_registered_call_symbol(info, name);
-            if !sym.is_null() {
-                return (*sym).fun;
-            }
-        }
-
-        // .Fortran
-        if (sym_type == R_ANY_SYM || sym_type == R_FORTRAN_SYM) && (*info).num_fortran_symbols > 0 {
-            let sym = lookup_registered_fortran_symbol(info, name);
-            if !sym.is_null() {
-                return (*sym).fun;
-            }
-        }
-
-        // .External
-        if (sym_type == R_ANY_SYM || sym_type == R_EXTERNAL_SYM) && (*info).num_external_symbols > 0
-        {
-            let sym = lookup_registered_external_symbol(info, name);
-            if !sym.is_null() {
-                return (*sym).fun;
-            }
-        }
-
-        None
+    if info.is_null() || name.is_null() {
+        return None;
     }
+    unsafe { (*info).registrations.lookup(CStr::from_ptr(name), sym_type) }
+        .and_then(|routine| routine.function)
+}
+
+fn resolve_in_library(
+    library: Rc<LoadedDll>,
+    name: &CStr,
+    kind: c_int,
+) -> Option<ResolvedForeignRoutine> {
+    // SAFETY: table ownership pins the DllInfo and its loader handle throughout
+    // this non-callback snapshot. Raw ABI registration is the only writer.
+    unsafe {
+        let info = library.pointer();
+        let declaration = (*info).registrations.lookup(name, kind);
+        let function = declaration
+            .as_ref()
+            .and_then(|routine| routine.function)
+            .or_else(|| {
+                if !(*info).use_dynamic_lookup || (*info).handle.is_null() {
+                    return None;
+                }
+                let pointer = libc_dlsym((*info).handle, name.as_ptr());
+                if pointer.is_null() {
+                    None
+                } else {
+                    std::mem::transmute::<*mut c_void, DL_FUNC>(pointer)
+                }
+            });
+        function.map(|_| ResolvedForeignRoutine {
+            function,
+            declaration,
+            _library: library,
+        })
+    }
+}
+
+pub(crate) unsafe fn resolve_foreign_symbol(
+    name: *const c_char,
+    package: *const c_char,
+    kind: c_int,
+    handle: *mut c_void,
+) -> Option<ResolvedForeignRoutine> {
+    if name.is_null() {
+        return None;
+    }
+    let name = unsafe { CStr::from_ptr(name) };
+    let package = if package.is_null() {
+        c""
+    } else {
+        unsafe { CStr::from_ptr(package) }
+    };
+    let libraries = with_dynload_state(|state| state.loaded_dll.clone());
+    for library in libraries.into_iter().rev() {
+        let info = library.pointer();
+        // No raw DllInfo survives without the physical lease above.
+        let selected = unsafe {
+            if !handle.is_null() {
+                (*info).handle == handle
+            } else {
+                package.to_bytes().is_empty() || CStr::from_ptr((*info).name) == package
+            }
+        };
+        if !selected {
+            continue;
+        }
+        if handle.is_null() && unsafe { (*info).force_symbols } {
+            continue;
+        }
+        let result = resolve_in_library(library, name, kind);
+        if result.is_some() || !handle.is_null() || !package.to_bytes().is_empty() {
+            return result;
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -943,7 +728,8 @@ pub(crate) unsafe fn R_findDllByHandle(handle: *mut c_void) -> *mut DllInfo {
             return ptr::null_mut();
         }
         with_dynload_state(|state| {
-            for &dll in state.loaded_dll.iter() {
+            for library in state.loaded_dll.iter() {
+                let dll = library.pointer();
                 if !dll.is_null() && (*dll).handle == handle {
                     return dll;
                 }
@@ -972,7 +758,7 @@ pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_
             let mut i = dlls.len();
             while i > 0 {
                 i -= 1;
-                let dll = dlls[i];
+                let dll = dlls[i].pointer();
                 if dll.is_null() {
                     continue;
                 }
@@ -1017,48 +803,6 @@ unsafe fn free_dll_info(info: *mut DllInfo) {
         }
         let info = &mut *info;
 
-        // Free C symbols
-        if !info.c_symbols.is_null() {
-            for i in 0..info.num_c_symbols as usize {
-                let sym = info.c_symbols.add(i);
-                libc_free((*sym).name as *mut c_void);
-                if !(*sym).types.is_null() {
-                    libc_free((*sym).types as *mut c_void);
-                }
-            }
-            libc_free(info.c_symbols as *mut c_void);
-        }
-
-        // Free Call symbols
-        if !info.call_symbols.is_null() {
-            for i in 0..info.num_call_symbols as usize {
-                let sym = info.call_symbols.add(i);
-                libc_free((*sym).name as *mut c_void);
-            }
-            libc_free(info.call_symbols as *mut c_void);
-        }
-
-        // Free Fortran symbols
-        if !info.fortran_symbols.is_null() {
-            for i in 0..info.num_fortran_symbols as usize {
-                let sym = info.fortran_symbols.add(i);
-                libc_free((*sym).name as *mut c_void);
-                if !(*sym).types.is_null() {
-                    libc_free((*sym).types as *mut c_void);
-                }
-            }
-            libc_free(info.fortran_symbols as *mut c_void);
-        }
-
-        // Free External symbols
-        if !info.external_symbols.is_null() {
-            for i in 0..info.num_external_symbols as usize {
-                let sym = info.external_symbols.add(i);
-                libc_free((*sym).name as *mut c_void);
-            }
-            libc_free(info.external_symbols as *mut c_void);
-        }
-
         libc_free(info.path as *mut c_void);
         libc_free(info.name as *mut c_void);
         // Drop the Box
@@ -1072,9 +816,12 @@ unsafe fn free_dll_info(info: *mut DllInfo) {
 
 unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
     unsafe {
+        if (*dll_info).handle.is_null() {
+            return;
+        }
         let name = CStr::from_ptr((*dll_info).name);
-        let name_bytes = name.to_bytes();
-        let buf = format!("R_unload_{}\0", std::str::from_utf8_unchecked(name_bytes));
+        let mut buf = b"R_unload_".to_vec();
+        buf.extend_from_slice(name.to_bytes_with_nul());
         #[cfg(not(target_arch = "wasm32"))]
         unsafe extern "C" {
             fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
@@ -1097,8 +844,9 @@ unsafe fn delete_dll(path: *const c_char) -> bool {
         let dll = with_dynload_state(|state| {
             let loc = {
                 let mut found = None;
-                for (i, &dll) in state.loaded_dll.iter().enumerate() {
-                    if !dll.is_null() && strcmp((*dll).path, path) == 0 {
+                for (i, library) in state.loaded_dll.iter().enumerate() {
+                    let dll = library.pointer();
+                    if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
                         found = Some(i);
                         break;
                     }
@@ -1112,20 +860,10 @@ unsafe fn delete_dll(path: *const c_char) -> bool {
         let Some(dll) = dll else {
             return false;
         };
-        if !dll.is_null() {
-            call_dll_unload(dll);
-            if !(*dll).handle.is_null() {
-                #[cfg(not(target_arch = "wasm32"))]
-                unsafe extern "C" {
-                    fn dlclose(handle: *mut c_void) -> c_int;
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                dlclose((*dll).handle);
-                #[cfg(target_arch = "wasm32")]
-                crate::unix::dynload::dlclose((*dll).handle);
-            }
-            free_dll_info(dll);
-        }
+        call_dll_unload(dll.pointer());
+        // Removing the table's ownership retires future lookup immediately.
+        // Active invocation leases delay dlclose and DllInfo destruction.
+        drop(dll);
         true
     }
 }
@@ -1146,11 +884,12 @@ unsafe fn AddDLL(
         // Check if already loaded — if so, move to end of list (most recent)
         let already_loaded = with_dynload_state(|state| {
             for i in 0..state.loaded_dll.len() {
-                let dll = state.loaded_dll[i];
-                if !dll.is_null() && strcmp((*dll).path, path) == 0 {
+                let dll = state.loaded_dll[i].pointer();
+                if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
                     let entry = state.loaded_dll.remove(i);
+                    let pointer = entry.pointer();
                     state.loaded_dll.push(entry);
-                    return Some(entry);
+                    return Some(pointer);
                 }
             }
             None
@@ -1211,11 +950,22 @@ unsafe fn AddDLL(
         (*info).use_dynamic_lookup = !handle.is_null();
         (*info).force_symbols = false;
 
-        with_dynload_state(|state| state.loaded_dll.push(info));
+        let library = LoadedDll::from_owned(info);
+        with_dynload_state(|state| state.loaded_dll.push(library.clone()));
 
         call_init_routine(info);
-
-        info
+        // An initialization hook can unload its own library. The local lease
+        // protects the hook, but a retired entry must not escape as DllInfo.
+        if with_dynload_state(|state| {
+            state
+                .loaded_dll
+                .iter()
+                .any(|entry| Rc::ptr_eq(entry, &library))
+        }) {
+            info
+        } else {
+            ptr::null_mut()
+        }
     }
 }
 
@@ -1343,7 +1093,7 @@ pub unsafe fn R_getDllTable() -> SEXP {
         let count = dlls.len();
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, count as c_int);
         for i in 0..count {
-            let info = dlls[i];
+            let info = dlls[i].pointer();
             if !info.is_null() {
                 SET_VECTOR_ELT(ans, i as R_xlen_t, make_dll_info_sexp(info));
             }
@@ -1681,6 +1431,9 @@ pub unsafe fn Rf_lookupCachedSymbol(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+mod owned_registration_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
@@ -1839,11 +1592,12 @@ mod tests {
     fn test_find_symbol_registered_call() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let info = Box::into_raw(Box::new(DllInfo::new(
-                b"/tmp/test.so\0".as_ptr() as *mut c_char,
-                b"testpkg\0".as_ptr() as *mut c_char,
+            add_dll(
+                c"/tmp/test.so".as_ptr(),
+                c"testpkg".as_ptr(),
                 ptr::null_mut(),
-            )));
+            );
+            let info = R_getDllInfo(c"/tmp/test.so".as_ptr());
             let routines = [
                 R_CallMethodDef {
                     name: b"registered\0".as_ptr() as *const c_char,
@@ -1856,7 +1610,6 @@ mod tests {
                     num_args: 0,
                 },
             ];
-            with_dynload_state(|state| state.loaded_dll.push(info));
             R_registerRoutines(
                 info,
                 ptr::null(),

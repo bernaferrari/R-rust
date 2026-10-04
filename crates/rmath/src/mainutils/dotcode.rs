@@ -14,7 +14,6 @@ use crate::mainutils::memory_main::{R_ExternalPtrAddr, sexptype2char};
 use crate::mainutils::rdynload::{
     R_FindSymbol as R_lookupLoadedSymbol, R_dlsym, R_findDllByHandle,
 };
-use crate::mainutils::registration::DllInfo;
 use crate::mainutils::relop::PRIMVAL;
 use crate::sexp::accessors::{
     CAR, CDR, COMPLEX, INTEGER, LENGTH, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
@@ -91,63 +90,23 @@ impl DllReference {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Registered native symbol types (matching R_ext/Rdynload.h)
-// ---------------------------------------------------------------------------
-
-#[repr(C)]
-struct R_CMethodDef {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-    types: *mut c_int,
-}
-
-#[repr(C)]
-struct R_CallMethodDef {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-}
-
-#[repr(C)]
-struct R_FortranMethodDef {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-}
-
-#[repr(C)]
-struct R_ExternalMethodDef {
-    name: *mut c_char,
-    fun: DL_FUNC,
-    num_args: c_int,
-}
-
-/// Union holding a pointer to one of the registered symbol definition types.
-#[repr(C)]
-union NativeSymbolPtr {
-    c: *mut R_CMethodDef,
-    call: *mut R_CallMethodDef,
-    fortran: *mut R_FortranMethodDef,
-    external: *mut R_ExternalMethodDef,
-}
-
-/// Tracks a registered native routine and which DLL it belongs to.
-#[repr(C)]
+// Resolution retains owned declarations and the loaded library, rather than
+// retaining pointers into a mutable foreign registration table.
 struct R_RegisteredNativeSymbol {
     type_: c_int,
-    symbol: NativeSymbolPtr,
-    dll: *mut DllInfo,
+    resolved: Option<crate::mainutils::rdynload::ResolvedForeignRoutine>,
 }
-
 impl R_RegisteredNativeSymbol {
-    fn new(sym_type: c_int) -> Self {
-        R_RegisteredNativeSymbol {
-            type_: sym_type,
-            symbol: NativeSymbolPtr { c: ptr::null_mut() },
-            dll: ptr::null_mut(),
+    fn new(type_: c_int) -> Self {
+        Self {
+            type_,
+            resolved: None,
         }
+    }
+    fn validate(&self, count: usize) -> Result<(), String> {
+        self.resolved
+            .as_ref()
+            .map_or(Ok(()), |routine| routine.validate(self.type_, count))
     }
 }
 
@@ -557,11 +516,11 @@ unsafe fn checkNativeType(target_type: c_int, actual_type: c_int) -> bool {
 
 unsafe fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
     unsafe {
-        if ty < 0 || TYPEOF(s) == ty {
+        if ty == SEXPTYPE::ANYSXP || TYPEOF(s) == ty {
             return true;
         }
         // SINGLESXP check
-        if ty == 14 {
+        if ty == 302 {
             // SINGLESXP in R
             return crate::mainutils::coerce::asLogical(getAttrib(
                 s,
@@ -614,23 +573,26 @@ unsafe fn resolveNativeRoutine(
         let pruned = pkgtrim(CDR(args), &mut dll);
 
         if fun.is_none() && !buf.is_empty() {
-            let looked_up = if dll.ref_type == DLL_HANDLE && !dll.dll.is_null() {
-                let loaded = R_findDllByHandle(dll.dll);
-                if loaded.is_null() {
-                    None
-                } else {
-                    R_dlsym(loaded, buf.as_ptr() as *const c_char, symbol.type_)
-                }
+            let package = if dll.dll_name[0] == 0 {
+                c"".as_ptr()
             } else {
-                let pkg_ptr = if dll.dll_name[0] == 0 {
-                    b"\0".as_ptr() as *const c_char
-                } else {
-                    dll.dll_name.as_ptr() as *const c_char
-                };
-                R_lookupLoadedSymbol(buf.as_ptr() as *const c_char, pkg_ptr, symbol.type_)
+                dll.dll_name.as_ptr().cast()
             };
-
-            *fun = looked_up;
+            let handle = if dll.ref_type == DLL_HANDLE {
+                dll.dll
+            } else {
+                ptr::null_mut()
+            };
+            symbol.resolved = crate::mainutils::rdynload::resolve_foreign_symbol(
+                buf.as_ptr().cast(),
+                package,
+                symbol.type_,
+                handle,
+            );
+            *fun = symbol
+                .resolved
+                .as_ref()
+                .and_then(|routine| routine.function());
         }
 
         pruned
@@ -1288,6 +1250,9 @@ unsafe fn invoke_native_handler(
                     name.unwrap_or_default()
                 )));
             }
+            symbol
+                .validate(operands.payload.len())
+                .map_err(native_admission_error)?;
             let payload = operands.argument_list(&allocator, false, &domain.nil())?;
             match interface {
                 NativeInterface::Call => {
@@ -1379,6 +1344,9 @@ mod native_inventory;
 #[cfg(test)]
 mod lookup_snapshot_tests;
 
+#[cfg(test)]
+mod foreign_registration_tests;
+
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;
     let interface = if unsafe { PRIMVAL(op) } == 0 {
@@ -1446,6 +1414,42 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
             nargs += 1;
             pa = CDR(pa);
+        }
+
+        if nargs > MAX_ARGS {
+            errorcall(call, "too many arguments in foreign function call");
+        }
+        symbol
+            .validate(nargs)
+            .unwrap_or_else(|message| errorcall(call, &message));
+        if let Some(types) = symbol
+            .resolved
+            .as_ref()
+            .and_then(|routine| routine.argument_types())
+        {
+            let mut argument = call_args;
+            for (index, kind) in types.iter().enumerate() {
+                if !comparePrimitiveTypes(*kind, CAR(argument)) {
+                    errorcall(
+                        call,
+                        &format!(
+                            "wrong type for argument {} in call to {}",
+                            index + 1,
+                            std::ffi::CStr::from_ptr(sym_name.as_ptr().cast()).to_string_lossy()
+                        ),
+                    );
+                }
+                // SINGLESXP needs float rather than double marshalling, which
+                // this trusted foreign adapter does not yet implement. Refuse
+                // before invocation instead of supplying the wrong buffer ABI.
+                if *kind == 302 {
+                    errorcall(
+                        call,
+                        "registered single-precision native argument is not implemented",
+                    );
+                }
+                argument = CDR(argument);
+            }
         }
 
         // Build the result vector
