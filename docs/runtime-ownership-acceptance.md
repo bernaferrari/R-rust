@@ -28,7 +28,7 @@ the names below identify production regressions and bounded evidence.
 | A host handle retains its value privately and rejects reused identities | `owned_retained_*` store regressions | Ten native and strict-provenance Miri store fixtures pass for binding interference, collection, failed publication/writes, foreign identities, generation retirement, sole closure roots, and closure. The separate full embedding suite still requires default package startup. |
 | Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*` | Thirteen native and strict-provenance Miri fixtures pass, including fixed/variadic payload admission and independent GNU metadata for 66 supported External registrations. This metadata does not prove handler semantics. Erased C/Fortran and foreign pointers remain outside this milestone. |
 | GC preambles release their exact temporary ownership on unwind | `owned_gc_*` | Nine native and strict-provenance Miri tests pass for full/lite GC, allocation torture, eval safe points, detached bindings, callback closure, and panic cleanup. The Miri run also verifies the original-runtime capture sole-pin fixture. |
-| Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*` and four `focused_console_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four additional focused fixtures pass strict-provenance Miri using real parsed user programs and production primitives. |
+| Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*`, four `focused_console_*`, and three `public_capture_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four focused interpreter fixtures and three public host-callback fixtures pass strict-provenance Miri. The public capture scope restores its parent or idle bank after a panic, preserves the panic payload, and cleans its original bank after revocation and reentry. |
 
 Unreachable-cycle coverage and retained-memory measurements must include
 environments, closures, promises, and external resources together. The current
@@ -63,6 +63,14 @@ Miri run passes in 1393.64 seconds; the four focused console cases pass Miri
 separately in 1098.11 seconds. All selections finish with zero failures and zero
 ignored tests, the default alias checker, strict provenance, and only leak
 checking disabled. The corresponding production changes are in `0af869f6`.
+
+Checkpoint `15f4c22f` additionally makes the public `with_output_capture` method
+use the existing original-owner scope guard. Three genuine native regressions
+fail before the repair and pass afterward; the same three pass strict-provenance
+Miri in 328.79 seconds with zero failures and ignored tests and the default alias
+checker. The fixtures distinguish the parent, idle, original, and replacement
+banks and preserve exact bytes and typed panic payloads. This does not add another
+capture implementation or change the presentation contract.
 
 CI for `038fd34a` completed with failures after successfully building the browser
 bundle and executing the real Rust runtime tests. Workspace formatting, Clippy,
