@@ -1327,6 +1327,9 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 mod buffer_dispatch;
 
+#[cfg(test)]
+mod native_inventory;
+
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;
     let interface = if unsafe { PRIMVAL(op) } == 0 { BufferInterface::C } else { BufferInterface::Fortran };
