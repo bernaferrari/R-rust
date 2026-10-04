@@ -98,25 +98,42 @@ call_routines! {
     Args10(10; a, b, c, d, e, f, g, h, i, j),
 }
 
+/// Registered R payload count, excluding the routine name and PACKAGE controls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PayloadArity {
+    Fixed(usize),
+    Variadic,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum NativeRoutine {
     Call(CallRoutine),
-    External1(unsafe extern "C-unwind" fn(SEXP) -> SEXP),
-    External2(unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP),
+    External1(unsafe extern "C-unwind" fn(SEXP) -> SEXP, PayloadArity),
+    External2(
+        unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
+        PayloadArity,
+    ),
 }
 
 impl NativeRoutine {
     pub(crate) fn interface(self) -> NativeInterface {
         match self {
             Self::Call(_) => NativeInterface::Call,
-            Self::External1(_) => NativeInterface::External,
-            Self::External2(_) => NativeInterface::External2,
+            Self::External1(_, _) => NativeInterface::External,
+            Self::External2(_, _) => NativeInterface::External2,
         }
     }
 
-    /// External routines receive an argument list, so their individual R
-    /// payload semantics are checked by the routine. A Call's fixed ABI arity
-    /// is carried by its exact pointer variant and cannot depend on its name.
+    pub(crate) fn payload_arity(self) -> PayloadArity {
+        match self {
+            Self::Call(function) => PayloadArity::Fixed(function.arity()),
+            Self::External1(_, arity) | Self::External2(_, arity) => arity,
+        }
+    }
+
+    /// Interface admission comes first. Fixed payload counts are carried by the
+    /// registered descriptor; a Call also derives its ABI arity from its type.
+    /// Variadic routines remain responsible for their individual input contract.
     pub(crate) fn validate_request(
         self,
         requested: NativeInterface,
@@ -129,8 +146,7 @@ impl NativeRoutine {
                 requested,
             });
         }
-        if let Self::Call(function) = self {
-            let expected = function.arity();
+        if let PayloadArity::Fixed(expected) = self.payload_arity() {
             if payload_count != expected {
                 return Err(NativeAdmissionError::ArgumentCount {
                     expected,
@@ -155,13 +171,16 @@ impl NativeRoutine {
     }
 
     /// The caller retains the original runtime and argument-list graph across
-    /// callbacks and collection, then validates the returned allocation.
+    /// callbacks and collection, then validates the returned allocation. The
+    /// supplied count matches that retained graph's actual payload (no name or
+    /// controls); admission is repeated here before calling the typed pointer.
     pub(crate) unsafe fn invoke_external1(
         self,
         arguments: SEXP,
+        payload_count: usize,
     ) -> Result<SEXP, NativeAdmissionError> {
-        self.validate_request(NativeInterface::External, 0)?;
-        let Self::External1(function) = self else {
+        self.validate_request(NativeInterface::External, payload_count)?;
+        let Self::External1(function, _) = self else {
             unreachable!("admission established the External interface")
         };
         Ok(unsafe { function(arguments) })
@@ -169,15 +188,18 @@ impl NativeRoutine {
 
     /// The caller retains the original runtime and the complete call, operator,
     /// argument-list and environment graphs across callbacks and collection.
+    /// The supplied count matches the retained list's actual payload excluding
+    /// its name and controls; admission is repeated before invocation.
     pub(crate) unsafe fn invoke_external2(
         self,
         call: SEXP,
         operator: SEXP,
         arguments: SEXP,
         environment: SEXP,
+        payload_count: usize,
     ) -> Result<SEXP, NativeAdmissionError> {
-        self.validate_request(NativeInterface::External2, 0)?;
-        let Self::External2(function) = self else {
+        self.validate_request(NativeInterface::External2, payload_count)?;
+        let Self::External2(function, _) = self else {
             unreachable!("admission established the External2 interface")
         };
         Ok(unsafe { function(call, operator, arguments, environment) })
@@ -231,8 +253,8 @@ mod tests {
             }
             for requested in [NativeInterface::External, NativeInterface::External2] {
                 let result = match requested {
-                    NativeInterface::External => routine.invoke_external1(nil),
-                    NativeInterface::External2 => routine.invoke_external2(nil, nil, nil, nil),
+                    NativeInterface::External => routine.invoke_external1(nil, 0),
+                    NativeInterface::External2 => routine.invoke_external2(nil, nil, nil, nil, 0),
                     NativeInterface::Call => unreachable!(),
                 };
                 assert_eq!(
@@ -254,8 +276,8 @@ mod tests {
         INVOCATIONS.with(|count| count.set(0));
         let nil = std::ptr::null_mut();
         for routine in [
-            NativeRoutine::External1(external_one),
-            NativeRoutine::External2(external_two),
+            NativeRoutine::External1(external_one, PayloadArity::Fixed(0)),
+            NativeRoutine::External2(external_two, PayloadArity::Fixed(0)),
         ] {
             let registered = routine.interface();
             unsafe {
@@ -272,8 +294,8 @@ mod tests {
                     NativeInterface::External
                 };
                 let result = match requested {
-                    NativeInterface::External => routine.invoke_external1(nil),
-                    NativeInterface::External2 => routine.invoke_external2(nil, nil, nil, nil),
+                    NativeInterface::External => routine.invoke_external1(nil, 0),
+                    NativeInterface::External2 => routine.invoke_external2(nil, nil, nil, nil, 0),
                     NativeInterface::Call => unreachable!(),
                 };
                 assert_eq!(
@@ -288,14 +310,95 @@ mod tests {
         assert_eq!(INVOCATIONS.with(Cell::get), 0);
         unsafe {
             assert_eq!(
-                NativeRoutine::External1(external_one).invoke_external1(nil),
+                NativeRoutine::External1(external_one, PayloadArity::Fixed(0))
+                    .invoke_external1(nil, 0),
                 Ok(nil)
             );
             assert_eq!(
-                NativeRoutine::External2(external_two).invoke_external2(nil, nil, nil, nil),
+                NativeRoutine::External2(external_two, PayloadArity::Fixed(0))
+                    .invoke_external2(nil, nil, nil, nil, 0),
                 Ok(nil)
             );
         }
         assert_eq!(INVOCATIONS.with(Cell::get), 2);
+    }
+
+    #[test]
+    fn typed_external_fixed_payload_counts_reject_before_invocation() {
+        INVOCATIONS.with(|count| count.set(0));
+        let nil = std::ptr::null_mut();
+        for expected in [0, 2] {
+            for routine in [
+                NativeRoutine::External1(external_one, PayloadArity::Fixed(expected)),
+                NativeRoutine::External2(external_two, PayloadArity::Fixed(expected)),
+            ] {
+                let interface = routine.interface();
+                // A simultaneous interface/count mismatch always reports the
+                // interface; an invalid request cannot reach the sentinel body.
+                assert_eq!(
+                    routine.validate_request(NativeInterface::Call, 999),
+                    Err(NativeAdmissionError::InterfaceMismatch {
+                        registered: interface,
+                        requested: NativeInterface::Call,
+                    })
+                );
+                for actual in [0, 1, 3, 65] {
+                    if actual == expected {
+                        continue;
+                    }
+                    let result = unsafe {
+                        match interface {
+                            NativeInterface::External => routine.invoke_external1(nil, actual),
+                            NativeInterface::External2 => {
+                                routine.invoke_external2(nil, nil, nil, nil, actual)
+                            }
+                            NativeInterface::Call => unreachable!(),
+                        }
+                    };
+                    assert_eq!(
+                        result,
+                        Err(NativeAdmissionError::ArgumentCount { expected, actual })
+                    );
+                }
+            }
+        }
+        assert_eq!(INVOCATIONS.with(Cell::get), 0);
+        unsafe {
+            NativeRoutine::External1(external_one, PayloadArity::Fixed(0))
+                .invoke_external1(nil, 0)
+                .unwrap();
+            NativeRoutine::External2(external_two, PayloadArity::Fixed(2))
+                .invoke_external2(nil, nil, nil, nil, 2)
+                .unwrap();
+        }
+        assert_eq!(INVOCATIONS.with(Cell::get), 2);
+    }
+
+    #[test]
+    fn typed_external_variadic_payload_counts_retain_interface_admission() {
+        INVOCATIONS.with(|count| count.set(0));
+        let nil = std::ptr::null_mut();
+        for routine in [
+            NativeRoutine::External1(external_one, PayloadArity::Variadic),
+            NativeRoutine::External2(external_two, PayloadArity::Variadic),
+        ] {
+            assert!(matches!(
+                routine.validate_request(NativeInterface::Call, 1),
+                Err(NativeAdmissionError::InterfaceMismatch { .. })
+            ));
+            for actual in [0, 1, 65, 66] {
+                unsafe {
+                    match routine.interface() {
+                        NativeInterface::External => routine.invoke_external1(nil, actual),
+                        NativeInterface::External2 => {
+                            routine.invoke_external2(nil, nil, nil, nil, actual)
+                        }
+                        NativeInterface::Call => unreachable!(),
+                    }
+                    .unwrap();
+                }
+            }
+        }
+        assert_eq!(INVOCATIONS.with(Cell::get), 8);
     }
 }

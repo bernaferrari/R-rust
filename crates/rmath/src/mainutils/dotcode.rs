@@ -984,6 +984,7 @@ fn native_admission_error(message: impl Into<String>) -> crate::sexp::object::Se
 impl NativeOperands {
     fn capture(
         arguments: crate::sexp::object::Sexp<'static>,
+        interface: crate::mainutils::native_routines::NativeInterface,
     ) -> crate::sexp::object::SexpResult<Self> {
         if arguments.is_nil() {
             return Err(native_admission_error("'.NAME' is missing"));
@@ -1032,7 +1033,9 @@ impl NativeOperands {
                     tag,
                 ));
             } else {
-                if payload.len() == MAX_ARGS {
+                if interface == crate::mainutils::native_routines::NativeInterface::Call
+                    && payload.len() == MAX_ARGS
+                {
                     return Err(native_admission_error(
                         "too many arguments in foreign function call",
                     ));
@@ -1147,7 +1150,7 @@ unsafe fn invoke_native_handler(
         let domain = access.domain();
         let call = domain.wrap(call)?.into_owned()?;
         let environment = domain.wrap(environment)?.into_owned()?;
-        let operands = NativeOperands::capture(domain.wrap(arguments)?.into_owned()?)?;
+        let operands = NativeOperands::capture(domain.wrap(arguments)?.into_owned()?, interface)?;
         access.require_active()?;
         let name = operands.lookup_name()?;
         access.require_active()?;
@@ -1181,7 +1184,9 @@ unsafe fn invoke_native_handler(
                     let list = operands.argument_list(&allocator, false, &domain.nil())?;
                     if interface == NativeInterface::External {
                         access.require_active()?;
-                        unsafe { routine.invoke_external1(list.as_raw()) }
+                        unsafe {
+                            routine.invoke_external1(list.as_raw(), operands.payload.len())
+                        }
                     } else {
                         let operator = match operator_identity {
                             Some((name, kind)) => access.with_native(|owner| {
@@ -1199,6 +1204,7 @@ unsafe fn invoke_native_handler(
                                 operator.as_raw(),
                                 list.as_raw(),
                                 environment.as_raw(),
+                                operands.payload.len(),
                             )
                         }
                     }
@@ -2480,5 +2486,367 @@ mod typed_native_handler_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn owning_native_external_payload_metadata_matches_independent_gnu_registry() {
+        use crate::mainutils::native_routines::PayloadArity;
+        // GNU R devel 4.7.0 r90451, commit bac583951b728e97b9786804d3b4081f0fe18df5.
+        // Independent getDLLRegisteredRoutines inventory, not an implementation table.
+        // The 107 rows include unsupported routines; only resolved bundled entries
+        // are checked, without treating absent functionality as a passing call.
+        const REGISTERED: &str = r"stats	compcases	-1
+stats	doD	2
+stats	deriv	5
+stats	modelframe	8
+stats	modelmatrix	2
+stats	termsform	5
+stats	do_fmin	4
+stats	nlm	11
+stats	zeroin2	7
+stats	optim	7
+stats	optimhess	4
+stats	call_dqags	7
+stats	call_dqagi	7
+stats	signrank_free	0
+stats	wilcox_free	0
+tools	parseLatex	6
+tools	parseRd	9
+grDevices	PicTeX	6
+grDevices	PostScript	19
+grDevices	PDF	23
+grDevices	devCairo	12
+grDevices	devcap	1
+grDevices	devcapture	1
+grDevices	devcontrol	1
+grDevices	devcopy	1
+grDevices	devcur	0
+grDevices	devdisplaylist	0
+grDevices	devholdflush	1
+grDevices	devnext	1
+grDevices	devoff	1
+grDevices	devprev	1
+grDevices	devset	1
+grDevices	devsize	0
+grDevices	contourLines	4
+grDevices	getSnapshot	0
+grDevices	playSnapshot	1
+grDevices	getGraphicsEvent	1
+grDevices	getGraphicsEventEnv	1
+grDevices	setGraphicsEventEnv	2
+grDevices	setPattern	1
+grDevices	setClipPath	2
+grDevices	setMask	2
+grDevices	defineGroup	3
+grDevices	useGroup	2
+grDevices	devUp	0
+grDevices	devAskNewPage	1
+grDevices	savePlot	3
+grDevices	Quartz	11
+grDevices	X11	18
+graphics	C_contour	-1
+graphics	C_filledcontour	5
+graphics	C_image	4
+graphics	C_persp	-1
+graphics	C_abline	-1
+graphics	C_axis	-1
+graphics	C_arrows	-1
+graphics	C_box	-1
+graphics	C_clip	-1
+graphics	C_convertX	3
+graphics	C_convertY	3
+graphics	C_dend	-1
+graphics	C_dendwindow	-1
+graphics	C_erase	-1
+graphics	C_layout	-1
+graphics	C_mtext	-1
+graphics	C_par	-1
+graphics	C_path	-1
+graphics	C_plotXY	-1
+graphics	C_plot_window	-1
+graphics	C_polygon	-1
+graphics	C_raster	-1
+graphics	C_rect	-1
+graphics	C_segments	-1
+graphics	C_strHeight	-1
+graphics	C_strWidth	-1
+graphics	C_symbols	-1
+graphics	C_text	-1
+graphics	C_title	-1
+graphics	C_xspline	-1
+graphics	C_plot_new	0
+graphics	C_locator	-1
+graphics	C_identify	-1
+utils	download	6
+utils	unzip	7
+utils	Rprof	10
+utils	Rprofmem	3
+utils	countfields	6
+utils	readtablehead	7
+utils	typeconvert	6
+utils	writetable	11
+utils	addhistory	1
+utils	loadhistory	1
+utils	savehistory	1
+utils	dataentry	2
+utils	dataviewer	2
+utils	edit	4
+utils	fileedit	3
+utils	selectlist	4
+utils	hashtab_Ext	2
+utils	gethash_Ext	3
+utils	sethash_Ext	3
+utils	remhash_Ext	2
+utils	numhash_Ext	1
+utils	typhash_Ext	1
+utils	maphash_Ext	2
+utils	clrhash_Ext	1
+utils	ishashtab_Ext	1";
+        let mut covered = 0;
+        assert_eq!(REGISTERED.lines().count(), 107);
+        for line in REGISTERED.lines() {
+            let mut fields = line.split('\t');
+            let package = fields.next().unwrap();
+            let name = fields.next().unwrap();
+            let count: i32 = fields.next().unwrap().parse().unwrap();
+            let Some(routine) = lookup_bundled_native(name, Some(package)) else {
+                continue;
+            };
+            assert_ne!(
+                routine.interface(),
+                NativeInterface::Call,
+                "{package}::{name}"
+            );
+            let expected = if count == -1 {
+                PayloadArity::Variadic
+            } else {
+                PayloadArity::Fixed(count as usize)
+            };
+            assert_eq!(routine.payload_arity(), expected, "{package}::{name}");
+            covered += 1;
+        }
+        assert_eq!(
+            covered, 66,
+            "static registration coverage, not handler functionality"
+        );
+        assert_eq!(
+            lookup_bundled_native("parseRdText", Some("tools"))
+                .unwrap()
+                .payload_arity(),
+            PayloadArity::Fixed(9)
+        );
+        assert_eq!(
+            lookup_bundled_native("plot_xy", Some("graphics"))
+                .unwrap()
+                .payload_arity(),
+            PayloadArity::Variadic
+        );
+    }
+
+    #[test]
+    fn owning_native_external_rejects_fixed_payload_counts_before_allocation_or_gc() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let nil = factory.nil().into_owned().unwrap();
+            let tag = unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let mut requests = Vec::new();
+            for (name, package, expected, interface) in [
+                ("C_devcur", "grDevices", 0usize, NativeInterface::External),
+                ("C_devnext", "grDevices", 1, NativeInterface::External),
+                ("C_PDF", "grDevices", 23, NativeInterface::External),
+                ("C_typeconvert", "utils", 6, NativeInterface::External2),
+                ("C_parseRd", "tools", 9, NativeInterface::External2),
+                ("C_nlm", "stats", 11, NativeInterface::External2),
+                ("C_do_fmin", "stats", 4, NativeInterface::External2),
+                ("C_image", "graphics", 4, NativeInterface::External),
+                ("C_signrank_free", "stats", 0, NativeInterface::External),
+            ] {
+                let package = factory.strings(&[package]).unwrap().into_owned().unwrap();
+                for actual in [expected.saturating_sub(1), expected + 1] {
+                    if actual == expected {
+                        continue;
+                    }
+                    let mut payload = vec![(nil.clone(), nil.clone()); actual];
+                    payload.insert(actual / 2, (package.clone(), tag.clone()));
+                    requests.push((
+                        name,
+                        expected,
+                        actual,
+                        interface,
+                        operator(&session, interface),
+                        make_arguments(&factory, name, &payload),
+                    ));
+                }
+            }
+            let callbacks = Rc::new(Cell::new(0));
+            let observed = callbacks.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1)
+            }));
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+            });
+            let before =
+                session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
+            for (name, expected, actual, _, operator, arguments) in requests {
+                let message = rejection(|| unsafe {
+                    do_External(
+                        nil.as_raw(),
+                        operator.as_raw(),
+                        arguments.as_raw(),
+                        nil.as_raw(),
+                    )
+                });
+                assert!(
+                    message.contains(&format!("expected {expected}, received {actual}")),
+                    "{name}: {message}"
+                );
+                assert_eq!(
+                    session.with_active_in(|instance| unsafe { (*instance).arena.node_count() }),
+                    before
+                );
+                assert_eq!(
+                    callbacks.get(),
+                    0,
+                    "rejection must precede wrapper allocations and collection"
+                );
+            }
+            session.with_active_in(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 0;
+            });
+        });
+    }
+
+    #[test]
+    fn owning_native_external_fixed_and_variadic_neighbors_execute_genuine_handlers() {
+        let mut session = RSession::new_for_gc_tests();
+        let function = session
+            .eval_code_with_output_capture("function(x) (x - 2)^2")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let nil = factory.nil().into_owned().unwrap();
+            let tag = unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let scalar_int = |value| unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(crate::sexp::constructors::Rf_ScalarInteger(value))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let scalar_real = |value| unsafe {
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(crate::sexp::constructors::Rf_ScalarReal(value))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
+            let invoke = |name, package, interface, values: Vec<Sexp<'static>>| {
+                let package = factory.strings(&[package]).unwrap().into_owned().unwrap();
+                let mut payload: Vec<_> = values.into_iter().map(|v| (v, nil.clone())).collect();
+                payload.insert(payload.len() / 2, (package, tag.clone()));
+                let arguments = make_arguments(&factory, name, &payload);
+                let op = operator(&session, interface);
+                let result = unsafe {
+                    do_External(nil.as_raw(), op.as_raw(), arguments.as_raw(), nil.as_raw())
+                };
+                factory.wrap(result).unwrap().into_owned().unwrap()
+            };
+            assert_eq!(
+                invoke("C_devcur", "grDevices", NativeInterface::External, vec![])
+                    .try_integer_elt(0)
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                invoke(
+                    "C_devnext",
+                    "grDevices",
+                    NativeInterface::External,
+                    vec![scalar_int(1)]
+                )
+                .try_integer_elt(0)
+                .unwrap(),
+                1
+            );
+            let optimum = invoke(
+                "C_do_fmin",
+                "stats",
+                NativeInterface::External2,
+                vec![
+                    function,
+                    scalar_real(0.0),
+                    scalar_real(4.0),
+                    scalar_real(0.01),
+                ],
+            )
+            .try_real_elt(0)
+            .unwrap();
+            assert!((optimum - 2.0).abs() < 0.01);
+            let integer_vector = |values: &[i32]| {
+                let value = factory
+                    .allocate(|arena| {
+                        arena
+                            .alloc_vector_sexp(SEXPTYPE::INTSXP, values.len() as R_xlen_t)
+                            .map(|value| value.as_raw())
+                    })
+                    .unwrap();
+                let mut value = crate::sexp::object::SexpMut::try_from_checked(value).unwrap();
+                for (index, scalar) in values.iter().enumerate() {
+                    value
+                        .try_set_integer_elt(index as R_xlen_t, *scalar)
+                        .unwrap();
+                }
+                value.freeze().into_owned().unwrap()
+            };
+            let x = integer_vector(&[1, NA_INTEGER]);
+            let y = integer_vector(&[2, 3]);
+            let complete = invoke(
+                "C_compcases",
+                "stats",
+                NativeInterface::External,
+                vec![x, y],
+            );
+            assert_eq!(complete.len(), 2);
+            assert_eq!(complete.try_logical_elt(0).unwrap(), TRUE);
+            assert_eq!(complete.try_logical_elt(1).unwrap(), FALSE);
+            // External passes one rooted list pointer, not Call's bounded
+            // pointer array. GNU accepts this genuine 66-payload variadic call.
+            let x = integer_vector(&[1, NA_INTEGER]);
+            let complete = invoke(
+                "C_compcases",
+                "stats",
+                NativeInterface::External,
+                vec![x; 66],
+            );
+            assert_eq!(complete.len(), 2);
+            assert_eq!(complete.try_logical_elt(0).unwrap(), TRUE);
+            assert_eq!(complete.try_logical_elt(1).unwrap(), FALSE);
+        });
     }
 }

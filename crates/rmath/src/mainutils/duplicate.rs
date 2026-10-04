@@ -504,8 +504,6 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
         });
 
         let mut t: SEXP = ptr::null_mut();
-        // Keep the external source and result owned through flag copying too.
-        let mut external_anchors = None;
 
         match SEXPTYPE(TYPEOF(s)) {
             SEXPTYPE::NILSXP
@@ -514,7 +512,10 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             | SEXPTYPE::SPECIALSXP
             | SEXPTYPE::BUILTINSXP
             | SEXPTYPE::BCODESXP
-            | SEXPTYPE::WEAKREFSXP => {
+            | SEXPTYPE::WEAKREFSXP
+            | SEXPTYPE::EXTPTRSXP => {
+                // External pointers are identity objects in GNU R: aliases
+                // share graph edges and the canonical native resource.
                 return s;
             }
             SEXPTYPE::CLOSXP => {
@@ -582,20 +583,6 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 COPY_TRUELENGTH(t, s);
             }
             SEXPTYPE::PROMSXP => {
-                return s;
-            }
-            SEXPTYPE::EXTPTRSXP => {
-                let owner = crate::sexp::owner::OwnerToken::current()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let factory = crate::sexp::object::SessionNodeFactory::new(owner);
-                let source = factory
-                    .wrap(s)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let copy = duplicate_external_pointer(&source, deep);
-                t = copy.as_raw();
-                external_anchors = Some((source, copy));
-            }
-            SEXPTYPE::WEAKREFSXP => {
                 return s;
             }
             SEXPTYPE::OBJSXP => {
@@ -676,85 +663,6 @@ unsafe fn duplicate_closure<'s>(
         }
     }
     copy
-}
-
-/// Own every external-pointer edge across allocating recursive duplication.
-unsafe fn duplicate_external_pointer<'s>(
-    source: &crate::sexp::object::Sexp<'s>,
-    deep: c_int,
-) -> crate::sexp::object::Sexp<'s> {
-    unsafe {
-        let factory = source
-            .node_factory()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let protected_is_null =
-            crate::mainutils::memory_main::R_ExternalPtrProtected(source.as_raw()).is_null();
-        let tag_is_null =
-            crate::mainutils::memory_main::R_ExternalPtrTag(source.as_raw()).is_null();
-        let protected = source
-            .try_extprot()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let tag = source
-            .try_extptr_tag()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let attributes = source
-            .try_attrib()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let address = source
-            .try_extptr_ptr()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let source_node = source.allocation()
-            .expect("owning external pointer retains its original allocation");
-        let resource = source_node.heap_identity().resource_erased(source_node);
-        let copy = factory
-            .allocate(|arena| {
-                let projection = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-                let allocation = arena.node_token(projection)?;
-                let heap = arena.heap_identity();
-                let mut header = heap.node_snapshot(&allocation)?;
-                header.data.extptr_mut().address = address;
-                heap.replace_node(&allocation, header)?;
-                // Opaque addresses alias under GNU duplication. Attached Rust
-                // state shares ownership across the independent node lifetimes
-                // and is authenticated before allocation callbacks can run.
-                if let Some(resource) = &resource {
-                    heap.attach_resource(&allocation, resource.clone())?;
-                }
-                Some(projection)
-            })
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let copied_protected = if protected_is_null {
-            None
-        } else {
-            Some(
-                factory
-                    .wrap(duplicate_child(protected.as_raw(), deep))
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            )
-        };
-        if let Some(value) = &copied_protected {
-            crate::mainutils::memory_main::R_SetExternalPtrProtected(copy.as_raw(), value.as_raw());
-        }
-        let copied_tag = if tag_is_null {
-            None
-        } else {
-            Some(
-                factory
-                    .wrap(duplicate_child(tag.as_raw(), deep))
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            )
-        };
-        if let Some(value) = &copied_tag {
-            crate::mainutils::memory_main::R_SetExternalPtrTag(copy.as_raw(), value.as_raw());
-        }
-        if !attributes.is_nil() {
-            let copied_attributes = factory
-                .wrap(duplicate1(attributes.as_raw(), deep))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            SET_ATTRIB(copy.as_raw(), copied_attributes.as_raw());
-        }
-        copy
-    }
 }
 
 /// Deep duplicate an SEXP.
@@ -1493,6 +1401,10 @@ pub unsafe fn R_duplicate_attr(x: SEXP) -> SEXP {
 mod altrep_tests;
 
 #[cfg(test)]
+#[path = "duplicate/extptr_identity_tests.rs"]
+mod extptr_identity_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::sexp::constructors::Rf_ScalarInteger;
@@ -1693,302 +1605,6 @@ mod tests {
                 .unwrap(),
             42
         );
-    }
-
-    struct CollectingExternalChild {
-        value: i32,
-        reads: std::rc::Rc<std::cell::Cell<usize>>,
-    }
-
-    impl crate::sexp::altrep::AltrepClass for CollectingExternalChild {
-        fn vector_type(&self) -> SEXPTYPE {
-            SEXPTYPE::INTSXP
-        }
-
-        fn length(
-            &self,
-            _: &crate::sexp::altrep::AltrepContext<'_>,
-        ) -> crate::sexp::object::SexpResult<i64> {
-            Ok(1)
-        }
-
-        fn element<'s>(
-            &self,
-            context: &crate::sexp::altrep::AltrepContext<'s>,
-            _: i64,
-        ) -> crate::sexp::object::SexpResult<crate::sexp::altrep::AltrepElement<'s>> {
-            self.reads.set(self.reads.get() + 1);
-            context.gc()?;
-            Ok(crate::sexp::altrep::AltrepElement::Integer(self.value))
-        }
-    }
-
-    fn external_pointer_duplicate_survives_collecting_children(deep: bool) {
-        use crate::sexp::{
-            altrep::{AltrepBuilder, is_altrep},
-            object::Sexp,
-            session::RSession,
-        };
-        use std::{cell::Cell, rc::Rc};
-
-        let session = RSession::new_for_gc_tests();
-        let reads = [
-            Rc::new(Cell::new(0)),
-            Rc::new(Cell::new(0)),
-            Rc::new(Cell::new(0)),
-        ];
-        let children: Vec<_> = reads
-            .iter()
-            .enumerate()
-            .map(|(index, reads)| {
-                let class = session
-                    .register_altrep_class(
-                        &format!("external-child-{index}"),
-                        CollectingExternalChild {
-                            value: 41 + index as i32,
-                            reads: reads.clone(),
-                        },
-                    )
-                    .unwrap();
-                AltrepBuilder::new(class).build().unwrap()
-            })
-            .collect();
-        let factory = children[0].node_factory().unwrap();
-        let mut attribute_builder = crate::sexp::object::PairlistBuilder::from_factory(factory);
-        attribute_builder.push(children[2].clone(), None).unwrap();
-        let attributes = attribute_builder.finish().unwrap();
-        let attribute_tag = unsafe { crate::sexp::symbol::Rf_install(c"payload".as_ptr()) };
-        let mut opaque = 17_i32;
-        let address = std::ptr::from_mut(&mut opaque).cast();
-        let source = session
-            .sexp(unsafe {
-                crate::mainutils::memory_main::R_MakeExternalPtr(
-                    address,
-                    children[1].as_raw(),
-                    children[0].as_raw(),
-                )
-            })
-            .unwrap();
-        unsafe {
-            SETTAG(attributes.as_raw(), attribute_tag);
-            SET_ATTRIB(source.as_raw(), attributes.as_raw());
-            SET_OBJECT(source.as_raw(), 1);
-            SET_S4_OBJECT(source.as_raw());
-        }
-        let attributes_raw = attributes.as_raw();
-        let source_raw = source.as_raw();
-        let source_token = crate::sexp::memory::checked_projection(source_raw)
-            .unwrap()
-            .1;
-        let original_children: Vec<_> = children
-            .iter()
-            .map(|child| {
-                let projection = child.as_raw();
-                (
-                    projection,
-                    crate::sexp::memory::checked_projection(projection)
-                        .unwrap()
-                        .1,
-                )
-            })
-            .collect();
-        let active = Rc::new(Cell::new(true));
-        let callback_active = active.clone();
-        let notifications = Rc::new(Cell::new(0));
-        let callback_notifications = notifications.clone();
-        let callback_children = original_children.clone();
-        let rejected_reads = Rc::new(Cell::new(0));
-        let callback_rejected_reads = rejected_reads.clone();
-        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-            if !callback_active.get() {
-                return;
-            }
-            callback_notifications.set(callback_notifications.get() + 1);
-            crate::sexp::gengc::full_gc();
-            for (index, (projection, token)) in callback_children.iter().enumerate() {
-                assert!(
-                    token.is_live(),
-                    "original edge must retain its saved allocation"
-                );
-                // Query through the checked interface: a provider currently
-                // being duplicated must reject recursive entry before it can
-                // lend its state twice. Other reads still collect for real.
-                // SAFETY: the saved allocation is live and rooted by the
-                // source graph in this notification's original owner.
-                let value = unsafe { crate::sexp::altrep::rooted_raw(*projection) }.unwrap();
-                match value.try_integer_elt(0) {
-                    Ok(actual) => assert_eq!(actual, 41 + index as i32),
-                    Err(crate::sexp::object::SexpError::Altrep {
-                        reason: "recursive ALTREP operation",
-                    }) if deep => {
-                        callback_rejected_reads.set(callback_rejected_reads.get() + 1);
-                    }
-                    Err(error) => panic!("unexpected callback read failure: {error}"),
-                }
-            }
-        }));
-        // Only the canonical source graph retains the input children now; the
-        // implementation must root that source before its first allocation.
-        drop(source);
-        drop(attributes);
-        drop(children);
-        session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
-        });
-        let protected_count = crate::sexp::protect::R_ProtectCount();
-        let copied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                if deep {
-                    duplicate(source_raw)
-                } else {
-                    shallow_duplicate(source_raw)
-                }
-            })).unwrap_or_else(|error| {
-                if let Some(error) = error.downcast_ref::<crate::sexp::context::RError>() {
-                    panic!("external pointer copy failed: {}", error.message);
-                }
-                std::panic::resume_unwind(error)
-            });
-        let output: Sexp<'_> = session
-            .sexp(copied)
-            .unwrap();
-        active.set(false);
-        session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
-        });
-        assert_eq!(crate::sexp::protect::R_ProtectCount(), protected_count);
-        assert!(notifications.get() > 0);
-        assert_eq!(rejected_reads.get() > 0, deep);
-        assert_ne!(output.as_raw(), source_raw);
-        assert_eq!(output.try_extptr_ptr().unwrap(), address);
-        assert_eq!(opaque, 17);
-        crate::sexp::gengc::full_gc();
-        assert!(!source_token.is_live());
-        let copied_children = [
-            output.try_extprot().unwrap(),
-            output.try_extptr_tag().unwrap(),
-            output.try_attrib().unwrap().try_car().unwrap(),
-        ];
-        for (index, child) in copied_children.iter().enumerate() {
-            assert_eq!(child.try_integer_elt(0).unwrap(), 41 + index as i32);
-            assert!(reads[index].get() > 0);
-            if deep {
-                assert_ne!(child.as_raw(), original_children[index].0);
-                assert!(!is_altrep(child));
-            } else {
-                assert_eq!(child.as_raw(), original_children[index].0);
-                assert!(is_altrep(child));
-            }
-        }
-        let copied_attributes = output.try_attrib().unwrap();
-        assert_ne!(copied_attributes.as_raw(), attributes_raw);
-        assert_eq!(copied_attributes.try_tag().unwrap().as_raw(), attribute_tag);
-        unsafe {
-            assert_eq!(OBJECT(output.as_raw()), 1);
-            assert_ne!(IS_S4_OBJECT(output.as_raw()), 0);
-        }
-    }
-
-    #[test]
-    fn deep_external_pointer_duplicate_roots_result_through_collecting_providers() {
-        external_pointer_duplicate_survives_collecting_children(true);
-    }
-
-    #[test]
-    fn shallow_external_pointer_duplicate_roots_shared_children_through_reentrant_gc() {
-        external_pointer_duplicate_survives_collecting_children(false);
-    }
-
-    #[test]
-    fn external_pointer_duplicates_share_native_resource_before_callbacks() {
-        use crate::sexp::{memory, session::RSession};
-        use std::{cell::Cell, rc::Rc};
-        struct Resource(Rc<Cell<usize>>);
-        impl Drop for Resource {
-            fn drop(&mut self) {
-                self.0.set(self.0.get() + 1);
-            }
-        }
-        for deep in [false, true] {
-            let session = RSession::new_for_gc_tests();
-            let factory = session.owner_token().unwrap().node_factory();
-            let protected_count = crate::sexp::protect::R_ProtectCount();
-            let drops = Rc::new(Cell::new(0));
-            let resource = Rc::new(Resource(drops.clone()));
-            let weak = Rc::downgrade(&resource);
-            let address = Rc::as_ptr(&resource).cast_mut().cast();
-            let source = factory
-                .allocate(|arena| {
-                    let pointer = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-                    let node = arena.node_token(pointer)?;
-                    let heap = arena.heap_identity();
-                    let mut header = heap.node_snapshot(&node)?;
-                    header.data.extptr_mut().address = address;
-                    heap.replace_node(&node, header)?;
-                    heap.attach_resource(&node, resource.clone())?;
-                    Some(pointer)
-                })
-                .unwrap();
-            drop(resource);
-            let (_, source_node) = memory::checked_projection(source.as_raw()).unwrap();
-            let heap = source_node.heap_identity();
-            let source_link = source_node.link().unwrap();
-            let notifications = Rc::new(Cell::new(0));
-            let observed = notifications.clone();
-            let active = Rc::new(Cell::new(true));
-            let callback_active = active.clone();
-            let callback_heap = heap.clone();
-            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                if !callback_active.get() {
-                    return;
-                }
-                let (_, copy_node) = memory::automatic_roots(&callback_heap)
-                    .into_iter()
-                    .find(|(_, node)| {
-                        node.link() != Some(source_link)
-                            && callback_heap.node_snapshot(node).is_some_and(|header| {
-                                header.sxpinfo.type_of() == SEXPTYPE::EXTPTRSXP
-                            })
-                    })
-                    .expect("duplicate is rooted before allocation callbacks");
-                assert!(callback_heap.resource::<Resource>(&copy_node).is_some());
-                crate::sexp::gengc::full_gc();
-                assert!(copy_node.is_live());
-                observed.set(observed.get() + 1);
-            }));
-            session.with_active_in(|owner| unsafe {
-                (*owner).memory_state.gc_force_gap = 1;
-                (*owner).memory_state.gc_force_wait = 1;
-            });
-            let pointer = unsafe {
-                if deep {
-                    duplicate(source.as_raw())
-                } else {
-                    shallow_duplicate(source.as_raw())
-                }
-            };
-            let copy = factory.wrap(pointer).unwrap();
-            active.set(false);
-            session.with_active_in(|owner| unsafe {
-                (*owner).memory_state.gc_force_gap = 0;
-            });
-            assert!(notifications.get() > 0);
-            assert_eq!(copy.try_extptr_ptr().unwrap(), address);
-            // Explicitly closing one attachment does not revoke its duplicate.
-            drop(heap.take_resource(&source_node).unwrap());
-            drop(source);
-            crate::sexp::gengc::full_gc();
-            assert!(!source_node.is_live());
-            assert_eq!(drops.get(), 0);
-            let (_, copy_node) = memory::checked_projection(copy.as_raw()).unwrap();
-            assert!(heap.resource::<Resource>(&copy_node).is_some());
-            drop(copy);
-            crate::sexp::gengc::full_gc();
-            assert!(!copy_node.is_live());
-            assert_eq!(drops.get(), 1);
-            assert!(weak.upgrade().is_none());
-            assert_eq!(crate::sexp::protect::R_ProtectCount(), protected_count);
-        }
     }
 
     /// Helper to create an integer vector with values.

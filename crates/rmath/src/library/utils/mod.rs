@@ -9,12 +9,18 @@ mod stubs;
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     match name {
-        "countfields" | "C_countfields" => Some(
-            crate::mainutils::native_routines::NativeRoutine::External1(c_countfields),
-        ),
-        "readtablehead" | "C_readtablehead" => Some(
-            crate::mainutils::native_routines::NativeRoutine::External1(c_readtablehead),
-        ),
+        "countfields" | "C_countfields" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External1(
+                c_countfields,
+                crate::mainutils::native_routines::PayloadArity::Fixed(6),
+            ))
+        }
+        "readtablehead" | "C_readtablehead" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External1(
+                c_readtablehead,
+                crate::mainutils::native_routines::PayloadArity::Fixed(7),
+            ))
+        }
         "octsize" | "C_octsize" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_octsize),
         )),
@@ -23,14 +29,21 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
                 crate::mainutils::native_routines::CallRoutine::Args1(c_object_size),
             ))
         }
-        "typeconvert" | "C_typeconvert" => Some(
-            crate::mainutils::native_routines::NativeRoutine::External2(c_typeconvert),
-        ),
-        "writetable" | "C_writetable" => Some(
-            crate::mainutils::native_routines::NativeRoutine::External2(c_writetable),
-        ),
+        "typeconvert" | "C_typeconvert" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External2(
+                c_typeconvert,
+                crate::mainutils::native_routines::PayloadArity::Fixed(6),
+            ))
+        }
+        "writetable" | "C_writetable" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External2(
+                c_writetable,
+                crate::mainutils::native_routines::PayloadArity::Fixed(11),
+            ))
+        }
         "edit" | "C_edit" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_edit,
+            crate::mainutils::native_routines::PayloadArity::Fixed(4),
         )),
         "tzcode_type" | "C_tzcode_type" => {
             Some(crate::mainutils::native_routines::NativeRoutine::Call(

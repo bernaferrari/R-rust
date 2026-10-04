@@ -118,39 +118,50 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     match bare {
         "PDF" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_pdf,
+            crate::mainutils::native_routines::PayloadArity::Fixed(23),
         )),
         "palette2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_palette2),
         )),
         "devholdflush" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devholdflush,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devcur" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devcur,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         "devoff" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devoff,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devset" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devset,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devcontrol" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devcontrol,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devdisplaylist" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devdisplaylist,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         "devcap" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devcap,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devsize" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devsize,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         "devnext" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devnext,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "devprev" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_devprev,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "R_CreateAtVector" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_create_at),

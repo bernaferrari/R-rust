@@ -569,48 +569,63 @@ pub(crate) fn lookup_external(
     match bare {
         "zeroin2" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_zeroin2,
+            crate::mainutils::native_routines::PayloadArity::Fixed(7),
         )),
         "do_fmin" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_do_fmin,
+            crate::mainutils::native_routines::PayloadArity::Fixed(4),
         )),
         "termsform" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_termsform,
+            crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
         "call_dqags" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_call_dqags,
+            crate::mainutils::native_routines::PayloadArity::Fixed(7),
         )),
         "call_dqagi" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_call_dqagi,
+            crate::mainutils::native_routines::PayloadArity::Fixed(7),
         )),
         "compcases" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_compcases,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "doD" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_do_d,
+            crate::mainutils::native_routines::PayloadArity::Fixed(2),
         )),
         "deriv" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_deriv,
+            crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
         "optim" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             super::optim::c_optim,
+            crate::mainutils::native_routines::PayloadArity::Fixed(7),
         )),
         "nlm" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             super::zeroin::c_nlm,
+            crate::mainutils::native_routines::PayloadArity::Fixed(11),
         )),
         "optimhess" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             super::optim::c_optimhess,
+            crate::mainutils::native_routines::PayloadArity::Fixed(4),
         )),
         "modelframe" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_modelframe,
+            crate::mainutils::native_routines::PayloadArity::Fixed(8),
         )),
         "modelmatrix" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_modelmatrix,
+            crate::mainutils::native_routines::PayloadArity::Fixed(2),
         )),
         "signrank_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             super::distn::c_signrank_free,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         "wilcox_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             super::distn::c_wilcox_free,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         _ => None,
     }
@@ -866,9 +881,11 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
         )),
         "zeroin2" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_zeroin2,
+            crate::mainutils::native_routines::PayloadArity::Fixed(7),
         )),
         "do_fmin" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_do_fmin,
+            crate::mainutils::native_routines::PayloadArity::Fixed(4),
         )),
         "Fisher_sim" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args3(c_fisher_sim),

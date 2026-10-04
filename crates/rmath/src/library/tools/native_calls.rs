@@ -161,6 +161,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         "parseRd" | "parseRdText" => {
             Some(crate::mainutils::native_routines::NativeRoutine::External2(
                 super::parse_rd::c_parse_rd,
+                crate::mainutils::native_routines::PayloadArity::Fixed(9),
             ))
         }
         "deparseRd" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
@@ -168,6 +169,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         )),
         "parseLatex" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_parse_latex,
+            crate::mainutils::native_routines::PayloadArity::Fixed(6),
         )),
         _ => None,
     }

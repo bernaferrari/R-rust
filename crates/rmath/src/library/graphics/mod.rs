@@ -218,33 +218,44 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     match bare {
         "par" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_par,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "plot_new" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_plot_new,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         #[cfg(feature = "renderplot-device")]
         "getSnapshot" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_get_snapshot,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         #[cfg(feature = "renderplot-device")]
         "playSnapshot" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_play_snapshot,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
         )),
         "plot_window" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_plot_window,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "axis" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_axis,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "plotXY" | "plot_xy" | "title" | "text" | "mtext" | "box" | "segments" | "rect"
-        | "polygon" | "abline" => Some(
-            crate::mainutils::native_routines::NativeRoutine::External1(c_plot_xy),
-        ),
+        | "polygon" | "abline" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External1(
+                c_plot_xy,
+                crate::mainutils::native_routines::PayloadArity::Variadic,
+            ))
+        }
         "strWidth" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_str_width,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "strHeight" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_str_height,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "BinCount" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_bin_count),
@@ -254,18 +265,33 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         )),
         "contour" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_contour,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "image" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_image,
+            crate::mainutils::native_routines::PayloadArity::Fixed(4),
         )),
         "layout" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_layout,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
-        "filledcontour" | "persp" | "arrows" | "clip" | "convertX" | "convertY" | "dend"
-        | "dendwindow" | "erase" | "path" | "raster" | "symbols" | "xspline" | "locator"
-        | "identify" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+        "filledcontour" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_nil,
+            crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
+        "convertX" | "convertY" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External1(
+                c_nil,
+                crate::mainutils::native_routines::PayloadArity::Fixed(3),
+            ))
+        }
+        "persp" | "arrows" | "clip" | "dend" | "dendwindow" | "erase" | "path" | "raster"
+        | "symbols" | "xspline" | "locator" | "identify" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::External1(
+                c_nil,
+                crate::mainutils::native_routines::PayloadArity::Variadic,
+            ))
+        }
         "StemLeaf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_stem_leaf),
         )),

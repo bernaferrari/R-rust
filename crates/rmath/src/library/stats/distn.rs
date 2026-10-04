@@ -1783,9 +1783,11 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
         )),
         "signrank_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_signrank_free,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         "wilcox_free" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_wilcox_free,
+            crate::mainutils::native_routines::PayloadArity::Fixed(0),
         )),
         _ => None,
     }

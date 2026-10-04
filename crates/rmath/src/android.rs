@@ -19,6 +19,9 @@ pub(crate) mod result_budget;
 #[cfg(test)]
 #[path = "android/output_contract_tests.rs"]
 mod output_contract_tests;
+#[cfg(test)]
+#[path = "android/focused_console_ownership_tests.rs"]
+mod focused_console_ownership_tests;
 
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
