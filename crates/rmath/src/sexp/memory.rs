@@ -558,6 +558,14 @@ pub(crate) fn checked_projection(pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
     entry.projection.resolve_slot(slot)
 }
 
+/// Admit an address once and snapshot the same live generation through its
+/// canonical Cell. This operation is callback-free and retains the physical
+/// page until the copied header and exact metadata identity are captured.
+pub(crate) fn checked_header(pointer: SEXP) -> Option<(SEXP, CheckedNode, SexprecCore)> {
+    let (entry, slot) = find_slab_entry(pointer)?;
+    entry.projection.copy_slot(slot)
+}
+
 /// Copy the canonical header through its Cell only if the caller's original
 /// allocation identity still belongs to this exact directory slot. An
 /// address reused by another generation never refreshes the expected ID.

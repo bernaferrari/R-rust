@@ -33,19 +33,48 @@ fn immutable_lease(pointer: SEXP) -> Option<super::globals::SingletonLease> {
     })
 }
 
-fn header_snapshot(pointer: SEXP) -> Option<SexprecCore> {
+enum HeaderOrigin {
+    Singleton(super::globals::SingletonLease),
+    Managed {
+        projection: SEXP,
+        node: super::heap::CheckedNode,
+    },
+}
+
+struct HeaderRead {
+    snapshot: SexprecCore,
+    origin: HeaderOrigin,
+}
+
+impl HeaderRead {
+    fn projection(&self) -> SEXP {
+        match &self.origin {
+            HeaderOrigin::Singleton(lease) => lease.projection(),
+            HeaderOrigin::Managed { projection, .. } => *projection,
+        }
+    }
+}
+
+fn header_read(pointer: SEXP, failure: &str) -> Option<HeaderRead> {
     if !is_valid_sexp_ptr(pointer) {
         return None;
     }
     if let Some(singleton) = immutable_lease(pointer) {
-        return Some(singleton.snapshot());
+        return Some(HeaderRead {
+            snapshot: singleton.snapshot(),
+            origin: HeaderOrigin::Singleton(singleton),
+        });
     }
-    let (projection, node) = super::memory::checked_projection(pointer)
-        .unwrap_or_else(|| super::context::r_error("unowned header read"));
-    Some(
-        super::memory::checked_snapshot(projection, &node)
-            .unwrap_or_else(|| super::context::r_error("stale header read")),
-    )
+    let (projection, node, snapshot) = super::memory::checked_header(pointer)
+        .unwrap_or_else(|| super::context::r_error(failure));
+    Some(HeaderRead {
+        snapshot,
+        origin: HeaderOrigin::Managed { projection, node },
+    })
+}
+
+fn header_snapshot(pointer: SEXP) -> Option<SexprecCore> {
+    header_read(pointer, "unowned header read").map(|read| read.snapshot)
 }
 
 fn mutate_header(pointer: SEXP, update: impl FnOnce(&mut SexprecCore)) {
@@ -188,20 +217,33 @@ pub unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 /// Resolve a saved edge using the original parent's allocation domain.
 /// Raw projections stop at this boundary; canonical headers contain identities.
 fn graph_edge(pointer: SEXP, field: EdgeField) -> SEXP {
-    if !is_valid_sexp_ptr(pointer) {
+    let Some(read) = header_read(pointer, "unowned graph parent") else {
         return ptr::null_mut();
-    }
-    if immutable_lease(pointer).is_some() {
+    };
+    graph_edge_from_read(&read, field)
+}
+
+fn graph_edge_from_read(read: &HeaderRead, field: EdgeField) -> SEXP {
+    let HeaderOrigin::Managed { node, .. } = &read.origin else {
         return ptr::null_mut();
-    }
-    let (_, node) = super::memory::checked_projection(pointer)
-        .unwrap_or_else(|| super::context::r_error("unowned graph parent"));
-    let heap = node.heap_identity();
-    let link = heap
-        .edge(&node, field)
+    };
+    let link = read
+        .snapshot
+        .edge(field)
         .unwrap_or_else(|| super::context::r_error("invalid graph field"));
-    heap.projection_of_link(link)
+    node.heap_identity()
+        .projection_of_link(link)
         .unwrap_or_else(|| super::context::r_error("stale or foreign graph child"))
+}
+
+fn list_edge(pointer: SEXP, field: EdgeField) -> SEXP {
+    let Some(read) = header_read(pointer, "unowned header read") else {
+        return ptr::null_mut();
+    };
+    if read.snapshot.sxpinfo.type_of() == SEXPTYPE::NILSXP {
+        return read.projection();
+    }
+    graph_edge_from_read(&read, field)
 }
 
 fn graph_set_edge(pointer: SEXP, field: EdgeField, child: SEXP) {
@@ -379,38 +421,17 @@ pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
 
 /// Get the CAR of a cons cell.
 pub unsafe fn CAR(x: SEXP) -> SEXP {
-    if !is_valid_sexp_ptr(x) {
-        return ptr::null_mut();
-    }
-    // SAFETY: raw callers retain a live header. Nil has no graph body.
-    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
-        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
-    }
-    graph_edge(x, EdgeField::ListCar)
+    list_edge(x, EdgeField::ListCar)
 }
 
 /// Get the CDR of a cons cell.
 pub unsafe fn CDR(x: SEXP) -> SEXP {
-    if !is_valid_sexp_ptr(x) {
-        return ptr::null_mut();
-    }
-    // SAFETY: raw callers retain a live header. Nil has no graph body.
-    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
-        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
-    }
-    graph_edge(x, EdgeField::ListCdr)
+    list_edge(x, EdgeField::ListCdr)
 }
 
 /// Get the TAG of a cons cell.
 pub unsafe fn TAG(x: SEXP) -> SEXP {
-    if !is_valid_sexp_ptr(x) {
-        return ptr::null_mut();
-    }
-    // SAFETY: raw callers retain a live header. Nil has no graph body.
-    if unsafe { TYPEOF(x) } == SEXPTYPE::NILSXP {
-        return super::globals::immutable_singleton_projection(x).unwrap_or(x);
-    }
-    graph_edge(x, EdgeField::ListTag)
+    list_edge(x, EdgeField::ListTag)
 }
 
 /// Set the CAR of a cons cell.
@@ -1835,3 +1856,7 @@ fn reference_elements_reject_foreign_payloads_and_oversized_headers() {
         .is_err()
     );
 }
+
+#[cfg(test)]
+#[path = "accessors/projection_tests.rs"]
+mod projection_tests;

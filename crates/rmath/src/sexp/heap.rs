@@ -145,8 +145,8 @@ impl HeapBackingOwners {
 impl std::fmt::Debug for HeapBackingOwners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HeapBackingOwners")
-            .field("stores", &self.stores.borrow())
-            .finish()
+            .field("stores", &self.stores)
+            .finish_non_exhaustive()
     }
 }
 
@@ -1175,6 +1175,16 @@ impl<T> NodeProjection<T> {
     }
 }
 impl<T: Copy> NodeProjection<T> {
+    /// Read one currently live slot from its original canonical Cell. The
+    /// checked generation and physical values lease stay together until the
+    /// copy completes; no caller pointer is dereferenced and no callback runs.
+    pub(crate) fn copy_slot(&self, slot: usize) -> Option<(*mut T, CheckedNode, T)> {
+        let token = CheckedNode::new(self.metadata.clone(), self.metadata.current_id(slot)?)?;
+        let values = self.values.upgrade()?;
+        let cell = values.get(slot)?;
+        Some((cell.as_ptr(), token, cell.get()))
+    }
+
     pub(crate) fn copy_live(&self, id: &NodeId) -> Option<T> {
         if !self.metadata.validates(id) {
             return None;
