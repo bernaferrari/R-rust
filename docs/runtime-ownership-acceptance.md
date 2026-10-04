@@ -718,10 +718,13 @@ Six independently reproduced GNU fixtures cover version 2/3, ASCII and compressi
 including factors, Date attributes, shared cyclic environment identity and bound
 NULL. Ten final native cases pass, including three public data-loader cases and
 seven ownership/admission controls. Warnings-denied rmath/r-embed Clippy and assigned
-formatting pass. The selected strict-provenance Miri run is still running at this
-checkpoint; partial case markers are not an aggregate pass. This milestone records
-native verification only and does not certify serialized promises, all package
-loading, complete compression resource behavior or whole-tree aliasing safety.
+formatting pass. Six selected strict-provenance Miri lifecycle/admission cases
+complete in 986.30 seconds with the default alias checker. All six file formats
+remain in native acceptance; the earlier costly seven-case codec selection was
+stopped without an aggregate result and is not counted as passing. The checked
+owning sources remain unchanged through the completed proof. This milestone does
+not certify all package loading, complete compression resource behavior or
+whole-tree aliasing safety.
 
 ## Serialized promises and original lazy-load reference restoration
 
