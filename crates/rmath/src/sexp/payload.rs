@@ -9,6 +9,7 @@
 use std::{
     alloc::Layout,
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -328,9 +329,31 @@ impl ReferencePayloadLease {
         Some(self.cells.iter().take(length).map(Cell::get).collect())
     }
 
+    /// An immutable map cannot reenter storage. Retain only changed positions,
+    /// with no copied allocation or capacity request for an unchanged vector.
+    pub(crate) fn remap_plan(
+        &self,
+        length: usize,
+        replacements: &HashMap<NodeLink, NodeLink>,
+    ) -> Option<Vec<(usize, NodeLink)>> {
+        if length > self.cells.len() {
+            return None;
+        }
+        let mut changes = Vec::new();
+        for (index, cell) in self.cells.iter().take(length).enumerate() {
+            let original = cell.get();
+            if let Some(&replacement) = replacements.get(&original)
+                && replacement != original
+            {
+                changes.push((index, replacement));
+            }
+        }
+        Some(changes)
+    }
+
     /// All bounds are checked before touching any canonical cell. Callers
     /// validate parent identity, original values and replacement links first.
-    pub(crate) fn replace_sparse(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
+    pub(crate) fn validate_sparse(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
         if self
             .owner
             .as_ref()
@@ -339,6 +362,11 @@ impl ReferencePayloadLease {
         {
             return None;
         }
+        Some(())
+    }
+
+    pub(crate) fn replace_sparse(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
+        self.validate_sparse(changes)?;
         for (index, link) in changes {
             self.cells[*index].set(*link);
         }

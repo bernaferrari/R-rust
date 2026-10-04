@@ -270,6 +270,7 @@ fn child_mask(type_code: i32, follow_weak_key: bool) -> u32 {
     body | EDGE_ATTRIB | vector
 }
 
+#[cfg(test)]
 fn each_child(obj: SEXP, follow_weak_key: bool, visit: impl FnMut(&mut NodeLink)) {
     let (_, parent) =
         super::memory::checked_projection(obj).expect("GC parent belongs to checked storage");
@@ -812,11 +813,9 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<NodeLink, NodeLin
     if obj.is_null() || super::globals::immutable_singleton_projection(obj).is_some() {
         return;
     }
-    each_child(obj, true, |slot| {
-        if let Some(&replacement) = old_to_new.get(slot) {
-            *slot = replacement;
-        }
-    });
+    let (_, parent) =
+        super::memory::checked_projection(obj).expect("GC parent belongs to checked storage");
+    gc_trace_bridge::remap_children(&parent, old_to_new);
 }
 
 #[cfg(test)]
@@ -826,6 +825,7 @@ fn update_object_references(old_to_new: &HashMap<NodeLink, NodeLink>) {
     });
 }
 
+#[cfg(test)]
 fn update_object_references_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<NodeLink, NodeLink>,
@@ -835,6 +835,34 @@ fn update_object_references_in(
     let permanent: Vec<SEXP> = unsafe { (*instance).persistent_nodes.projections().collect() };
     for obj in nodes.into_iter().chain(permanent) {
         update_references_in_object(obj, old_to_new);
+    }
+}
+
+/// This shortcut is exclusive to nonmoving sweep, after the complete strong
+/// mark worklist and ready-finalizer graph have drained. Epoch metadata remains
+/// valid after sxpinfo.mark is cleared. Marked strong children cannot be swept;
+/// the weak key is deliberately unmarked and must still be cleared. Unmarked
+/// old/young survivors of partial collection still require all-edge cleanup.
+fn update_swept_object_references_in(
+    instance: *mut instance::RInstance,
+    old_to_nil: &HashMap<NodeLink, NodeLink>,
+) {
+    let nodes: Vec<SEXP> = unsafe { (*instance).arena.active_nodes().collect() };
+    let permanent: Vec<SEXP> = unsafe { (*instance).persistent_nodes.projections().collect() };
+    for obj in nodes.into_iter().chain(permanent) {
+        if super::memory::arena_node_marked(obj) {
+            let (_, parent) = super::memory::checked_projection(obj)
+                .expect("marked GC parent belongs to checked storage");
+            let header = parent
+                .heap_identity()
+                .node_snapshot(&parent)
+                .expect("marked GC parent remains live");
+            if header.sxpinfo.type_of() == SEXPTYPE::WEAKREFSXP {
+                gc_trace_bridge::remap_weak_key(&parent, old_to_nil);
+            }
+        } else {
+            update_references_in_object(obj, old_to_nil);
+        }
     }
 }
 
@@ -966,7 +994,7 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
     }
 }
 
-fn update_all_references_in(
+fn clear_swept_references_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
     old_links: &HashMap<NodeLink, NodeLink>,
@@ -974,7 +1002,7 @@ fn update_all_references_in(
     unsafe {
         update_instance_roots_in(instance, old_to_new);
         update_remembered_set_in(instance, old_to_new);
-        update_object_references_in(instance, old_links);
+        update_swept_object_references_in(instance, old_links);
     }
 }
 
@@ -1347,7 +1375,7 @@ fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
             let old_links = sweep_link_remap(instance, &to_free, nil);
-            update_all_references_in(instance, &old_to_nil, &old_links);
+            clear_swept_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1491,7 +1519,7 @@ fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
             let old_links = sweep_link_remap(instance, &to_free, nil);
-            update_all_references_in(instance, &old_to_nil, &old_links);
+            clear_swept_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1554,7 +1582,7 @@ fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
             let old_to_nil: HashMap<usize, SEXP> =
                 to_free.iter().map(|&obj| (obj as usize, nil)).collect();
             let old_links = sweep_link_remap(instance, &to_free, nil);
-            update_all_references_in(instance, &old_to_nil, &old_links);
+            clear_swept_references_in(instance, &old_to_nil, &old_links);
 
             for obj in to_free {
                 (*instance).arena.free_node(obj);
@@ -1648,6 +1676,9 @@ impl<'a> VectorSlot<'a> {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod sweep_remap_tests;
 
 #[cfg(test)]
 mod tests {

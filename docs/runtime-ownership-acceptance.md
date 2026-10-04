@@ -234,3 +234,26 @@ owned-subprocess deadline helper, explicit Bash pipeline failure propagation,
 phase logs and timeout markers, with unconditional evidence upload. Four helper
 tests and a deliberate command-exit-seven pipeline control pass locally; the
 real showcase job still requires a completed new checkpoint.
+
+Nonmoving sweep cleanup now uses a callback-free exact-link map. It retains
+only changed reference positions, and checks bounds, immutability and replacement
+identity before publishing a header or payload. This also repairs a genuine
+generic-visitor transaction failure: rejecting immutable cells previously left
+the attribute changed. The general visitor keeps its detached snapshot and
+reentry validation. A separate sweep-only path skips marked strong graphs after
+complete tracing and ready-finalizer retention; it still clears marked weak keys
+and all relevant edges of unmarked partial-collection survivors. All 14 focused
+native tests pass in 0.02 seconds, 14 enclosing collection/unwind/resource
+controls pass in 0.04 seconds, and eight strict-provenance Miri cases pass in
+529.52 seconds with the default alias checker. Warnings-free all-target Clippy
+with memory profiling passes in 26.37 seconds; frozen collector hashes and
+independent later source edits are recorded separately.
+
+The unchanged paired 2,000-vector diagnostic asserts every collection count,
+retained value and retired generation. The extra one-node-sweep cost falls from
+20.31 to 0.77 milliseconds; total measured collection time falls from 29.06 to
+14.36 milliseconds. No-sweep timing also varies, so this is a bounded diagnostic,
+not a universal speedup claim. Unchanged default startup still times out at
+180.26 seconds without a test footer. Its new sample contains marking and
+deserialization work, with no sweep-remapping frames. Completion of startup and
+whole GNU parity remains a separate obligation.

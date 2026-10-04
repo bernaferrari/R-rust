@@ -10,6 +10,28 @@ use super::{
 };
 use crate::sexp::heap::NodeLink;
 use crate::sexp::{ffi::EdgeField, heap::CheckedNode};
+use std::collections::HashMap;
+
+const FIXED_FIELDS: [(u32, EdgeField); 18] = [
+    (EDGE_PNAME, EdgeField::SymbolName),
+    (EDGE_SYM_VALUE, EdgeField::SymbolValue),
+    (EDGE_INTERNAL, EdgeField::SymbolInternal),
+    (EDGE_CAR, EdgeField::ListCar),
+    (EDGE_CDR, EdgeField::ListCdr),
+    (EDGE_TAG, EdgeField::ListTag),
+    (EDGE_FORMALS, EdgeField::ClosureFormals),
+    (EDGE_BODY, EdgeField::ClosureBody),
+    (EDGE_CLOENV, EdgeField::ClosureEnvironment),
+    (EDGE_FRAME, EdgeField::EnvironmentFrame),
+    (EDGE_ENCLOS, EdgeField::EnvironmentEnclosure),
+    (EDGE_HASHTAB, EdgeField::EnvironmentHashTable),
+    (EDGE_PROM_VALUE, EdgeField::PromiseValue),
+    (EDGE_PROM_EXPR, EdgeField::PromiseExpression),
+    (EDGE_PROM_ENV, EdgeField::PromiseEnvironment),
+    (EDGE_EXT_TAG, EdgeField::ExternalTag),
+    (EDGE_EXT_PROT, EdgeField::ExternalProtected),
+    (EDGE_ATTRIB, EdgeField::Attribute),
+];
 
 pub(super) struct ChildSnapshot {
     fixed: [NodeLink; 4],
@@ -70,8 +92,103 @@ pub(super) fn snapshot_children(
     Ok(ChildSnapshot { fixed, vector })
 }
 
+/// Apply an immutable exact-link mapping without a user visitor. Collection
+/// never calls providers or semantic code in this phase, so only changed
+/// reference cells need owned storage; unchanged vectors need no snapshot.
+pub(super) fn remap_children(parent: &CheckedNode, replacements: &HashMap<NodeLink, NodeLink>) {
+    let heap = parent.heap_identity();
+    let header = heap.node_snapshot(parent).expect("GC parent remains live");
+    let mask = child_mask(header.sxpinfo.type_of().0, true);
+    remap_fields(parent, header, mask, replacements);
+}
+
+/// Marking deliberately excludes this sole weak edge. The sweep caller has
+/// already traced the marked parent's strong edges and retained ready finalizers.
+pub(super) fn remap_weak_key(parent: &CheckedNode, replacements: &HashMap<NodeLink, NodeLink>) {
+    let header = parent
+        .heap_identity()
+        .node_snapshot(parent)
+        .expect("GC weak parent remains live");
+    assert_eq!(
+        header.sxpinfo.type_of(),
+        crate::sexp::ffi::SEXPTYPE::WEAKREFSXP
+    );
+    remap_fields(parent, header, EDGE_CAR, replacements);
+}
+
+fn remap_fields(
+    parent: &CheckedNode,
+    mut header: crate::sexp::ffi::SexprecCore,
+    mask: u32,
+    replacements: &HashMap<NodeLink, NodeLink>,
+) {
+    let heap = parent.heap_identity();
+    let mut header_changes = Vec::new();
+    for (bit, field) in FIXED_FIELDS {
+        if mask & bit != 0 {
+            let original = header.edge(field).expect("GC field matches node body");
+            if let Some(&replacement) = replacements.get(&original)
+                && replacement != original
+            {
+                header_changes.push((field, replacement));
+            }
+        }
+    }
+    let vector_payload = if mask & EDGE_VECTOR != 0 && !header.payload.is_empty() {
+        Some(
+            heap.reference_payload_lease(parent)
+                .expect("GC reference payload remains owned"),
+        )
+    } else {
+        None
+    };
+    let vector_changes = match &vector_payload {
+        Some(payload) => payload
+            .remap_plan(
+                usize::try_from(header.vecsxp_length()).expect("GC vector length is representable"),
+                replacements,
+            )
+            .expect("GC vector length fits its reference allocation"),
+        None => Vec::new(),
+    };
+    if !vector_changes.is_empty() {
+        vector_payload
+            .as_ref()
+            .expect("GC reference changes have an allocation")
+            .validate_sparse(&vector_changes)
+            .expect("GC reference changes require writable bounded cells");
+    }
+    // Validate the entire plan before publishing any header or payload change.
+    // Default HashMap lookup and Cell reads invoke no callbacks or storage loans.
+    for child in header_changes
+        .iter()
+        .map(|(_, child)| child)
+        .chain(vector_changes.iter().map(|(_, child)| child))
+    {
+        heap.resolve_link(*child)
+            .expect("GC replacement names a live allocation in its heap");
+    }
+    for (field, child) in &header_changes {
+        header
+            .set_edge(*field, *child)
+            .expect("GC field matches node body");
+    }
+    if !header_changes.is_empty() {
+        heap.replace_node(parent, header)
+            .expect("GC parent remains live");
+    }
+    if !vector_changes.is_empty() {
+        vector_payload
+            .as_ref()
+            .expect("GC reference changes have an allocation")
+            .replace_sparse(&vector_changes)
+            .expect("GC reference positions remain bounded");
+    }
+}
+
 /// Rewrite detached exact links. No header or payload loan spans the visitor;
 /// unchanged capabilities retain their original generation and lease identity.
+#[cfg(test)]
 pub(super) fn rewrite_children(
     parent: &CheckedNode,
     follow_weak_key: bool,
@@ -98,28 +215,8 @@ pub(super) fn rewrite_children(
             .expect("GC vector length fits its reference allocation"),
         None => Vec::new(),
     };
-    let fields = [
-        (EDGE_PNAME, EdgeField::SymbolName),
-        (EDGE_SYM_VALUE, EdgeField::SymbolValue),
-        (EDGE_INTERNAL, EdgeField::SymbolInternal),
-        (EDGE_CAR, EdgeField::ListCar),
-        (EDGE_CDR, EdgeField::ListCdr),
-        (EDGE_TAG, EdgeField::ListTag),
-        (EDGE_FORMALS, EdgeField::ClosureFormals),
-        (EDGE_BODY, EdgeField::ClosureBody),
-        (EDGE_CLOENV, EdgeField::ClosureEnvironment),
-        (EDGE_FRAME, EdgeField::EnvironmentFrame),
-        (EDGE_ENCLOS, EdgeField::EnvironmentEnclosure),
-        (EDGE_HASHTAB, EdgeField::EnvironmentHashTable),
-        (EDGE_PROM_VALUE, EdgeField::PromiseValue),
-        (EDGE_PROM_EXPR, EdgeField::PromiseExpression),
-        (EDGE_PROM_ENV, EdgeField::PromiseEnvironment),
-        (EDGE_EXT_TAG, EdgeField::ExternalTag),
-        (EDGE_EXT_PROT, EdgeField::ExternalProtected),
-        (EDGE_ATTRIB, EdgeField::Attribute),
-    ];
     let mut header_changes = Vec::new();
-    for (bit, field) in fields {
+    for (bit, field) in FIXED_FIELDS {
         if mask & bit == 0 {
             continue;
         }
@@ -193,6 +290,13 @@ pub(super) fn rewrite_children(
             "GC reference cell changed during visitation"
         );
     }
+    if !vector_changes.is_empty() {
+        vector_payload
+            .as_ref()
+            .expect("GC reference changes have an allocation")
+            .validate_sparse(&vector_changes)
+            .expect("GC reference changes require writable bounded cells");
+    }
     for child in header_changes
         .iter()
         .map(|(_, child)| child)
@@ -233,6 +337,88 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
+    fn remap_rejects_foreign_replacement_before_any_header_or_cell_write() {
+        let mut arena = RArena::new();
+        let mut foreign = RArena::new();
+        let parent = checked_projection(arena.alloc_vector(SEXPTYPE::VECSXP, 2))
+            .unwrap()
+            .1;
+        let attribute = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let child = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let replacement = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let foreign_child = checked_projection(foreign.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let heap = parent.heap_identity();
+        heap.set_edge(
+            &parent,
+            EdgeField::Attribute,
+            ReferenceChild::Node(&attribute),
+        )
+        .unwrap();
+        heap.set_reference_elt(&parent, 1, ReferenceChild::Node(&child))
+            .unwrap();
+        let map = HashMap::from([
+            (attribute.link().unwrap(), replacement.link().unwrap()),
+            (child.link().unwrap(), foreign_child.link().unwrap()),
+        ]);
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            remap_children(&parent, &map)
+        }));
+        assert!(rejected.is_err());
+        assert_eq!(heap.edge(&parent, EdgeField::Attribute), attribute.link());
+        assert_eq!(
+            heap.reference_links(&parent),
+            Some(vec![NodeLink::NULL, child.link().unwrap()])
+        );
+    }
+
+    #[test]
+    fn immutable_reference_transaction_rejects_before_publishing_attribute() {
+        let mut arena = RArena::new();
+        let parent = checked_projection(arena.alloc_vector(SEXPTYPE::VECSXP, 1))
+            .unwrap()
+            .1;
+        let child = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let replacement = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap()
+            .1;
+        let heap = parent.heap_identity();
+        heap.set_edge(&parent, EdgeField::Attribute, ReferenceChild::Node(&child))
+            .unwrap();
+        heap.set_reference_elt(&parent, 0, ReferenceChild::Node(&child))
+            .unwrap();
+        let payload = heap.payload_lease(&parent).unwrap();
+        payload.make_immutable();
+        let original = child.link().unwrap();
+        let target = replacement.link().unwrap();
+        for callback in [true, false] {
+            let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if callback {
+                    rewrite_children(&parent, true, |link| {
+                        if *link == original {
+                            *link = target;
+                        }
+                    });
+                } else {
+                    remap_children(&parent, &HashMap::from([(original, target)]));
+                }
+            }));
+            assert!(rejected.is_err());
+            assert_eq!(heap.edge(&parent, EdgeField::Attribute), Some(original));
+            assert_eq!(heap.reference_link_elt(&parent, 0), Some(original));
+        }
+    }
+
+    #[test]
     fn vector_tracing_rejects_incompatible_payload_publication() {
         let mut arena = RArena::new();
         let heap = arena.heap_identity();
@@ -245,7 +431,7 @@ mod tests {
         let pointer = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
         let token = checked_projection(pointer).unwrap().1;
         let original = heap.node_snapshot(&token).unwrap();
-        for payload in [&numeric_payload, &short_payload] {
+        for (index, payload) in [&numeric_payload, &short_payload].into_iter().enumerate() {
             assert!(
                 heap.publish_payload(&token, original.payload, payload)
                     .is_none()
@@ -253,7 +439,8 @@ mod tests {
             let unchanged = heap.node_snapshot(&token).unwrap();
             assert_eq!(unchanged.payload, original.payload);
             assert_eq!(unchanged.data, original.data);
-            let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(heap.clone(), 41)));
+            let mut worklist =
+                TraceWorklist::new(Rc::new(TraceContext::new(heap.clone(), 41 + index as u32)));
             worklist.enqueue(pointer).unwrap();
             let node = worklist.next_marked().unwrap().unwrap();
             assert_eq!(
