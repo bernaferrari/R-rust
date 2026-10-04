@@ -317,9 +317,11 @@ fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_valu
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
         });
-        let mut data = LocalParseData::default();
-        data.strvec = output.clone().as_raw();
-        data.maxlines = 3;
+        let mut data = LocalParseData {
+            strvec: output.clone().as_raw(),
+            maxlines: 3,
+            ..LocalParseData::default()
+        };
         unsafe {
             print2buff(c"".as_ptr(), &mut data);
             writeline(&mut data);
@@ -398,10 +400,12 @@ fn owned_deparse_line_wrap_and_line_limit_preserve_original_output() {
         let output = factory
             .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
             .unwrap();
-        let mut data = LocalParseData::default();
-        data.strvec = output.clone().as_raw();
-        data.maxlines = 2;
-        data.cutoff = 3;
+        let mut data = LocalParseData {
+            strvec: output.clone().as_raw(),
+            maxlines: 2,
+            cutoff: 3,
+            ..LocalParseData::default()
+        };
         let mut continued = false;
         append_line_bytes(b"abc", &mut data);
         unsafe {

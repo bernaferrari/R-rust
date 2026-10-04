@@ -88,9 +88,8 @@ unsafe fn own_trace_value(
     )
 }
 
-fn trace_projection(value: &Option<crate::sexp::object::Sexp<'static>>) -> SEXP {
+fn trace_projection(value: Option<&crate::sexp::object::Sexp<'static>>) -> SEXP {
     value
-        .as_ref()
         .map_or(ptr::null_mut(), |value| value.as_raw())
 }
 
@@ -106,32 +105,32 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
         let count = c_int::try_from(frames.len())
             .unwrap_or_else(|_| crate::sexp::context::r_error("too many traceback frames"));
         let result = own_trace_value(instance, Rf_allocList(count));
-        crate::sexp::context::require_context_owner_live(&pin);
-        let mut cell = trace_projection(&result);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
+        let mut cell = trace_projection(result.as_ref());
         for frame in frames {
-            let call = crate::mainutils::duplicate::Rf_duplicate(trace_projection(&frame.call));
-            crate::sexp::context::require_context_owner_live(&pin);
+            let call = crate::mainutils::duplicate::Rf_duplicate(trace_projection(frame.call.as_ref()));
+            crate::sexp::context::require_context_owner_live(pin.as_ref());
             let call = own_trace_value(instance, call);
-            let source = trace_projection(&frame.srcref);
+            let source = trace_projection(frame.srcref.as_ref());
             if !source.is_null() && source != globals::R_NilValue() {
                 let symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
-                crate::sexp::context::require_context_owner_live(&pin);
+                crate::sexp::context::require_context_owner_live(pin.as_ref());
                 let source = crate::mainutils::duplicate::Rf_duplicate(source);
-                crate::sexp::context::require_context_owner_live(&pin);
+                crate::sexp::context::require_context_owner_live(pin.as_ref());
                 let source = own_trace_value(instance, source);
                 crate::sexp::attrib_core::setAttrib(
-                    trace_projection(&call),
+                    trace_projection(call.as_ref()),
                     symbol,
-                    trace_projection(&source),
+                    trace_projection(source.as_ref()),
                 );
-                crate::sexp::context::require_context_owner_live(&pin);
+                crate::sexp::context::require_context_owner_live(pin.as_ref());
             }
             if !cell.is_null() {
-                SETCAR(cell, trace_projection(&call));
+                SETCAR(cell, trace_projection(call.as_ref()));
             }
             cell = CDR(cell);
         }
-        trace_projection(&result)
+        trace_projection(result.as_ref())
     }
 }
 pub unsafe fn save_error_traceback() {
@@ -169,7 +168,7 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
         let mut too_many = false;
         let mut top = String::new();
         for frame in frames {
-            let call = trace_projection(&frame.call);
+            let call = trace_projection(frame.call.as_ref());
             let fun = if !call.is_null() {
                 CAR(call)
             } else {

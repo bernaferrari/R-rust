@@ -196,7 +196,7 @@ pub fn ensure_connection_readable(n: core::ffi::c_int) {
     let description = conn.description.clone();
     match &conn.kind {
         ConnKind::File => {
-            if let Err(_) = open_maybe_compressed(conn, &mode) {
+            if open_maybe_compressed(conn, &mode).is_err() {
                 r_error("cannot open the connection");
             }
         }
@@ -619,7 +619,7 @@ pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // do_bzfile — bzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let original = args;
         let scmd = CAR(args);
@@ -659,7 +659,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 // do_xzfile — xzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let original = args;
         let scmd = CAR(args);
@@ -751,7 +751,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         match &conn.kind {
             ConnKind::BrowserFile => open_browser_file(conn, &open_mode),
             ConnKind::File => {
-                if let Err(_) = open_maybe_compressed(conn, &open_mode) {
+                if open_maybe_compressed(conn, &open_mode).is_err() {
                     r_error("cannot open the connection");
                 }
             }
@@ -1157,8 +1157,6 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 r_error("seek not supported for this connection type");
             }
         }
-
-        Rf_ScalarReal(0.0)
     }
 }
 
@@ -1272,7 +1270,7 @@ pub unsafe fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
             output = enc.finish().unwrap_or_default();
             Ok(())
         } else if kind == "none" {
-            output = input.clone();
+            output.clone_from(&input);
             Ok(())
         } else {
             let mut enc = GzEncoder::new(output, GzCompression::default());
@@ -1299,7 +1297,7 @@ pub unsafe fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             let _ = dec.read_to_end(&mut output);
             Ok(())
         } else if kind == "none" {
-            output = input.clone();
+            output.clone_from(&input);
             Ok(())
         } else {
             let mut dec = GzDecoder::new(&input[..]);

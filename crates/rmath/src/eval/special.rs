@@ -73,7 +73,7 @@ unsafe fn dispatch_special_by_name(
         // SAFETY: this translated entry retains its explicitly active owner.
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
         match name {
             "{" => do_begin(CDR(call), rho),
@@ -84,13 +84,13 @@ unsafe fn dispatch_special_by_name(
                 let evaled =
                     super::dispatch::evalList(
                         factory.wrap(CDR(call)).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         }),
                         factory.wrap(rho).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         }),
                         Some(factory.wrap(call).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         })),
                         -1,
                     );
@@ -154,13 +154,13 @@ unsafe fn dispatch_special_by_name(
                 if let Some(handler) = super::builtin::evaluated_builtin_handler(name) {
                     let evaled = super::dispatch::evalList(
                         factory.wrap(args).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         }),
                         factory.wrap(rho).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         }),
                         Some(factory.wrap(call).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(&error.to_string())
+                            crate::sexp::context::r_error(error.to_string())
                         })),
                         -1,
                     );

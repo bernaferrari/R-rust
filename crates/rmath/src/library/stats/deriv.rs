@@ -224,8 +224,7 @@ unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
                     crate::mainutils::errors::errorcall_str(
                         crate::mainutils::errors::R_getCurrentCall(),
                         "Function is not in the derivatives table",
-                    );
-                    constant(f64::NAN)
+                    )
                 }
             }
             _ => constant(f64::NAN),

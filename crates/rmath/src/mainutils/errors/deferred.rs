@@ -77,9 +77,7 @@ pub(crate) unsafe fn take_warnings_block() -> Option<String> {
         unsafe {
             (*pointer).error_state.in_print_warnings = 1;
         }
-        let Some(warnings) = (unsafe { (*pointer).error_state.warnings.owned() }) else {
-            return None;
-        };
+        let warnings = unsafe { (*pointer).error_state.warnings.owned() }?;
         if warnings.typeof_() != SEXPTYPE::VECSXP {
             return None;
         }

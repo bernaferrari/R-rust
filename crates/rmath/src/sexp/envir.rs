@@ -72,7 +72,7 @@ unsafe fn base_binding_peer(env: SEXP) -> Option<SEXP> {
     if env.is_null() {
         return None;
     }
-    let base = with_current_instance(|inst| super::globals::R_BaseEnv_in(inst))?;
+    let base = with_current_instance(super::globals::R_BaseEnv_in)?;
     unsafe {
         if base.is_null() || base == R_NilValue() || env == R_NilValue() {
             return None;

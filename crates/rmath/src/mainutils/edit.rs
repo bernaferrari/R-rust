@@ -33,7 +33,7 @@ fn edit_unavailable() -> ! {
 /// `.External2(C_edit, x, file, title, editor)`.
 pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, TYPEOF};
+        use crate::sexp::accessors::{CAR, CDR, TYPEOF};
         use crate::sexp::constructors::{Rf_lang2, Rf_lang3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::{R_GlobalEnv, R_NilValue};

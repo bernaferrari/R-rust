@@ -1405,7 +1405,7 @@ pub unsafe fn do_constr_optim(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
                 theta = nth;
                 r_old = r;
             }
-            told = theta.clone();
+            told.clone_from(&theta);
         }
         let fval = eval_f(fn_sexp, &theta, rho);
         let par_out = Rf_allocVector3(SEXPTYPE::REALSXP, npar as i64);

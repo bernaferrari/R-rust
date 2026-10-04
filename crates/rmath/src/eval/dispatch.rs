@@ -15,14 +15,13 @@
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, isObject};
+use crate::eval::attrib_core::isObject;
 use crate::sexp::accessors::{
     CADR, CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT,
     TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
-use crate::sexp::context::RError;
-use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise};
+use crate::sexp::envir::{R_findVar, R_findVarInFrame, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, vmaxget, vmaxset};
@@ -69,7 +68,7 @@ unsafe fn choose_ops_method(
                 .push_cell(
                     actuals
                         .wrap(symbol)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                     None,
                 )
                 .unwrap_or_else(|_| {
@@ -151,17 +150,17 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
         .node_factory()
         .or_else(|_| el.node_factory())
         .or_else(|error| call.as_ref().map_or(Err(error), Sexp::node_factory))
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     factory
         .require_active()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let el = factory
         .wrap(el.as_raw())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let call = call.map(|call| {
         factory
             .wrap(call.as_raw())
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     });
     let mut result = PairlistBuilder::from_factory(factory.clone());
     let mut bumped = NamedArguments { values: Vec::new() };
@@ -173,13 +172,13 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
         }
         let expr = current
             .try_car()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         if expr.as_raw() == unsafe { R_DotsSymbol() } {
             // Lookup may force active bindings; acquire its root before any
             // later promise evaluation or list-cell allocation.
             let h = factory
                 .wrap(unsafe { R_findVar(expr.as_raw(), rho.as_raw()) })
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if h.typeof_() == SEXPTYPE::DOTSXP || h.is_nil() {
                 let mut dh = h;
                 while !dh.is_nil() {
@@ -188,17 +187,17 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
                     }
                     let expr = dh
                         .try_car()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let value = factory
                         .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     bumped.retain(&value);
                     result
                         .push(value, dh.tag())
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     dh = dh
                         .try_cdr()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     count += 1;
                 }
             } else if h.as_raw() != unsafe { R_MissingArg() } {
@@ -218,27 +217,27 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
             }) {
                 result
                     .push(expr, current.tag())
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             } else {
-                crate::sexp::context::r_error(&format!("argument {} is empty", count + 1));
+                crate::sexp::context::r_error(format!("argument {} is empty", count + 1));
             }
         } else {
             let value = factory
                 .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             bumped.retain(&value);
             result
                 .push(value, current.tag())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         current = current
             .try_cdr()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         count += 1;
     }
     result
         .finish()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// NAMED link accounting is independent of root ownership. Restore the
@@ -389,32 +388,32 @@ unsafe fn evalArgs<'a>(
     // SAFETY: this translated dispatch boundary retains the active owner.
     let factory = SessionNodeFactory::new(
         unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     );
     if dropmissing != 0 {
         let args = factory
             .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let rho = factory
             .wrap(rho)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let call = if call.is_null() {
             None
         } else {
             Some(
                 factory
                     .wrap(call)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
             )
         };
         evalList(args, rho, call, -1)
     } else {
         let args = factory
             .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let rho = factory
             .wrap(rho)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         evalListKeepMissing(args, rho)
     }
 }
@@ -1162,45 +1161,45 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
     let factory = rho
         .node_factory()
         .or_else(|_| el.node_factory())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     factory
         .require_active()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let mut remaining = factory
         .wrap(el.as_raw())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let mut result = PairlistBuilder::from_factory(factory.clone());
     let mut bumped = NamedArguments::new();
     while !remaining.is_nil() {
         let expr = remaining
             .try_car()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         if expr.as_raw() == unsafe { R_DotsSymbol() } {
             let mut dots = factory
                 .wrap(unsafe { R_findVarInFrame(rho.as_raw(), expr.as_raw()) })
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if dots.typeof_() == SEXPTYPE::DOTSXP || dots.is_nil() {
                 while !dots.is_nil() {
                     let expr = dots
                         .try_car()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let value = if expr.as_raw() == unsafe { R_MissingArg() } {
                         expr
                     } else {
                         let value = factory
                             .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
                             .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(&error.to_string())
+                                crate::sexp::context::r_error(error.to_string())
                             });
                         bumped.retain(&value);
                         value
                     };
                     result
                         .push(value, dots.tag())
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     dots = dots
                         .try_cdr()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             } else if dots.as_raw() != unsafe { R_MissingArg() } {
                 crate::sexp::context::r_error("'...' used in an incorrect context");
@@ -1211,25 +1210,26 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
             } else {
                 let value = factory
                     .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 bumped.retain(&value);
                 value
             };
             result
                 .push(value, remaining.tag())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         remaining = remaining
             .try_cdr()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
     result
         .finish()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 #[cfg(test)]
 mod owned_argument_tests {
+    use crate::sexp::context::RError;
     use super::*;
     use crate::sexp::{object::PairlistIter, session::RSession};
     use std::{cell::Cell, rc::Rc};

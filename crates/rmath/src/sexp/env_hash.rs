@@ -467,7 +467,7 @@ fn replay_chains(mut size: i32, names: &[Vec<u8>]) -> (i32, i32, Vec<i32>) {
     // then rebuild it as the number of non-empty chains.
     let mut pri = 0i32;
     for name in names {
-        if !inserted.iter().any(|have| *have == name.as_slice()) {
+        if !inserted.contains(&name.as_slice()) {
             let idx = (hashpjw(name) % size as u32) as usize;
             pri += 1;
             counts[idx] += 1;

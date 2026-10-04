@@ -547,7 +547,7 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
             (*cptr).cend = None;
             let data = (*cptr).cenddata;
             cend(data);
-            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
         }
         let Some(chain) = (*cptr).conexit.owned() else {
             return;
@@ -569,7 +569,7 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
             (*cptr).conexit.replace_from_raw(CDR(current));
             if !isNull(expr) {
                 let _ = super::eval::Rf_eval(expr, rho);
-                crate::sexp::context::require_context_owner_live(&owner_pin);
+                crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
             }
             current = (*cptr).conexit.as_raw();
         }
@@ -597,7 +597,7 @@ pub unsafe fn R_run_onexits_until_in(instance: *mut RInstance, target: *mut RCNT
             let context_lease = crate::sexp::context::retain_context_in(instance, c)
                 .unwrap_or_else(|| error("context no longer belongs to its owner"));
             R_run_onexits_for_context(c);
-            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
             c = (*context_lease.get()).nextcontext;
         }
         if !target.is_null() && c.is_null() {

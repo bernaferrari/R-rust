@@ -4,10 +4,10 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::accessors::{CDR, SET_SYMVALUE, SETCAR, SETTAG, SYMVALUE, TYPEOF};
+use super::accessors::{CDR, SET_SYMVALUE, SETCAR, SETTAG, TYPEOF};
 
 use super::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_lang4, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_mkString,
 };
 use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -358,7 +358,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "read.dcf",
             "function(file, fields = NULL, all = FALSE, keep.white = NULL) {\n\
              if (is.character(file) && !isTRUE(all)) return(.Internal(readDCF(file, fields, keep.white)))\n\
-
              stop(\"read.dcf(all = TRUE) is not implemented\")\n\
              }",
 
@@ -2443,7 +2442,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "body<-",
             "function (fun, envir = environment(fun), value) {\n\
              if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
-
              if (is.expression(value)) {\n\
                  if (length(value) > 1L)\n\
                      warning(\"using the first element of 'value' of type \\\"expression\\\"\")\n\
@@ -2459,7 +2457,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "formals<-",
             "function (fun, envir = environment(fun), value) {\n\
              if (!is.function(fun)) warning(\"'fun' is not a function\")\n\
-
              bd <- body(fun)\n\
              as.function(c(value,\n\
                  if (is.null(bd) || is.atomic(bd) || is.list(bd)) list(bd) else bd),\n\
@@ -3597,7 +3594,7 @@ unsafe fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SE
 
 /// Names GNU R accounts as primitives (ArgsEnv + GenericArgsEnv + langElts).
 pub fn is_accounted_primitive_name(name: &str) -> bool {
-    LANGUAGE_ELEMENTS.iter().any(|n| *n == name)
+    LANGUAGE_ELEMENTS.contains(&name)
         || NON_GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
         || GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
 }
@@ -3795,7 +3792,7 @@ mod tests {
     use super::super::globals::{
         R_BaseEnv, R_BaseEnv_in, R_EmptyEnv, R_EmptyEnv_in, R_GlobalEnv, R_GlobalEnv_in,
     };
-    use super::super::instance::RInstance;
+
     use super::super::symbol::Rf_install;
     use super::*;
 

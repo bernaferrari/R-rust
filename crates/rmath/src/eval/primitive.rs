@@ -224,10 +224,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
 
             | "tryCatch"
             | "withCallingHandlers"
-            | "withCallingHandlers"
             | "globalCallingHandlers"
-            | "withRestarts"
-
             | "withRestarts"
             | "UseMethod"
             | "NextMethod"

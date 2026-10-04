@@ -87,12 +87,12 @@ use std::{
     rc::Rc,
 };
 
-use super::ffi::{EdgeField, SEXP, SEXPTYPE};
+use super::ffi::{SEXP, SEXPTYPE};
 use super::heap::NodeLink;
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    RootValue, push_protect_in, update_preserve_stack_refs_in, update_protect_stack_refs_in,
+    RootValue, update_preserve_stack_refs_in, update_protect_stack_refs_in,
 };
 
 #[path = "gc_trace.rs"]
@@ -319,7 +319,6 @@ fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
     }
 }
 
-#[inline(always)]
 #[inline(always)]
 fn mark_checked_root_snapshot(roots: Vec<RootValue>) {
     let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
@@ -1654,6 +1653,7 @@ impl<'a> VectorSlot<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::protect::push_protect_in;
     use std::collections::HashMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 

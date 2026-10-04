@@ -319,7 +319,7 @@ pub unsafe extern "C-unwind" fn c_arima_css(
         for l in ncond..n {
             let mut tmp = w[l];
             for j in 0..p {
-                if l >= j + 1 {
+                if l > j {
                     tmp -= *phi.add(j) * w[l - j - 1];
                 }
             }

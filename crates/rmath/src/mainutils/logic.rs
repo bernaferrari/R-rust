@@ -663,7 +663,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             || (y_arr && !x_arr && ny > 0 && nx > 1 && ny % nx != 0)
         {
             let (prod, obj) = if x_arr { (nx, ny) } else { (ny, nx) };
-            logic_error(&format!(
+            logic_error(format!(
                 "dims [product {prod}] do not match the length of object [{obj}]"
             ));
         }

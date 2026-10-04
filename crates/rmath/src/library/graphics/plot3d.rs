@@ -1247,7 +1247,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
             let cr = REAL(c);
             for i in 0..nc {
                 if !(*cr.add(i as usize)).is_finite() {
-                    plot3d_error(&format!(
+                    plot3d_error(format!(
                         "non-finite level values: levels[{}] = {}",
                         i + 1,
                         *cr.add(i as usize)
@@ -1344,7 +1344,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         for i in 0..nc {
             if !(*cr.add(i as usize)).is_finite() {
                 // GNU plot3d.c: "non-finite level values: levels[%d] = %g"
-                plot3d_error(&format!(
+                plot3d_error(format!(
                     "non-finite level values: levels[{}] = {}",
                     i + 1,
                     *cr.add(i as usize)

@@ -1,6 +1,13 @@
 use super::{Sexp, SexpError, SexpMut, SexpValue, pairlist::PairlistBuilder};
 use crate::sexp::{ffi::SEXPTYPE, memory::RArena, session::RSession};
 
+fn identity_hash(value: &Sexp<'_>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn alloc(session: &RSession, kind: SEXPTYPE, len: i32) -> crate::sexp::ffi::SEXP {
     session.with_active_in(|owner| unsafe {
         crate::sexp::memory::with_arena_in(owner, |arena| arena.alloc_vector(kind, len.into()))
@@ -53,8 +60,10 @@ fn checked_clone_retains_one_root_until_last_drop() {
     let value = session.sexp(ptr).unwrap();
     let clone = value.clone();
     assert_eq!(roots(&session), before + 1);
-    // SAFETY: no borrowed payload views exist; checked handles retain the node.
-    unsafe { value.clone().try_set_integer_elt(0, 42) }.unwrap();
+    SexpMut::try_from_checked(value.clone())
+        .unwrap()
+        .try_set_integer_elt(0, 42)
+        .unwrap();
     drop(value);
     for _ in 0..3 {
         full_gc(&session);
@@ -71,10 +80,14 @@ fn checked_child_outlives_parent_and_retains_original_owner() {
     let session = RSession::new_for_gc_tests();
     let child = session.sexp(alloc(&session, SEXPTYPE::INTSXP, 1)).unwrap();
     let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
-    unsafe {
-        child.clone().try_set_integer_elt(0, 73).unwrap();
-        parent.clone().try_set_vector_elt(0, child).unwrap();
-    }
+    SexpMut::try_from_checked(child.clone())
+        .unwrap()
+        .try_set_integer_elt(0, 73)
+        .unwrap();
+    SexpMut::try_from_checked(parent.clone())
+        .unwrap()
+        .try_set_vector_elt(0, child)
+        .unwrap();
     let child = parent.vector_elt(0).unwrap();
     assert_eq!(child.owner(), parent.owner());
     drop(parent);
@@ -91,9 +104,10 @@ fn checked_vector_iterator_retains_parent_and_roots_yielded_children() {
     let session = RSession::new_for_gc_tests();
     let child = session.sexp(alloc(&session, SEXPTYPE::INTSXP, 1)).unwrap();
     let parent = session.sexp(alloc(&session, SEXPTYPE::VECSXP, 1)).unwrap();
-    unsafe {
-        parent.clone().try_set_vector_elt(0, child).unwrap();
-    }
+    SexpMut::try_from_checked(parent.clone())
+        .unwrap()
+        .try_set_vector_elt(0, child)
+        .unwrap();
     let mut iter = parent.iter_vector();
     full_gc(&session);
     let yielded = iter.next().unwrap();
@@ -108,9 +122,12 @@ fn checked_graph_writes_reject_foreign_owner() {
     let right = RSession::new_for_gc_tests();
     let parent = left.sexp(alloc(&left, SEXPTYPE::VECSXP, 1)).unwrap();
     let child = right.sexp(alloc(&right, SEXPTYPE::INTSXP, 1)).unwrap();
-    unsafe {
-        assert!(parent.clone().try_set_vector_elt(0, child).is_err());
-    }
+    assert!(
+        SexpMut::try_from_checked(parent.clone())
+            .unwrap()
+            .try_set_vector_elt(0, child)
+            .is_err()
+    );
     assert!(parent.vector_elt(0).unwrap().is_nil());
     let mut arena = RArena::new();
     assert!(arena.cons_sexp(parent, Sexp::nil(), None).is_none());
@@ -240,9 +257,10 @@ fn incremental_pairlist_retains_head_between_allocations() {
     let mut builder = PairlistBuilder::new_in(session.owner_token().unwrap());
     for i in 0..8 {
         let value = session.sexp(alloc(&session, SEXPTYPE::INTSXP, 1)).unwrap();
-        unsafe {
-            value.clone().try_set_integer_elt(0, i).unwrap();
-        }
+        SexpMut::try_from_checked(value.clone())
+            .unwrap()
+            .try_set_integer_elt(0, i)
+            .unwrap();
         builder.push(value, None).unwrap();
         full_gc(&session);
     }
@@ -417,9 +435,13 @@ fn checked_handle_rejects_reclaimed_and_reused_allocation() {
     assert!(!old.is_live());
     assert_ne!(old, fresh, "reusing storage must not reuse value identity");
     let mut identities = std::collections::HashSet::new();
-    identities.insert(old.clone());
-    assert!(!identities.contains(&fresh));
-    identities.insert(fresh.clone());
+    let old_identity = old.node.as_ref().unwrap().id().link();
+    let fresh_identity = fresh.node.as_ref().unwrap().id().link();
+    identities.insert(old_identity);
+    assert!(!identities.contains(&fresh_identity));
+    identities.insert(fresh_identity);
+    assert_eq!(identity_hash(&old), identity_hash(&old.clone()));
+    assert_eq!(identity_hash(&fresh), identity_hash(&fresh.clone()));
     assert_eq!(identities.len(), 2);
     assert_eq!(
         old.try_integer_elt(0),

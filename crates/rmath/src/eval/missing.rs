@@ -27,7 +27,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
+use crate::eval::attrib_core::{R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME, SET_NAMED,
     SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
@@ -332,15 +332,15 @@ pub unsafe fn DispatchAnyOrEval(
         if has_methods != FALSE {
             let factory = crate::sexp::object::SessionNodeFactory::new(
                 crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(&error.to_string())
+                    crate::sexp::context::r_error(error.to_string())
                 }),
             );
             let args_owner = factory.wrap(args).unwrap_or_else(|error| {
-                crate::sexp::context::r_error(&error.to_string())
+                crate::sexp::context::r_error(error.to_string())
             });
             let arg_value_owner = if argsevald == 0 {
                 super::dispatch::evalList(args_owner,
-                    factory.wrap(rho).unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())), None, 0)
+                    factory.wrap(rho).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())), None, 0)
             } else {
                 args_owner
             };
@@ -929,7 +929,7 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
             } else {
                 "???".to_string()
             };
-            format!("argument \"{name}\" is missing, with no default", )
+            format!("argument \"{name}\" is missing, with no default")
         };
         crate::mainutils::errors::errorcall_cpy(
             call,

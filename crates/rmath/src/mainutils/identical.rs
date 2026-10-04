@@ -19,9 +19,8 @@ use crate::sexp::accessors::{
     PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
-use crate::sexp::constructors::Rf_length;
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_NaString, R_NilValue};
+use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -862,8 +861,6 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 #[cfg(test)]
 mod tests {
-    use crate::sexp::globals::*;
-
     use super::*;
     use crate::sexp::ffi::SexprecCore;
     use std::ptr;

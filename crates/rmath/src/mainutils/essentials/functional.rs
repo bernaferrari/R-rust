@@ -4993,7 +4993,7 @@ pub unsafe fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
             crate::sexp::symbol::Rf_install(c"sdev".as_ptr()),
         );
         let _d = protect(dollar);
-        crate::eval::eval::Rf_eval(dollar, rho);
+        let _ = crate::eval::eval::Rf_eval(dollar, rho);
         R_NilValue()
     }
 }
@@ -5016,7 +5016,7 @@ unsafe fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
             x,
             Rf_install(c"spec".as_ptr()));
         let _d = protect(dollar);
-        crate::eval::eval::Rf_eval(dollar, rho);
+        let _ = crate::eval::eval::Rf_eval(dollar, rho);
         R_NilValue()
     }
 }
@@ -5095,8 +5095,8 @@ unsafe fn record_plot_window(args: SEXP) {
             let hi = v.iter().copied().filter(|x| x.is_finite()).fold(f64::NEG_INFINITY, f64::max);
             if lo.is_finite() { (lo, hi) } else { (0.0, 1.0) }
         };
-        let (mut x0, mut x1) = if xaxs_i { tight(&xv) } else { padded_range(&xv) };
-        let (mut y0, mut y1) = if yaxs_i { tight(&yv) } else { padded_range(&yv) };
+        let (x0, x1) = if xaxs_i { tight(&xv) } else { padded_range(&xv) };
+        let (y0, y1) = if yaxs_i { tight(&yv) } else { padded_range(&yv) };
         let apply_limit = |current: (f64, f64), name: &str, logged: bool| {
             let arg = crate::mainutils::essentials::arg_by_name_or_position(args, &[name], usize::MAX);
             let v = numeric_plot_values(arg);

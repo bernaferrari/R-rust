@@ -370,7 +370,7 @@ pub(super) unsafe fn make_condition(
         Ok(condition.freeze())
     };
     build()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         .as_raw()
 }
 

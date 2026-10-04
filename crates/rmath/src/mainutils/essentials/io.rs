@@ -3161,8 +3161,7 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 crate::mainutils::connections::ConnKind::File => {
                     crate::mainutils::connections::open_maybe_compressed(conn, "rb")
                 }
-                _ => Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                _ => Err(std::io::Error::other(
                     "connection is not open",
                 )),
             };

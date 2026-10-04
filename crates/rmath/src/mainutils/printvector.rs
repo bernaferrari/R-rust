@@ -21,7 +21,7 @@ use crate::mainutils::printutils::{
 };
 use crate::sexp::accessors::{
     CHAR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL,
-    REAL_ELT, Rf_isNull, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    REAL_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};

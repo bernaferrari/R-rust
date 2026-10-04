@@ -448,7 +448,7 @@ pub unsafe fn do_remove_source(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                     .to_string_lossy()
             };
 
-            crate::sexp::context::r_error(&format!(
+            crate::sexp::context::r_error(format!(
                 "argument is not a function or language object:{kind}"
             ));
         }

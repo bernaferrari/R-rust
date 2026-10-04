@@ -344,41 +344,41 @@ pub struct Primsxp {
 /// Symbol data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Symsxp {
-    pub pname: NodeLink,
-    pub value: NodeLink,
-    pub internal: NodeLink,
+    pub(crate) pname: NodeLink,
+    pub(crate) value: NodeLink,
+    pub(crate) internal: NodeLink,
 }
 
 /// List/cons cell data (LISTSXP and LANGSXP).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Listsxp {
-    pub carval: NodeLink,
-    pub cdrval: NodeLink,
-    pub tagval: NodeLink,
+    pub(crate) carval: NodeLink,
+    pub(crate) cdrval: NodeLink,
+    pub(crate) tagval: NodeLink,
 }
 
 /// Environment data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Envsxp {
-    pub frame: NodeLink,
-    pub enclos: NodeLink,
-    pub hashtab: NodeLink,
+    pub(crate) frame: NodeLink,
+    pub(crate) enclos: NodeLink,
+    pub(crate) hashtab: NodeLink,
 }
 
 /// Closure data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Closxp {
-    pub formals: NodeLink,
-    pub body: NodeLink,
-    pub env: NodeLink,
+    pub(crate) formals: NodeLink,
+    pub(crate) body: NodeLink,
+    pub(crate) env: NodeLink,
 }
 
 /// Promise data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Promsxp {
-    pub value: NodeLink,
-    pub expr: NodeLink,
-    pub env: NodeLink,
+    pub(crate) value: NodeLink,
+    pub(crate) expr: NodeLink,
+    pub(crate) env: NodeLink,
 }
 
 /// Vector data header (length and true length).
@@ -393,8 +393,8 @@ pub struct Vecsxp {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExtPtrBody {
     pub address: *mut c_void,
-    pub protected: NodeLink,
-    pub tag: NodeLink,
+    pub(crate) protected: NodeLink,
+    pub(crate) tag: NodeLink,
 }
 
 /// Semantic fields accepted by copied-header graph operations.
@@ -641,7 +641,7 @@ impl NodeBody {
 #[derive(Clone, Copy)]
 pub struct SexprecCore {
     pub sxpinfo: SxpInfo,
-    pub attrib: NodeLink,
+    pub(crate) attrib: NodeLink,
     pub(crate) payload: super::payload::PayloadLink,
     pub data: NodeBody,
 }

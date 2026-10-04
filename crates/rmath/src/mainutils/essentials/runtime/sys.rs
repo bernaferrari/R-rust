@@ -1157,7 +1157,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let min = iso_arg_num(CAR(CDR(CDR(CDR(CDR(args))))), 0.0);
         let sec = iso_arg_num(CAR(CDR(CDR(CDR(CDR(CDR(args)))))), 0.0);
         let mut tz = String::new();
-        let mut cell = CDR(CDR(CDR(CDR(CDR(CDR(args))))));
+        let cell = CDR(CDR(CDR(CDR(CDR(CDR(args))))));
         if !cell.is_null() && cell != R_NilValue() {
             let t = CAR(cell);
             if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
@@ -2577,11 +2577,11 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 } else if sexp_has_class(v, "POSIXct")
                     && (TYPEOF(v) == SEXPTYPE::REALSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
                 {
-                    fracs.extend(std::iter::repeat(0.0).take(XLENGTH(v) as usize));
+                    fracs.extend(std::iter::repeat_n(0.0, XLENGTH(v) as usize));
                     v
                 } else {
                     let ct = do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho);
-                    fracs.extend(std::iter::repeat(0.0).take(XLENGTH(ct) as usize));
+                    fracs.extend(std::iter::repeat_n(0.0, XLENGTH(ct) as usize));
                     ct
                 };
                 let _ct_one = protect(ct);

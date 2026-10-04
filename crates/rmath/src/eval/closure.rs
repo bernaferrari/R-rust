@@ -14,7 +14,7 @@ use std::ptr;
 
 
 use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, CLOENV, PRCODE, PRINTNAME, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF,
+    BODY, CAR, CDR, CHAR, PRINTNAME, SETCAR, STRING_ELT, TAG, TYPEOF,
     XLENGTH,
 };
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -254,9 +254,9 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
                 std::panic::resume_unwind(payload)
             }
         };
-        crate::sexp::context::require_context_owner_live(&owner_pin);
+        crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
         let result = super::jit::handle_exec_continuation(value.as_raw());
-        crate::sexp::context::require_context_owner_live(&owner_pin);
+        crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
         result
     }
 }
@@ -467,9 +467,7 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
             if (*inst).unwrap_methods_ns == methods {
                 Some(
                     (*inst)
-                        .unwrap_methods_closures
-                        .iter()
-                        .any(|&bound| bound == op),
+                        .unwrap_methods_closures.contains(&op),
                 )
             } else {
                 (*inst).unwrap_methods_ns = methods;
@@ -484,9 +482,7 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).unwrap_methods_closures = built;
             (*inst)
-                .unwrap_methods_closures
-                .iter()
-                .any(|&bound| bound == op)
+                .unwrap_methods_closures.contains(&op)
         })
 
     }
@@ -992,6 +988,7 @@ pub unsafe fn R_execClosure(
 
 #[cfg(test)]
 mod owned_matcher_tests {
+    use crate::sexp::accessors::SETCDR;
     use super::*;
     use crate::sexp::session::RSession;
     use std::{cell::Cell, rc::Rc};

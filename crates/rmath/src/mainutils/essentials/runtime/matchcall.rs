@@ -188,14 +188,12 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     if TYPEOF(dots) != SEXPTYPE::DOTSXP {
                         base_error("'...' used in an incorrect context");
                     }
-                    let mut dot_index = 1usize;
                     while dots != R_NilValue() && !dots.is_null() {
                         let mut expr = CAR(dots);
                         while TYPEOF(expr) == SEXPTYPE::PROMSXP {
                             expr = crate::sexp::accessors::PRCODE(expr);
                         }
                         append(&mut actuals, &mut tail, expr, TAG(dots));
-                        dot_index += 1;
                         dots = CDR(dots);
                     }
                 }

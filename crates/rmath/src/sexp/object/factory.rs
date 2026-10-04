@@ -419,7 +419,7 @@ trait NodeProducer<'session> {
         tag: &Sexp<'_>,
         kind: crate::sexp::ffi::SEXPTYPE,
     ) -> SexpResult<Sexp<'session>> {
-        use crate::sexp::ffi::{Listsxp, NodeBody, SEXPTYPE};
+        use crate::sexp::ffi::{Listsxp, NodeBody};
         self.require_active()?;
         let value = value.clone();
         let rest = rest.clone();

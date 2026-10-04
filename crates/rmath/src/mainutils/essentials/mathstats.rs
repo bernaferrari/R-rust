@@ -5659,16 +5659,13 @@ pub unsafe fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let my = ysum / nf;
         let mut sx = 0.0;
         let mut sxx = 0.0;
-        let mut sxy = 0.0;
         for i in 0..n {
             let xi = (i + 1) as f64;
             sx += xi;
             sxx += xi * xi;
-            sxy += (xi - sx / nf) * (ys[i] - my);
         }
-        // recompute sxy with correct mean x
         let mx = sx / nf;
-        sxy = 0.0;
+        let mut sxy = 0.0;
         for i in 0..n {
             let xi = (i + 1) as f64;
             sxy += (xi - mx) * (ys[i] - my);
@@ -6547,7 +6544,7 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let xl = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
                 let _xl = protect(xl);
                 SET_VECTOR_ELT(xl, 0, lev);
-                crate::mainutils::essentials::set_string_names(xl, &[xname.clone()]);
+                crate::mainutils::essentials::set_string_names(xl, std::slice::from_ref(&xname));
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::symbol::Rf_install(c"xlevels".as_ptr()),
@@ -15399,17 +15396,17 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     unsafe {
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
         let _args_owner = factory
             .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let rho_owner = factory
             .wrap(rho)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let call_owner = factory
             .wrap(call)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let arg_expr = CAR(args);
         let choices_cell = CDR(args);
         let choices_expr = if choices_cell.is_null() || choices_cell == R_NilValue() {
@@ -15428,24 +15425,24 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         };
         let _arg_owner = factory
             .wrap(arg)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
         let choices_owner = if choices_missing {
             factory.wrap(match_arg_choices_from_formals(arg_expr, rho))
         } else if choices_expr == crate::sexp::symbol::R_DotsSymbol() {
             let expression = factory
                 .wrap(choices_expr)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let nil = factory.nil();
             let cell = factory
                 .allocate(|arena| Some(arena.cons(expression.as_raw(), nil.as_raw(), nil.as_raw())))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let spliced = crate::eval::dispatch::evalList(cell, rho_owner, Some(call_owner), -1);
             spliced.try_car()
         } else {
             factory.wrap(crate::eval::eval::Rf_eval(choices_expr, rho))
         }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let choices = choices_owner.as_raw();
 
         if arg.is_null() || arg == R_NilValue() {

@@ -423,7 +423,6 @@ pub fn materialized_copy<'s>(object: &Sexp<'s>) -> SexpResult<Sexp<'s>> {
 }
 
 mod builtins;
-pub(crate) use builtins::{builtin_sequence, new_sequence};
 pub use builtins::{DeferredClass, RepeatClass, SequenceClass};
 
 #[cfg(test)]

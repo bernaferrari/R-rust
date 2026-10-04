@@ -504,7 +504,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         } else {
             object
         };
-        let mut object = crate::mainutils::duplicate::shallow_duplicate_if_shared(object);
+        let object = crate::mainutils::duplicate::shallow_duplicate_if_shared(object);
         let _object_guard = protect(object);
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
@@ -2261,7 +2261,7 @@ unsafe fn ensure_s3methods_slot(info: SEXP) {
 unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, method: &str) {
     unsafe {
         let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
-        let mut info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
+        let info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
         if info.is_null()
             || info == crate::sexp::globals::R_UnboundValue()
             || TYPEOF(info) != SEXPTYPE::ENVSXP

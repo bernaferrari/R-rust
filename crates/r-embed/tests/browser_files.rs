@@ -72,7 +72,7 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     let probe_r = probe.to_string_lossy().replace('\\', "/");
     let temp_r = std::env::temp_dir()
         .to_string_lossy()
-        .trim_end_matches(|ch: char| ch == '/' || ch == '\\')
+        .trim_end_matches(['/', '\\'])
         .replace('\\', "/");
     assert!(
         !probe_r.contains('\'') && !temp_r.contains('\''),

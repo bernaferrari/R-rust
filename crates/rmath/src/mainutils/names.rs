@@ -5192,17 +5192,17 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
         let args_owner = factory
             .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let env_owner = factory
             .wrap(env)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let call_owner = factory
             .wrap(call)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let s = CAR(args_owner.as_raw());
         // s is the unevaluated call supplied to .Internal, represented as a
         // language object in ordinary source and as a pairlist in a few
@@ -5251,7 +5251,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 let evaluated_args = crate::eval::dispatch::evalList(
                     factory
                         .wrap(actual_args)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                     env_owner.clone(),
                     Some(call_owner.clone()),
                     -1,
@@ -5267,7 +5267,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         // INTERNAL slot. Argument evaluation can collect, so root this one.
         let _internal_owner = factory
             .wrap(internal_val)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         // Get the actual arguments (CDR of the pairlist)
         let actual_args = CDR(s);
 
@@ -5276,7 +5276,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             crate::eval::dispatch::evalList(
                 factory
                     .wrap(actual_args)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                 env_owner.clone(),
                 Some(call_owner.clone()),
                 -1,
@@ -5284,7 +5284,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         } else {
             factory
                 .wrap(actual_args)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         };
 
         // Get the PRIMPRINT flag (visibility hint)
@@ -5595,7 +5595,6 @@ pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
 #[cfg(test)]
 mod tests {
     use crate::sexp::accessors::*;
-    use crate::sexp::constructors::*;
     use crate::sexp::session::RSession;
 
     use super::*;

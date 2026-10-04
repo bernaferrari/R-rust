@@ -1873,31 +1873,41 @@ mod head_tail_n_tests {
         }
     }
 
+    // SAFETY: callers activate the original managed fixture and keep returned
+    // raw values live before any subsequent allocating fixture operation.
     unsafe fn scalar_complex(re: f64, im: f64) -> SEXP {
-        let z = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-        let data = COMPLEX(z);
-        (*data).r = re;
-        (*data).i = im;
-        z
+        unsafe {
+            let z = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+            let data = COMPLEX(z);
+            (*data).r = re;
+            (*data).i = im;
+            z
+        }
     }
 
     unsafe fn classed(x: SEXP, classes: &[&str]) -> SEXP {
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
-        let _class = protect(class);
-        for (i, name) in classes.iter().enumerate() {
-            let cs = CString::new(*name).unwrap();
-            SET_STRING_ELT(class, i as i64, Rf_mkChar(cs.as_ptr()));
+        unsafe {
+            let input = crate::sexp::context::own_control_value(x);
+            let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
+            let _class = protect(class);
+            for (i, name) in classes.iter().enumerate() {
+                let cs = CString::new(*name).unwrap();
+                SET_STRING_ELT(class, i as i64, Rf_mkChar(cs.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(input.as_raw(), crate::sexp::attrib_core::R_ClassSymbol(), class);
+            input.as_raw()
         }
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        x
     }
 
     unsafe fn list_of(elts: &[SEXP]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::VECSXP, elts.len() as i64);
-        for (i, elt) in elts.iter().enumerate() {
-            SET_VECTOR_ELT(v, i as i64, *elt);
+        unsafe {
+            let inputs: Vec<_> = elts.iter().map(|value| crate::sexp::context::own_control_value(*value)).collect();
+            let v = Rf_allocVector3(SEXPTYPE::VECSXP, elts.len() as i64);
+            for (i, elt) in inputs.iter().enumerate() {
+                SET_VECTOR_ELT(v, i as i64, elt.as_raw());
+            }
+            v
         }
-        v
     }
 
     /// GNU R 4.6.1 `utils:::.checkHT` on the head/tail builtins.

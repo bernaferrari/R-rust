@@ -11,7 +11,6 @@ use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::object::{SessionNodeFactory, Sexp};
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
-use super::eval::eval_safe;
 use super::primitive::{
     PrimitiveDescriptor, get_primfun, internal_result_invisible, primitive_controls_visibility,
 };
@@ -635,6 +634,7 @@ fn try_s4_dispatch<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::eval::eval_safe;
     use super::*;
     use crate::eval::parser;
     use crate::sexp::envir::defineVar;

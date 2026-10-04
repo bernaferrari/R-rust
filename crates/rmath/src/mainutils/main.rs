@@ -11,8 +11,8 @@ use std::os::raw::c_int;
 
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
-use crate::sexp::accessors::{TYPEOF, VECTOR_ELT, XLENGTH};
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons, Rf_mkString};
+use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
+use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
@@ -735,6 +735,8 @@ pub unsafe fn R_GetNSize() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::accessors::TYPEOF;
+    use crate::sexp::constructors::{Rf_cons, Rf_ScalarLogical};
 
     use crate::mainutils::rfile::{r_fclose, r_fopen};
     use std::path::PathBuf;

@@ -565,7 +565,7 @@ fn format_general(v: f64, precision: usize, upper: bool, alt: bool) -> String {
     }
     // C %g style: %e when the decimal exponent is < -4 or >= precision.
     let mut x = v.abs().log10().floor() as i32;
-    let mut mant = v.abs() / 10f64.powi(x);
+    let mant = v.abs() / 10f64.powi(x);
     let scale = 10f64.powi((p - 1) as i32);
     if (mant * scale).round() / scale >= 10.0 {
         x += 1;

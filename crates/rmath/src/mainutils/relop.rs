@@ -31,11 +31,11 @@ use std::ptr;
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
+    ATTRIB, CADR, CAR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
     REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_length, Rf_mkChar,
+    Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_length,
 };
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -1707,6 +1707,7 @@ pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::constructors::Rf_cons;
     use crate::sexp::accessors::*;
 
     use super::*;

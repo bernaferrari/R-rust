@@ -1012,7 +1012,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT};
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, REAL, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
 
@@ -1049,9 +1049,9 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                         let path = crate::sexp::accessors::CHAR(elt);
                         let whole = secs.trunc() as i64;
                         let nsec = ((secs - whole as f64) * 1e9) as i64;
-                        if let (Ok(tv_sec), Ok(tv_nsec)) = (
-                            libc::time_t::try_from(whole),
-                            std::os::raw::c_long::try_from(nsec),
+                        if let (Some(tv_sec), Some(tv_nsec)) = (
+                            libc::time_t::try_from(whole).ok(),
+                            std::os::raw::c_long::try_from(nsec).ok(),
                         ) {
                             let ts = libc::timespec { tv_sec, tv_nsec };
                             let times_buf = [ts, ts];
@@ -2086,7 +2086,7 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::globals::R_NilValue;
+
 
         let s = CAR(args);
         let n = LENGTH(s);

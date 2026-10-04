@@ -2380,10 +2380,8 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
         }
         if n > 1 {
             let width = texts.iter().flatten().map(|s| s.len()).max().unwrap_or(0);
-            for s in &mut texts {
-                if let Some(text) = s {
-                    *text = format!("{text:0>width$}");
-                }
+            for text in texts.iter_mut().flatten() {
+                *text = format!("{text:0>width$}");
             }
         }
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -3315,132 +3313,6 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             if TYPEOF(formatted) == SEXPTYPE::STRSXP && XLENGTH(formatted) > 0 {
                 SET_STRING_ELT(out, i, STRING_ELT(formatted, 0));
             }
-        }
-        return out;
-        let mut big_mark = String::new();
-        let mut decimal_mark = ".".to_string();
-        let mut zero_print: Option<String> = None;
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            if named == "zero.print" {
-                zero_print = if TYPEOF(value) == SEXPTYPE::LGLSXP {
-                    Some(
-                        if crate::mainutils::coerce::asLogical(value) != 0 {
-                            "0".to_string()
-                        } else {
-                            " ".to_string()
-                        },
-                    )
-                } else if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                    let ch = STRING_ELT(value, 0);
-                    if ch.is_null() {
-                        None
-                    } else {
-                        Some(
-                            std::ffi::CStr::from_ptr(CHAR(ch))
-                                .to_string_lossy()
-                                .into_owned(),
-                        )
-                    }
-                } else {
-                    None
-                };
-            } else if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                let ch = STRING_ELT(value, 0);
-                if !ch.is_null() {
-                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
-                    if named == "big.mark" {
-                        big_mark = s;
-                    } else if named == "decimal.mark" {
-                        decimal_mark = s;
-                    }
-                }
-            }
-            cell = CDR(cell);
-        }
-        let formatted = if TYPEOF(x) == SEXPTYPE::STRSXP {
-            x
-        } else {
-            let n = XLENGTH(x);
-            let tmp = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _t = protect(tmp);
-            for i in 0..n {
-                let elt = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    Rf_ScalarReal(*REAL(x).add(i as usize))
-                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    Rf_ScalarInteger(*INTEGER(x).add(i as usize))
-                } else {
-                    Rf_ScalarReal(0.0)
-                };
-                let _e = protect(elt);
-                let one = do_format(
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    Rf_cons(elt, R_NilValue()),
-                    std::ptr::null_mut(),
-                );
-                if TYPEOF(one) == SEXPTYPE::STRSXP && XLENGTH(one) > 0 {
-                    SET_STRING_ELT(tmp, i, STRING_ELT(one, 0));
-                }
-            }
-            tmp
-        };
-        let _f = protect(formatted);
-        let n = XLENGTH(formatted);
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for i in 0..n {
-            let ch = STRING_ELT(formatted, i);
-            let raw = if ch.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
-            };
-            let is_zero = {
-                let body = raw.trim().trim_start_matches(['+', '-']);
-                !body.is_empty()
-                    && body.chars().all(|c| c == '0' || c == '.')
-                    && body.contains('0')
-                    && body.chars().filter(|c| *c == '.').count() <= 1
-            };
-            let pretty = if is_zero {
-                if let Some(zero) = zero_print.as_deref() {
-                    zero.to_string()
-                } else if let Some((int_part, frac)) = raw.split_once('.') {
-                    format!(
-                        "{}{}{}",
-                        prettynum_group(int_part, &big_mark, 3),
-                        decimal_mark,
-                        frac
-                    )
-                } else {
-                    prettynum_group(&raw, &big_mark, 3)
-                }
-            } else if let Some((int_part, frac)) = raw.split_once('.') {
-                format!(
-                    "{}{}{}",
-                    prettynum_group(int_part, &big_mark, 3),
-                    decimal_mark,
-                    frac
-                )
-            } else {
-                prettynum_group(&raw, &big_mark, 3)
-            };
-            let c = CString::new(pretty).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
         }
         out
     }
@@ -6658,5 +6530,4 @@ mod fixed_perl_warning_tests {
         }
     }
 }
-
 

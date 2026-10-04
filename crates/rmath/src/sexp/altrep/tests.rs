@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 use super::*;
+use super::builtins::new_sequence;
 use crate::sexp::{accessors::*, memory::ArenaBudget};
 use std::cell::Cell;
 

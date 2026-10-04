@@ -589,7 +589,7 @@ unsafe fn eval_source_text_with_options(
                 if crate::sexp::output::is_capturing() {
                     crate::sexp::output::capture_stdout("\n");
                 } else {
-                    print!("\n");
+                    println!();
                 }
                 echo_source_expression(
                     element,

@@ -1406,9 +1406,19 @@ mod tests {
             Sexp::from_raw(p2)
         });
         let mut set = HashSet::new();
-        set.insert(a.clone());
-        assert!(set.contains(&a));
-        assert!(!set.contains(&b));
+        let a_identity = a.node.as_ref().unwrap().id().link();
+        let b_identity = b.node.as_ref().unwrap().id().link();
+        set.insert(a_identity);
+        assert!(set.contains(&a_identity));
+        assert!(!set.contains(&b_identity));
+        let hash = |value: &Sexp<'_>| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            value.hash(&mut hasher);
+            hasher.finish()
+        };
+        assert_eq!(hash(&a), hash(&a.clone()));
+        assert_eq!(a, a.clone());
     }
 
     #[test]

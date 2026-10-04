@@ -88,8 +88,6 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `.Internal(det_ge_real(x, logarithm))`.
-
 /// GNU `.Internal(La_svd(jobu, x, s, u, vt))`.
 pub unsafe fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

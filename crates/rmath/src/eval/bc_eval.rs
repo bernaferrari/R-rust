@@ -938,7 +938,6 @@ unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
 
 /// GNU SETTER_CALL matches eval.c: replace the first call argument with lhs,
 /// append rhs tagged `value`, and apply the replacement function.
-
 unsafe fn eval_gnu_setter_call(
     fun: SEXP,
     call: SEXP,
@@ -4771,7 +4770,7 @@ mod tests {
     #[test]
     fn test_bc_eval_simple_code() {
         let _session = crate::sexp::session::RSession::new_without_default_packages();
-        use crate::sexp::memory::RArena;
+
         let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
@@ -4808,7 +4807,7 @@ mod tests {
     #[test]
     fn test_bc_eval_rejects_unknown_opcode() {
         let _session = crate::sexp::session::RSession::new_without_default_packages();
-        use crate::sexp::memory::RArena;
+
         let mut arena = fixture_arena();
 
         let code = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
@@ -4849,7 +4848,7 @@ mod tests {
     #[test]
     fn test_bc_eval_setvar2_writes_enclosing_frame() {
         let _session = crate::sexp::session::RSession::new_without_default_packages();
-        use crate::sexp::memory::RArena;
+
         let mut arena = fixture_arena();
 
         let parent = empty_env(&mut arena);

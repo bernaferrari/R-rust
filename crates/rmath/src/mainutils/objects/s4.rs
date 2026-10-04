@@ -343,7 +343,7 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
         // GNU asS4: MAYBE_SHARED → shallow_duplicate so SET_S4_OBJECT
         // does not flip the bit on the caller's binding (reg-S4.R asS4(m)
         // must leave m non-S4 for identical(m, f@.Data)).
-        let mut s = crate::mainutils::duplicate::shallow_duplicate_if_shared(s);
+        let s = crate::mainutils::duplicate::shallow_duplicate_if_shared(s);
         let _dup = protect(s);
 
         if flag != FALSE {

@@ -3036,7 +3036,7 @@ mod tests {
     use super::*;
 
     use crate::sexp::accessors::{
-        CADDR, CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TAG, TYPEOF, XLENGTH,
+        CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TAG, TYPEOF, XLENGTH,
     };
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;

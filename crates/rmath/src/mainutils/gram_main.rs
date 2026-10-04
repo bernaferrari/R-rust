@@ -114,7 +114,7 @@ pub unsafe fn R_ParseFilename() -> *const c_char {
             && XLENGTH(file) > 0
         {
             let charsxp = STRING_ELT(file, 0);
-            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
             let chars_owner = crate::sexp::context::own_control_value(charsxp);
             let charsxp = chars_owner.as_raw();
             if !charsxp.is_null() && charsxp != R_NaString() {
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn owned_parser_rejects_publication_after_collecting_callback_closes_runtime() {
-        use crate::sexp::object::SessionNodeFactory;
+
         use std::cell::RefCell;
         use std::rc::Rc;
         let session = Rc::new(RefCell::new(

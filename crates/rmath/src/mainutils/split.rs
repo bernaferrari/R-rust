@@ -14,7 +14,7 @@
 use std::os::raw::c_int;
 
 use crate::eval::attrib_core::{
-    R_ClassSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib,
+    R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;

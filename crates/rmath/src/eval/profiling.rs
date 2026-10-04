@@ -444,9 +444,9 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
             return 0;
         }
         let total = XLENGTH(buffer.as_raw()) as usize;
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         let bytes = RAW(buffer.as_raw());
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         if !with_profiling_state(|state| state.srcfiles_buffer.as_raw() == buffer.as_raw()) {
             return 0;
         }
@@ -510,32 +510,32 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         let pin = crate::sexp::context::pin_context_owner_in(instance);
         let srcref = crate::sexp::context::own_control_value(srcref);
         let line = crate::mainutils::coerce::asInteger(srcref.as_raw());
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         if line == NA_INTEGER {
             return;
         }
         let srcfile_sym = Rf_install(c"srcfile".as_ptr());
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         let srcfile = getAttrib(srcref.as_raw(), srcfile_sym);
         if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return;
         }
         let srcfile = crate::sexp::context::own_control_value(srcfile);
         let filename_sym = Rf_install(c"filename".as_ptr());
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         let filename = R_findVar(filename_sym, srcfile.as_raw());
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         let filename = crate::sexp::context::own_control_value(filename);
         if filename.typeof_() != SEXPTYPE::STRSXP {
             return;
         }
         let length = filename.len();
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         if length == 0 {
             return;
         }
         let chars = crate::sexp::context::own_control_value(STRING_ELT(filename.as_raw(), 0));
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         let number = getFilenum(CHAR(chars.as_raw()));
         if number != 0 {
             pb_int(pb, number as i64);
@@ -737,7 +737,7 @@ unsafe fn doprof(_sig: c_int) {
         let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let eval_internal = if with_profiling_state(|state| state.filter_callframes) != 0 {
             let symbol = Rf_install(c"eval".as_ptr());
-            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
             crate::sexp::accessors::INTERNAL(symbol)
         } else {
             ptr::null_mut()
@@ -855,7 +855,7 @@ unsafe fn doprof(_sig: c_int) {
                     }
                 }
             }
-            crate::sexp::context::require_context_owner_live(&owner_pin);
+            crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
         }
 
         // Null-terminate the buffer
@@ -881,7 +881,7 @@ unsafe fn doprof(_sig: c_int) {
             {
                 if *offset < XLENGTH(buffer.as_raw()) as usize {
                     let bytes = RAW(buffer.as_raw());
-                    crate::sexp::context::require_context_owner_live(&owner_pin);
+                    crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
                     pf_str(bytes.add(*offset).cast());
                 }
             }
@@ -1126,7 +1126,7 @@ unsafe fn R_InitProfiling(
                 instance,
                 Rf_allocVector(SEXPTYPE::RAWSXP, bufsize),
             );
-            crate::sexp::context::require_context_owner_live(&pin);
+            crate::sexp::context::require_context_owner_live(pin.as_ref());
             with_profiling_state(|state| {
                 state.srcfiles.clear();
                 state.srcfile_bytes_used = 0;

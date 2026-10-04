@@ -285,7 +285,8 @@ mod tests {
 
     #[test]
     fn argmatch_oracle() {
-        let cases: &[(&[&str], bool, &[Option<&str>], Result<Vec<Binding>, MatchError>)] = &[
+        type OracleCase<'a> = (&'a [&'a str], bool, &'a [Option<&'a str>], Result<Vec<Binding>, MatchError>);
+        let cases: &[OracleCase<'_>] = &[
             (
                 &["a", "b"],
                 false,

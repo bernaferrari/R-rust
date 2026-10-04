@@ -1861,7 +1861,6 @@ pub unsafe fn csorted(x: *mut c_void, n: c_int) -> c_int {
 ///
 /// NA values (GNU NA_REAL payload 1954) are
 /// treated as greater than any non-NA value, so they sort to the end.
-
 ///
 /// Returns `true` if the array is sorted in ascending order with NAs at
 /// the end, `false` otherwise.

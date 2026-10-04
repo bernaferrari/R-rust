@@ -1,5 +1,5 @@
 use super::*;
-use crate::sexp::accessors::{DATAPTR, INTEGER_ELT, REAL_ELT};
+use crate::sexp::accessors::{ALTREP, DATAPTR, INTEGER_ELT, REAL_ELT};
 use crate::sexp::instance::RInstance;
 use crate::sexp::memory::ArenaBudget;
 use crate::sexp::session::RSession;

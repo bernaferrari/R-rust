@@ -213,7 +213,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             || (sb_arr && !sa_arr && bl > 0 && al > 1 && bl % al != 0)
         {
             let (prod, obj) = if sa_arr { (al, bl) } else { (bl, al) };
-            arithmetic_error(&format!("dims [product {prod}] do not match the length of object [{obj}]"));
+            arithmetic_error(format!("dims [product {prod}] do not match the length of object [{obj}]"));
         }
         let n = a.clone().recycled_len_with(b.clone());
         if n == 0 {
@@ -741,12 +741,8 @@ unsafe fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
         if !is_numeric_version(a) && !is_numeric_version(b) {
             return None;
         }
-        let Some(av) = version_components(a) else {
-            return None;
-        };
-        let Some(bv) = version_components(b) else {
-            return None;
-        };
+        let av = version_components(a)?;
+        let bv = version_components(b)?;
         let n = av.len().max(bv.len());
         let mut ord = 0i32;
         for i in 0..n {
@@ -1639,7 +1635,7 @@ unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
                 || t == SEXPTYPE::LISTSXP
         };
         if !relop_ok(a) || !relop_ok(b) {
-            arithmetic_error(&format!(
+            arithmetic_error(format!(
                 "comparison ({op_name}) is possible only for atomic and list types"
             ));
         }

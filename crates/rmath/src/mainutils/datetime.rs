@@ -705,7 +705,7 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     ctm.tm_year = tm.tm_year;
     ctm.tm_isdst = tm.tm_isdst;
     let result = unsafe { R_mktime(&mut ctm) };
-    let Ok(gmtoff) = c_long::try_from(ctm.tm_gmtoff) else {
+    let Some(gmtoff) = c_long::try_from(ctm.tm_gmtoff).ok() else {
         return -1.0;
     };
     tm.tm_sec = ctm.tm_sec;
@@ -785,7 +785,7 @@ fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
     if res.is_null() {
         return false;
     }
-    let Ok(gmtoff) = c_long::try_from(ctm.tm_gmtoff) else {
+    let Some(gmtoff) = c_long::try_from(ctm.tm_gmtoff).ok() else {
         return false;
     };
 
@@ -1258,7 +1258,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 
 fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
-    let mut np = digits.min(6);
+    let np = digits.min(6);
     if np < 1 {
         return 0;
     }

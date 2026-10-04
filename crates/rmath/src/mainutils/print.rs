@@ -823,7 +823,7 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
             SETCDR(CDR(call), extra);
         }
         let _call_guard = protect(call);
-        crate::eval::eval::Rf_eval(call, mask);
+        let _ = crate::eval::eval::Rf_eval(call, mask);
         crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
 
 
@@ -1919,7 +1919,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
 
         let x = CAR(args);
-        let mut args_rest = CDR(args);
+        let args_rest = CDR(args);
 
         let mut data = R_PRINT_INIT.clone();
         PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, rho);

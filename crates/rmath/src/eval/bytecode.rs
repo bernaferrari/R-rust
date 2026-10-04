@@ -2164,14 +2164,15 @@ struct PrivateLoop {
     end: usize,
     kind: PrivateLoopKind,
 }
+struct PrivateFor {
+    variable: Sexp<'static>,
+    sequence: Sexp<'static>,
+    body: usize,
+    length: usize,
+    next: usize,
+}
 enum PrivateLoopKind {
-    For {
-        variable: Sexp<'static>,
-        sequence: Sexp<'static>,
-        body: usize,
-        length: usize,
-        next: usize,
-    },
+    For(Box<PrivateFor>),
     While {
         condition: usize,
         body: usize,
@@ -2230,16 +2231,10 @@ fn next_for_iteration(
     env: &Sexp<'static>,
     execution: &PrivateExecution<'_>,
 ) -> Result<Option<usize>, String> {
-    let PrivateLoopKind::For {
-        variable,
-        sequence,
-        body,
-        length,
-        next,
-    } = &mut frame.kind
-    else {
+    let PrivateLoopKind::For(state) = &mut frame.kind else {
         return Err("invalid private for-loop continuation".into());
     };
+    let PrivateFor { variable, sequence, body, length, next } = state.as_mut();
     if *next >= *length {
         return Ok(None);
     }
@@ -2292,7 +2287,7 @@ fn eval_bytecode_loop(
                 return Ok((value, control));
             };
             match &mut frame.kind {
-                PrivateLoopKind::For { .. } => {
+                PrivateLoopKind::For(_) => {
                     if control == ControlFlow::Break {
                         current_pc = frame.end;
                         completed = Some((execution.false_value.clone(), ControlFlow::Normal));
@@ -2356,7 +2351,7 @@ fn eval_bytecode_loop(
                 // or enters any allocation callback.
                 frames.check_entry(frame.origin)?;
                 let entry = match &frame.kind {
-                    PrivateLoopKind::For { .. } => {
+                    PrivateLoopKind::For(_) => {
                         next_for_iteration(&mut frame, stack, &env, execution)?
                     }
                     PrivateLoopKind::While { condition, .. } => Some(*condition),
@@ -2754,13 +2749,13 @@ fn eval_bytecode_segment(
                 return Ok(PrivateStep::Loop(PrivateLoop {
                     origin: opcode_pc,
                     end,
-                    kind: PrivateLoopKind::For {
+                    kind: PrivateLoopKind::For(Box::new(PrivateFor {
                         variable,
                         sequence,
                         body,
                         length,
                         next: 0,
-                    },
+                    })),
                 }));
             }
             BCwhile => {
@@ -2925,6 +2920,47 @@ fn get_constant(constants: &[Sexp<'static>], idx: usize) -> Result<Sexp<'static>
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn owned_private_bytecode_boxed_for_keeps_and_releases_its_only_values() {
+        let session = RSession::new_for_gc_tests();
+        let (variable, sequence) = session.with_active(|| {
+            let owner = session.owner_token().unwrap().weak_owner().unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let domain = access.domain();
+                let allocator = access.allocator(&domain).unwrap();
+                let variable = allocator
+                    .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::SYMSXP)))
+                    .unwrap();
+                let sequence = allocator
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                    .unwrap();
+                (variable, sequence)
+            })
+            .unwrap()
+        });
+        let variable_pointer = variable.as_raw();
+        let sequence_pointer = sequence.as_raw();
+        let frame = PrivateLoop {
+            origin: 0,
+            end: 1,
+            kind: PrivateLoopKind::For(Box::new(PrivateFor {
+                variable,
+                sequence,
+                body: 0,
+                length: 1,
+                next: 0,
+            })),
+        };
+        let collect = || session.with_active(|| session.owner_token().unwrap().full_gc().unwrap());
+        collect();
+        assert!(session.sexp(variable_pointer).is_some());
+        assert_eq!(session.sexp(sequence_pointer).unwrap().integer_elt(0), Some(0));
+        drop(frame);
+        collect();
+        assert!(session.sexp(variable_pointer).is_none());
+        assert!(session.sexp(sequence_pointer).is_none());
+    }
 
     fn private_code(session: &RSession, words: &[c_int], constants: &[Sexp<'_>]) -> Sexp<'static> {
         session.with_active(|| {
@@ -3149,14 +3185,14 @@ mod tests {
             crate::sexp::owner::with_runtime(&owner, |access| access.domain().nil()).unwrap()
         });
         for opcode in [BCcall, BCbuiltin, BCspecial] {
-            let error = run_private(&session, &[opcode, 0, c_int::MAX, BCreturn], &[nil.clone()])
+            let error = run_private(&session, &[opcode, 0, c_int::MAX, BCreturn], std::slice::from_ref(&nil))
                 .unwrap_err();
             assert!(error.contains("argument stack underflow"), "{error}");
         }
         let min = fixture_integer(&session, c_int::MIN);
         let minus_one = fixture_integer(&session, -1);
         let zero = fixture_integer(&session, 0);
-        let result = run_private(&session, &[BCpush, 0, BCneg, BCreturn], &[min.clone()]).unwrap();
+        let result = run_private(&session, &[BCpush, 0, BCneg, BCreturn], std::slice::from_ref(&min)).unwrap();
         assert_eq!(result.integer_elt(0), Some(c_int::MIN));
         let result = run_private(
             &session,

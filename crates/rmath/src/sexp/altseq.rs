@@ -20,7 +20,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_double, c_int};
 
 use super::accessors::{
-    ALTREP, ATTRIB, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF,
+    ATTRIB, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF,
 };
 use super::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::{self, with_arena};

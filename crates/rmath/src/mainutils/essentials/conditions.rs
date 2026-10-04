@@ -1820,10 +1820,7 @@ impl Drop for TryCatchNframeGuard {
 /// raise is in the tryCatch frame itself (`stop("boom")`).
 unsafe fn caught_error_call() -> Option<crate::sexp::object::Sexp<'static>> {
     unsafe {
-        let Some((call, explicit, nframe)) = crate::mainutils::errors::take_recorded_error_call()
-        else {
-            return None;
-        };
+        let (call, explicit, nframe) = crate::mainutils::errors::take_recorded_error_call()?;
         if call.as_raw() == R_NilValue() {
             return Some(call);
         }
@@ -3504,7 +3501,7 @@ mod tests {
 
 #[cfg(test)]
 mod owned_calling_handler_tests {
-    use super::*;
+
     use std::{cell::Cell, rc::Rc};
 
     #[test]

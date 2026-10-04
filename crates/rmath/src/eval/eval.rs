@@ -785,7 +785,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
             } else {
                 Rf_eval(head, environment_pointer)
             };
-            crate::sexp::context::require_context_owner_live(&pin);
+            crate::sexp::context::require_context_owner_live(pin.as_ref());
             capture(function)
         };
         let function_pointer = projection(&function);
@@ -800,7 +800,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
             R_NilValue(),
             1,
         );
-        crate::sexp::context::require_context_owner_live(&pin);
+        crate::sexp::context::require_context_owner_live(pin.as_ref());
         result
     }
 }
@@ -1365,13 +1365,13 @@ identical(mode(quote((x))), "(") &&
     fn match_closure_args_follows_gnu_three_pass() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 f <- function(abc, abd, ...) list(abc, abd, list(...))
 identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
   identical(f(1, 2, 3), list(1, 2, list(3))) &&
   identical(f(abd = 2, abc = 1), list(1, 2, list())) &&
   identical(f(abc = 1, ab = 2), list(1, 2, list()))
-"#,
+",
         );
         let result = result.expect("closure matching must follow GNU matchArgs");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -1417,13 +1417,13 @@ identical(f(abc = 1, abd = 2, extra = 3), list(1, 2, list(extra = 3))) &&
     fn format_info_honors_digits_argument() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 x2 <- c(0.099999994, 0.2)
 v <- 6:8
 names(v) <- v
 m <- sapply(v, format.info, x = x2)
 identical(as.vector(m), c(3L, 1L, 0L, 10L, 8L, 0L, 11L, 9L, 0L))
-"#,
+",
         );
         let result = result.expect("format.info digits must follow GNU");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -1448,12 +1448,12 @@ identical(names(v), c("6", "7", "8")) &&
     fn signif_recycles_digits_like_gnu_math2() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 z <- c(2.002566e-308, 2.447581e-308)
 m <- outer(z, 0:3, signif)
 identical(format(m[, 1], digits = 1), format(m[, 2], digits = 1)) &&
   !identical(format(m[, 2], scientific = TRUE), format(m[, 4], scientific = TRUE))
-"#,
+",
         );
         let result = result.expect("signif must recycle a digits vector");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -1507,13 +1507,13 @@ identical(signif(numeric(0), 3), numeric(0)) &&
     fn print_character_matrix_and_noquote_follow_gnu() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 m1 <- matrix(letters[1:24], 6, 4)
 m1
 noquote(m1)
 m1
 invisible(NULL)
-"#,
+",
         );
         assert!(
             captured.stdout.contains("[,1]") && captured.stdout.contains("[1,]"),
@@ -1561,7 +1561,7 @@ invisible(NULL)
             captured.stdout
         );
         assert!(
-            !captured.stdout.contains("$") && !captured.stdout.contains("[1] \"19\""),
+            !captured.stdout.contains('$') && !captured.stdout.contains("[1] \"19\""),
             "format(data.frame) must not list-print, got {:?}",
             captured.stdout
         );
@@ -1809,7 +1809,7 @@ invisible(NULL)
     fn str_ts_uses_digits_d_for_range_and_preview() {
         let mut session = RSession::new();
         let (_, captured, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 z <- ts(c(112,118,132,129,121,135,148,148,136,119, rep(120, 134)), frequency=12, start=c(1949,1))
 str(z)
 y <- ts(c(200.1, 199.5, 199.4, 198.9, 199, 200.2, 198.6, 200, 200.3, 201.2))
@@ -1817,7 +1817,7 @@ str(y)
 w <- ts(c(10.01, 10.07, 10.32, 9.75, 10.33, 10.13, 10.36, 10.32, 10.13, 10.16))
 str(w)
 invisible(NULL)
-"#,
+",
         );
         assert!(
             captured.stdout.contains("from 1949 to 1961:"),
@@ -2152,11 +2152,11 @@ grepl(" .... [TRUNCATED] ", out, fixed = TRUE)
     fn mean_of_empty_numeric_is_nan_like_gnu() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
             is.nan(mean(numeric(0))) &&
               is.nan(mean(rep(NA_real_, 2), trim = 0.1, na.rm = TRUE)) &&
               identical(mean(c(1:10, 100), trim = 0.1), 6)
-            "#,
+            ",
         );
         let result = result.expect("mean(numeric(0)) must be NaN");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -3384,11 +3384,11 @@ isS4(g) && is(g, "standardGeneric") && identical(as.character(g@generic)[1], "no
     fn setter_call_does_not_eval_language_replacement() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 f <- function(e, v) { body(e) <- v; e }
 g <- f(function(x) 1, quote(y))
 identical(body(g), quote(y))
-"#,
+",
         );
         let result = result.expect("body<- must store a language value");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -3412,11 +3412,11 @@ identical(body(g), quote(standardGeneric("norm"))) && identical(h(1), 2)
     fn language_subassign_preserves_call() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 e <- quote(x + 1)
 e[2] <- list(e[[2]])
 identical(e, quote(x + 1))
-"#,
+",
         );
         let result = result.expect("[<- on language must keep the call");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -4007,7 +4007,7 @@ exists("trace", envir=baseenv(), inherits=FALSE) &&
     fn tracing_state_toggles_do_trace() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 old <- tracingState(TRUE)
 n <- 0L
 tracingState(FALSE)
@@ -4018,7 +4018,7 @@ tracingState(TRUE)
 on <- n
 tracingState(old)
 identical(off, 0L) && identical(on, 2L)
-"#,
+",
         );
         let result = result.expect("tracingState must gate .doTrace");
         assert_eq!(result.logical_elt(0), Some(TRUE));
@@ -5716,11 +5716,11 @@ identical(dim(r), c(3L, 2L)) && identical(as.vector(r)[1:3], c(1, 2, 3))
     fn rbind_null_then_data_frame_binds_columns() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 df <- data.frame(a = 1:2)
 r <- rbind(NULL, df)
 identical(r$a, 1:2)
-"#,
+",
         );
         let result = result.unwrap_or_else(|e| {
             panic!(
@@ -6472,11 +6472,11 @@ identical(sort(names(e)), sort(c("brob#ANY", ".hidden")))
     fn is_na_preserves_matrix_dim() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
-            r#"
+            r"
 m <- matrix(c(1L, NA_integer_, 3L, 4L), 2, 2)
 identical(dim(is.na(m)), c(2L, 2L)) &&
   identical(as.integer(colSums(is.na(m))), c(1L, 0L))
-"#,
+",
         );
         let result = result.unwrap_or_else(|e| {
             panic!(

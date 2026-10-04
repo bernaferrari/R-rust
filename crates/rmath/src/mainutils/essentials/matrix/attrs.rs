@@ -477,7 +477,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let x = CAR(args);
         let value = CAR(CDR(args));
         if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
-            let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+            let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
             let _x = protect(x);
             crate::sexp::attrib_core::setAttrib(
                 x,
@@ -500,7 +500,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 if !matches {
                     return None;
                 }
-                let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+                let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
                 let _x = protect(x);
                 crate::sexp::attrib_core::setAttrib(
                     x,
@@ -591,7 +591,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == s
             };
             if (n == 1 && eq(0, b"matrix")) || (n == 2 && eq(0, b"matrix") && eq(1, b"array")) {
-                let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+                let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
                 let _x = protect(x);
                 crate::sexp::attrib_core::setAttrib(
                     x,
@@ -602,7 +602,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 return x;
             }
         }
-        let mut x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

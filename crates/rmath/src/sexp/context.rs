@@ -252,7 +252,7 @@ pub(crate) unsafe fn pin_context_owner_in(
     })
 }
 
-pub(crate) fn require_context_owner_live(pin: &Option<super::owner::OwnerPin>) {
+pub(crate) fn require_context_owner_live(pin: Option<&super::owner::OwnerPin>) {
     if let Some(pin) = pin {
         pin.require_live()
             .unwrap_or_else(|error| r_error(format!("unavailable context owner: {error}")));
@@ -325,15 +325,15 @@ pub unsafe fn Rf_begincontext_in(
             crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
         )
     };
-    require_context_owner_live(&owner_pin);
+    require_context_owner_live(owner_pin.as_ref());
     let srcref = unsafe { ContextValue::from_raw_in(instance, srcref) };
     let ctx = Rc::new(std::cell::UnsafeCell::new(RCNTXT {
         callflag,
         call,
         cloenv,
         sysparent,
-        cfn,
         callfun,
+        cfn,
         closure,
         promiseargs,
         srcref,

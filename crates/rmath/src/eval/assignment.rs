@@ -598,7 +598,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
             let factory = SessionNodeFactory::new(
                 crate::sexp::owner::OwnerToken::current()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string())),
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
             );
             // Keep the evaluated subscript chain owned throughout conversion,
             // replacement-call allocation and the final writeback.
@@ -607,15 +607,15 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 let target = factory
                     .wrap(target_expr)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 let mut target_links = super::dispatch::NamedArguments::new();
                 target_links.retain(&target);
                 let call_args = factory
                     .wrap(call_args)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 let environment = factory
                     .wrap(rho)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(&error.to_string()));
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 Some(super::dispatch::evalListKeepMissing(call_args, environment))
             };
             let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
@@ -631,7 +631,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                     crate::sexp::accessors::CHAR(name),
                                 ))
                                 .unwrap_or_else(|error| {
-                                    crate::sexp::context::r_error(&error.to_string())
+                                    crate::sexp::context::r_error(error.to_string())
                                 });
                             crate::sexp::accessors::SETCAR(cell, value.as_raw());
                         }
@@ -911,7 +911,6 @@ unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP
 }
 
 /// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.
-
 unsafe fn replacement_fun_head(fun: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(fun) == SEXPTYPE::SYMSXP {

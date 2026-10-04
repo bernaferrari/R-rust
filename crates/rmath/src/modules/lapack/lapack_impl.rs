@@ -1378,7 +1378,7 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
         } else {
             super::backend::dpotrf_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
             if info > 0 {
-                crate::sexp::context::r_error(&format!(
+                crate::sexp::context::r_error(format!(
                     "the leading minor of order {info} is not positive"
                 ));
             }

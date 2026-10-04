@@ -15,8 +15,8 @@ use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW,
     REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
-use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::constructors::Rf_mkString;
+use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 
 const DEFAULT_TOLERANCE: f64 = 1.490_116_119_384_765_6e-8; // sqrt(DBL_EPSILON)
@@ -568,7 +568,7 @@ unsafe fn mismatch(message: &str) -> SEXP {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::sexp::TRUE;
     use crate::sexp::session::RSession;
 
     fn logical_result(session: &mut RSession, code: &str) -> i32 {
