@@ -55,6 +55,7 @@ mod starma;
 mod starma_api;
 pub(crate) mod stl;
 pub(crate) mod supsmu;
+pub(crate) mod ppr_predict;
 pub(crate) mod swilk;
 mod trunmed;
 pub(crate) mod updateform;

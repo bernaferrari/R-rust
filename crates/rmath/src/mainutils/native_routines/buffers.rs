@@ -727,6 +727,7 @@ pub(crate) mod holtwinters;
 pub(crate) mod multi_burg;
 pub(crate) mod stl;
 pub(crate) mod supsmu;
+pub(crate) mod ppr_predict;
 
 /// Port-only base dtrco compatibility, entirely over owned checked buffers.
 pub(crate) fn dtrco_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
@@ -936,8 +937,8 @@ tools	.C	Renctest	1";
             covered += 1;
         }
         assert_eq!(
-            covered, 21,
-            "five unsupported registrations are explicit inventory gaps"
+            covered, 22,
+            "four unsupported registrations are explicit inventory gaps"
         );
         assert_eq!(
             invocation_count(),
@@ -957,3 +958,5 @@ mod multi_burg_tests;
 mod stl_tests;
 #[cfg(test)]
 mod supsmu_tests;
+#[cfg(test)]
+mod ppr_predict_tests;

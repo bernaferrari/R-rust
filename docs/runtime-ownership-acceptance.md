@@ -642,3 +642,27 @@ Clippy and assigned formatting pass; source ledgers distinguish independent
 later changes. The existing protected raw evalseq chain remains a separate
 modernization target. Malformed or cyclic frames are left unchanged during
 unwind rather than raising a second cleanup panic.
+
+## Checked packed PPR prediction
+
+The registered five-buffer Fortran prediction entry now invokes a Rust kernel
+and admission module that both forbid unsafe code. Checked packed dimensions,
+workspace extents and projection ordering are admitted before sorting or output
+writes. The kernel preserves GNU's projection sorting, permutation temporaries,
+interpolation and observable model/workspace mutation, including zero-term
+short models and zero prediction observations.
+
+A genuine managed-entry regression failed before registration. Nine independent
+pinned GNU cases compare all 45 argument buffers. The final seven native cases,
+42 enclosing buffer controls and all seven strict-provenance Miri cases pass;
+the completed Miri selection takes 654.33 seconds with the default alias checker.
+Managed cases remove incidental inputs before collection, exercise aliased
+model/workspace inputs and foreign-runtime reentry, and refuse wrong packages or
+original-owner revocation before invocation. Warnings-denied Clippy, assigned
+formatting and byte-identical GNU fixture reproduction pass. Assigned source
+hashes remain unchanged through the proof; later independent loader/serializer
+changes are recorded separately.
+
+Checked admission now covers 22 of the 26 captured stats C/Fortran registrations.
+This unit implements stateless prediction; PPR training, COMMON settings,
+tracing and spline branches remain separate compatibility work.

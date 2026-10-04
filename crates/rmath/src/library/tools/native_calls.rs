@@ -188,6 +188,7 @@ pub(crate) fn lookup_buffer(
             "multi_burg" => buffers::multi_burg::ROUTINE,
             "stl" => buffers::stl::ROUTINE,
             "supsmu" => buffers::supsmu::ROUTINE,
+            "pppred" => buffers::ppr_predict::ROUTINE,
             "dtrco" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
