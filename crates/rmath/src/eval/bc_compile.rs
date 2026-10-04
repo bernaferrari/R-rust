@@ -6,6 +6,9 @@
 //! `R_compileExpr`, and JIT scoring to produce bytecode that `bcEval` can run.
 
 #[cfg(test)]
+#[path = "bc_compile/general_replacement_tests.rs"]
+mod general_replacement_tests;
+#[cfg(test)]
 #[path = "bc_compile/nested_subassign_tests.rs"]
 mod nested_subassign_tests;
 #[cfg(test)]
@@ -442,6 +445,20 @@ impl BytecodeCompiler {
 
             let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+                let object = own_operand(CAR(CDR(lhs)));
+                if object.typeof_() == SEXPTYPE::LANGSXP {
+                    let dollar_root = symbol_name_from_sexp(CAR(object.as_raw())).as_deref()
+                        == Some("$")
+                        && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP;
+                    if !dollar_root
+                        || !matches!(
+                            symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                            Some("[") | Some("[[")
+                        )
+                    {
+                        return self.compile_general_replacement(lhs, rhs, false);
+                    }
+                }
                 return if matches!(
                     symbol_name_from_sexp(CAR(lhs)).as_deref(),
                     Some("[") | Some("[[")
@@ -540,6 +557,109 @@ impl BytecodeCompiler {
                     .unwrap_or_else(|_| compiler_error("too many replacement arguments")),
             );
             self.emit(rhs_expr_idx);
+            true
+        }
+    }
+
+    /// Snapshot a finite syntax spine before compilation can run callbacks.
+    /// Instruction operands describe checked owning levels, not mutable lists
+    /// that execution would reread after the RHS changes their source graph.
+    unsafe fn compile_general_replacement(
+        &mut self,
+        lhs: SEXP,
+        rhs: SEXP,
+        superassign: bool,
+    ) -> bool {
+        unsafe {
+            let rhs = own_operand(rhs);
+            let mut current = own_operand(lhs);
+            let mut levels = Vec::new();
+            let mut path = std::collections::HashSet::new();
+            while current.typeof_() == SEXPTYPE::LANGSXP {
+                path.try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track replacement syntax spine"));
+                if !path.insert(current.as_raw().addr()) {
+                    compiler_error("cyclic replacement syntax spine");
+                }
+                let getter = own_operand(CAR(current.as_raw()));
+                let Some(name) = symbol_name_from_sexp(getter.as_raw()) else {
+                    return false;
+                };
+                let mut cell = CDR(current.as_raw());
+                let mut seen = std::collections::HashSet::new();
+                let mut arguments = Vec::new();
+                while !cell.is_null() && cell != R_NilValue() {
+                    seen.try_reserve(1).unwrap_or_else(|_| {
+                        compiler_error("cannot track replacement level arguments")
+                    });
+                    if !seen.insert(cell.addr()) {
+                        compiler_error("cyclic replacement level arguments");
+                    }
+                    arguments.try_reserve(1).unwrap_or_else(|_| {
+                        compiler_error("cannot snapshot replacement level arguments")
+                    });
+                    let owned = own_operand(cell);
+                    let value = own_operand(CAR(cell));
+                    let tag = TAG(cell);
+                    if value.as_raw() == R_DotsSymbol() {
+                        return false;
+                    }
+                    arguments.push((
+                        value,
+                        own_operand(if tag.is_null() { R_NilValue() } else { tag }),
+                    ));
+                    cell = CDR(owned.as_raw());
+                }
+                if arguments.is_empty() {
+                    return false;
+                }
+                current = arguments.remove(0).0;
+                levels
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot snapshot replacement levels"));
+                levels.push((getter, name, arguments));
+            }
+            if current.typeof_() != SEXPTYPE::SYMSXP || levels.is_empty() {
+                return false;
+            }
+            let root = self.add_const(current.as_raw());
+            let expression = self.add_const(rhs.as_raw());
+            let mut operands = Vec::new();
+            for (getter, name, arguments) in levels.iter().rev() {
+                let name = std::ffi::CString::new(format!("{name}<-"))
+                    .unwrap_or_else(|_| compiler_error("invalid replacement setter name"));
+                let setter = own_operand(crate::sexp::symbol::Rf_install(name.as_ptr()));
+                operands
+                    .try_reserve(3)
+                    .unwrap_or_else(|_| compiler_error("cannot encode replacement levels"));
+                operands.push(self.add_const(getter.as_raw()));
+                operands.push(self.add_const(setter.as_raw()));
+                operands
+                    .push(c_int::try_from(arguments.len()).unwrap_or_else(|_| {
+                        compiler_error("too many replacement level arguments")
+                    }));
+                for (argument, tag) in arguments {
+                    operands
+                        .try_reserve(2)
+                        .unwrap_or_else(|_| compiler_error("cannot encode replacement arguments"));
+                    operands.push(self.add_const(argument.as_raw()));
+                    operands.push(self.add_const(tag.as_raw()));
+                }
+            }
+            if !self.compile_expr(rhs.as_raw()) {
+                return false;
+            }
+            self.emit(opcodes::OP_MARK_SHARED);
+            self.emit_operand(opcodes::OP_REPLACEMENT_CHAIN, root);
+            self.emit(i32::from(superassign));
+            self.emit(expression);
+            self.emit(
+                c_int::try_from(levels.len())
+                    .unwrap_or_else(|_| compiler_error("too many replacement levels")),
+            );
+            for operand in operands {
+                self.emit(operand);
+            }
             true
         }
     }
@@ -647,7 +767,20 @@ impl BytecodeCompiler {
 
             let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
-                return self.compile_subassign(expr, true);
+                let object = own_operand(CAR(CDR(lhs)));
+                let subscript = matches!(
+                    symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                    Some("[") | Some("[[")
+                );
+                let simple = object.typeof_() == SEXPTYPE::SYMSXP
+                    || (object.typeof_() == SEXPTYPE::LANGSXP
+                        && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
+                        && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP);
+                return if subscript && simple {
+                    self.compile_subassign(expr, true)
+                } else {
+                    self.compile_general_replacement(lhs, rhs, true)
+                };
             }
             if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
                 return false;

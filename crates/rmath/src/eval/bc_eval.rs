@@ -182,7 +182,9 @@ pub mod opcodes {
     pub const OP_REPLACEMENT: i32 = 63;
     /// Bounded root/optional-dollar replacement with explicit local/super scope.
     pub const OP_REPLACEMENT_PATH: i32 = 64;
-    pub const OP_LAST: i32 = 64;
+    /// Validated owning getter/setter levels for general replacement syntax.
+    pub const OP_REPLACEMENT_CHAIN: i32 = 65;
+    pub const OP_LAST: i32 = 65;
 }
 
 #[derive(Clone)]
@@ -3649,6 +3651,154 @@ fn private_replacement_path_owned(
     }
 }
 
+/// Each level retains original extra syntax/tags. Getter and setter calls
+/// deliberately construct their own promises: GNU can reevaluate an index.
+struct ReplacementLevel {
+    getter: Sexp<'static>,
+    setter: Sexp<'static>,
+    extras: Vec<(Sexp<'static>, Sexp<'static>)>,
+}
+
+impl ReplacementLevel {
+    fn arguments(
+        &self,
+        object: &Sexp<'static>,
+        value: Option<&Sexp<'static>>,
+    ) -> (Vec<Sexp<'static>>, Vec<Option<Sexp<'static>>>) {
+        let count = self
+            .extras
+            .len()
+            .checked_add(1 + usize::from(value.is_some()))
+            .unwrap_or_else(|| bc_error("replacement level argument count overflow"));
+        let mut arguments = Vec::new();
+        let mut tags = Vec::new();
+        arguments
+            .try_reserve(count)
+            .unwrap_or_else(|_| bc_error("cannot allocate replacement level arguments"));
+        tags.try_reserve(count)
+            .unwrap_or_else(|_| bc_error("cannot allocate replacement level tags"));
+        if let Some(value) = value {
+            arguments.push(value.clone());
+            tags.push(None);
+        }
+        for (value, tag) in self.extras.iter().rev() {
+            arguments.push(value.clone());
+            tags.push((!tag.is_nil()).then(|| tag.clone()));
+        }
+        arguments.push(object.clone());
+        tags.push(None);
+        (arguments, tags)
+    }
+}
+
+fn private_replacement_chain_owned(
+    root: &Sexp<'static>,
+    superassign: bool,
+    levels: &[ReplacementLevel],
+    rhs: &Sexp<'static>,
+    expression: &Sexp<'static>,
+    environment: &Sexp<'static>,
+    loops: &[LoopContext],
+) -> Result<Sexp<'static>, LoopJump> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{StoredOwner, with_runtime},
+    };
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let owner = StoredOwner::from_value(environment)
+            .and_then(|owner| owner.managed().ok_or(SexpError::RootUnavailable))
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        with_runtime(&owner, |access| {
+            let lookup = access.with_native(|owner| {
+                if superassign {
+                    owner
+                        .sexp(unsafe { ENCLOS(environment.as_raw()) })?
+                        .into_owned()
+                } else {
+                    Ok(environment.clone())
+                }
+            })?;
+            let object = access.with_native(|owner| {
+                owner
+                    .sexp(unsafe { super::eval::Rf_eval(root.as_raw(), lookup.as_raw()) })?
+                    .into_owned()
+            })?;
+            access.require_active()?;
+            unsafe {
+                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+            }
+            let modified_expression = access.with_native(|owner| {
+                owner
+                    .sexp(unsafe { crate::sexp::symbol::Rf_install(c"*vtmp*".as_ptr()) })?
+                    .into_owned()
+            })?;
+            let mut targets = Vec::new();
+            targets
+                .try_reserve(levels.len())
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "replacement target continuations",
+                })?;
+            targets.push(object);
+            for level in &levels[..levels.len() - 1] {
+                let (arguments, tags) = level.arguments(targets.last().expect("root target"), None);
+                let child = match private_target_call_owned(
+                    &level.getter,
+                    &arguments,
+                    &tags,
+                    None,
+                    environment,
+                    loops,
+                ) {
+                    Ok(value) => value,
+                    Err(jump) => return Ok(Err(jump)),
+                };
+                access.require_active()?;
+                unsafe {
+                    crate::sexp::accessors::SET_NAMED(child.as_raw(), 2);
+                }
+                targets.push(child);
+            }
+            let mut changed = rhs.clone();
+            for (index, level) in levels.iter().enumerate().rev() {
+                let (arguments, tags) = level.arguments(&targets[index], Some(&changed));
+                let code = if index + 1 == levels.len() {
+                    expression
+                } else {
+                    &modified_expression
+                };
+                changed = match private_replacement_owned(
+                    &level.setter,
+                    &arguments,
+                    &tags,
+                    code,
+                    environment,
+                    loops,
+                ) {
+                    Ok(value) => value,
+                    Err(jump) => return Ok(Err(jump)),
+                };
+            }
+            access.with_native(|_| {
+                unsafe {
+                    if superassign {
+                        setVar(root.as_raw(), changed.as_raw(), lookup.as_raw());
+                    } else {
+                        defineVar(root.as_raw(), changed.as_raw(), environment.as_raw());
+                    }
+                }
+                Ok(())
+            })?;
+            Ok(Ok(changed))
+        })
+        .and_then(|result| result)
+        .unwrap_or_else(|error| bc_error(error.to_string()))
+    }));
+    match attempt {
+        Ok(result) => result,
+        Err(payload) => Err(recover_loop_jump(payload, loops)),
+    }
+}
+
 fn private_argument_tags(
     pending: &mut Vec<(usize, Sexp<'static>)>,
     top: usize,
@@ -4233,6 +4383,129 @@ unsafe fn bc_eval_owned(
                         scope == 1,
                         &mut arguments,
                         &mut tags,
+                        &expression,
+                        &rho_owned,
+                        &loop_stack,
+                    ) {
+                        Ok(_changed) => {}
+                        Err(jump) => {
+                            pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                            super::runtime::set_visible(FALSE);
+                            continue;
+                        }
+                    }
+                    pin.require_live()
+                        .unwrap_or_else(|error| bc_error(error.to_string()));
+                    stack.push_owned(rhs);
+                    super::runtime::set_visible(FALSE);
+                }
+
+                opcodes::OP_REPLACEMENT_CHAIN => {
+                    let root = read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN root");
+                    let scope =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN scope");
+                    let expression =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN RHS");
+                    let count =
+                        read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN levels");
+                    let count = usize::try_from(count)
+                        .unwrap_or_else(|_| bc_error("negative replacement level count"));
+                    let remaining = usize::try_from(code_len - pc).unwrap_or(0);
+                    if count == 0 || count > remaining / 3 || !matches!(scope, 0 | 1) {
+                        bc_error("invalid REPLACEMENT_CHAIN framing or scope");
+                    }
+                    let root = own_operand(owned_constant_at(
+                        &constants,
+                        root as i64,
+                        "REPLACEMENT_CHAIN root",
+                    ));
+                    if root.typeof_() != SEXPTYPE::SYMSXP {
+                        bc_error("REPLACEMENT_CHAIN root must be a symbol");
+                    }
+                    let expression = own_operand(owned_constant_at(
+                        &constants,
+                        expression as i64,
+                        "REPLACEMENT_CHAIN RHS",
+                    ));
+                    let mut levels = Vec::new();
+                    levels
+                        .try_reserve(count)
+                        .unwrap_or_else(|_| bc_error("cannot allocate replacement levels"));
+                    for _ in 0..count {
+                        let getter =
+                            read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN getter");
+                        let setter =
+                            read_operand(code_ptr, &mut pc, code_len, "REPLACEMENT_CHAIN setter");
+                        let extras = read_operand(
+                            code_ptr,
+                            &mut pc,
+                            code_len,
+                            "REPLACEMENT_CHAIN extra count",
+                        );
+                        let extras = usize::try_from(extras)
+                            .unwrap_or_else(|_| bc_error("negative replacement extra count"));
+                        if extras > usize::try_from(code_len - pc).unwrap_or(0) / 2 {
+                            bc_error("truncated replacement extra operands");
+                        }
+                        let getter = own_operand(owned_constant_at(
+                            &constants,
+                            getter as i64,
+                            "REPLACEMENT_CHAIN getter",
+                        ));
+                        let setter = own_operand(owned_constant_at(
+                            &constants,
+                            setter as i64,
+                            "REPLACEMENT_CHAIN setter",
+                        ));
+                        if getter.typeof_() != SEXPTYPE::SYMSXP
+                            || setter.typeof_() != SEXPTYPE::SYMSXP
+                        {
+                            bc_error("REPLACEMENT_CHAIN functions must be symbols");
+                        }
+                        let mut arguments = Vec::new();
+                        arguments.try_reserve(extras).unwrap_or_else(|_| {
+                            bc_error("cannot allocate replacement extra syntax")
+                        });
+                        for _ in 0..extras {
+                            let expression = read_operand(
+                                code_ptr,
+                                &mut pc,
+                                code_len,
+                                "REPLACEMENT_CHAIN extra expression",
+                            );
+                            let tag = read_operand(
+                                code_ptr,
+                                &mut pc,
+                                code_len,
+                                "REPLACEMENT_CHAIN extra tag",
+                            );
+                            let expression = own_operand(owned_constant_at(
+                                &constants,
+                                expression as i64,
+                                "REPLACEMENT_CHAIN extra expression",
+                            ));
+                            let tag = own_operand(owned_constant_at(
+                                &constants,
+                                tag as i64,
+                                "REPLACEMENT_CHAIN extra tag",
+                            ));
+                            if !tag.is_nil() && tag.typeof_() != SEXPTYPE::SYMSXP {
+                                bc_error("REPLACEMENT_CHAIN extra tag must be a symbol or nil");
+                            }
+                            arguments.push((expression, tag));
+                        }
+                        levels.push(ReplacementLevel {
+                            getter,
+                            setter,
+                            extras: arguments,
+                        });
+                    }
+                    let rhs = stack_pop_checked(&mut stack, "REPLACEMENT_CHAIN RHS");
+                    match private_replacement_chain_owned(
+                        &root,
+                        scope == 1,
+                        &levels,
+                        &rhs,
                         &expression,
                         &rho_owned,
                         &loop_stack,

@@ -451,7 +451,12 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
             // GNU applydefine: evalseq the first argument, then
             // `*tmp*` replacement calls while the base is still a call.
-            let tmp_sym = Rf_install(c"*tmp*".as_ptr());
+            // Keep the cached RHS distinct from the expression observed by
+            // setter promises. Outward setters receive GNU's *vtmp* code.
+            crate::sexp::accessors::SET_NAMED(rhs, 2);
+            let tmp_owned = own(Rf_install(c"*tmp*".as_ptr()));
+            let modified_expression = own(Rf_install(c"*vtmp*".as_ptr()));
+            let tmp_sym = tmp_owned.as_raw();
             let saved_tmp = crate::sexp::envir::R_findVarInFrame(rho, tmp_sym);
             let _saved_tmp = protect(saved_tmp);
             struct RestoreTmp {
@@ -481,17 +486,28 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let mut lhs_expr = expr;
             let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
             let _chain_guard = protect(chain);
-            let mut current_rhs = rhs;
+            let mut current_rhs = rhs_owned.clone();
+            let mut current_expression = rhs_expression.clone();
             while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
                 let assign_fn = replacement_fun_head(CAR(lhs_expr));
                 if assign_fn == R_NilValue() {
                     break;
                 }
                 crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
-                let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
-                let _repl = protect(repl);
-                current_rhs = crate::eval::eval::Rf_eval(repl, rho);
-                let _ = protect(current_rhs);
+                let repl = replace_tmp_call(
+                    &own(assign_fn),
+                    &tmp_owned,
+                    &own(CDDR(lhs_expr)),
+                    &current_rhs,
+                    &current_expression,
+                    &environment,
+                )
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
+                owner
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                current_expression = modified_expression.clone();
                 let next = CDR(chain);
                 if !next.is_null() && next != R_NilValue() && TYPEOF(next) == SEXPTYPE::LISTSXP {
                     chain = next;
@@ -502,16 +518,25 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let assign_fn = replacement_fun_head(CAR(lhs_expr));
                 if assign_fn != R_NilValue() {
                     crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
-                    let repl = replace_tmp_call(assign_fn, tmp_sym, CDDR(lhs_expr), current_rhs);
-                    let _repl = protect(repl);
-                    current_rhs = crate::eval::eval::Rf_eval(repl, rho);
-                    let _ = protect(current_rhs);
+                    let repl = replace_tmp_call(
+                        &own(assign_fn),
+                        &tmp_owned,
+                        &own(CDDR(lhs_expr)),
+                        &current_rhs,
+                        &current_expression,
+                        &environment,
+                    )
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
 
             let var_sym = CADR(lhs_expr);
             if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                bind_assignment(var_sym, current_rhs, primval, rho);
+                bind_assignment(var_sym, current_rhs.as_raw(), primval, rho);
             }
 
             super::runtime::set_visible(FALSE);
@@ -871,43 +896,67 @@ unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_
     }
 }
 
-/// GNU `replaceCall(afun, *tmp*, rest, rhs)`: `afun(`*tmp*`, ...rest, rhs)`.
-unsafe fn replace_tmp_call(assign_fn: SEXP, tmp_sym: SEXP, rest: SEXP, rhs: SEXP) -> SEXP {
-    unsafe {
-        let rhs = match TYPEOF(rhs) {
-            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP => {
-                crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), rhs)
-            }
-            _ => rhs,
-        };
-        let rhs_cell = crate::sexp::constructors::Rf_cons(rhs, R_NilValue());
-        SETTAG(rhs_cell, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
-        let _rhs_cell = protect(rhs_cell);
-        let mut tail = rhs_cell;
-
-        let mut guards = Vec::new();
-        let mut current = rest;
+/// Cached replacement values retain their original promise code separately.
+fn replace_tmp_call(
+    assign_fn: &Sexp<'static>,
+    tmp_sym: &Sexp<'static>,
+    rest: &Sexp<'static>,
+    rhs: &Sexp<'static>,
+    expression: &Sexp<'static>,
+    environment: &Sexp<'static>,
+) -> crate::sexp::object::SexpResult<Sexp<'static>> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{StoredOwner, with_runtime},
+    };
+    let original = StoredOwner::from_value(environment)?
+        .managed()
+        .ok_or(SexpError::RootUnavailable)?;
+    with_runtime(&original, |access| {
+        // Capture each actual edge before any node allocation can reenter R.
+        let mut current = rest.clone();
         let mut cells = Vec::new();
-        while !current.is_null() && current != R_NilValue() {
-            cells.push((CAR(current), TAG(current)));
-            current = CDR(current);
-        }
-        for (arg, tag) in cells.into_iter().rev() {
-            let cell = crate::sexp::constructors::Rf_cons(arg, tail);
-            if !tag.is_null() && tag != R_NilValue() {
-                SETTAG(cell, tag);
+        let mut seen = std::collections::HashSet::new();
+        while !current.is_nil() {
+            let identity = current
+                .allocation()?
+                .link()
+                .ok_or(SexpError::StaleAllocation)?;
+            seen.try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "replacement syntax arguments",
+                })?;
+            if !seen.insert(identity) {
+                return Err(SexpError::EvaluationFailed {
+                    message: "cyclic replacement syntax arguments".into(),
+                });
             }
-            guards.push(protect(cell));
-            tail = cell;
+            cells
+                .try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "replacement syntax arguments",
+                })?;
+            cells.push((
+                current.try_car()?.into_owned()?,
+                current.try_tag()?.into_owned()?,
+            ));
+            current = current.try_cdr()?.into_owned()?;
         }
-        let tmp_cell = crate::sexp::constructors::Rf_cons(tmp_sym, tail);
-        let _tmp_cell = protect(tmp_cell);
-        let call = crate::sexp::constructors::Rf_cons(assign_fn, tmp_cell);
-        if !call.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+        let domain = access.domain();
+        let allocator = access.allocator(&domain)?;
+        let value_tag = access.with_native(|owner| {
+            owner
+                .sexp(unsafe { Rf_install(c"value".as_ptr()) })?
+                .into_owned()
+        })?;
+        let value = allocator.evaluated_promise_with_expression(expression, environment, rhs)?;
+        let mut tail = allocator.pairlist_cell(&value, &domain.nil(), &value_tag)?;
+        for (argument, tag) in cells.iter().rev() {
+            tail = allocator.pairlist_cell(argument, &tail, tag)?;
         }
-        call
-    }
+        tail = allocator.pairlist_cell(tmp_sym, &tail, &domain.nil())?;
+        allocator.call(assign_fn, &tail)
+    })?
 }
 
 /// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.

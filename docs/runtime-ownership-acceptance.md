@@ -518,3 +518,21 @@ lifetimes and revocation only; they do not execute real methods registration.
 The unchanged full default startup still reaches no footer within its recorded
 180-second bound. This fixes eager registration and sequence behavior while the
 broader package-loading frontier remains tracked separately.
+
+Compiled replacement continuations now handle arbitrary valid symbol getter
+and setter heads across deeper paths. Explicit typed operands own the root,
+each selected child, deferred arguments, cached values and their original
+expressions. Getters and setters receive fresh argument promises in GNU order;
+the first replacement RHS retains its source expression and later outward
+setters observe `*vtmp*`. The interpreted nested replacement call builder now
+retains that same cached-value/code distinction through allocation and collection.
+
+All 46 compiler, 24 executor and ten source-assignment native cases pass,
+including thirteen new replacement fixtures. Five focused strict-provenance
+Miri cases pass in 1,694.46 seconds with the default alias checker. The independent
+GNU generator supplies four serialized closures that execute after source-tree
+release; private execution also removes its fallback pool. Malformed operands,
+cyclic syntax, collecting callbacks, error/panic recovery and revocation have
+explicit coverage. Clippy and formatting pass. The proof ledger distinguishes
+later independent class-permit changes. Qualified replacement heads and nested
+source temporary-binding cleanup remain separate tracked work.
