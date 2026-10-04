@@ -41,3 +41,154 @@ tables, public headers, conditional registrations, S4 tables, package assets,
 and packages absent from this oracle profile also need separate reconciliation.
 These limits are recorded in the generated metadata; function or driver counts
 do not give a defensible completion percentage.
+
+## Joining native resolver evidence
+
+After exporting the actual Rust resolver inventory, join it to the validated
+census without invoking any native handlers:
+
+```sh
+python3 scripts/join_gnu_r_api_evidence.py CENSUS_DIR RESOLVER_DIR NEW_JOIN_DIR \
+  --source-root COMPILED_SOURCE_SNAPSHOT
+```
+
+The importer validates the pinned manifest commit, manifest digest, oracle build
+profile, and every recorded census file digest, including the binary inventories.
+It retains incomplete namespace evidence and copies the census issue table.
+A completed join can contain unsupported native rows and an incomplete census.
+The destination must be new or empty; validation failures publish no report.
+
+`RESOLVER_DIR/resolver.tsv` uses these exact eight columns, in this order:
+
+| Column | Meaning |
+| --- | --- |
+| `dll` | Exact captured DLL scope passed to the package-scoped resolver |
+| `interface` | Requested census interface: `.C`, `.Fortran`, `.Call`, or `.External` |
+| `name` | Exact captured routine name |
+| `num_parameters` | Captured GNU registration arity, with `-1` meaning variadic |
+| `resolver_status` | `resolved` or `unsupported` |
+| `actual_interface` | Actual descriptor interface, also permitting distinct `.External2` |
+| `actual_arity_kind` | `fixed` or `variadic` |
+| `actual_num_parameters` | Actual fixed arity, or `-1` for variadic |
+
+Unsupported rows must leave the last three columns empty. Every captured
+`(dll, interface, name)` key must appear exactly once. Missing, extra, duplicate,
+or relabelled requested keys are errors. Contradictory descriptor metadata,
+such as a fixed arity labelled variadic, is also rejected. Genuine differences
+between requested GNU metadata and consistent Rust descriptor metadata remain
+explicit in `native_routines.csv` and `resolver_mismatches.csv`.
+
+GNU's reflected `.External` registration group does not distinguish `.External2`.
+An actual `.External2` descriptor is preserved and labelled
+`external_family_only`; this establishes no equivalence between their calling
+conventions. Registration arity is distinct from the handler's Rust/C signature.
+
+The resolver's schema-1 `provenance.json` binds `resolver.tsv`, `probe.log`, the
+census native table and provenance, and the oracle manifest by SHA-256. It also
+records the actual source revision, dirty-state boolean, all recorded source
+file hashes, compiler version, command, successful exit status, target, build
+profile, flags, default features, and compiled binary hash. The source snapshot
+must cover the workspace Cargo files and every rmath Rust/Cargo input. All
+recorded source files are rechecked, including any captured build configuration.
+`--compiled-artifact PATH` additionally rechecks a retained binary; without that
+option, its digest remains a recorded identifier, explicitly marked as not
+rechecked. Dependency sources are not a complete build attestation.
+
+Output provenance includes the joiner script digest and deterministic data-file
+digests. Identical inputs and source snapshot produce identical output bytes.
+Hashes establish integrity and identity against the supplied manifest and
+producer metadata; they are not signatures and cannot prove that fabricated
+resolver evidence came from an execution. The actual producer and its completed
+probe log remain part of the evidence chain.
+
+The actual package-scoped resolver export at source `fd015216` reconciles all
+512 captured registrations: 297 descriptors resolve and 215 remain unsupported.
+There are no reflected interface-family/arity mismatches; 14 `.External2`
+descriptors retain the family-only caveat. All 5,875 function bindings remain
+`not_probed`. Resolved entries keep implementation `unclassified`, behavior
+`not_tested`, and safety `not_assessed`; options and targets also remain untested.
+The report explicitly sets `full_gnu_r_parity` and inventory-completeness flags
+false. These are registration counts, not behavior results or a completion score.
+
+Run the importer admission tests separately:
+
+```sh
+python3 -m unittest scripts.tests.test_join_gnu_r_api_evidence -v
+```
+
+Those tests deliberately use synthetic resolver/census fixtures. They exercise
+integrity rejection, source and compile metadata, scoped keys, mismatches,
+unsupported rows, transactional output, and reproducibility. They provide no
+runtime or GNU behavior proof.
+
+## Reproducing the Rust resolver inventory
+
+Generate the resolver artifact directly from a validated census:
+
+```sh
+python3 scripts/generate_rust_native_inventory.py CENSUS_DIR NEW_RESOLVER_DIR \
+  --source-root RPORT_SOURCE --manifest oracle/r-oracle.json \
+  --target-dir EXISTING_AGENT_TARGET --timeout 600
+python3 scripts/join_gnu_r_api_evidence.py CENSUS_DIR NEW_RESOLVER_DIR NEW_JOIN_DIR \
+  --source-root NEW_RESOLVER_DIR/source
+```
+
+`--source-root` defaults to this checkout. `--target-dir` is optional: leaving it
+out preserves the caller's `CARGO_TARGET_DIR` and Cargo configuration. Compiler
+flags, toolchain selection and profile settings are inherited without changes.
+The timeout must be positive and finite; its default is 600 seconds. The existing
+`run_parity_case.py` runner owns the POSIX process group and deadline cleanup.
+The producer neither removes the target directory nor invokes registered native
+handlers or R session startup.
+
+The producer authenticates all census inputs, writes the exporter's exact four
+input columns, and runs only the ignored
+`mainutils::dotcode::native_inventory::export_native_registration_inventory`
+test through the selected source checkout's `scripts/cargo_dev.sh`. It requires
+successful process completion, exactly one completed one-test footer, the exact
+census row count, a Cargo JSON test-executable artifact, and a complete,
+consistent resolver table. Missing, extra and duplicate keys are failures.
+Unsupported keys remain explicit rows. These checks do not exercise handlers.
+
+The fresh output retains `census-input.tsv`, `resolver.tsv`, `probe.log`, and
+`source/`. `provenance.json` is published only after checking that the source
+bytes, revision, dirty state, Cargo configuration, compiler selection, wrapper,
+producer, deadline helper, executable and exporter input stayed unchanged.
+Failed builds, incomplete runs and timeouts retain logs and `failure.json` with
+`execution_complete: false`; they publish no completed provenance. A timeout
+also retains the runner's marker. Invalid input admission can fail before the
+output directory is created.
+
+The source archive includes workspace Cargo files, every rmath Rust file,
+rmath Cargo metadata, available workspace Cargo configuration and Rust toolchain
+selectors. On source `fd015216`, this scope contains 674 files, including
+`rust-toolchain.toml`; the earlier manually prepared inventory retained 673 and
+omitted that selector. Existing ancestor/Cargo-home configurations are hashed
+separately. The profile records actual Cargo artifact features and compiler
+profile, the selected target, inherited build environment and configuration
+hashes. The `flags` list records inherited `CARGO_ENCODED_RUSTFLAGS` or
+`RUSTFLAGS`; it does not flatten additional configuration/target-specific flags.
+The retained configuration identities and environment describe those settings.
+This is an integrity record, not a hermetic dependency or compiler attestation.
+
+Run the producer's tooling admission cases with:
+
+```sh
+python3 -W error::ResourceWarning -m unittest \
+  scripts.tests.test_generate_rust_native_inventory -v
+```
+
+These tests use an explicitly fake build tool. They prove rejection of changed
+sources, altered input, incomplete/duplicate footers, absent/malformed artifacts,
+resolver key inconsistencies and timeouts, and preservation of inherited
+settings. They make no GNU or Rust runtime behavior claim. A genuine producer
+run and its actual exporter footer are required for runtime registration evidence.
+
+The reproducible producer has completed against the clean immutable source
+`fd015216e5d6659f7386618d0978af6c37e0738f`: its real exporter reports one passing
+test, no failures or ignored tests, and all 512 captured rows. A subsequent join
+rechecks the retained executable hash and reconciles 297 resolved registrations,
+215 unsupported registrations and zero metadata mismatches. It retains all
+5,875 unprobed function bindings and the incomplete namespace-scan evidence.
+The 45 separate producer/join tooling tests pass in 5.489 seconds; their fake
+build-tool cases remain distinct from this genuine registration run.
