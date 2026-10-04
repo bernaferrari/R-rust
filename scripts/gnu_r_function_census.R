@@ -168,7 +168,16 @@ for (pkg in packages) {
   if (pkg != 'base') {
     s3_result <- checked(getNamespaceInfo(ns, 'S3methods'), 's3_registrations', pkg)
     if (s3_result$ok) s3_tables[pkg] <- list(s3_result$value)
-    dll_result <- checked(getNamespaceInfo(ns, 'DLLs'), 'namespace_dlls', pkg)
+    # Pure R namespaces legitimately omit the DLLs field. Its absence is not
+    # a failed native inventory; actual metadata/read failures remain issues.
+    dll_result <- checked({
+      info <- get('.__NAMESPACE__.', envir = ns, inherits = FALSE)
+      if (exists('DLLs', envir = info, inherits = FALSE)) {
+        getNamespaceInfo(ns, 'DLLs')
+      } else {
+        list()
+      }
+    }, 'namespace_dlls', pkg)
     if (dll_result$ok && length(dll_result$value)) {
       for (dll in dll_result$value) {
         namespace_dlls[[length(namespace_dlls) + 1L]] <- data.frame(
