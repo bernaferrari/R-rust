@@ -109,7 +109,15 @@ jobs:
       - name: Exact-oracle conformance parity
         env:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
-        run: bash scripts/conformance_parity.sh --check --strict
+        run: bash scripts/conformance_parity.sh --check --strict --report target/conformance
+
+      - name: Upload exact-oracle conformance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-oracle-conformance
+          path: target/conformance
+          if-no-files-found: ignore
 
       - name: Whole-script differential parity
         run: bash scripts/script_diff_parity.sh --check

@@ -40,6 +40,20 @@ Strict mode is intentionally harder than local developer mode: it requires
 active or unexpectedly passes. Local non-strict runs may still skip cleanly when
 stock GNU R is unavailable.
 
+Each GNU or Rust case process has a 300-second deadline. Override it with
+`--case-timeout SECONDS` or `RPORT_CONFORMANCE_CASE_TIMEOUT`. Progress identifies
+the active case and engine without adding bytes to its captured output. On a
+timeout the harness cleans up its owned process group, records a failure even
+for an expected-failure case, and stops with an incomplete report. The report
+lists unattempted cases and sets `execution_complete` to false; it cannot serve
+as a completed parity checkpoint. CI uploads this report even when the gate
+fails. Golden regeneration is unchanged.
+
+The standalone Rust runner writes the runtime's captured bytes directly to
+stdout or stderr, including an empty capture and intentional trailing spaces
+or newlines. The existing conformance normalization still applies afterward;
+exact native/browser console fixtures are separate evidence for emission.
+
 That writes:
 
 - `target/conformance-report/summary.json`

@@ -11,7 +11,7 @@ XFAIL_FILE="$ROOT_DIR/tests/conformance/xfail.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
 usage() {
-    echo "usage: $0 [--check] [--regen-goldens] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+    echo "usage: $0 [--check] [--regen-goldens] [--strict] [--case-timeout SECONDS] [--report DIR] [--json FILE] [--markdown FILE]" >&2
     exit 2
 }
 
@@ -20,6 +20,8 @@ REPORT_DIR=""
 REPORT_JSON=""
 REPORT_MD=""
 STRICT=0
+CASE_TIMEOUT="${RPORT_CONFORMANCE_CASE_TIMEOUT:-300}"
+CASE_TIMEOUT_DETAIL=""
 
 while (($# > 0)); do
     case "$1" in
@@ -34,6 +36,11 @@ while (($# > 0)); do
         --strict)
             STRICT=1
             shift
+            ;;
+        --case-timeout)
+            if (($# < 2)); then usage; fi
+            CASE_TIMEOUT="$2"
+            shift 2
             ;;
         --report)
             if (($# < 2)); then
@@ -61,6 +68,18 @@ while (($# > 0)); do
             ;;
     esac
 done
+
+python3 - "$CASE_TIMEOUT" <<'PY'
+import math
+import sys
+try:
+    seconds = float(sys.argv[1])
+    valid = math.isfinite(seconds) and seconds > 0
+except ValueError:
+    valid = False
+if not valid:
+    raise SystemExit("ERROR: case timeout must be a positive finite number")
+PY
 
 if [[ -n "$REPORT_DIR" ]]; then
     mkdir -p "$REPORT_DIR"
@@ -158,7 +177,7 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
     RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-runner.XXXXXX")"
     RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
     RUST_RLIB_SNAPSHOT="$RUNNER_TMP_DIR/librmath.rlib"
-    cp "$RUST_RLIB" "$RUST_RLIB_SNAPSHOT"
+    cp -f "$RUST_RLIB" "$RUST_RLIB_SNAPSHOT"
     RUST_RLIB="$RUST_RLIB_SNAPSHOT"
 
     cleanup_runner() {
@@ -168,6 +187,8 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
 
     RESULTS_TSV="$RUNNER_TMP_DIR/results.tsv"
     touch "$RESULTS_TSV"
+    INVENTORY_TSV="$RUNNER_TMP_DIR/inventory.tsv"
+    touch "$INVENTORY_TSV"
 
 
     if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$(conformance_dependency_dir)" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
@@ -362,7 +383,7 @@ write_report() {
         return 1
     fi
 
-    python3 - "$RESULTS_TSV" "${REPORT_JSON:-}" "${REPORT_MD:-}" "$XFAIL_FILE" <<'PY'
+    python3 - "$RESULTS_TSV" "${REPORT_JSON:-}" "${REPORT_MD:-}" "$XFAIL_FILE" "$INVENTORY_TSV" <<'PY'
 import csv
 import datetime as dt
 import json
@@ -373,6 +394,7 @@ results_path = pathlib.Path(sys.argv[1])
 json_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 markdown_path = pathlib.Path(sys.argv[3]) if sys.argv[3] else None
 xfail_path = pathlib.Path(sys.argv[4])
+inventory_path = pathlib.Path(sys.argv[5])
 
 STATUS_ORDER = ("pass", "fail", "xfail", "xpass", "skip")
 
@@ -533,6 +555,18 @@ report = {
     "domains": list(domains.values()),
     "xfails": xfails,
 }
+with inventory_path.open(newline="") as stream:
+    inventory = [{"case": row[0], "kind": row[1]} for row in csv.reader(stream, delimiter="\t") if row]
+attempted = {(row["case"], row["kind"]) for row in rows}
+unattempted = [row for row in inventory if (row["case"], row["kind"]) not in attempted]
+timed_out = sum(row["detail"].startswith("timeout:") for row in rows)
+report.update({
+    "inventory_total": len(inventory),
+    "execution_complete": not unattempted and not timed_out,
+    "timed_out": timed_out,
+    "unattempted": len(unattempted),
+    "unattempted_cases": unattempted,
+})
 
 if json_path:
     json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
@@ -547,7 +581,11 @@ if markdown_path:
         "",
         "| Metric | Count |",
         "| --- | ---: |",
-        f"| Total cases | {report['total']} |",
+        f"| Inventory cases | {report['inventory_total']} |",
+        f"| Attempted cases | {report['total']} |",
+        f"| Unattempted cases | {report['unattempted']} |",
+        f"| Timed out | {report['timed_out']} |",
+        f"| Execution complete | {report['execution_complete']} |",
         f"| Passing | {report['passed']} |",
         f"| Failing | {report['failed']} |",
         f"| Expected failures | {report['expected_failures']} |",
@@ -579,7 +617,7 @@ if markdown_path:
         "## Policy",
         "",
         "- `pass`: stock C R, checked-in golden output, and the Rust runtime agree after deterministic normalization.",
-        "- `fail`: behavior differs and must be fixed or moved to `tests/conformance/xfail.tsv` with an owner bead.",
+        "- `fail`: behavior differs or execution timed out. Timeouts abort the run and cannot be accepted as xfails.",
         "- `xfail`: known accepted gap with an owner bead.",
         "- `xpass`: behavior now passes despite being listed as expected-fail; remove the stale xfail entry.",
         "- `skip`: engine-version-sensitive case not runnable on this R engine (see reason); rerun on the golden-generating engine for the full proof.",
@@ -597,10 +635,25 @@ PY
     fi
 }
 
+run_with_deadline() {
+    local marker="$1"
+    shift
+    env LC_ALL=C LANG=C python3 "$ROOT_DIR/scripts/run_parity_case.py" \
+        --timeout "$CASE_TIMEOUT" --timeout-marker "$marker" -- "$@"
+}
+
+abort_timeout() {
+    record_result "$1" "$2" "fail" "$CASE_TIMEOUT_DETAIL"
+    write_report
+    echo "INCOMPLETE: $CASE_TIMEOUT_DETAIL; remaining cases were not attempted." >&2
+    exit 1
+}
+
 run_case() {
     local case_file="$1"
     local case_name
     case_name="$(basename "$case_file" .R)"
+    CASE_TIMEOUT_DETAIL=""
 
     local golden_file="$GOLDEN_DIR/${case_name}.out"
     if [[ ! -f "$golden_file" ]]; then
@@ -616,15 +669,20 @@ run_case() {
     local c_norm="$tmp_dir/c.norm"
     local r_norm="$tmp_dir/r.norm"
     local g_norm="$tmp_dir/golden.norm"
+    local marker="$tmp_dir/timed-out"
 
-    if ! env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
+    echo "RUN ${case_name}: GNU R"
+    if ! run_with_deadline "$marker" Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
+        if [[ -f "$marker" ]]; then CASE_TIMEOUT_DETAIL="timeout: GNU R ${case_name} exceeded ${CASE_TIMEOUT}s"; fi
         echo "FAIL ${case_name}: Rscript exited non-zero"
         sed 's/^/  C | /' "$c_out"
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    if ! env LC_ALL=C LANG=C "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
+    echo "RUN ${case_name}: Rust"
+    if ! run_with_deadline "$marker" "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
+        if [[ -f "$marker" ]]; then CASE_TIMEOUT_DETAIL="timeout: Rust ${case_name} exceeded ${CASE_TIMEOUT}s"; fi
         echo "FAIL ${case_name}: Rust runner exited non-zero"
         sed 's/^/  R | /' "$r_out"
         rm -rf "$tmp_dir"
@@ -657,6 +715,7 @@ run_error_case() {
     local case_file="$1"
     local case_name
     case_name="$(basename "$case_file" .R)"
+    CASE_TIMEOUT_DETAIL=""
 
     local golden_file="$ERROR_GOLDEN_DIR/${case_name}.out"
     if [[ ! -f "$golden_file" ]]; then
@@ -672,16 +731,31 @@ run_error_case() {
     local c_norm="$tmp_dir/c.norm"
     local r_norm="$tmp_dir/r.norm"
     local g_norm="$tmp_dir/golden.norm"
+    local marker="$tmp_dir/timed-out"
 
-    if env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
+    echo "RUN ${case_name}: GNU R (expected error)"
+    if run_with_deadline "$marker" Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
         echo "FAIL ${case_name}: Rscript succeeded, expected error"
         sed 's/^/  C | /' "$c_out"
         rm -rf "$tmp_dir"
         return 1
     fi
+    if [[ -f "$marker" ]]; then
+        CASE_TIMEOUT_DETAIL="timeout: GNU R ${case_name} exceeded ${CASE_TIMEOUT}s"
+        sed 's/^/  C | /' "$c_out"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
 
-    if env LC_ALL=C LANG=C "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
+    echo "RUN ${case_name}: Rust (expected error)"
+    if run_with_deadline "$marker" "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
         echo "FAIL ${case_name}: Rust runner succeeded, expected error"
+        sed 's/^/  R | /' "$r_out"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+    if [[ -f "$marker" ]]; then
+        CASE_TIMEOUT_DETAIL="timeout: Rust ${case_name} exceeded ${CASE_TIMEOUT}s"
         sed 's/^/  R | /' "$r_out"
         rm -rf "$tmp_dir"
         return 1
@@ -728,6 +802,7 @@ main() {
 
     shopt -s nullglob
     local cases=("$CASES_DIR"/*.R)
+    local error_cases=("$ERROR_CASES_DIR"/*.R)
     shopt -u nullglob
 
     if (( ${#cases[@]} == 0 )); then
@@ -736,6 +811,13 @@ main() {
     fi
 
     local case_file
+    for case_file in "${cases[@]}"; do
+        printf '%s\tnormal\n' "$(basename "$case_file" .R)" >>"$INVENTORY_TSV"
+    done
+    for case_file in "${error_cases[@]}"; do
+        printf '%s\terror\n' "$(basename "$case_file" .R)" >>"$INVENTORY_TSV"
+    done
+
     for case_file in "${cases[@]}"; do
         total=$((total + 1))
         local case_name
@@ -758,6 +840,8 @@ main() {
                 record_result "$case_name" "normal" "pass"
                 passed=$((passed + 1))
             fi
+        elif [[ -n "$CASE_TIMEOUT_DETAIL" ]]; then
+            abort_timeout "$case_name" "normal"
         elif is_xfail "$case_name"; then
             echo "XFAIL ${case_name}"
             record_result "$case_name" "normal" "xfail" "listed in xfail.tsv"
@@ -767,10 +851,6 @@ main() {
             failed=$((failed + 1))
         fi
     done
-
-    shopt -s nullglob
-    local error_cases=("$ERROR_CASES_DIR"/*.R)
-    shopt -u nullglob
 
     for case_file in "${error_cases[@]}"; do
         total=$((total + 1))
@@ -794,6 +874,8 @@ main() {
                 record_result "$case_name" "error" "pass"
                 passed=$((passed + 1))
             fi
+        elif [[ -n "$CASE_TIMEOUT_DETAIL" ]]; then
+            abort_timeout "$case_name" "error"
         elif is_xfail "$case_name"; then
             echo "XFAIL ${case_name}"
             record_result "$case_name" "error" "xfail" "listed in xfail.tsv"

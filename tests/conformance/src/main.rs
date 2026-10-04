@@ -2,6 +2,7 @@ extern crate rmath;
 
 use std::env;
 use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 fn main() {
@@ -29,10 +30,17 @@ fn main() {
     // prints plus the rendered "Error in <call> : ..." text) to stderr and
     // exits non-zero; the error text may not be the first line of the
     // output, so key off the typed result, not the output prefix.
-    if matches!(result.typed, rmath::android::RValue::Error(_)) {
-        eprintln!("{}", result.output);
+    let failed = matches!(result.typed, rmath::android::RValue::Error(_));
+    let emitted = if failed {
+        io::stderr().lock().write_all(result.output.as_bytes())
+    } else {
+        io::stdout().lock().write_all(result.output.as_bytes())
+    };
+    if let Err(error) = emitted {
+        eprintln!("failed to write conformance output: {error}");
+        std::process::exit(2);
+    }
+    if failed {
         std::process::exit(1);
     }
-
-    println!("{}", result.output);
 }
