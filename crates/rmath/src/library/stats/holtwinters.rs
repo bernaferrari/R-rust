@@ -2,109 +2,9 @@
 //! Port of r-source/src/library/stats/src/HoltWinters.c
 
 use crate::sexp::ffi::SEXP;
-use core::ffi::{c_double, c_int, c_void};
+use core::ffi::c_int;
 
-/// Holt-Winters filtering.
-///
-/// Port of `HoltWinters` from R's `src/library/stats/src/HoltWinters.c`.
-///
-/// # Safety
-/// All pointer arguments must be valid and point to appropriately sized arrays.
-pub unsafe fn HoltWinters(
-    x: *mut c_double,
-    xl: *mut c_int,
-    alpha: *mut c_double,
-    beta: *mut c_double,
-    gamma: *mut c_double,
-    start_time: *mut c_int,
-    seasonal: *mut c_int,
-    period: *mut c_int,
-    dotrend: *mut c_int,
-    doseasonal: *mut c_int,
-    a: *mut c_double,
-    b: *mut c_double,
-    s: *mut c_double,
-    SSE: *mut c_double,
-    level: *mut c_double,
-    trend: *mut c_double,
-    season: *mut c_double,
-) {
-    unsafe {
-        let mut res: c_double = 0.0;
-        let mut xhat: c_double = 0.0;
-        let mut stmp: c_double = 0.0;
-
-        let xl_val = *xl;
-        let start_time_val = *start_time;
-        let seasonal_val = *seasonal;
-        let period_val = *period;
-        let dotrend_val = *dotrend;
-        let doseasonal_val = *doseasonal;
-
-        *level = *a;
-        if dotrend_val == 1 {
-            *trend = *b;
-        }
-        if doseasonal_val == 1 && period_val != 0 {
-            std::ptr::copy_nonoverlapping(s, season, period_val as usize);
-        }
-
-        let mut i = start_time_val - 1;
-        while i < xl_val {
-            let i0 = i - start_time_val + 2;
-            let s0 = i0 + period_val - 1;
-
-            xhat = *level.add((i0 - 1) as usize)
-                + if dotrend_val == 1 {
-                    *trend.add((i0 - 1) as usize)
-                } else {
-                    0.0
-                };
-            stmp = if doseasonal_val == 1 {
-                *season.add((s0 - period_val) as usize)
-            } else {
-                if seasonal_val != 1 { 1.0 } else { 0.0 }
-            };
-            if seasonal_val == 1 {
-                xhat += stmp;
-            } else {
-                xhat *= stmp;
-            }
-            res = *x.add(i as usize) - xhat;
-            *SSE += res * res;
-
-            if seasonal_val == 1 {
-                *level.add(i0 as usize) = *alpha * (*x.add(i as usize) - stmp)
-                    + (1.0 - *alpha)
-                        * (*level.add((i0 - 1) as usize) + *trend.add((i0 - 1) as usize));
-            } else {
-                *level.add(i0 as usize) = *alpha * (*x.add(i as usize) / stmp)
-                    + (1.0 - *alpha)
-                        * (*level.add((i0 - 1) as usize) + *trend.add((i0 - 1) as usize));
-            }
-
-            if dotrend_val == 1 {
-                *trend.add(i0 as usize) = *beta
-                    * (*level.add(i0 as usize) - *level.add((i0 - 1) as usize))
-                    + (1.0 - *beta) * *trend.add((i0 - 1) as usize);
-            }
-
-            if doseasonal_val == 1 {
-                if seasonal_val == 1 {
-                    *season.add(s0 as usize) = *gamma
-                        * (*x.add(i as usize) - *level.add(i0 as usize))
-                        + (1.0 - *gamma) * stmp;
-                } else {
-                    *season.add(s0 as usize) = *gamma
-                        * (*x.add(i as usize) / *level.add(i0 as usize))
-                        + (1.0 - *gamma) * stmp;
-                }
-            }
-
-            i += 1;
-        }
-    }
-}
+pub(crate) mod kernel;
 
 fn hw_golden_min(lo: f64, hi: f64, steps: usize, mut f: impl FnMut(f64) -> f64) -> f64 {
     let gr = 0.5 * (5.0_f64.sqrt() - 1.0);
@@ -221,24 +121,35 @@ fn hw_additive_sse(
     let mut level = vec![0.0; nfit + 1];
     let mut trend = vec![0.0; nfit + 1];
     let mut season = vec![0.0; n + period];
-    level[0] = a0;
-    trend[0] = b0;
-    for i in 0..period.min(s0.len()) {
-        season[i] = s0[i];
-    }
     let mut sse = 0.0;
-    let mut i = start_time - 1;
-    while i < n {
-        let i0 = i + 2 - start_time;
-        let s0i = i0 + period - 1;
-        let stmp = season[s0i - period];
-        let xhat = level[i0 - 1] + trend[i0 - 1] + stmp;
-        let res = x[i] - xhat;
-        sse += res * res;
-        level[i0] = alpha * (x[i] - stmp) + (1.0 - alpha) * (level[i0 - 1] + trend[i0 - 1]);
-        trend[i0] = beta * (level[i0] - level[i0 - 1]) + (1.0 - beta) * trend[i0 - 1];
-        season[s0i] = gamma * (x[i] - level[i0]) + (1.0 - gamma) * stmp;
-        i += 1;
+    let parameters = kernel::Parameters {
+        alpha,
+        beta,
+        gamma,
+        start_time,
+        period,
+        additive: true,
+        trend: true,
+        seasonal: true,
+    };
+    if kernel::filter(
+        x,
+        parameters,
+        kernel::Initial {
+            level: a0,
+            trend: b0,
+            season: s0,
+        },
+        kernel::Output {
+            sse: &mut sse,
+            level: &mut level,
+            trend: &mut trend,
+            season: &mut season,
+        },
+    )
+    .is_err()
+    {
+        return f64::INFINITY;
     }
     sse
 }
@@ -308,39 +219,44 @@ pub unsafe fn do_HoltWinters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if gamma.abs() < 1e-6 {
             gamma = 0.0;
         }
-        let mut start_time_c = period + 1;
-        let mut seasonal = 1;
-        let mut dotrend = 1;
-        let mut doseasonal = 1;
-        let mut a = a0;
-        let mut b = b0;
-        let mut s = s0;
+        let a = a0;
+        let b = b0;
+        let s = s0;
         let mut sse = 0.0;
         let nfit = (n - period) as usize;
         let mut level = vec![0.0f64; nfit + 1];
         let mut trend = vec![0.0f64; nfit + 1];
         let mut season = vec![0.0f64; n as usize + period as usize];
-        let mut xl = n;
-        let mut per = period;
-        HoltWinters(
-            x.as_mut_ptr(),
-            &mut xl,
-            &mut alpha,
-            &mut beta,
-            &mut gamma,
-            &mut start_time_c,
-            &mut seasonal,
-            &mut per,
-            &mut dotrend,
-            &mut doseasonal,
-            &mut a,
-            &mut b,
-            s.as_mut_ptr(),
-            &mut sse,
-            level.as_mut_ptr(),
-            trend.as_mut_ptr(),
-            season.as_mut_ptr(),
-        );
+        let parameters = kernel::Parameters {
+            alpha,
+            beta,
+            gamma,
+            start_time,
+            period: period as usize,
+            additive: true,
+            trend: true,
+            seasonal: true,
+        };
+        if let Err(error) = kernel::filter(
+            &x,
+            parameters,
+            kernel::Initial {
+                level: a,
+                trend: b,
+                season: &s,
+            },
+            kernel::Output {
+                sse: &mut sse,
+                level: &mut level,
+                trend: &mut trend,
+                season: &mut season,
+            },
+        ) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                &error.to_string(),
+            );
+        }
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, (nfit * 4) as i64);
         let _f = protect(fitted);
         for i in 0..nfit {

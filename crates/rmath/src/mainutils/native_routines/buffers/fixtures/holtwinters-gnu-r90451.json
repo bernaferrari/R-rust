@@ -1,0 +1,13 @@
+{
+  "argument_records": 153,
+  "cases": 9,
+  "native_arguments": 17,
+  "native_interface": ".C",
+  "native_name": "HoltWinters",
+  "native_package": "stats",
+  "oracle_r_revision": "90451",
+  "oracle_source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "output_sha256": "2d588af9de9f0a98582f06a48b19372337d116f5a5de373094928a78f69ed2e8",
+  "scope": "Independent native filtering outputs, including unchanged inputs and unused output tails; not the complete public HoltWinters fitting API.",
+  "script_sha256": "26c50c5fc6fa015905796e372ff2a84dc6833c80ea616fede66d47252170833e"
+}

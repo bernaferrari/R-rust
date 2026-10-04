@@ -723,6 +723,8 @@ pub(crate) fn invocation_count() -> usize {
     INVOCATIONS.with(std::cell::Cell::get)
 }
 
+pub(crate) mod holtwinters;
+
 /// Port-only base dtrco compatibility, entirely over owned checked buffers.
 pub(crate) fn dtrco_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
     let ldt = dimension(b, 1, 1)?;
@@ -931,8 +933,8 @@ tools	.C	Renctest	1";
             covered += 1;
         }
         assert_eq!(
-            covered, 17,
-            "nine unsupported registrations are explicit inventory gaps"
+            covered, 18,
+            "eight unsupported registrations are explicit inventory gaps"
         );
         assert_eq!(
             invocation_count(),
@@ -941,3 +943,6 @@ tools	.C	Renctest	1";
         );
     }
 }
+
+#[cfg(test)]
+mod holtwinters_tests;

@@ -184,6 +184,7 @@ pub(crate) fn lookup_buffer(
     // Rust kernel declaration below. Invocation rechecks all admission rules.
     unsafe {
         Some(match bare {
+            "HoltWinters" => buffers::holtwinters::ROUTINE,
             "dtrco" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,

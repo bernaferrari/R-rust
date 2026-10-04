@@ -458,6 +458,8 @@ mod tests {
         rc::Rc,
     };
 
+    mod holtwinters;
+
     fn real(factory: &SessionNodeFactory<'_>, data: &[f64]) -> Sexp<'static> {
         let output = factory
             .allocate(|arena| {
