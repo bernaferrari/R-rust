@@ -32,7 +32,7 @@ test("browser Wasm runif matches GNU R defaults, recycling, and RNG consumption"
   expect(result.equal).toContain("0.2655087")
 })
 
-test("browser Wasm bounds captured console output and keeps the session usable", async ({
+test("browser Wasm bounds returned console output and keeps the session usable", async ({
   page,
 }) => {
   await page.goto("/")
@@ -50,11 +50,12 @@ test("browser Wasm bounds captured console output and keeps the session usable",
       runtime.dispose()
     }
   })
-  expect(result.large).toContain(
-    "[captured console output truncated by runtime limit]"
+  // The capture and result budgets are both 1 MiB. The result budget clips
+  // the capture marker and appends its own marker to the unchanged prefix.
+  expect(result.large).toBe(
+    "x".repeat(1024 * 1024) + "\n[result output truncated by runtime limit]"
   )
-  expect(result.large.length).toBeLessThan(1024 * 1024 + 128)
-  expect(result.next).toBe("[1] 2")
+  expect(result.next).toBe("[1] 2\n")
 })
 
 test("browser memory and result budgets reject large requests and recover", async ({
@@ -94,6 +95,6 @@ test("browser memory and result budgets reject large requests and recover", asyn
   })
   expect(result.errors[0]).toMatch(/alloc|budget|memory/i)
   expect(result.errors[1]).toContain("export budget")
-  expect(result.recovered).toBe("[1] 2")
+  expect(result.recovered).toBe("[1] 2\n")
   expect(result.bounded).toBe(true)
 })

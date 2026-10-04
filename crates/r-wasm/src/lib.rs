@@ -121,7 +121,14 @@ impl WasmRSession {
                 "R requires Wasm exception handling; build with scripts/build_wasm_runtime.sh",
             ));
         }
-        let mut inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
+        // The browser facade must not discover installed host R libraries on
+        // native test hosts. Use the same real portable initialization profile
+        // on every target before applying the browser's resource budget.
+        let mut inner = r_embed::RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
+            Vec::new(),
+            "/tmp",
+        ))
+        .map_err(|e| JsError::new(&e.to_string()))?;
         inner.enable_browser_files();
         inner.set_output_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
         inner.set_result_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
@@ -553,7 +560,7 @@ mod tests {
     fn wasm_m3_oracle_shape() {
         let mut session = WasmRSession::new().expect("session initializes");
         let out = session.eval("1+1");
-        assert_eq!(out, "[1] 2");
+        assert_eq!(out, "[1] 2\n");
         assert!(session.is_input_complete("1 + 1"));
         assert!(!session.is_input_complete("f <- function(x) {"));
         session.close();
@@ -573,13 +580,62 @@ mod tests {
     }
 
     #[test]
+    fn portable_browser_profile_starts_with_room_for_user_evaluation() {
+        let mut session = WasmRSession::new().expect("real portable session initializes");
+        session
+            .with_session(|inner| {
+                assert!(inner.runtime_info().library_paths.is_empty());
+                let stats = inner.arena_stats();
+                let limits = inner.resource_limits();
+                assert_eq!(limits.max_alloc_bytes, 64 * 1024 * 1024);
+                assert_eq!(limits.max_arena_nodes, 500_000);
+                assert!(stats.retained_bytes < limits.max_alloc_bytes, "{stats:?}");
+                assert!(stats.active_nodes < limits.max_arena_nodes, "{stats:?}");
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(session.eval_checked("1+1").unwrap(), "[1] 2\n");
+        assert_eq!(session.eval_checked("mean(c(1,2,3))").unwrap(), "[1] 2\n");
+    }
+
+    #[test]
     fn bounded_console_output_keeps_session_usable() {
         let mut session = WasmRSession::new().expect("session initializes");
+        // Keep the exact two-MiB output contract within the unchanged native
+        // deadline without making debug interpreter dispatch a timing test.
+        // Chromium independently exercises the finer 2048-call producer.
         let output = session
-            .eval_checked(&format!("for (i in 1:2048) cat('{}')", "x".repeat(1024)))
+            .eval_checked(&format!(
+                "for (i in 1:16) cat('{}')",
+                "x".repeat(128 * 1024)
+            ))
             .expect("large output remains a successful evaluation");
-        assert!(output.contains("[captured console output truncated by runtime limit]"));
-        assert!(output.len() <= WASM_OUTPUT_LIMIT_BYTES + 64);
-        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2");
+        assert_eq!(
+            output,
+            "x".repeat(WASM_OUTPUT_LIMIT_BYTES) + "\n[result output truncated by runtime limit]"
+        );
+        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2\n");
+    }
+
+    #[test]
+    fn smaller_capture_budget_preserves_capture_marker_and_recovery() {
+        let mut session = WasmRSession::new().expect("session initializes");
+        session
+            .with_session(|inner| {
+                // Scalar formatting admission costs 192 bytes; a 256-byte capture
+                // budget admits recovery while still truncating the 512-byte cat.
+                inner.set_output_limit(Some(256));
+                inner.set_result_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
+                Ok(())
+            })
+            .unwrap();
+        let output = session
+            .eval_checked(&format!("cat('{}')", "x".repeat(512)))
+            .expect("captured output remains a successful evaluation");
+        assert_eq!(
+            output,
+            "x".repeat(256) + "\n[captured console output truncated by runtime limit]"
+        );
+        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2\n");
     }
 }

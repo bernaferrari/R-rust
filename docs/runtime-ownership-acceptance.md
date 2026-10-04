@@ -814,3 +814,20 @@ formatting and warnings-denied facade Clippy pass. Together with the separate
 writer metadata fix, the unchanged independent 592,931-byte graph of all 108
 portable datasets compares exactly; that enclosing result does not certify every
 character encoding or native symbol conversion path.
+
+## Portable browser facade initialization and output budgets
+
+The Wasm facade now chooses the same explicit portable library policy on every
+target before full base/default initialization. Native facade tests previously
+discovered host GNU packages and exceeded the unchanged browser heap limits
+before user evaluation. Real portable initialization admits ordinary evaluation
+under those same limits.
+
+Four native cases pass in 9.88 seconds, including exact independent capture and
+result truncation markers, printer newlines and recovery. Three fresh Chromium
+cases pass in 30.2 seconds. Native output uses 16 real cat calls for the same
+two-MiB stream; browser coverage retains 2048 calls. Memory, node, time and output
+limits remain unchanged. Warnings-denied Wasm Clippy, assigned formatting and
+website lint pass. Artifact ledgers distinguish the earlier browser writer
+metadata from later native metadata changes. Host-discovering embedding sessions
+and the remaining showcase cases require their separate full acceptance gates.
