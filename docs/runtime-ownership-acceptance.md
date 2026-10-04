@@ -845,3 +845,22 @@ actual argument and binding graphs before collection, exercise reentry and
 remove incidental promise roots. Pinned GNU controls, warnings-denied Clippy and
 assigned formatting pass. Mode filtering, callable fallback and sharing semantics
 remain a separately tracked contract extension.
+
+## Verified GLM and weighted covariance-ratio extension (rport-wszw.6.1)
+
+The owning Rust kernel now scales working residuals by working weights, filters
+zero prior-weight cases, retains original row labels, and follows the pinned
+GNU covratio body for estimated or fixed GLM dispersion. Fixed dispersion does
+not coerce an unused influence sigma. These changes retain the original model
+domain across callbacks and reject publication after its authority is revoked.
+
+The independent GNU contract includes actual QR data, explicit dispersion and
+working/prior-weight differences. The native enclosing suite passed 13 tests;
+the unchanged public mtcars 32-value/row-name contract also passed. All five new
+strict-provenance Miri cases passed with the default alias checker and isolation
+(690.33 seconds), including detached fields through full collection, exact live
+panic propagation, revocation and label filtering. All-target Clippy and assigned
+formatting passed. Frozen source hashes remained unchanged through that footer.
+
+This closes the weighted/GLM unit, not the model-system family. Original
+na.exclude restoration remains tracked separately as rport-wszw.6.2.

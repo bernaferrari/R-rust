@@ -371,3 +371,6 @@ fn portable_covratio_lm_preserves_generic_data_and_response_row_labels() {
     let (output, _, _) = session.eval_script_with_output_capture("d<-data.frame(y=c(1,3,2,5,4,7,6,9),x=1:8,row.names=paste0('case',1:8));fit<-lm(y~x,data=d);identical(names(fit$residuals),row.names(d))&&identical(names(fit$fitted.values),row.names(d))&&identical(names(covratio(fit)),row.names(d))");
     assert_eq!(output.unwrap().try_logical_elt(0).unwrap(), 1);
 }
+
+#[path = "covratio/extension_tests.rs"]
+mod extension_tests;

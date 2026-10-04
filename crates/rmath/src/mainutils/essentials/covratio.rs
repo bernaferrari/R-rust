@@ -180,6 +180,110 @@ fn deletion_sigma(residuals: &[f64], hat: &[f64], n: f64, p: f64) -> Vec<f64> {
         })
         .collect()
 }
+/// The default residual input is stats::weighted.residuals(model): working
+/// residuals scaled by working weights, with zero prior-weight cases omitted.
+struct ResidualSnapshot {
+    values: Vec<f64>,
+    retained: Option<Vec<usize>>,
+}
+fn weighted_residuals(
+    access: &RuntimeAccess,
+    residuals: &Value,
+    weights: &Value,
+    drop_weights: &Value,
+) -> Result<ResidualSnapshot> {
+    let mut values = numeric(access, residuals)?;
+    if !weights.is_nil() {
+        let weights = numeric(access, weights)?;
+        if weights.len() != values.len() {
+            return Err("model weights do not match working residuals".into());
+        }
+        for (value, weight) in values.iter_mut().zip(weights) {
+            *value *= weight.sqrt();
+        }
+    }
+    let retained = if drop_weights.is_nil() {
+        None
+    } else {
+        let weights = numeric(access, drop_weights)?;
+        if weights.len() != values.len() {
+            return Err("model prior weights do not match working residuals".into());
+        }
+        let retained: Vec<_> = weights
+            .iter()
+            .enumerate()
+            .filter_map(|(i, weight)| (*weight != 0.).then_some(i))
+            .collect();
+        if retained.len() == values.len() {
+            None
+        } else {
+            values = retained.iter().map(|i| values[*i]).collect();
+            Some(retained)
+        }
+    };
+    Ok(ResidualSnapshot { values, retained })
+}
+fn is_glm(access: &RuntimeAccess, model: &Value) -> Result<bool> {
+    let class = attribute(model, b"class")?;
+    if class.is_nil() {
+        return Ok(false);
+    }
+    if class.typeof_() != SEXPTYPE::STRSXP {
+        return Err("invalid model class".into());
+    }
+    for i in 0..class.len() {
+        let text = checked(class.try_string_value_elt(i))?;
+        active(access)?;
+        if text.as_deref() == Some("glm") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+/// stats::estDisp is false for explicit dispersion, poisson and binomial.
+/// In that branch sigma.glm is sqrt(summary(model)$dispersion), independent
+/// of the supplied per-case influence sigma.
+fn fixed_glm_sigma(access: &RuntimeAccess, family: &Value) -> Result<Option<f64>> {
+    let dispersion = field(access, family, b"dispersion")?;
+    let name = field(access, family, b"family")?;
+    let dispersion = numeric(access, &dispersion)?;
+    if let Some(value) = dispersion.first().copied().filter(|value| !value.is_nan()) {
+        return Ok(Some(value.sqrt()));
+    }
+    if !name.is_nil() {
+        let name = checked(name.try_string_value_elt(0))?;
+        active(access)?;
+        if matches!(name.as_deref(), Some("poisson" | "binomial")) {
+            return Ok(Some(1.));
+        }
+    }
+    Ok(None)
+}
+fn residual_names(
+    access: &RuntimeAccess,
+    names: &Value,
+    original_length: i64,
+    snapshot: &ResidualSnapshot,
+) -> Result<Value> {
+    if names.is_nil() || names.len() != original_length {
+        return Ok(access.domain().nil());
+    }
+    let Some(retained) = &snapshot.retained else {
+        return Ok(names.clone());
+    };
+    let mut selected = Vec::with_capacity(retained.len());
+    for index in retained {
+        selected.push(
+            checked(names.try_string_value_elt(*index as i64))?.ok_or("missing model row name")?,
+        );
+        active(access)?;
+    }
+    let text: Vec<_> = selected.iter().map(String::as_str).collect();
+    let domain = access.domain();
+    let allocator = checked(access.allocator(&domain))?;
+    checked(allocator.strings(&text))
+}
+
 pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value) -> Result<Value> {
     let [model, influence, residuals] = arguments(access, args)?;
     let model = model.ok_or("argument \"model\" is missing, with no default")?;
@@ -189,8 +293,44 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     let rank = field(access, &model, b"rank")?;
     let cached_hat = field(access, &model, b"hat")?;
     let qr = field(access, &model, b"qr")?;
-    let res = residuals.unwrap_or_else(|| model_residuals.clone());
-    let res_names = attribute(&res, b"names")?;
+    let model_names = attribute(&model_residuals, b"names")?;
+    let glm = is_glm(access, &model)?;
+    let family = if glm {
+        field(access, &model, b"family")?
+    } else {
+        domain.nil()
+    };
+    let default_needed = residuals.is_none() || influence.is_none();
+    let weights = if default_needed {
+        field(access, &model, b"weights")?
+    } else {
+        domain.nil()
+    };
+    let drop_weights = if glm && default_needed {
+        field(access, &model, b"prior.weights")?
+    } else {
+        weights.clone()
+    };
+    let fixed_sigma = if glm {
+        fixed_glm_sigma(access, &family)?
+    } else {
+        None
+    };
+    let res_names = if let Some(res) = &residuals {
+        attribute(res, b"names")?
+    } else {
+        model_names.clone()
+    };
+    let default_residuals = if default_needed {
+        Some(weighted_residuals(
+            access,
+            &model_residuals,
+            &weights,
+            &drop_weights,
+        )?)
+    } else {
+        None
+    };
     let p = numeric(access, &rank)?
         .first()
         .copied()
@@ -211,14 +351,22 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         n = dims[0];
     }
     let e = if influence.is_none() {
-        numeric(access, &model_residuals)?
+        default_residuals
+            .as_ref()
+            .ok_or("missing default influence residuals")?
+            .values
+            .clone()
     } else {
         Vec::new()
     };
     let (hat_value, sigma_value) = if let Some(influence) = &influence {
         (
             field(access, influence, b"hat")?,
-            field(access, influence, b"sigma")?,
+            if fixed_sigma.is_none() {
+                field(access, influence, b"sigma")?
+            } else {
+                domain.nil()
+            },
         )
     } else if qr_matrix.is_nil() {
         (cached_hat.clone(), domain.nil())
@@ -228,7 +376,11 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     let hat_names = attribute(&hat_value, b"names")?;
     let mut hat = numeric(access, &hat_value)?;
     let sigma = if influence.is_some() {
-        numeric(access, &sigma_value)?
+        if let Some(sigma) = fixed_sigma {
+            vec![sigma]
+        } else {
+            numeric(access, &sigma_value)?
+        }
     } else if !qr_matrix.is_nil() {
         let aux = field(access, &qr, b"qraux")?;
         let qr_rank = field(access, &qr, b"rank")?;
@@ -275,7 +427,41 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         }
         deletion_sigma(&e, &hat, n, p)
     };
-    let residuals = numeric(access, &res)?;
+    let sigma = fixed_sigma.map_or(sigma, |sigma| vec![sigma]);
+    let residual_values = if let Some(res) = &residuals {
+        numeric(access, res)?
+    } else {
+        default_residuals
+            .as_ref()
+            .ok_or("missing default residuals")?
+            .values
+            .clone()
+    };
+    let res_names = if residuals.is_none() {
+        residual_names(
+            access,
+            &res_names,
+            model_residuals.len(),
+            default_residuals
+                .as_ref()
+                .ok_or("missing default residuals")?,
+        )?
+    } else {
+        res_names
+    };
+    let hat_names = if influence.is_none() {
+        residual_names(
+            access,
+            &model_names,
+            model_residuals.len(),
+            default_residuals
+                .as_ref()
+                .ok_or("missing default influence residuals")?,
+        )?
+    } else {
+        hat_names
+    };
+    let residuals = residual_values;
     let length = if hat.is_empty() || sigma.is_empty() || residuals.is_empty() {
         0
     } else {
