@@ -14,7 +14,10 @@ const PROMOTION_THRESHOLD: usize = 100;
 
 #[derive(Default)]
 pub(crate) struct BindingTables {
-    tables: HashMap<NodeLink, BindingIndex>,
+    // The frame's exact allocation generation is the sole proof identity.
+    // Environment markers grant rebuild permission, never graph ownership.
+    frames: HashMap<NodeLink, BindingIndex>,
+    promoted: HashSet<NodeLink>,
 }
 struct BindingIndex {
     frame: NodeLink,
@@ -144,12 +147,25 @@ impl BindingTables {
         if !frame_changed && !chain_changed && !symbol_changed {
             return;
         }
-        for (env, table) in &mut self.tables {
-            if frame_changed && *env == node {
-                if !prepend.is_some_and(|cell| table.prepend(cell)) {
-                    table.valid = false;
-                }
-            } else if (chain_changed && table.members.contains(&node))
+        // A frame assignment changes this environment's head, not the old
+        // chain. Keep the old proof for aliases, except when moving its one
+        // canonical index through a checked incremental prepend. An alias of
+        // the old head can rebuild or use the canonical walker afterwards.
+        if frame_changed
+            && self.promoted.contains(&node)
+            && let Some(cell) = prepend
+            && !self.frames.contains_key(&cell.head)
+            && self.frames.try_reserve(1).is_ok()
+            && let Some(mut table) = self.frames.remove(&cell.tail)
+        {
+            if table.prepend(cell) {
+                self.frames.insert(cell.head, table);
+            } else {
+                self.frames.insert(cell.tail, table);
+            }
+        }
+        for table in self.frames.values_mut() {
+            if (chain_changed && table.members.contains(&node))
                 || (symbol_changed && table.bindings.contains_key(&node))
             {
                 table.valid = false;
@@ -157,14 +173,29 @@ impl BindingTables {
         }
     }
     pub(crate) fn prune(&mut self, heap: &HeapIdentity) {
-        self.tables.retain(|env, table| {
+        self.promoted.retain(|env| {
             let live = matches!(heap.resolve_link(*env), Some(ResolvedLink::Node { allocation, .. })
                 if heap.node_snapshot(&allocation).is_some_and(|core| core.sxpinfo.type_of() == SEXPTYPE::ENVSXP));
             live
         });
+        self.frames
+            .retain(|frame, _| match heap.resolve_link(*frame) {
+                Some(ResolvedLink::Null) => true,
+                Some(ResolvedLink::Singleton(lease)) => {
+                    lease.snapshot().sxpinfo.type_of() == SEXPTYPE::NILSXP
+                }
+                Some(ResolvedLink::Node { allocation, .. }) => {
+                    heap.node_snapshot(&allocation).is_some_and(|core| {
+                        core.sxpinfo.type_of() == SEXPTYPE::NILSXP
+                            || matches!(core.data, NodeBody::List(_))
+                    })
+                }
+                None => false,
+            });
     }
     pub(crate) fn clear(&mut self) {
-        self.tables.clear();
+        self.frames.clear();
+        self.promoted.clear();
     }
 }
 
@@ -268,23 +299,34 @@ fn binding_lookup(
     let NodeBody::Environment(body) = heap.node_snapshot(env)?.data else {
         return None;
     };
+    // Shared environments read one canonical frame proof directly. Exact
+    // heap/generation identity makes admission independent of table count;
+    // tiny unindexed formal frames never scan unrelated environments.
     let valid = heap.with_binding_tables(|tables| {
-        tables
-            .tables
-            .get(&env_link)
-            .map(|table| table.valid && table.frame == body.frame)
+        if tables
+            .frames
+            .get(&body.frame)
+            .is_some_and(|table| table.valid)
+        {
+            Some(true)
+        } else if tables.promoted.contains(&env_link) {
+            Some(false)
+        } else {
+            None
+        }
     })??;
     if !valid {
         // Build outside the map borrow. Failed reservations never publish a
         // partial index; the caller falls back to the canonical frame walk.
         let built = build_index(heap, body.frame)?;
         heap.with_binding_tables(|tables| {
-            *tables.tables.get_mut(&env_link)? = built;
+            tables.frames.try_reserve(1).ok()?;
+            tables.frames.insert(body.frame, built);
             Some(())
         })??;
     }
     let exact = heap.with_binding_tables(|tables| {
-        let table = tables.tables.get(&env_link)?;
+        let table = tables.frames.get(&body.frame)?;
         (table.valid && table.frame == body.frame)
             .then(|| table.bindings.get(&symbol_link).copied())
     })??;
@@ -295,7 +337,7 @@ fn binding_lookup(
         // binding. These bounded bytes share the frame walk's NUL semantics.
         let name = symbol_bytes(heap, symbol)?;
         heap.with_binding_tables(|tables| {
-            let table = tables.tables.get(&env_link)?;
+            let table = tables.frames.get(&body.frame)?;
             (table.valid && table.frame == body.frame)
                 .then(|| table.first_names.get(name.as_slice()).copied())
         })??
@@ -348,7 +390,7 @@ pub(crate) unsafe fn env_has_hash_table_in(instance: *mut instance::RInstance, e
     let Some(node) = env_node(&heap, env) else {
         return false;
     };
-    heap.with_binding_tables(|tables| tables.tables.contains_key(&node.link().unwrap()))
+    heap.with_binding_tables(|tables| tables.promoted.contains(&node.link().unwrap()))
         .unwrap_or(false)
 }
 pub(crate) fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
@@ -387,8 +429,8 @@ pub(crate) unsafe fn promote_to_hash_table_in(instance: *mut instance::RInstance
         return;
     };
     heap.with_binding_tables(|tables| {
-        if !tables.tables.contains_key(&env) && tables.tables.try_reserve(1).is_ok() {
-            tables.tables.insert(env, BindingIndex::empty());
+        if !tables.promoted.contains(&env) && tables.promoted.try_reserve(1).is_ok() {
+            tables.promoted.insert(env);
         }
     });
 }
@@ -398,7 +440,8 @@ pub(crate) fn should_promote(pairlist_length: usize) -> bool {
     pairlist_length >= PROMOTION_THRESHOLD
 }
 
-/// Remove only the index belonging to this exact environment generation.
+/// Remove rebuild permission for this exact environment generation. A proof
+/// of a still-live frame remains available to its other original aliases.
 pub(crate) fn remove_env(env: SEXP) {
     instance::with_required_current_instance(|instance| unsafe { remove_env_in(instance, env) });
 }
@@ -408,7 +451,7 @@ pub(crate) unsafe fn remove_env_in(instance: *mut instance::RInstance, env: SEXP
         return;
     };
     heap.with_binding_tables(|tables| {
-        tables.tables.remove(&env);
+        tables.promoted.remove(&env);
     });
 }
 
@@ -540,7 +583,7 @@ mod tests {
         };
         assert!(
             heap.with_binding_tables(|tables| {
-                let table = tables.tables.get(&node.link().unwrap()).unwrap();
+                let table = tables.frames.get(&body.frame).unwrap();
                 table.valid && table.frame == body.frame
             })
             .unwrap()
@@ -622,6 +665,9 @@ mod tests {
             .unwrap();
         unsafe { crate::sexp::accessors::SET_FRAME(left.as_raw(), head.as_raw()) };
         assert_canonical_index(&left);
+        // A canonical prepend rekeys the proof to the new head. The old
+        // marked alias rebuilds its own distinct head without new shadowing.
+        assert_eq!(lookup(&right, &key).unwrap().integer_elt(0), Some(11));
         assert_canonical_index(&right);
         for name in [&key, &alias] {
             assert_eq!(lookup(&left, name).unwrap().integer_elt(0), Some(22));
@@ -1149,7 +1195,7 @@ mod tests {
         assert!(!cell_allocation.is_live());
         assert!(
             !heap
-                .with_binding_tables(|tables| tables.tables.contains_key(&original))
+                .with_binding_tables(|tables| tables.promoted.contains(&original))
                 .unwrap()
         );
         let replacement = environment(&factory, &factory.nil());

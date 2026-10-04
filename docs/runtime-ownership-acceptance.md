@@ -196,3 +196,17 @@ independent ownership review found no introduced lifetime defect. The Miri proof
 records the frozen duplication hashes and independent environment-index edits
 separately. Deep CAR, attribute and nested-vector traversal remains recursive
 and has a separate iterative-traversal acceptance task.
+
+Environment binding indexes are now canonical proofs keyed by the exact frame
+allocation generation. Shared base/namespace aliases use direct lookup without
+scanning other indexed environments. Promotion permission is nonowning; proof
+retention follows the live frame, including release of its former environment,
+head insertion, mutation invalidation and slot reuse. Active-binding results
+retain their actual owning handle. All 29 native tests pass in 4.33 seconds,
+including both unchanged full-base fixtures; all 11 strict-provenance Miri cases
+pass in 879.03 seconds with the default alias checker. The paired 512-index
+small-frame diagnostic improves from 29.34 to 8.84 microseconds, restoring the
+nearly flat original small-frame cost. Original GNU metadata source/bytecode
+checks retain their attributes and pass. Unchanged full startup still reaches
+the 180-second bound without a completed test footer. Its samples identify
+nonmoving collection's graph-remapping phase as the next measured obligation.

@@ -353,7 +353,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
     }
 }
 
-fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
+fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'static> {
     // This translated boundary immediately acquires actual original-domain
     // values. Argument/call nodes stay owned through collection and R reentry.
     let owner = unsafe { super::owner::OwnerToken::current() }
@@ -406,8 +406,8 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
         .unwrap_or_else(|error| binding_error(error.to_string()));
     owner
         .sexp(result)
+        .and_then(Sexp::into_owned)
         .unwrap_or_else(|error| binding_error(error.to_string()))
-        .as_raw()
 }
 
 /// Typed, owner-scoped environment facade.
@@ -520,9 +520,7 @@ pub unsafe fn find_var_in_frame_result<'a>(
                 .checked_child(link)
                 .map_err(|err| sexp_err("indexed binding cell", err))?;
             if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
-                return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
-                    .map(Some)
-                    .map_err(|err| sexp_err("active binding value", err));
+                return Ok(Some(call_active_binding(rho.as_raw(), fun, None)));
             }
             return cell
                 .try_car()
@@ -559,9 +557,7 @@ pub unsafe fn find_var_in_frame_result<'a>(
         if symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()) {
             if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw())
             {
-                return unsafe { Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None)) }
-                    .map(Some)
-                    .map_err(|err| sexp_err("active binding value", err));
+                return Ok(Some(call_active_binding(rho.as_raw(), fun, None)));
             }
             let val = cell
                 .try_car()
@@ -2124,3 +2120,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "envir/shared_index_tests.rs"]
+mod shared_index_tests;
