@@ -11,12 +11,59 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
+use std::{cell::RefCell, collections::HashSet};
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+use crate::sexp::constructors::Rf_allocVector3;
+#[cfg(test)]
+use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::memory::with_arena;
+use crate::sexp::object::{Sexp, SexpError, SexpResult};
+
+/// Metadata belongs to one copy operation. Reentrant public calls get a fresh
+/// state; recursive child copies share it without a field loan across callbacks.
+#[derive(Default)]
+struct DuplicationState {
+    active: RefCell<HashSet<crate::sexp::heap::NodeLink>>,
+}
+
+struct DuplicationFrame<'operation> {
+    state: &'operation DuplicationState,
+    key: crate::sexp::heap::NodeLink,
+}
+
+impl DuplicationState {
+    fn enter(&self, source: &Sexp<'_>) -> SexpResult<DuplicationFrame<'_>> {
+        let key = source
+            .allocation()?
+            .link()
+            .ok_or(SexpError::StaleAllocation)?;
+        let mut active = self.active.borrow_mut();
+        if active.contains(&key) {
+            return Err(SexpError::EvaluationFailed {
+                message: "cyclic object graph cannot be duplicated".into(),
+            });
+        }
+        active
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "duplication traversal",
+            })?;
+        active.insert(key);
+        Ok(DuplicationFrame { state: self, key })
+    }
+}
+
+impl Drop for DuplicationFrame<'_> {
+    fn drop(&mut self) {
+        self.state.active.borrow_mut().remove(&self.key);
+    }
+}
+
+fn duplication_failure(error: SexpError) -> ! {
+    crate::sexp::context::r_error(error.to_string())
+}
 
 // ---------------------------------------------------------------------------
 // GP bit constants
@@ -334,7 +381,7 @@ unsafe fn COPY_TRUELENGTH(to: SEXP, from: SEXP) {
 /// If `from` has non-nil attributes, they are deep or shallow duplicated
 /// based on the `deep` flag.
 #[inline]
-unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
+unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int, state: &DuplicationState) {
     unsafe {
         let mut a = ATTRIB(from);
         if crate::sexp::altrep::has_extension_raw(from) {
@@ -343,7 +390,7 @@ unsafe fn DUPLICATE_ATTRIB(to: SEXP, from: SEXP, deep: c_int) {
             a = CDR(a);
         }
         if !a.is_null() && a != R_NilValue() {
-            SET_ATTRIB(to, duplicate1(a, deep));
+            SET_ATTRIB(to, duplicate1_in(a, deep, state));
             SET_OBJECT(to, OBJECT(from));
             if IS_S4_OBJECT(from) != 0 {
                 SET_S4_OBJECT(to);
@@ -372,6 +419,7 @@ unsafe fn duplicate_atomic_vector(
     to: *mut SEXP,
     from: SEXP,
     deep: c_int,
+    state: &DuplicationState,
 ) -> SEXP {
     unsafe {
         let n = XLENGTH(from);
@@ -386,7 +434,7 @@ unsafe fn duplicate_atomic_vector(
                 ptr::copy_nonoverlapping(from_data as *const u8, to_data as *mut u8, total_bytes);
             }
         }
-        DUPLICATE_ATTRIB(new_vec, from, deep);
+        DUPLICATE_ATTRIB(new_vec, from, deep, state);
         COPY_TRUELENGTH(new_vec, from);
         new_vec
     }
@@ -483,6 +531,69 @@ unsafe fn fill_matrix_byrow_iterate<F>(
 /// `deep`: if nonzero, performs deep copy; if zero, performs shallow copy
 /// (shared subtrees for pairlists/vectors, but new atomic vectors are copied).
 unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
+    unsafe { duplicate1_in(s, deep, &DuplicationState::default()) }
+}
+
+/// Keep both native input and result physically owned through flag copying and
+/// result admission. The traversal guard ends on every error and Rust unwind.
+unsafe fn duplicate1_in(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP {
+    unsafe {
+        if s.is_null() {
+            return s;
+        }
+        if matches!(
+            SEXPTYPE(TYPEOF(s)),
+            SEXPTYPE::NILSXP
+                | SEXPTYPE::SYMSXP
+                | SEXPTYPE::ENVSXP
+                | SEXPTYPE::SPECIALSXP
+                | SEXPTYPE::BUILTINSXP
+                | SEXPTYPE::BCODESXP
+                | SEXPTYPE::WEAKREFSXP
+                | SEXPTYPE::EXTPTRSXP
+                | SEXPTYPE::CHARSXP
+                | SEXPTYPE::PROMSXP
+        ) {
+            return s;
+        }
+        let source = crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| duplication_failure(e));
+        let pin = source
+            .pin_runtime()
+            .unwrap_or_else(|e| duplication_failure(e));
+        let node = source
+            .allocation()
+            .unwrap_or_else(|e| duplication_failure(e));
+        let flags = node
+            .heap_identity()
+            .node_snapshot(node)
+            .unwrap_or_else(|| duplication_failure(SexpError::StaleAllocation))
+            .sxpinfo;
+        let _frame = state
+            .enter(&source)
+            .unwrap_or_else(|e| duplication_failure(e));
+        let factory = source
+            .node_factory()
+            .unwrap_or_else(|e| duplication_failure(e));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            factory.wrap(duplicate1_impl(s, deep, state, flags))
+        }));
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|e| duplication_failure(e));
+        }
+        match outcome {
+            Ok(result) => result.unwrap_or_else(|e| duplication_failure(e)).as_raw(),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+unsafe fn duplicate1_impl(
+    s: SEXP,
+    deep: c_int,
+    state: &DuplicationState,
+    flags: crate::sexp::ffi::SxpInfo,
+) -> SEXP {
     unsafe {
         if s.is_null() {
             return ptr::null_mut();
@@ -505,7 +616,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 
         let mut t: SEXP = ptr::null_mut();
 
-        match SEXPTYPE(TYPEOF(s)) {
+        match flags.type_of() {
             SEXPTYPE::NILSXP
             | SEXPTYPE::SYMSXP
             | SEXPTYPE::ENVSXP
@@ -524,20 +635,14 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 // GNU shares closure syntax, including source bodies. Retain
                 // the original edges before an allocating callback can detach
                 // them, and publish the initialized copy before callbacks run.
-                return duplicate_closure(&source, deep).as_raw();
+                return duplicate_closure(&source, deep, state).as_raw();
             }
-            SEXPTYPE::LISTSXP => {
-                t = duplicate_list(s, deep);
-            }
-            SEXPTYPE::LANGSXP => {
-                t = duplicate_list(s, deep);
-                crate::sexp::accessors::SET_TYPEOF(t, SEXPTYPE::LANGSXP.as_c_int());
-                DUPLICATE_ATTRIB(t, s, deep);
-            }
-            SEXPTYPE::DOTSXP => {
-                t = duplicate_list(s, deep);
-                crate::sexp::accessors::SET_TYPEOF(t, SEXPTYPE::DOTSXP.as_c_int());
-                DUPLICATE_ATTRIB(t, s, deep);
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+                let source =
+                    crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| duplication_failure(e));
+                return duplicate_list(&source, deep, state)
+                    .unwrap_or_else(|e| duplication_failure(e))
+                    .as_raw();
             }
             SEXPTYPE::CHARSXP => {
                 return s;
@@ -547,30 +652,60 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 t = Rf_allocVector3(TYPEOF(s), n);
                 let _guard = crate::sexp::protect::protect(t);
                 for i in 0..n {
-                    SET_VECTOR_ELT(t, i, duplicate_child(VECTOR_ELT(s, i), deep));
+                    SET_VECTOR_ELT(t, i, duplicate_child(VECTOR_ELT(s, i), deep, state));
                 }
-                DUPLICATE_ATTRIB(t, s, deep);
+                DUPLICATE_ATTRIB(t, s, deep, state);
                 COPY_TRUELENGTH(t, s);
             }
             SEXPTYPE::LGLSXP => {
                 let mut result: SEXP = ptr::null_mut();
-                t = duplicate_atomic_vector(std::mem::size_of::<c_int>(), &mut result, s, deep);
+                t = duplicate_atomic_vector(
+                    std::mem::size_of::<c_int>(),
+                    &mut result,
+                    s,
+                    deep,
+                    state,
+                );
             }
             SEXPTYPE::INTSXP => {
                 let mut result: SEXP = ptr::null_mut();
-                t = duplicate_atomic_vector(std::mem::size_of::<c_int>(), &mut result, s, deep);
+                t = duplicate_atomic_vector(
+                    std::mem::size_of::<c_int>(),
+                    &mut result,
+                    s,
+                    deep,
+                    state,
+                );
             }
             SEXPTYPE::REALSXP => {
                 let mut result: SEXP = ptr::null_mut();
-                t = duplicate_atomic_vector(std::mem::size_of::<c_double>(), &mut result, s, deep);
+                t = duplicate_atomic_vector(
+                    std::mem::size_of::<c_double>(),
+                    &mut result,
+                    s,
+                    deep,
+                    state,
+                );
             }
             SEXPTYPE::CPLXSXP => {
                 let mut result: SEXP = ptr::null_mut();
-                t = duplicate_atomic_vector(std::mem::size_of::<Rcomplex>(), &mut result, s, deep);
+                t = duplicate_atomic_vector(
+                    std::mem::size_of::<Rcomplex>(),
+                    &mut result,
+                    s,
+                    deep,
+                    state,
+                );
             }
             SEXPTYPE::RAWSXP => {
                 let mut result: SEXP = ptr::null_mut();
-                t = duplicate_atomic_vector(std::mem::size_of::<Rbyte>(), &mut result, s, deep);
+                t = duplicate_atomic_vector(
+                    std::mem::size_of::<Rbyte>(),
+                    &mut result,
+                    s,
+                    deep,
+                    state,
+                );
             }
             SEXPTYPE::STRSXP => {
                 let n = XLENGTH(s);
@@ -579,7 +714,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 for i in 0..n {
                     SET_STRING_ELT(t, i, STRING_ELT(s, i));
                 }
-                DUPLICATE_ATTRIB(t, s, deep);
+                DUPLICATE_ATTRIB(t, s, deep, state);
                 COPY_TRUELENGTH(t, s);
             }
             SEXPTYPE::PROMSXP => {
@@ -588,7 +723,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             SEXPTYPE::OBJSXP => {
                 t = crate::mainutils::objects::R_allocObject();
                 if !t.is_null() {
-                    DUPLICATE_ATTRIB(t, s, deep);
+                    DUPLICATE_ATTRIB(t, s, deep, state);
                 } else {
                     UNIMPLEMENTED_TYPE(b"duplicate\0".as_ptr() as *const c_char, s);
                 }
@@ -599,9 +734,9 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
         }
 
         // Copy OBJECT and S4 flags if types match
-        if TYPEOF(t) == TYPEOF(s) {
-            SET_OBJECT(t, OBJECT(s));
-            if IS_S4_OBJECT(s) != 0 {
+        if SEXPTYPE(TYPEOF(t)) == flags.type_of() {
+            SET_OBJECT(t, flags.obj() as c_int);
+            if flags.gp() & S4_OBJECT_MASK != 0 {
                 SET_S4_OBJECT(t);
             } else {
                 UNSET_S4_OBJECT(t);
@@ -617,6 +752,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 unsafe fn duplicate_closure<'s>(
     source: &crate::sexp::object::Sexp<'s>,
     deep: c_int,
+    state: &DuplicationState,
 ) -> crate::sexp::object::Sexp<'s> {
     let fail = |error: crate::sexp::object::SexpError| -> ! {
         crate::sexp::context::r_error(error.to_string())
@@ -656,7 +792,7 @@ unsafe fn duplicate_closure<'s>(
         .unwrap_or_else(|error| fail(error));
     if !attributes.is_nil() {
         let copied_attributes = factory
-            .wrap(unsafe { duplicate1(attributes.as_raw(), deep) })
+            .wrap(unsafe { duplicate1_in(attributes.as_raw(), deep, state) })
             .unwrap_or_else(|error| fail(error));
         unsafe {
             SET_ATTRIB(copy.as_raw(), copied_attributes.as_raw());
@@ -667,11 +803,7 @@ unsafe fn duplicate_closure<'s>(
 
 /// Deep duplicate an SEXP.
 pub unsafe fn duplicate(s: SEXP) -> SEXP {
-    unsafe {
-        let t = duplicate1(s, 1);
-        trace_duplication(s, t);
-        t
-    }
+    unsafe { duplicate_entry(s, 1) }
 }
 
 /// Alias for duplicate (R API).
@@ -681,8 +813,59 @@ pub unsafe fn Rf_duplicate(s: SEXP) -> SEXP {
 
 /// Shallow duplicate an SEXP.
 pub unsafe fn shallow_duplicate(s: SEXP) -> SEXP {
+    unsafe { duplicate_entry(s, 0) }
+}
+
+unsafe fn duplicate_entry(s: SEXP, deep: c_int) -> SEXP {
     unsafe {
-        let t = duplicate1(s, 0);
+        // Retain the original pairlist and completed copy beyond the internal
+        // helper, including trace reporting and the final native projection.
+        if !s.is_null()
+            && matches!(
+                SEXPTYPE(TYPEOF(s)),
+                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+            )
+        {
+            let source =
+                crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| duplication_failure(e));
+            let pin = source
+                .pin_runtime()
+                .unwrap_or_else(|e| duplication_failure(e));
+            let node = source
+                .allocation()
+                .unwrap_or_else(|e| duplication_failure(e));
+            let trace = node
+                .heap_identity()
+                .node_snapshot(node)
+                .unwrap_or_else(|| duplication_failure(SexpError::StaleAllocation))
+                .sxpinfo
+                .trace();
+            let factory = source
+                .node_factory()
+                .unwrap_or_else(|e| duplication_failure(e));
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let copy = factory
+                    .wrap(duplicate1(s, deep))
+                    .unwrap_or_else(|e| duplication_failure(e));
+                if trace {
+                    crate::mainutils::debug::memtrace_report(
+                        source.as_raw().cast(),
+                        copy.as_raw().cast(),
+                    );
+                    SET_RTRACE(copy.as_raw(), 1);
+                }
+                copy
+            }));
+            if let Some(pin) = &pin {
+                pin.require_live()
+                    .unwrap_or_else(|e| duplication_failure(e));
+            }
+            return match outcome {
+                Ok(copy) => copy.as_raw(),
+                Err(payload) => std::panic::resume_unwind(payload),
+            };
+        }
+        let t = duplicate1(s, deep);
         trace_duplication(s, t);
         t
     }
@@ -746,10 +929,10 @@ pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
 }
 
 /// Helper: call duplicate1 or lazy_duplicate based on deep flag.
-unsafe fn duplicate_child(s: SEXP, deep: c_int) -> SEXP {
+unsafe fn duplicate_child(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP {
     unsafe {
         if deep != 0 {
-            duplicate1(s, 1)
+            duplicate1_in(s, 1, state)
         } else {
             lazy_duplicate(s)
         }
@@ -818,34 +1001,157 @@ pub unsafe fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
 // Pairlist duplication
 // ---------------------------------------------------------------------------
 
-/// Duplicate a pairlist (LISTSXP/LANGSXP/DOTSXP).
-unsafe fn duplicate_list(s: SEXP, deep: c_int) -> SEXP {
-    unsafe {
-        let mut val: SEXP = R_NilValue();
-        let mut root = crate::sexp::protect::protect(val);
+struct PairlistCellSnapshot<'source> {
+    value: Sexp<'source>,
+    tag: Sexp<'source>,
+    attributes: Sexp<'source>,
+    flags: crate::sexp::ffi::SxpInfo,
+}
 
-        // First pass: build the skeleton list
-        let mut sp = s;
-        while !sp.is_null() && sp != R_NilValue() {
-            val = Rf_cons(R_NilValue(), val);
-            root = crate::sexp::protect::protect(val);
-            sp = CDR(sp);
+/// Resolve each original edge once before allocations or provider callbacks.
+/// Only child values are retained; detached source tail cells may be collected.
+fn snapshot_pairlist<'source>(
+    source: &Sexp<'source>,
+) -> SexpResult<Vec<PairlistCellSnapshot<'source>>> {
+    let mut cells = Vec::new();
+    let mut seen = HashSet::new();
+    let mut current = source.clone();
+    loop {
+        let node = match current.allocation() {
+            Ok(node) => node,
+            Err(SexpError::UnownedPointer { .. }) => {
+                if current.is_nil() {
+                    break;
+                }
+                return Err(SexpError::TypeMismatch {
+                    expected: "pairlist tail",
+                    actual: current.typeof_(),
+                });
+            }
+            Err(error) => return Err(error),
+        };
+        let key = node.link().ok_or(SexpError::StaleAllocation)?;
+        if seen.contains(&key) {
+            return Err(SexpError::EvaluationFailed {
+                message: "cyclic pairlist tail cannot be duplicated".into(),
+            });
         }
-
-        // Second pass: fill in CAR, TAG, and ATTRIB
-        sp = s;
-        let mut vp = val;
-        while !sp.is_null() && sp != R_NilValue() {
-            SETCAR(vp, duplicate_child(CAR(sp), deep));
-            COPY_TAG(vp, sp);
-            DUPLICATE_ATTRIB(vp, sp, deep);
-            sp = CDR(sp);
-            vp = CDR(vp);
+        seen.try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "pairlist traversal",
+            })?;
+        seen.insert(key);
+        let header = node
+            .heap_identity()
+            .node_snapshot(node)
+            .ok_or(SexpError::StaleAllocation)?;
+        let kind = header.sxpinfo.type_of();
+        if kind == SEXPTYPE::NILSXP {
+            break;
         }
-
-        drop(root);
-        val
+        if !matches!(
+            kind,
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+        ) {
+            return Err(SexpError::TypeMismatch {
+                expected: "pairlist tail",
+                actual: kind,
+            });
+        }
+        let crate::sexp::ffi::NodeBody::List(list) = header.data else {
+            return Err(SexpError::TypeMismatch {
+                expected: "pairlist storage",
+                actual: kind,
+            });
+        };
+        cells
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "pairlist snapshot",
+            })?;
+        cells.push(PairlistCellSnapshot {
+            value: current.checked_child(list.carval)?,
+            tag: current.checked_child(list.tagval)?,
+            attributes: current.checked_child(header.attrib)?,
+            flags: header.sxpinfo,
+        });
+        current = current.checked_child(list.cdrval)?;
     }
+    Ok(cells)
+}
+
+fn apply_pairlist_flags(copy: &Sexp<'_>, flags: crate::sexp::ffi::SxpInfo) -> SexpResult<()> {
+    let node = copy.allocation()?;
+    let heap = node.heap_identity();
+    let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+    header.sxpinfo.set_obj(flags.obj());
+    let gp = (header.sxpinfo.gp() & !S4_OBJECT_MASK) | (flags.gp() & S4_OBJECT_MASK);
+    header.sxpinfo.set_gp(gp);
+    heap.replace_node(node, header)
+        .ok_or(SexpError::StaleAllocation)
+}
+
+fn duplicate_list<'source>(
+    source: &Sexp<'source>,
+    deep: c_int,
+    state: &DuplicationState,
+) -> SexpResult<Sexp<'source>> {
+    let original = source
+        .runtime_owner
+        .as_ref()
+        .ok_or(SexpError::RootUnavailable)?;
+    let domain: crate::sexp::object::NodeDomain<'source> = source.node_factory()?.into();
+    crate::sexp::owner::with_runtime(original, |access| {
+        let cells = snapshot_pairlist(source)?;
+        let Some(first) = cells.first() else {
+            return Ok(domain.nil());
+        };
+        let allocator = access.allocator(&domain)?;
+        let mut head: Option<Sexp<'source>> = None;
+        let mut tail: Option<Sexp<'source>> = None;
+        for saved in &cells {
+            let value = access.with_native(|_| {
+                domain.wrap(unsafe { duplicate_child(saved.value.as_raw(), deep, state) })
+            })?;
+            let cell = allocator.pairlist_cell(&value, &domain.nil(), &saved.tag)?;
+            if let Some(previous) = &tail {
+                access.with_native(|_| {
+                    // Checked owners retain both ends; the native mutation
+                    // supplies the generational write barrier without a loan.
+                    unsafe {
+                        SETCDR(previous.as_raw(), cell.as_raw());
+                    }
+                    Ok(())
+                })?;
+            } else {
+                head = Some(cell.clone());
+            }
+            tail = Some(cell.clone());
+            if !saved.attributes.is_nil() {
+                let attributes = access.with_native(|_| {
+                    domain.wrap(unsafe { duplicate1_in(saved.attributes.as_raw(), deep, state) })
+                })?;
+                access.with_native(|_| {
+                    unsafe {
+                        SET_ATTRIB(cell.as_raw(), attributes.as_raw());
+                    }
+                    Ok(())
+                })?;
+                apply_pairlist_flags(&cell, saved.flags)?;
+            }
+        }
+        let copy = head.ok_or(SexpError::AllocationFailed {
+            object: "pairlist copy",
+        })?;
+        let node = copy.allocation()?;
+        node.heap_identity()
+            .retype_node(node, first.flags.type_of())
+            .ok_or(SexpError::StaleAllocation)?;
+        // GNU always copies head flags; tail flags follow attribute copying.
+        apply_pairlist_flags(&copy, first.flags)?;
+        access.require_active()?;
+        Ok(copy)
+    })?
 }
 
 // ---------------------------------------------------------------------------
@@ -1403,6 +1709,10 @@ mod altrep_tests;
 #[cfg(test)]
 #[path = "duplicate/extptr_identity_tests.rs"]
 mod extptr_identity_tests;
+
+#[cfg(test)]
+#[path = "duplicate/owned_pairlist_tests.rs"]
+mod owned_pairlist_tests;
 
 #[cfg(test)]
 mod tests {
