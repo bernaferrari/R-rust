@@ -666,3 +666,20 @@ changes are recorded separately.
 Checked admission now covers 22 of the 26 captured stats C/Fortran registrations.
 This unit implements stateless prediction; PPR training, COMMON settings,
 tracing and spline branches remain separate compatibility work.
+
+## Explicit paths before session bootstrap
+
+Core, Android and embedding sessions can now receive an explicit RuntimePathPolicy
+before base initialization and default package loading. This path performs no
+host R discovery, and the detached constructor reuses the original dispatch
+guard. The existing default constructors retain their behavior.
+
+Two native core controls pass in 4.12 seconds, covering explicit path admission
+and original dispatch restoration with the exact panic payload after real base
+bootstrap. A public embedding case also passes with two isolated policies,
+distinct session identities and recoverable evaluation errors. Its four separate
+dataset cases genuinely fail because portable dataset loading is still absent;
+they are recorded as remaining work, not constructor acceptance failures.
+Warnings-denied Clippy across rmath/r-embed targets with memory profiling and
+assigned formatting pass. This configuration seam adds no unsafe code and makes
+no new Miri or full package-compatibility claim.

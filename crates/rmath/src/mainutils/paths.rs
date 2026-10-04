@@ -16,6 +16,18 @@ pub struct RuntimePathPolicy {
 }
 
 impl RuntimePathPolicy {
+    /// Construct an explicit policy without reading environment variables or
+    /// discovering installed R libraries. An empty list disables host lookup.
+    pub fn new(library_paths: Vec<PathBuf>, temp_dir: impl Into<PathBuf>) -> Self {
+        let mut library_paths = library_paths;
+        dedupe_paths(&mut library_paths);
+        Self {
+            library_paths,
+            temp_dir: temp_dir.into(),
+            cache_dir: None,
+        }
+    }
+
     /// Deterministic storage-only tests must not discover or access host R.
     #[cfg(test)]
     pub(crate) fn for_gc_tests() -> Self {
@@ -169,6 +181,26 @@ fn discover_host_r_libraries() -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_policy_preserves_only_supplied_paths_without_discovery() {
+        let policy = RuntimePathPolicy::new(
+            vec![
+                PathBuf::new(),
+                PathBuf::from("/explicit"),
+                PathBuf::from("/explicit"),
+            ],
+            "/explicit/tmp",
+        );
+        assert_eq!(policy.library_paths(), [PathBuf::from("/explicit")]);
+        assert_eq!(policy.temp_dir(), Path::new("/explicit/tmp"));
+        assert_eq!(policy.cache_dir(), None);
+        assert!(
+            RuntimePathPolicy::new(Vec::new(), "/tmp")
+                .library_paths()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn android_policy_uses_only_app_owned_paths() {

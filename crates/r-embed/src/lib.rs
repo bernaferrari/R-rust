@@ -20,6 +20,7 @@ mod session;
 
 pub use rmath::android::{
     RArenaStats, RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
+    RuntimePathPolicy,
 };
 
 pub use packages::RPackageInfo;

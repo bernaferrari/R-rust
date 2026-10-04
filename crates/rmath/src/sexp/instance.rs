@@ -584,7 +584,9 @@ impl RInstance {
         Self::allocate_with_path_policy(crate::mainutils::paths::RuntimePathPolicy::for_gc_tests())
     }
 
-    fn allocate_with_path_policy(path_policy: crate::mainutils::paths::RuntimePathPolicy) -> Self {
+    pub(crate) fn allocate_with_path_policy(
+        path_policy: crate::mainutils::paths::RuntimePathPolicy,
+    ) -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
         let arena = RArena::new();

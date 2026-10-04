@@ -283,6 +283,19 @@ impl RSession {
     /// Initializes an isolated rmath session with its own arena, protection
     /// stack, environments, RNG state, and output capture.
     pub fn new() -> Result<Self, RSessionError> {
+        Self::construct(rmath::android::RSession::new)
+    }
+
+    /// Initialize with explicit paths, without discovering host R libraries.
+    pub fn new_with_path_policy(
+        policy: rmath::android::RuntimePathPolicy,
+    ) -> Result<Self, RSessionError> {
+        Self::construct(|| rmath::android::RSession::new_with_path_policy(policy))
+    }
+
+    fn construct(
+        constructor: impl FnOnce() -> rmath::android::RSession,
+    ) -> Result<Self, RSessionError> {
         let session_id = NEXT_SESSION_ID
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 current.checked_add(1)
@@ -291,7 +304,7 @@ impl RSession {
         Ok(RSession {
             session_id,
             active: true,
-            inner: rmath::android::RSession::new(),
+            inner: constructor(),
             interactive_scene: None,
         })
     }

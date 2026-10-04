@@ -23,6 +23,7 @@ mod focused_console_ownership_tests;
 mod output_contract_tests;
 pub(crate) mod result_budget;
 
+pub use crate::mainutils::paths::RuntimePathPolicy;
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 #[cfg(test)]
@@ -235,6 +236,14 @@ impl RSession {
     pub fn new() -> Self {
         RSession {
             core: CoreRSession::new_detached(),
+            result_limit: None,
+        }
+    }
+
+    /// Configure library discovery before the runtime loads default packages.
+    pub fn new_with_path_policy(policy: RuntimePathPolicy) -> Self {
+        RSession {
+            core: CoreRSession::new_detached_with_path_policy(policy),
             result_limit: None,
         }
     }

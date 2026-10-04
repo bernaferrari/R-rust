@@ -576,6 +576,12 @@ impl RSession {
         Self::new_with_default_packages(true)
     }
 
+    /// Initialize the full runtime with an explicit path policy installed
+    /// before base bootstrap or default package loading.
+    pub fn new_with_path_policy(policy: crate::mainutils::paths::RuntimePathPolicy) -> Self {
+        Self::new_with_instance(RInstance::allocate_with_path_policy(policy), true, true)
+    }
+
     /// Build the real base runtime without host package discovery. Collector
     /// unit tests use this to avoid loading unrelated installed R packages.
     #[cfg(test)]
@@ -709,6 +715,12 @@ impl RSession {
     /// unrelated translated code on the same thread sees as current.
     pub(crate) fn new_detached() -> Self {
         Self::construct_detached(Self::new)
+    }
+
+    pub(crate) fn new_detached_with_path_policy(
+        policy: crate::mainutils::paths::RuntimePathPolicy,
+    ) -> Self {
+        Self::construct_detached(|| Self::new_with_path_policy(policy))
     }
 
     fn construct_detached(constructor: impl FnOnce() -> Self) -> Self {
@@ -1908,6 +1920,31 @@ mod tests {
         current_instance_ptr, replace_current_instance, with_current_instance,
     };
     use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
+
+    #[test]
+    fn explicit_path_policy_bootstrap_restores_original_dispatch_on_unwind() {
+        let prior = RSession::new_for_gc_tests();
+        let original = prior.instance_ptr();
+        let owner = prior.owner_token().unwrap();
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            RSession::construct_detached(|| {
+                let session = RSession::new_with_path_policy(
+                    crate::mainutils::paths::RuntimePathPolicy::new(Vec::new(), "/tmp/explicit"),
+                );
+                assert!(session.library_paths().is_empty());
+                assert_eq!(session.temp_dir(), std::path::Path::new("/tmp/explicit"));
+                assert!(session.base_env().is_some());
+                std::panic::panic_any(0xDADA_3275_u32);
+            })
+        }));
+        let payload = match result {
+            Err(payload) => payload,
+            Ok(_) => panic!("bootstrap must preserve the injected panic"),
+        };
+        assert_eq!(payload.downcast_ref::<u32>(), Some(&0xDADA_3275));
+        assert_eq!(current_instance_ptr(), Some(original));
+        owner.require_active().unwrap();
+    }
 
     #[test]
     fn detached_bootstrap_restores_only_live_prior_owner_on_callback_and_unwind() {
