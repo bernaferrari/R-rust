@@ -896,3 +896,22 @@ isolation unchanged. Its original loaded production paths stayed fixed through
 the actual footer; this scoped evidence does not attest unrelated concurrent
 agent edits as one whole-HEAD run. rport-wszw.7.1 is complete. The separate
 isVectorizable admission gap remains rport-wszw.7.1.1.
+
+## Installed methods startup preserves original caches (rport-2cxuy.13)
+
+Installed methods images already contain their class and implicit-generic tables.
+Startup now initializes dispatch without manually recaching that namespace or
+rewriting matrix/array initializers. The original initializer closures retain
+their shared local capture environment and its two helper functions, rather
+than publishing replacement helpers in the namespace.
+
+The independent pinned GNU oracle confirms cache identity, the captured helper
+environment and absence of those helpers from namespace bindings. The canonical
+default-session test passed (60.34 seconds), preserving its four assertions,
+compiled-body/JIT restoration and collection checks. Its dispatch query was
+corrected to the actual base primitive `.isMethodsDispatchOn()`; GNU rejects the
+former methods-qualified spelling. Thus its constructor and assertions were
+preserved, but the fixture is not byte-identical to the preceding commit.
+The separate installed cache/initializer identity test passed (22.83 seconds),
+and all-target Clippy plus assigned formatting passed. These are completed
+native startup checks, not a strict-Miri proof of the entire package bootstrap.

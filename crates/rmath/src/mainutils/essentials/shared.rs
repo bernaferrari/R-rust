@@ -1375,11 +1375,9 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
     }
 }
 
-/// GNU methods `zzz.R` `.onLoad`: `.initImplicitGenerics(where)` then
-/// `cacheMetaData(...)`. The installed image already ran
-/// `.initImplicitGenerics` (table `.__IG__table` has toeplitz, norm, …)
-/// and removed the helper. Re-cache that table into the session so
-/// `implicitGeneric("toeplitz")` finds GNU's `function(x, ...)` form.
+/// Restore the session-specific methods dispatch state after loading its image.
+/// The installed image contains its class and implicit-generic tables already;
+/// GNU's installed `.onLoad` initializes dispatch without recaching that namespace.
 pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
     unsafe {
         if where_env.is_null() || where_env == R_NilValue() {
@@ -1400,10 +1398,6 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         crate::library::methods::methods_list_dispatch::R_set_method_dispatch(on);
         crate::library::methods::methods_list_dispatch::R_initMethodDispatch(ns);
 
-        let attach = Rf_ScalarLogical(TRUE);
-        let _attach = protect(attach);
-        eval_methods_ns_fun(ns, c"cacheMetaData", where_env, Some(attach));
-        register_matrix_initialize_helpers(ns);
         if let Some(attach_env) = attached_package_env("methods") {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
@@ -1509,97 +1503,6 @@ unsafe fn register_implicit_generics_table(ns: SEXP) {
         })
         .and_then(|result| result)
         .unwrap_or_else(|error| package_error(error.to_string()));
-    }
-}
-
-/// GNU `.InitBasicClassMethods` closes `initialize,matrix` over local
-/// `initMatrix`/`initArray`. If that call frame is not the method
-/// environment, `new("Foo", matrix())` fails with `initMatrix` not found.
-unsafe fn register_matrix_initialize_helpers(ns: SEXP) {
-    unsafe {
-        let src = r#"{
-initMatrix <- function(.Object, data = NA, nrow = 1, ncol = 1,
-                       byrow = FALSE, dimnames = NULL, ...) {
-    na <- nargs()
-    if(length(dots <- list(...)) && ".Data" %in% names(dots)) {
-        if(na == 2)
-            .Object <- .mergeAttrs(dots$.Data, .Object)
-        else {
-            dat <- dots$.Data
-            dots <- dots[names(dots) != ".Data"]
-            if(na == 2 + length(dots))
-                .Object <- .mergeAttrs(as.matrix(dat), .Object, dots)
-            else
-                stop("cannot specify matrix() arguments when specifying '.Data'")
-        }
-    }
-    else if(is.matrix(data) && na == 2 + length(dots))
-        .Object <- .mergeAttrs(data, .Object, dots)
-    else {
-        if (missing(nrow))
-            nrow <- ceiling(length(data)/ncol)
-        else if (missing(ncol))
-            ncol <- ceiling(length(data)/nrow)
-        value <- matrix(data, nrow, ncol, byrow, dimnames)
-        .Object <- .mergeAttrs(value, .Object, dots)
-    }
-    validObject(.Object)
-    .Object
-}
-initArray <- function(.Object, data = NA, dim = length(data),
-                      dimnames = NULL, ...) {
-    na <- nargs()
-    if(length(dots <- list(...)) && ".Data" %in% names(dots)) {
-        if(na == 2)
-            .Object <- .mergeAttrs(dots$.Data, .Object)
-        else {
-            dat <- dots$.Data
-            dots <- dots[names(dots) != ".Data"]
-            if(na == 2 + length(dots))
-                .Object <- .mergeAttrs(as.array(dat), .Object, dots)
-            else
-                stop("cannot specify array() arguments when specifying '.Data'")
-        }
-    }
-    else if(is.array(data) && na == 2 + length(dots))
-        .Object <- .mergeAttrs(data, .Object, dots)
-    else {
-        value <- array(data, dim, dimnames)
-        .Object <- .mergeAttrs(value, .Object, dots)
-    }
-    validObject(.Object)
-    .Object
-}
-assign("initMatrix", initMatrix, envir = asNamespace("methods"))
-assign("initArray", initArray, envir = asNamespace("methods"))
-for (sig in c("matrix", "array")) {
-    mm <- try(getMethod("initialize", sig, where = asNamespace("methods"),
-                       optional = TRUE), silent = TRUE)
-    if (inherits(mm, "try-error") || is.null(mm)) next
-    fun <- if (is(mm, "MethodDefinition")) mm@.Data else mm
-    if (!is.function(fun)) next
-    e <- environment(fun)
-    if (!is.environment(e) || !exists("initMatrix", envir = e, inherits = TRUE)
-        || !exists("initArray", envir = e, inherits = TRUE)) {
-        environment(fun) <- asNamespace("methods")
-        if (is(mm, "MethodDefinition")) mm@.Data <- fun
-    }
-}
-}
-"#;
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(src, arena, parser_factory.clone())
-        });
-        crate::eval::parser::flush_literal_warnings();
-        let Ok(exprs) = parsed else {
-            return;
-        };
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for expr in &exprs {
-                let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), ns);
-            }
-        }));
     }
 }
 
@@ -3868,7 +3771,7 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
         let old_enclos = crate::sexp::accessors::ENCLOS(global);
         crate::sexp::accessors::SET_ENCLOS(global, package_env);
         crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
-        // methods onLoad already ran cacheMetaData on the namespace.
+        // The installed methods image already contains its namespace metadata.
         // Re-running it on package:methods walks every methods generic.
         // Still copy GNU exportPattern class/method metadata onto the
         // attached env so findClass/exists(inherits=FALSE) see .__C__*.
@@ -4878,7 +4781,7 @@ mod methods_startup_tests {
     fn default_methods_startup_populates_metadata_and_restores_compiled_body() {
         let mut session = crate::sexp::session::RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
-            "c(methods:::.isMethodsDispatchOn(),
+            "c(.isMethodsDispatchOn(),
                !is.null(methods::getClassDef('envRefClass')),
                !is.null(methods:::.getClassesFromCache('envRefClass')),
                is.environment(methods::getClassDef('envRefClass')@refMethods))",
@@ -4943,3 +4846,7 @@ mod methods_startup_tests {
 #[cfg(test)]
 #[path = "shared/implicit_generics_tests.rs"]
 mod implicit_generics_tests;
+
+#[cfg(test)]
+#[path = "shared/methods_cache_tests.rs"]
+mod methods_cache_tests;
