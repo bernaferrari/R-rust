@@ -14,7 +14,7 @@ fn qr_apply_rank_deficient_lapack_and_empty_recover() {
         .eval("qr.qy(qr(matrix(1:6,3,2)),1:2)")
         .expect_err("bad rows");
     assert!(e.to_string().contains("rows"));
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn qr_apply_rejects_short_qraux_and_bad_rhs_dimensions_recoverably() {
         .eval("qr.qty(qr=qr(matrix(1:6,3,2)), y=matrix(1:2,2,1))")
         .expect_err("bad rhs rows must fail");
     assert!(error.to_string().contains("rows"));
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn qr_apply_rejects_nonfinite_linpack_inputs_and_recovers() {
     ] {
         let error = s.eval(code).expect_err("nonfinite LINPACK input");
         assert!(error.to_string().contains("NA/NaN/Inf"), "{error}");
-        assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+        assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
     }
 }
 
@@ -81,5 +81,5 @@ fn qr_apply_allocation_limit_is_recoverable() {
     assert!(error.to_string().contains("allocation"), "{error}");
     limits.max_alloc_bytes = 0;
     s.set_resource_limits(limits).unwrap();
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }

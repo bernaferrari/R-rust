@@ -51,7 +51,7 @@ fn rendering_obeys_function_dispatch_and_preserves_user_bindings() {
         .render_with_dimensions("plot(x=1:3, y=1:3)", 100, 100)
         .unwrap();
     assert!(bytes.starts_with(b"\x89PNG"));
-    assert_eq!(s.eval("counter").unwrap(), "[1] 1");
+    assert_eq!(s.eval("counter").unwrap(), "[1] 1\n");
     s.eval("stopifnot(old == 11, newd == 22, result == 33)")
         .unwrap();
 }

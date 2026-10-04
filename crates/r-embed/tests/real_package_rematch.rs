@@ -44,14 +44,14 @@ ma <- re_match_all("(?<w>[a-z])(?<n>[0-9])", c("a1 b2", "zz"))
                 r#"identical(colnames(m), c(".match","word","num")) && m[1,"word"]=="abc" && m[1,"num"]=="123""#
             )
             .expect("RM1 named capture columns"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // RM2: non-matching text yields NA in .match and every group column.
     assert_eq!(
         session
             .eval(r#"is.na(m2[1,"num"]) && is.na(m2[1,".match"])"#)
             .expect("RM2 no-match NAs"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // RM3: re_match_all returns one 0-or-more-row matrix per text element.
     assert_eq!(
@@ -60,13 +60,13 @@ ma <- re_match_all("(?<w>[a-z])(?<n>[0-9])", c("a1 b2", "zz"))
                 r#"is.list(ma) && length(ma)==2 && nrow(ma[[1]])==2 && ma[[1]][1,"w"]=="a" && nrow(ma[[2]])==0"#
             )
             .expect("RM3 all-matches matrices"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // RM4: the result is a character matrix.
     assert_eq!(
         session
             .eval(r#"is.matrix(m) && is.character(m)"#)
             .expect("RM4 character matrix"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 }

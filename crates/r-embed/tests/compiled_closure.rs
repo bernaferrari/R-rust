@@ -237,7 +237,7 @@ fn malformed_gnu_constant_indexes_cannot_escape_through_source_fallback() {
                 .eval(&format!("unserialize(as.raw(c({values})))"))
                 .is_err()
         );
-        assert_eq!(session.eval("1 + 1").unwrap(), "[1] 2");
+        assert_eq!(session.eval("1 + 1").unwrap(), "[1] 2\n");
     }
 }
 
@@ -262,10 +262,10 @@ fn gnu_literal_instruction_wins_over_retained_source() {
     assert_eq!(
         s.eval(&format!("f <- unserialize(as.raw(c({values}))); f()"))
             .unwrap(),
-        "[1] FALSE"
+        "[1] FALSE\n"
     );
     assert_eq!(
         s.eval("g <- unserialize(serialize(f,NULL)); g()").unwrap(),
-        "[1] FALSE"
+        "[1] FALSE\n"
     );
 }

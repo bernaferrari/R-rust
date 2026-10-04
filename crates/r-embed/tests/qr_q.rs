@@ -14,7 +14,7 @@ fn qr_q_complete_wide_empty_and_dvec_contracts() {
     assert_eq!(got.trim(), "[1] TRUE TRUE TRUE");
     let err = s.eval("qr.Q(list())").expect_err("invalid qr");
     assert!(err.to_string().contains("QR"));
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn qr_q_rejects_malformed_aux_and_recovers() {
         .eval("q<-qr(matrix(1:6,3,2)); q$qraux<-numeric(); qr.Q(q)")
         .expect_err("malformed qraux must fail");
     assert!(error.to_string().contains("QR"));
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }
 
 #[test]
@@ -54,5 +54,5 @@ fn qr_q_allocation_limit_is_recoverable() {
     assert!(error.to_string().contains("allocation"), "{error}");
     limits.max_alloc_bytes = 0;
     s.set_resource_limits(limits).unwrap();
-    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
 }

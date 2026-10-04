@@ -32,21 +32,21 @@ fn real_package_corpus_zeallot() {
         session
             .eval("c(x, y) %<-% c(1, 2); x + y == 3")
             .expect("Z1 flat unpack"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // Z2: nested c() LHS pattern unpacks nested list values recursively.
     assert_eq!(
         session
             .eval("c(a, c(b, d)) %<-% list(1, list(2, 3)); a + b + d == 6")
             .expect("Z2 nested unpack"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // Z3: RHS names do not rebind LHS positionals (element-wise matching).
     assert_eq!(
         session
             .eval("c(n1, n2) %<-% c(a=1, b=2); n1 == 1 && n2 == 2")
             .expect("Z3 named RHS"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // Z4: short value raises the classed zeallot condition with the exact
     // oracle message (conditionMessage through tryCatch).
@@ -54,20 +54,20 @@ fn real_package_corpus_zeallot() {
         session
             .eval("tryCatch({ c(x, y) %<-% c(1) }, error = function(e) conditionMessage(e))")
             .expect("Z4 error message"),
-        "[1] \"missing value for variable `y`\""
+        "[1] \"missing value for variable `y`\"\n"
     );
     // Z5: right-to-left operator mirrors %<-%.
     assert_eq!(
         session
             .eval("c(1, 2) %->% c(p, q); q == 2")
             .expect("Z5 %->% operator"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // Z6: destructure() S3 dispatch — data.frame method splits columns.
     assert_eq!(
         session
             .eval("c(da, db) %<-% data.frame(a=11, b=22); da == 11 && db == 22")
             .expect("Z6 data.frame destructure"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 }

@@ -14,6 +14,7 @@
     "format": "oxfmt \"**/*.{ts,tsx}\"",
     "format:check": "oxfmt \"**/*.{ts,tsx}\" --check",
     "typecheck": "tsc -b",
+    "pretypecheck": "node scripts/prepare-runtime.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:unit": "vitest run --config vitest.config.ts && node --test scripts/wasm-memory-limit.test.mjs"

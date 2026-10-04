@@ -221,5 +221,5 @@ fn raster_image_xpd_clips_outside_plot_and_session_recovers() {
         120,
     );
     assert!(error.is_err());
-    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2");
+    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2\n");
 }

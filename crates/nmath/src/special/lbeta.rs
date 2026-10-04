@@ -9,7 +9,7 @@ use crate::constants::*;
 use crate::error::*;
 use crate::special::gamma::{gammafn, lgammafn};
 use crate::special::lgammacor::lgammacor;
-use libm::{fabs, log, log1p};
+use libm::{log, log1p};
 
 const M_LN_SQRT_2PI: f64 = 0.918938533204672741780329736406; // log(sqrt(2*pi))
 

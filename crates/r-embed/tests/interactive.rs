@@ -14,8 +14,8 @@ fn interactive_evaluation_combines_text_and_plot_once() {
     assert!(result.output.contains("hello"), "{}", result.output);
     assert!(result.output.contains("[1] 42"), "{}", result.output);
     assert!(result.png.as_ref().is_some_and(|png| !png.is_empty()));
-    assert_eq!(session.eval("x").unwrap(), "[1] 40");
-    assert_eq!(session.eval("counter").unwrap(), "[1] 1");
+    assert_eq!(session.eval("x").unwrap(), "[1] 40\n");
+    assert_eq!(session.eval("counter").unwrap(), "[1] 1\n");
     let invisible = session.eval_interactive("assigned <- 9", 320, 240).unwrap();
     assert!(invisible.output.is_empty(), "{}", invisible.output);
 }

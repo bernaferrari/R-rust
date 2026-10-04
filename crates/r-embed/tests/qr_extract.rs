@@ -11,7 +11,7 @@ fn qr_r_default_trims_rows_and_preserves_dimnames() {
                max(abs(z - matrix(c(-3.74165738677,0,-8.5523597412,1.9639610121),2,2))) < 1e-9)",
         )
         .expect("qr.R default");
-    assert_eq!(result, "[1] TRUE TRUE TRUE");
+    assert_eq!(result, "[1] TRUE TRUE TRUE\n");
 }
 
 #[test]
@@ -25,11 +25,11 @@ fn qr_r_complete_keeps_all_rows_and_recovers_after_invalid_object() {
                z[3,1] == 0, z[3,2] == 0)",
         )
         .expect("qr.R complete");
-    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE");
+    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE\n");
 
     let error = session.eval("qr.R(list())").expect_err("invalid qr object");
     assert!(error.to_string().contains("QR"));
-    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2");
+    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2\n");
 }
 
 #[test]

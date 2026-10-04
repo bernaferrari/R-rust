@@ -16,7 +16,7 @@ fn qr_lapack_true_matches_gnu_shape_rank_pivot_and_values() {
                max(abs(q$qraux - c(1.45584230584, 1.21650687589))) < 1e-10)",
         )
         .expect("qr(LAPACK=TRUE)");
-    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE TRUE TRUE TRUE");
+    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE TRUE TRUE TRUE\n");
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn qr_default_linpack_and_lapack_rank_behavior_remain_distinct() {
                identical(q1$rank, 2L), identical(q1$pivot, c(2L,1L)))",
         )
         .expect("default and LAPACK QR");
-    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE");
+    assert_eq!(result, "[1] TRUE TRUE TRUE TRUE\n");
 }
 
 #[test]
@@ -40,7 +40,7 @@ fn qr_lapack_rejects_zero_row_input_with_recoverable_error() {
         .eval("qr(matrix(character(), nrow=0, ncol=2), LAPACK=TRUE)")
         .expect_err("zero-row LAPACK QR must fail");
     assert!(error.to_string().contains("DGEQP3"), "{error}");
-    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2");
+    assert_eq!(session.eval("1 + 1").expect("session recovery"), "[1] 2\n");
 }
 
 #[test]

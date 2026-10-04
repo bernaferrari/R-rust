@@ -91,8 +91,8 @@ fn enable_jit_level_is_session_local() {
     right
         .eval("right_original <- compiler::enableJIT(2L)")
         .unwrap();
-    assert_eq!(left.eval("compiler::enableJIT(-1L)").unwrap(), "[1] 0");
-    assert_eq!(right.eval("compiler::enableJIT(-1L)").unwrap(), "[1] 2");
+    assert_eq!(left.eval("compiler::enableJIT(-1L)").unwrap(), "[1] 0\n");
+    assert_eq!(right.eval("compiler::enableJIT(-1L)").unwrap(), "[1] 2\n");
 
     left.eval("compiler::enableJIT(left_original)").unwrap();
     right.eval("compiler::enableJIT(right_original)").unwrap();

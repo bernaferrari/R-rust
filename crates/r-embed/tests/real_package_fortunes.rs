@@ -28,31 +28,31 @@ fn real_package_corpus_fortunes() {
         session
             .eval("identical(class(fortune(10)), \"fortune\")")
             .expect("fortune class probe"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("grepl(\"SAS\", capture.output(print(fortune(10)))[2])")
             .expect("fortune print probe"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("is.data.frame(read.fortunes())")
             .expect("read.fortunes data.frame probe"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("nrow(read.fortunes()) > 300")
             .expect("read.fortunes row count probe"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("grepl(\"SAS\", fortune(10)$quote)")
             .expect("fortune quote probe"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 
     // F6: fortune(N) is consistent with read.fortunes() row N (author).

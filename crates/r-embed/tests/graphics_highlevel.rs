@@ -26,15 +26,15 @@ fn hist_returns_breaks_counts_density_and_mids() {
     let result = session
         .eval("h <- hist(c(0.1,0.2,0.8,1.2,1.9), breaks=c(0,1,2), plot=FALSE); identical(h$counts, c(3L,2L)) && identical(h$density, c(.6,.4)) && identical(h$mids, c(.5,1.5)) && isTRUE(h$equidist)")
         .expect("hist");
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result, "[1] TRUE\n");
     let boundaries = session
         .eval("c(hist(c(0,1,2), breaks=c(0,1,2), fuzz=0, right=TRUE, include.lowest=TRUE, plot=FALSE)$counts, hist(c(0,1,2), breaks=c(0,1,2), fuzz=0, right=FALSE, include.lowest=TRUE, plot=FALSE)$counts)")
         .expect("hist boundaries");
-    assert_eq!(boundaries, "[1] 2 1 1 2");
+    assert_eq!(boundaries, "[1] 2 1 1 2\n");
     let xname = session
         .eval("foo <- c(0, 1); hist(foo, breaks=c(0, 1), plot=FALSE)$xname")
         .expect("hist xname");
-    assert_eq!(xname, "[1] \"foo\"");
+    assert_eq!(xname, "[1] \"foo\"\n");
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn pretty_public_frontend_matches_r_pretty_contract() {
     let result = session
         .eval("identical(pretty(c(1,4)), c(1,1.5,2,2.5,3,3.5,4)) && identical(pretty(c(1,4), bounds=FALSE), c(1,1.5,2,2.5,3,3.5,4)) && length(pretty(NULL)) == 0L && identical(pretty(c(1,4), n=5.7), pretty(c(1,4))) && identical(pretty.default(x=c(1,4), 5L), pretty(c(1,4)))")
         .expect("pretty");
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result, "[1] TRUE\n");
 }
 
 #[test]
@@ -129,11 +129,11 @@ fn barplot_plot_false_returns_bar_centers_and_plotting_works() {
     let result = session
         .eval("identical(round(barplot(c(2,4,3), plot=FALSE), 10), c(.7,1.9,3.1))")
         .expect("barplot");
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result, "[1] TRUE\n");
     let matrix_positions = session
         .eval("m <- matrix(c(2,4,3,1,5,2), nrow=2); all(abs(as.vector(barplot(m, beside=TRUE, plot=FALSE)) - c(1.5,2.5,4.5,5.5,7.5,8.5)) < 1e-12) && all(abs(as.vector(barplot(m, beside=FALSE, plot=FALSE)) - c(.7,1.9,3.1)) < 1e-12)")
         .expect("barplot positions");
-    assert_eq!(matrix_positions, "[1] TRUE", "matrix positions: {}", session.eval("m <- matrix(c(2,4,3,1,5,2), nrow=2); paste(as.vector(barplot(m, beside=TRUE, plot=FALSE)), collapse=','); paste(as.vector(barplot(m, beside=FALSE, plot=FALSE)), collapse=',')").unwrap());
+    assert_eq!(matrix_positions, "[1] TRUE\n", "matrix positions: {}", session.eval("m <- matrix(c(2,4,3,1,5,2), nrow=2); paste(as.vector(barplot(m, beside=TRUE, plot=FALSE)), collapse=','); paste(as.vector(barplot(m, beside=FALSE, plot=FALSE)), collapse=',')").unwrap());
     let png = session
         .render_with_dimensions("barplot(c(2,4,3), col='red', main='bars')", 320, 240)
         .expect("barplot render");
@@ -141,7 +141,7 @@ fn barplot_plot_false_returns_bar_centers_and_plotting_works() {
     let signed = session
         .eval("p <- barplot(c(-2,0,3), names.arg=c('neg','zero','pos'), plot=FALSE); length(p) == 3L && p[1] < p[2] && p[2] < p[3]")
         .expect("signed bars");
-    assert_eq!(signed, "[1] TRUE");
+    assert_eq!(signed, "[1] TRUE\n");
     let signed_png = session
         .render_with_dimensions(
             "barplot(c(-2,0,3), names.arg=c('neg','zero','pos'), main='signed')",
@@ -161,23 +161,23 @@ fn boxplot_plot_false_returns_upstream_statistic_fields() {
     let result = session
         .eval("b <- boxplot(c(1,2,3,4,100), plot=FALSE); identical(dim(b$stats), c(5L,1L)) && identical(b$n, 5) && identical(b$stats[,1], c(1,2,3,4,4)) && identical(round(b$conf[,1],6), c(1.586805,4.413195)) && identical(b$out, 100) && identical(b$group, 1)")
         .expect("boxplot");
-    assert_eq!(result, "[1] TRUE", "box contract: {}", session.eval("b <- boxplot(c(1,2,3,4,100), plot=FALSE); paste(identical(dim(b$stats), c(5L,1L)), identical(b$n, 5L), identical(b$stats[,1], c(1,2,3,4,4)), identical(round(b$conf[,1],6), c(1.586805,4.413195)), identical(b$out, 100), identical(b$group, 1), sep='|')").unwrap());
+    assert_eq!(result, "[1] TRUE\n", "box contract: {}", session.eval("b <- boxplot(c(1,2,3,4,100), plot=FALSE); paste(identical(dim(b$stats), c(5L,1L)), identical(b$n, 5L), identical(b$stats[,1], c(1,2,3,4,4)), identical(round(b$conf[,1],6), c(1.586805,4.413195)), identical(b$out, 100), identical(b$group, 1), sep='|')").unwrap());
     let empty = session
         .eval("b <- boxplot(numeric(), plot=FALSE); identical(b$n, 0) && all(is.na(b$stats)) && length(b$out) == 0L")
         .expect("empty boxplot");
-    assert_eq!(empty, "[1] TRUE");
+    assert_eq!(empty, "[1] TRUE\n");
     let hinges = session
         .eval("b <- boxplot(1:4, plot=FALSE); identical(b$stats[,1], c(1,1.5,2.5,3.5,4)) && identical(boxplot(1:5, plot=FALSE)$stats[,1], c(1,2,3,4,5))")
         .expect("Tukey hinges");
-    assert_eq!(hinges, "[1] TRUE");
+    assert_eq!(hinges, "[1] TRUE\n");
     let coef_zero = session
         .eval("b <- boxplot(c(1,2,3,4,100), range=0, plot=FALSE); length(b$out) == 0L && identical(b$stats[,1], c(1,2,3,4,100))")
         .expect("range zero");
-    assert_eq!(coef_zero, "[1] TRUE");
+    assert_eq!(coef_zero, "[1] TRUE\n");
     let groups = session
         .eval("b <- boxplot(c(1,2), c(3,4), plot=FALSE); identical(dim(b$stats), c(5L,2L)) && identical(b$n, c(2,2))")
         .expect("multiple boxplot groups");
-    assert_eq!(groups, "[1] TRUE");
+    assert_eq!(groups, "[1] TRUE\n");
     let png = session
         .render_with_dimensions(
             "boxplot(c(1,2,3,4,100), col='skyblue', main='box')",
@@ -227,7 +227,7 @@ fn complete_statistics_fixture_matches_pinned_oracle() {
 fn barplot_accepts_one_dimensional_tables_like_numeric_vectors() {
     let mut session = RSession::new().unwrap();
     let result = session.eval("counts <- table(c(1,1,2,3,3,3)); max(abs(as.vector(barplot(counts, plot=FALSE)) - c(.7,1.9,3.1))) < 1e-12").unwrap();
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result, "[1] TRUE\n");
     let png = session
         .render_with_dimensions("barplot(counts)", 320, 240)
         .unwrap();

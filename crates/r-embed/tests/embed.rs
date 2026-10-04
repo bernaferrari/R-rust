@@ -172,17 +172,17 @@ fn eval_uses_isolated_session_state() {
     let mut left = RSession::new().expect("left session");
     let mut right = RSession::new().expect("right session");
 
-    assert_eq!(left.eval("x <- 11\nx").unwrap(), "[1] 11");
-    assert_eq!(right.eval("x <- 29\nx").unwrap(), "[1] 29");
-    assert_eq!(left.eval("x").unwrap(), "[1] 11");
-    assert_eq!(right.eval("x").unwrap(), "[1] 29");
+    assert_eq!(left.eval("x <- 11\nx").unwrap(), "[1] 11\n");
+    assert_eq!(right.eval("x <- 29\nx").unwrap(), "[1] 29\n");
+    assert_eq!(left.eval("x").unwrap(), "[1] 11\n");
+    assert_eq!(right.eval("x").unwrap(), "[1] 29\n");
 }
 
 #[test]
 fn eval_result_returns_owned_typed_value() {
     let mut session = RSession::new().expect("session");
     let result = session.eval_result("c(1, 2, 3)").expect("eval");
-    assert_eq!(result.output, "[1] 1 2 3");
+    assert_eq!(result.output, "[1] 1 2 3\n");
     assert_eq!(
         result.value,
         RValue::RealVector(vec![Some(1.0), Some(2.0), Some(3.0)])
@@ -219,7 +219,7 @@ fn resource_limits_are_session_owned_and_enforced() {
         .eval_result("{ 1 + 1 }")
         .expect_err("depth limit should reject nested eval");
     assert!(err.to_string().contains("too deeply"));
-    assert_eq!(normal.eval("1 + 1").expect("normal eval"), "[1] 2");
+    assert_eq!(normal.eval("1 + 1").expect("normal eval"), "[1] 2\n");
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn package_helpers_load_android_library_package() {
     assert_eq!(session.installed_packages()[0].name, "tiny");
     assert!(!session.package_available("../tiny"));
     session.load_package("tiny").expect("load package");
-    assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42");
+    assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42\n");
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -698,100 +698,100 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         session
             .eval("packageVersion(\"corpbase\") == \"0.1.0\"")
             .expect("package version"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("packageDescription(\"corpbase\")$Title")
             .expect("package description title"),
-        "[1] \"Corpus Base Package\""
+        "[1] \"Corpus Base Package\"\n"
     );
     assert_eq!(
         session
             .eval("packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))")
             .expect("package description fields"),
-        "[1] \"corpbase\" \"0.1.0\"   "
+        "[1] \"corpbase\" \"0.1.0\"   \n"
     );
     assert_eq!(
         session
             .eval("is.na(packageDescription(\"corpbase\", fields = \"NoSuchField\"))")
             .expect("missing package description field"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
             session
                 .eval("c(requireNamespace(\"corpbase\"), exists(\"base_value\"), \"corpbase\" %in% loadedNamespaces())")
                 .expect("namespace load without attach"),
-            "[1]  TRUE FALSE  TRUE"
+            "[1]  TRUE FALSE  TRUE\n"
         );
     assert_eq!(
             session
                 .eval("f <- get(\"base_value\", envir = asNamespace(\"corpbase\")); c(is.environment(getNamespace(\"corpbase\")), f())")
                 .expect("namespace access"),
-            "[1]  1 10"
+            "[1]  1 10\n"
         );
     assert_eq!(
             session
                 .eval("c(corpbase::base_value(), corpbase:::corp_generic.corpclass(corpbase::make_corp()))")
                 .expect("namespace operators"),
-            "[1]  10 123"
+            "[1]  10 123\n"
         );
 
     session.load_package("corpbase").expect("load corpbase");
-    assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10");
+    assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10\n");
     assert_eq!(
         session
             .eval("corp_generic(make_corp())")
             .expect("s3 dispatch"),
-        "[1] 123"
+        "[1] 123\n"
     );
     assert_eq!(
         session
             .eval("data(package = \"corpbase\")")
             .expect("list data"),
-        "[1] \"corp_data\""
+        "[1] \"corp_data\"\n"
     );
     assert_eq!(
         session
             .eval("data(\"corp_data\", package = \"corpbase\")\ncorp_data")
             .expect("load data"),
-        "[1] 55"
+        "[1] 55\n"
     );
 
     session.load_package("corpimport").expect("load import");
     assert_eq!(
         session.eval("import_value()").expect("import value"),
-        "[1] 15"
+        "[1] 15\n"
     );
     session.load_package("corpfrom").expect("load importFrom");
-    assert_eq!(session.eval("from_value()").expect("from value"), "[1] 17");
+    assert_eq!(session.eval("from_value()").expect("from value"), "[1] 17\n");
     session.load_package("corpcollate").expect("load collate");
     assert_eq!(
         session
             .eval("collate_value")
             .expect("Collate source ordering"),
-        "[1] 42"
+        "[1] 42\n"
     );
     session.load_package("corpdepends").expect("load Depends");
     assert_eq!(
         session
             .eval("c(depends_value(), base_value())")
             .expect("Depends package visibility"),
-        "[1] 19 10"
+        "[1] 19 10\n"
     );
     session.load_package("corpexamples").expect("load examples");
     assert_eq!(
             session
                 .eval("source(system.file(\"examples\", \"example-resource.R\", package = \"corpexamples\", mustWork = TRUE)); c(example_value(), example_answer)")
                 .expect("package example resource"),
-            "[1] 12 42"
+            "[1] 12 42\n"
         );
     session
         .load_package("corppattern")
         .expect("load exportPattern");
     assert_eq!(
         session.eval("pat_value()").expect("pattern value"),
-        "[1] 31"
+        "[1] 31\n"
     );
     let hidden = session
         .eval("hidden_value")
@@ -803,7 +803,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
             session
                 .eval("p <- make_person(); all(c(isS4(p), is(p, \"CorpusPerson\"), person_name(p) == \"Ada\", all(person_slots() == c(\"name\", \"score\"))))")
                 .expect("S4 package value"),
-            "[1] TRUE"
+            "[1] TRUE\n"
         );
 
     session
@@ -813,7 +813,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
             session
                 .eval("e <- new.env(); data(\"env_data\", package = \"corpdataenv\", envir = e); c(exists(\"env_data\", envir = e), exists(\"env_data\"), get(\"env_data\", envir = e))")
                 .expect("data envir"),
-            "[1]  1  0 88"
+            "[1]  1  0 88\n"
         );
 
     session
@@ -823,7 +823,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         session
             .eval("c(exists(\"lazy_source_data\"), lazy_source_data, lazy_source_value())")
             .expect("source lazy data"),
-        "[1]  1 90 92"
+        "[1]  1 90 92\n"
     );
 
     session
@@ -852,7 +852,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         session
             .eval("requireNamespace(\"corpnative\", quietly = TRUE)")
             .expect("native namespace policy"),
-        "[1] FALSE"
+        "[1] FALSE\n"
     );
     let compiled = session
         .load_package("corpcompiled")
@@ -923,8 +923,8 @@ fn pure_r_package_corpus_keeps_same_named_packages_isolated_by_session() {
 
     left.load_package("corpbase").expect("left load");
     right.load_package("corpbase").expect("right load");
-    assert_eq!(left.eval("base_value()").expect("left value"), "[1] 21");
-    assert_eq!(right.eval("base_value()").expect("right value"), "[1] 84");
+    assert_eq!(left.eval("base_value()").expect("left value"), "[1] 21\n");
+    assert_eq!(right.eval("base_value()").expect("right value"), "[1] 84\n");
 
     let _ = std::fs::remove_dir_all(left_root);
     let _ = std::fs::remove_dir_all(right_root);
@@ -1189,8 +1189,8 @@ fn cancellation_does_not_poison_sessions() {
         .expect_err("cancelled");
     assert!(err.to_string().contains("operation cancelled"));
 
-    assert_eq!(other_session.eval("1 + 1").unwrap(), "[1] 2");
-    assert_eq!(cancelled_session.eval("2 + 2").unwrap(), "[1] 4");
+    assert_eq!(other_session.eval("1 + 1").unwrap(), "[1] 2\n");
+    assert_eq!(cancelled_session.eval("2 + 2").unwrap(), "[1] 4\n");
 }
 
 #[cfg(unix)]
@@ -1304,7 +1304,7 @@ fn malformed_script_is_atomic_at_embed_boundary() {
         session
             .eval("exists(\"embed_atomic_side_effect\")")
             .expect("session should remain usable"),
-        "[1] FALSE"
+        "[1] FALSE\n"
     );
 }
 
@@ -1926,7 +1926,7 @@ fn wasm_m3_oracle_shape() {
     // `eval("1+1")`. See docs/web-architecture.md ("R-in-WASM milestones
     // M2/M3 (plan)").
     let mut session = RSession::new().expect("session");
-    assert_eq!(session.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
 }
 
 /// Pinned real-package corpus (tests/real-packages/manifest.toml).
@@ -1951,19 +1951,19 @@ fn real_package_corpus() {
         session
             .eval("whisker.render(\"Hello {{name}}!\", list(name=\"World\"))")
             .expect("whisker render"),
-        "[1] \"Hello World!\""
+        "[1] \"Hello World!\"\n"
     );
     assert_eq!(
         session
             .eval("whisker.render(\"{{#show}}yes{{/show}}\", list(show=TRUE))")
             .expect("whisker section"),
-        "[1] \"yes\""
+        "[1] \"yes\"\n"
     );
     assert_eq!(
         session
             .eval("whisker.render(\"{{^hide}}vis{{/hide}}\", list(hide=FALSE))")
             .expect("whisker inverted"),
-        "[1] \"vis\""
+        "[1] \"vis\"\n"
     );
 
     // Deeper whisker axes: partials, HTML escaping, dot-iteration.
@@ -1971,19 +1971,19 @@ fn real_package_corpus() {
         session
             .eval("whisker.render(\"{{>p}}\", partials=list(p=\"PP\"))")
             .expect("whisker partials"),
-        "[1] \"PP\""
+        "[1] \"PP\"\n"
     );
     assert_eq!(
         session
             .eval("whisker.render(\"{{x}}\", list(x=\"<b>\"))")
             .expect("whisker escaping"),
-        "[1] \"&lt;b&gt;\""
+        "[1] \"&lt;b&gt;\"\n"
     );
     assert_eq!(
         session
             .eval("whisker.render(\"{{#items}}{{.}};{{/items}}\", list(items=c(1,2,3)))")
             .expect("whisker iteration"),
-        "[1] \"1;2;3;\""
+        "[1] \"1;2;3;\"\n"
     );
 
     // praise 1.0.0 — pass: word interpolates via regexpr(perl=TRUE)
@@ -2015,7 +2015,7 @@ fn real_package_corpus() {
     session.load_package("crayon").expect("crayon must load");
     assert_eq!(
         session.eval("crayon::red(\"hi\")").expect("crayon red"),
-        "[1] \"hi\""
+        "[1] \"hi\"\n"
     );
 
     // Deeper crayon axes: styles registry, headless detection answers.
@@ -2023,19 +2023,19 @@ fn real_package_corpus() {
         session
             .eval("\"bold\" %in% names(crayon:::styles()) && length(crayon:::styles()) > 20")
             .expect("crayon styles"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("crayon:::num_ansi_colors()")
             .expect("crayon num colors"),
-        "[1] 1"
+        "[1] 1\n"
     );
     assert_eq!(
         session
             .eval("crayon::has_color()")
             .expect("crayon has_color"),
-        "[1] FALSE"
+        "[1] FALSE\n"
     );
 }
 
@@ -2072,30 +2072,30 @@ fn render_plot_window_s3_layers_and_nonfinite_data() {
 #[test]
 fn evaluated_builtin_arguments_survive_gc() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("gctorture(TRUE); result<-c(list(a=list(1,2)),list(b=list(3,4))); gctorture(FALSE); identical(result,list(a=list(1,2),b=list(3,4)))").unwrap(),"[1] TRUE");
+    assert_eq!(session.eval("gctorture(TRUE); result<-c(list(a=list(1,2)),list(b=list(3,4))); gctorture(FALSE); identical(result,list(a=list(1,2),b=list(3,4)))").unwrap(),"[1] TRUE\n");
 }
 
 #[test]
 fn bytecode_lookup_roots_earlier_operands_while_forcing_promises() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("f<-compiler::cmpfun(function(x)c(list(a=1),x)); value<-f({invisible(gc());list(b=2)}); identical(value,list(a=1,b=2))").unwrap(),"[1] TRUE");
-    assert_eq!(session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2)},e); f<-compiler::cmpfun(function()c(list(a=1),x)); environment(f)<-e; identical(f(),list(a=1,b=2))").unwrap(),"[1] TRUE");
+    assert_eq!(session.eval("f<-compiler::cmpfun(function(x)c(list(a=1),x)); value<-f({invisible(gc());list(b=2)}); identical(value,list(a=1,b=2))").unwrap(),"[1] TRUE\n");
+    assert_eq!(session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2)},e); f<-compiler::cmpfun(function()c(list(a=1),x)); environment(f)<-e; identical(f(),list(a=1,b=2))").unwrap(),"[1] TRUE\n");
 }
 
 #[test]
 fn interpreted_lookup_preserves_earlier_arguments_across_forced_gc() {
     let mut session = RSession::new().unwrap();
     session.eval("compiler::enableJIT(0)").unwrap();
-    assert_eq!(session.eval("compiler::enableJIT(-1)").unwrap(), "[1] 0");
+    assert_eq!(session.eval("compiler::enableJIT(-1)").unwrap(), "[1] 0\n");
 
     let promised = session.eval("f<-function(x)c(list(a=1L),x); value<-f({invisible(gc());list(b=2L)}); paste(names(value),unlist(value),collapse='|')").unwrap();
-    assert_eq!(promised, "[1] \"a 1|b 2\"");
+    assert_eq!(promised, "[1] \"a 1|b 2\"\n");
 
     let promised_real = session.eval("f<-function(x)c(list(a=1),x); value<-f({invisible(gc());list(b=2)}); paste(names(value),unlist(value),collapse='|')").unwrap();
-    assert_eq!(promised_real, "[1] \"a 1|b 2\"");
+    assert_eq!(promised_real, "[1] \"a 1|b 2\"\n");
 
     let active = session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2L)},e); f<-function()c(list(a=1L),x); environment(f)<-e; value<-f(); paste(names(value),unlist(value),collapse='|')").unwrap();
-    assert_eq!(active, "[1] \"a 1|b 2\"");
+    assert_eq!(active, "[1] \"a 1|b 2\"\n");
 }
 
 #[test]

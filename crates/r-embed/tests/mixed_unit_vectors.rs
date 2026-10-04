@@ -14,5 +14,5 @@ fn mixed_unit_arithmetic_recycles_per_coordinate_and_summary_stays_scalar() {
     let result = session
         .eval("all(abs(a-c(4.3937007874,8.7874015748))<1e-6) && all(abs(b-c(4.3937007874,4.7874015748))<1e-6) && all(abs(d-c(4.3937007874,8.3937007874))<1e-6) && all(abs(e-c(3.6062992126,7.2125984252))<1e-6) && all(abs(f-c(8.7874015748,17.5748031496))<1e-6) && length(s)==1L && abs(s-12)<1e-6 && abs(scaled-(8+4/2.54))<1e-6 && all(abs(nested-c(4+2/2.54,8+3/2.54))<1e-6)")
         .unwrap();
-    assert_eq!(result, "[1] TRUE");
+    assert_eq!(result, "[1] TRUE\n");
 }

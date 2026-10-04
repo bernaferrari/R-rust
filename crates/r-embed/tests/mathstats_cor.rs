@@ -67,19 +67,19 @@ fn cor_vector_rejects_recycling_and_propagates_missing_by_default() {
     assert!(unequal.is_err(), "unequal cor result: {unequal:?}");
     assert_eq!(
         session.eval("is.na(cor(c(1,NA,3), c(1,2,3)))").unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session
             .eval("cor(c(1,NA,3), c(1,2,3), use='complete.obs')")
             .unwrap(),
-        "[1] 1"
+        "[1] 1\n"
     );
     assert_eq!(
         session
             .eval("is.na(cor(c(NA,NA), c(1,2), use='na.or.complete'))")
             .unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert!(
         session
@@ -89,11 +89,11 @@ fn cor_vector_rejects_recycling_and_propagates_missing_by_default() {
     assert!(session.eval("cor(c(NA,2), c(1,2), use='all.obs')").is_err());
     assert_eq!(
         session.eval("is.na(cor(c(1,NaN,3), c(1,2,3)))").unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert_eq!(
         session.eval("is.nan(cor(c(1,Inf,3), c(1,2,3)))").unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 }
 
@@ -103,7 +103,7 @@ fn cor_complete_pairs_distinguish_zero_one_and_empty() {
     assert_eq!(
         s.eval("is.na(cor(c(1,NA), c(1,NA), use='complete.obs'))")
             .unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     assert!(
         s.eval("cor(numeric(), numeric(), use='complete.obs')")
@@ -116,6 +116,6 @@ fn cor_complete_pairs_distinguish_zero_one_and_empty() {
     assert_eq!(
         s.eval("is.na(cor(numeric(), numeric(), use='na.or.complete'))")
             .unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 }

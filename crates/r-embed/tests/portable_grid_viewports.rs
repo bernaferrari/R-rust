@@ -74,6 +74,6 @@ fn resized_replay_restores_coordinates_and_invalid_metadata_keeps_current_grid()
         session
             .eval("all(abs(c(resized,after_bad,after_pop)-c(.4,.4,1)*400/96)<1e-12)")
             .unwrap(),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 }

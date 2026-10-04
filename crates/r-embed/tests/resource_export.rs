@@ -16,8 +16,8 @@ fn bounded_results_reject_before_copy_and_preserve_session() {
             .to_string()
             .contains("export budget")
     );
-    assert_eq!(session.eval("length(x)").unwrap(), "[1] 1000");
-    assert_eq!(session.eval("1 + 1").unwrap(), "[1] 2");
+    assert_eq!(session.eval("length(x)").unwrap(), "[1] 1000\n");
+    assert_eq!(session.eval("1 + 1").unwrap(), "[1] 2\n");
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn repeated_references_and_deep_lists_cannot_expand_without_bound() {
         .eval("deep <- NULL; for (i in 1:100) deep <- list(deep)")
         .unwrap();
     assert!(session.eval_result("deep").is_err());
-    assert_eq!(session.eval("length(deep)").unwrap(), "[1] 1");
+    assert_eq!(session.eval("length(deep)").unwrap(), "[1] 1\n");
 }
 
 #[test]
@@ -61,5 +61,5 @@ fn exhausted_node_budget_never_reports_a_successful_null_result() {
     assert!(session.eval("for (i in 1:1000) new.env()").is_err());
     session.close();
     let mut fresh = RSession::new().unwrap();
-    assert_eq!(fresh.eval("1+1").unwrap(), "[1] 2");
+    assert_eq!(fresh.eval("1+1").unwrap(), "[1] 2\n");
 }

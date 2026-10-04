@@ -73,42 +73,42 @@ c1 <- Counter$new()$inc()$inc()
     // R1: active bindings read through the object env: q$size == 2.
     assert_eq!(
         session.eval("q$size == 2").expect("R1 active binding size"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // R2: field mutation via self$ persists in the public binding env.
     assert_eq!(
         session
             .eval("identical(q$items, c(1, 2))")
             .expect("R2 items accumulated"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // R3: self-assignment through chained method calls.
     assert_eq!(
         session.eval("c1$n == 2L").expect("R3 counter increments"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // R4: super dispatch through the enclosing-env chain.
     assert_eq!(
         session
             .eval("Derived$new()$greet() == \"base derived\"")
             .expect("R4 super dispatch"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // R5: clone copies the environment graph, carrying state.
     assert_eq!(
         session
             .eval("identical(c1$clone()$n, 2L)")
             .expect("R5 clone state"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
     // R6: S3 class attribute marks R6 objects.
-    assert_eq!(session.eval("is.R6(q)").expect("R6 is.R6"), "[1] TRUE");
+    assert_eq!(session.eval("is.R6(q)").expect("R6 is.R6"), "[1] TRUE\n");
     // R7: print dispatches to the generator's S3 print method.
     assert_eq!(
         session
             .eval("grepl(\"Queue\", capture.output(print(Q))[1])")
             .expect("R7 print.R6ClassGenerator"),
-        "[1] TRUE"
+        "[1] TRUE\n"
     );
 
     // Deeper R6 axes: active bindings, class identity, deep clone of

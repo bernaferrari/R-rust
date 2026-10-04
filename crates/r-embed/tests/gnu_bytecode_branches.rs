@@ -172,6 +172,6 @@ fn malformed_branch_targets_fail_before_source_fallback() {
                 .is_err(),
             "malformed target {target} must not run retained source"
         );
-        assert_eq!(session.eval("1+1").unwrap(), "[1] 2");
+        assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
     }
 }

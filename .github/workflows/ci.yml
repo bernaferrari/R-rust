@@ -200,6 +200,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build and check the showcase
         working-directory: website
+        env:
+          RPORT_WASM_PKG: ${{ github.workspace }}/apps/workbench/webApp/build/generated/rustRuntimeResources/rust-runtime
         run: |
           pnpm typecheck
           pnpm lint

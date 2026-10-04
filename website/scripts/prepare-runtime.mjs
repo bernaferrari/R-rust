@@ -8,7 +8,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 const destination = join(root, "website/src/runtime/assets")
 const configured = process.env.RPORT_WASM_PKG
 const candidates = [configured && resolve(configured)].filter(Boolean)
-const required = ["r_wasm.js", "r_wasm_bg.wasm"]
+const required = [
+  "r_wasm.js",
+  "r_wasm_bg.wasm",
+  "r_wasm.d.ts",
+  "r_wasm_bg.wasm.d.ts",
+]
 const existing = required.every((file) => existsSync(join(destination, file)))
 if (!configured && existing) {
   assertBoundedMemory(await readFile(join(destination, "r_wasm_bg.wasm")))
@@ -39,16 +44,10 @@ if (!source)
   )
 assertBoundedMemory(await readFile(join(source, "r_wasm_bg.wasm")))
 await mkdir(destination, { recursive: true })
-for (const file of [
-  "r_wasm.js",
-  "r_wasm_bg.wasm",
-  "r_wasm.d.ts",
-  "r_wasm_bg.wasm.d.ts",
-  "package.json",
-]) {
-  if (existsSync(join(source, file)))
-    await cp(join(source, file), join(destination, file))
-}
+for (const file of required)
+  await cp(join(source, file), join(destination, file))
+if (existsSync(join(source, "package.json")))
+  await cp(join(source, "package.json"), join(destination, "package.json"))
 const packageJson = join(destination, "package.json")
 if (existsSync(packageJson)) {
   const metadata = JSON.parse(await readFile(packageJson, "utf8"))
