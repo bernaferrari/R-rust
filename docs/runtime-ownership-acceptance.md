@@ -1115,3 +1115,32 @@ warnings passes, as do assigned-source format checks. An independent read-only
 review found no blocker within the declared intercept-only scope. Ten strict
 Miri cases are running against the frozen five-file source ledger; that proof
 and a complete whole-tree CI checkpoint are not yet claimed.
+
+## Completed barplot and owning color checkpoint (rport-jxfp.3.12.3.6)
+
+Named vectors and one-dimensional tables now use GNU's column representation.
+Axis positions use the original name-count comparison, including grouped
+midpoints and incorrect-name rejection. Vectorized rectangle calls delegate
+color recycling to the shared renderer instead of selecting missing scalar
+colors in per-bar calls. The character-color bridge roots its original input
+and selected character across ALTREP, rejects a revoked owner, decodes copied
+text, and maps `NA_character_` to transparent before any raw string decoding.
+This removes the reproduced null dereference for transparent borders. Other
+numerical/raw decoder branches remain outside this focused milestone.
+
+The genuine real-base baseline passes one control and fails four graphics
+cases. A subsequent producer candidate aborts at the old NA-string decoder;
+that abort is recorded as failure. The final six Scene/shape/rendering cases
+and three owning decoder cases all pass: native 9/0/0 in 38.94 seconds, strict
+Miri decoder 3/0/0 in 211.08 seconds with default alias checking and strict
+provenance, and render-feature Clippy with denied warnings in 99 seconds.
+Independent pinned GNU vector/table/matrix/label/color controls and format
+checks pass. A fresh actual browser-profile release build and matching
+wasm-bindgen succeed, and the unchanged Chromium `Let chance speak` test passes
+in 3.9 seconds. Browser limits, deadlines and assertions are unchanged.
+
+The six-file ledger authenticates the assigned snapshot; concurrent unrelated
+changes do not become certified through it. This closes the named barplot/color
+issue, while empty color vectors (`rport-jxfp.3.12.3.6.1`), gallery timeouts and
+S4 loading remain separate browser gaps. A targeted Chromium pass does not
+establish completion of the whole browser suite or font support.

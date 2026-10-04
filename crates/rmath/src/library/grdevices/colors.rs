@@ -3322,8 +3322,29 @@ pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
         let indx: c_int;
         match t {
             tt if tt == SEXPTYPE::STRSXP => {
-                // STRSXP
-                return str2col(CHAR(STRING_ELT(x, i as R_xlen_t)), bg);
+                // Keep the original runtime and selected child alive across an
+                // ALTREP provider. NA_STRING has no byte payload in this engine.
+                let fail = |error: crate::sexp::object::SexpError| -> ! {
+                    crate::sexp::context::r_error(error.to_string())
+                };
+                let owner =
+                    crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| fail(error));
+                let _pin = owner.pin().unwrap_or_else(|error| fail(error));
+                let parent = owner.sexp(x).unwrap_or_else(|error| fail(error));
+                let character = parent
+                    .try_string_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| fail(error));
+                owner.require_active().unwrap_or_else(|error| fail(error));
+                if character.is_na_string() {
+                    return R_TRANWHITE;
+                }
+                let text = character
+                    .try_as_string()
+                    .unwrap_or_else(|error| fail(error));
+                let text = std::ffi::CString::new(text).unwrap_or_else(|_| {
+                    crate::sexp::context::r_error("invalid color specification")
+                });
+                return str2col(text.as_ptr(), bg);
             }
             tt if tt == SEXPTYPE::LGLSXP => {
                 // LGLSXP
@@ -4274,3 +4295,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "colors/owned_decode_tests.rs"]
+mod owned_decode_tests;
