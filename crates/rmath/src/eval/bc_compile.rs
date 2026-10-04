@@ -485,7 +485,7 @@ impl BytecodeCompiler {
                 ));
                 current = CDR(cell.as_raw());
             }
-            let Some((object, object_tag)) = cells.first() else {
+            let Some((object, _)) = cells.first() else {
                 return false;
             };
             if object.typeof_() != SEXPTYPE::SYMSXP
@@ -503,10 +503,8 @@ impl BytecodeCompiler {
             let object_idx = self.add_const(object.as_raw());
             self.emit_operand(opcodes::OP_GETVAR, object_idx);
             self.emit(opcodes::OP_MARK_SHARED);
-            if object_tag.as_raw() != R_NilValue() {
-                let idx = self.add_const(object_tag.as_raw());
-                self.emit_operand(opcodes::OP_SETTAG, idx);
-            }
+            // GNU replaces the first call argument with an unnamed *tmp*.
+            // Tags on the remaining arguments and the RHS remain significant.
             for (argument, tag) in cells.iter().skip(1) {
                 let idx = self.add_const(argument.as_raw());
                 self.emit_operand(
@@ -1152,6 +1150,59 @@ mod tests {
             "{x<-1L;`stamp<-`<-function(label,object,value){attr(object,label)<-value;object};stamp(object=x,label='mark')<-7L;x}",
         ] {
             assert_private_matches_source(script, false);
+        }
+    }
+
+    #[test]
+    fn compiled_replacement_discards_first_object_tag_like_gnu() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        let script = "{x<-1L;`stamp<-`<-function(label,object,value){list(label=label,object=object,value=value)};stamp(object=x,'mark')<-7L;x}";
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        let expected = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "list(label=1L,object='mark',value=7L)",
+                    arena,
+                    factory.domain(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        unsafe {
+            let code = own_operand(
+                compile_expr(expression.as_raw(), env.as_raw()).expect("replacement must compile"),
+            );
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+                0,
+                R_NilValue(),
+            );
+            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+            let expected = own_operand(crate::eval::eval::Rf_eval(expected.as_raw(), env.as_raw()));
+            assert_eq!(
+                crate::mainutils::identical::R_compute_identical(
+                    result.as_raw(),
+                    expected.as_raw(),
+                    0
+                ),
+                1,
+                "GNU matches the replacement object positionally"
+            );
+            owner.full_gc().unwrap();
+            assert_eq!(
+                crate::mainutils::identical::R_compute_identical(
+                    result.as_raw(),
+                    expected.as_raw(),
+                    0
+                ),
+                1
+            );
         }
     }
 

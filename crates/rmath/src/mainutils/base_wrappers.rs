@@ -107,17 +107,20 @@ fn apply_owned(
                 .allocation()?
                 .link()
                 .ok_or(SexpError::StaleAllocation)?;
-            seen.try_reserve(1).map_err(|_| SexpError::AllocationFailed {
-                object: "base wrapper argument index",
-            })?;
+            seen.try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "base wrapper argument index",
+                })?;
             if !seen.insert(link) {
                 return Err(SexpError::EvaluationFailed {
                     message: "cyclic base wrapper arguments".to_owned(),
                 });
             }
-            cells.try_reserve(1).map_err(|_| SexpError::AllocationFailed {
-                object: "base wrapper argument snapshot",
-            })?;
+            cells
+                .try_reserve(1)
+                .map_err(|_| SexpError::AllocationFailed {
+                    object: "base wrapper argument snapshot",
+                })?;
             cells.push((remaining.try_car()?, remaining.try_tag()?));
             remaining = remaining.try_cdr()?;
         }
@@ -149,9 +152,20 @@ mod tests {
         let weak = owner.weak_owner().unwrap();
         let env = session.global_env().unwrap();
         let result = with_runtime(&weak, |access| {
-            apply_owned(access, "owned_wrapper_cycle", "function(x) x", args.as_raw(), env.as_raw(), true, env.as_raw())
-        }).unwrap();
-        assert!(matches!(result, Err(SexpError::EvaluationFailed { ref message }) if message == "cyclic base wrapper arguments"));
+            apply_owned(
+                access,
+                "owned_wrapper_cycle",
+                "function(x) x",
+                args.as_raw(),
+                env.as_raw(),
+                true,
+                env.as_raw(),
+            )
+        })
+        .unwrap();
+        assert!(
+            matches!(result, Err(SexpError::EvaluationFailed { ref message }) if message == "cyclic base wrapper arguments")
+        );
     }
 
     #[test]
@@ -170,6 +184,18 @@ mod tests {
             let args = factory
                 .pairlist_cell(&value, &factory.nil(), &factory.nil())
                 .unwrap();
+            // Build the real cache before arming collection, so eviction tests
+            // the closure lease acquired by a subsequent cached execution.
+            let warm = factory
+                .wrap(apply(
+                    "owned_wrapper_gc",
+                    "function(x) { gc(); x + 1 }",
+                    args.as_raw(),
+                    (*instance).global_env,
+                    true,
+                ))
+                .unwrap();
+            assert_eq!(warm.real_elt(0), Some(18.0));
             let evictions = Rc::new(Cell::new(0));
             let observed = evictions.clone();
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
@@ -177,8 +203,10 @@ mod tests {
                 if !cache.borrow().is_empty() {
                     cache.borrow_mut().clear();
                     observed.set(observed.get() + 1);
+                    (*instance).memory_state.gc_force_gap = 0;
+                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::sexp::gengc::full_gc_in(instance);
                 }
-                crate::sexp::gengc::full_gc_in(instance);
             }));
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
@@ -218,7 +246,10 @@ mod tests {
                 .allocation()
                 .unwrap()
                 .clone();
-            assert_eq!((*instance).preserve_stack.checked_entries_snapshot().len(), preserved);
+            assert_eq!(
+                (*instance).preserve_stack.checked_entries_snapshot().len(),
+                preserved
+            );
             crate::sexp::gengc::full_gc_in(instance);
             assert!(closure.is_live());
             (*instance).base_wrappers.borrow_mut().clear();

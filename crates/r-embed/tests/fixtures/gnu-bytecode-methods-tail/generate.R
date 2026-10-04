@@ -38,9 +38,10 @@ x <- 1L
 stamp(x, unbound_label) <- 7L
 stopifnot(identical(attr(x, "expression"), quote(unbound_label)))
 x <- 1L
-`stamp<-` <- function(label, object, value) {attr(object, label) <- value; object}
-stamp(object=x, label="mark") <- 7L
-stopifnot(identical(attr(x, "mark"), 7L))
+# GNU discards the first object's tag; the untagged extra discriminates.
+`stamp<-` <- function(label, object, value) {list(label=label,object=object,value=value)}
+stamp(object=x, "mark") <- 7L
+stopifnot(identical(x, list(label=1L,object="mark",value=7L)))
 x <- 1L
 `stamp<-` <- function(x,value) {attr(x,"code") <- substitute(x); attr(x,"rhs") <- substitute(value); x}
 stamp(x) <- quote(y)
