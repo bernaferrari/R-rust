@@ -272,3 +272,24 @@ not counted as an ignored Miri pass. Pinned GNU mixed-depth occurrence checks,
 independent ownership review and formatting pass. Warnings-free all-target
 Clippy with memory profiling passes in 45.19 seconds. All assigned source hashes
 remain frozen throughout those checks.
+
+Checked tracing now marks exact allocation identities at worklist admission,
+after heap, generation and projection validation. Repeated incoming references
+enqueue one task; the regression previously enqueued 3,000 tasks for one node.
+Pop-time validation still rejects retirement, physical page destruction and
+address reuse. New tasks use fallible reservation; a tracing error aborts before
+sweeping, and production worklists drain synchronously before graph cleanup.
+All 11 native admission cases pass in 0.01 seconds and all 11 strict-provenance
+Miri cases pass in 105.25 seconds. Eight collector transaction, weak-key,
+partial-sweep, finalizer and resource-destruction controls pass natively in
+0.01 seconds and under strict Miri in 376.41 seconds, with the default alias
+checker. Warnings-free all-target Clippy with memory profiling passes in
+29.86 seconds. The frozen admission source and later independent compiler
+edits have separate loaded-source evidence.
+
+Independent review confirms that all production worklists complete before
+sweeping. The unchanged base graph diagnostic validates every managed header,
+62,744 live nodes and 13,377 roots. Minor collection's median changes from
+143.659 to 143.046 milliseconds, which does not establish a material speedup.
+This milestone bounds duplicate worklist storage and preserves checked
+collection behavior; it does not resolve full methods startup.

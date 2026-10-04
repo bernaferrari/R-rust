@@ -18,6 +18,7 @@ pub(super) enum TraceError {
     ProjectionMismatch(usize),
     InvalidPayload(usize),
     InvalidLink(NodeLink),
+    WorklistAllocation,
 }
 
 pub(super) struct TraceContext {
@@ -120,7 +121,7 @@ impl TraceWorklist {
 
     pub(super) fn enqueue(&mut self, projection: SEXP) -> Result<(), TraceError> {
         if let Some(node) = self.context.project(projection)? {
-            self.pending.push(node);
+            self.admit(node)?;
         }
         Ok(())
     }
@@ -129,7 +130,7 @@ impl TraceWorklist {
     /// refreshes an edge from the allocation currently occupying an address.
     pub(super) fn enqueue_link(&mut self, link: NodeLink) -> Result<(), TraceError> {
         if let Some(node) = self.context.project_link(link)? {
-            self.pending.push(node);
+            self.admit(node)?;
         }
         Ok(())
     }
@@ -155,18 +156,33 @@ impl TraceWorklist {
         if projection.addr() != candidate.addr() {
             return Err(TraceError::ProjectionMismatch(candidate as usize));
         }
-        self.pending.push(TraceNode { projection, token });
+        self.admit(TraceNode { projection, token })
+    }
+
+    /// Callers validate the exact heap, generation and projection before this
+    /// epoch check. Even already marked input must satisfy those obligations.
+    /// A successful collection drains every admitted task before sweeping;
+    /// allocation failure aborts tracing, never commits a partial collection.
+    fn admit(&mut self, node: TraceNode) -> Result<(), TraceError> {
+        match node.token.mark(self.context.epoch) {
+            Some(false) => {
+                self.pending
+                    .try_reserve(1)
+                    .map_err(|_| TraceError::WorklistAllocation)?;
+                self.pending.push(node);
+            }
+            Some(true) => {}
+            None => return Err(TraceError::StaleAllocation(node.projection as usize)),
+        }
         Ok(())
     }
 
     pub(super) fn next_marked(&mut self) -> Result<Option<TraceNode>, TraceError> {
-        while let Some(node) = self.pending.pop() {
+        if let Some(node) = self.pending.pop() {
+            // Admission does not keep physical storage alive. Retirement or
+            // address reuse while queued must still reject the saved token.
             node.validate(&self.context)?;
-            match node.token.mark(self.context.epoch) {
-                Some(false) => return Ok(Some(node)),
-                Some(true) => continue,
-                None => return Err(TraceError::StaleAllocation(node.projection as usize)),
-            }
+            return Ok(Some(node));
         }
         Ok(None)
     }
@@ -302,6 +318,72 @@ mod tests {
         worklist.enqueue(pointer).unwrap();
         assert!(worklist.next_marked().unwrap().is_some());
         assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn repeated_root_admission_is_bounded_by_unique_allocation_identities() {
+        let mut arena = memory::RArena::new();
+        let pointer = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let token = memory::checked_projection(pointer).unwrap().1;
+        let link = token.link().unwrap();
+        let mut worklist =
+            TraceWorklist::new(Rc::new(TraceContext::new(arena.heap_identity(), 29)));
+        for _ in 0..1000 {
+            worklist.enqueue(pointer).unwrap();
+            worklist.enqueue_link(link).unwrap();
+            worklist.enqueue_checked(pointer, token.clone()).unwrap();
+        }
+        assert_eq!(
+            worklist.pending.len(),
+            1,
+            "repeated roots must not allocate repeated tasks"
+        );
+        assert!(worklist.next_marked().unwrap().is_some());
+        assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn already_marked_foreign_identity_still_rejects_before_admission() {
+        let mut foreign = memory::RArena::new();
+        let pointer = foreign.alloc_node(SEXPTYPE::LISTSXP);
+        let token = memory::checked_projection(pointer).unwrap().1;
+        assert_eq!(token.mark(31), Some(false));
+        let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(HeapIdentity::new(), 31)));
+        assert_eq!(
+            worklist.enqueue(pointer),
+            Err(TraceError::ForeignHeap(pointer as usize))
+        );
+        assert_eq!(
+            worklist.enqueue_checked(pointer, token.clone()),
+            Err(TraceError::ForeignHeap(pointer as usize))
+        );
+        assert_eq!(
+            worklist.enqueue_link(token.link().unwrap()),
+            Err(TraceError::InvalidLink(token.link().unwrap()))
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn queued_stale_identity_rejects_after_replacement_is_already_marked() {
+        let heap = HeapIdentity::new();
+        let (page, _registration, pointer) = registered_page(heap.clone());
+        let original = page.token(0).unwrap();
+        let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(heap, 37)));
+        worklist.enqueue(pointer).unwrap();
+        assert!(page.metadata().release(original.id()));
+        page.replace_inactive(0, SexprecCore::new(SEXPTYPE::LISTSXP))
+            .unwrap();
+        page.metadata().activate(0, false).unwrap();
+        let current = page.token(0).unwrap();
+        assert_ne!(original.link(), current.link());
+        worklist.enqueue(pointer).unwrap();
+        assert!(worklist.next_marked().unwrap().is_some());
+        assert!(matches!(
+            worklist.next_marked(),
+            Err(TraceError::StaleAllocation(_))
+        ));
+        assert_eq!(current.mark(37), Some(true));
     }
 
     #[test]
