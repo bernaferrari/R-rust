@@ -147,3 +147,12 @@ The operation retains every payload before list-name providers and the selected
 lookup child before PACKAGE providers. The Miri proof belongs to its recorded
 compiled-source manifest; the independent shared-environment index repair was
 edited after that compilation and is not certified by this selection.
+
+The linked numerical profile now uses the existing Rust `lminfl` implementation
+for GNU's stats-specific influence routine. The original system-library profile
+fails at link time because BLAS/LAPACK do not supply that stats symbol. After the
+repair, all six influence cases and 35 LAPACK controls pass in both the system
+Accelerate profile (41 tests, 0.04 seconds) and the default Rust profile (41 tests,
+0.02 seconds). The directly constructed adapter fixture uses a genuine managed
+heap; unchanged full default package startup remains a separate incomplete
+obligation. The numerical algorithm and system BLAS/LAPACK selection are unchanged.

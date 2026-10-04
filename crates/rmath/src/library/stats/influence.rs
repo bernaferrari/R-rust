@@ -19,7 +19,7 @@
 
 //! Regression influence diagnostics
 //! Port of r-source/src/library/stats/src/influence.c
-//! and gnu-r/src/library/stats/src/lminfl.f (rust-backend path).
+//! and gnu-r/src/library/stats/src/lminfl.f (all numerical backends).
 
 use std::ffi::CString;
 use std::os::raw::{c_double, c_int};
@@ -119,34 +119,17 @@ unsafe fn influence_error(message: &'static [u8]) -> ! {
 }
 
 // ---------------------------------------------------------------------------
-// External LINPACK lminfl declaration (fortran-backend)
+// Pure Rust GNU stats lminfl, independent of the BLAS/LAPACK backend
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "fortran-backend")]
-unsafe extern "C" {
-    fn lminfl_(
-        qr: *const c_double,
-        ldx: *const c_int,
-        n: *const c_int,
-        k: *const c_int,
-        q: *const c_int,
-        qraux: *const c_double,
-        resid: *const c_double,
-        hat: *mut c_double,
-        sigma: *mut c_double,
-        tol: *const c_double,
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Pure rust-backend lminfl (LAPACK QR / dormqr convention)
-// ---------------------------------------------------------------------------
+// lminfl is part of GNU R's stats library, not a system BLAS/LAPACK symbol.
+// Keep this kernel in Rust even when other numerical operations use system
+// Fortran libraries; linking only those libraries cannot supply lminfl_.
 
 /// Core algorithm matching GNU `lminfl.f` on a LINPACK QR from `dqrdc2`.
 ///
 /// `qr` is column-major with leading dimension `ldx`. `qraux` is the
 /// LINPACK auxiliary vector. `resid` / `sigma` are column-major `n × q`.
-#[cfg(not(feature = "fortran-backend"))]
 pub(crate) fn lminfl_compute(
     qr: &[f64],
     ldx: usize,
@@ -230,9 +213,8 @@ pub(crate) fn lminfl_compute(
     }
 }
 
-/// Rust-backend `lminfl` entry matching the F77 calling convention used by
+/// Internal Rust `lminfl` adapter matching the F77 argument layout used by
 /// `influence` (arguments: qr, ldx, n, k, q, qraux, resid, hat, sigma, tol).
-#[cfg(not(feature = "fortran-backend"))]
 unsafe fn lminfl_(
     qr: *const c_double,
     ldx: *const c_int,
@@ -399,7 +381,7 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
     }
 }
 
-#[cfg(all(test, not(feature = "fortran-backend")))]
+#[cfg(test)]
 mod tests {
     use super::lminfl_compute;
 
@@ -567,7 +549,9 @@ mod tests {
     fn influence_sexp_adapter_accepts_vector_and_matrix_residuals_and_rejects_bad_shapes() {
         use super::*;
         use crate::sexp::constructors::Rf_ScalarInteger;
-        let _session = crate::sexp::session::RSession::new();
+        // This adapter constructs every input directly; package startup is a
+        // separate contract. Keep the genuine managed heap and protection API.
+        let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
             let mqr = Rf_allocVector(SEXPTYPE::VECSXP, 3);
             let _mqr = protect(mqr);
