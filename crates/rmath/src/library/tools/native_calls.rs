@@ -185,6 +185,7 @@ pub(crate) fn lookup_buffer(
     unsafe {
         Some(match bare {
             "HoltWinters" => buffers::holtwinters::ROUTINE,
+            "multi_burg" => buffers::multi_burg::ROUTINE,
             "dtrco" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,

@@ -293,3 +293,22 @@ sweeping. The unchanged base graph diagnostic validates every managed header,
 143.659 to 143.046 milliseconds, which does not establish a material speedup.
 This milestone bounds duplicate worklist storage and preserves checked
 collection behavior; it does not resolve full methods startup.
+
+The multivariate Burg native routine now executes through checked, typed buffers
+and an owned Rust matrix/Householder QR implementation. Both numerical modules
+and the buffer adapter forbid unsafe code; the obsolete raw Burg route is
+removed. Workspace arithmetic and fallible allocations precede computation,
+and all eleven buffers publish only after fitting succeeds. Eight independent
+pinned GNU cases compare every buffer, including residuals, coefficient and
+partial-correlation grids, variance, AIC, selected order and untouched tails.
+A separate genuine GNU order-zero case accepts the unread empty variance-method
+buffer. The initial adapter correctly rejected that case, and conditional
+admission now preserves GNU's branch-sensitive input contract.
+
+All seven native Burg cases pass in 0.02 seconds, all thirteen neighboring buffer
+controls pass, and all seven strict-provenance Miri cases pass in 376.02 seconds
+with the default alias checker. Warnings-free all-target Clippy passes in
+27.05 seconds, and formatting passes. The corrected seven-case proof is tied to
+its frozen source manifest; the superseded six-case candidate is retained as
+earlier evidence. The structured numerical registry covers 19 of its 26 declared
+C/Fortran entries; that count does not claim complete stats or GNU R parity.
