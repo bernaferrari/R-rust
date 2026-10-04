@@ -3313,7 +3313,6 @@ fn private_call_owned(
     tags: &[Option<Sexp<'static>>],
     environment: &Sexp<'static>,
     syntax: bool,
-    expressions: Option<&[Option<Sexp<'static>>]>,
 ) -> Sexp<'static> {
     let owner = crate::sexp::owner::StoredOwner::from_value(environment)
         .and_then(|owner| {
@@ -3329,11 +3328,6 @@ fn private_call_owned(
         for (index, argument) in arguments.iter().enumerate() {
             let value = if syntax {
                 argument.clone()
-            } else if let Some(expression) = expressions
-                .and_then(|expressions| expressions.get(index))
-                .and_then(Option::as_ref)
-            {
-                allocator.evaluated_promise_with_expression(expression, environment, argument)?
             } else if argument.typeof_() == SEXPTYPE::PROMSXP
                 || argument.as_raw() == domain.missing().as_raw()
             {
@@ -3353,6 +3347,133 @@ fn private_call_owned(
     })
     .and_then(|result| result)
     .unwrap_or_else(|error| bc_error(error.to_string()))
+}
+
+/// The setter executes with cached target/RHS promises while its function
+/// context exposes GNU's original syntax call. Actual owning trees keep both
+/// views alive across allocation, dispatch, full GC, and unwinding.
+fn private_replacement_owned(
+    setter: &Sexp<'static>,
+    arguments: &[Sexp<'static>],
+    tags: &[Option<Sexp<'static>>],
+    rhs_expression: &Sexp<'static>,
+    environment: &Sexp<'static>,
+    loops: &[LoopContext],
+) -> Result<Sexp<'static>, LoopJump> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{StoredOwner, with_runtime},
+    };
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let owner = StoredOwner::from_value(environment)
+            .and_then(|owner| owner.managed().ok_or(SexpError::RootUnavailable))
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        with_runtime(&owner, |access| {
+            let function = access.with_native(|owner| {
+                let function = unsafe {
+                    crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
+                }
+                .map_err(|message| SexpError::EvaluationFailed { message })?
+                .ok_or_else(|| SexpError::EvaluationFailed {
+                    message: "could not find replacement function".into(),
+                })?;
+                if function.is_closure() {
+                    return owner.sexp(function.as_raw())?.into_owned();
+                }
+                if !function.is_primitive() {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "replacement is not a function".into(),
+                    });
+                }
+                // Immortal primitive projections are identity only. Materialize
+                // the selected identity in the original managed heap once.
+                let kind = function.typeof_();
+                let name = super::primitive::PrimitiveDescriptor::from_sexp(function.clone())
+                    .map(|descriptor| descriptor.name.to_owned())
+                    .or_else(|| super::primitive::portable_primitive_name(function))
+                    .ok_or_else(|| SexpError::EvaluationFailed {
+                        message: "replacement primitive has no identity".into(),
+                    })?;
+                let function = unsafe { super::primitive::make_primitive_binding(&name, kind) };
+                owner.sexp(function)?.into_owned()
+            })?;
+            let domain = access.domain();
+            let allocator = access.allocator(&domain)?;
+            let (temporary, value_tag) = access.with_native(|owner| {
+                Ok((
+                    owner
+                        .sexp(unsafe { crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr()) })?
+                        .into_owned()?,
+                    owner
+                        .sexp(unsafe { crate::sexp::symbol::Rf_install(c"value".as_ptr()) })?
+                        .into_owned()?,
+                ))
+            })?;
+            let rhs = arguments.first().ok_or(SexpError::AllocationFailed {
+                object: "replacement RHS",
+            })?;
+            let object = arguments.last().ok_or(SexpError::AllocationFailed {
+                object: "replacement target",
+            })?;
+            let value =
+                allocator.evaluated_promise_with_expression(rhs_expression, environment, rhs)?;
+            let mut tail = allocator.pairlist_cell(&value, &domain.nil(), &value_tag)?;
+            for index in 1..arguments.len() - 1 {
+                tail = allocator.pairlist_cell(
+                    &arguments[index],
+                    &tail,
+                    tags.get(index)
+                        .and_then(Option::as_ref)
+                        .unwrap_or(&domain.nil()),
+                )?;
+            }
+            access.require_active()?;
+            unsafe {
+                crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
+                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+            }
+            let target =
+                allocator.evaluated_promise_with_expression(&temporary, environment, object)?;
+            let execution_arguments = allocator.pairlist_cell(&target, &tail, &domain.nil())?;
+            let syntax_arguments = allocator.pairlist_cell(&temporary, &tail, &domain.nil())?;
+            let call = allocator.call(setter, &syntax_arguments)?;
+            access.with_native(|owner| {
+                if function.is_closure() {
+                    let result = unsafe {
+                        super::closure::applyClosure(
+                            call.as_raw(),
+                            function.as_raw(),
+                            execution_arguments.as_raw(),
+                            environment.as_raw(),
+                            domain.nil().as_raw(),
+                            0,
+                        )
+                    };
+                    owner.sexp(result)?.into_owned()
+                } else {
+                    let apply = if function.typeof_() == SEXPTYPE::SPECIALSXP {
+                        super::apply::apply_special_safe
+                    } else {
+                        super::apply::apply_builtin_safe
+                    };
+                    apply(
+                        function.clone(),
+                        call.clone(),
+                        execution_arguments.clone(),
+                        environment.clone(),
+                    )
+                    .map_err(|message| SexpError::EvaluationFailed { message })?
+                    .into_owned()
+                }
+            })
+        })
+        .and_then(|result| result)
+        .unwrap_or_else(|error| bc_error(error.to_string()))
+    }));
+    match attempt {
+        Ok(result) => Ok(result),
+        Err(payload) => Err(recover_loop_jump(payload, loops)),
+    }
 }
 
 fn private_argument_tags(
@@ -3769,7 +3890,6 @@ unsafe fn bc_eval_owned(
                         &tags,
                         &rho_owned,
                         op == opcodes::OP_CALLSPECIAL,
-                        None,
                     );
                     let src = owned_constant_at(&constants, 0, "CALL source");
                     if TYPEOF(src) == SEXPTYPE::LANGSXP {
@@ -3829,33 +3949,23 @@ unsafe fn bc_eval_owned(
                     // The RHS was evaluated before the object and other arguments.
                     // Reversely stored call arguments become (object, ..., value).
                     arguments.insert(0, rhs.clone());
-                    let value_symbol = own_operand(crate::sexp::symbol::Rf_install(c"value".as_ptr()));
                     tags.try_reserve(1)
                         .unwrap_or_else(|_| bc_error("cannot allocate replacement tags"));
-                    tags.insert(0, Some(value_symbol));
+                    tags.insert(0, None);
                     let rhs_expression = own_operand(owned_constant_at(
                         &constants,
                         rhs_expr_idx as i64,
                         "REPLACEMENT RHS expression",
                     ));
-                    let temporary = own_operand(crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr()));
-                    let mut expressions = Vec::new();
-                    expressions
-                        .try_reserve(arguments.len())
-                        .unwrap_or_else(|_| bc_error("cannot retain replacement expressions"));
-                    expressions.resize_with(arguments.len(), || None);
-                    expressions[0] = Some(rhs_expression);
-                    expressions[count] = Some(temporary);
-                    let call = private_call_owned(
+                    let result = match private_replacement_owned(
                         &function,
                         &arguments,
                         &tags,
+                        &rhs_expression,
                         &rho_owned,
-                        false,
-                        Some(&expressions),
-                    );
-                    let result = match eval_nested_call(call.as_raw(), rho, &stack, &loop_stack) {
-                        Ok(value) => own_operand(value),
+                        &loop_stack,
+                    ) {
+                        Ok(value) => value,
                         Err(jump) => {
                             pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
                             super::runtime::set_visible(FALSE);

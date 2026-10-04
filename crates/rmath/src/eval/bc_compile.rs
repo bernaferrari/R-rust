@@ -500,6 +500,8 @@ impl BytecodeCompiler {
             if !self.compile_expr(rhs) {
                 return false;
             }
+            // The assignment returns this exact RHS after the setter runs.
+            self.emit(opcodes::OP_MARK_SHARED);
             let object_idx = self.add_const(object.as_raw());
             self.emit_operand(opcodes::OP_GETVAR, object_idx);
             self.emit(opcodes::OP_MARK_SHARED);
@@ -507,14 +509,9 @@ impl BytecodeCompiler {
             // Tags on the remaining arguments and the RHS remain significant.
             for (argument, tag) in cells.iter().skip(1) {
                 let idx = self.add_const(argument.as_raw());
-                self.emit_operand(
-                    if argument.as_raw() == crate::sexp::globals::R_MissingArg() {
-                        opcodes::OP_PUSHCONST
-                    } else {
-                        opcodes::OP_MAKEPROMISE
-                    },
-                    idx,
-                );
+                // Carry original syntax; the selected setter decides when to
+                // evaluate it, and its observable call retains the expression.
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
                 if tag.as_raw() != R_NilValue() {
                     let idx = self.add_const(tag.as_raw());
                     self.emit_operand(opcodes::OP_SETTAG, idx);
@@ -1150,6 +1147,130 @@ mod tests {
             "{x<-1L;`stamp<-`<-function(label,object,value){attr(object,label)<-value;object};stamp(object=x,label='mark')<-7L;x}",
         ] {
             assert_private_matches_source(script, false);
+        }
+    }
+
+    #[test]
+    fn compiled_replacement_preserves_observable_syntax_call() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let env = session.global_env().unwrap();
+        let script = "{sys.call<-function(which=0L).Internal(sys.call(which));x<-1L;`stamp<-`<-function(x,label,value){gc();attr(x,'observed')<-sys.call();x};stamp(x,unbound_label)<-{gc();7L};x}";
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        unsafe {
+            let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
+            crate::sexp::accessors::SET_VECTOR_ELT(
+                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+                0,
+                R_NilValue(),
+            );
+            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+            let observed = own_operand(crate::attrib_core::getAttrib(
+                result.as_raw(),
+                Rf_install(c"observed".as_ptr()),
+            ));
+            let head = observed.try_car().unwrap().into_owned().unwrap();
+            let object_cell = observed.try_cdr().unwrap().into_owned().unwrap();
+            let object = object_cell.try_car().unwrap().into_owned().unwrap();
+            let extra_cell = object_cell.try_cdr().unwrap().into_owned().unwrap();
+            let extra = extra_cell.try_car().unwrap().into_owned().unwrap();
+            let rhs = extra_cell
+                .try_cdr()
+                .unwrap()
+                .try_car()
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert_eq!(
+                symbol_name_from_sexp(head.as_raw()).as_deref(),
+                Some("stamp<-")
+            );
+            assert_eq!(
+                symbol_name_from_sexp(object.as_raw()).as_deref(),
+                Some("*tmp*")
+            );
+            assert_eq!(
+                symbol_name_from_sexp(extra.as_raw()).as_deref(),
+                Some("unbound_label")
+            );
+            assert_eq!(rhs.typeof_(), SEXPTYPE::PROMSXP);
+            owner.full_gc().unwrap();
+            assert_eq!(
+                symbol_name_from_sexp(object.as_raw()).as_deref(),
+                Some("*tmp*")
+            );
+        }
+    }
+
+    #[test]
+    fn compiled_replacement_keeps_original_rhs_shared_and_invisible() {
+        for (script, vector) in [
+            (
+                "{x<-1L;rhs<-7L;`stamp<-`<-function(x,value){gc();attr(value,'modified')<-TRUE;value};stamp(x)<-rhs}",
+                false,
+            ),
+            (
+                "{x<-1L;rhs<-c(7L,8L);`stamp<-`<-function(x,value){gc();value[1L]<-9L;value};stamp(x)<-rhs}",
+                true,
+            ),
+        ] {
+            let session = RSession::new_for_gc_tests();
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let env = session.global_env().unwrap();
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            unsafe {
+                let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
+                crate::sexp::accessors::SET_VECTOR_ELT(
+                    super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+                    0,
+                    R_NilValue(),
+                );
+                let result =
+                    own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+                assert_eq!(crate::sexp::globals::R_Visible(), 0);
+                let rhs = own_operand(crate::sexp::envir::R_findVar(
+                    Rf_install(c"rhs".as_ptr()),
+                    env.as_raw(),
+                ));
+                let object = own_operand(crate::sexp::envir::R_findVar(
+                    Rf_install(c"x".as_ptr()),
+                    env.as_raw(),
+                ));
+                assert_eq!(
+                    crate::mainutils::identical::R_compute_identical(
+                        result.as_raw(),
+                        rhs.as_raw(),
+                        0
+                    ),
+                    1
+                );
+                let result_attributes = crate::sexp::accessors::ATTRIB(result.as_raw());
+                let rhs_attributes = crate::sexp::accessors::ATTRIB(rhs.as_raw());
+                assert!(result_attributes.is_null() || result_attributes == R_NilValue());
+                assert!(rhs_attributes.is_null() || rhs_attributes == R_NilValue());
+                assert_eq!(rhs.integer_elt(0), Some(7));
+                if vector {
+                    assert_eq!(rhs.integer_elt(1), Some(8));
+                    assert_eq!(object.integer_elt(0), Some(9));
+                    assert_eq!(object.integer_elt(1), Some(8));
+                } else {
+                    let mark = own_operand(crate::attrib_core::getAttrib(
+                        object.as_raw(),
+                        Rf_install(c"modified".as_ptr()),
+                    ));
+                    assert_eq!(mark.logical_elt(0), Some(1));
+                }
+                owner.full_gc().unwrap();
+                assert_eq!(rhs.integer_elt(0), Some(7));
+            }
         }
     }
 

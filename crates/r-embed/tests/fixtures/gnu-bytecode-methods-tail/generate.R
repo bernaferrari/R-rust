@@ -46,3 +46,22 @@ x <- 1L
 `stamp<-` <- function(x,value) {attr(x,"code") <- substitute(x); attr(x,"rhs") <- substitute(value); x}
 stamp(x) <- quote(y)
 stopifnot(identical(attr(x,"code"), as.name("*tmp*")), identical(attr(x,"rhs"), quote(quote(y))))
+
+# Observable call syntax and the assignment's retained original RHS.
+sys.call.oracle <- sys.call
+x <- 1L
+`stamp<-` <- function(x,label,value) {attr(x,"observed") <- sys.call.oracle(); x}
+stamp(x,unbound_label) <- {1L;7L}
+observed <- attr(x,"observed")
+stopifnot(identical(observed[[1L]],quote(`stamp<-`)), identical(observed[[2L]],quote(`*tmp*`)),
+          identical(observed[[3L]],quote(unbound_label)), identical(typeof(observed[[4L]]),"promise"))
+x <- 1L
+rhs <- 7L
+`stamp<-` <- function(x,value) {attr(value,"modified") <- TRUE; value}
+result <- withVisible(stamp(x) <- rhs)
+stopifnot(identical(result$value,rhs), is.null(attributes(rhs)), !result$visible, identical(attr(x,"modified"),TRUE))
+x <- 1L
+rhs <- c(7L,8L)
+`stamp<-` <- function(x,value) {value[1L] <- 9L; value}
+result <- withVisible(stamp(x) <- rhs)
+stopifnot(identical(result$value,rhs), identical(rhs,c(7L,8L)), !result$visible, identical(x,c(9L,8L)))
