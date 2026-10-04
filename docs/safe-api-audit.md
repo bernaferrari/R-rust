@@ -6,9 +6,9 @@ The Android and app-facing Rust boundary is intentionally safe and owned:
   cancellation tokens, and PNG plot bytes as Rust-owned values.
 - `r-uniffi` exposes UniFFI records/enums/objects only. Kotlin callers never
   receive raw interpreter pointers.
-- Raw `SEXP`, `SEXPTYPE`, and C scalar types stay in the `rmath::sexp` core
-  compatibility layer where they are needed to keep the port faithful to R's C
-  structure.
+- Remaining raw `SEXP` projections, `SEXPTYPE`, and C scalar types stay inside
+  the crate-private interpreter. Checked node identities and owning handles
+  replace raw storage as the core is modernized.
 
 Run the checked audit:
 
@@ -25,13 +25,15 @@ The release gate runs this script by default.
 | `r-uniffi` | UniFFI records, enums, and `RSession` object | No `unsafe`; no raw `SEXP`; owned values only |
 | `r-embed` | Safe Rust `RSession`, `RValue`, package and plot APIs | No `unsafe`; no raw `SEXP`; owned values only |
 | `rmath::android` | Rust session facade over the interpreter core | Owned `RValue` surface; internal raw access stays below this layer |
-| `rmath::sexp` | Crate-private runtime implementation | Raw `SEXP` and lifetime-bound internal wrappers are inaccessible to downstream crates |
+| `rmath::sexp` | Crate-private runtime implementation | Raw `SEXP` and internal checked handles are inaccessible to downstream crates |
 
 ## Remaining Unsafe Work
 
-The app boundary is clean, but the core interpreter still has legitimate raw
-and unsafe internals while the C port is being sessionized. Track those through:
+The app boundary is clean, but the core interpreter still contains raw and
+unsafe internals. Track the remaining ownership and execution work through:
 
+- `rport-hah9u.32`: remaining raw runtime/context fields
+- `rport-sg9a`: explicit runtime borrowing and retirement of ambient TLS access
 - `rport-0dbg`: remaining Rust 2024 unsafe-op cleanup below the app boundary
 - `rport-x3pp`: object/S3 parity, including package-created list-object S3 dispatch
 - `rport-e6q`: older broad unsafe/raw SEXP audit issue; use this document and
@@ -51,25 +53,34 @@ and the `r-embed` handle API. Compile-fail fixtures reject raw module access;
 these privacy tests are not a separate proof of every internal lifetime rule.
 
 Rust roots use stable `(slot, generation)` identities, owner-aware replacement,
-and lifetime-bound, thread-confined guards. Legacy UNPROTECT operates only on
-the legacy stack. Contexts live in `Box<UnsafeCell<RCNTXT>>`; pointer derivation
+and owning, thread-confined handles and guards. Legacy UNPROTECT operates only on
+the legacy stack. Contexts live in `Rc<UnsafeCell<RCNTXT>>`; pointer derivation
 uses `UnsafeCell::get` after ownership is stored. Scope checkpoints release
 internal transient roots by generation without revoking managed guards.
 
-Internal unsafe routines still require root and aliasing discipline. Miri's
-current runs permit exposed provenance; they are useful counterexample checks,
-not a formal proof of safety or a security boundary for hostile R programs.
+Options and cached base wrappers now store actual owning `Sexp` values. Queries
+snapshot those values before callbacks; eviction or replacement releases their
+roots without a permanent preserve ledger. Source and private-bytecode flat
+replacement calls retain separate owning syntax and execution graphs, resolve
+the setter once, and preserve the original shared RHS. The checked node factory
+publishes complete promise expression/environment/value links before collection.
+
+Internal unsafe routines still require root and aliasing discipline. Targeted
+strict-provenance Miri runs with default borrow checking cover binding
+publication callbacks, owning options/cache eviction, and replacement graphs
+through collection. Some historical runs used exposed provenance. These are
+bounded executable checks, not a formal proof of every internal path.
 
 The LOESS numerical engine and headless renderer use `#![forbid(unsafe_code)]`.
 The R adapters remain inside the crate-private interpreter boundary. Mutable
-arena lends reject re-entry; vector header helpers validate their union tag,
+arena lends reject re-entry; vector helpers validate their type and payload kind,
 including the runtime's vector-backed BCODESXP representation. Evaluator inputs,
 builtin argument lists and temporary internal primitives stay rooted during
 nested evaluation. Bytecode variable lookup and writes root their live operand
 stack before promise or active-binding evaluation can trigger collection.
 
 String/list element access now validates target tags, buffer presence and signed
-indices before pointer arithmetic in both debug and release builds. String
+indices before reading or writing payloads in both debug and release builds. String
 setters share the generational write barrier used by list setters. Targeted
 Miri reproduced an out-of-range string write before the fix, then passed the
 same regression and invalid-tag/index tests afterward. These checks still
