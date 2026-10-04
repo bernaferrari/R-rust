@@ -166,6 +166,8 @@ jobs:
     name: Browser release bundles
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      RPORT_WASM_PKG: ${{ github.workspace }}/apps/workbench/webApp/build/generated/rustRuntimeResources/rust-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -206,17 +208,48 @@ jobs:
       - name: Install showcase dependencies
         working-directory: website
         run: pnpm install --frozen-lockfile
-      - name: Build and check the showcase
+      - name: Typecheck the showcase
+        shell: bash
+        working-directory: website
+        run: |
+          mkdir -p "$RUNNER_TEMP/showcase-evidence"
+          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/typecheck.timeout" -- pnpm typecheck 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/typecheck.log"
+      - name: Lint the showcase
+        shell: bash
+        working-directory: website
+        run: |
+          python3 ../scripts/run_parity_case.py --timeout 120 --timeout-marker "$RUNNER_TEMP/showcase-evidence/lint.timeout" -- pnpm lint 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/lint.log"
+      - name: Test showcase units
+        shell: bash
+        working-directory: website
+        run: |
+          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/unit.timeout" -- pnpm test:unit 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/unit.log"
+      - name: Build the showcase
+        shell: bash
+        working-directory: website
+        run: |
+          python3 ../scripts/run_parity_case.py --timeout 300 --timeout-marker "$RUNNER_TEMP/showcase-evidence/build.timeout" -- pnpm build 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/build.log"
+      - name: Install showcase Chromium
+        shell: bash
+        working-directory: website
+        run: |
+          python3 ../scripts/run_parity_case.py --timeout 180 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser-install.timeout" -- pnpm exec playwright install --with-deps chromium 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/browser-install.log"
+      - name: Exercise the showcase through Chromium
+        shell: bash
         working-directory: website
         env:
-          RPORT_WASM_PKG: ${{ github.workspace }}/apps/workbench/webApp/build/generated/rustRuntimeResources/rust-runtime
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/showcase-evidence/playwright.json
         run: |
-          pnpm typecheck
-          pnpm lint
-          pnpm test:unit
-          pnpm build
-          pnpm exec playwright install --with-deps chromium
-          pnpm test:e2e
+          python3 ../scripts/run_parity_case.py --timeout 600 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser.timeout" -- pnpm test:e2e --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/showcase-evidence/browser.log"
+      - name: Preserve showcase command and browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-validation
+          path: |
+            ${{ runner.temp }}/showcase-evidence
+            website/test-results
+          if-no-files-found: warn
       - name: Upload static showcase
         uses: actions/upload-artifact@v4
         with:

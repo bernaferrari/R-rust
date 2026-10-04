@@ -221,3 +221,16 @@ pass in 364.79 seconds with the default alias checker. Pinned GNU neighbors
 match the expected numeric outputs; warnings-free all-target Clippy passes in
 29.95 seconds. Independent later duplication and collector edits remain outside
 the loaded proof's frozen source ledger.
+
+The immutable fd015216 CI run completed without a green checkpoint: workspace
+execution failed at the compiler diagnostic, linked numerical validation failed
+on the stats-only lminfl symbol, and exact parity reported a 300-second Rust
+startup timeout. The first two failures are repaired in subsequent verified
+units above. Format, Rust WASM execution and actual Rust browser-workbench
+execution pass. The separate showcase job exceeded its unchanged 35-minute
+budget; no cancelled-job logs were available to attribute its combined phase.
+The CI repair splits that phase into six observable commands using the existing
+owned-subprocess deadline helper, explicit Bash pipeline failure propagation,
+phase logs and timeout markers, with unconditional evidence upload. Four helper
+tests and a deliberate command-exit-seven pipeline control pass locally; the
+real showcase job still requires a completed new checkpoint.
