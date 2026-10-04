@@ -27,7 +27,7 @@ the names below identify production regressions and bounded evidence.
 | Eval consumes only its own return ticket | `owned_eval_return_is_local_to_exact_eval_context`, `owned_eval_preserves_unmatched_original_return_ticket_after_full_gc` | Native checks distinguish a local eval return from an unmatched original transfer. |
 | A live owned value has a deliberate relationship with closure | `sexp::owner::tests::{owned_value_preserves_original_graph_after_runtime_close_and_drop_without_cycle,owned_lazy_value_rejects_revoked_provider_before_callback,owned_lazy_callback_can_close_and_drop_runtime_but_cannot_publish_success}` | Pure owned storage can survive runtime closure; runtime-dependent providers must reject a revoked owner. This is different from a host handle remaining usable after its session closes. |
 | Resource destruction can reenter only after arena loans end | `sexp::gengc::tests::collected_node_resources_reenter_only_after_collection_and_arena_lends_end` | Does not establish every external resource's construction, explicit close, collection, and shutdown matrix. STARMA has a typed canonical resource boundary; its full lifecycle acceptance remains required. |
-| A host handle retains its value privately and rejects reused identities | `owned_retained_*` store regressions | Ten native and strict-provenance Miri store fixtures pass for binding interference, collection, failed publication/writes, foreign identities, generation retirement, sole closure roots, and closure. The separate full embedding suite still requires default package startup. |
+| A host handle retains its value privately and rejects reused identities | `owned_retained_*` store regressions | Ten native and strict-provenance Miri store fixtures pass for binding interference, collection, failed publication/writes, foreign identities, generation retirement, sole closure roots, and closure. The original full embedding suite now also passes all twelve tests with default package startup; see the completed public-handle checkpoint below. |
 | Native invocation uses its actual registered callable signature | `mainutils::native_routines::tests::*`, `mainutils::dotcode::typed_native_handler_tests::*`, `native_routines::buffers::*`, `dotcode::buffer_dispatch::tests::*` | Thirteen Call/External native and strict-provenance Miri fixtures pass. Nine additional native and Miri cases verify checked, independently owned numerical buffers, original lookup ownership, rejected admission and promoted-result attribute barriers. Twenty of the 26 captured bundled C/Fortran registrations have checked adapters; six remain unsupported. Burg and STL acceptance evidence appears below. Matching registration metadata does not prove handler semantics. Foreign libraries remain an unsafe boundary. |
 | GC preambles release their exact temporary ownership on unwind | `owned_gc_*` | Nine native and strict-provenance Miri tests pass for full/lite GC, allocation torture, eval safe points, detached bindings, callback closure, and panic cleanup. The Miri run also verifies the original-runtime capture sole-pin fixture. |
 | Captured output preserves emission and original-owner cleanup | `exact_console_capture_*`, `exact_top_level_emission_*`, `owned_output_capture_*`, four `owned_retained_console_*`, four `focused_console_*`, and three `public_capture_*` fixtures | Independent GNU fixtures verify fourteen stdout cases. Native checks cover stream order, custom-print errors, active bindings, revoked printing, later-call rejection, and live panic payloads. Four focused interpreter fixtures and three public host-callback fixtures pass strict-provenance Miri. The public capture scope restores its parent or idle bank after a panic, preserves the panic payload, and cleans its original bank after revocation and reentry. |
@@ -1053,3 +1053,20 @@ Miri with strict provenance, the default alias checker and default isolation
 (466.85 seconds). Their six authored source hashes stayed fixed through the
 actual aggregate and successfully reaped process exit. This completes the
 string/list coercion item. Raw atomic conversions remain rport-wszw.7.1.1.2.
+
+## Completed public host-handle checkpoint (rport-jxfp.10)
+
+All twelve original `r-embed/tests/value_handle.rs` tests pass against production
+`d51482ea` in 830.46 seconds after 32.17 seconds of compilation. The full default
+constructors and assertions are unchanged. The bounded wrapper completed with
+exit zero before its 1000-second deadline; no timeout marker was created. The
+public safe-API audit also passes. This complements the ten completed strict
+Miri private-store cases and the native store/console lifecycle evidence above.
+
+The public suite exercises collection, ordinary reserved-name bindings,
+transactional failed definitions and writes, NULL and multi-statement values,
+export budgets, foreign sessions, slot reuse, stale identities, removal, closure
+and shared-vector updates. Values remain in engine-private owning storage;
+existence and reading do not parse printed R output. This closes the host-handle
+storage milestone, while broader browser/output acceptance and runtime borrowing
+remain separate work.
