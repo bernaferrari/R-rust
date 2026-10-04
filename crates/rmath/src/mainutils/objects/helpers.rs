@@ -308,39 +308,89 @@ pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
     }
 }
 
-unsafe fn ensure_s4_extends_table() -> SEXP {
+fn ensure_s4_extends_table() -> crate::sexp::object::Sexp<'static> {
+    with_objects_runtime(ensure_s4_extends_table_in)
+}
+
+fn ensure_s4_extends_table_in(
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    if let Some(existing) =
+        unsafe { objects_state_in(access, |state| state.s4_extends_table.owned()) }?
+    {
+        return Ok(existing);
+    }
+    let table = access.with_native(|owner| {
+        let raw = unsafe { crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0) };
+        owner.sexp(raw)?.into_owned()
+    })?;
     unsafe {
-        let existing = with_objects_state(|state| state.s4_extends_table);
-        if !existing.is_null() && existing != R_NilValue() {
-            return existing;
-        }
-        let table = crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0);
-        crate::sexp::protect::R_PreserveObject(table);
-        with_objects_state(|state| state.s4_extends_table = table);
-        table
+        objects_state_in(access, |state| {
+            if state.s4_extends_table.is_null() {
+                state.s4_extends_table = crate::sexp::instance::RuntimeValue::from_owned(table);
+            }
+            state
+                .s4_extends_table
+                .owned()
+                .expect("published S4 extends table")
+        })
     }
 }
 
 /// GNU `cache_class`: store or drop the `.extendsForS3` vector for a class.
 pub(crate) unsafe fn cache_class(class: &str, klass: SEXP) -> SEXP {
-    unsafe {
-        let table = ensure_s4_extends_table();
-        let Ok(cname) = std::ffi::CString::new(class) else {
-            return klass;
-        };
-        let symbol = Rf_install(cname.as_ptr());
-        if klass.is_null() || klass == R_NilValue() {
-            crate::sexp::envir::remove_binding_raw(table, symbol);
+    with_objects_runtime(|access| {
+        let domain = access.domain();
+        let klass = if klass.is_null() {
+            domain.nil()
         } else {
-            crate::sexp::envir::defineVar(symbol, klass, table);
-        }
-        klass
-    }
+            domain.wrap(klass)?
+        };
+        let table = ensure_s4_extends_table_in(access)?;
+        let Ok(cname) = std::ffi::CString::new(class) else {
+            return Ok(klass.as_raw());
+        };
+        let symbol = access.with_native(|owner| {
+            owner
+                .sexp(unsafe { Rf_install(cname.as_ptr()) })?
+                .into_owned()
+        })?;
+        access.with_native(|_| {
+            unsafe {
+                if klass.is_nil() {
+                    crate::sexp::envir::remove_binding_raw(table.as_raw(), symbol.as_raw());
+                } else {
+                    crate::sexp::envir::defineVar(symbol.as_raw(), klass.as_raw(), table.as_raw());
+                }
+            }
+            Ok(())
+        })?;
+        Ok(klass.as_raw())
+    })
 }
 
 /// GNU `S4_extends`: class plus superclasses via `.extendsForS3`, cached.
 unsafe fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
+    with_objects_runtime(|access| {
+        let domain = access.domain();
+        let klass = if klass.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(klass)?
+        };
+        let result = unsafe { S4_extends_in(access, klass, use_tab) };
+        access.require_active()?;
+        Ok(result)
+    })
+}
+
+unsafe fn S4_extends_in(
+    access: &crate::sexp::owner::RuntimeAccess,
+    klass_owner: crate::sexp::object::Sexp<'static>,
+    use_tab: bool,
+) -> SEXP {
     unsafe {
+        let klass = klass_owner.as_raw();
         if isMethodsDispatchOn() == FALSE {
             return klass;
         }
@@ -358,39 +408,53 @@ unsafe fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
             return klass;
         }
         if use_tab {
-            let table = ensure_s4_extends_table();
+            let table_owner = ensure_s4_extends_table();
+            let table = table_owner.as_raw();
             let Ok(cname) = std::ffi::CString::new(class.as_str()) else {
                 return klass;
             };
             let cached = crate::sexp::envir::R_findVarInFrame(table, Rf_install(cname.as_ptr()));
-            if !cached.is_null()
-                && cached != R_UnboundValue()
-                && cached != R_NilValue()
-            {
+            if !cached.is_null() && cached != R_UnboundValue() && cached != R_NilValue() {
                 return cached;
             }
         }
         let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
             return klass;
         };
+        let _namespace_owner = require_objects(access.domain().wrap(ns));
         let mut fun =
             crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".extendsForS3".as_ptr()));
+        require_objects(access.require_active());
         if fun.is_null() || fun == R_UnboundValue() {
             return S4_extends_from_contains(klass, &class);
         }
+        let _promise_owner = require_objects(access.domain().wrap(fun));
         if TYPEOF(fun) == SEXPTYPE::PROMSXP {
             fun = crate::sexp::envir::forcePromise(fun);
+            require_objects(access.require_active());
         }
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return S4_extends_from_contains(klass, &class);
         }
+        let _function_owner = require_objects(access.domain().wrap(fun));
         let call = Rf_lang2(fun, klass);
         let _call = protect(call);
         let evaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(call, ns)));
+        require_objects(access.require_active());
         match evaled {
             Ok(val) if !val.is_null() && val != R_NilValue() && TYPEOF(val) == SEXPTYPE::STRSXP => {
+                let _value_owner = require_objects(access.domain().wrap(val));
                 cache_class(&class, val);
                 val
+            }
+            Err(payload)
+                if !payload.is::<crate::sexp::context::RError>()
+                    && !matches!(
+                        payload.downcast_ref::<crate::sexp::context::RSignal>(),
+                        Some(crate::sexp::context::RSignal::Error { .. })
+                    ) =>
+            {
+                std::panic::resume_unwind(payload)
             }
             _ => S4_extends_from_contains(klass, &class),
         }
@@ -423,7 +487,6 @@ unsafe fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
         out
     }
 }
-
 
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
 unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
@@ -463,7 +526,6 @@ unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
             return R_data_class(x);
         };
         let mut names: Vec<&std::ffi::CStr> = Vec::new();
-
 
         if nd == 2 {
             names.push(c"matrix");
@@ -549,7 +611,6 @@ pub unsafe fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         topenv(target, envir)
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Helper: listAppend -- append two lists

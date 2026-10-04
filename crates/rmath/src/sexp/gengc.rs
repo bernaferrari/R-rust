@@ -410,17 +410,8 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_reachable((*instance).bind_state.blank_string);
 
         // Options and cached base wrappers own exact-generation automatic roots.
-        for callback in &(*instance).main_state.task_callbacks {
-            mark_reachable(callback.fun);
-            mark_reachable(callback.data);
-        }
-        for &generic in &(*instance).objects_state.prim_generics {
-            mark_reachable(generic);
-        }
-        for &methods in &(*instance).objects_state.prim_mlist {
-            mark_reachable(methods);
-        }
-        mark_reachable((*instance).objects_state.deferred_default_object);
+        // Task callbacks own exact-generation automatic roots.
+        // S4 method and inheritance caches own automatic roots as well.
         // Namespace cache values may be reachable only through the cache: a
         // pure-R package namespace has no other root once attach-time references
         // die. Untraced, a collection swept the namespace env and left a dangling
@@ -915,20 +906,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         }
         update_field(&mut (*instance).bind_state.blank_string, old_to_new);
 
-        for callback in &mut (*instance).main_state.task_callbacks {
-            update_field(&mut callback.fun, old_to_new);
-            update_field(&mut callback.data, old_to_new);
-        }
-        for generic in &mut (*instance).objects_state.prim_generics {
-            update_field(generic, old_to_new);
-        }
-        for methods in &mut (*instance).objects_state.prim_mlist {
-            update_field(methods, old_to_new);
-        }
-        update_field(
-            &mut (*instance).objects_state.deferred_default_object,
-            old_to_new,
-        );
         let old_cache = std::mem::take(&mut (*instance).package_namespace_cache);
         (*instance).package_namespace_cache = old_cache
             .into_iter()
@@ -1841,7 +1818,9 @@ mod tests {
             (*instance).unwrap_methods_ns = nil;
             (*instance).unwrap_methods_closures.clear();
             (*instance).active_bindings.clear();
-            (*instance).objects_state.deferred_default_object = nil;
+            (*instance).objects_state.deferred_default_object = instance::RuntimeValue::empty();
+            (*instance).objects_state.s4_validity.clear();
+            (*instance).objects_state.s4_extends_table = instance::RuntimeValue::empty();
             (*instance).eval_state.bc_stack.set_depth(0);
             (*instance).context_stack.clear();
             (*instance).gc_state.remembered_set.clear();
@@ -3503,7 +3482,7 @@ mod tests {
 
         instance::with_required_current_instance(|inst| unsafe {
             (*inst).error_state.warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
-            (*inst).objects_state.deferred_default_object = roots[1];
+            (*inst).objects_state.deferred_default_object = instance::RuntimeValue::from_raw_in(inst, roots[1]);
             unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -3551,8 +3530,9 @@ mod tests {
         instance::with_required_current_instance(|inst| unsafe {
             assert_eq!((*inst).error_state.warning_call.as_raw(), roots[0], "owning error fields preserve original allocation identity");
             assert_eq!(
-                (*inst).objects_state.deferred_default_object,
-                replacements[1]
+                (*inst).objects_state.deferred_default_object.as_raw(),
+                roots[1],
+                "owning S4 fields preserve original allocation identity"
             );
             let bytecode_root = Some((*inst).eval_state.bc_stack.at_owned(0).as_raw());
             assert_eq!(

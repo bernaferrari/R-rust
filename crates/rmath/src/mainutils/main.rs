@@ -11,10 +11,10 @@ use std::os::raw::c_int;
 
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
-use crate::sexp::accessors::{CAR, INTEGER_ELT, LENGTH, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
+use crate::sexp::accessors::{TYPEOF, VECTOR_ELT, XLENGTH};
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons, Rf_mkString};
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
@@ -30,11 +30,12 @@ pub(crate) struct MainRuntimeState {
     pub running_toplevel_handlers: bool,
 }
 
+#[derive(Clone)]
 pub(crate) struct ToplevelTaskCallback {
     pub id: c_int,
     pub name: String,
-    pub fun: SEXP,
-    pub data: SEXP,
+    pub fun: crate::sexp::object::Sexp<'static>,
+    pub data: crate::sexp::object::Sexp<'static>,
 }
 
 // ---------------------------------------------------------------------------
@@ -342,191 +343,306 @@ pub unsafe fn setup_Rmainloop() {
 // Top-level handlers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int, visible: c_int) {
-    if with_required_current_instance(|inst| unsafe {
-        if (*inst).main_state.running_toplevel_handlers {
-            true
-        } else {
-            (*inst).main_state.running_toplevel_handlers = true;
-            false
+/// Retain the physical runtime for cleanup; revocation only denies new work.
+struct TaskHandlersGuard {
+    owner: crate::sexp::owner::OwnerPin,
+    visible: c_int,
+}
+impl TaskHandlersGuard {
+    fn enter(owner: crate::sexp::owner::OwnerPin) -> Option<Self> {
+        let instance = owner.as_ptr();
+        unsafe {
+            if (*instance).main_state.running_toplevel_handlers {
+                return None;
+            }
+            let visible = (*instance).eval_state.visible;
+            (*instance).main_state.running_toplevel_handlers = true;
+            Some(Self { owner, visible })
         }
-    }) {
-        return;
     }
+}
+impl Drop for TaskHandlersGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let instance = self.owner.as_ptr();
+            (*instance).main_state.running_toplevel_handlers = false;
+            (*instance).eval_state.visible = self.visible;
+        }
+    }
+}
 
-    let mut index = 0usize;
-    loop {
-        let current = with_required_current_instance(|inst| unsafe {
-            // P2: short-lived shared borrow of one field; strictly-local read (String
-            // clone uses the system allocator, no R reentry), no ambient writes.
-            let callbacks = &(*inst).main_state.task_callbacks;
-            callbacks.get(index).map(|callback| {
-                (
-                    callback.id,
-                    callback.fun,
-                    callback.data,
-                    callback.name.clone(),
+fn task_callback_owner() -> crate::sexp::owner::WeakOwner {
+    with_required_current_instance(|instance| unsafe { (*instance).runtime_owner.clone() })
+        .unwrap_or_else(|| main_error("task callbacks require an original managed runtime"))
+}
+
+fn run_task_callback(
+    access: &crate::sexp::owner::RuntimeAccess,
+    callback: &ToplevelTaskCallback,
+    expr: &crate::sexp::object::Sexp<'static>,
+    value: &crate::sexp::object::Sexp<'static>,
+    succeeded: c_int,
+    visible: c_int,
+    environment: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<bool> {
+    use crate::sexp::object::SexpError;
+    let domain = access.domain();
+    let allocator = access.allocator(&domain)?;
+    let mut inputs = vec![
+        ("expr", expr.clone()),
+        ("value", value.clone()),
+        ("succeeded", domain.logical(succeeded != 0)),
+        ("visible", domain.logical(visible != 0)),
+    ];
+    if !callback.data.is_nil() {
+        inputs.push(("data", callback.data.clone()));
+    }
+    // Cached promises share the caller's values. Replacement operations in a
+    // callback must duplicate before mutating those original objects.
+    access.with_native(|_| {
+        for (_, value) in &inputs {
+            unsafe {
+                crate::sexp::accessors::SET_NAMED(value.as_raw(), 2);
+            }
+        }
+        Ok(())
+    })?;
+    let special = callback.fun.typeof_() == SEXPTYPE::SPECIALSXP;
+    let mut special_frame = domain.nil();
+    let mut syntax = domain.nil();
+    let mut execution = domain.nil();
+    for (name, value) in inputs.iter().rev() {
+        let name = CString::new(*name).expect("fixed task callback argument name");
+        let symbol = access.with_native(|owner| {
+            owner
+                .sexp(unsafe { Rf_install(name.as_ptr()) })?
+                .into_owned()
+        })?;
+        let promise = allocator.evaluated_promise_with_expression(&symbol, environment, value)?;
+        if special {
+            special_frame = allocator.pairlist_cell(value, &special_frame, &symbol)?;
+        }
+        execution = allocator.pairlist_cell(&promise, &execution, &domain.nil())?;
+        syntax = allocator.pairlist_cell(&symbol, &syntax, &domain.nil())?;
+    }
+    let special_environment = if special {
+        // Specials inspect the observable syntax (some read CDR(call)), so its
+        // argument symbols must resolve to the actual cached inputs. Initialize
+        // every graph edge before the allocator permits collection or callbacks.
+        let body = crate::sexp::ffi::NodeBody::Environment(crate::sexp::ffi::Envsxp {
+            frame: domain.link(&special_frame)?,
+            enclos: domain.link(environment)?,
+            hashtab: domain.link(&domain.nil())?,
+        });
+        Some(allocator.allocate(|arena| {
+            let pointer = arena.alloc_node(SEXPTYPE::ENVSXP);
+            let node = arena.node_token(pointer)?;
+            let heap = node.heap_identity();
+            let mut header = heap.node_snapshot(&node)?;
+            header.data = body;
+            heap.replace_node(&node, header)?;
+            Some(pointer)
+        })?)
+    } else {
+        None
+    };
+    let call = allocator.call(&callback.fun, &syntax)?;
+    access.with_native(|owner| {
+        let result = if callback.fun.is_closure() {
+            let result = unsafe {
+                crate::eval::closure::applyClosure(
+                    call.as_raw(),
+                    callback.fun.as_raw(),
+                    execution.as_raw(),
+                    environment.as_raw(),
+                    domain.nil().as_raw(),
+                    0,
                 )
-            })
-        });
-        let Some((id, fun, data, _name)) = current else {
-            break;
-        };
-
-        let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            let rho = crate::sexp::memory_ext::NewEnvironment(
-                R_NilValue(),
-                crate::sexp::globals::R_GlobalEnv(),
-                R_NilValue(),
-            );
-            let _rho = crate::sexp::protect::protect(rho);
-            let expr_v = if expr.is_null() { R_NilValue() } else { expr };
-            let value_v = if value.is_null() { R_NilValue() } else { value };
-            let sym = |name: &str| {
-                let c = std::ffi::CString::new(name).unwrap();
-                crate::sexp::symbol::Rf_install(c.as_ptr())
             };
-            crate::sexp::envir::defineVar(sym("expr"), expr_v, rho);
-            crate::sexp::envir::defineVar(sym("value"), value_v, rho);
-            crate::sexp::envir::defineVar(
-                sym("succeeded"),
-                Rf_ScalarLogical(if succeeded != 0 { TRUE } else { FALSE }),
-                rho,
-            );
-            crate::sexp::envir::defineVar(
-                sym("visible"),
-                Rf_ScalarLogical(if visible != 0 { TRUE } else { FALSE }),
-                rho,
-            );
-            let mut args = Rf_cons(sym("visible"), R_NilValue());
-            args = Rf_cons(sym("succeeded"), args);
-            args = Rf_cons(sym("value"), args);
-            args = Rf_cons(sym("expr"), args);
-            if !data.is_null() && data != R_NilValue() {
-                crate::sexp::envir::defineVar(sym("data"), data, rho);
-                args = Rf_cons(sym("data"), args);
-                // data is last: rebuild in order expr, value, succeeded, visible, data
-                args = Rf_cons(sym("visible"), Rf_cons(sym("data"), R_NilValue()));
-                args = Rf_cons(sym("succeeded"), args);
-                args = Rf_cons(sym("value"), args);
-                args = Rf_cons(sym("expr"), args);
-            }
-            let call = Rf_cons(fun, args);
-            if !call.is_null() {
-                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-            }
-            let result = crate::eval::eval::Rf_eval(call, rho);
-            crate::mainutils::coerce::asLogical(result) == TRUE
-        }))
-        .unwrap_or(false);
+            owner.sexp(result)?.into_owned()?
+        } else {
+            let result = if let Some(environment) = &special_environment {
+                crate::eval::apply::apply_special_safe(
+                    callback.fun.clone(),
+                    call.clone(),
+                    syntax.clone(),
+                    environment.clone(),
+                )
+            } else {
+                crate::eval::apply::apply_builtin_safe(
+                    callback.fun.clone(),
+                    call.clone(),
+                    execution.clone(),
+                    environment.clone(),
+                )
+            };
+            result
+                .map_err(|message| SexpError::EvaluationFailed { message })?
+                .into_owned()?
+        };
+        // Coercion can invoke ALTREP providers. The actual result owner lives
+        // through coercion and the native scope checks publication afterward.
+        // GNU's Rboolean contract removes only FALSE; NA and empty logical
+        // results retain the callback, including nonlogical values coerced to NA.
+        let keep = unsafe { crate::mainutils::coerce::asLogical(result.as_raw()) } != FALSE;
+        Ok(keep)
+    })
+}
 
-        let position = with_required_current_instance(|inst| unsafe {
-            // P2: short-lived shared borrow; purely local scan, no ambient writes.
-            let callbacks = &(*inst).main_state.task_callbacks;
-            callbacks.iter().position(|callback| callback.id == id)
-        });
-        match (keep, position) {
-            (true, Some(pos)) => index = pos + 1,
-            (false, Some(pos)) => {
-                with_required_current_instance(|inst| unsafe {
-                    (*inst).main_state.task_callbacks.remove(pos);
-                });
-                index = pos;
+pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int, visible: c_int) {
+    let owner = task_callback_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| main_error(error.to_string()));
+    let Some(_guard) = TaskHandlersGuard::enter(pin) else {
+        return;
+    };
+    // Direct managed native entries also need canonical nonlocal transport.
+    // Nested same-owner execution shares the existing scope; this never
+    // activates another runtime or adds a parallel rooting ledger.
+    let _transfers = crate::sexp::transfer::TransferScopeGuard::enter(owner.clone())
+        .unwrap_or_else(|error| main_error(error.to_string()));
+    // A revoked callback ends this notification. The guard still restores its
+    // original physical fields; no subsequent callback or result is published.
+    let _ = crate::sexp::owner::with_runtime(&owner, |access| {
+        let domain = access.domain();
+        let expr = if expr.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(expr)?
+        };
+        let value = if value.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(value)?
+        };
+        let environment = access.with_native(|owner| {
+            let raw = unsafe { (*owner.as_ptr()).global_env };
+            owner.sexp(raw)?.into_owned()
+        })?;
+        let mut visited = std::collections::HashSet::new();
+        loop {
+            access.require_active()?;
+            let callback = access.with_native(|owner| {
+                Ok(unsafe {
+                    (*owner.as_ptr())
+                        .main_state
+                        .task_callbacks
+                        .iter()
+                        .find(|callback| !visited.contains(&callback.id))
+                        .cloned()
+                })
+            })?;
+            let Some(callback) = callback else {
+                break;
+            };
+            visited.try_reserve(1).map_err(|_| {
+                crate::sexp::object::SexpError::AllocationFailed {
+                    object: "task callback iteration",
+                }
+            })?;
+            visited.insert(callback.id);
+            let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_task_callback(
+                    access,
+                    &callback,
+                    &expr,
+                    &value,
+                    succeeded,
+                    visible,
+                    &environment,
+                )
+            }))
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(false);
+            access.require_active()?;
+            if !keep {
+                let retired = access.with_native(|owner| {
+                    let callbacks = unsafe { &mut (*owner.as_ptr()).main_state.task_callbacks };
+                    Ok(callbacks
+                        .iter()
+                        .position(|item| item.id == callback.id)
+                        .map(|position| callbacks.remove(position)))
+                })?;
+                // Release actual owners outside the callback field borrow.
+                drop(retired);
             }
-            (_, None) => {}
         }
-    }
-
-    with_required_current_instance(|inst| unsafe {
-        (*inst).main_state.running_toplevel_handlers = false;
+        Ok::<(), crate::sexp::object::SexpError>(())
     });
 }
 
 pub unsafe fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
-    unsafe {
-        if fun.is_null()
-            || !matches!(
-                SEXPTYPE(TYPEOF(fun)),
-                SEXPTYPE::CLOSXP | SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP
-            )
-        {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "task callback must be a function".to_string(),
+    let owner = task_callback_owner();
+    crate::sexp::owner::with_runtime(&owner, |access| {
+        let domain = access.domain();
+        let fun = domain.wrap(fun)?.into_owned()?;
+        let data = if data.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(data)?.into_owned()?
+        };
+        if !fun.is_function() {
+            return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                message: "task callback must be a function".into(),
             });
         }
-    }
-
-    with_required_current_instance(|inst| unsafe {
-        (*inst).main_state.next_task_callback_id += 1;
-        let id = (*inst).main_state.next_task_callback_id;
-        (*inst)
-            .main_state
-            .task_callbacks
-            .push(ToplevelTaskCallback {
+        access.with_native(|owner| {
+            let state = unsafe { &mut (*owner.as_ptr()).main_state };
+            let id = state.next_task_callback_id.checked_add(1).ok_or(
+                crate::sexp::object::SexpError::AllocationFailed {
+                    object: "task callback identity",
+                },
+            )?;
+            state.task_callbacks.try_reserve(1).map_err(|_| {
+                crate::sexp::object::SexpError::AllocationFailed {
+                    object: "task callback storage",
+                }
+            })?;
+            state.task_callbacks.push(ToplevelTaskCallback {
                 id,
                 name: id.to_string(),
                 fun,
                 data,
             });
-        id
+            state.next_task_callback_id = id;
+            Ok(id)
+        })
     })
+    .and_then(|result| result)
+    .unwrap_or_else(|error| main_error(error.to_string()))
 }
 
 pub unsafe fn Rf_removeTaskCallback(which: SEXP) -> c_int {
-    unsafe {
-        let target = task_callback_selector(which);
-        with_required_current_instance(|inst| {
-            let position = match target {
-                TaskCallbackSelector::Id(id) => (*inst)
-                    .main_state
-                    .task_callbacks
-                    .iter()
-                    .position(|callback| callback.id == id),
-                TaskCallbackSelector::Name(name) => (*inst)
-                    .main_state
-                    .task_callbacks
-                    .iter()
-                    .position(|callback| callback.name == name),
+    let owner = task_callback_owner();
+    crate::sexp::owner::with_runtime(&owner, |access| {
+        let domain = access.domain();
+        let which = if which.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(which)?
+        };
+        let selector = access.with_native(|_| task_callback_selector(which))?;
+        let retired = access.with_native(|owner| {
+            let callbacks = unsafe { &mut (*owner.as_ptr()).main_state.task_callbacks };
+            let position = match selector {
+                TaskCallbackSelector::Id(id) => {
+                    callbacks.iter().position(|callback| callback.id == id)
+                }
+                TaskCallbackSelector::Name(name) => {
+                    callbacks.iter().position(|callback| callback.name == name)
+                }
                 TaskCallbackSelector::Missing => None,
             };
-            if let Some(position) = position {
-                (*inst).main_state.task_callbacks.remove(position);
-                TRUE
-            } else {
-                FALSE
-            }
-        })
-    }
-}
-
-unsafe fn make_task_callback_call(
-    fun: SEXP,
-    expr: SEXP,
-    value: SEXP,
-    succeeded: c_int,
-    visible: c_int,
-    data: SEXP,
-) -> SEXP {
-    unsafe {
-        let expr = if expr.is_null() { R_NilValue() } else { expr };
-        let value = if value.is_null() { R_NilValue() } else { value };
-        let data = if data.is_null() { R_NilValue() } else { data };
-        let mut args = R_NilValue();
-        for arg in [
-            data,
-            Rf_ScalarLogical(if visible != 0 { TRUE } else { FALSE }),
-            Rf_ScalarLogical(if succeeded != 0 { TRUE } else { FALSE }),
-            value,
-            expr,
-        ] {
-            args = Rf_cons(arg, args);
-        }
-        let call = Rf_cons(fun, args);
-        if !call.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        call
-    }
+            Ok(position.map(|position| callbacks.remove(position)))
+        })?;
+        let found = retired.is_some();
+        drop(retired);
+        Ok(if found { TRUE } else { FALSE })
+    })
+    .and_then(|result| result)
+    .unwrap_or_else(|error| main_error(error.to_string()))
 }
 
 enum TaskCallbackSelector {
@@ -535,14 +651,14 @@ enum TaskCallbackSelector {
     Missing,
 }
 
-unsafe fn task_callback_selector(which: SEXP) -> TaskCallbackSelector {
-    unsafe {
-        if which.is_null() || which == R_NilValue() {
-            return TaskCallbackSelector::Missing;
-        }
-        match SEXPTYPE(TYPEOF(which)) {
-            SEXPTYPE::INTSXP => {
-                let id = INTEGER_ELT(which, 0);
+fn task_callback_selector(
+    mut which: crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<TaskCallbackSelector> {
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        let selector = match which.typeof_() {
+            SEXPTYPE::INTSXP if which.len() > 0 => {
+                let id = which.try_integer_elt(0)?;
                 if id == NA_INTEGER {
                     TaskCallbackSelector::Missing
                 } else {
@@ -550,45 +666,47 @@ unsafe fn task_callback_selector(which: SEXP) -> TaskCallbackSelector {
                 }
             }
             SEXPTYPE::REALSXP => {
-                let id = crate::mainutils::coerce::asInteger(which);
+                let id = unsafe { crate::mainutils::coerce::asInteger(which.as_raw()) };
                 if id == NA_INTEGER {
                     TaskCallbackSelector::Missing
                 } else {
                     TaskCallbackSelector::Id(id)
                 }
             }
-            SEXPTYPE::STRSXP if LENGTH(which) > 0 => {
-                let charsxp = STRING_ELT(which, 0 as R_xlen_t);
-                let name = crate::sexp::accessors::CHAR(charsxp);
-                if name.is_null() {
-                    TaskCallbackSelector::Missing
-                } else {
-                    TaskCallbackSelector::Name(
-                        std::ffi::CStr::from_ptr(name)
-                            .to_string_lossy()
-                            .into_owned(),
-                    )
-                }
-            }
+            SEXPTYPE::STRSXP if which.len() > 0 => which
+                .try_string_value_elt(0)?
+                .map(TaskCallbackSelector::Name)
+                .unwrap_or(TaskCallbackSelector::Missing),
             SEXPTYPE::SYMSXP => {
-                let charsxp = crate::sexp::accessors::PRINTNAME(which);
-                let name = crate::sexp::accessors::CHAR(charsxp);
-                if name.is_null() {
+                let printname = which.try_printname()?;
+                let bytes = unsafe { crate::sexp::accessors::CHAR(printname.as_raw()) };
+                if bytes.is_null() {
                     TaskCallbackSelector::Missing
                 } else {
                     TaskCallbackSelector::Name(
-                        std::ffi::CStr::from_ptr(name)
+                        unsafe { std::ffi::CStr::from_ptr(bytes) }
                             .to_string_lossy()
                             .into_owned(),
                     )
                 }
             }
-            SEXPTYPE::LISTSXP => task_callback_selector(CAR(which)),
+            SEXPTYPE::LISTSXP => {
+                seen.try_reserve(1).map_err(|_| {
+                    crate::sexp::object::SexpError::AllocationFailed {
+                        object: "task callback selector",
+                    }
+                })?;
+                if !seen.insert(which.as_raw().addr()) {
+                    return Ok(TaskCallbackSelector::Missing);
+                }
+                which = which.try_car()?.into_owned()?;
+                continue;
+            }
             _ => TaskCallbackSelector::Missing,
-        }
+        };
+        return Ok(selector);
     }
 }
-
 // ---------------------------------------------------------------------------
 // Memory profiling
 // ---------------------------------------------------------------------------
@@ -764,7 +882,7 @@ mod tests {
 
     #[test]
     fn test_top_level_callbacks_keep_or_remove_by_result() {
-        let _session = RSession::new();
+        let _session = RSession::new_for_gc_tests();
         unsafe {
             let keep = task_callback_closure(TRUE);
             let drop = task_callback_closure(FALSE);
@@ -791,8 +909,8 @@ mod tests {
 
     #[test]
     fn test_top_level_callbacks_are_session_local() {
-        let left = RSession::new();
-        let right = RSession::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
 
         let left_id = left.with_protected(|| unsafe {
             Rf_addTaskCallback(task_callback_closure(TRUE), R_NilValue())
@@ -850,5 +968,370 @@ mod tests {
             assert_eq!(R_GetCollectWarnings(), 5);
             assert_eq!(R_GetVisible(), FALSE);
         });
+    }
+}
+
+#[cfg(test)]
+mod owned_task_callback_tests {
+    use super::*;
+    use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
+
+    fn source(session: &RSession, script: &str) -> Sexp<'static> {
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let expression = owner
+                .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
+                .unwrap()
+                .unwrap();
+            factory
+                .wrap(unsafe {
+                    Rf_eval(expression.as_raw(), session.global_env().unwrap().as_raw())
+                })
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        })
+    }
+
+    fn integer(session: &RSession, value: c_int) -> Sexp<'static> {
+        session
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .allocate(|arena| {
+                crate::sexp::builder::scalar_integer_in(arena, value).map(|value| value.as_raw())
+            })
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    }
+
+    #[test]
+    fn owned_task_callback_storage_roots_and_releases_actual_values() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(&session, "function(expr,value,succeeded,visible,data) TRUE");
+        let data = integer(&session, 37);
+        let fun_node = fun.allocation().unwrap().clone();
+        let data_node = data.allocation().unwrap().clone();
+        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), data.as_raw()) };
+        drop(fun);
+        drop(data);
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert!(fun_node.is_live());
+        assert!(data_node.is_live());
+        let selector = integer(&session, id);
+        assert_eq!(unsafe { Rf_removeTaskCallback(selector.as_raw()) }, TRUE);
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert!(!fun_node.is_live());
+        assert!(!data_node.is_live());
+        assert_eq!(
+            unsafe { Rf_removeTaskCallback(std::ptr::null_mut()) },
+            FALSE
+        );
+        let empty = source(&session, "integer(0)");
+        assert_eq!(unsafe { Rf_removeTaskCallback(empty.as_raw()) }, FALSE);
+    }
+
+    #[test]
+    fn owned_task_callback_selector_handles_cyclic_list_and_string_identity() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(&session, "function(...) TRUE");
+        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+        let factory = session.owner_token().unwrap().node_factory();
+        let cycle = factory
+            .pairlist_cell(&factory.nil(), &factory.nil(), &factory.nil())
+            .unwrap();
+        unsafe {
+            crate::sexp::accessors::SETCAR(cycle.as_raw(), cycle.as_raw());
+        }
+        assert_eq!(unsafe { Rf_removeTaskCallback(cycle.as_raw()) }, FALSE);
+        session.owner_token().unwrap().full_gc().unwrap();
+        let name = source(&session, &format!("'{id}'"));
+        assert_eq!(unsafe { Rf_removeTaskCallback(name.as_raw()) }, TRUE);
+    }
+
+    #[test]
+    fn owned_task_callback_direct_managed_entry_supports_return_and_on_exit() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(
+            &session,
+            "function(...) { on.exit(callback_return_exit <<- TRUE); callback_return_body <<- TRUE; return(TRUE) }",
+        );
+        assert!(crate::sexp::transfer::active_owner_pin().is_err());
+        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+        unsafe {
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+        }
+        let selector = integer(&session, id);
+        assert_eq!(unsafe { Rf_removeTaskCallback(selector.as_raw()) }, TRUE);
+        assert!(crate::sexp::transfer::active_owner_pin().is_err());
+        assert_eq!(
+            source(&session, "callback_return_body").logical_elt(0),
+            Some(TRUE)
+        );
+        assert_eq!(
+            source(&session, "callback_return_exit").logical_elt(0),
+            Some(TRUE)
+        );
+    }
+
+    #[test]
+    fn owned_task_callback_missing_and_primitive_results_keep_until_false_like_gnu() {
+        let session = RSession::new_for_gc_tests();
+        // GNU bac583951 preserves NA/empty/nonlogical callbacks. Rboolean
+        // removes only FALSE, including a successfully coerced numeric zero.
+        for script in [
+            "function(...) NA",
+            "function(...) logical(0)",
+            "function(...) NULL",
+            ".Primitive('list')",
+            ".Primitive('expression')",
+            ".Primitive('{')",
+        ] {
+            let fun = source(&session, script);
+            let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+            unsafe {
+                Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+            }
+            let selector = integer(&session, id);
+            assert_eq!(
+                unsafe { Rf_removeTaskCallback(selector.as_raw()) },
+                TRUE,
+                "{script}"
+            );
+        }
+        for script in [
+            "function(...) FALSE",
+            "function(...) 0L",
+            "function(...) 'FALSE'",
+        ] {
+            let fun = source(&session, script);
+            let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+            unsafe {
+                Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+            }
+            let selector = integer(&session, id);
+            assert_eq!(
+                unsafe { Rf_removeTaskCallback(selector.as_raw()) },
+                FALSE,
+                "{script}"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_task_callback_caches_language_values_and_source_symbols() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(
+            &session,
+            "function(expr,value,succeeded,visible,data) { callback_observed <<- list(expr,value,succeeded,visible,data,substitute(expr),substitute(value),substitute(data)); invisible(FALSE) }",
+        );
+        let expr = source(&session, "quote(stop('expr must remain data'))");
+        let value = source(&session, "quote(stop('value must remain data'))");
+        let data = source(&session, "quote(stop('data must remain data'))");
+        unsafe {
+            Rf_addTaskCallback(fun.as_raw(), data.as_raw());
+            R_SetVisible(TRUE);
+        }
+        unsafe {
+            Rf_callToplevelHandlers(expr.as_raw(), value.as_raw(), TRUE, FALSE);
+        }
+        assert_eq!(unsafe { R_GetVisible() }, TRUE);
+        let observed = source(&session, "callback_observed");
+        assert_eq!(observed.vector_elt(0).unwrap().as_raw(), expr.as_raw());
+        assert_eq!(observed.vector_elt(1).unwrap().as_raw(), value.as_raw());
+        assert_eq!(observed.vector_elt(2).unwrap().logical_elt(0), Some(TRUE));
+        assert_eq!(observed.vector_elt(3).unwrap().logical_elt(0), Some(FALSE));
+        assert_eq!(observed.vector_elt(4).unwrap().as_raw(), data.as_raw());
+        let check = source(
+            &session,
+            "identical(callback_observed[[6]],quote(expr)) && identical(callback_observed[[7]],quote(value)) && identical(callback_observed[[8]],quote(data))",
+        );
+        assert_eq!(check.logical_elt(0), Some(TRUE));
+        session.with_active_in(|instance| unsafe {
+            assert!((*instance).main_state.task_callbacks.is_empty());
+            assert!(!(*instance).main_state.running_toplevel_handlers);
+        });
+    }
+
+    #[test]
+    fn owned_task_callback_mutation_preserves_original_input_sharing() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(
+            &session,
+            "function(expr,value,succeeded,visible,data) { value[1] <- 99L; data[1] <- 88L; callback_mutated <<- list(value,data); FALSE }",
+        );
+        let value = integer(&session, 3);
+        let data = integer(&session, 4);
+        unsafe {
+            Rf_addTaskCallback(fun.as_raw(), data.as_raw());
+            Rf_callToplevelHandlers(R_NilValue(), value.as_raw(), TRUE, TRUE);
+        }
+        assert_eq!(value.integer_elt(0), Some(3));
+        assert_eq!(data.integer_elt(0), Some(4));
+        let mutated = source(&session, "callback_mutated");
+        assert_eq!(mutated.vector_elt(0).unwrap().integer_elt(0), Some(99));
+        assert_eq!(mutated.vector_elt(1).unwrap().integer_elt(0), Some(88));
+    }
+
+    #[test]
+    fn owned_task_callback_iteration_handles_preceding_self_removal_and_addition() {
+        let session = RSession::new_for_gc_tests();
+        source(&session, "callback_log <- integer(0)");
+        let a = source(
+            &session,
+            "function(...) { callback_log <<- c(callback_log,1L); TRUE }",
+        );
+        let b = source(
+            &session,
+            "function(...) { callback_log <<- c(callback_log,2L); .Internal(removeTaskCallback(1L)); .Internal(removeTaskCallback(2L)); .Internal(addTaskCallback(function(...) { callback_log <<- c(callback_log,4L); FALSE },NULL)); TRUE }",
+        );
+        let c = source(
+            &session,
+            "function(...) { callback_log <<- c(callback_log,3L); FALSE }",
+        );
+        unsafe {
+            assert_eq!(Rf_addTaskCallback(a.as_raw(), R_NilValue()), 1);
+            assert_eq!(Rf_addTaskCallback(b.as_raw(), R_NilValue()), 2);
+            assert_eq!(Rf_addTaskCallback(c.as_raw(), R_NilValue()), 3);
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+        }
+        let log = source(&session, "callback_log");
+        assert_eq!(
+            (0..log.len())
+                .map(|i| log.integer_elt(i).unwrap())
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
+        session.with_active_in(|instance| unsafe {
+            assert!((*instance).main_state.task_callbacks.is_empty());
+        });
+    }
+
+    #[test]
+    fn owned_task_callback_snapshot_survives_collecting_reentrant_removal() {
+        let session = RSession::new_for_gc_tests();
+        let fun = source(
+            &session,
+            "function(expr,value,succeeded,visible,data) { callback_survived <<- data; FALSE }",
+        );
+        let data = integer(&session, 71);
+        let fun_node = fun.allocation().unwrap().clone();
+        let data_node = data.allocation().unwrap().clone();
+        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), data.as_raw()) };
+        let selector = integer(&session, id);
+        drop(fun);
+        drop(data);
+        let calls = Rc::new(Cell::new(0));
+        let seen = calls.clone();
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if seen.replace(seen.get() + 1) == 0 {
+                    (*instance).memory_state.gc_force_gap = 0;
+                    assert_eq!(Rf_removeTaskCallback(selector.as_raw()), TRUE);
+                    Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+                    OwnerToken::from_raw(instance).full_gc().unwrap();
+                    assert!(fun_node.is_live());
+                    assert!(data_node.is_live());
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+            assert!(!(*instance).main_state.running_toplevel_handlers);
+        });
+        assert!(calls.get() > 0);
+        assert_eq!(
+            source(&session, "callback_survived").integer_elt(0),
+            Some(71)
+        );
+    }
+
+    #[test]
+    fn owned_task_callback_error_and_collecting_panic_restore_running_and_visibility() {
+        let session = RSession::new_for_gc_tests();
+        let bad = source(&session, "function(...) stop('callback failure')");
+        let good = source(
+            &session,
+            "function(...) { callback_after_error <<- 1L; FALSE }",
+        );
+        unsafe {
+            Rf_addTaskCallback(bad.as_raw(), R_NilValue());
+            Rf_addTaskCallback(good.as_raw(), R_NilValue());
+            R_SetVisible(FALSE);
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+        }
+        assert_eq!(unsafe { R_GetVisible() }, FALSE);
+        assert_eq!(
+            source(&session, "callback_after_error").integer_elt(0),
+            Some(1)
+        );
+        let callback = source(&session, "function(...) TRUE");
+        unsafe {
+            Rf_addTaskCallback(callback.as_raw(), R_NilValue());
+            R_SetVisible(FALSE);
+        }
+        let fired = Rc::new(Cell::new(false));
+        let injected = fired.clone();
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !injected.replace(true) {
+                    (*instance).memory_state.gc_force_gap = 0;
+                    panic!("collecting callback unwind");
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+            assert!(!(*instance).main_state.running_toplevel_handlers);
+            assert_eq!((*instance).eval_state.visible, FALSE);
+        });
+        assert!(fired.get());
+    }
+
+    #[test]
+    fn owned_task_callback_cleanup_pins_original_after_callback_drops_facade() {
+        let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+        let original = facade
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .owner_token()
+            .unwrap()
+            .weak_owner()
+            .unwrap();
+        let pin = original.pin().unwrap();
+        let instance = pin.as_ptr();
+        let fun = source(facade.borrow().as_ref().unwrap(), "function(...) TRUE");
+        unsafe {
+            Rf_addTaskCallback(fun.as_raw(), R_NilValue());
+        }
+        let other = RSession::new_for_gc_tests();
+        other.with_active(|| unsafe {
+            R_SetVisible(TRUE);
+        });
+        let callback_facade = Rc::downgrade(&facade);
+        unsafe {
+            crate::sexp::session::with_instance_active(instance, || {
+                (*instance).eval_state.visible = FALSE;
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    assert!((*instance).main_state.running_toplevel_handlers);
+                    drop(callback_facade.upgrade().unwrap().borrow_mut().take());
+                }));
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+                Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
+            });
+            assert!(!(*instance).main_state.running_toplevel_handlers);
+            assert_eq!((*instance).eval_state.visible, FALSE);
+        }
+        assert!(facade.borrow().is_none());
+        assert!(!original.is_live());
+        other.with_active(|| assert_eq!(unsafe { R_GetVisible() }, TRUE));
     }
 }

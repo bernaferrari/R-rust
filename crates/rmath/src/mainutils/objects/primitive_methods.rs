@@ -7,6 +7,50 @@
 )]
 
 use super::*;
+use crate::sexp::{instance::RuntimeValue, object::Sexp};
+
+/// Restore the original physical runtime even when a method throws or revokes
+/// its execution authority. Cleanup never executes R or follows ambient TLS.
+struct PrimitiveStatusGuard {
+    pin: crate::sexp::owner::OwnerPin,
+    offset: usize,
+    status: prim_methods_t,
+    armed: bool,
+}
+
+impl PrimitiveStatusGuard {
+    fn new(
+        access: &crate::sexp::owner::RuntimeAccess,
+        offset: usize,
+        status: prim_methods_t,
+    ) -> crate::sexp::object::SexpResult<Self> {
+        let pin = access.with_native(|owner| {
+            owner
+                .pin()?
+                .ok_or(crate::sexp::object::SexpError::RootUnavailable)
+        })?;
+        Ok(Self {
+            pin,
+            offset,
+            status,
+            armed: true,
+        })
+    }
+}
+
+impl Drop for PrimitiveStatusGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            unsafe {
+                if let Some(slot) =
+                    (&mut (*self.pin.as_ptr()).objects_state.prim_methods).get_mut(self.offset)
+                {
+                    *slot = self.status;
+                }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Primitive method dispatch infrastructure
@@ -46,38 +90,60 @@ pub unsafe fn do_set_prim_method(
             ),
         };
 
-
         let Some(offset) = primitive_offset(op) else {
             error("invalid object: must be a primitive function");
         };
 
-        with_objects_state(|state| {
-            state.ensure_primitive_slot(offset);
-
-            state.prim_methods[offset] = code;
-            if offset as c_int > state.cur_max_offset {
-                state.cur_max_offset = offset as c_int;
-            }
-
-            if code == prim_methods_t::NO_METHODS {
-                state.prim_generics[offset] = ptr::null_mut();
-                state.prim_mlist[offset] = ptr::null_mut();
-            } else if !fundef.is_null()
-                && fundef != R_NilValue()
-                && state.prim_generics[offset].is_null()
-            {
-                state.prim_generics[offset] = fundef;
-            }
-
-            if code == prim_methods_t::HAS_METHODS && !mlist.is_null() && mlist != R_NilValue() {
-                state.prim_mlist[offset] = mlist;
-            }
-
-            if state.prim_generics[offset].is_null() {
-                R_NilValue()
+        with_objects_runtime(|access| {
+            let domain = access.domain();
+            let fundef = if fundef.is_null() || fundef == domain.nil().as_raw() {
+                None
             } else {
-                state.prim_generics[offset]
-            }
+                Some(domain.wrap(fundef)?)
+            };
+            let mlist = if mlist.is_null() || mlist == domain.nil().as_raw() {
+                None
+            } else {
+                Some(domain.wrap(mlist)?)
+            };
+            let generic = objects_state_in(access, |state| {
+                state.ensure_primitive_slot(offset);
+                let previous = state.prim_generics[offset].owned();
+                if !matches!(
+                    code,
+                    prim_methods_t::NO_METHODS | prim_methods_t::SUPPRESSED
+                ) && state.prim_generics[offset].is_null()
+                    && fundef
+                        .as_ref()
+                        .is_some_and(|fun| fun.typeof_() != SEXPTYPE::CLOSXP)
+                {
+                    error("the formal definition of a primitive generic must be a function object");
+                }
+
+                state.prim_methods[offset] = code;
+                if offset as c_int > state.cur_max_offset {
+                    state.cur_max_offset = offset as c_int;
+                }
+
+                if code == prim_methods_t::NO_METHODS {
+                    state.prim_generics[offset] = RuntimeValue::empty();
+                    state.prim_mlist[offset] = RuntimeValue::empty();
+                } else if code != prim_methods_t::SUPPRESSED
+                    && state.prim_generics[offset].is_null()
+                {
+                    if let Some(fundef) = fundef {
+                        state.prim_generics[offset] = RuntimeValue::from_owned(fundef);
+                    }
+                }
+
+                if code == prim_methods_t::HAS_METHODS {
+                    if let Some(mlist) = mlist {
+                        state.prim_mlist[offset] = RuntimeValue::from_owned(mlist);
+                    }
+                }
+                previous
+            })?;
+            Ok(generic.as_ref().map_or(ptr::null_mut(), Sexp::as_raw))
         })
     }
 }
@@ -138,7 +204,6 @@ pub unsafe fn R_set_prim_method(
             }
         }
 
-
         do_set_prim_method(op, code_string, fundef, mlist);
         fname
     }
@@ -154,8 +219,8 @@ pub unsafe fn R_primitive_methods(op: SEXP) -> SEXP {
             state
                 .prim_mlist
                 .get(offset)
-                .copied()
-                .filter(|value| !value.is_null())
+                .and_then(RuntimeValue::owned)
+                .map(|value| value.as_raw())
                 .unwrap_or_else(|| unsafe { R_NilValue() })
         })
     }
@@ -171,8 +236,8 @@ pub unsafe fn R_primitive_generic(op: SEXP) -> SEXP {
             state
                 .prim_generics
                 .get(offset)
-                .copied()
-                .filter(|value| !value.is_null())
+                .and_then(RuntimeValue::owned)
+                .map(|value| value.as_raw())
                 .unwrap_or_else(|| unsafe { R_NilValue() })
         })
     }
@@ -209,15 +274,29 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
 
 /// R_deferred_default_method -- return the deferred default method marker.
 pub unsafe fn R_deferred_default_method() -> SEXP {
-    unsafe {
-        with_objects_state(|state| {
-            if state.deferred_default_object.is_null() {
-                state.deferred_default_object =
-                    Rf_install(b"__Deferred_Default_Marker__\x00".as_ptr() as *const c_char);
-            }
-            state.deferred_default_object
-        })
-    }
+    with_objects_runtime(|access| {
+        if let Some(marker) =
+            unsafe { objects_state_in(access, |state| state.deferred_default_object.owned()) }?
+        {
+            return Ok(marker.as_raw());
+        }
+        let marker = access.with_native(|owner| {
+            let raw = unsafe { Rf_install(c"__Deferred_Default_Marker__".as_ptr()) };
+            owner.sexp(raw)?.into_owned()
+        })?;
+        let marker = unsafe {
+            objects_state_in(access, |state| {
+                if state.deferred_default_object.is_null() {
+                    state.deferred_default_object = RuntimeValue::from_owned(marker);
+                }
+                state
+                    .deferred_default_object
+                    .owned()
+                    .expect("published default marker")
+            })
+        }?;
+        Ok(marker.as_raw())
+    })
 }
 
 /// R_set_quick_method_check -- set the quick method check function pointer.
@@ -238,16 +317,50 @@ pub unsafe fn R_possible_dispatch(
     rho: SEXP,
     promisedArgs: c_int,
 ) -> SEXP {
+    with_objects_runtime(|access| {
+        let result = unsafe { possible_dispatch_in(access, call, op, args, rho, promisedArgs) };
+        access.require_active()?;
+        Ok(result)
+    })
+}
+
+unsafe fn possible_dispatch_in(
+    access: &crate::sexp::owner::RuntimeAccess,
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    promisedArgs: c_int,
+) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
-        let call_owner = if call.is_null() { factory.nil() } else {
-            factory.wrap(call).expect("primitive dispatch call belongs to the active heap")
+        let _operation = if op.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(op)
+                .expect("primitive operation belongs to the active heap")
         };
-        let _arguments = if args.is_null() { factory.nil() } else {
-            factory.wrap(args).expect("primitive dispatch arguments belong to the active heap")
+        let call_owner = if call.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(call)
+                .expect("primitive dispatch call belongs to the active heap")
         };
-        let environment = if rho.is_null() { factory.nil() } else {
-            factory.wrap(rho).expect("primitive dispatch environment belongs to the active heap")
+        let _arguments = if args.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(args)
+                .expect("primitive dispatch arguments belong to the active heap")
+        };
+        let environment = if rho.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(rho)
+                .expect("primitive dispatch environment belongs to the active heap")
         };
         let offset = PRIMOFFSET(op);
         let cur_max = with_objects_state(|state| state.cur_max_offset);
@@ -255,7 +368,7 @@ pub unsafe fn R_possible_dispatch(
             error("invalid primitive operation given for dispatch");
         }
 
-        let current = with_objects_state(|state| {
+        let mut current = with_objects_state(|state| {
             state
                 .prim_methods
                 .get(offset as usize)
@@ -271,6 +384,8 @@ pub unsafe fn R_possible_dispatch(
         }
 
         if current == prim_methods_t::NEEDS_RESET {
+            let mut reset =
+                require_objects(PrimitiveStatusGuard::new(access, offset as usize, current));
             do_set_prim_method(
                 op,
                 b"suppressed\x00".as_ptr() as *const c_char,
@@ -278,6 +393,7 @@ pub unsafe fn R_possible_dispatch(
                 R_NilValue(),
             );
             let mlist = get_primitive_methods(op, rho);
+            require_objects(access.require_active());
             let _mlist_guard = protect(mlist);
             do_set_prim_method(
                 op,
@@ -285,21 +401,32 @@ pub unsafe fn R_possible_dispatch(
                 R_NilValue(),
                 mlist,
             );
+            current = with_objects_state(|state| state.prim_methods[offset as usize]);
+            reset.armed = false;
         }
 
-        let mlist = with_objects_state(|state| {
+        let mlist_owner = with_objects_state(|state| {
             state
                 .prim_mlist
                 .get(offset as usize)
-                .copied()
-                .unwrap_or(ptr::null_mut())
+                .and_then(RuntimeValue::owned)
         });
+        let mlist = mlist_owner.as_ref().map_or(ptr::null_mut(), Sexp::as_raw);
 
         // Try the quick method check
         if !mlist.is_null() && isNull(mlist) == FALSE {
             let qmc = with_objects_state(|state| state.quick_method_check_ptr);
             if let Some(check_fn) = qmc {
-                let value = check_fn(args, mlist, op);
+                let value = require_objects(access.with_native(|owner| {
+                    let raw = check_fn(args, mlist, op);
+                    if raw.is_null() {
+                        Ok(access.domain().nil())
+                    } else {
+                        owner.sexp(raw)?.into_owned()
+                    }
+                }));
+                let value_owner = value;
+                let value = value_owner.as_raw();
                 if isPrimitive(value) != FALSE {
                     return ptr::null_mut();
                 }
@@ -316,17 +443,22 @@ pub unsafe fn R_possible_dispatch(
                     let suppliedvars = crate::sexp::memory_ext::allocList(1);
                     let _suppliedvars_guard = protect(suppliedvars);
                     SETCAR(suppliedvars, Rf_mkString(prim_name_ptr));
-                    SETTAG(
-                        suppliedvars,
-                        Rf_install(c".Generic".as_ptr()),
-                    );
-
+                    SETTAG(suppliedvars, Rf_install(c".Generic".as_ptr()));
+                    require_objects(access.require_active());
 
                     if promisedArgs == FALSE {
-                        let expressions = if call_owner.is_nil() { factory.nil() } else {
-                            factory.wrap(CDR(call_owner.as_raw())).expect("dispatch expressions remain live")
+                        let expressions = if call_owner.is_nil() {
+                            factory.nil()
+                        } else {
+                            factory
+                                .wrap(CDR(call_owner.as_raw()))
+                                .expect("dispatch expressions remain live")
                         };
-                        let promised = crate::eval::dispatch::promiseArgs(&factory, expressions, environment.clone());
+                        let promised = crate::eval::dispatch::promiseArgs(
+                            &factory,
+                            expressions,
+                            environment.clone(),
+                        );
                         let s = promised.as_raw();
                         if length(s) != length(args) {
                             error("dispatch error");
@@ -352,6 +484,7 @@ pub unsafe fn R_possible_dispatch(
                             suppliedvars,
                             TRUE,
                         );
+                        require_objects(access.require_active());
                         return value;
                     } else {
                         let value = crate::eval::closure::applyClosureWithFrameVars(
@@ -363,29 +496,34 @@ pub unsafe fn R_possible_dispatch(
                             suppliedvars,
                             FALSE,
                         );
+                        require_objects(access.require_active());
                         return value;
                     }
-
                 }
             }
         }
 
         // Fall back to full generic dispatch via prim_generics
-        let fundef = with_objects_state(|state| {
+        let fundef_owner = with_objects_state(|state| {
             state
                 .prim_generics
                 .get(offset as usize)
-                .copied()
-                .unwrap_or(ptr::null_mut())
+                .and_then(RuntimeValue::owned)
         });
+        let fundef = fundef_owner.as_ref().map_or(ptr::null_mut(), Sexp::as_raw);
 
         if fundef.is_null() || TYPEOF(fundef) != SEXPTYPE::CLOSXP {
             error("primitive function has been set for methods but no generic function supplied");
         }
+        let _restore = require_objects(PrimitiveStatusGuard::new(access, offset as usize, current));
 
         if promisedArgs == FALSE {
-            let expressions = if call_owner.is_nil() { factory.nil() } else {
-                factory.wrap(CDR(call_owner.as_raw())).expect("dispatch expressions remain live")
+            let expressions = if call_owner.is_nil() {
+                factory.nil()
+            } else {
+                factory
+                    .wrap(CDR(call_owner.as_raw()))
+                    .expect("dispatch expressions remain live")
             };
             let promised = crate::eval::dispatch::promiseArgs(&factory, expressions, environment);
             let s = promised.as_raw();
@@ -403,11 +541,8 @@ pub unsafe fn R_possible_dispatch(
             }
             let value =
                 crate::eval::closure::applyClosure(call, fundef, s, rho, R_NilValue(), TRUE);
-            with_objects_state(|state| {
-                if let Some(slot) = state.prim_methods.get_mut(offset as usize) {
-                    *slot = current;
-                }
-            });
+            require_objects(access.require_active());
+            let _value_owner = require_objects(factory.wrap(value));
             if value == R_deferred_default_method() {
                 return ptr::null_mut();
             }
@@ -415,11 +550,8 @@ pub unsafe fn R_possible_dispatch(
         } else {
             let value =
                 crate::eval::closure::applyClosure(call, fundef, args, rho, R_NilValue(), FALSE);
-            with_objects_state(|state| {
-                if let Some(slot) = state.prim_methods.get_mut(offset as usize) {
-                    *slot = current;
-                }
-            });
+            require_objects(access.require_active());
+            let _value_owner = require_objects(factory.wrap(value));
             if value == R_deferred_default_method() {
                 return ptr::null_mut();
             }

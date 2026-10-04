@@ -631,56 +631,54 @@ unsafe fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
 
 /// GNU `validObject(object)` — run the class validity method if present.
 pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let object = CAR(args);
-        if object.is_null() || object == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        if let Some(msg) = super::print::factor_validity_message(object) {
-            std::panic::panic_any(RError { message: msg });
-        }
-        let class_val = crate::sexp::attrib_core::getAttrib(
-            object,
-            crate::sexp::attrib_core::R_ClassSymbol());
-        if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP
-        {
-            return Rf_ScalarLogical(TRUE);
-        }
-        let class_name = elt_to_string(class_val, 0);
-        let Some(method) = crate::mainutils::objects::s4_validity_fn(&class_name) else {
-            return Rf_ScalarLogical(TRUE);
-        };
-        if method.is_null() || method == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        let call_args = Rf_cons(object, R_NilValue());
-        let _call_args = protect(call_args);
-        let call = Rf_cons(method, call_args);
-        let _call = protect(call);
-        if !call.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        let result = crate::eval::eval::Rf_eval(call, rho);
-        let _result = protect(result);
-        if result.is_null() || result == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        if TYPEOF(result) == SEXPTYPE::LGLSXP {
-            if XLENGTH(result) > 0 && *LOGICAL(result) == TRUE {
-                return Rf_ScalarLogical(TRUE);
-            }
-            std::panic::panic_any(RError {
-                message: format!("invalid class \"{class_name}\" object"),
-            });
-        }
-        if TYPEOF(result) == SEXPTYPE::STRSXP && XLENGTH(result) > 0 {
-            let reason = elt_to_string(result, 0);
-            if !reason.is_empty() {
-                std::panic::panic_any(RError { message: reason });
-            }
-        }
-        Rf_ScalarLogical(TRUE)
+    crate::mainutils::objects::with_objects_runtime(|access| {
+        let domain = access.domain();
+        let args = if args.is_null() { domain.nil() } else { domain.wrap(args)? };
+        let environment = if rho.is_null() { domain.nil() } else { domain.wrap(rho)? };
+        valid_object_owned(access, &args, &environment)
+    }).as_raw()
+}
+
+fn valid_object_owned(
+    access: &crate::sexp::owner::RuntimeAccess,
+    args: &crate::sexp::object::Sexp<'_>,
+    environment: &crate::sexp::object::Sexp<'_>,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    use crate::sexp::object::SexpError;
+    let domain = access.domain();
+    let object = args.try_car()?;
+    if object.is_nil() {
+        return Ok(domain.logical(true));
     }
+    if let Some(message) = access.with_native(|_| Ok(unsafe { super::print::factor_validity_message(object.as_raw()) }))? {
+        return Err(SexpError::EvaluationFailed { message });
+    }
+    let class_val = access.with_native(|owner| {
+        let value = unsafe { crate::sexp::attrib_core::getAttrib(object.as_raw(), crate::sexp::attrib_core::R_ClassSymbol()) };
+        owner.sexp(value)?.into_owned()
+    })?;
+    if class_val.typeof_() != SEXPTYPE::STRSXP || class_val.len() < 1 {
+        return Ok(domain.logical(true));
+    }
+    let class_name = class_val.try_string_value_elt(0)?.unwrap_or_default();
+    let method = access.with_native(|_| Ok(crate::mainutils::objects::s4_validity_fn(&class_name)))?;
+    let Some(method) = method else { return Ok(domain.logical(true)); };
+    let allocator = access.allocator(&domain)?;
+    let argument = allocator.evaluated_promise(&object, environment)?;
+    let arguments = allocator.pairlist_cell(&argument, &domain.nil(), &domain.nil())?;
+    let call = allocator.call(&method, &arguments)?;
+    let result = crate::mainutils::objects::evaluate_s4_value(access, &call, environment)?;
+    if result.typeof_() == SEXPTYPE::LGLSXP {
+        if result.len() < 1 || result.try_logical_elt(0)? != TRUE {
+            return Err(SexpError::EvaluationFailed { message: format!("invalid class \"{class_name}\" object") });
+        }
+    } else if result.typeof_() == SEXPTYPE::STRSXP && result.len() > 0 {
+        let message = result.try_string_value_elt(0)?.unwrap_or_default();
+        if !message.is_empty() {
+            return Err(SexpError::EvaluationFailed { message });
+        }
+    }
+    Ok(domain.logical(true))
 }
 
 

@@ -7,6 +7,55 @@
 )]
 
 use super::*;
+use crate::sexp::{
+    instance::RuntimeValue,
+    object::{Sexp, SexpError, SexpResult},
+    owner::{OwnerToken, RuntimeAccess, with_runtime},
+};
+
+pub(crate) fn require_objects<T>(value: SexpResult<T>) -> T {
+    value.unwrap_or_else(|error| {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: error.to_string(),
+        })
+    })
+}
+
+/// Capture the original execution owner once, before allocations or callbacks.
+pub(crate) fn with_objects_runtime<T>(
+    operation: impl FnOnce(&RuntimeAccess) -> SexpResult<T>,
+) -> T {
+    require_objects((|| {
+        let owner = unsafe { OwnerToken::current() }?;
+        let owner = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+        let _transfers = crate::sexp::transfer::TransferScopeGuard::enter(owner.clone())?;
+        with_runtime(&owner, operation)?
+    })())
+}
+
+/// # Safety
+/// The field operation must not allocate R values, execute R, or retain a
+/// reference to the runtime. These native field loans end before callbacks.
+pub(super) unsafe fn objects_state_in<T>(
+    access: &RuntimeAccess,
+    operation: impl FnOnce(&mut ObjectsRuntimeState) -> T,
+) -> SexpResult<T> {
+    access.with_native(|owner| Ok(unsafe { operation(&mut (*owner.as_ptr()).objects_state) }))
+}
+
+pub(crate) fn evaluate_s4_value(
+    access: &RuntimeAccess,
+    expression: &Sexp<'_>,
+    environment: &Sexp<'_>,
+) -> SexpResult<Sexp<'static>> {
+    let domain = access.domain();
+    let expression = domain.wrap(expression.as_raw())?;
+    let environment = domain.wrap(environment.as_raw())?;
+    access.with_native(|owner| {
+        let value = unsafe { Rf_eval(expression.as_raw(), environment.as_raw()) };
+        owner.sexp(value)?.into_owned()
+    })
+}
 
 // ---------------------------------------------------------------------------
 // IS_S4_OBJECT -- check the S4 object bit in sxpinfo
@@ -91,17 +140,16 @@ pub(crate) struct ObjectsRuntimeState {
     pub(crate) cur_max_offset: c_int,
     pub(crate) allow_primitive_methods: c_int,
     pub(crate) prim_methods: Vec<prim_methods_t>,
-    pub(crate) prim_generics: Vec<SEXP>,
-    pub(crate) prim_mlist: Vec<SEXP>,
+    pub(crate) prim_generics: Vec<RuntimeValue>,
+    pub(crate) prim_mlist: Vec<RuntimeValue>,
     pub(crate) standard_generic_ptr: R_stdGen_ptr_t,
     pub(crate) quick_method_check_ptr: R_stdGen_ptr_t,
-    pub(crate) deferred_default_object: SEXP,
+    pub(crate) deferred_default_object: RuntimeValue,
     s4_classes: HashMap<String, S4ClassDef>,
-    s4_validity: HashMap<String, SEXP>,
+    pub(crate) s4_validity: HashMap<String, Sexp<'static>>,
     /// GNU `R_S4_extends_table`: cached `.extendsForS3` class vectors.
-    pub(crate) s4_extends_table: SEXP,
+    pub(crate) s4_extends_table: RuntimeValue,
 }
-
 
 #[derive(Clone, Default)]
 pub(crate) struct S4ClassDef {
@@ -111,8 +159,6 @@ pub(crate) struct S4ClassDef {
     pub virtual_class: bool,
     pub has_validity: bool,
 }
-
-
 
 impl Default for ObjectsRuntimeState {
     fn default() -> Self {
@@ -125,11 +171,10 @@ impl Default for ObjectsRuntimeState {
             prim_mlist: Vec::new(),
             standard_generic_ptr: None,
             quick_method_check_ptr: None,
-            deferred_default_object: ptr::null_mut(),
+            deferred_default_object: RuntimeValue::empty(),
             s4_classes: HashMap::new(),
             s4_validity: HashMap::new(),
-            s4_extends_table: ptr::null_mut(),
-
+            s4_extends_table: RuntimeValue::empty(),
         }
     }
 }
@@ -139,8 +184,8 @@ impl ObjectsRuntimeState {
         if self.prim_methods.is_empty() {
             let n = DEFAULT_N_PRIM_METHODS as usize;
             self.prim_methods.resize(n, prim_methods_t::NO_METHODS);
-            self.prim_generics.resize(n, ptr::null_mut());
-            self.prim_mlist.resize(n, ptr::null_mut());
+            self.prim_generics.resize_with(n, RuntimeValue::empty);
+            self.prim_mlist.resize_with(n, RuntimeValue::empty);
             self.max_methods_offset = DEFAULT_N_PRIM_METHODS;
         }
     }
@@ -151,8 +196,8 @@ impl ObjectsRuntimeState {
             let new_len = (offset + 1).max(self.prim_methods.len() * 2);
             self.prim_methods
                 .resize(new_len, prim_methods_t::NO_METHODS);
-            self.prim_generics.resize(new_len, ptr::null_mut());
-            self.prim_mlist.resize(new_len, ptr::null_mut());
+            self.prim_generics.resize_with(new_len, RuntimeValue::empty);
+            self.prim_mlist.resize_with(new_len, RuntimeValue::empty);
             self.max_methods_offset = new_len as c_int;
         }
     }
@@ -201,7 +246,6 @@ pub(crate) fn set_s4_slot_types(name: &str, slot_types: HashMap<String, String>)
     })
 }
 
-
 pub(crate) fn set_s4_validity(name: &str) -> bool {
     with_objects_state(|state| {
         let Some(class_def) = state.s4_classes.get_mut(name) else {
@@ -213,25 +257,35 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
 }
 
 pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
-    with_objects_state(|state| {
-        if !state.s4_classes.contains_key(name) {
-            return false;
+    with_objects_runtime(|access| {
+        if !unsafe { objects_state_in(access, |state| state.s4_classes.contains_key(name)) }? {
+            return Ok(false);
         }
-        if !method.is_null() && method != unsafe { crate::sexp::globals::R_NilValue() } {
-            unsafe { crate::sexp::protect::R_PreserveObject(method) };
+        let domain = access.domain();
+        let method = if method.is_null() {
+            domain.nil()
+        } else {
+            domain.wrap(method)?
+        };
+        unsafe {
+            objects_state_in(access, |state| {
+                if method.is_nil() {
+                    state.s4_validity.remove(name);
+                } else {
+                    state.s4_validity.insert(name.to_string(), method);
+                }
+                if let Some(class_def) = state.s4_classes.get_mut(name) {
+                    class_def.has_validity = state.s4_validity.contains_key(name);
+                }
+                true
+            })
         }
-        state.s4_validity.insert(name.to_string(), method);
-        if let Some(class_def) = state.s4_classes.get_mut(name) {
-            class_def.has_validity = true;
-        }
-        true
     })
 }
 
-pub(crate) fn s4_validity_fn(name: &str) -> Option<SEXP> {
-    with_objects_state(|state| state.s4_validity.get(name).copied())
+pub(crate) fn s4_validity_fn(name: &str) -> Option<Sexp<'static>> {
+    with_objects_state(|state| state.s4_validity.get(name).cloned())
 }
-
 
 pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
     with_objects_state(|state| state.s4_classes.get(name).cloned())
@@ -350,7 +404,6 @@ pub(crate) fn s4_class_distance(class1: &str, class2: &str) -> Option<usize> {
 /// filled by the fallback `do_setClass`. Mirror GNU contains so C
 /// `standardGeneric` can inherit methods the same way `selectMethod` does.
 pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
-
     let mut pending = vec![name.to_string()];
     let mut seen = HashSet::new();
     while let Some(class) = pending.pop() {
@@ -416,7 +469,9 @@ unsafe fn named_list_names(list: SEXP) -> Vec<String> {
             return Vec::new();
         }
         let names = getAttrib(list, crate::eval::attrib_core::R_NamesSymbol());
-        if names.is_null() || names == crate::sexp::globals::R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP
+        if names.is_null()
+            || names == crate::sexp::globals::R_NilValue()
+            || TYPEOF(names) != SEXPTYPE::STRSXP
         {
             return Vec::new();
         }
@@ -430,9 +485,7 @@ unsafe fn named_list_names(list: SEXP) -> Vec<String> {
             if ptr.is_null() {
                 continue;
             }
-            let name = std::ffi::CStr::from_ptr(ptr)
-                .to_string_lossy()
-                .into_owned();
+            let name = std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned();
             if !name.is_empty() {
                 out.push(name);
             }
@@ -456,17 +509,9 @@ pub(crate) unsafe fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
         let def = gnu_class_def(name)?;
         let slots_sym = Rf_install(c"slots".as_ptr());
         let names = named_list_names(getAttrib(def, slots_sym));
-        if names.is_empty() {
-            None
-        } else {
-            Some(names)
-        }
+        if names.is_empty() { None } else { Some(names) }
     }
 }
-
-
-
-
 
 fn s4_extends_registered(
     classes: &HashMap<String, S4ClassDef>,

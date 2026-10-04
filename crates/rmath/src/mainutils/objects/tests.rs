@@ -16,6 +16,336 @@ use super::*;
 mod tests {
     use super::*;
 
+    #[test]
+    fn owned_s4_validity_replacement_releases_old_root() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            register_s4_class("OwnedValidityRoot".into(), Vec::new(), false);
+            let old = factory.strings(&["old validity method"]).unwrap();
+            let node = old.allocation().unwrap().clone();
+            let preserved = (*instance).preserve_stack.checked_entries_snapshot().len();
+            assert!(set_s4_validity_fn("OwnedValidityRoot", old.as_raw()));
+            drop(old);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(node.is_live(), "the stored method must own its root");
+            assert!(set_s4_validity_fn("OwnedValidityRoot", R_NilValue()));
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(
+                !node.is_live(),
+                "replacement must release the old validity method"
+            );
+            assert_eq!(
+                (*instance).preserve_stack.checked_entries_snapshot().len(),
+                preserved
+            );
+        });
+    }
+
+    #[test]
+    fn owned_s4_native_validity_installs_and_releases_transfer_scope() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let (method, _, _) =
+            session.eval_script_with_output_capture("function(object) return(TRUE)");
+        let method = method.unwrap().into_owned().unwrap();
+        let factory = session.owner_token().unwrap().node_factory();
+        register_s4_class("OwnedNativeValidity".into(), Vec::new(), false);
+        assert!(set_s4_validity_fn("OwnedNativeValidity", method.as_raw()));
+        let object = factory.strings(&["object"]).unwrap();
+        let class = factory.strings(&["OwnedNativeValidity"]).unwrap();
+        let environment = session.global_env().unwrap();
+        unsafe {
+            setAttrib(object.as_raw(), R_ClassSymbol(), class.as_raw());
+        }
+        let arguments = factory
+            .pairlist_cell(&object, &factory.nil(), &factory.nil())
+            .unwrap();
+        assert!(crate::sexp::transfer::active_owner_pin().is_err());
+        let result = factory
+            .wrap(unsafe {
+                crate::mainutils::essentials::do_validObject(
+                    factory.nil().as_raw(),
+                    factory.nil().as_raw(),
+                    arguments.as_raw(),
+                    environment.as_raw(),
+                )
+            })
+            .unwrap();
+        assert_eq!(result.try_logical_elt(0).unwrap(), TRUE);
+        assert!(
+            crate::sexp::transfer::active_owner_pin().is_err(),
+            "native execution must release only its own transfer activation"
+        );
+    }
+
+    #[test]
+    fn owned_s4_primitive_dispatch_restores_original_status_after_revocation() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let operation = factory
+                .wrap(crate::mainutils::names::R_Primitive(c"+".as_ptr()))
+                .unwrap();
+            let offset = primitive_offset(operation.as_raw()).unwrap();
+            let body = factory.strings(&["unpublished result"]).unwrap();
+            let generic = factory
+                .wrap(crate::mainutils::dstruct::mkCLOSXP(
+                    R_NilValue(),
+                    body.as_raw(),
+                    R_GlobalEnv(),
+                ))
+                .unwrap();
+            do_set_prim_method(
+                operation.as_raw(),
+                c"set".as_ptr(),
+                generic.as_raw(),
+                R_NilValue(),
+            );
+            let fired = Rc::new(Cell::new(false));
+            let observed = fired.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    (&mut (*instance).objects_state.prim_methods)[offset] =
+                        prim_methods_t::SUPPRESSED;
+                    crate::sexp::instance::revoke_instance_availability(instance);
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                R_possible_dispatch(
+                    R_NilValue(),
+                    operation.as_raw(),
+                    R_NilValue(),
+                    R_GlobalEnv(),
+                    TRUE,
+                )
+            }));
+            assert!(
+                fired.get(),
+                "the method must actually revoke the original runtime during allocation"
+            );
+            assert!(
+                result.is_err(),
+                "revoked execution must not publish success"
+            );
+            assert_eq!(
+                (&(*instance).objects_state.prim_methods)[offset],
+                prim_methods_t::HAS_METHODS,
+                "cleanup must restore the original physical runtime after revocation"
+            );
+        });
+    }
+
+    #[test]
+    fn owned_s4_extends_cache_releases_bindings_and_table() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let value = factory.strings(&["OwnedExtends", "parent"]).unwrap();
+            let value_node = value.allocation().unwrap().clone();
+            let preserved = (*instance).preserve_stack.checked_entries_snapshot().len();
+            cache_class("OwnedExtends", value.as_raw());
+            let table_node = (*instance)
+                .objects_state
+                .s4_extends_table
+                .owned()
+                .unwrap()
+                .allocation()
+                .unwrap()
+                .clone();
+            drop(value);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(value_node.is_live());
+            assert!(table_node.is_live());
+            cache_class("OwnedExtends", R_NilValue());
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(
+                !value_node.is_live(),
+                "removing the binding must release its vector"
+            );
+            (*instance).objects_state.s4_extends_table =
+                crate::sexp::instance::RuntimeValue::empty();
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(
+                !table_node.is_live(),
+                "clearing the cache must release its environment"
+            );
+            assert_eq!(
+                (*instance).preserve_stack.checked_entries_snapshot().len(),
+                preserved
+            );
+        });
+    }
+
+    #[test]
+    fn owned_s4_primitive_tables_release_after_clear() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let operation = factory
+                .wrap(crate::mainutils::names::R_Primitive(c"+".as_ptr()))
+                .unwrap();
+            let op = operation.as_raw();
+            let generic = factory
+                .wrap(crate::mainutils::dstruct::mkCLOSXP(
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_GlobalEnv(),
+                ))
+                .unwrap();
+            let methods = factory.strings(&["owned methods"]).unwrap();
+            let generic_node = generic.allocation().unwrap().clone();
+            let methods_node = methods.allocation().unwrap().clone();
+            let preserved = (*instance).preserve_stack.checked_entries_snapshot().len();
+            assert!(
+                do_set_prim_method(op, c"set".as_ptr(), generic.as_raw(), methods.as_raw())
+                    .is_null()
+            );
+            drop(generic);
+            drop(methods);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(generic_node.is_live());
+            assert!(methods_node.is_live());
+            let previous = factory
+                .wrap(do_set_prim_method(
+                    op,
+                    c"clear".as_ptr(),
+                    R_NilValue(),
+                    R_NilValue(),
+                ))
+                .unwrap();
+            assert_eq!(previous.allocation().unwrap().link(), generic_node.link());
+            drop(previous);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(!generic_node.is_live());
+            assert!(!methods_node.is_live());
+            assert_eq!(
+                (*instance).preserve_stack.checked_entries_snapshot().len(),
+                preserved
+            );
+        });
+    }
+
+    #[test]
+    fn owned_s4_primitive_dispatch_survives_collecting_cache_eviction() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let body = factory.strings(&["selected generic"]).unwrap();
+            let generic = factory
+                .wrap(crate::mainutils::dstruct::mkCLOSXP(
+                    R_NilValue(),
+                    body.as_raw(),
+                    R_GlobalEnv(),
+                ))
+                .unwrap();
+            let generic_node = generic.allocation().unwrap().clone();
+            let op = crate::mainutils::names::R_Primitive(c"+".as_ptr());
+            do_set_prim_method(op, c"set".as_ptr(), generic.as_raw(), R_NilValue());
+            drop(generic);
+            drop(body);
+            let evicted = Rc::new(Cell::new(false));
+            let observed = evicted.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    (*instance).objects_state.prim_generics.clear();
+                    (*instance).objects_state.prim_mlist.clear();
+                    (*instance).memory_state.gc_force_gap = 0;
+                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::sexp::gengc::full_gc_in(instance);
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = factory
+                .wrap(R_possible_dispatch(
+                    R_NilValue(),
+                    op,
+                    R_NilValue(),
+                    R_GlobalEnv(),
+                    TRUE,
+                ))
+                .unwrap();
+            assert!(
+                evicted.get(),
+                "the selected generic must actually lose its cache root"
+            );
+            assert_eq!(
+                result.try_string_value_elt(0).unwrap().as_deref(),
+                Some("selected generic")
+            );
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(
+                !generic_node.is_live(),
+                "the execution snapshot must release its closure after returning"
+            );
+        });
+    }
+
+    #[test]
+    fn owned_s4_validity_survives_collecting_cache_eviction() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            register_s4_class("OwnedValidityCall".into(), Vec::new(), false);
+            let object = factory.strings(&["validity argument"]).unwrap();
+            let class = factory.strings(&["OwnedValidityCall"]).unwrap();
+            setAttrib(object.as_raw(), R_ClassSymbol(), class.as_raw());
+            let symbol = factory.wrap(Rf_install(c"object".as_ptr())).unwrap();
+            let formals = factory
+                .pairlist_cell(&factory.missing(), &factory.nil(), &symbol)
+                .unwrap();
+            let method = factory
+                .wrap(crate::mainutils::dstruct::mkCLOSXP(
+                    formals.as_raw(),
+                    factory.domain().logical(true).as_raw(),
+                    R_GlobalEnv(),
+                ))
+                .unwrap();
+            let method_node = method.allocation().unwrap().clone();
+            set_s4_validity_fn("OwnedValidityCall", method.as_raw());
+            drop(method);
+            drop(formals);
+            let arguments = factory
+                .pairlist_cell(&object, &factory.nil(), &factory.nil())
+                .unwrap();
+            let evicted = Rc::new(Cell::new(false));
+            let observed = evicted.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    (*instance).objects_state.s4_validity.clear();
+                    (*instance).memory_state.gc_force_gap = 0;
+                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::sexp::gengc::full_gc_in(instance);
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = factory
+                .wrap(crate::mainutils::essentials::do_validObject(
+                    R_NilValue(),
+                    R_NilValue(),
+                    arguments.as_raw(),
+                    R_GlobalEnv(),
+                ))
+                .unwrap();
+            assert!(
+                evicted.get(),
+                "the validity method must actually lose its cache root"
+            );
+            assert_eq!(result.try_logical_elt(0).unwrap(), TRUE);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(
+                !method_node.is_live(),
+                "the validity execution snapshot must release its closure"
+            );
+        });
+    }
+
     fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
             .expect_err("expected RError panic");
@@ -1023,13 +1353,8 @@ mod tests {
         unsafe {
             let code = Rf_mkString(c"clear".as_ptr());
             let _code = crate::sexp::protect::protect(code);
-            let result = R_set_prim_method(
-                R_NilValue(),
-                R_NilValue(),
-                code,
-                R_NilValue(),
-                R_NilValue(),
-            );
+            let result =
+                R_set_prim_method(R_NilValue(), R_NilValue(), code, R_NilValue(), R_NilValue());
             assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
             let _ = R_set_prim_method(
                 R_NilValue(),
@@ -1065,7 +1390,8 @@ mod tests {
         unsafe {
             let op = crate::mainutils::names::R_Primitive(c"+".as_ptr());
             assert!(!op.is_null());
-            let generic = Rf_ScalarInteger(101);
+            let generic =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_GlobalEnv());
             let methods = Rf_mkString(c"plus-methods".as_ptr());
 
             let name = Rf_mkString(c"+".as_ptr());
