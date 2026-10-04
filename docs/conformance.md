@@ -212,8 +212,9 @@ Current domain coverage:
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
 
-The curated upstream slice gate currently passes 15/15 live stock-R comparison
-cases with zero expected failures, including the `any-all.R` helper path through
+The last recorded curated upstream slice gate passed 15/15 live stock-R comparison
+cases with zero expected failures. This is historical evidence, not a fresh
+verification of the current revision. The slices include the `any-all.R` helper path through
 `deparse(substitute(.))`, `do.call()`, list concatenation, named `na.rm`, and
 `identical()`. The complex slice now covers parsed imaginary literals, complex
 vector construction through `c()`, complex powers, `sqrt`, `exp`, `log`,

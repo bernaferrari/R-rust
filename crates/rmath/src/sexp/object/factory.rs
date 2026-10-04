@@ -6,7 +6,7 @@ use crate::sexp::{
     ffi::SEXP,
     heap::HeapIdentity,
     instance::InstanceLiveness,
-    owner::{with_runtime, OwnerToken, RuntimeAccess, StoredOwner, WeakOwner},
+    owner::{OwnerToken, RuntimeAccess, StoredOwner, WeakOwner, with_runtime},
 };
 
 /// Passive provenance and physical publication checks. A domain has no arena,
@@ -151,6 +151,40 @@ impl<'execution, 'session> NodeAllocator<'execution, 'session> {
         environment: &Sexp<'_>,
     ) -> SexpResult<Sexp<'session>> {
         NodeProducer::promise(self, expression, environment)
+    }
+
+    /// Publish an already evaluated argument with its value initialized before GC.
+    pub(crate) fn evaluated_promise(
+        &self,
+        value: &Sexp<'_>,
+        environment: &Sexp<'_>,
+    ) -> SexpResult<Sexp<'session>> {
+        NodeProducer::initialized_promise(self, value, environment, value)
+    }
+
+    /// Retain source syntax separately from an already evaluated value.
+    /// Replacement functions can inspect this syntax with `substitute()`.
+    pub(crate) fn evaluated_promise_with_expression(
+        &self,
+        expression: &Sexp<'_>,
+        environment: &Sexp<'_>,
+        value: &Sexp<'_>,
+    ) -> SexpResult<Sexp<'session>> {
+        NodeProducer::initialized_promise(self, expression, environment, value)
+    }
+
+    pub(crate) fn call(
+        &self,
+        function: &Sexp<'_>,
+        arguments: &Sexp<'_>,
+    ) -> SexpResult<Sexp<'session>> {
+        NodeProducer::list_cell(
+            self,
+            function,
+            arguments,
+            &self.domain.nil(),
+            crate::sexp::ffi::SEXPTYPE::LANGSXP,
+        )
     }
 
     pub(crate) fn pairlist_cell(
@@ -332,10 +366,20 @@ trait NodeProducer<'session> {
     ) -> SexpResult<Sexp<'session>>;
 
     fn promise(&self, expression: &Sexp<'_>, environment: &Sexp<'_>) -> SexpResult<Sexp<'session>> {
+        self.initialized_promise(expression, environment, &self.domain().unbound())
+    }
+
+    fn initialized_promise(
+        &self,
+        expression: &Sexp<'_>,
+        environment: &Sexp<'_>,
+        value: &Sexp<'_>,
+    ) -> SexpResult<Sexp<'session>> {
         use crate::sexp::ffi::{NodeBody, Promsxp, SEXPTYPE};
         self.require_active()?;
         let expression = expression.clone();
         let environment = environment.clone();
+        let value = value.clone();
         environment.ensure_live()?;
         if !matches!(environment.typeof_(), SEXPTYPE::NILSXP | SEXPTYPE::ENVSXP) {
             return Err(SexpError::TypeMismatch {
@@ -345,7 +389,7 @@ trait NodeProducer<'session> {
         }
         let domain = self.domain();
         let body = NodeBody::Promise(Promsxp {
-            value: domain.link(&domain.unbound())?,
+            value: domain.link(&value)?,
             expr: domain.link(&expression)?,
             env: domain.link(&environment)?,
         });
@@ -365,6 +409,16 @@ trait NodeProducer<'session> {
         rest: &Sexp<'_>,
         tag: &Sexp<'_>,
     ) -> SexpResult<Sexp<'session>> {
+        self.list_cell(value, rest, tag, crate::sexp::ffi::SEXPTYPE::LISTSXP)
+    }
+
+    fn list_cell(
+        &self,
+        value: &Sexp<'_>,
+        rest: &Sexp<'_>,
+        tag: &Sexp<'_>,
+        kind: crate::sexp::ffi::SEXPTYPE,
+    ) -> SexpResult<Sexp<'session>> {
         use crate::sexp::ffi::{Listsxp, NodeBody, SEXPTYPE};
         self.require_active()?;
         let value = value.clone();
@@ -377,7 +431,7 @@ trait NodeProducer<'session> {
             tagval: domain.link(&tag)?,
         });
         self.allocate(|arena| {
-            let pointer = arena.alloc_node(SEXPTYPE::LISTSXP);
+            let pointer = arena.alloc_node(kind);
             let node = arena.node_token(pointer)?;
             let mut header = domain.heap.node_snapshot(&node)?;
             header.data = body;
@@ -466,9 +520,11 @@ mod tests {
         assert_eq!(domain.logical(true).as_raw(), logical.as_raw());
         drop(session);
         assert_eq!(owner.allocation_strong_count(), 0);
-        assert!(character
-            .try_char_eq(b"physical lease outlives execution")
-            .unwrap());
+        assert!(
+            character
+                .try_char_eq(b"physical lease outlives execution")
+                .unwrap()
+        );
         assert_eq!(domain.nil().as_raw(), nil.as_raw());
         assert_eq!(logical.try_logical_elt(0).unwrap(), 1);
         assert!(domain.link(&character).is_ok());
@@ -520,12 +576,14 @@ mod tests {
             assert!(published.try_char_eq(b"before collection").unwrap());
         })
         .unwrap();
-        assert!(nested
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .try_char_eq(b"after arena release")
-            .unwrap());
+        assert!(
+            nested
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .try_char_eq(b"after arena release")
+                .unwrap()
+        );
         drop(session);
         assert_eq!(owner.allocation_strong_count(), 0);
     }
@@ -574,12 +632,14 @@ mod tests {
             assert!(observed.get());
             drop(sessions);
             assert_eq!(owner.allocation_strong_count(), 0);
-            assert!(saved
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .try_char_eq(b"retained before callback")
-                .unwrap());
+            assert!(
+                saved
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .try_char_eq(b"retained before callback")
+                    .unwrap()
+            );
         }
     }
 
@@ -622,9 +682,11 @@ mod tests {
         drop(session);
         assert_eq!(weak.allocation_strong_count(), 0);
         assert_eq!(factory.nil().as_raw(), nil.as_raw());
-        assert!(character
-            .try_char_eq(b"original owned factory bytes")
-            .unwrap());
+        assert!(
+            character
+                .try_char_eq(b"original owned factory bytes")
+                .unwrap()
+        );
     }
 
     #[test]

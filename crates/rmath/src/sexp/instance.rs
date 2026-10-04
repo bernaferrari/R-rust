@@ -370,9 +370,11 @@ pub struct RInstance {
     pub(crate) root_table: super::protect::RootTable,
     /// The permanent preserve stack for this instance.
     pub(crate) preserve_stack: super::protect::PreservedRoots,
+    /// Cached closures own their exact GC roots until eviction or teardown.
+    pub(crate) base_wrappers:
+        RefCell<HashMap<&'static str, super::object::Sexp<'static>>>,
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
-    pub(crate) base_wrappers: std::cell::RefCell<std::collections::HashMap<&'static str, SEXP>>,
     pub(crate) context_stack: Vec<Rc<std::cell::UnsafeCell<super::context::RCNTXT>>>,
     /// Per-instance in-error flag.
     pub(crate) in_error: bool,
@@ -449,7 +451,7 @@ pub struct RInstance {
     /// Per-instance stdout/stderr capture buffers.
     pub(crate) output_capture: RefCell<super::output::OutputCaptureState>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
-    pub options: HashMap<String, SEXP>,
+    pub(crate) options: HashMap<String, super::object::Sexp<'static>>,
     /// Defaults are published through one explicit, reentry-safe phase.
     pub(crate) options_initialization: crate::mainutils::options::OptionsInitialization,
     /// Initial table size of hashed environments, keyed by environment address.

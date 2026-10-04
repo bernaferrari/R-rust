@@ -19,7 +19,7 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{R_PreserveObject, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::OwnerToken;
@@ -35,6 +35,7 @@ pub(crate) enum OptionsInitialization {
 struct OptionsInitializationGuard {
     owner: *mut crate::sexp::instance::RInstance,
     availability: crate::sexp::instance::InstanceLiveness,
+    _pin: Option<crate::sexp::owner::OwnerPin>,
 }
 
 impl OptionsInitializationGuard {
@@ -44,15 +45,16 @@ impl OptionsInitializationGuard {
                 return None;
             }
             let availability = crate::sexp::instance::instance_liveness(owner);
+            let pin = require_options(OwnerToken::from_raw(owner).pin());
             (*owner).options_initialization = OptionsInitialization::Initializing;
-            Some(Self { owner, availability })
+            Some(Self { owner, availability, _pin: pin })
         }
     }
 }
 
 impl Drop for OptionsInitializationGuard {
     fn drop(&mut self) {
-        if self.availability.is_live() {
+        if self._pin.is_some() || self.availability.is_live() {
             // No R call occurs between this availability check and field access.
             unsafe {
                 if (*self.owner).options_initialization == OptionsInitialization::Initializing {
@@ -503,12 +505,7 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
         let nil = R_NilValue();
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            match (*inst).options.get(name) {
-                Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => {
-                    val
-                }
-                _ => nil,
-            }
+            (*inst).options.get(name).map_or(nil, Sexp::as_raw)
         })
     }
 }
@@ -582,17 +579,7 @@ pub unsafe fn R_Options() -> SEXP {
 }
 
 fn options_pairlist<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>> {
-    factory.require_active()?;
-    // Snapshot the field before wrapping, interning names, or allocating cells.
-    let entries: Vec<(String, SEXP)> = crate::sexp::instance::with_required_current_instance(
-        |owner| unsafe {
-            (*owner).options.iter().map(|(name, value)| (name.clone(), *value)).collect()
-        },
-    );
-    let mut entries = entries.into_iter()
-        .map(|(name, raw)| factory.wrap(raw).map(|value| (name, value)))
-        .collect::<SexpResult<Vec<_>>>()?;
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let entries = options_snapshot(factory)?;
     let mut result = PairlistBuilder::from_factory(factory.clone());
     for (name, value) in entries {
         let name = CString::new(name).unwrap_or_default();
@@ -600,6 +587,37 @@ fn options_pairlist<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>
         result.push(value, Some(tag))?;
     }
     result.finish()
+}
+
+/// Own the selected values before any R allocation or callback can replace them.
+fn options_snapshot(factory: &SessionNodeFactory<'_>) -> SexpResult<Vec<(String, Sexp<'static>)>> {
+    factory.require_active()?;
+    let mut entries: Vec<(String, Sexp<'static>)> = crate::sexp::instance::with_required_current_instance(
+        |owner| unsafe {
+            (*owner).options.iter().map(|(name, value)| (name.clone(), value.clone())).collect()
+        },
+    );
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(entries)
+}
+
+fn options_vector<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>> {
+    let entries = options_snapshot(factory)?;
+    let length = R_xlen_t::try_from(entries.len())
+        .map_err(|_| crate::sexp::object::SexpError::AllocationFailed { object: "options list" })?;
+    let value = factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, length)))?;
+    let mut value = SexpMut::try_from_checked(value)?;
+    let keys: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    let names = factory.strings(&keys)?;
+    for (index, (_, entry)) in entries.iter().enumerate() {
+        let copy = unsafe { duplicate_sexp(entry.as_raw()) };
+        factory.require_active()?;
+        value.try_set_vector_elt(index as R_xlen_t, factory.wrap(copy)?)?;
+    }
+    let value = value.freeze();
+    set_option_names(factory, &value, names)?;
+    factory.require_active()?;
+    Ok(value)
 }
 
 /// Refresh the base `.Options` snapshot while its complete graph is owned.
@@ -624,18 +642,17 @@ pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
             None => return nil,
         };
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            match (*inst).options.get(name_str.as_str()) {
-                Some(&val) => {
-                    let cell = Rf_cons(val, nil);
-                    if !cell.is_null() {
-                        SETTAG(cell, tag);
-                    }
-                    cell
-                }
-                None => nil,
+        let owner = require_options(OwnerToken::current());
+        let _pin = require_options(owner.pin());
+        let factory = owner.node_factory();
+        let value = (*owner.as_ptr()).options.get(name_str.as_str()).cloned();
+        match value {
+            Some(value) => {
+                let tag = require_options(factory.wrap(tag));
+                require_options(factory.pairlist_cell(&value, &factory.nil(), &tag)).as_raw()
             }
-        })
+            None => nil,
+        }
     }
 }
 
@@ -653,22 +670,22 @@ unsafe fn SetOption(tag: SEXP, value: SEXP) -> SEXP {
 /// Set or remove an option by plain string key. Returns old value.
 pub unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
     unsafe {
-        let nil = R_NilValue();
+        let owner = require_options(OwnerToken::current());
+        let _pin = require_options(owner.pin());
+        let factory = owner.node_factory();
+        // Capture the new value before initialization or binding refresh can collect.
+        let value = require_options(factory.wrap(value).and_then(Sexp::into_owned));
+        let nil = factory.nil();
         InitOptions();
-
-        let old = crate::sexp::instance::with_required_current_instance(|inst| {
-            if value == nil {
-                (*inst).options.remove(name).unwrap_or(nil)
-            } else {
-                R_PreserveObject(value);
-                (*inst)
-                    .options
-                    .insert(name.to_string(), value)
-                    .unwrap_or(nil)
-            }
-        });
+        require_options(factory.require_active());
+        let old = if value.as_raw() == nil.as_raw() {
+            (*owner.as_ptr()).options.remove(name)
+        } else {
+            (*owner.as_ptr()).options.insert(name.to_string(), value)
+        };
         refresh_options_binding();
-        old
+        require_options(factory.require_active());
+        old.map_or_else(|| nil.as_raw(), |value| value.as_raw())
     }
 }
 
@@ -916,12 +933,12 @@ pub unsafe fn InitOptions() {
     let factory = owner.node_factory();
     let defaults = require_options(populate_options(&factory));
     require_options(factory.require_active());
-    // Each value remains owned by defaults through both binding publications.
+    // Move defaults into owning storage before either binding publication.
     // Reentrant mutations made while defaults were built take precedence.
     unsafe {
         let options = &mut (*owner.as_ptr()).options;
-        for (name, value) in &defaults {
-            options.entry(name.clone()).or_insert_with(|| value.as_raw());
+        for (name, value) in defaults {
+            options.entry(name).or_insert(require_options(value.into_owned()));
         }
     }
     unsafe { refresh_options_binding(); }
@@ -1038,32 +1055,11 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {
-            let nil = R_NilValue();
-
-            return crate::sexp::instance::with_required_current_instance(|inst| {
-                let n = (*inst).options.len() as c_int;
-
-                let value = Rf_allocVector(SEXPTYPE::VECSXP, n);
-                let _value_guard = protect(value);
-                let names = Rf_allocVector(SEXPTYPE::STRSXP, n);
-                let _names_guard = protect(names);
-
-                let mut keys: Vec<String> = (*inst).options.keys().cloned().collect();
-                keys.sort();
-
-                for (i, key) in keys.iter().enumerate() {
-                    let name_charsxp =
-                        Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                    SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
-                    if let Some(&val) = (*inst).options.get(key) {
-                        SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
-                    }
-                }
-
-                setAttrib(value, R_NamesSymbol(), names);
-                set_R_Visible(TRUE);
-                value
-            });
+            let owner = require_options(OwnerToken::current());
+            let _pin = require_options(owner.pin());
+            let value = require_options(options_vector(&owner.node_factory()));
+            set_R_Visible(TRUE);
+            return value.as_raw();
         }
 
         // The arguments to "options" can either be a sequence of
@@ -1573,8 +1569,90 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
     use crate::sexp::protect::{R_ProtectCount, protect_n};
+
+    #[test]
+    fn owned_options_vector_keeps_selected_values_after_callback_clears_storage() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            (*instance).options_initialization = OptionsInitialization::Initialized;
+            let last = factory.strings(&["last"]).unwrap().into_owned().unwrap();
+            let first = factory.strings(&["first"]).unwrap().into_owned().unwrap();
+            (*instance).options.insert("zeta".into(), last);
+            (*instance).options.insert("alpha".into(), first);
+            let cleared = Rc::new(Cell::new(false));
+            let observed = cleared.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !(*instance).options.is_empty() {
+                    (*instance).options.clear();
+                    observed.set(true);
+                }
+                crate::sexp::gengc::full_gc_in(instance);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = options_vector(&factory).unwrap();
+            assert!(cleared.get());
+            let names = result.try_attrib().unwrap().try_car().unwrap();
+            assert_eq!(names.try_string_value_elt(0).unwrap().as_deref(), Some("alpha"));
+            assert_eq!(names.try_string_value_elt(1).unwrap().as_deref(), Some("zeta"));
+            assert_eq!(result.try_vector_elt(0).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("first"));
+            assert_eq!(result.try_vector_elt(1).unwrap().try_string_value_elt(0).unwrap().as_deref(), Some("last"));
+        });
+    }
+
+    #[test]
+    fn owned_options_replacement_keeps_old_value_through_collecting_refresh() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            (*instance).options_initialization = OptionsInitialization::Initialized;
+            let old = factory.strings(&["previous"]).unwrap().into_owned().unwrap();
+            let old_node = old.allocation().unwrap().clone();
+            (*instance).options.insert("owned_option".into(), old);
+            let replacement = factory.strings(&["replacement"]).unwrap();
+            let collected = Rc::new(Cell::new(false));
+            let observed = collected.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                (*instance).options.clear();
+                crate::sexp::gengc::full_gc_in(instance);
+                observed.set(true);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let previous = factory.wrap(SetOptionByName("owned_option", replacement.as_raw())).unwrap();
+            assert!(collected.get());
+            assert_eq!(previous.try_string_value_elt(0).unwrap().as_deref(), Some("previous"));
+            drop(previous);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(!old_node.is_live(), "replacement must release the old option root");
+        });
+    }
+
+    #[test]
+    fn owned_options_drop_removes_root_without_permanent_preservation() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            (*instance).options_initialization = OptionsInitialization::Initialized;
+            let value = factory.strings(&["released option"]).unwrap();
+            let node = value.allocation().unwrap().clone();
+            let preserved = (*instance).preserve_stack.checked_entries_snapshot().len();
+            SetOptionByName("owned_removed_option", value.as_raw());
+            drop(value);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(node.is_live());
+            let old = factory.wrap(SetOptionByName("owned_removed_option", factory.nil().as_raw())).unwrap();
+            assert_eq!(old.try_string_value_elt(0).unwrap().as_deref(), Some("released option"));
+            drop(old);
+            crate::sexp::gengc::full_gc_in(instance);
+            assert!(!node.is_live());
+            assert_eq!((*instance).preserve_stack.checked_entries_snapshot().len(), preserved);
+        });
+    }
 
     #[test]
     fn options_initialization_retains_defaults_through_reentrant_gc() {
@@ -1680,24 +1758,14 @@ mod tests {
     }
 
     struct TestInstance {
-        _instance: Box<RInstance>,
+        _session: crate::sexp::session::RSession,
     }
 
     impl TestInstance {
         fn new() -> Self {
-            let mut instance = Box::new(RInstance::new());
-            unsafe {
-                set_current_instance(&mut *instance);
-            }
             TestInstance {
-                _instance: instance,
+                _session: crate::sexp::session::RSession::new_for_gc_tests(),
             }
-        }
-    }
-
-    impl Drop for TestInstance {
-        fn drop(&mut self) {
-            clear_current_instance();
         }
     }
 

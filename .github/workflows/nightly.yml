@@ -163,6 +163,12 @@ jobs:
             filter: options_initialization_retains_defaults_through_reentrant_gc
           - subject: option retry
             filter: options_initialization_can_retry_after_callback_unwind
+          - subject: owning options and wrapper cache
+            filter: >-
+              owned_options_
+              owned_base_wrapper_
+          - subject: binding publication callbacks
+            filter: sexp::env_hash::tests::owned_binding_definition_
           - subject: scoped source evaluation
             filter: methods_source_guard_prevents_recompilation_at_actual_closure_entry
     steps:

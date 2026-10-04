@@ -409,10 +409,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         }
         mark_reachable((*instance).bind_state.blank_string);
 
-        MARK_WHERE.with(|w| w.set("options"));
-        for &obj in (*instance).options.values() {
-            mark_reachable(obj);
-        }
+        // Options and cached base wrappers own exact-generation automatic roots.
         for callback in &(*instance).main_state.task_callbacks {
             mark_reachable(callback.fun);
             mark_reachable(callback.data);
@@ -918,9 +915,6 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         }
         update_field(&mut (*instance).bind_state.blank_string, old_to_new);
 
-        for obj in (*instance).options.values_mut() {
-            update_field(obj, old_to_new);
-        }
         for callback in &mut (*instance).main_state.task_callbacks {
             update_field(&mut callback.fun, old_to_new);
             update_field(&mut callback.data, old_to_new);
