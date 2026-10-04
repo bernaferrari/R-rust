@@ -1093,3 +1093,25 @@ Six atomic strict-provenance Miri cases are running; this is a verified native
 candidate, not a completed Miri checkpoint. The separately discovered GNU
 raw-child errors in the existing asReal/asComplex helpers are tracked in
 `rport-wszw.7.1.1.3`.
+
+## Owning intercept-only linear models: native candidate (rport-wszw.6.4)
+
+Literal `lm(y ~ 1)` now uses an owning, forbid-unsafe helper with the original
+constant-column Householder QR arithmetic. It captures the response expression,
+data bindings and row metadata before allocating an evaluation environment or
+entering callbacks, and publishes initialized model, QR, effects and omission
+metadata through the original runtime. Empty/all-missing responses report
+`0 (non-NA) cases`; a genuine two-case unchanged baseline previously returned
+NULL for both the rank-one fit and empty-input error. General model options,
+weights, terms and broader model-family completeness remain separate work.
+
+Ten native input/lifecycle regressions pass in 0.13 seconds, and all 22 existing
+covratio controls pass in 22.91 seconds. The unchanged full public
+`r-embed/tests/covratio_gnu.rs` fixture passes in 170.35 seconds within its
+180-second bound, with no timeout marker: normal values/names, unit leverage,
+perfect deletion, intercept-only infinite ratios and empty-input error all
+match. Clippy for rmath/r-embed all targets with memory profiling and denied
+warnings passes, as do assigned-source format checks. An independent read-only
+review found no blocker within the declared intercept-only scope. Ten strict
+Miri cases are running against the frozen five-file source ledger; that proof
+and a complete whole-tree CI checkpoint are not yet claimed.
