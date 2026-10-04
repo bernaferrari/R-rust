@@ -1,4 +1,5 @@
 //! Real public entry versus independently pinned supersmoother outputs.
+mod character_span;
 use crate::sexp::{R_xlen_t, RSession, SEXPTYPE, Sexp, SexpMut, object::SessionNodeFactory};
 fn real(f: &SessionNodeFactory<'_>, data: &[f64]) -> Sexp<'static> {
     let n = f

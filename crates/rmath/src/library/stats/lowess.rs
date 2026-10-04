@@ -605,21 +605,53 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             access.require_active().map_err(|e| e.to_string())?;
             Ok(x)
         };
+        fn span_text(v: &Sexp<'_>, access: &RuntimeAccess) -> Result<String, String> {
+            let text = v.try_string_value_elt(0).map_err(|e| e.to_string())?;
+            access.require_active().map_err(|e| e.to_string())?;
+            text.ok_or_else(|| "missing value where TRUE/FALSE needed".into())
+        }
+        let mut character_span = None;
         let span = if let Some(v) = &slots[3] {
+            // The public GNU wrapper first uses span == "cv" in an if condition.
+            // It must reject a non-scalar condition before reading its first element.
+            let length = v.len();
+            access.require_active().map_err(|e| e.to_string())?;
+            if length == 0 {
+                return Err("argument is of length zero".into());
+            }
+            if length != 1 {
+                return Err("the condition has length > 1".into());
+            }
             if v.typeof_() == SEXPTYPE::STRSXP {
-                let text = v.try_string_value_elt(0).map_err(|e| e.to_string())?;
-                access.require_active().map_err(|e| e.to_string())?;
-                if text.as_deref() != Some("cv") {
-                    return Err("'span' must be between 0 and 1.".into());
+                if span_text(v, access)? == "cv" {
+                    0.
+                } else {
+                    // Keep the port's character-comparison semantics, and GNU's
+                    // short-circuit provider order, before numeric coercion.
+                    if span_text(v, access)?.as_str() < "0" || span_text(v, access)?.as_str() > "1"
+                    {
+                        return Err("'span' must be between 0 and 1.".into());
+                    }
+                    character_span = Some(v.clone());
+                    0.
                 }
-                0.
             } else {
-                scalar(3, 0.)?
+                if v.typeof_() == SEXPTYPE::CPLXSXP {
+                    return Err("invalid comparison with complex values".into());
+                }
+                let value = scalar(3, 0.)?;
+                let missing = value.is_nan()
+                    || matches!(v.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP)
+                        && value == f64::from(NA_INTEGER);
+                if missing {
+                    return Err("missing value where TRUE/FALSE needed".into());
+                }
+                value
             }
         } else {
             0.
         };
-        if !span.is_finite() || !(0. ..=1.).contains(&span) {
+        if !(0. ..=1.).contains(&span) {
             return Err("'span' must be between 0 and 1.".into());
         }
         let x = numeric(slots[0].as_ref().ok_or("missing supersmoother x")?, access)?;
@@ -690,6 +722,43 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 })
                 .map_err(|e| e.to_string())?;
         }
+        // GNU performs as.double(span) only after observation validation and
+        // deletion warnings. Keep the original input rooted through this last
+        // provider read and any coercion warning callback.
+        let span = if let Some(v) = character_span {
+            let text = v.try_string_value_elt(0).map_err(|e| e.to_string())?;
+            access.require_active().map_err(|e| e.to_string())?;
+            let text = text.ok_or("NA/NaN/Inf in foreign function call (arg 6)")?;
+            let text = std::ffi::CString::new(text).map_err(|e| e.to_string())?;
+            let value = access
+                .with_native(|_| {
+                    // SAFETY: the canonical parser receives a live owned CString;
+                    // its end pointer stays within that same NUL-terminated buffer.
+                    let (value, complete) = unsafe {
+                        let mut end = std::ptr::null_mut();
+                        let value = crate::mainutils::util_main::R_strtod(text.as_ptr(), &mut end);
+                        let tail = std::ffi::CStr::from_ptr(end).to_bytes();
+                        (value, tail.iter().all(u8::is_ascii_whitespace))
+                    };
+                    if !complete {
+                        unsafe {
+                            crate::mainutils::errors::Rf_warning1(
+                                c"NAs introduced by coercion".as_ptr(),
+                            );
+                        }
+                        Ok(f64::NAN)
+                    } else {
+                        Ok(value)
+                    }
+                })
+                .map_err(|e| e.to_string())?;
+            if !value.is_finite() {
+                return Err("NA/NaN/Inf in foreign function call (arg 6)".into());
+            }
+            value
+        } else {
+            span
+        };
         let xo: Vec<_> = order.iter().map(|&i| x[i]).collect();
         let yo: Vec<_> = order.iter().map(|&i| y[i]).collect();
         let wo: Vec<_> = order.iter().map(|&i| weights[i]).collect();

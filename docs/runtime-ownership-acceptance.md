@@ -601,3 +601,23 @@ package global state. Dynamic unregistered lookup remains a trusted host
 facility. Registered single-precision buffers are rejected before invocation
 until proper float marshalling exists; authenticated R-visible native symbol
 handles and full foreign API semantics remain tracked in rport-wpdk.3.2.
+
+## Public supersmoother character coercion
+
+The public supersmoother wrapper now preserves GNU's scalar-condition admission
+and plain-character comparison/coercion order. It retains the original inputs
+through each provider read, collecting callbacks and coercion warnings, and
+rejects successful publication after original-session revocation. Numeric
+coercion uses the canonical Rust R_strtod parser within the original owner gate;
+this unit does not change the numerical supersmoother kernel.
+
+Twenty-one independently generated GNU cases compare values, errors and warnings
+under C collation. The final enclosing 15 native supersmoother cases pass
+(including the nine public cases), and three strict-provenance Miri fixtures
+pass in 767.19 seconds with the default alias checker. Those fixtures cover the
+complete character-case table, detached inputs with full collection, and
+revocation at each of four provider reads. Warnings-denied Clippy, assigned
+formatting and a byte-identical independent GNU fixture rerun pass. The source
+ledger records independent later changes without claiming they were exercised
+by this selection. List/classed span coercion and locale breadth remain tracked
+in rport-wpdk.6.5.2.
