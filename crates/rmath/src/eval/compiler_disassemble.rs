@@ -215,7 +215,7 @@ pub unsafe fn do_disassemble(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             compiler_error(if TYPEOF(input) == SEXPTYPE::CLOSXP {
                 "function is not compiled"
             } else {
-                "argument is not byte code"
+                "argument is not a byte code object"
             });
         }
         let _code_root = protect(code);
@@ -226,5 +226,42 @@ pub unsafe fn do_disassemble(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         crate::mainutils::essentials::do_dput(call, op, dump_args, rho);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
+    }
+}
+
+#[cfg(test)]
+mod source_error_contract_tests {
+    #[test]
+    fn source_disassemble_errors_match_gnu_and_session_recovers() {
+        // Actual base runtime and compiler namespace evaluation. Installed host
+        // package startup is a separate contract and precedes these expressions.
+        let mut session = crate::sexp::RSession::new_without_default_packages();
+        for expression in [
+            "compiler::disassemble(function() 1)",
+            "compiler::disassemble(function(x=2) x)",
+            "compiler::disassemble(function(x, ...) x)",
+            "compiler::disassemble(function(x=function(y=3) y) x)",
+        ] {
+            let closure_error = session
+                .eval_code_with_output_capture(expression)
+                .0
+                .unwrap_err()
+                .to_string();
+            assert!(
+                closure_error.contains("function is not compiled"),
+                "unexpected uncompiled-closure diagnostic for {expression}: {closure_error}"
+            );
+        }
+        let value_error = session
+            .eval_code_with_output_capture("compiler::disassemble(1)")
+            .0
+            .unwrap_err()
+            .to_string();
+        assert!(
+            value_error.contains("argument is not a byte code object"),
+            "unexpected non-bytecode diagnostic: {value_error}"
+        );
+        let recovered = session.eval_code_with_output_capture("1+1").0.unwrap();
+        assert_eq!(recovered.try_real_elt(0).unwrap(), 2.0);
     }
 }

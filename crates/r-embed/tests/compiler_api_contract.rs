@@ -69,19 +69,21 @@ fn compiler_disassemble_contract_matches_pinned_gnu() {
 #[test]
 fn disassemble_rejects_uncompiled_inputs_and_session_recovers() {
     let mut session = RSession::new().unwrap();
+    let closure_error = session
+        .eval("compiler::disassemble(function() 1)")
+        .unwrap_err()
+        .to_string();
     assert!(
-        session
-            .eval("compiler::disassemble(function() 1)")
-            .unwrap_err()
-            .to_string()
-            .contains("function is not compiled")
+        closure_error.contains("function is not compiled"),
+        "unexpected uncompiled-closure diagnostic: {closure_error}"
     );
+    let value_error = session
+        .eval("compiler::disassemble(1)")
+        .unwrap_err()
+        .to_string();
     assert!(
-        session
-            .eval("compiler::disassemble(1)")
-            .unwrap_err()
-            .to_string()
-            .contains("argument is not byte code")
+        value_error.contains("argument is not a byte code object"),
+        "unexpected non-bytecode diagnostic: {value_error}"
     );
     assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
 }

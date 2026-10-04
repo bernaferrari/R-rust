@@ -739,7 +739,10 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                     print2buff(pn, d);
                                 } // ASCII
                                 print2buff(b"(\0".as_ptr() as *const c_char, d);
-                                args2buff(FORMALS(s), 0, 1, d);
+                                // Parsed function arguments are a pairlist, not a closure.
+                                // GNU's FORMALS macro aliases CAR through its C layout;
+                                // the checked Rust graph requires the actual pairlist field.
+                                args2buff(CAR(s), 0, 1, d);
                                 print2buff(b") \0".as_ptr() as *const c_char, d);
                                 deparse2buff(CADR(s), d);
                             } else {
@@ -1137,3 +1140,70 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
 }
 
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod function_source_tests {
+    #[test]
+    fn parsed_function_formals_deparse_like_gnu() {
+        let mut session = crate::sexp::RSession::new_for_gc_tests();
+        for (expression, expected) in [
+            ("quote(function() 1)", "function() 1"),
+            ("quote(function(x=2) x)", "function(x = 2) x"),
+            ("quote(function(x, ...) x)", "function(x, ...) x"),
+            (
+                "quote(function(x=function(y=3) y) x)",
+                "function(x = function(y = 3) y) x",
+            ),
+            (
+                "quote(compiler::disassemble(function(x, ...) x))",
+                "compiler::disassemble(function(x, ...) x)",
+            ),
+        ] {
+            let value = session
+                .eval_code_with_output_capture(&format!(
+                    ".Internal(deparse({expression}, 60L, FALSE, 0L, -1L))"
+                ))
+                .0
+                .unwrap();
+            assert_eq!(
+                value.string_value_elt(0),
+                Some(Some(expected.into())),
+                "{expression}"
+            );
+            assert_eq!(value.len(), 1);
+        }
+    }
+
+    #[test]
+    fn closure_function_formals_remain_distinct_from_source_pairlists() {
+        let mut session = crate::sexp::RSession::new_for_gc_tests();
+        for (expression, expected) in [
+            ("function() 1", "function () "),
+            ("function(x=2) x", "function (x = 2) "),
+            ("function(x, ...) x", "function (x, ...) "),
+            (
+                "function(x=function(y=3) y) x",
+                "function (x = function(y = 3) y) ",
+            ),
+        ] {
+            let value = session
+                .eval_code_with_output_capture(&format!(
+                    ".Internal(deparse({expression}, 60L, FALSE, 0L, -1L))"
+                ))
+                .0
+                .unwrap();
+            assert_eq!(
+                value.string_value_elt(0),
+                Some(Some(expected.into())),
+                "{expression}"
+            );
+            assert_eq!(
+                value.string_value_elt(1),
+                Some(Some(
+                    if expression.ends_with(" 1") { "1" } else { "x" }.into()
+                ))
+            );
+            assert_eq!(value.len(), 2);
+        }
+    }
+}

@@ -156,3 +156,14 @@ Accelerate profile (41 tests, 0.04 seconds) and the default Rust profile (41 tes
 0.02 seconds). The directly constructed adapter fixture uses a genuine managed
 heap; unchanged full default package startup remains a separate incomplete
 obligation. The numerical algorithm and system BLAS/LAPACK selection are unchanged.
+
+The parsed-function deparser now reads the actual pairlist formals field. GNU's
+C closure accessor also accepts that pairlist layout; the checked Rust graph
+correctly rejects a closure-field projection from a list. That rejection was
+overwriting the original uncompiled-function error during call rendering.
+Eleven native controls pass in 1.80 seconds, and four strict-provenance Miri
+deparser controls pass in 590.20 seconds. The separate scalar error matches the
+pinned GNU wording, `argument is not a byte code object`. The public embedding
+test compiles, and warnings-free rmath/r-embed all-target Clippy passes in 44.95
+seconds; the unchanged public default-startup path is not certified by those
+focused checks. Each proof remains tied to its compiled-source ledger.
