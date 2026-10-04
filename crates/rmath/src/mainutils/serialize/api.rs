@@ -1152,15 +1152,24 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
         // Portable pinned data uses the same original lazy-load stream, while
         // retaining all selected operands through provider and reader callbacks.
         // Inspection of ordinary file vectors invokes no provider accessor.
-        let owner = crate::sexp::owner::OwnerToken::current()
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let file_owned = owner
+            .sexp(file)
+            .and_then(crate::sexp::object::Sexp::into_owned)
             .unwrap_or_else(|e| error(&e.to_string()));
-        let file_owned = owner.sexp(file).and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| error(&e.to_string()));
-        if crate::library::datasets::is_database(&file_owned).unwrap_or_else(|e| error(&e.to_string())) {
-            let own = |value| owner.sexp(value).and_then(crate::sexp::object::Sexp::into_owned)
-                .unwrap_or_else(|e| error(&e.to_string()));
+        if crate::library::datasets::is_database(&file_owned)
+            .unwrap_or_else(|e| error(&e.to_string()))
+        {
+            let own = |value| {
+                owner
+                    .sexp(value)
+                    .and_then(crate::sexp::object::Sexp::into_owned)
+                    .unwrap_or_else(|e| error(&e.to_string()))
+            };
             return crate::library::datasets::fetch(own(key), file_owned, own(compsxp), own(hook))
-                .unwrap_or_else(|message| error(&message)).as_raw();
+                .unwrap_or_else(|message| error(&message))
+                .as_raw();
         }
         let compressed = asInteger(compsxp);
 

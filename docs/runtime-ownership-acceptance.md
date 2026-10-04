@@ -1017,3 +1017,13 @@ yet, so rport-wszw.2 stays open. Removed lazy bindings/malformed namespace
 metadata, generic browser filename I/O and public namespace listing are separate
 remaining items (rport-wszw.2.3, rport-wszw.11 and rport-wszw.12). This checkpoint
 does not claim arbitrary namespace mutation compatibility or complete R parity.
+
+## Immutable CI checkpoint (rport-jxfp.3.12.6)
+
+A separate checkout applies formatting-only wrapping and module ordering to
+four files, preserving the source files already loaded by ongoing strict Miri
+runs in the development checkout. Its complete workspace formatting check and
+warning-denied all-target workspace Clippy passed (79 seconds for Clippy).
+The dedicated review branch will remain fixed while native, exact-oracle,
+upstream and browser CI execute. Their results remain pending; passing these
+local checks does not certify a complete CI checkpoint or full GNU R parity.
