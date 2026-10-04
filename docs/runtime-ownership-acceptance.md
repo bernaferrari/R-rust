@@ -507,3 +507,14 @@ relabelled as the final class-permit snapshot. Twenty STARMA and three retention
 native controls also pass after private storage migration. GNU serialized compact
 vectors currently reload as dense values; the fixture verifies values and the
 first public attribute, without claiming lazy class preservation on reload.
+
+Methods implicit-generics setup now invokes the installed original helper in
+the methods namespace without eagerly loading stats, tools or utils. The base
+namespace no longer contains an invented toeplitz wrapper. Five native fixtures
+verify the original table and closure identities, explicit later stats loading,
+collection, revocation and exact integer/asymmetric real toeplitz results.
+Two earlier minimal parser/ownership Miri fixtures cover their stated input
+lifetimes and revocation only; they do not execute real methods registration.
+The unchanged full default startup still reaches no footer within its recorded
+180-second bound. This fixes eager registration and sequence behavior while the
+broader package-loading frontier remains tracked separately.

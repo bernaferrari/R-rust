@@ -2669,19 +2669,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".rmpkg",
             "function(pkg) sub(\"package:\", \"\", pkg, fixed=TRUE)",
         );
-        // GNU stats::toeplitz is a closure (diffinv.R), not a primitive.
-        // Kernel is hidden `.rport_toeplitz`; public formals match GNU
-        // (no `...`). methods onLoad re-caches `.__IG__table` and points
-        // this closure at the stats namespace so implicitGeneric finds
-        // GNU's package="stats" `function(x, ...)` entry.
-
-        eval_base_binding(
-            base_env,
-            "toeplitz",
-            "function(x, r = NULL, symmetric = is.null(r))\n\
-             .rport_toeplitz(x, r, symmetric)",
-        );
-
         eval_base_binding(
             base_env,
             "trace",

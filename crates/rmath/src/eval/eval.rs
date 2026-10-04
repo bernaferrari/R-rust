@@ -3936,7 +3936,8 @@ identical(B, new("B"))
         let mut session = RSession::new();
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
-exists("toeplitz", envir=baseenv(), inherits=FALSE) &&
+!exists("toeplitz", envir=baseenv(), inherits=FALSE) &&
+  identical(environment(stats::toeplitz), asNamespace("stats")) &&
   identical(
     as.vector(toeplitz(c(-1, 0, 0), c(-1, 11, 0))),
     c(-1, 0, 0, 11, -1, 0, 0, 11, -1)
@@ -3959,7 +3960,8 @@ x <- c(-1, 0, 0)
 r <- c(-1, 11, 0)
 T3 <- toeplitz(x, r)
 g <- implicitGeneric("toeplitz")
-env_ok <- identical(environment(get("toeplitz", envir=baseenv(), inherits=FALSE)), asNamespace("stats"))
+env_ok <- !exists("toeplitz", envir=baseenv(), inherits=FALSE) &&
+  identical(environment(get("toeplitz", envir=asNamespace("stats"), inherits=FALSE)), asNamespace("stats"))
 setMethod("toeplitz", "Atoep", function(x, ...) x)
 identical(names(formals(g)), c("x", "...")) &&
   env_ok &&

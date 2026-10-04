@@ -1456,36 +1456,59 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
     }
 }
 
-/// GNU `.initImplicitGenerics` ends with `registerImplicitGenerics(where)`.
-/// The table entry is package `"stats"`; `implicitGeneric` only finds it
-/// when `environment(toeplitz)` is the stats namespace (not base).
+/// Register the installed implicit prototypes without importing their packages.
+/// GNU methods keeps the stats-labeled toeplitz prototype in this table even
+/// while the actual stats namespace is unloaded. Its closure is supplied later
+/// by the ordinary stats namespace loader, retaining that namespace's identity.
 unsafe fn register_implicit_generics_table(ns: SEXP) {
     unsafe {
-        let src = "{\n\
-             registerImplicitGenerics(where = asNamespace(\"methods\"))\n\
-             stats_ns <- try(asNamespace(\"stats\"), silent = TRUE)\n\
-             if (exists(\"toeplitz\", envir = baseenv(), inherits = FALSE)\n\
-                 && is.environment(stats_ns)) {\n\
-               f <- get(\"toeplitz\", envir = baseenv(), inherits = FALSE)\n\
-               environment(f) <- stats_ns\n\
-               assign(\"toeplitz\", f, envir = baseenv())\n\
-               assign(\"toeplitz\", f, envir = stats_ns)\n\
-             }\n\
-             }";
-
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(src, arena, parser_factory.clone())
-        });
-        crate::eval::parser::flush_literal_warnings();
-        let Ok(exprs) = parsed else {
-            return;
-        };
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for expr in &exprs {
-                let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), ns);
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let runtime = owner
+            .weak_owner()
+            .unwrap_or_else(|| package_error("implicit generics require a managed runtime"));
+        let namespace = owner
+            .sexp(ns)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        crate::sexp::owner::with_runtime(&runtime, |access| {
+            let domain = access.domain();
+            let parsed = access.with_arena(|arena| {
+                crate::eval::parser::parse_expressions(
+                    "registerImplicitGenerics(where = asNamespace(\"methods\"))",
+                    arena,
+                    domain,
+                )
+            })?;
+            access.with_native(|_| {
+                crate::eval::parser::flush_literal_warnings();
+                Ok(())
+            })?;
+            let Ok(expressions) = parsed else {
+                return Ok(());
+            };
+            // Keep the original namespace and actual parsed expression owners
+            // through every allocating/collecting callback. Original cleanup
+            // remains valid if callbacks revoke the session.
+            let evaluation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for expression in &expressions {
+                    access.with_native(|token| {
+                        let result =
+                            crate::eval::eval::Rf_eval(expression.as_raw(), namespace.as_raw());
+                        token.sexp(result)?.into_owned()?;
+                        Ok(())
+                    })?;
+                }
+                Ok::<(), crate::sexp::object::SexpError>(())
+            }));
+            access.require_active()?;
+            if let Ok(result) = evaluation {
+                result?;
             }
-        }));
+            Ok::<(), crate::sexp::object::SexpError>(())
+        })
+        .and_then(|result| result)
+        .unwrap_or_else(|error| package_error(error.to_string()));
     }
 }
 
@@ -4919,3 +4942,7 @@ mod methods_startup_tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "shared/implicit_generics_tests.rs"]
+mod implicit_generics_tests;
