@@ -758,3 +758,13 @@ and empty exports, invalid namespaces and recovery. Its completed native footer
 is one pass in 2.40 seconds. The independent pinned GNU control agrees. This
 checkpoint adds no unsafe code and does not certify portable dataset loading or
 the separate namespace lifecycle work.
+
+## Serializer checkpoint correction
+
+Partial staging previously placed several promise-reader and hook declarations
+at incorrect locations in the committed files. The tested working source was
+correct. The correction restores those declarations without including concurrent
+numeric or portable dataset changes. A separately archived Git index tree passes
+rmath/r-embed all-target checks and all six promise cases in 0.04 seconds. Future
+shared-file checkpoints must compare the index contents to the intended source
+and validate an archived index tree when partial staging moves declarations.

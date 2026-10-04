@@ -289,13 +289,13 @@ pub struct BinaryReader<'a> {
     persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
 
     persist_hook_data: SEXP,
+    pub(super) lazy_restore: Option<super::api::LazyLoadRestore>,
     persist_cache: std::collections::HashMap<String, SEXP>,
 }
 
 /// Why a declared vector length is not admitted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum VectorLengthReject {
-    pub(super) lazy_restore: Option<super::api::LazyLoadRestore>,
     Negative,
     ZeroWidth,
     Truncated,
@@ -396,13 +396,13 @@ impl<'a> BinaryReader<'a> {
             persist_hook: ptr::null_mut(),
             persist_hook_func: None,
             persist_hook_data: ptr::null_mut(),
+            lazy_restore: None,
             persist_cache: std::collections::HashMap::new(),
         }
     }
 
     pub fn set_ascii_body(&mut self, ascii_body: bool) {
         self.ascii_body = ascii_body;
-            lazy_restore: None,
     }
 
     pub fn set_xdr_body(&mut self, xdr_body: bool) {
@@ -1313,8 +1313,6 @@ pub unsafe fn WriteItemInternal(
             return;
         }
 
-        // Handle LISTSXP
-        if stype == SEXPTYPE::LISTSXP {
         // GNU uses the dotted-pair wire order for promises: environment,
         // cached value, expression. Capture actual fields before hook callbacks;
         // serialization must never force a deferred binding.
@@ -1369,6 +1367,8 @@ pub unsafe fn WriteItemInternal(
             return;
         }
 
+        // Handle LISTSXP
+        if stype == SEXPTYPE::LISTSXP {
             let hastag = if sexp_has_tag(s) { 1 } else { 0 };
             let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
@@ -1707,8 +1707,6 @@ fn first_string_elt(names: SEXP) -> String {
     }
 }
 
-unsafe fn read_item_body(
-    reader: &mut BinaryReader,
 unsafe fn read_promise(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
@@ -1776,6 +1774,8 @@ unsafe fn read_promise(
     }
 }
 
+unsafe fn read_item_body(
+    reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     closure_body: bool,
 ) -> Result<SEXP, String> {
@@ -1958,10 +1958,10 @@ unsafe fn read_promise(
             SETCDR(s, cdr);
             restore_serialized_gp(s, levs, isobj);
             Ok(s)
-        } else if stype == SEXPTYPE::CLOSXP {
-            let s = allocSExp(SEXPTYPE::CLOSXP);
         } else if stype == SEXPTYPE::PROMSXP {
             read_promise(reader, ref_table, hasattr, hastag, levs, isobj)
+        } else if stype == SEXPTYPE::CLOSXP {
+            let s = allocSExp(SEXPTYPE::CLOSXP);
             let _s_guard = protect(s);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;

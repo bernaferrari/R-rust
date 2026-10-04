@@ -711,13 +711,13 @@ unsafe fn persist_restore_inner(
                 pending.cache.clone(),
             );
         }
+        let env = env_raw;
         let refs_sym = Rf_install(c"refs".as_ptr());
         let refs = R_findVarInFrame(data, refs_sym);
         let mut key = R_NilValue();
         if !refs.is_null() && refs != R_UnboundValue() {
             if TYPEOF(refs) == SEXPTYPE::ENVSXP {
                 key = R_findVarInFrame(refs, name_sym);
-        let env = env_raw;
             } else if TYPEOF(refs) == SEXPTYPE::VECSXP {
                 let nm = crate::sexp::attrib_core::getAttrib(
                     refs,
@@ -845,24 +845,24 @@ unsafe fn persist_restore_inner(
                         }
                         _ => {}
                     }
-                }
-            }
-        }
-        env
-    }
-}
                     owner
                         .require_active()
                         .unwrap_or_else(|e| error(&e.to_string()));
-
-unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
-    unsafe {
+                }
+            }
+        }
         owner
             .require_active()
             .unwrap_or_else(|e| error(&e.to_string()));
         if let Some(pending) = pending.as_mut() {
             pending.committed = true;
         }
+        env
+    }
+}
+
+unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
+    unsafe {
         !hook.is_null()
             && hook != R_NilValue()
             && (TYPEOF(hook) == SEXPTYPE::CLOSXP
@@ -875,13 +875,13 @@ unsafe fn R_unserialize_from_stream_hooks(
     icon: SEXP,
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
+    lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
     unsafe {
         if icon.is_null() {
             error("read error");
         }
 
-    lazy_restore: Option<LazyLoadRestore>,
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
@@ -944,13 +944,13 @@ unsafe fn R_unserialize_from_stream_hooks(
         };
 
         let mut reader = BinaryReader::new(payload);
+        reader.lazy_restore = lazy_restore;
         if hook_func.is_some() {
             reader.set_c_persist_hook(hook_func, hook_data);
         } else {
             reader.set_persist_hook(hook_data);
         }
 
-        reader.lazy_restore = lazy_restore;
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
