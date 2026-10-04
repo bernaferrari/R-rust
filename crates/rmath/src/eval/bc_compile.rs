@@ -1088,18 +1088,26 @@ mod tests {
             if collect {
                 let captured_pool = pool.clone();
                 let count = callbacks.clone();
-                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                    for index in 0..captured_pool.len() {
-                        crate::sexp::accessors::SET_VECTOR_ELT(
-                            captured_pool.as_raw(),
-                            index,
-                            R_NilValue(),
-                        );
-                    }
-                    crate::sexp::gengc::full_gc();
-                    count.set(count.get() + 1);
-                }));
                 session.with_active_in(|instance| {
+                    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                        if count.replace(1) != 0 {
+                            return;
+                        }
+                        // Detach the actual pool once, then collect it. The
+                        // setter collects again with its promises published.
+                        // Repeating this detachment at every allocation adds
+                        // no further transition to this ownership regression.
+                        (*instance).memory_state.gc_force_gap = 0;
+                        (*instance).memory_state.gc_force_wait = 0;
+                        for index in 0..captured_pool.len() {
+                            crate::sexp::accessors::SET_VECTOR_ELT(
+                                captured_pool.as_raw(),
+                                index,
+                                R_NilValue(),
+                            );
+                        }
+                        crate::sexp::gengc::full_gc_in(instance);
+                    }));
                     (*instance).memory_state.gc_force_gap = 1;
                     (*instance).memory_state.gc_force_wait = 1;
                 });
@@ -1120,7 +1128,7 @@ mod tests {
                 "assignment visibility: {script}"
             );
             if collect {
-                assert!(callbacks.get() > 0, "must actually collect");
+                assert_eq!(callbacks.get(), 1, "must actually detach the pool once");
             }
         }));
         if let Err(payload) = result {
