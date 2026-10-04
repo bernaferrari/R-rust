@@ -417,3 +417,18 @@ Warnings-denied all-target Clippy passes in 23.74 seconds, and assigned formatti
 passes. Frozen owned sources and the interpreter ledger distinguish subsequent
 independent numerical and methods edits. General replacement chains and full
 methods startup remain separate obligations.
+
+Promise forcing now retains the original promise, expression, environment and
+returned value through evaluation and context cleanup. Fresh and cached force
+results carry the same owning identity. Publication uses the original runtime
+authority; a foreign or closed runtime cannot replace it. Live callback panics
+preserve their exact payload, while original-runtime revocation returns a checked
+failure before caching a result.
+
+The baseline fails four of five focused ownership regressions. All six final
+native cases pass in 0.03 seconds, including sole-result-root collection, and
+all six strict-provenance Miri cases pass in 436.62 seconds with the default
+alias checker. Warnings-denied all-target Clippy passes in 25.06 seconds and
+assigned formatting passes. The recorded frozen source and interpreter manifest
+define this proof's scope. Recursive evaluation and interrupted-promise restart
+states remain a separate tracked obligation; full methods startup is unresolved.

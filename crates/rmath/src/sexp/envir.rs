@@ -671,67 +671,86 @@ pub unsafe fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>> {
-    if prom.clone().typeof_() != SEXPTYPE::PROMSXP {
+pub unsafe fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+    use super::owner::{OwnerToken, StoredOwner};
+
+    // Immutable singleton values need no execution authority or heap mutation.
+    if prom.owner() == super::object::SexpOwner::Static {
         return Ok(Some(prom));
     }
-
-    let val = prom
-        .clone()
-        .try_prvalue()
-        .clone()
-        .map_err(|err| sexp_err("promise value lookup", err))?;
-    if val.clone().as_raw() != unsafe { R_UnboundValue() } {
-        return Ok(Some(val));
+    let authority = if prom.runtime_owner.is_some() || prom.session_owner_ptr.is_some() {
+        StoredOwner::from_value(&prom)
+    } else {
+        // Translated native callers may supply an unrooted address view. Capture
+        // its checked original domain once before callbacks; the wrap below
+        // rejects foreign, retired or unregistered storage. The unsafe caller
+        // supplies the borrowed-owner lifetime for standalone native fixtures.
+        unsafe { OwnerToken::current() }.map(StoredOwner::from_token)
     }
+    .map_err(|error| sexp_err("promise authority", error))?;
 
-    let expr = prom
-        .clone()
-        .try_prcode()
-        .clone()
-        .map_err(|err| sexp_err("promise code lookup", err))?;
-    if expr.clone().as_raw() == unsafe { R_MissingArg() } {
-        return Ok(Some(expr));
-    }
-    let env = prom
-        .clone()
-        .try_prenv()
-        .map_err(|err| sexp_err("promise environment lookup", err))?
-        .clone();
+    authority
+        .with_projection(|_| {
+            authority.require_active()?;
+            let factory = authority.node_factory()?;
+            let prom = factory.wrap(prom.as_raw())?;
+            if prom.typeof_() != SEXPTYPE::PROMSXP {
+                return Ok(Some(prom));
+            }
+            let value = prom.try_prvalue()?;
+            if value.as_raw() != factory.unbound().as_raw() {
+                return Ok(Some(value));
+            }
+            let expression = prom.try_prcode()?;
+            if expression.as_raw() == factory.missing().as_raw() {
+                return Ok(Some(expression));
+            }
+            let environment = prom.try_prenv()?;
+            let nil = factory.nil();
 
-    // Upstream Rf_eval's PROMSXP case pushes a bare CTXT_RETURN context
-    // (null call, cloenv = PRENV) while evaluating the promise's code.
-    // sys.* walkers use it to see through the frame of the function doing
-    // the forcing: `parent.frame()` inside a forced argument promise must
-    // resolve against the promise's creation environment chain, not the
-    // forcing closure's caller (e.g. zeallot's `%<-%` passes
-    // `list_assign(pairs, parent.frame())`; the promise is forced inside
-    // list_assign, yet must name `%<-%`'s caller).
-    let value = unsafe {
-        let env_raw = env.as_raw();
-        let _promise_ctx_guard = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_RETURN,
-            crate::sexp::globals::R_NilValue(),
-            env_raw,
-            std::ptr::null_mut(),
-            None,
-            crate::sexp::globals::R_NilValue(),
-            crate::sexp::globals::R_NilValue(),
-        );
-        crate::eval::eval::Rf_eval(expr.as_raw(), env_raw)
-    };
-    let value = unsafe { Sexp::from_raw_unchecked(value) };
-
-    unsafe {
-        SET_PRVALUE(prom.clone().as_raw(), value.clone().as_raw());
-        SET_PRENV(prom.as_raw(), R_NilValue());
-        // A forced promise value is shared with the promise. GNU marks it
-        // NAMEDMAX so a later `x[1] <-` duplicates instead of mutating it.
-        if !value.clone().as_raw().is_null() {
-            super::accessors::SET_NAMED(value.clone().as_raw(), 2);
-        }
-    }
-    Ok(Some(value))
+            // Every selected edge and the original physical owner remain retained
+            // through evaluation and context cleanup. Capture the result before
+            // releasing that context, which may itself run R callbacks.
+            let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                authority.require_active()?;
+                let context = unsafe {
+                    crate::sexp::context::begin_context_guard(
+                        crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                        nil.as_raw(),
+                        environment.as_raw(),
+                        std::ptr::null_mut(),
+                        None,
+                        nil.as_raw(),
+                        nil.as_raw(),
+                    )
+                };
+                let raw = unsafe {
+                    crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
+                };
+                authority.require_active()?;
+                let result = factory.wrap(raw)?;
+                drop(context);
+                authority.require_active()?;
+                Ok::<_, SexpError>(result)
+            }));
+            // A replacement ambient runtime cannot authenticate either a successful
+            // value or an unwind. Preserve the exact payload while the original is
+            // live; revocation becomes a failed checked force.
+            authority.require_active()?;
+            let value = match evaluated {
+                Ok(result) => result?,
+                Err(payload) => std::panic::resume_unwind(payload),
+            };
+            unsafe {
+                SET_PRVALUE(prom.as_raw(), value.as_raw());
+                SET_PRENV(prom.as_raw(), nil.as_raw());
+                // GNU's cached promise value is shared with the promise itself.
+                super::accessors::SET_NAMED(value.as_raw(), 2);
+            }
+            authority.require_active()?;
+            Ok(Some(value))
+        })
+        .map_err(|error| sexp_err("promise forcing", error))
 }
 
 // ---------------------------------------------------------------------------
@@ -2124,3 +2143,7 @@ mod tests {
 #[cfg(test)]
 #[path = "envir/shared_index_tests.rs"]
 mod shared_index_tests;
+
+#[cfg(test)]
+#[path = "envir/owned_promise_tests.rs"]
+mod owned_promise_tests;
