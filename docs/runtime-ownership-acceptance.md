@@ -183,3 +183,16 @@ proof records independent later compiler/duplication edits separately; all owned
 numeric source hashes remain unchanged. This covers the native filtering adapter,
 not every option of the higher-level fitting API or the eight other missing
 numerical registrations.
+
+Dense vector and atomic duplication now retains the actual original children,
+attribute cells and scalar buffers before providers or allocation callbacks.
+Initialized checked destinations and their source owners survive the sole outer
+trace callback; original-runtime revocation rejects publication. Mutable logical
+singleton copies match the pinned GNU behavior. All 24 native controls pass in
+0.12 seconds, and all 12 strict-provenance Miri cases pass in 942.49 seconds with
+memory profiling enabled and the default alias checker. Independent pinned GNU
+checks pass for 16 type/deep-shallow combinations and six singleton cases; an
+independent ownership review found no introduced lifetime defect. The Miri proof
+records the frozen duplication hashes and independent environment-index edits
+separately. Deep CAR, attribute and nested-vector traversal remains recursive
+and has a separate iterative-traversal acceptance task.
