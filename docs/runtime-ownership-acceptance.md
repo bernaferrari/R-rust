@@ -915,3 +915,23 @@ preserved, but the fixture is not byte-identical to the preceding commit.
 The separate installed cache/initializer identity test passed (22.83 seconds),
 and all-target Clippy plus assigned formatting passed. These are completed
 native startup checks, not a strict-Miri proof of the entire package bootstrap.
+
+## Scalar coercion fixtures avoid unrelated package bootstrap (rport-jxfp.3.12.5)
+
+Thirty-three scalar conversion, sentinel, warning-flag and raw-vector unit
+fixtures now use the existing lightweight owning GC runtime. Their conversion
+assertions remain, and the separate full default-session methods integration
+fixture continues to exercise installed package startup. This removes repeated
+package bootstrap from tests which never query a package, without changing the
+public session constructor or compilation settings.
+
+The faster enclosing run exposed an obsolete real-to-complex NA assertion.
+Both the pinned GNU executable and its coerce.c confirm a zero imaginary part
+for this build. The corrected assertion also verifies the exact real NA bits
+and ordinary NaN/positive and negative infinity preservation; a durable GNU
+fixture records that contract. The final enclosing coerce suite passed all 41
+cases (0.37 seconds), including the seven new vectorizable tests. All-target
+Clippy and assigned formatting passed. These timings describe unit-test setup,
+not a measured change in ordinary runtime startup. The earlier stopped package
+bootstrap attempt and the intermediate 40-pass/one-failure result are not green
+verification checkpoints. Strict vectorizable validation remains independent.
