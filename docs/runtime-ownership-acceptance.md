@@ -1089,12 +1089,13 @@ The repaired enclosing coercion group passes all 57 tests in 0.42 seconds, with
 zero failures or ignored tests. Independent pinned GNU controls pass for all
 five target modes, warning messages, empty scalar vectors, invalid children and
 generic/expression children. All-target Clippy with denied warnings passes.
-Six atomic strict-provenance Miri cases are running; this is a verified native
-candidate, not a completed Miri checkpoint. The separately discovered GNU
-raw-child errors in the existing asReal/asComplex helpers are tracked in
-`rport-wszw.7.1.1.3`.
+The six-case strict-provenance Miri selection passed its first case, then
+stopped at unsupported native C `strtod` on macOS in the public conversion
+fixture. This is a platform dependency limitation, not an aliasing diagnostic
+or a completed Miri checkpoint. Unifying number coercion on the Rust parser is
+tracked in `rport-wszw.7.1.1.4`; the original six assertions remain unchanged.
 
-## Owning intercept-only linear models: native candidate (rport-wszw.6.4)
+## Completed owning intercept-only linear models (rport-wszw.6.4)
 
 Literal `lm(y ~ 1)` now uses an owning, forbid-unsafe helper with the original
 constant-column Householder QR arithmetic. It captures the response expression,
@@ -1112,9 +1113,11 @@ covratio controls pass in 22.91 seconds. The unchanged full public
 perfect deletion, intercept-only infinite ratios and empty-input error all
 match. Clippy for rmath/r-embed all targets with memory profiling and denied
 warnings passes, as do assigned-source format checks. An independent read-only
-review found no blocker within the declared intercept-only scope. Ten strict
-Miri cases are running against the frozen five-file source ledger; that proof
-and a complete whole-tree CI checkpoint are not yet claimed.
+review found no blocker within the declared intercept-only scope. All ten
+strict-provenance Miri cases now pass in 940.06 seconds, with zero failures or
+ignored tests, default alias checking and default isolation. The frozen
+five-file hashes match the published source. Explicit weights/na.action remain
+tracked in `rport-wszw.6.4.1`; a complete whole-tree CI checkpoint is still pending.
 
 ## Completed barplot and owning color checkpoint (rport-jxfp.3.12.3.6)
 
@@ -1144,3 +1147,15 @@ changes do not become certified through it. This closes the named barplot/color
 issue, while empty color vectors (`rport-jxfp.3.12.3.6.1`), gallery timeouts and
 S4 loading remain separate browser gaps. A targeted Chromium pass does not
 establish completion of the whole browser suite or font support.
+
+## GNU raw-scalar coercion errors (rport-wszw.7.1.1.3)
+
+The shared asReal/asComplex helpers now report GNU’s unsupported-type error for
+a nonempty raw scalar instead of silently returning NA. Pairlist and list
+coercion inherit the same helper behavior; empty raw children and atomic raw
+vectors retain their independently checked neighboring semantics. A genuine
+full public baseline failed, and the unchanged repaired public fixture now
+passes in 49.82 seconds. The pinned GNU fixture and all-target rmath/r-embed
+Clippy with memory profiling and denied warnings pass. This two-branch change
+adds no unsafe code and does not claim completion of the pending atomic Miri
+selection or broader scalar-coercion parity.

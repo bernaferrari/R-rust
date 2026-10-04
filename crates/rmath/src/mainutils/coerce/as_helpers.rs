@@ -101,6 +101,7 @@ pub unsafe fn asReal(x: SEXP) -> c_double {
                 t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0),
                 t if t == SEXPTYPE::CPLXSXP => RealFromComplex(COMPLEX_ELT(x, 0), &mut warn),
                 t if t == SEXPTYPE::STRSXP => RealFromString(STRING_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => error("unimplemented type 'raw' in 'asReal'\n"),
                 _ => NA_REAL,
             };
             if warn != 0 {
@@ -156,6 +157,7 @@ pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
                 t if t == SEXPTYPE::STRSXP => {
                     z = ComplexFromString(STRING_ELT(x, 0), &mut warn);
                 }
+                t if t == SEXPTYPE::RAWSXP => error("unimplemented type 'raw' in 'asComplex'\n"),
                 _ => {} // intentionally unhandled: unsupported SEXPTYPE for complex coercion
             }
             if warn != 0 {
