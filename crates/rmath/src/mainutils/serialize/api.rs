@@ -442,7 +442,12 @@ pub unsafe fn R_serialize_with_xdr(
             version
         };
 
-        let ascii_format = !ascii.is_null() && ascii != R_NilValue() && asLogical(ascii) != 0;
+        let ascii_value = if ascii.is_null() || ascii == R_NilValue() {
+            0
+        } else {
+            asLogical(ascii)
+        };
+        let ascii_format = ascii_value != 0;
         let xdr_format =
             !ascii_format && (xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0);
 
@@ -457,13 +462,18 @@ pub unsafe fn R_serialize_with_xdr(
         });
         writer.write_byte(b'\n');
         writer.set_ascii_body(ascii_format);
+        writer.set_ascii_hex(ascii_value == crate::sexp::ffi::NA_LOGICAL);
         writer.set_xdr_body(xdr_format);
         writer.set_persist_hook(fun);
 
         // Version info
         writer.write_i32(version); // version
         writer.write_i32(R_VERSION); // writer version
-        writer.write_i32(R_VERSION_350); // min reader version
+        writer.write_i32(if version == 2 {
+            R_VERSION_230
+        } else {
+            R_VERSION_350
+        });
         if version == 3 {
             writer.write_i32(0); // native encoding length
         }

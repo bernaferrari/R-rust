@@ -164,6 +164,7 @@ pub fn read_item_depth_for_test() -> c_int {
 pub struct BinaryWriter {
     pub buf: Vec<u8>,
     pub ascii_body: bool,
+    ascii_hex: bool,
     pub xdr_body: bool,
     item_depth: usize,
     persist_hook: SEXP,
@@ -176,6 +177,7 @@ impl BinaryWriter {
         BinaryWriter {
             buf: Vec::new(),
             ascii_body: false,
+            ascii_hex: false,
             xdr_body: false,
             item_depth: 0,
             persist_hook: ptr::null_mut(),
@@ -186,6 +188,10 @@ impl BinaryWriter {
 
     pub fn set_ascii_body(&mut self, ascii_body: bool) {
         self.ascii_body = ascii_body;
+    }
+
+    pub fn set_ascii_hex(&mut self, ascii_hex: bool) {
+        self.ascii_hex = ascii_hex;
     }
 
     pub fn set_xdr_body(&mut self, xdr_body: bool) {
@@ -207,7 +213,8 @@ impl BinaryWriter {
 
     pub fn write_i32(&mut self, val: i32) {
         if self.ascii_body {
-            self.buf.extend_from_slice(val.to_string().as_bytes());
+            self.buf
+                .extend_from_slice(super::ascii_numbers::integer(val).as_bytes());
             self.buf.push(b'\n');
         } else if self.xdr_body {
             self.buf.extend_from_slice(&val.to_be_bytes());
@@ -218,7 +225,8 @@ impl BinaryWriter {
 
     pub fn write_f64(&mut self, val: f64) {
         if self.ascii_body {
-            self.buf.extend_from_slice(format!("{val:?}").as_bytes());
+            self.buf
+                .extend_from_slice(super::ascii_numbers::real(val, self.ascii_hex).as_bytes());
             self.buf.push(b'\n');
         } else if self.xdr_body {
             self.buf.extend_from_slice(&val.to_be_bytes());
@@ -454,11 +462,7 @@ impl<'a> BinaryReader<'a> {
     pub fn read_f64(&mut self) -> Result<f64, String> {
         if self.ascii_body {
             let token = self.read_ascii_token()?;
-            if token == "NA" {
-                return Ok(f64::from_bits(crate::sexp::ffi::R_NA_BIT_PATTERN));
-            }
-            return token
-                .parse::<f64>()
+            return super::ascii_numbers::parse_real(&token)
                 .map_err(|_| format!("read error: invalid real token '{token}'"));
         }
         if self.remaining() < 8 {
@@ -580,6 +584,9 @@ impl<'a> BinaryReader<'a> {
         self.skip_ascii_whitespace();
         let start = self.pos;
         while self.pos < self.data.len() && !self.data[self.pos].is_ascii_whitespace() {
+            if self.pos - start == 127 {
+                return Err("read error: ASCII token exceeds 127 bytes".into());
+            }
             self.pos += 1;
         }
         if start == self.pos {

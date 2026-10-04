@@ -768,3 +768,19 @@ numeric or portable dataset changes. A separately archived Git index tree passes
 rmath/r-embed all-target checks and all six promise cases in 0.04 seconds. Future
 shared-file checkpoints must compare the index contents to the intended source
 and validate an archived index tree when partial staging moves declarations.
+
+## GNU ASCII numeric stream contracts
+
+The safe scalar module preserves integer/real NA, NaN, infinity and signed zero,
+emits GNU decimal or hexadecimal tokens, and admits bounded hexadecimal input
+with IEEE ties-to-even rounding. ASCII NA mode selects hexadecimal output;
+version 2 and 3 declare their original distinct minimum reader versions.
+
+All 43 independently reproduced GNU scalar cases agree. Nine native cases and
+nine strict-provenance Miri cases pass, with the latter completing in 149.59
+seconds using the default alias checker. Four complete vector streams retain
+every scalar across both modes and both versions, with full collection before
+serialization; scalar rounding and malformed-input cases remain independent.
+Warnings-denied facade Clippy and assigned formatting pass. Earlier incomplete
+or failed proof attempts are retained separately. Later writer-version metadata
+and symbol encoding changes are separate units.
