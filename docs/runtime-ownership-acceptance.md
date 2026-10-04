@@ -703,3 +703,22 @@ independent startup and dataset changes; this is not whole-tree certification.
 Anonymous virtual update files and the remaining raw constructor operand lifetime
 audit are tracked separately. Native full-bootstrap output acceptance is still
 pending and is not inferred from browser results.
+
+## Owning installed package workspace loading
+
+Installed data topics now load original GNU workspace files rather than rejecting
+`.rda` and `.RData`. The safe owning admission module bounds stream expansion,
+validates the complete binding graph before publication and retains the original
+environment and every pending value through setter callbacks. Rust gzip, bzip2
+and XZ readers feed the checked decoder. Revocation refuses further publication;
+live callback panic payloads survive unchanged. ASCII NA scalar tokens are admitted
+without conflating real NA with NaN.
+
+Six independently reproduced GNU fixtures cover version 2/3, ASCII and compression,
+including factors, Date attributes, shared cyclic environment identity and bound
+NULL. Ten final native cases pass, including three public data-loader cases and
+seven ownership/admission controls. Warnings-denied rmath/r-embed Clippy and assigned
+formatting pass. The selected strict-provenance Miri run is still running at this
+checkpoint; partial case markers are not an aggregate pass. This milestone records
+native verification only and does not certify serialized promises, all package
+loading, complete compression resource behavior or whole-tree aliasing safety.

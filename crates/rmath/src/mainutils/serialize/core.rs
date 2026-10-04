@@ -428,6 +428,9 @@ impl<'a> BinaryReader<'a> {
     pub fn read_i32(&mut self) -> Result<i32, String> {
         if self.ascii_body {
             let token = self.read_ascii_token()?;
+            if token == "NA" {
+                return Ok(crate::sexp::ffi::NA_INTEGER);
+            }
             return token
                 .parse::<i32>()
                 .map_err(|_| format!("read error: invalid integer token '{token}'"));
@@ -449,6 +452,9 @@ impl<'a> BinaryReader<'a> {
     pub fn read_f64(&mut self) -> Result<f64, String> {
         if self.ascii_body {
             let token = self.read_ascii_token()?;
+            if token == "NA" {
+                return Ok(f64::from_bits(crate::sexp::ffi::R_NA_BIT_PATTERN));
+            }
             return token
                 .parse::<f64>()
                 .map_err(|_| format!("read error: invalid real token '{token}'"));

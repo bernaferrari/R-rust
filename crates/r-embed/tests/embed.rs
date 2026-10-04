@@ -881,10 +881,9 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
         .expect("load lazy-data package namespace");
     let lazy = session
         .eval_result("data(\"lazy_data\", package = \"corplazydata\")")
-        .expect_err("serialized lazy data should be rejected");
+        .expect_err("corrupt serialized data should be rejected");
     assert!(
-        lazy.to_string()
-            .contains("unsupported serialized/lazy data"),
+        lazy.to_string().contains("bad restore file magic number"),
         "{lazy}"
     );
 

@@ -29,6 +29,7 @@ mod functional;
 mod io;
 mod mathstats;
 mod matrix;
+pub(crate) mod package_data;
 pub(crate) mod print;
 mod registry;
 mod runtime;

@@ -2145,7 +2145,11 @@ pub(crate) fn list_package_data_sets(packages: &[String]) -> Vec<String> {
             if path
                 .extension()
                 .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+                .is_some_and(|ext| {
+                    ["r", "rda", "rdata"]
+                        .iter()
+                        .any(|candidate| ext.eq_ignore_ascii_case(candidate))
+                })
                 && let Some(name) = path.file_stem().and_then(|stem| stem.to_str())
             {
                 push_unique(&mut names, name.to_string());
@@ -2182,7 +2186,6 @@ pub(crate) unsafe fn load_package_data_set(
     target_env: SEXP,
 ) -> Result<bool, String> {
     unsafe {
-        let mut unsupported_data = None::<PathBuf>;
         for package_dir in data_package_dirs(packages) {
             let data_dir = package_dir.join("data");
             let source_file = data_dir.join(format!("{topic}.R"));
@@ -2215,15 +2218,9 @@ pub(crate) unsafe fn load_package_data_set(
                 data_dir.join(format!("{topic}.RData")),
             ];
             if let Some(path) = per_topic.iter().find(|path| path.is_file()) {
-                unsupported_data = Some(path.clone());
+                super::package_data::load_file(path, target_env)?;
+                return Ok(true);
             }
-        }
-        if let Some(path) = unsupported_data {
-            return Err(format!(
-                "data set '{}' uses unsupported serialized/lazy data file {}; this pure-R Android runtime supports data/*.R only",
-                topic,
-                path.display()
-            ));
         }
         Ok(false)
     }

@@ -14,8 +14,8 @@ Android-style library paths, package metadata discovery, DESCRIPTION metadata
 readers, namespace-only loading, namespace-qualified access,
 Depends, imports/importFrom/exportPattern, source-form package data, explicit
 data environments, package resource/example lookup through system.file(),
-DESCRIPTION Collate source ordering, source-form LazyData, serialized data
-policy errors, same-name package isolation across sessions, S4 package code,
+DESCRIPTION Collate source ordering, source-form LazyData, corrupt serialized
+data errors, same-name package isolation across sessions, S4 package code,
 package-visible library paths, and explicit rejection of native/compiled/
 bytecode packages.
 
@@ -93,7 +93,7 @@ scenarios = [
     "source-form LazyData exposure through library()",
     "S4 class creation and slot access from package code",
     "package-visible Android library paths",
-    "serialized lazy-data policy rejection",
+    "corrupt serialized-data rejection",
     "explicit native-code, compiled-code, and bytecode package rejection",
     "same-name package isolation across sessions",
 ]
