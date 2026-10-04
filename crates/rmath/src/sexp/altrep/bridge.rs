@@ -42,11 +42,13 @@ pub(super) fn compact_integer_sequence<'s>(
     step: i32,
     length: usize,
 ) -> SexpResult<Sexp<'s>> {
-    // SAFETY: default compact-vector construction runs in the retained owner.
-    let (raw, _root) = storage::activate(owner, || unsafe {
-        super::super::altseq::compact_int_seq_protected(origin, step, length)
-    });
-    owner.sexp(raw)
+    builtins::new_sequence(
+        owner,
+        SEXPTYPE::INTSXP,
+        origin as f64,
+        step as f64,
+        i64::try_from(length).map_err(|_| failure("sequence length"))?,
+    )
 }
 pub(super) fn compact_real_sequence<'s>(
     owner: OwnerToken<'s>,
@@ -54,11 +56,13 @@ pub(super) fn compact_real_sequence<'s>(
     step: f64,
     length: usize,
 ) -> SexpResult<Sexp<'s>> {
-    // SAFETY: same owner contract as integer construction.
-    let (raw, _root) = storage::activate(owner, || unsafe {
-        super::super::altseq::compact_real_seq_protected(origin, step, length)
-    });
-    owner.sexp(raw)
+    builtins::new_sequence(
+        owner,
+        SEXPTYPE::REALSXP,
+        origin,
+        step,
+        i64::try_from(length).map_err(|_| failure("sequence length"))?,
+    )
 }
 
 /// Probe copied headers without installing roots or borrowing an owner. Raw
@@ -114,6 +118,12 @@ pub(crate) unsafe fn rooted_raw<'a>(raw: SEXP) -> SexpResult<Sexp<'a>> {
 pub(crate) unsafe fn materialize_raw(raw: SEXP) -> SexpResult<bool> {
     if !unsafe { has_extension_raw(raw) } {
         return Ok(false);
+    }
+    let current =
+        super::super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
+    let object = unsafe { OwnerToken::from_raw(current) }.sexp(raw)?;
+    if builtins::materialize_sequence(&object)? {
+        return Ok(true);
     }
     let object = unsafe { rooted_raw(raw) }?;
     force_materialization(&object)?;

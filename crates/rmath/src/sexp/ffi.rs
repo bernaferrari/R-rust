@@ -381,12 +381,37 @@ pub struct Promsxp {
     pub(crate) env: NodeLink,
 }
 
-/// Vector data header (length and true length).
+/// Canonical private vector storage. Public attribute mutation cannot install
+/// or remove this exact-domain traced identity.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum VectorMetadata {
+    #[default]
+    None,
+    Altrep(NodeLink),
+    BuiltinSequence(NodeLink),
+}
+impl VectorMetadata {
+    pub(crate) fn link(self) -> NodeLink {
+        match self {
+            Self::None => NodeLink::null(),
+            Self::Altrep(link) | Self::BuiltinSequence(link) => link,
+        }
+    }
+    fn remap(&mut self, value: NodeLink) {
+        match self {
+            Self::None => {}
+            Self::Altrep(link) | Self::BuiltinSequence(link) => *link = value,
+        }
+    }
+}
+
+/// Vector data header (length, true length, and private traced storage).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Vecsxp {
     pub length: R_xlen_t,
     pub truelength: R_xlen_t,
+    pub(crate) metadata: VectorMetadata,
 }
 
 /// An external address is opaque; only its protected value and tag are graph edges.
@@ -401,6 +426,7 @@ pub struct ExtPtrBody {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EdgeField {
     Attribute,
+    VectorMetadata,
     ListCar,
     ListCdr,
     ListTag,
@@ -650,7 +676,23 @@ impl SexprecCore {
     /// Validate semantic type/body agreement before canonical publication.
     /// Payload type, bounds and ownership remain separate storage checks.
     pub(crate) fn has_valid_shape(&self) -> bool {
-        self.data.accepts_kind(self.sxpinfo.type_of())
+        if !self.data.accepts_kind(self.sxpinfo.type_of()) {
+            return false;
+        }
+        match self.data {
+            NodeBody::Vector(Vecsxp {
+                metadata: VectorMetadata::BuiltinSequence(_),
+                ..
+            }) => {
+                self.sxpinfo.alt()
+                    && matches!(self.sxpinfo.type_of(), SEXPTYPE::INTSXP | SEXPTYPE::REALSXP)
+            }
+            NodeBody::Vector(Vecsxp {
+                metadata: VectorMetadata::Altrep(_),
+                ..
+            }) => self.sxpinfo.alt(),
+            _ => true,
+        }
     }
 
     /// Create a new SexprecCore with the given type.
@@ -667,6 +709,7 @@ impl SexprecCore {
     pub(crate) fn edge(&self, field: EdgeField) -> Option<NodeLink> {
         match (field, self.data) {
             (EdgeField::Attribute, _) => Some(self.attrib),
+            (EdgeField::VectorMetadata, NodeBody::Vector(body)) => Some(body.metadata.link()),
             (EdgeField::ListCar, NodeBody::List(body)) => Some(body.carval),
             (EdgeField::ListCdr, NodeBody::List(body)) => Some(body.cdrval),
             (EdgeField::ListTag, NodeBody::List(body)) => Some(body.tagval),
@@ -692,6 +735,7 @@ impl SexprecCore {
     pub(crate) fn set_edge(&mut self, field: EdgeField, value: NodeLink) -> Option<()> {
         match (field, &mut self.data) {
             (EdgeField::Attribute, _) => self.attrib = value,
+            (EdgeField::VectorMetadata, NodeBody::Vector(body)) => body.metadata.remap(value),
             (EdgeField::ListCar, NodeBody::List(body)) => body.carval = value,
             (EdgeField::ListCdr, NodeBody::List(body)) => body.cdrval = value,
             (EdgeField::ListTag, NodeBody::List(body)) => body.tagval = value,
@@ -720,6 +764,7 @@ impl SexprecCore {
         *node.data.vector_mut() = Vecsxp {
             length,
             truelength: length,
+            ..Vecsxp::default()
         };
         node
     }

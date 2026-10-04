@@ -56,6 +56,7 @@ pub(super) struct RegisteredClass {
     pub(super) kind: VectorKind,
     pub(super) cache: CachePolicy,
     pub(super) provider: Rc<dyn AltrepClass>,
+    pub(super) builtin_sequence: Option<SEXPTYPE>,
 }
 #[derive(Clone, Default)]
 pub(crate) struct AltrepRuntimeState {
@@ -108,6 +109,35 @@ pub(super) fn register<'s>(
     name: &str,
     provider: Rc<dyn AltrepClass>,
 ) -> SexpResult<AltrepClassHandle<'s>> {
+    if name.starts_with(".builtin.") {
+        return Err(failure("reserved built-in ALTREP class name"));
+    }
+    register_impl(owner, name, provider, None)
+}
+
+pub(super) fn register_builtin_sequence<'s>(
+    owner: OwnerToken<'s>,
+    kind: SEXPTYPE,
+) -> SexpResult<AltrepClassHandle<'s>> {
+    let name = match kind {
+        SEXPTYPE::INTSXP => ".builtin.compact_intseq",
+        SEXPTYPE::REALSXP => ".builtin.compact_realseq",
+        _ => return Err(failure("sequence vector type")),
+    };
+    register_impl(
+        owner,
+        name,
+        Rc::new(super::builtins::SequenceClass(kind)),
+        Some(kind),
+    )
+}
+
+fn register_impl<'s>(
+    owner: OwnerToken<'s>,
+    name: &str,
+    provider: Rc<dyn AltrepClass>,
+    builtin_sequence: Option<SEXPTYPE>,
+) -> SexpResult<AltrepClassHandle<'s>> {
     let capability = StoredOwner::from_token(owner);
     storage::with_owner(&capability, |owner| {
         let kind = storage::with_owner(&capability, |owner| {
@@ -126,11 +156,21 @@ pub(super) fn register<'s>(
             .map_err(|_| failure("invalid ALTREP class name"))?;
         let descriptor = storage::intern(owner, &name)?;
         let descriptor = capability.sexp(descriptor.as_raw())?;
+        if let Some(builtin_kind) = builtin_sequence {
+            if kind.sexp_type() != builtin_kind {
+                return Err(failure("built-in class type mismatch"));
+            }
+            let node = descriptor.allocation()?;
+            node.heap_identity()
+                .attach_builtin_sequence_permit(node, builtin_kind)
+                .ok_or(failure("built-in class permit admission"))?;
+        }
         let key = descriptor.clone().as_raw() as usize;
         let class = Rc::new(RegisteredClass {
             kind,
             cache,
             provider,
+            builtin_sequence,
         });
         bridge::runtime(owner).insert(key, class.clone())?;
         Ok(AltrepClassHandle {

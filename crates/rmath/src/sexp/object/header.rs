@@ -6,7 +6,6 @@ pub(crate) use crate::sexp::ffi::NodeBody;
 use crate::sexp::ffi::{SEXPTYPE, SexprecCore, SxpInfo};
 use crate::sexp::heap::{NodeLink, ResolvedLink};
 use crate::sexp::payload::{PayloadLease, PayloadLink};
-use std::os::raw::{c_double, c_int};
 
 /// A header snapshot owns the original payload; a copied link alone is not
 /// authority to read cells, and no native payload pointer is stored here.
@@ -17,12 +16,6 @@ pub(crate) struct HeaderSnap {
     pub payload: PayloadLink,
     pub body: NodeBody,
     payload_lease: Option<PayloadLease>,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum LeadingScalars {
-    Int(c_int, c_int),
-    Real(c_double, c_double),
 }
 
 impl HeaderSnap {
@@ -147,23 +140,5 @@ impl<'a> Sexp<'a> {
                 heap.payload_lease(&allocation),
             ),
         }
-    }
-}
-
-pub(crate) fn copy_leading_scalars(header: &HeaderSnap) -> Option<LeadingScalars> {
-    let NodeBody::Vector(vector) = header.body else {
-        return None;
-    };
-    if vector.length < 2 {
-        return None;
-    }
-    let lease = header.payload_lease.as_ref()?;
-    match header.type_of() {
-        SEXPTYPE::INTSXP => Some(LeadingScalars::Int(
-            lease.integer_elt(0)?,
-            lease.integer_elt(1)?,
-        )),
-        SEXPTYPE::REALSXP => Some(LeadingScalars::Real(lease.real_elt(0)?, lease.real_elt(1)?)),
-        _ => None,
     }
 }

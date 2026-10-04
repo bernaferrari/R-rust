@@ -1134,9 +1134,7 @@ pub unsafe fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut count = 0;
         let mut current = attrs;
         while !current.is_null() && current != R_NilValue() {
-            if !crate::sexp::altseq::is_formula_tag(TAG(current)) {
-                count += 1;
-            }
+            count += 1;
             current = CDR(current);
         }
         if count == 0 {
@@ -1157,10 +1155,6 @@ pub unsafe fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         current = attrs;
         let mut i = 0;
         while !current.is_null() && current != R_NilValue() {
-            if crate::sexp::altseq::is_formula_tag(TAG(current)) {
-                current = CDR(current);
-                continue;
-            }
             SET_VECTOR_ELT(result, i, CAR(current));
             let name = tag_name(current).unwrap_or_default();
             SET_STRING_ELT(

@@ -233,13 +233,12 @@ unsafe fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
     unsafe { flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP }
 }
 
-/// Compact sequences store their formula under an internal attribute tag.
-/// `identical` compares values, so that cell is not an attribute.
+/// GNU can ignore source references on closures; every public vector attribute
+/// otherwise participates in equality, independently of private ALTREP storage.
 unsafe fn skip_identical_attr(object: SEXP, cell: SEXP, flags: c_int) -> bool {
     unsafe {
-        crate::sexp::altseq::is_formula_tag(TAG(cell))
-            || (ignore_closure_srcref(object, flags)
-                && attr_tag_name(TAG(cell)).is_some_and(is_srcref_attr_name))
+        ignore_closure_srcref(object, flags)
+            && attr_tag_name(TAG(cell)).is_some_and(is_srcref_attr_name)
     }
 }
 

@@ -382,10 +382,6 @@ unsafe fn attributes(mut attrs: SEXP) -> Vec<(String, SEXP)> {
     unsafe {
         let mut result = Vec::new();
         while !is_nil(attrs) {
-            if crate::sexp::altseq::is_formula_tag(TAG(attrs)) {
-                attrs = CDR(attrs);
-                continue;
-            }
             let name = tag_name(TAG(attrs)).unwrap_or_else(|| "<unnamed>".into());
             result.push((name, CAR(attrs)));
             attrs = CDR(attrs);

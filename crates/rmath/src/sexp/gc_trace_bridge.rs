@@ -6,13 +6,14 @@ use super::gc_trace::{TraceContext, TraceError, TraceNode};
 use super::{
     EDGE_ATTRIB, EDGE_BODY, EDGE_CAR, EDGE_CDR, EDGE_CLOENV, EDGE_ENCLOS, EDGE_EXT_PROT,
     EDGE_EXT_TAG, EDGE_FORMALS, EDGE_FRAME, EDGE_HASHTAB, EDGE_INTERNAL, EDGE_PNAME, EDGE_PROM_ENV,
-    EDGE_PROM_EXPR, EDGE_PROM_VALUE, EDGE_SYM_VALUE, EDGE_TAG, EDGE_VECTOR, child_mask,
+    EDGE_PROM_EXPR, EDGE_PROM_VALUE, EDGE_SYM_VALUE, EDGE_TAG, EDGE_VECTOR, EDGE_VECTOR_METADATA,
+    child_mask,
 };
 use crate::sexp::heap::NodeLink;
 use crate::sexp::{ffi::EdgeField, heap::CheckedNode};
 use std::collections::HashMap;
 
-const FIXED_FIELDS: [(u32, EdgeField); 18] = [
+const FIXED_FIELDS: [(u32, EdgeField); 19] = [
     (EDGE_PNAME, EdgeField::SymbolName),
     (EDGE_SYM_VALUE, EdgeField::SymbolValue),
     (EDGE_INTERNAL, EdgeField::SymbolInternal),
@@ -31,6 +32,7 @@ const FIXED_FIELDS: [(u32, EdgeField); 18] = [
     (EDGE_EXT_TAG, EdgeField::ExternalTag),
     (EDGE_EXT_PROT, EdgeField::ExternalProtected),
     (EDGE_ATTRIB, EdgeField::Attribute),
+    (EDGE_VECTOR_METADATA, EdgeField::VectorMetadata),
 ];
 
 pub(super) struct ChildSnapshot {
@@ -58,6 +60,7 @@ pub(super) fn snapshot_children(
         NodeLink::null(),
     ];
     match header.data {
+        NodeBody::Vector(body) => fixed[1] = body.metadata.link(),
         NodeBody::Symbol(body) => {
             fixed[1..].copy_from_slice(&[body.pname, body.value, body.internal])
         }
@@ -377,6 +380,61 @@ mod tests {
             heap.reference_links(&parent),
             Some(vec![NodeLink::NULL, child.link().unwrap()])
         );
+    }
+
+    #[test]
+    fn private_sequence_generic_edge_remap_retains_variant_and_selected_children() {
+        use crate::sexp::{
+            altrep,
+            ffi::{NodeBody, VectorMetadata},
+            session::RSession,
+        };
+        let session = RSession::new_for_gc_tests();
+        let value = altrep::new_sequence(
+            session.owner_token().unwrap(),
+            SEXPTYPE::INTSXP,
+            3.0,
+            2.0,
+            8,
+        )
+        .unwrap();
+        let replacement = altrep::new_sequence(
+            session.owner_token().unwrap(),
+            SEXPTYPE::INTSXP,
+            10.0,
+            1.0,
+            8,
+        )
+        .unwrap();
+        let NodeBody::Vector(original_vector) = value.header().body else {
+            unreachable!()
+        };
+        let NodeBody::Vector(replacement_vector) = replacement.header().body else {
+            unreachable!()
+        };
+        let state = altrep::data1(&replacement).unwrap();
+        let selected_state = state.allocation().unwrap().clone();
+        drop(state);
+        let parent = value.allocation().unwrap();
+        let mut seen = 0;
+        rewrite_children(parent, true, |child| {
+            if *child == original_vector.metadata.link() {
+                seen += 1;
+                *child = replacement_vector.metadata.link();
+            }
+        });
+        assert_eq!(seen, 1);
+        drop(replacement);
+        session.with_active(crate::sexp::gengc::full_gc);
+        assert!(selected_state.is_live());
+        assert!(
+            matches!(value.header().body, NodeBody::Vector(vector) if matches!(vector.metadata, VectorMetadata::BuiltinSequence(link) if link == replacement_vector.metadata.link()))
+        );
+        assert_eq!(value.try_integer_elt(7).unwrap(), 17);
+        assert_eq!(value.try_integer_elt(0).unwrap(), 10);
+        drop(value);
+        session.with_active(crate::sexp::gengc::full_gc);
+        assert!(!selected_state.is_live());
     }
 
     #[test]

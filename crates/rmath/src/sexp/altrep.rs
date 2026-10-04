@@ -4,7 +4,8 @@
 //! methods may allocate, collect or reenter R without a live arena borrow.
 //!
 //! Class descriptors are interned symbols. Instance data are ordinary GC-traced
-//! VECSXP slots in an internal attribute, independent of the vector's type and
+//! VECSXP slots behind one private traced vector edge, independent of public
+//! attributes and the vector's type and
 //! logical length. Rust method tables stay in the owning session.
 
 use super::{
@@ -15,6 +16,7 @@ use super::{
 };
 use std::{ffi::CString, rc::Rc};
 
+pub(crate) use builtins::new_sequence;
 mod bridge;
 mod registry;
 mod storage;
@@ -178,11 +180,24 @@ impl<'s> AltrepBuilder<'s> {
         self
     }
     pub fn build(self) -> SexpResult<Sexp<'s>> {
-        let class = self.class.record.clone();
-        let pending = InstanceStorage::create(&self.class, class.kind, self.data1, self.data2)?;
-        let context = pending.context();
-        let length = context.active(|| class.provider.length(&context))?;
-        pending.finish(length)
+        let authority = self.class.owner.clone();
+        storage::with_owner(&authority, |owner| {
+            storage::activate(owner, || {
+                authority.require_active()?;
+                let class = self.class.record.clone();
+                let pending =
+                    InstanceStorage::create(&self.class, class.kind, self.data1, self.data2)?;
+                let context = pending.context();
+                let length = context.active(|| class.provider.length(&context))?;
+                let object = pending.finish(length)?;
+                authority.require_active()?;
+                if class.builtin_sequence == Some(object.typeof_()) {
+                    storage::mark_builtin_sequence(&object)?;
+                }
+                authority.require_active()?;
+                Ok(object)
+            })
+        })
     }
 }
 
@@ -383,6 +398,9 @@ pub fn force_materialization(object: &Sexp<'_>) -> SexpResult<()> {
     if Metadata::load(object).is_none() || is_materialized(object) {
         return Ok(());
     }
+    if builtins::materialize_sequence(object)? {
+        return Ok(());
+    }
     let (context, class) = context(object)?;
     storage::with_owner(&context.owner, |owner| {
         let storage = InstanceStorage::load(object)?;
@@ -427,3 +445,7 @@ pub use builtins::{DeferredClass, RepeatClass, SequenceClass};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "altrep/private_metadata_tests.rs"]
+mod private_metadata_tests;

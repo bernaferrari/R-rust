@@ -764,10 +764,6 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
         let mut visible = Vec::new();
         let mut filtered_classes = Vec::new();
         while !attrs.is_null() && attrs != R_NilValue() {
-            if crate::sexp::altseq::is_formula_tag(TAG(attrs)) {
-                attrs = CDR(attrs);
-                continue;
-            }
             if let Some(name) = printable_attribute_name(attrs)
                 && !is_structural_print_attribute(&name)
                 && !is_hidden_noquote_class(&name, x.clone())

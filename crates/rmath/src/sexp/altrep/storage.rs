@@ -1,10 +1,10 @@
 #![allow(unsafe_code)]
 //! The physical representation of an ALTREP instance. Slot numbers, traced
 //! edges and header publication are private to this module; callers use roots.
+use super::super::ffi::NodeBody;
 use super::registry::{CachePolicy, VectorKind};
 use super::*;
 
-const TAG: &std::ffi::CStr = c".InternalAltrep";
 const SLOT_COUNT: i64 = 5;
 #[derive(Clone, Copy)]
 enum Slot {
@@ -37,22 +37,19 @@ impl<'s> Metadata<'s> {
         if !object.header().sxpinfo.alt() {
             return None;
         }
-        let cell = object.attrib()?;
-        if cell.typeof_() != SEXPTYPE::LISTSXP {
-            return None;
-        }
-        let tag = cell.tag()?;
-        let super::super::object::NodeBody::Symbol(symbol) = tag.header().body else {
+        let NodeBody::Vector(vector) = object.header().body else {
             return None;
         };
-        if !tag
-            .copied_header_link(symbol.pname)?
-            .char_eq(TAG.to_bytes())
-        {
-            return None;
-        }
-        let slots = cell.car()?;
-        (slots.typeof_() == SEXPTYPE::VECSXP && slots.len() == SLOT_COUNT).then_some(Self { slots })
+        let link = match vector.metadata {
+            super::super::ffi::VectorMetadata::Altrep(link)
+            | super::super::ffi::VectorMetadata::BuiltinSequence(link) => link,
+            super::super::ffi::VectorMetadata::None => return None,
+        };
+        let slots = object.checked_child(link).ok()?;
+        (slots.typeof_() == SEXPTYPE::VECSXP
+            && slots.len() == SLOT_COUNT
+            && !slots.header().sxpinfo.alt())
+        .then_some(Self { slots })
     }
     fn get(&self, slot: Slot) -> SexpResult<Sexp<'s>> {
         self.slots.try_vector_elt(slot.index())
@@ -149,7 +146,6 @@ pub(super) fn allocate<'s>(
             .alloc_vector_sexp(kind, length)
             .map(|value| value.as_raw())
     })
-    .map_err(|_| failure("ALTREP vector"))
 }
 pub(super) fn string<'s>(owner: OwnerToken<'s>, text: &str) -> SexpResult<Sexp<'s>> {
     allocate_rooted(owner, |arena| {
@@ -237,14 +233,7 @@ impl<'s> InstanceStorage<'s> {
             let metadata = Metadata {
                 slots: slots.freeze(),
             };
-            let tag = intern(owner, TAG)?;
-            let cell = cons(
-                owner,
-                metadata.slots.clone(),
-                owner.node_factory().nil(),
-                tag,
-            )?;
-            link_attributes(owner, &object, &cell)?;
+            link_metadata(owner, &object, &metadata.slots)?;
             // The pending header has traced metadata before Length callbacks run.
             update_header(&object, |header| header.sxpinfo.set_alt(true))?;
             let object = class.owner.sexp(object.as_raw())?;
@@ -287,6 +276,27 @@ impl<'s> InstanceStorage<'s> {
         Ok(())
     }
     pub(super) fn publish_dense(&self, output: Sexp<'s>, policy: CachePolicy) -> SexpResult<()> {
+        self.publish_dense_checked(output, policy, false)
+    }
+    pub(super) fn publish_builtin_dense(
+        &self,
+        output: Sexp<'s>,
+        policy: CachePolicy,
+    ) -> SexpResult<()> {
+        let (_, class) = context(&self.object)?;
+        if class.builtin_sequence != Some(self.object.typeof_())
+            || self.object.compact_seq().is_none()
+        {
+            return Err(failure("untrusted built-in sequence publication"));
+        }
+        self.publish_dense_checked(output, policy, true)
+    }
+    fn publish_dense_checked(
+        &self,
+        output: Sexp<'s>,
+        policy: CachePolicy,
+        builtin: bool,
+    ) -> SexpResult<()> {
         with_owner(&self.owner, |owner| {
             self.validate()?;
             let output = owner.sexp(output.as_raw())?;
@@ -294,7 +304,7 @@ impl<'s> InstanceStorage<'s> {
             {
                 return Err(failure("ALTREP cache shape mismatch"));
             }
-            if super::super::memory::is_arena_lent(owner.as_ptr()) {
+            if !builtin && super::super::memory::is_arena_lent(owner.as_ptr()) {
                 return Err(failure("release the arena lend before materialization"));
             }
             let parent = self.object.allocation()?;
@@ -410,6 +420,48 @@ fn barrier(owner: OwnerToken<'_>, parent: &Sexp<'_>, child: &Sexp<'_>) -> SexpRe
     }
     Ok(())
 }
+fn link_metadata(owner: OwnerToken<'_>, object: &Sexp<'_>, slots: &Sexp<'_>) -> SexpResult<()> {
+    barrier(owner, object, slots)?;
+    let parent = object.allocation()?;
+    let heap = parent.heap_identity();
+    let link = slots.link_in(&heap)?;
+    update_header(object, |header| {
+        header.data.vector_mut().metadata = super::super::ffi::VectorMetadata::Altrep(link);
+        header.sxpinfo.set_alt(true);
+    })
+}
+
+/// Only the checked built-in producer can grant the passive formula fast path.
+#[forbid(unsafe_code)]
+pub(super) fn mark_builtin_sequence(object: &Sexp<'_>) -> SexpResult<()> {
+    let (context, class) = super::context(object)?;
+    if class.builtin_sequence != Some(object.typeof_()) {
+        return Err(failure("untrusted built-in sequence class"));
+    }
+    let descriptor = context.metadata.descriptor()?;
+    let class_node = descriptor.allocation()?;
+    if !class_node
+        .heap_identity()
+        .has_builtin_sequence_permit(class_node, object.typeof_())
+    {
+        return Err(failure("untrusted built-in sequence permit"));
+    }
+    let state = context.data1()?;
+    if state.typeof_() != SEXPTYPE::REALSXP || state.len() != 3 || state.header().sxpinfo.alt() {
+        return Err(failure("built-in sequence state"));
+    }
+    let header = object.header();
+    let NodeBody::Vector(vector) = header.body else {
+        return Err(failure("built-in sequence header"));
+    };
+    let super::super::ffi::VectorMetadata::Altrep(link) = vector.metadata else {
+        return Err(failure("built-in sequence declaration"));
+    };
+    update_header(object, |header| {
+        header.data.vector_mut().metadata = super::super::ffi::VectorMetadata::BuiltinSequence(link)
+    })
+}
+
 fn link_attributes(
     owner: OwnerToken<'_>,
     object: &Sexp<'_>,
@@ -429,11 +481,7 @@ fn link_attributes(
 }
 pub(super) fn copy_public_attributes(source: &Sexp<'_>, target: &Sexp<'_>) -> SexpResult<()> {
     let owner = owner(target)?;
-    let attributes = if Metadata::load(source).is_some() {
-        source.attrib().and_then(|cell| cell.cdr())
-    } else {
-        source.attrib()
-    };
+    let attributes = source.attrib();
     if let Some(attributes) = attributes {
         link_attributes(owner, target, &attributes)?;
         let source = source.header();

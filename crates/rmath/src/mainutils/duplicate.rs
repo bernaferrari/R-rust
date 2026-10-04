@@ -503,13 +503,8 @@ struct AttributeSnapshot<'source> {
 
 fn snapshot_attributes<'source>(
     source: &Sexp<'source>,
-    extension: bool,
 ) -> SexpResult<Option<AttributeSnapshot<'source>>> {
-    let mut attributes = source.try_attrib()?;
-    if extension {
-        // ALTREP's descriptor cell is private; only its public tail is copied.
-        attributes = attributes.try_cdr()?;
-    }
+    let attributes = source.try_attrib()?;
     if attributes.is_nil() {
         return Ok(None);
     }
@@ -538,7 +533,6 @@ fn collect_copy<T>(
 
 fn prepare_value<'source>(
     source: &Sexp<'source>,
-    extension: bool,
     flags: crate::sexp::ffi::SxpInfo,
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> SexpResult<VectorContinuation<'source>> {
@@ -546,7 +540,7 @@ fn prepare_value<'source>(
     let node = source.allocation()?;
     let heap = node.heap_identity();
     let header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-    let attributes = snapshot_attributes(source, extension)?;
+    let attributes = snapshot_attributes(source)?;
     let kind = flags.type_of();
     let (length, truelength) = match header.data {
         crate::sexp::ffi::NodeBody::Vector(vector) => (
@@ -737,7 +731,7 @@ fn prepare_closure<'source>(
     let formals = source.try_formals()?;
     let body = source.try_body()?;
     let environment = source.try_cloenv()?;
-    let attributes = snapshot_attributes(source, false)?;
+    let attributes = snapshot_attributes(source)?;
     let source_node = source.allocation()?;
     let flags = source_node
         .heap_identity()
@@ -1272,9 +1266,7 @@ fn prepare_copy<'operation, 'source>(
         | SEXPTYPE::REALSXP
         | SEXPTYPE::CPLXSXP
         | SEXPTYPE::RAWSXP
-        | SEXPTYPE::OBJSXP => {
-            CopyContinuation::Vector(prepare_value(&source, extension, flags, access)?)
-        }
+        | SEXPTYPE::OBJSXP => CopyContinuation::Vector(prepare_value(&source, flags, access)?),
         actual => {
             return Err(SexpError::TypeMismatch {
                 expected: "duplicable object",

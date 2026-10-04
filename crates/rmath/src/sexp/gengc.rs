@@ -245,6 +245,7 @@ const EDGE_EXT_TAG: u32 = 1 << 15;
 const EDGE_EXT_PROT: u32 = 1 << 16;
 const EDGE_ATTRIB: u32 = 1 << 17;
 const EDGE_VECTOR: u32 = 1 << 18;
+const EDGE_VECTOR_METADATA: u32 = 1 << 19;
 
 /// Which pointer slots a node owns.
 ///
@@ -267,7 +268,12 @@ fn child_mask(type_code: i32, follow_weak_key: bool) -> u32 {
         23 => EDGE_CDR | EDGE_TAG | if follow_weak_key { EDGE_CAR } else { 0 },
         _ => 0,
     };
-    body | EDGE_ATTRIB | vector
+    let private = if matches!(type_code, 9 | 10 | 13 | 14 | 15 | 16 | 19 | 20 | 21 | 24) {
+        EDGE_VECTOR_METADATA
+    } else {
+        0
+    };
+    body | EDGE_ATTRIB | vector | private
 }
 
 #[cfg(test)]

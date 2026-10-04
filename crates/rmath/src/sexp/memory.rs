@@ -1320,6 +1320,7 @@ impl RArena {
             c.data = NodeBody::Vector(super::ffi::Vecsxp {
                 length: len,
                 truelength: 0,
+                metadata: crate::sexp::ffi::VectorMetadata::None,
             });
             // GNU CHARSXP gp bits: ASCII (1<<6) and/or UTF8 (1<<3).
             // Serialization writes these via PackFlags(LEVELS(s)).
@@ -3811,6 +3812,7 @@ mod tests {
             (*node).data = super::NodeBody::Vector(super::super::ffi::Vecsxp {
                 length: 3,
                 truelength: 3,
+                metadata: crate::sexp::ffi::VectorMetadata::None,
             });
             for lent in [false, true] {
                 let initialize = || {

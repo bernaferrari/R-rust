@@ -98,6 +98,7 @@ impl SingletonLease {
             header.data = NodeBody::Vector(Vecsxp {
                 length,
                 truelength: length,
+                metadata: crate::sexp::ffi::VectorMetadata::None,
             });
         }
         if let Some(payload) = &logical {

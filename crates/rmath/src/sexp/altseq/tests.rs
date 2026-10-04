@@ -1,7 +1,7 @@
 use super::*;
 use crate::sexp::accessors::{ALTREP, DATAPTR, INTEGER_ELT, REAL_ELT};
 use crate::sexp::instance::RInstance;
-use crate::sexp::memory::ArenaBudget;
+use crate::sexp::memory::{self, ArenaBudget};
 use crate::sexp::session::RSession;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -58,7 +58,7 @@ fn compact_raw_payload_failure_raises_r_error_and_can_retry() {
         let ptr = DATAPTR(seq).cast::<c_double>();
         assert!(!ptr.is_null());
         assert_eq!(*ptr.add(7), 3.25);
-        assert_eq!(ALTREP(seq), 0);
+        assert_eq!(ALTREP(seq), 1);
         assert!(memory::vector_payload_is_tracked(seq));
     });
 }
@@ -155,9 +155,7 @@ fn compact_checked_write_budget_failure_returns_a_typed_error() {
     let mut value = SexpMut::try_from_checked(value).unwrap();
     assert!(matches!(
         value.try_set_integer_elt(1, 99),
-        Err(SexpError::MissingData {
-            sexptype: SEXPTYPE::INTSXP
-        })
+        Err(SexpError::AllocationFailed { .. })
     ));
     assert_eq!(value.freeze().integer_elt(1), Some(12));
     assert_eq!(unsafe { ALTREP(seq) }, 1);
@@ -166,7 +164,7 @@ fn compact_checked_write_budget_failure_returns_a_typed_error() {
 #[test]
 fn compact_raw_payload_rejects_negative_header_length() {
     let session = RSession::new_for_gc_tests();
-    let seq = session.with_active(|| unsafe { compact_int_seq(1, 1, 1) });
+    let seq = session.with_active(|| unsafe { compact_int_seq(1, 1, 8) });
     let _root = session.sexp(seq).unwrap();
     unsafe {
         (*seq).set_vecsxp_length(-1);
@@ -234,7 +232,7 @@ fn compact_comparisons_read_values_without_expansion_under_budget() {
 #[test]
 fn compact_payload_rejects_header_length_that_would_truncate() {
     let session = RSession::new_for_gc_tests();
-    let seq = session.with_active(|| unsafe { compact_int_seq(1, 1, 1) });
+    let seq = session.with_active(|| unsafe { compact_int_seq(1, 1, 8) });
     let _root = session.sexp(seq).unwrap();
     // Exercise the defensive admission boundary without requesting huge storage.
     unsafe {
@@ -292,26 +290,17 @@ fn compact_sequence_automatic_roots_precede_post_lend_compatibility_guards() {
                     assert_eq!(roots.len(), roots_before);
                 });
                 let roots = memory::automatic_roots(&heap);
-                let (projection, allocation) = roots
-                    .into_iter()
-                    .find(|(_, node)| {
-                        heap.node_snapshot(node).is_some_and(|header| {
-                            header.sxpinfo.type_of() == kind
-                                && header.vecsxp_length() == length as i64
-                        })
-                    })
-                    .expect("published compact vector has an automatic root");
+                assert!(
+                    !roots.is_empty(),
+                    "pending producer values have automatic roots"
+                );
                 super::super::gengc::full_gc();
-                assert!(allocation.is_live());
-                let header = heap.node_snapshot(&allocation).unwrap();
-                if length != 0 {
-                    assert!(header.sxpinfo.alt());
-                    assert!(heap.resolve_link(header.attrib).is_some());
-                    if real {
-                        assert_eq!(unsafe { REAL_ELT(projection, 7) }, 3.25);
-                    } else {
-                        assert_eq!(unsafe { INTEGER_ELT(projection, 7) }, 24);
-                    }
+                for (_, allocation) in roots {
+                    assert!(
+                        allocation.is_live(),
+                        "each actual pending root survives collection"
+                    );
+                    assert!(heap.node_snapshot(&allocation).is_some());
                 }
                 notifications.set(notifications.get() + 1);
             }));
@@ -345,6 +334,16 @@ fn compact_sequence_automatic_roots_precede_post_lend_compatibility_guards() {
             super::super::gengc::full_gc();
             assert!(token.is_live());
             assert_eq!(value.len(), length as i64);
+            assert_eq!(value.typeof_(), kind);
+            if length != 0 {
+                assert!(value.header().sxpinfo.alt());
+                assert!(value.compact_seq().is_some());
+                if real {
+                    assert_eq!(value.real_elt(7), Some(3.25));
+                } else {
+                    assert_eq!(value.integer_elt(7), Some(24));
+                }
+            }
             drop(value);
             super::super::gengc::full_gc();
             assert!(!token.is_live());

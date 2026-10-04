@@ -278,34 +278,9 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
         .root_lease()
         .unwrap_or_else(|| super::context::r_error("attribute parent is unavailable"));
     let _value = ReferenceValue::capture_in(&node, v);
-    unsafe {
-        if is_valid_sexp_ptr(x) {
-            // Materialize before replacing the list. The formula cell is what
-            // keeps a compact sequence's values alive, and `materialize`
-            // clears the ALT bit before it writes the attribute slot. If the
-            // buffer was not committed, the formula stays at the head.
-            if ALTREP(x) != 0 {
-                if super::altrep::materialize_raw(x)
-                    .unwrap_or_else(|e| super::context::r_error(e.to_string()))
-                {
-                    // The buffer now owns the values, so metadata can be removed.
-                    mutate_header(x, |header| header.sxpinfo.set_alt(false));
-                }
-                super::altseq::materialize(x);
-            }
-            let uncommitted = ALTREP(x) != 0
-                && header_snapshot(x)
-                    .expect("live attribute parent")
-                    .payload
-                    .is_empty();
-            if uncommitted {
-                super::altseq::keep_formula_replace_tail(x, v);
-                return;
-            }
-            let v = super::altseq::without_formula_cells(v);
-            graph_set_edge(x, EdgeField::Attribute, v);
-        }
-    }
+    // Attribute replacement changes only the public graph. Provider state and
+    // compact formulas are retained by the canonical private vector edge.
+    graph_set_edge(x, EdgeField::Attribute, v);
 }
 
 /// Check if an SEXP has the OBJECT flag set.

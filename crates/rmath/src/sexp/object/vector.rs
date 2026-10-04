@@ -56,6 +56,16 @@ impl<'a> Sexp<'a> {
     pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
         self.expect_type(SEXPTYPE::INTSXP, "integer vector")?;
         self.try_index(i)?;
+        match self.read_compact_int(i, true) {
+            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
+            crate::sexp::altseq::LazyRead::OutOfRange => {
+                return Err(SexpError::OutOfBounds {
+                    index: i,
+                    len: self.len(),
+                });
+            }
+            crate::sexp::altseq::LazyRead::Absent => {}
+        }
         if self.typeof_() == SEXPTYPE::INTSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -65,16 +75,6 @@ impl<'a> Sexp<'a> {
                     reason: "element type mismatch",
                 }),
             };
-        }
-        match self.read_compact_int(i, false) {
-            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
-            crate::sexp::altseq::LazyRead::OutOfRange => {
-                return Err(SexpError::OutOfBounds {
-                    index: i,
-                    len: self.len(),
-                });
-            }
-            crate::sexp::altseq::LazyRead::Absent => {}
         }
         let lease = self.try_payload_lease(SEXPTYPE::INTSXP, "integer vector")?;
         let index = self.try_index(i)?;
@@ -100,6 +100,16 @@ impl<'a> Sexp<'a> {
     pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
         self.expect_type(SEXPTYPE::REALSXP, "real vector")?;
         self.try_index(i)?;
+        match self.read_compact_real(i, true) {
+            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
+            crate::sexp::altseq::LazyRead::OutOfRange => {
+                return Err(SexpError::OutOfBounds {
+                    index: i,
+                    len: self.len(),
+                });
+            }
+            crate::sexp::altseq::LazyRead::Absent => {}
+        }
         if self.typeof_() == SEXPTYPE::REALSXP
             && let Some(result) = crate::sexp::altrep::lazy_element(self, i)
         {
@@ -109,16 +119,6 @@ impl<'a> Sexp<'a> {
                     reason: "element type mismatch",
                 }),
             };
-        }
-        match self.read_compact_real(i, false) {
-            crate::sexp::altseq::LazyRead::Ready(value) => return Ok(value),
-            crate::sexp::altseq::LazyRead::OutOfRange => {
-                return Err(SexpError::OutOfBounds {
-                    index: i,
-                    len: self.len(),
-                });
-            }
-            crate::sexp::altseq::LazyRead::Absent => {}
         }
         let lease = self.try_payload_lease(SEXPTYPE::REALSXP, "real vector")?;
         let index = self.try_index(i)?;

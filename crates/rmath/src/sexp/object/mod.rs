@@ -62,7 +62,7 @@ use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 #[cfg(test)]
 use super::globals::R_NilValue;
 use super::heap::{HeapIdentity, NodeLink, ReferenceChild, ResolvedLink};
-pub(crate) use header::{LeadingScalars, NodeBody, copy_leading_scalars};
+pub(crate) use header::NodeBody;
 use value::sexptype_name;
 
 /// Provenance for a `Sexp` handle.

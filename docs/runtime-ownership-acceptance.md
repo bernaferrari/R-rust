@@ -483,3 +483,27 @@ native evidence, while the Miri fixtures use the minimal managed profile.
 All-target warnings-denied Clippy and assigned formatting pass. Full default
 methods startup remains unresolved, and nested source temporary-binding
 cleanup is tracked separately in `rport-hah9u.32.5`.
+
+ALTREP storage now has a private generation-qualified vector edge, independent
+of public attributes. Both compact sequence producers use the canonical
+SequenceClass. Public attribute replacement, duplication and dense materialization
+preserve class and state identity; materialized writes take precedence over
+formula reads. A sealed built-in expansion can initialize its existing parent
+payload during an arena lend without callbacks or a second vector header.
+Generic providers retain their separate callback admission requirements.
+
+Passive sequence reads authenticate an immutable primitive permit on the actual
+class allocation, then validate the complete formula and cache. A same-heap
+private-edge remap to a generic provider genuinely failed before this repair.
+Foreign, retired, reused, wrongly typed or mismatched class identities cannot
+grant the permit. The permit contains no provider, runtime or owning R value,
+and external-pointer erased resource APIs remain unchanged.
+
+The final candidate passes 54 selected native cases, six strict-provenance Miri
+boundary cases in 643.51 seconds, warnings-denied Clippy in 27.53 seconds, and
+formatting for all 28 assigned files. Ten earlier canonical-storage Miri cases
+pass in 699.09 seconds on their explicitly recorded predecessor; they are not
+relabelled as the final class-permit snapshot. Twenty STARMA and three retention
+native controls also pass after private storage migration. GNU serialized compact
+vectors currently reload as dense values; the fixture verifies values and the
+first public attribute, without claiming lazy class preservation on reload.

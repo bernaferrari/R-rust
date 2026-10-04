@@ -355,7 +355,7 @@ fn replacing_attributes_keeps_payload_owned_after_cache_is_swept() {
     let s = RSession::new_for_gc_tests();
     let x = numbers(&s, Rc::new(Cell::new(0)), true);
     s.with_active(|| unsafe { SET_ATTRIB(x.clone().as_raw(), crate::sexp::globals::R_NilValue()) });
-    assert!(!is_altrep(&x));
+    assert!(is_altrep(&x));
     s.gc();
     assert_eq!(x.real_elt(4), Some(12.0));
     let mut x_mut = SexpMut::try_from_checked(x.clone()).unwrap();
@@ -470,6 +470,7 @@ fn checked_classification_and_materialization_respect_existing_arena_lends() {
     let dense = integer(&s, 6);
     let formula = s.compact_integer_sequence(3, 1, 4).unwrap();
     let extension = new_sequence(s.owner_token().unwrap(), SEXPTYPE::INTSXP, 1.0, 1.0, 4).unwrap();
+    let user_provider = numbers(&s, Rc::new(Cell::new(0)), false);
     s.with_active_in(|owner| unsafe {
         crate::sexp::memory::with_arena_in(owner, |arena| {
             let count = arena.node_count();
@@ -479,7 +480,10 @@ fn checked_classification_and_materialization_respect_existing_arena_lends() {
             assert!(is_altrep(&formula));
             assert!(is_altrep(&extension));
             assert!(altrep_class(&extension).is_some());
-            assert!(force_materialization(&extension).is_err());
+            force_materialization(&extension).unwrap();
+            assert!(force_materialization(&user_provider).is_err());
+            assert!(!is_materialized(&user_provider));
+            assert!(is_materialized(&extension));
             assert_eq!(arena.node_count(), count);
         });
     });

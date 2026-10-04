@@ -315,6 +315,7 @@ impl PersistentHeap {
         header.data = NodeBody::Vector(Vecsxp {
             length,
             truelength: 0,
+            metadata: crate::sexp::ffi::VectorMetadata::None,
         });
         let payload = PayloadLease::from_byte_cells(cells).map_err(|_| HeapError::Allocation)?;
         header.payload = payload.link();

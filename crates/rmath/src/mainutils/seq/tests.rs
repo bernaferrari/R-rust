@@ -889,7 +889,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(sum, 4), 6);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert!((*seq).payload.is_empty());
-        assert!(!formula_tag_present(sum));
+        assert!(!private_sequence_metadata_present(sum));
 
         let real = seq_colon(1.5, 3.5, ptr::null_mut());
         root_global("alt_arith_real", real);
@@ -903,7 +903,7 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert_eq!(crate::sexp::accessors::REAL_ELT(real_sum, 2), 4.5);
         assert_eq!(crate::sexp::accessors::ALTREP(real), 1);
         assert!((*real).payload.is_empty());
-        assert!(!formula_tag_present(real_sum));
+        assert!(!private_sequence_metadata_present(real_sum));
 
         let dim = Rf_allocVector(INTSXP_VAL, 2);
         root_global("alt_arith_dim", dim);
@@ -974,7 +974,7 @@ fn altseq_failed_allocation_keeps_the_formula() {
         crate::sexp::accessors::SET_ATTRIB(cleared, R_NilValue());
         assert_eq!(crate::sexp::accessors::ALTREP(cleared), 1);
         assert!((*cleared).payload.is_empty());
-        assert!(formula_tag_present(cleared));
+        assert!(private_sequence_metadata_present(cleared));
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(cleared, 15), 16);
 
@@ -997,7 +997,7 @@ fn altseq_failed_allocation_keeps_the_formula() {
         });
         assert_eq!(crate::sexp::accessors::ALTREP(lent), 1);
         assert!((*lent).payload.is_empty());
-        assert!(formula_tag_present(lent));
+        assert!(private_sequence_metadata_present(lent));
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(lent, 7), 8);
         assert!(!crate::sexp::memory::vector_payload_is_tracked(lent));
@@ -1487,15 +1487,18 @@ fn capture_stderr(f: impl FnOnce()) -> String {
     }
 }
 
-fn formula_tag_present(value: SEXP) -> bool {
-    unsafe {
-        let mut cell = crate::sexp::accessors::ATTRIB(value);
-        while !cell.is_null() && cell != R_NilValue() {
-            if crate::sexp::altseq::is_formula_tag(crate::sexp::accessors::TAG(cell)) {
-                return true;
-            }
-            cell = crate::sexp::accessors::CDR(cell);
-        }
-        false
-    }
+fn private_sequence_metadata_present(value: SEXP) -> bool {
+    let Some((_, node)) = crate::sexp::memory::checked_projection(value) else {
+        return false;
+    };
+    let Some(header) = node.heap_identity().node_snapshot(&node) else {
+        return false;
+    };
+    matches!(
+        header.data,
+        crate::sexp::ffi::NodeBody::Vector(crate::sexp::ffi::Vecsxp {
+            metadata: crate::sexp::ffi::VectorMetadata::BuiltinSequence(_),
+            ..
+        })
+    )
 }

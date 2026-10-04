@@ -70,6 +70,12 @@ pub(crate) enum ResolvedLink {
     Singleton(SingletonLease),
 }
 
+/// Primitive authority belonging to one exact class-node generation. Keeping
+/// provider tables or R values here would create an owning heap cycle.
+struct BuiltinSequencePermit {
+    kind: SEXPTYPE,
+}
+
 static NEXT_HEAP_COOKIE: AtomicU32 = AtomicU32::new(1);
 fn issue_heap_cookie(counter: &AtomicU32) -> Option<u32> {
     counter
@@ -448,6 +454,11 @@ impl HeapIdentity {
         if !value.has_valid_shape() || !node.belongs_to(self) || !node.is_live() {
             return None;
         }
+        if let NodeBody::Vector(vector) = value.data {
+            // Private storage has exactly this heap's generation-qualified edge.
+            // Never admit a foreign or retired metadata identity into a header.
+            self.resolve_link(vector.metadata.link())?;
+        }
         let original = self.node_snapshot(node)?;
         let owners = self.retained_backing()?;
         let result = owners.stores.borrow().iter().find_map(|store| match store {
@@ -542,6 +553,47 @@ impl HeapIdentity {
     }
     pub(crate) fn resource<T: Any>(&self, node: &CheckedNode) -> Option<Rc<T>> {
         self.resource_erased(node)?.downcast().ok()
+    }
+    /// Private built-in registration admits only its immutable vector kind.
+    /// Symbol resources never enter the external-pointer erased resource API.
+    pub(crate) fn attach_builtin_sequence_permit(
+        &self,
+        node: &CheckedNode,
+        kind: SEXPTYPE,
+    ) -> Option<()> {
+        if !matches!(kind, SEXPTYPE::INTSXP | SEXPTYPE::REALSXP)
+            || self.node_snapshot(node)?.sxpinfo.type_of() != SEXPTYPE::SYMSXP
+        {
+            return None;
+        }
+        if let Some(existing) = self.class_resource(node) {
+            return (existing.downcast::<BuiltinSequencePermit>().ok()?.kind == kind).then_some(());
+        }
+        let permit: Rc<dyn Any> = Rc::new(BuiltinSequencePermit { kind });
+        let owners = self.retained_backing()?;
+        owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.attach_resource(node.id(), &permit),
+            PhysicalBacking::Persistent(store) => store.attach_resource(node.id(), &permit),
+        })
+    }
+    /// Passive checked reads authenticate the actual class child, without a
+    /// runtime activation, registry search or provider callback.
+    pub(crate) fn has_builtin_sequence_permit(&self, node: &CheckedNode, kind: SEXPTYPE) -> bool {
+        matches!(kind, SEXPTYPE::INTSXP | SEXPTYPE::REALSXP)
+            && self
+                .class_resource(node)
+                .and_then(|resource| resource.downcast::<BuiltinSequencePermit>().ok())
+                .is_some_and(|permit| permit.kind == kind)
+    }
+    fn class_resource(&self, node: &CheckedNode) -> Option<Rc<dyn Any>> {
+        if self.node_snapshot(node)?.sxpinfo.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let owners = self.retained_backing()?;
+        owners.stores.borrow().iter().find_map(|store| match store {
+            PhysicalBacking::Arena(store) => store.resource(node.id()),
+            PhysicalBacking::Persistent(store) => store.resource(node.id()),
+        })
     }
     pub(crate) fn take_resource(&self, node: &CheckedNode) -> Option<Rc<dyn Any>> {
         // Cleanup follows the original live allocation, even if a callback

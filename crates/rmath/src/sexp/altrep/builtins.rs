@@ -13,13 +13,34 @@ pub(crate) fn builtin_sequence<'s>(
     };
     let symbol = CString::new(format!(".AltrepClass.{name}")).unwrap();
     let raw = storage::intern(owner, &symbol)?.as_raw();
-    if lookup(owner, raw).is_some() {
+    if let Some(class) = lookup(owner, raw) {
+        if class.builtin_sequence != Some(kind) {
+            return Err(failure("untrusted built-in sequence class"));
+        }
         return class_handle(owner, raw);
     }
-    register(owner, name, Rc::new(SequenceClass(kind)))
+    super::registry::register_builtin_sequence(owner, kind)
 }
 
 pub(crate) fn new_sequence<'s>(
+    owner: OwnerToken<'s>,
+    kind: SEXPTYPE,
+    origin: f64,
+    step: f64,
+    length: i64,
+) -> SexpResult<Sexp<'s>> {
+    let authority = StoredOwner::from_token(owner);
+    authority.with_projection(|_| {
+        storage::activate(owner, || {
+            authority.require_active()?;
+            let value = new_sequence_active(owner, kind, origin, step, length)?;
+            authority.require_active()?;
+            Ok(value)
+        })
+    })
+}
+
+fn new_sequence_active<'s>(
     owner: OwnerToken<'s>,
     kind: SEXPTYPE,
     origin: f64,
@@ -49,6 +70,68 @@ pub(crate) fn new_sequence<'s>(
     state.try_set_real_elt(1, origin)?;
     state.try_set_real_elt(2, step)?;
     AltrepBuilder::new(class).data1(state.freeze()).build()
+}
+
+/// The sealed sequence producer permits numerical expansion without provider
+/// callbacks. Allocation still uses the original budget and deferred GC rules.
+pub(super) fn materialize_sequence(object: &Sexp<'_>) -> SexpResult<bool> {
+    let Some(sequence) = object.compact_seq().filter(|value| value.payload_is_null()) else {
+        return Ok(false);
+    };
+    let (context, class) = context(object)?;
+    if class.builtin_sequence != Some(object.typeof_()) {
+        return Err(failure("untrusted built-in sequence class"));
+    }
+    storage::with_owner(&context.owner, |owner| {
+        storage::activate(owner, || {
+            context.owner.require_active()?;
+            let instance = InstanceStorage::load(object)?;
+            let _operation = enter_operation(owner, Operation::Expand(object.as_raw() as usize))?;
+            if super::super::memory::is_arena_lent(owner.as_ptr()) {
+                let node = object.allocation()?;
+                let payload = super::super::memory::attach_initialized_payload(&node, |payload| {
+                    for index in 0..sequence.len() {
+                        let index = usize::try_from(index).ok()?;
+                        if sequence.is_int() {
+                            payload.set_integer_elt(index, sequence.int_or_na(index as i64))?;
+                        } else {
+                            payload.set_real_elt(index, sequence.real_or_na(index as i64))?;
+                        }
+                    }
+                    Some(())
+                })
+                .ok_or(SexpError::AllocationFailed {
+                    object: "sequence payload",
+                })?;
+                context.owner.require_active()?;
+                if object.header().payload != payload.link() {
+                    return Err(failure("sequence payload publication"));
+                }
+                return Ok(true);
+            }
+            let output = allocate(owner, object.typeof_(), sequence.len())?;
+            let output = context.owner.sexp(output.as_raw())?;
+            let mut output = SexpMut::try_from_checked(output)?;
+            for index in 0..sequence.len() {
+                if sequence.is_int() {
+                    output.try_set_integer_elt(index, sequence.int_or_na(index))?;
+                } else {
+                    output.try_set_real_elt(index, sequence.real_or_na(index))?;
+                }
+            }
+            instance.validate()?;
+            if object.compact_seq() != Some(sequence) {
+                return Err(failure("sequence formula changed during allocation"));
+            }
+            context.owner.require_active()?;
+            instance.publish_builtin_dense(
+                context.owner.sexp(output.freeze().as_raw())?,
+                class.cache,
+            )?;
+            context.owner.require_active()?;
+            Ok(true)
+        })
+    })
 }
 
 /// Formula in data1: GNU's `[length, origin, step]` real triple.
