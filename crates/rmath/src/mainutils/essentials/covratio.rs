@@ -5,6 +5,9 @@ use crate::sexp::{ffi::SEXPTYPE, object::Sexp, owner::RuntimeAccess};
 #[path = "covratio/rows.rs"]
 mod rows;
 
+#[path = "covratio/condition_calls.rs"]
+mod condition_calls;
+
 type Value = Sexp<'static>;
 type Result<T> = std::result::Result<T, String>;
 fn checked<T>(value: crate::sexp::object::SexpResult<T>) -> Result<T> {
@@ -256,13 +259,15 @@ fn weighted_residuals(
         .collect();
     Ok(ResidualSnapshot { values, names })
 }
-fn warn_recycling(access: &RuntimeAccess, lhs: usize, rhs: usize) -> Result<()> {
+fn warn_recycling(
+    access: &RuntimeAccess,
+    lhs: usize,
+    rhs: usize,
+    phase: condition_calls::Phase,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
+) -> Result<()> {
     if lhs > 0 && rhs > 0 && !lhs.max(rhs).is_multiple_of(lhs.min(rhs)) {
-        active(access)?;
-        crate::mainutils::errors::nmath_warning_hook(
-            "longer object length is not a multiple of shorter object length",
-        );
-        active(access)?;
+        condition_calls::emit(access, phase, intern)?;
     }
     Ok(())
 }
@@ -335,7 +340,12 @@ fn fixed_glm_sigma(access: &RuntimeAccess, family: &Value) -> Result<Option<f64>
     }
     Ok(None)
 }
-pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value) -> Result<Value> {
+pub(super) fn evaluate(
+    access: &RuntimeAccess,
+    args: Value,
+    names_symbol: Value,
+    mut intern: impl FnMut(&str) -> Result<Value>,
+) -> Result<Value> {
     let [model, influence, residuals] = arguments(access, args)?;
     let model = model.ok_or("argument \"model\" is missing, with no default")?;
     let domain = access.domain();
@@ -564,10 +574,24 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     // studentized residual, and final product. Their recycling and left-hand
     // name precedence differ when only one default argument restores rows.
     let denominator_length = binary_length(sigma.len(), hat.len());
-    warn_recycling(access, sigma.len(), hat.len())?;
+    warn_recycling(
+        access,
+        sigma.len(),
+        hat.len(),
+        condition_calls::Phase::Denominator,
+        &mut intern,
+    )?;
     let denominator_names = binary_names(access, &sigma_names, sigma.len(), &hat_names, hat.len());
     let star_length = binary_length(residuals.len(), denominator_length);
-    warn_recycling(access, residuals.len(), denominator_length)?;
+    warn_recycling(
+        access,
+        residuals.len(),
+        denominator_length,
+        condition_calls::Phase::Studentized {
+            fixed_dispersion: fixed_sigma.is_some(),
+        },
+        &mut intern,
+    )?;
     let star_names = binary_names(
         access,
         &res_names,
@@ -576,7 +600,13 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         denominator_length,
     );
     let length = binary_length(hat.len(), star_length);
-    warn_recycling(access, hat.len(), star_length)?;
+    warn_recycling(
+        access,
+        hat.len(),
+        star_length,
+        condition_calls::Phase::Product,
+        &mut intern,
+    )?;
     let names = binary_names(access, &hat_names, hat.len(), &star_names, star_length);
     let mut values = Vec::with_capacity(length);
     for i in 0..length {

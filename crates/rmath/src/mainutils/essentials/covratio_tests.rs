@@ -377,3 +377,6 @@ mod extension_tests;
 
 #[path = "covratio/naexclude_tests.rs"]
 mod naexclude_tests;
+
+#[path = "covratio/condition_calls_tests.rs"]
+mod condition_calls_tests;

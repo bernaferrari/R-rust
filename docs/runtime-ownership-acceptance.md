@@ -1206,3 +1206,24 @@ memory profiling and denied warnings and assigned formatting pass. Two focused
 mutation Miri cases await the existing eight-case dataset run; neither pending
 selection is counted as complete. The five-file ledger authenticates this
 native candidate independently of other agents’ changes.
+
+## Owning covratio arithmetic warning calls: native candidate (rport-wszw.6.3)
+
+Denominator, studentized-residual and final-product recycling warnings retain
+the original GNU arithmetic call, including fixed-dispersion GLM syntax and
+warning-to-error conversion. A forbid-unsafe builder constructs owning syntax
+after numeric/field snapshots and uses the original runtime’s checked interner.
+The existing owning warning guard restores the original attribution on unwind
+and revocation; this adds no unsafe code to the arithmetic kernel.
+
+A genuine four-case baseline failed every call assertion. Seven final focused
+native cases pass in 0.11 seconds, exercising a genuine R closure warning
+handler that collects, retains warnings, releases their sole root, panics, or
+revokes the facade. All 29 covratio controls and ten intercept-model controls
+pass. Independent copied-original GNU fixtures are byte-identical, and
+all-target rmath/r-embed Clippy with memory profiling and denied warnings and
+assigned formatting pass. Seven strict Miri cases are running against their
+frozen source and have no completed aggregate yet. Native external-pointer
+warning dispatch (`rport-hah9u.78`) and row-subassignment warning calls
+(`rport-wszw.6.3.1`) remain separate gaps. This ledger is the arithmetic-phase
+candidate’s evidence, not certification of concurrently changed whole HEAD.

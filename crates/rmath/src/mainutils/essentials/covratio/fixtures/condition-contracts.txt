@@ -1,0 +1,5 @@
+denominator_only:count=1:calls=infl$sigma * sqrt(omh):messages=longer object length is not a multiple of shorter object length
+denominator_and_final:count=2:calls=infl$sigma * sqrt(omh) | omh * (((n - p - 1) + e.star^2)/(n - p))^p:messages=longer object length is not a multiple of shorter object length | longer object length is not a multiple of shorter object length
+studentized_and_final:count=2:calls=res/(infl$sigma * sqrt(omh)) | omh * (((n - p - 1) + e.star^2)/(n - p))^p:messages=longer object length is not a multiple of shorter object length | longer object length is not a multiple of shorter object length
+fixed_glm:count=1:calls=res/(sigma(model) * sqrt(omh)):messages=longer object length is not a multiple of shorter object length
+warn2:call=res/(infl$sigma * sqrt(omh)):message=(converted from warning) longer object length is not a multiple of shorter object length
