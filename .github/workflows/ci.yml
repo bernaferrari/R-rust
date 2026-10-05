@@ -4,10 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Finish the current immutable checkpoint while later main commits queue.
+  # Explicit checkpoints get their own group and retain their event commit.
+  # Push/PR runs retain the existing one-running/one-pending branch policy.
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('checkpoint-{0}', github.run_id) || github.ref }}
   cancel-in-progress: false
 
 jobs:
