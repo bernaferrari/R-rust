@@ -80,3 +80,25 @@ fn evalq_numeric_frames_are_relative_to_its_caller() {
     let value=s.eval("x<-99;f<-function(){x<-7;g<-function(){x<-8;c(evalq(x,-1),evalq(x,-2),evalq(x,0),evalq(x,1))};g()};result<-f();identical(result,c(8,7,99,7))").unwrap();
     assert_eq!(value.trim(), "[1] TRUE");
 }
+
+#[test]
+fn eval_and_evalq_invalid_environment_types_match_pinned_gnu() {
+    let code = r#"for(value in list(TRUE,'x',quote(x),function()1,expression(x),as.raw(1),1+1i,NA_integer_,NA_real_)) {
+    expected <- paste0("invalid 'envir' argument of type '",typeof(value),"'")
+    for(fun in list(eval,evalq)) {
+        stopifnot(identical(tryCatch(fun(1,envir=value),error=function(e)conditionMessage(e)),expected))
+    }
+}
+stopifnot(identical(tryCatch(eval(1,envir=c(1,2)),error=function(e)conditionMessage(e)),"numeric 'envir' arg not of length one"))
+cat('eval admission: complete type family passed\n')"#;
+    for mut session in [
+        RSession::new().unwrap(),
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .unwrap(),
+    ] {
+        assert_eq!(
+            session.eval(code).unwrap(),
+            "eval admission: complete type family passed\n"
+        );
+    }
+}

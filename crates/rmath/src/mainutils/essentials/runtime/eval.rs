@@ -659,6 +659,17 @@ pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         .as_raw()
 }
 
+fn invalid_eval_environment(kind: SEXPTYPE) -> crate::sexp::object::SexpError {
+    // type2char returns a static language-type label and cannot invoke R.
+    let label = unsafe { CStr::from_ptr(crate::mainutils::util_main::type2char(kind.as_c_int())) };
+    crate::sexp::object::SexpError::EvaluationFailed {
+        message: format!(
+            "invalid 'envir' argument of type '{}'",
+            label.to_string_lossy()
+        ),
+    }
+}
+
 fn eval_owned(
     access: &crate::sexp::owner::RuntimeAccess,
     call: &crate::sexp::object::Sexp<'static>,
@@ -767,9 +778,7 @@ fn eval_owned(
                     Ok(unsafe { crate::mainutils::coerce::asInteger(env.as_raw()) })
                 })?;
                 if frame == NA_INTEGER {
-                    return Err(SexpError::EvaluationFailed {
-                        message: "invalid 'envir' argument".into(),
-                    });
+                    return Err(invalid_eval_environment(env.typeof_()));
                 }
                 env = access.with_native(|owner| {
                     owner
@@ -780,9 +789,7 @@ fn eval_owned(
                 })?;
             }
             _ => {
-                return Err(SexpError::EvaluationFailed {
-                    message: "invalid 'envir' argument".into(),
-                });
+                return Err(invalid_eval_environment(env.typeof_()));
             }
         }
     }
