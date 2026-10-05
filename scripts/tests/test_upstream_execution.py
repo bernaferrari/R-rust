@@ -170,6 +170,28 @@ class InventoryTests(unittest.TestCase):
         return execution.merge(self.root, paths, count=2, commit="a" * 40, timeout=2,
                                profile="release", rustflags="-Awarnings")
 
+    def test_runtime_profiles_record_device_features_packages_and_backend(self):
+        graphics = execution.runtime_configuration("graphics", "portable")
+        self.assertEqual(graphics["device"]["width"], 504)
+        self.assertEqual(graphics["package_policy"], "portable")
+        self.assertEqual(graphics["numerical_backend"], "faer")
+        self.assertIn("renderplot-device", graphics["cargo_features"])
+        self.assertIsNone(execution.runtime_configuration("core", "native")["device"])
+        for profile, policy in (("missing", "native"), ("core", "missing")):
+            with self.assertRaises(ValueError):
+                execution.runtime_configuration(profile, policy)
+        contract = self.contract()
+        contract["runtime"]["device"] = graphics["device"]
+        with self.assertRaises(ValueError):
+            execution.verify_contract(self.root, contract)
+
+    def test_graphics_contract_requires_actual_cargo_device_receipt(self):
+        directory, _ = self.report("no-device", "curated")
+        contract = self.contract()
+        contract["runtime"] = execution.runtime_configuration("graphics", "native")
+        with self.assertRaisesRegex(ValueError, "Cargo feature/device receipt"):
+            execution.checked_builds(directory, contract)
+
     def test_exact_original_partition_and_completed_failures_are_retained(self):
         result = self.merge(self.reports())
         self.assertTrue(result["execution_complete"])
@@ -405,7 +427,12 @@ class ShellIntegrationTests(unittest.TestCase):
         wrapper = scripts / "cargo_dev.sh"
         wrapper.write_text("#!/usr/bin/env python3\nimport json\nfrom pathlib import Path\n"
             + f"artifact=Path({str(self.fixture.rlib)!r})\n"
+            + "import sys\nfeatures=['default','faer','rust-backend']\n"
+              "graphics='renderplot-device' in sys.argv\n"
+              "if graphics: features+=['r-graphics-engine','renderplot-device']\n"
             + "print(json.dumps({'reason':'compiler-artifact','target':{'name':'rmath','kind':['rlib']},"
+              "'profile':{'test':False},'features':features,'filenames':[str(artifact)]}))\n"
+              "if graphics: print(json.dumps({'reason':'compiler-artifact','target':{'name':'r_graphics_engine','kind':['rlib']},"
               "'profile':{'test':False},'filenames':[str(artifact)]}))\n")
         wrapper.chmod(0o755)
         compiler = tools / "rustc"
@@ -419,7 +446,7 @@ class ShellIntegrationTests(unittest.TestCase):
 
     def shell(self, *arguments):
         return subprocess.run(["bash", str(self.root / "scripts/upstream_core_slices.sh"),
-                               *arguments], env=self.environment, cwd=self.root,
+                               "--runtime-profile", "core", *arguments], env=self.environment, cwd=self.root,
                               capture_output=True, timeout=10)
 
     def test_actual_shell_selects_emitted_artifact_and_durably_preserves_failure(self):
@@ -434,6 +461,22 @@ class ShellIntegrationTests(unittest.TestCase):
         self.assertEqual(report["execution"]["profile"], "release")
         self.assertFalse(report["execution"]["pinned_oracle_required"])
         self.assertTrue((directory / "cases/curated-002.R/rust/combined.log").is_file())
+
+    def test_graphics_shell_links_emitted_device_and_reports_portable_policy(self):
+        directory = self.root / "graphics-report"
+        result = self.shell("--strict", "--suite", "curated", "--timeout", "2", "--report", str(directory),
+                            "--runtime-profile", "graphics", "--package-policy", "portable")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads((directory / "summary.json").read_text())
+        self.assertTrue(report["execution_complete"])
+        self.assertEqual(report["execution"]["runtime"], execution.runtime_configuration("graphics", "portable"))
+        command = json.loads((directory / "runner-build/process.json").read_text())["command"]
+        self.assertIn("rport_renderplot", command)
+        self.assertIn("r_graphics_engine=" + str(self.fixture.rlib), command)
+        cargo = directory / "library-cargo.json"
+        cargo.write_text(cargo.read_text().replace('"renderplot-device"', '"wrong-device"'))
+        with self.assertRaisesRegex(ValueError, "Cargo features"):
+            execution.checked_builds(directory, report["execution"])
 
     def test_shell_invalid_deadline_and_existing_report_fail_before_build(self):
         directory = self.root / "report"

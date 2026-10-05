@@ -8,6 +8,8 @@ STRICT=0
 SUITE=all
 SHARD_INDEX=0
 SHARD_COUNT=1
+RUNTIME_PROFILE=graphics
+PACKAGE_POLICY=native
 # The original CI completed a numerical driver in13m30s. This newly declared
 # bound preserves that opportunity; the legacy runner's120s is unchanged.
 CASE_TIMEOUT="${RPORT_UPSTREAM_CASE_TIMEOUT:-1800}"
@@ -17,6 +19,7 @@ usage() {
 Usage: scripts/upstream_core_slices.sh [--strict] [--report NEW_OR_EMPTY_DIR]
        [--suite all|curated|whole] [--shard-index N] [--shard-count N]
        [--timeout POSITIVE_SECONDS]
+       [--runtime-profile graphics|core] [--package-policy native|portable]
 
 Runs unchanged pinned upstream drivers with the original strict merged-output
 comparison. Each process has an owned deadline and durable START/FINISH logs.
@@ -26,7 +29,7 @@ USAGE
 }
 while (($# > 0)); do
     case "$1" in
-        --report|--suite|--shard-index|--shard-count|--timeout)
+        --report|--suite|--shard-index|--shard-count|--timeout|--runtime-profile|--package-policy)
             (($# >= 2)) || { usage >&2; exit 2; }
             case "$1" in
                 --report) REPORT_DIR="$2" ;;
@@ -34,6 +37,8 @@ while (($# > 0)); do
                 --shard-index) SHARD_INDEX="$2" ;;
                 --shard-count) SHARD_COUNT="$2" ;;
                 --timeout) CASE_TIMEOUT="$2" ;;
+                --runtime-profile) RUNTIME_PROFILE="$2" ;;
+                --package-policy) PACKAGE_POLICY="$2" ;;
             esac
             shift 2 ;;
         --strict) STRICT=1; shift ;;
@@ -58,6 +63,7 @@ python3 "$ROOT_DIR/scripts/upstream_execution.py" prepare --root "$ROOT_DIR" \
     --report "$REPORT_DIR" --suite "$SUITE" --shard-index "$SHARD_INDEX" \
     --shard-count "$SHARD_COUNT" --timeout "$CASE_TIMEOUT" \
     --profile "$(conformance_profile)" --rustflags="$RUSTFLAGS_FOR_BUILD" \
+    --runtime-profile "$RUNTIME_PROFILE" --package-policy "$PACKAGE_POLICY" \
     ${POLICY_ARGS[@]+"${POLICY_ARGS[@]}"}
 printf 'INFO: durable upstream evidence: %s\n' "$REPORT_DIR"
 python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py" --markdown "$REPORT_DIR/upstream-inventory.md"
@@ -78,15 +84,23 @@ fi
 python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
     --directory "$REPORT_DIR/library-build" --cwd "$ROOT_DIR" --timeout "$CASE_TIMEOUT" \
     --separate-streams -- env ROOT_DIR="$ROOT_DIR" RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" \
-    bash -c 'source "$1"; conformance_build_rmath' _ "$ROOT_DIR/scripts/conformance_artifacts.sh"
+    RPORT_CONFORMANCE_CARGO_RECEIPT="$REPORT_DIR/library-cargo.json" \
+    bash -c 'source "$1"; if [[ "$2" == graphics ]]; then conformance_build_rmath --features renderplot-device; else conformance_build_rmath; fi' \
+    _ "$ROOT_DIR/scripts/conformance_artifacts.sh" "$RUNTIME_PROFILE"
 RUST_RLIB="$(cat "$REPORT_DIR/library-build/stdout.log")"
 [[ -f "$RUST_RLIB" ]] || { echo "ERROR: selected Cargo library is missing" >&2; exit 1; }
 python3 "$ROOT_DIR/scripts/upstream_execution.py" seal-library \
     --root "$ROOT_DIR" --report "$REPORT_DIR" --rlib "$RUST_RLIB"
 RUST_BIN="$REPORT_DIR/rust_runner"
+DEVICE_ARGS=()
+if [[ "$RUNTIME_PROFILE" == graphics ]]; then
+    GRAPHICS_RLIB="$(python3 "$ROOT_DIR/scripts/conformance_cargo_artifact.py" "$REPORT_DIR/library-cargo.json" r_graphics_engine)"
+    DEVICE_ARGS+=(--cfg rport_renderplot --extern "r_graphics_engine=$GRAPHICS_RLIB")
+fi
 python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
     --directory "$REPORT_DIR/runner-build" --cwd "$ROOT_DIR" --timeout "$CASE_TIMEOUT" \
     -- rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
-    -L "dependency=$(conformance_dependency_dir)" --extern "rmath=$RUST_RLIB" -o "$RUST_BIN"
+    -L "dependency=$(conformance_dependency_dir)" --extern "rmath=$RUST_RLIB" \
+    ${DEVICE_ARGS[@]+"${DEVICE_ARGS[@]}"} -o "$RUST_BIN"
 python3 "$ROOT_DIR/scripts/upstream_execution.py" run --root "$ROOT_DIR" \
     --report "$REPORT_DIR" --gnu "$GNU_BIN" --rust "$RUST_BIN" --rlib "$RUST_RLIB"

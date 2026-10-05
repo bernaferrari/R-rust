@@ -35,6 +35,21 @@ else:
 ROOT = Path(__file__).resolve().parent.parent
 STATUSES = ("pass", "fail", "xfail", "xpass", "skip")
 NORMALIZATION = "core-v1:original-tr-sed-awk-pipeline"
+CASE_LOCALES = {"whole/reg-plot-latin1.R": "en_US.ISO8859-1"}
+
+
+def runtime_configuration(runtime_profile, package_policy):
+    if runtime_profile not in {"core", "graphics"} or package_policy not in {"native", "portable"}:
+        raise ValueError("invalid runtime profile or package policy")
+    features = ["default", "faer", "rust-backend"]
+    device = None
+    if runtime_profile == "graphics":
+        features += ["r-graphics-engine", "renderplot-device"]
+        device = {"name": "renderplot-scene", "width": 504, "height": 504,
+                  "font": "bundled DejaVu Sans", "output": "owned display list"}
+    return {"name": runtime_profile, "cargo_features": features,
+            "device": device, "package_policy": package_policy, "numerical_backend": "faer",
+            "gnu_device_policy": "Rscript default device; driver device calls unchanged"}
 
 
 def digest(value):
@@ -233,7 +248,8 @@ def source_inputs(root):
     ) and (Path(root) / path).is_file()}
 
 
-def contract_at(root, *, suite, index, count, timeout, profile, rustflags, strict, pinned, normalizer=None):
+def contract_at(root, *, suite, index, count, timeout, profile, rustflags, strict, pinned, normalizer=None,
+                runtime_profile="core", package_policy="native"):
     try:
         timeout = positive_seconds(str(timeout))
     except argparse.ArgumentTypeError as error:
@@ -249,6 +265,8 @@ def contract_at(root, *, suite, index, count, timeout, profile, rustflags, stric
             "inventory": rows, "inventory_sha256": digest(rows),
             "oracle_manifest_sha256": file_hash(Path(root) / "oracle/r-oracle.json"),
             "profile": profile, "rustflags": rustflags, "case_timeout_seconds": timeout,
+            "runtime": runtime_configuration(runtime_profile, package_policy),
+            "case_locale_policy": {"default": "C", "overrides": CASE_LOCALES},
             "strict": strict, "pinned_oracle_required": pinned, "normalization": NORMALIZATION,
             "normalizer_policy": normalizer_policy() if normalizer is None else normalizer,
             "shard": {"suite": suite, "index": index, "count": count,
@@ -293,6 +311,7 @@ def verify_contract(root, contract, *, producer_environment=True):
     actual = contract_at(root, suite=shard["suite"], index=shard["index"], count=shard["count"],
                          timeout=contract["case_timeout_seconds"], profile=contract["profile"],
                          rustflags=contract["rustflags"], strict=contract["strict"], pinned=contract["pinned_oracle_required"],
+                         runtime_profile=contract["runtime"]["name"], package_policy=contract["runtime"]["package_policy"],
                          normalizer=None if producer_environment else contract["normalizer_policy"])
     if actual != contract:
         raise ValueError("compiled source, fixtures, dispositions, oracle or policy changed")
@@ -357,6 +376,9 @@ def publish_report(directory, contract, rows, error=None, finalized=False):
     lines = ["# Pinned GNU R upstream execution", "",
              f"Execution complete: **{report['execution_complete']}**",
              f"Strict parity passed: **{report['strict_pass']}**", "",
+             f"Runtime: **{contract['runtime']['name']}**; features: `{','.join(contract['runtime']['cargo_features'])}`",
+             f"Device: `{json.dumps(contract['runtime']['device'], sort_keys=True)}`",
+             f"Package policy: **{contract['runtime']['package_policy']}**; numerical backend: **{contract['runtime']['numerical_backend']}**", "",
              "| Case | Status | Detail |", "| --- | --- | --- |"]
     lines.extend(f"| {row['kind']}/{row['case']} | {row['status']} | {row['detail']} |" for row in rows)
     (directory / "summary.md").write_text("\n".join(lines) + "\n")
@@ -379,9 +401,13 @@ def execute(root, directory, contract, gnu, rust):
                 for engine, command in (("gnu", [str(gnu), "--vanilla"]), ("rust", [str(rust)])):
                     workspace = case_dir / (engine + "-workspace")
                     shutil.copytree((root / entry["path"]).parent, workspace)
+                    locale = contract["case_locale_policy"]["overrides"].get(
+                        entry["kind"] + "/" + entry["case"], contract["case_locale_policy"]["default"])
                     process = run_process(command + [entry["case"]], cwd=workspace,
                         timeout=contract["case_timeout_seconds"], directory=case_dir / engine,
-                        env={**os.environ, "LC_ALL": "C", "LANG": "C", "TZ": "UTC", "SRCDIR": str(workspace)})
+                        env={**os.environ, "LC_ALL": locale, "LANG": locale, "TZ": "UTC", "SRCDIR": str(workspace),
+                             "RPORT_RUNTIME_PACKAGE_POLICY": contract["runtime"]["package_policy"],
+                             "RPORT_RUNTIME_RECEIPT": str((case_dir / "runtime-info.txt").resolve())})
                     phases.append({"engine": engine, "process": process})
                     shutil.rmtree(workspace)
                     if not process["execution_complete"] or process["exit_code"] != 0:
@@ -390,7 +416,9 @@ def execute(root, directory, contract, gnu, rust):
                 for engine in ("gnu", "rust"):
                     normalizations.append(run_normalization(case_dir, engine, contract["normalizer_policy"], contract["case_timeout_seconds"]))
             status, detail = verdict(entry, phases, case_dir, normalizations)
-            rows.append({**entry, "status": status, "detail": detail, "phases": phases, "normalizations": normalizations})
+            runtime_info = case_dir / "runtime-info.txt"
+            rows.append({**entry, "status": status, "detail": detail, "phases": phases, "normalizations": normalizations,
+                         "runtime_info_sha256": file_hash(runtime_info) if runtime_info.exists() else None})
             print(f"{status.upper()} {entry['kind']}/{entry['case']}: {detail}", flush=True)
             report = publish_report(directory, contract, rows)
             if any(phase["process"]["state"] == "cancelled" for phase in phases + normalizations):
@@ -419,16 +447,32 @@ def seal_library(root, directory, rlib):
     selected = Path((directory / "library-build/stdout.log").read_text().strip()).resolve()
     if selected != Path(rlib).resolve():
         raise ValueError("library differs from actual Cargo artifact selection")
-    atomic_json(directory / "library.json", {"original": str(selected), "sha256": file_hash(selected),
-                                             "compiled_source_sha256": contract["source_sha256"]})
+    sealed = {"original": str(selected), "sha256": file_hash(selected),
+              "compiled_source_sha256": contract["source_sha256"]}
+    cargo = directory / "library-cargo.json"
+    if cargo.exists():
+        sealed["cargo_sha256"] = file_hash(cargo)
+    elif contract["runtime"]["name"] == "graphics":
+        raise ValueError("graphics build has no Cargo feature/device receipt")
+    atomic_json(directory / "library.json", sealed)
+
+
+def sealed_inputs(directory, original, sha256, contract):
+    sealed = {"original": original, "sha256": sha256,
+              "compiled_source_sha256": contract["source_sha256"]}
+    cargo = directory / "library-cargo.json"
+    if cargo.exists():
+        sealed["cargo_sha256"] = file_hash(cargo)
+    elif contract["runtime"]["name"] == "graphics":
+        raise ValueError("graphics build has no Cargo feature/device receipt")
+    return sealed
 
 
 def capture_artifacts(directory, gnu, rust, rlib):
     artifacts = {"rust_rlib_sha256": file_hash(rlib), "rust_rlib_original": str(Path(rlib).resolve())}
     sealed = json.loads((directory / "library.json").read_text())
     contract = json.loads((directory / "contract.json").read_text())
-    if sealed != {"original": artifacts["rust_rlib_original"], "sha256": artifacts["rust_rlib_sha256"],
-                   "compiled_source_sha256": contract["source_sha256"]}:
+    if sealed != sealed_inputs(directory, artifacts["rust_rlib_original"], artifacts["rust_rlib_sha256"], contract):
         raise ValueError("library or compiled source changed during runner compilation")
     engines = directory / "engines"
     engines.mkdir()
@@ -498,6 +542,32 @@ def checked_builds(directory, contract):
             raise ValueError("incomplete or unsuccessful build/oracle admission")
         if receipt["timeout_seconds"] != contract["case_timeout_seconds"]:
             raise ValueError("build/oracle deadline differs from contract")
+    cargo = directory / "library-cargo.json"
+    if not cargo.exists():
+        if contract["runtime"]["name"] == "graphics":
+            raise ValueError("graphics build has no Cargo feature/device receipt")
+        return
+    messages = [json.loads(line) for line in cargo.read_text().splitlines() if line.lstrip().startswith("{")]
+    libraries = [message for message in messages if message.get("reason") == "compiler-artifact"
+                 and message.get("target", {}).get("name") == "rmath"
+                 and not message.get("profile", {}).get("test")]
+    if len(libraries) != 1 or sorted(libraries[0].get("features", [])) != sorted(contract["runtime"]["cargo_features"]):
+        raise ValueError("actual Cargo features differ from runtime profile")
+    selected = (directory / "library-build/stdout.log").read_text().strip()
+    if selected not in libraries[0].get("filenames", []):
+        raise ValueError("selected library differs from Cargo feature receipt")
+    command = checked_process(directory / "runner-build")["command"]
+    if "rmath=" + selected not in command:
+        raise ValueError("runner did not link the selected runtime library")
+    installed = "rport_renderplot" in command
+    if installed != (contract["runtime"]["name"] == "graphics"):
+        raise ValueError("runner device admission differs from runtime profile")
+    if installed:
+        graphics = {filename for message in messages if message.get("reason") == "compiler-artifact"
+                    and message.get("target", {}).get("name") == "r_graphics_engine"
+                    for filename in message.get("filenames", []) if filename.endswith(".rlib")}
+        if len(graphics) != 1 or "r_graphics_engine=" + next(iter(graphics)) not in command:
+            raise ValueError("runner did not link the emitted graphics engine")
 
 
 def validate_report(root, directory, expected_common):
@@ -529,8 +599,7 @@ def validate_report(root, directory, expected_common):
     if str(Path((directory / "library-build/stdout.log").read_text().strip()).resolve()) != artifacts["rust_rlib_original"]:
         raise ValueError("selected library differs from actual Cargo artifact receipt")
     sealed = json.loads((directory / "library.json").read_text())
-    if sealed != {"original": artifacts["rust_rlib_original"], "sha256": rlib_hash,
-                   "compiled_source_sha256": contract["source_sha256"]}:
+    if sealed != sealed_inputs(directory, artifacts["rust_rlib_original"], rlib_hash, contract):
         raise ValueError("compiled source/library seal differs")
     for engine in ("gnu", "rust"):
         if artifacts[engine]["file"] != "engines/" + engine or file_hash(directory / artifacts[engine]["file"]) != artifacts[engine]["sha256"]:
@@ -543,6 +612,9 @@ def validate_report(root, directory, expected_common):
             raise ValueError("duplicate, extra or altered case disposition")
         seen.add(key)
         location = directory / "cases" / (row["kind"] + "-" + row["case"])
+        runtime_info = location / "runtime-info.txt"
+        if row.get("runtime_info_sha256") != (file_hash(runtime_info) if runtime_info.exists() else None):
+            raise ValueError("initialized runtime policy receipt changed")
         phases = row["phases"]
         if len(phases) > 2 or len({phase["engine"] for phase in phases}) != len(phases):
             raise ValueError("duplicate or extra engine phase")
@@ -577,9 +649,11 @@ def validate_report(root, directory, expected_common):
     return report
 
 
-def merge(root, directories, *, count, commit, timeout, profile, rustflags):
+def merge(root, directories, *, count, commit, timeout, profile, rustflags,
+          runtime_profile="core", package_policy="native"):
     expected = contract_at(root, suite="all", index=0, count=1, timeout=timeout,
-                           profile=profile, rustflags=rustflags, strict=True, pinned=True, normalizer={})
+                           profile=profile, rustflags=rustflags, strict=True, pinned=True, normalizer={},
+                           runtime_profile=runtime_profile, package_policy=package_policy)
     common = {key: value for key, value in expected.items() if key not in {"shard", "normalizer_policy"}}
     partition(expected["inventory"], "whole", 0, count)
     rows, errors, seen, producer_policy = [], [], set(), None
@@ -638,6 +712,8 @@ def main():
     prepare.add_argument("--rustflags", required=True)
     prepare.add_argument("--strict", action="store_true")
     prepare.add_argument("--pinned", action="store_true")
+    prepare.add_argument("--runtime-profile", choices=("core", "graphics"), default="core")
+    prepare.add_argument("--package-policy", choices=("native", "portable"), default="native")
     run = sub.add_parser("run")
     run.add_argument("--root", type=Path, default=ROOT)
     run.add_argument("--report", type=Path, required=True)
@@ -657,6 +733,8 @@ def main():
     join.add_argument("--timeout", type=positive_seconds, required=True)
     join.add_argument("--profile", choices=("debug", "release"), required=True)
     join.add_argument("--rustflags", required=True)
+    join.add_argument("--runtime-profile", choices=("core", "graphics"), default="core")
+    join.add_argument("--package-policy", choices=("native", "portable"), default="native")
     args = parser.parse_args()
     try:
         if args.action == "process":
@@ -668,7 +746,8 @@ def main():
         if args.action == "prepare":
             fresh_directory(args.report)
             contract = contract_at(args.root, suite=args.suite, index=args.shard_index, count=args.shard_count,
-                timeout=args.timeout, profile=args.profile, rustflags=args.rustflags, strict=args.strict, pinned=args.pinned)
+                timeout=args.timeout, profile=args.profile, rustflags=args.rustflags, strict=args.strict, pinned=args.pinned,
+                runtime_profile=args.runtime_profile, package_policy=args.package_policy)
             atomic_json(args.report / "contract.json", contract)
             publish_report(args.report, contract, [])
             return 0
@@ -679,7 +758,8 @@ def main():
             fresh_directory(args.report)
             directories = sorted(path.parent for path in args.input_dir.rglob("contract.json"))
             report = merge(args.root, directories, count=args.shard_count, commit=args.source_commit,
-                           timeout=args.timeout, profile=args.profile, rustflags=args.rustflags)
+                           timeout=args.timeout, profile=args.profile, rustflags=args.rustflags,
+                           runtime_profile=args.runtime_profile, package_policy=args.package_policy)
             atomic_json(args.report / "summary.json", report)
             (args.report / "summary.md").write_text("# Pinned upstream exact union\n\n"
                 + f"Full inventory complete: **{report['full_inventory_complete']}**\n"

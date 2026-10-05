@@ -22,8 +22,31 @@ fn main() {
         }
     };
 
-    let mut session = rmath::android::RSession::new();
+    let mut session = match env::var("RPORT_RUNTIME_PACKAGE_POLICY").as_deref() {
+        Ok("portable") => rmath::android::RSession::new_with_path_policy(
+            rmath::android::RuntimePathPolicy::new(Vec::new(), env::temp_dir()),
+        ),
+        Ok("native") | Err(_) => rmath::android::RSession::new(),
+        Ok(other) => {
+            eprintln!("invalid runtime package policy: {other}");
+            std::process::exit(2);
+        }
+    };
     session.enable_host_process_capabilities();
+    if let Some(receipt) = env::var_os("RPORT_RUNTIME_RECEIPT") {
+        if let Err(error) = fs::write(receipt, format!("{:#?}\n", session.runtime_info())) {
+            eprintln!("failed to record initialized runtime policy: {error}");
+            std::process::exit(2);
+        }
+    }
+    #[cfg(rport_renderplot)]
+    let result = {
+        // A real device with bundled font metrics, not a success-only stub.
+        // 504 device units at 72 dpi matches the default PDF's 7-inch extent.
+        let mut device = r_graphics_engine::Scene::new(504, 504);
+        session.eval_script_with_renderplot_backend(&code, &mut device)
+    };
+    #[cfg(not(rport_renderplot))]
     let result = session.eval(&code);
 
     // Mirror Rscript: an uncaught error prints the composed output (prior

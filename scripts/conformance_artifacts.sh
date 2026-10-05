@@ -80,6 +80,9 @@ conformance_build_rmath() (
     receipt="$(mktemp "${TMPDIR:-/tmp}/rport-conformance-cargo.XXXXXX")" || exit
     trap 'rm -f "$receipt"' EXIT
     if conformance_cargo build -p rmath "$@" --message-format=json >"$receipt"; then
+        if [[ -n "${RPORT_CONFORMANCE_CARGO_RECEIPT:-}" ]]; then
+            cp -f "$receipt" "$RPORT_CONFORMANCE_CARGO_RECEIPT"
+        fi
         python3 "$ROOT_DIR/scripts/conformance_cargo_artifact.py" "$receipt"
     else
         status=$?

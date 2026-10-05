@@ -243,7 +243,8 @@ jobs:
       - name: Install exact R oracle build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev
+          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev locales
+          sudo localedef -i en_US -f ISO-8859-1 en_US.ISO8859-1
 
       - name: Build or restore exact R oracle
         run: |
@@ -255,6 +256,7 @@ jobs:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
         run: >-
           bash scripts/upstream_core_slices.sh --strict --timeout 1800
+          --runtime-profile graphics --package-policy native
           --suite "${{ matrix.suite }}" --shard-index "${{ matrix.shard }}"
           --shard-count "${{ matrix.count }}" --report target/upstream-r
       - name: Upload durable upstream execution and engine evidence
@@ -285,6 +287,7 @@ jobs:
           --input-dir target/upstream-shards --shard-count 4
           --source-commit "${{ github.sha }}" --profile release
           --rustflags=-Awarnings --timeout 1800 --report target/upstream-union
+          --runtime-profile graphics --package-policy native
       - name: Upload complete or incomplete union result
         if: always()
         uses: actions/upload-artifact@v4
