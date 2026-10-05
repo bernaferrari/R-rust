@@ -1093,11 +1093,15 @@ The repaired enclosing coercion group passes all 57 tests in 0.42 seconds, with
 zero failures or ignored tests. Independent pinned GNU controls pass for all
 five target modes, warning messages, empty scalar vectors, invalid children and
 generic/expression children. All-target Clippy with denied warnings passes.
-The six-case strict-provenance Miri selection passed its first case, then
-stopped at unsupported native C `strtod` on macOS in the public conversion
-fixture. This is a platform dependency limitation, not an aliasing diagnostic
-or a completed Miri checkpoint. Unifying number coercion on the Rust parser is
-tracked in `rport-wszw.7.1.1.4`; the original six assertions remain unchanged.
+The original six-case strict-provenance Miri selection first stopped at
+unsupported native C `strtod` on macOS. After the shared Rust parser repair,
+all six unchanged tests pass in 2,095.86 seconds with zero failures or ignored
+tests and a reaped successful process. Default alias checking and isolation
+remain enabled; flags add strict provenance and ignore leaks. The four exact
+selected source hashes and all recorded rmath Rust inputs remain unchanged
+through execution. An unrelated embedding integration-test correction is
+explicitly recorded separately. This verifies the selected atomic ownership
+and callback obligations, rather than the entire coercion engine or GNU R.
 
 ## Completed owning intercept-only linear models (rport-wszw.6.4)
 
@@ -1284,8 +1288,8 @@ points and intermediate underflow, rather than substituting C99 conversion.
 These numerical receipts describe the captured aarch64 GNU build; conditional
 GNU extended precision and its undefined NaN-to-integer C cast require separate
 cross-target evidence (`rport-wszw.7.1.1.4.2`). Graphics C99 parsing is another
-contract. Atomic pairlist conversion can now rerun its unchanged six-case Miri
-selection without libc; that enclosing proof and whole-R parity remain open.
+contract. Atomic pairlist conversion now completes its unchanged six-case
+Miri selection without libc; whole-R parity remains open.
 
 ## Partitioned exact-oracle validation (rport-jxfp.3.12.6.2.2–3)
 
