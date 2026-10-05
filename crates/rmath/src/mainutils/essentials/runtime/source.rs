@@ -515,12 +515,8 @@ unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
 pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let file_arg = CAR(args);
-        let envir_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(args))
-        };
+        let file_arg = arg_by_name_or_position(args, &["file"], 0);
+        let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
 
         if file_arg.is_null() || file_arg == R_NilValue() {
             eprintln!("sys.source: no file specified");
@@ -530,8 +526,11 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         let target_env = if !envir_arg.is_null() && envir_arg != R_NilValue() {
             envir_arg
         } else {
-            rho
+            crate::sexp::globals::R_BaseEnv()
         };
+        if TYPEOF(target_env) != SEXPTYPE::ENVSXP {
+            base_error("'envir' must be an environment");
+        }
 
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => {

@@ -35,7 +35,7 @@ use crate::sexp::symbol::Rf_install;
 /// path from that code is re-rooted at the package directory. Absolute
 /// paths and ordinary session reads (no package being sourced) pass
 /// through unchanged.
-fn resolve_package_relative_path(file_path: String) -> String {
+pub(crate) fn resolve_package_relative_path(file_path: String) -> String {
     let given = std::path::Path::new(&file_path);
     if given.is_absolute() {
         return file_path;

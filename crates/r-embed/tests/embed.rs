@@ -518,7 +518,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
             sources: &[(
                 "s4.R",
                 concat!(
-                    "setClass(\"CorpusPerson\", name = \"character\", score = \"numeric\")\n",
+                    "setClass(\"CorpusPerson\", slots = c(name = \"character\", score = \"numeric\"))\n",
                     "make_person <- function() new(\"CorpusPerson\", name = \"Ada\", score = 42)\n",
                     "person_name <- function(x) slot(x, \"name\")\n",
                     "person_slots <- function() slotNames(\"CorpusPerson\")\n",
@@ -708,7 +708,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
     );
     assert_eq!(
         session
-            .eval("packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))")
+            .eval("unname(unlist(packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))))")
             .expect("package description fields"),
         "[1] \"corpbase\" \"0.1.0\"   \n"
     );
@@ -1544,7 +1544,7 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
         sources: &[(
             "s4.R",
             concat!(
-                "setClass(\"PxS4Person\", name = \"character\", score = \"numeric\")\n",
+                "setClass(\"PxS4Person\", slots = c(name = \"character\", score = \"numeric\"))\n",
                 "pxs4_make <- function() new(\"PxS4Person\", name = \"Ada\", score = 42)\n",
                 "pxs4_name <- function(x) slot(x, \"name\")\n",
                 "pxs4_slots <- function() slotNames(\"PxS4Person\")\n",

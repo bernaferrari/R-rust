@@ -65,6 +65,12 @@ unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::se
 unsafe extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { colors::do_palette2(args) }
 }
+unsafe extern "C-unwind" fn c_col2rgb(
+    colors: crate::sexp::ffi::SEXP,
+    alpha: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { self::colors::do_col2rgb(colors, alpha) }
+}
 unsafe extern "C-unwind" fn c_create_at(
     axp: crate::sexp::ffi::SEXP,
     usr: crate::sexp::ffi::SEXP,
@@ -173,6 +179,9 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         "gray" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args2(c_gray),
         )),
+        "col2rgb" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_col2rgb),
+        )),
         "hsv" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_hsv),
         )),
@@ -216,6 +225,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
             "C_R_CreateAtVector",
             "C_R_GAxisPars",
             "C_gray",
+            "C_col2rgb",
             "C_hsv",
             "C_hcl",
             "C_rgb",

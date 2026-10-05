@@ -1468,6 +1468,19 @@ impl RArena {
                 > GC_BYTE_THRESHOLD
     }
 
+    /// At an already due safe point, reclaim old garbage before a bounded
+    /// workload runs out of admission space. Zero means an unlimited budget.
+    pub(crate) fn budget_pressure_warrants_full_gc(&self) -> bool {
+        let near_limit = |used: usize, limit: usize| limit != 0 && used >= limit - limit / 10;
+        near_limit(self.node_count(), self.budget.max_nodes)
+            || near_limit(
+                self.allocated_bytes
+                    .get()
+                    .saturating_add(self.transient_bytes.get()),
+                self.budget.max_bytes,
+            )
+    }
+
     pub(crate) fn note_gc_completed(&mut self) {
         self.nodes_at_last_gc = self.node_count();
         self.bytes_at_last_gc = self.allocated_bytes.get();

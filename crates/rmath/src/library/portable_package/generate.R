@@ -1,0 +1,26 @@
+# Capture original installed GNU objects; never execute the Rust runtime.
+args <- commandArgs(TRUE)
+stopifnot(length(args) == 2L, identical(as.character(getRversion()), "4.7.0"), identical(R.version[["svn rev"]], "90451"))
+package <- args[[1L]]; out <- args[[2L]]
+stopifnot(package %in% c("methods", "utils", "tools"))
+dir.create(out, recursive=TRUE, showWarnings=FALSE)
+p <- system.file(package=package)
+stopifnot(nzchar(p))
+stopifnot(file.copy(file.path(p,"R",paste0(package,".rdb")), file.path(out,paste0(package,".rdb")), overwrite=TRUE))
+if (file.exists(file.path(p,"R","sysdata.rdb"))) {
+    stopifnot(file.copy(file.path(p,"R","sysdata.rdb"),file.path(out,"sysdata.rdb"),overwrite=TRUE))
+    saveRDS(readRDS(file.path(p,"R","sysdata.rdx")),file.path(out,"sysdata-index.rds"),version=2,compress=FALSE)
+}
+index <- readRDS(file.path(p,"R",paste0(package,".rdx")))
+saveRDS(index,file.path(out,"index.rds"),version=2,compress=FALSE)
+ns <- asNamespace(package)
+saveRDS(sort(getNamespaceExports(ns)),file.path(out,"exports.rds"),version=2,compress=FALSE)
+info <- get(".__NAMESPACE__.",ns)
+stopifnot(identical(get("imports",info),list(base=TRUE)))
+saveRDS(get("S3methods",info),file.path(out,"S3methods.rds"),version=2,compress=FALSE)
+for (name in c("DESCRIPTION","NAMESPACE")) stopifnot(file.copy(file.path(p,name),file.path(out,name),overwrite=TRUE))
+assignments <- as.list(body(base:::lazyLoadDBexec))
+selected <- Filter(function(x) is.call(x) && identical(x[[1L]],as.name("<-")) && identical(x[[2L]],as.name("envhook")),assignments)
+stopifnot(length(selected)==1L)
+dput(selected[[1L]][[3L]],file=file.path(out,"envhook.R"))
+cat("Pinned GNU", package, R.version$platform, "variables",length(index$variables),"references",length(index$references),"exports",length(getNamespaceExports(ns)),"\n")

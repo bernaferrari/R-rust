@@ -133,6 +133,72 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
         trace_projection(result.as_ref())
     }
 }
+/// Runtime traceback publication bypasses user-facing base binding locks,
+/// as GNU's internal base-symbol write does. Each graph and the original
+/// runtime remain owned through the one allocating step.
+unsafe fn publish_error_traceback(trace: SEXP) {
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let own = |value| {
+        factory
+            .wrap(value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let base = own(unsafe { crate::eval::runtime::base_env() });
+    let namespace = own(unsafe { crate::sexp::envir::R_BaseNamespace() });
+    let trace = own(trace);
+    let symbol = own(unsafe { crate::sexp::symbol::Rf_install(c".Traceback".as_ptr()) });
+    let existing_binding = || {
+        let mut frame = base
+            .try_frame()
+            .and_then(crate::sexp::object::Sexp::into_owned)?;
+        while !frame.is_nil() {
+            if frame.try_tag()?.as_raw() == symbol.as_raw() {
+                return Ok(Some(frame));
+            }
+            frame = frame
+                .try_cdr()
+                .and_then(crate::sexp::object::Sexp::into_owned)?;
+        }
+        Ok::<_, crate::sexp::object::SexpError>(None)
+    };
+    if let Some(frame) =
+        existing_binding().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    {
+        unsafe { crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw()) };
+        return;
+    }
+    let previous = base
+        .try_frame()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let cell = factory
+        .pairlist_cell(&trace, &previous, &symbol)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    // Allocation can invoke a collecting callback that publishes the binding.
+    if let Some(frame) =
+        existing_binding().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    {
+        unsafe { crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw()) };
+        return;
+    }
+    // No callback can occur between this refreshed edge and peer publication.
+    let current = base
+        .try_frame()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    unsafe {
+        crate::sexp::accessors::SETCDR(cell.as_raw(), current.as_raw());
+        crate::sexp::accessors::SET_FRAME(base.as_raw(), cell.as_raw());
+        crate::sexp::accessors::SET_FRAME(namespace.as_raw(), cell.as_raw());
+    }
+}
+
 pub unsafe fn save_error_traceback() {
     unsafe {
         let trace = R_GetTracebackOnly(0);
@@ -151,8 +217,7 @@ pub unsafe fn save_error_traceback() {
             }
             cell = CDR(cell);
         }
-        let symbol = crate::sexp::symbol::Rf_install(c".Traceback".as_ptr());
-        crate::sexp::envir::defineVar(symbol, trace, crate::eval::runtime::base_env());
+        publish_error_traceback(trace);
     }
 }
 

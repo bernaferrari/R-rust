@@ -1263,7 +1263,10 @@ pub fn maybe_collect_at_eval_safe_point() {
         // Full passes bound old-generation garbage between explicit gc() calls.
         (*instance).gc_state.safe_point_collections =
             (*instance).gc_state.safe_point_collections.wrapping_add(1);
-        if (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
+        if (*instance).arena.budget_pressure_warrants_full_gc()
+            || (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL
+                == 0
+        {
             full_gc_in(instance);
         } else {
             minor_gc_in(instance);
@@ -4131,3 +4134,6 @@ mod notification_tests;
 #[cfg(test)]
 #[path = "gc_finalizer_graph_tests.rs"]
 mod finalizer_graph_tests;
+
+#[cfg(test)]
+mod pressure_tests;

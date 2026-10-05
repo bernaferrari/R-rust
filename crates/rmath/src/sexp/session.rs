@@ -650,6 +650,49 @@ impl RSession {
         }
         if initialize_base {
             unsafe { RInstance::initialize_base_bindings_via(instance) };
+            // GNU main.c seals base after its source/system initialization,
+            // before loading default packages. Both environments share bindings.
+            session.with_active(|| unsafe {
+                let owner = session.owner_token().expect("active base bootstrap");
+                let namespace = owner
+                    .sexp(super::envir::R_BaseNamespace())
+                    .and_then(super::object::Sexp::into_owned)
+                    .expect("original base namespace");
+                let base = owner
+                    .sexp(super::globals::R_BaseEnv())
+                    .and_then(super::object::Sexp::into_owned)
+                    .expect("original base environment");
+                let mut frame = namespace
+                    .try_frame()
+                    .expect("base frame")
+                    .into_owned()
+                    .expect("owned base frame");
+                let mut symbols = Vec::new();
+                while !frame.is_nil() {
+                    symbols.push(
+                        frame
+                            .try_tag()
+                            .expect("base binding tag")
+                            .into_owned()
+                            .expect("owned base tag"),
+                    );
+                    frame = frame
+                        .try_cdr()
+                        .expect("base frame tail")
+                        .into_owned()
+                        .expect("owned base tail");
+                }
+                super::envir::lock_environment_raw(namespace.as_raw());
+                for symbol in symbols {
+                    super::envir::lock_binding_raw(namespace.as_raw(), symbol.as_raw());
+                }
+                super::envir::lock_environment_raw(base.as_raw());
+                for name in [c".Device", c".Devices"] {
+                    let symbol = super::symbol::Rf_install(name.as_ptr());
+                    super::envir::unlock_binding_raw(base.as_raw(), symbol);
+                }
+                owner.require_active().expect("live base bootstrap owner");
+            });
         }
         if !attach_default_packages {
             return session;
@@ -671,6 +714,14 @@ impl RSession {
                     if package == "stats" {
                         stats_loaded = loaded;
                     }
+                } else if package == "methods" {
+                    crate::library::methods::portable::attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
+                } else if let Some(image) = crate::library::portable_package::image(package) {
+                    image.attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
                 } else if package == "datasets" {
                     crate::library::datasets::attach().unwrap_or_else(|message| {
                         std::panic::panic_any(crate::sexp::context::RError { message })

@@ -1583,6 +1583,15 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     unsafe {
         let first = CAR(args);
         let passed = condition_object(first);
+        let warning_call = if !passed.is_null() {
+            crate::mainutils::essentials::tables::list_element_by_name(passed, "call")
+                .unwrap_or(R_NilValue())
+        } else if named_call_dot(args) {
+            crate::mainutils::errors::R_getCurrentCall()
+        } else {
+            R_NilValue()
+        };
+        let _warning_call = protect(warning_call);
         let warning_text = if !passed.is_null() {
             condition_message_of(passed).unwrap_or_default()
         } else {
@@ -1591,7 +1600,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let condition = if !passed.is_null() {
             passed
         } else {
-            simple_condition(&warning_text, &["simpleWarning", "warning", "condition"])
+            simple_warning_condition(&warning_text, warning_call)
         };
         let mut cond_classes = vec![
             "simpleWarning".to_string(),
@@ -1650,9 +1659,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                         .collect::<Vec<_>>(),
                 ))
         {
-            if !passed.is_null() {
-                set_signalled_condition(passed);
-            }
+            set_signalled_condition(condition);
             std::panic::panic_any(crate::sexp::context::RSignal::Warning {
                 message: warning_text,
             });
@@ -1668,7 +1675,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         // tail flush for the final statement) positions the rendered block
         // correctly between print() side effects and auto-printed values,
         // while message() output stays in signal order with it (case 372).
-        let wcall = crate::mainutils::errors::R_getCurrentCall();
+        let wcall = warning_call;
         let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
         crate::mainutils::errors::mark_calling_handlers_signaled();
         crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
