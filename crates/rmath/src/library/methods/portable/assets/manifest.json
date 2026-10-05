@@ -1,0 +1,39 @@
+{
+  "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "r_version": "4.7.0",
+  "svn_revision": "90451",
+  "files": {
+    "DESCRIPTION": {
+      "bytes": 632,
+      "sha256": "8a0067f4c07d79a9d928ac0f56fbafcf87bc668c6eb23a6591dd8e64e416a0ab"
+    },
+    "NAMESPACE": {
+      "bytes": 5241,
+      "sha256": "5a7048a20040a4b86021ef2777416a8cebf2592e4d4f03342d3c43997298a985"
+    },
+    "S3methods.rds": {
+      "bytes": 61,
+      "sha256": "059d3f5673baff42e5bfa6b6fe4140af7013ade19343c62fa2067fc13701e50e"
+    },
+    "envhook.R": {
+      "bytes": 938,
+      "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
+    },
+    "exports.rds": {
+      "bytes": 8185,
+      "sha256": "4fc64db6b8fc06465be25e1ae6d16e243ca4c8f07d1f0db1618e750b5fd01f9b"
+    },
+    "generation.log": {
+      "bytes": 80,
+      "sha256": "2d40868e6d67b6272a9a4618bf0d16ce06673cc9ef642314a023a0abc5a694c7"
+    },
+    "index.rds": {
+      "bytes": 45029,
+      "sha256": "4ff06bd903a547d3b20abaa7f4562215c935c1b855da6a9322db4a84bb63db6c"
+    },
+    "methods.rdb": {
+      "bytes": 1361830,
+      "sha256": "f0e9ea9922a073f07f21142c0b7c8593875f6a8b896156040814fdf0c8f39aa5"
+    }
+  }
+}

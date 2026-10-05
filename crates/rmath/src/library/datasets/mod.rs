@@ -107,6 +107,12 @@ fn bind(
 ) -> SexpResult<()> {
     let domain = access.domain();
     domain.link(environment)?;
+    if environment.typeof_() != crate::sexp::SEXPTYPE::ENVSXP {
+        return Err(crate::sexp::SexpError::TypeMismatch {
+            expected: "environment",
+            actual: environment.typeof_(),
+        });
+    }
     domain.link(value)?;
     let name = symbol(access, name)?;
     access.with_native(|_| unsafe {
@@ -121,6 +127,12 @@ fn lookup(
     name: &str,
 ) -> SexpResult<Sexp<'static>> {
     access.domain().link(environment)?;
+    if environment.typeof_() != crate::sexp::SEXPTYPE::ENVSXP {
+        return Err(crate::sexp::SexpError::TypeMismatch {
+            expected: "environment",
+            actual: environment.typeof_(),
+        });
+    }
     let name = symbol(access, name)?;
     access.with_native(|owner| unsafe {
         owner

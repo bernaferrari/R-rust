@@ -877,6 +877,9 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
 
         let package_path = find_package_path(package);
         if package_path.is_empty() {
+            if package == "methods" {
+                return crate::library::methods::portable::namespace().map(|namespace| namespace.as_raw());
+            }
             if package == "datasets" {
                 return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
             }
@@ -1379,6 +1382,35 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
             if !prim.is_null() && prim != R_NilValue() {
                 crate::sexp::envir::defineVar(symbol, prim, ns);
             }
+        }
+    }
+}
+
+/// Finish the same original namespace lifecycle for installed and portable images.
+/// No runtime/field loan remains live while a step can evaluate R code.
+pub(crate) unsafe fn finalize_methods_namespace(namespace: SEXP) {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let namespace = owner.sexp(namespace)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner.pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for step in [
+            bind_methods_base_primitives as unsafe fn(SEXP),
+            purge_missing_arg_placeholders,
+            retarget_methods_generics,
+            run_methods_onload_cache_metadata,
+            retarget_envref_object_parent,
+        ] {
+            authority.require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            step(namespace.as_raw());
+            authority.require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
     }
 }
@@ -1949,11 +1981,7 @@ pub(crate) unsafe fn load_package_namespace(
             }
         };
         if package == "methods" {
-            bind_methods_base_primitives(package_env);
-            purge_missing_arg_placeholders(package_env);
-            retarget_methods_generics(package_env);
-            run_methods_onload_cache_metadata(package_env);
-            retarget_envref_object_parent(package_env);
+            finalize_methods_namespace(package_env);
         }
 
         if package == "stats" {

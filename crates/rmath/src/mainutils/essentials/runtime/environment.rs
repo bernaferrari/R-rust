@@ -136,42 +136,15 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 /// R's `parent.env(env)` — returns the parent environment.
 pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let env = CAR(args);
-        if env.is_null() || env == R_NilValue() {
-            return R_NilValue();
-        }
-        let t = TYPEOF(env);
-        if t != SEXPTYPE::ENVSXP {
-            return R_NilValue();
-        }
-        if env == crate::sexp::globals::R_EmptyEnv() {
-            base_error("the empty environment has no parent");
-        }
-        // enclos is the enclosing/parent environment
-        let parent = crate::sexp::accessors::ENCLOS(env);
-        if parent.is_null() {
-            return crate::sexp::globals::R_EmptyEnv();
-        }
-        parent
-    }
+    unsafe { parent_env::dispatch(args, false) }
 }
 
-/// R's `set_parent.env(env, parent)` — set the parent environment.
+/// GNU replacement returns the original operand, including S4 environment data.
 pub unsafe fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let env = CAR(args);
-        let parent = CAR(CDR(args));
-        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return R_NilValue();
-        }
-        if parent.is_null() || parent == R_NilValue() || TYPEOF(parent) != SEXPTYPE::ENVSXP {
-            return env;
-        }
-        SET_ENCLOS(env, parent);
-        env
-    }
+    unsafe { parent_env::dispatch(args, true) }
 }
+
+mod parent_env;
 
 /// R's `env_name(env)` — returns the name of an environment.
 pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

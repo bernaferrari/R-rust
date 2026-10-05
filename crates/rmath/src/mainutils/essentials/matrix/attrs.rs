@@ -1051,7 +1051,7 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                     }
                     std::panic::panic_any(RError {
                         message: format!(
-                            "'{lookup_name}' is not an exported object from namespace '{package_name}'"
+                            "'{lookup_name}' is not an exported object from 'namespace:{package_name}'"
                         ),
                     });
                 }
@@ -1076,9 +1076,7 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             if value == crate::sexp::globals::R_UnboundValue() {
                 std::panic::panic_any(RError {
-                    message: format!(
-                        "object '{lookup_name}' not found in namespace '{package_name}'"
-                    ),
+                    message: format!("object '{lookup_name}' not found"),
                 });
             }
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);

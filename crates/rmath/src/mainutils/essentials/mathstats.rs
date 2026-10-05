@@ -9931,7 +9931,16 @@ pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::sexp::owner::with_runtime(&weak, |access| {
-                super::covratio::evaluate(access, arguments, names)
+                super::covratio::evaluate(access, arguments, names, |name| {
+                    let name = CString::new(name).map_err(|_| "invalid arithmetic symbol")?;
+                    access
+                        .with_native(|original| {
+                            let symbol = Rf_install(name.as_ptr());
+                            original.require_active()?;
+                            original.sexp(symbol)?.into_owned()
+                        })
+                        .map_err(|error| error.to_string())
+                })
             })
         }));
         // Preserve live callback panics, but never authenticate a result or

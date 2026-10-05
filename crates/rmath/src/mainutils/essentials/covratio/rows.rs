@@ -51,7 +51,11 @@ impl Rows {
             positions,
         }))
     }
-    fn map(&self, access: &RuntimeAccess, length: usize, warn: bool) -> Result<Vec<Option<usize>>> {
+    fn map(
+        &self,
+        length: usize,
+        mut warn: impl FnMut(usize, usize) -> Result<()>,
+    ) -> Result<Vec<Option<usize>>> {
         let total = length
             .checked_add(self.positions.len())
             .filter(|total| i64::try_from(*total).is_ok())
@@ -71,9 +75,7 @@ impl Rows {
                 }
             })
             .collect();
-        if warn {
-            super::warn_recycling_assignment(access, selected.len(), length)?;
-        }
+        warn(selected.len(), length)?;
         let mut result = Vec::new();
         result
             .try_reserve_exact(total)
@@ -86,9 +88,16 @@ impl Rows {
         }
         Ok(result)
     }
-    pub(super) fn restore(&self, access: &RuntimeAccess, values: &[f64]) -> Result<Vec<f64>> {
+    pub(super) fn restore(
+        &self,
+        access: &RuntimeAccess,
+        values: &[f64],
+        intern: &mut impl FnMut(&str) -> Result<Value>,
+    ) -> Result<Vec<f64>> {
         Ok(self
-            .map(access, values.len(), true)?
+            .map(values.len(), |target, source| {
+                super::warn_recycling_assignment(access, target, source, intern)
+            })?
             .into_iter()
             .map(|i| i.map_or(crate::sexp::ffi::NA_REAL, |i| values[i]))
             .collect())
@@ -105,7 +114,7 @@ impl Rows {
         if names.len() != length as i64 {
             return Err("invalid model row names".into());
         }
-        let map = self.map(access, length, false)?;
+        let map = self.map(length, |_, _| Ok(()))?;
         let missing = checked(
             access.domain().wrap(
                 crate::sexp::globals::immutable_na_string_projection()

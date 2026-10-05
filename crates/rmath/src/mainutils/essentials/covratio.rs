@@ -5,6 +5,9 @@ use crate::sexp::{ffi::SEXPTYPE, object::Sexp, owner::RuntimeAccess};
 #[path = "covratio/rows.rs"]
 mod rows;
 
+#[path = "covratio/condition_calls.rs"]
+mod condition_calls;
+
 type Value = Sexp<'static>;
 type Result<T> = std::result::Result<T, String>;
 fn checked<T>(value: crate::sexp::object::SexpResult<T>) -> Result<T> {
@@ -196,10 +199,11 @@ fn weighted_residuals(
     weights: &Value,
     drop_weights: &Value,
     omitted: Option<&rows::Rows>,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
 ) -> Result<ResidualSnapshot> {
     let raw = numeric(access, residuals)?;
     let mut values = if let Some(rows) = omitted {
-        rows.restore(access, &raw)?
+        rows.restore(access, &raw, intern)?
     } else {
         raw
     };
@@ -211,7 +215,7 @@ fn weighted_residuals(
     if !weights.is_nil() {
         let weights = numeric(access, weights)?;
         let weights = if let Some(rows) = omitted {
-            rows.restore(access, &weights)?
+            rows.restore(access, &weights, intern)?
         } else {
             weights
         };
@@ -231,7 +235,7 @@ fn weighted_residuals(
     }
     let weights = numeric(access, drop_weights)?;
     let weights = if let Some(rows) = omitted {
-        rows.restore(access, &weights)?
+        rows.restore(access, &weights, intern)?
     } else {
         weights
     };
@@ -256,23 +260,26 @@ fn weighted_residuals(
         .collect();
     Ok(ResidualSnapshot { values, names })
 }
-fn warn_recycling(access: &RuntimeAccess, lhs: usize, rhs: usize) -> Result<()> {
+fn warn_recycling(
+    access: &RuntimeAccess,
+    lhs: usize,
+    rhs: usize,
+    phase: condition_calls::Phase,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
+) -> Result<()> {
     if lhs > 0 && rhs > 0 && !lhs.max(rhs).is_multiple_of(lhs.min(rhs)) {
-        active(access)?;
-        crate::mainutils::errors::nmath_warning_hook(
-            "longer object length is not a multiple of shorter object length",
-        );
-        active(access)?;
+        condition_calls::emit(access, phase, intern)?;
     }
     Ok(())
 }
-fn warn_recycling_assignment(access: &RuntimeAccess, target: usize, source: usize) -> Result<()> {
+fn warn_recycling_assignment(
+    access: &RuntimeAccess,
+    target: usize,
+    source: usize,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
+) -> Result<()> {
     if target > 0 && source > 0 && !target.is_multiple_of(source) {
-        active(access)?;
-        crate::mainutils::errors::nmath_warning_hook(
-            "number of items to replace is not a multiple of replacement length",
-        );
-        active(access)?;
+        condition_calls::emit(access, condition_calls::Phase::RowMap, intern)?;
     }
     Ok(())
 }
@@ -335,7 +342,12 @@ fn fixed_glm_sigma(access: &RuntimeAccess, family: &Value) -> Result<Option<f64>
     }
     Ok(None)
 }
-pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value) -> Result<Value> {
+pub(super) fn evaluate(
+    access: &RuntimeAccess,
+    args: Value,
+    names_symbol: Value,
+    mut intern: impl FnMut(&str) -> Result<Value>,
+) -> Result<Value> {
     let [model, influence, residuals] = arguments(access, args)?;
     let model = model.ok_or("argument \"model\" is missing, with no default")?;
     let domain = access.domain();
@@ -383,6 +395,20 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     } else {
         model_names.clone()
     };
+    // A row-map warning can invoke user handlers. Keep the exact selected
+    // influence children before default residual preprocessing reaches it.
+    let supplied_influence = if let Some(influence) = &influence {
+        Some((
+            field(access, influence, b"hat")?,
+            if fixed_sigma.is_none() {
+                field(access, influence, b"sigma")?
+            } else {
+                domain.nil()
+            },
+        ))
+    } else {
+        None
+    };
     let default_residuals = if default_needed {
         Some(weighted_residuals(
             access,
@@ -391,6 +417,7 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
             &weights,
             &drop_weights,
             omitted.as_ref(),
+            &mut intern,
         )?)
     } else {
         None
@@ -435,15 +462,8 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     } else {
         Vec::new()
     };
-    let (hat_value, sigma_value) = if let Some(influence) = &influence {
-        (
-            field(access, influence, b"hat")?,
-            if fixed_sigma.is_none() {
-                field(access, influence, b"sigma")?
-            } else {
-                domain.nil()
-            },
-        )
+    let (hat_value, sigma_value) = if let Some(values) = supplied_influence {
+        values
     } else if qr_matrix.is_nil() {
         (cached_hat.clone(), domain.nil())
     } else {
@@ -517,12 +537,12 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
             let fallback = (cleaned.iter().map(|v| v * v).sum::<f64>() / df).sqrt();
             let names = rows.names(access, &names, e.len())?;
             hat = rows
-                .restore(access, &hat)?
+                .restore(access, &hat, &mut intern)?
                 .into_iter()
                 .map(|v| if v.is_nan() { 0. } else { v })
                 .collect();
             sigma = rows
-                .restore(access, &sigma)?
+                .restore(access, &sigma, &mut intern)?
                 .into_iter()
                 .map(|v| if v.is_nan() { fallback } else { v })
                 .collect();
@@ -564,10 +584,24 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
     // studentized residual, and final product. Their recycling and left-hand
     // name precedence differ when only one default argument restores rows.
     let denominator_length = binary_length(sigma.len(), hat.len());
-    warn_recycling(access, sigma.len(), hat.len())?;
+    warn_recycling(
+        access,
+        sigma.len(),
+        hat.len(),
+        condition_calls::Phase::Denominator,
+        &mut intern,
+    )?;
     let denominator_names = binary_names(access, &sigma_names, sigma.len(), &hat_names, hat.len());
     let star_length = binary_length(residuals.len(), denominator_length);
-    warn_recycling(access, residuals.len(), denominator_length)?;
+    warn_recycling(
+        access,
+        residuals.len(),
+        denominator_length,
+        condition_calls::Phase::Studentized {
+            fixed_dispersion: fixed_sigma.is_some(),
+        },
+        &mut intern,
+    )?;
     let star_names = binary_names(
         access,
         &res_names,
@@ -576,7 +610,13 @@ pub(super) fn evaluate(access: &RuntimeAccess, args: Value, names_symbol: Value)
         denominator_length,
     );
     let length = binary_length(hat.len(), star_length);
-    warn_recycling(access, hat.len(), star_length)?;
+    warn_recycling(
+        access,
+        hat.len(),
+        star_length,
+        condition_calls::Phase::Product,
+        &mut intern,
+    )?;
     let names = binary_names(access, &hat_names, hat.len(), &star_names, star_length);
     let mut values = Vec::with_capacity(length);
     for i in 0..length {

@@ -1158,6 +1158,15 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
             .sexp(file)
             .and_then(crate::sexp::object::Sexp::into_owned)
             .unwrap_or_else(|e| error(&e.to_string()));
+        if crate::library::methods::portable::is_database(&file_owned)
+            .unwrap_or_else(|failure| error(&failure.to_string()))
+        {
+            let own = |value| owner.sexp(value)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|failure| error(&failure.to_string()));
+            return crate::library::methods::portable::fetch(own(key), file_owned, own(compsxp), own(hook))
+                .unwrap_or_else(|message| error(&message)).as_raw();
+        }
         if crate::library::datasets::is_database(&file_owned)
             .unwrap_or_else(|e| error(&e.to_string()))
         {

@@ -25,6 +25,168 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
 use crate::sexp::protect::*;
 
+mod filename_owned;
+#[cfg(test)]
+mod filename_tests;
+
+struct FilenameReadParameters {
+    kind: BinaryKind,
+    count: usize,
+    size: usize,
+    signed: bool,
+    order: ByteOrder,
+}
+
+impl FilenameReadParameters {
+    fn limit(&self) -> Option<usize> {
+        match self.kind {
+            BinaryKind::Raw => Some(self.count),
+            BinaryKind::Character => None,
+            _ => Some(self.count.saturating_mul(self.size)),
+        }
+    }
+
+    fn workspace(&self, bytes: usize) -> Result<usize, String> {
+        let count = if self.kind == BinaryKind::Character {
+            let count = bytes
+                .min(self.count)
+                .checked_mul(3)
+                .ok_or("binary decoder workspace is too large")?;
+            // Vec<String> initially allocates four slots, then grows
+            // geometrically. Reallocation may retain old and new arrays
+            // simultaneously. Empty input needs no temporary allocation.
+            if count == 0 { 0 } else { count.max(4) }
+        } else {
+            (bytes / self.size).min(self.count)
+        };
+        let width = match self.kind {
+            BinaryKind::Raw => return Ok(0),
+            BinaryKind::Integer | BinaryKind::Logical => std::mem::size_of::<i32>(),
+            BinaryKind::Numeric => std::mem::size_of::<f64>(),
+            BinaryKind::Complex => 2 * std::mem::size_of::<f64>(),
+            BinaryKind::Character => std::mem::size_of::<String>(),
+        };
+        count
+            .checked_mul(width)
+            .and_then(|workspace| {
+                workspace.checked_add(if self.kind == BinaryKind::Character {
+                    // Invalid UTF-8 expands to three-byte replacements; the
+                    // CString producer temporarily copies one selected string
+                    // while the original decoded strings remain retained.
+                    bytes.checked_mul(6)?
+                } else {
+                    0
+                })
+            })
+            .ok_or_else(|| "binary decoder workspace is too large".into())
+    }
+}
+
+fn filename_read_parameters(
+    access: &crate::sexp::owner::RuntimeAccess,
+    values: [&crate::sexp::Sexp<'static>; 5],
+) -> crate::sexp::object::SexpResult<FilenameReadParameters> {
+    for value in values {
+        access.domain().link(value)?;
+    }
+    access.with_native(|_| unsafe {
+        let [what, count, size, signed, endian] = values;
+        let kind = binary_kind_from_what(what.as_raw());
+        Ok(FilenameReadParameters {
+            kind,
+            count: binary_count(count.as_raw()),
+            size: binary_size(size.as_raw(), kind),
+            signed: logical_arg_or(signed.as_raw(), "signed", 1) != 0,
+            order: byte_order_from_arg(endian.as_raw(), "endian"),
+        })
+    })
+}
+
+fn filename_decode(
+    access: &crate::sexp::owner::RuntimeAccess,
+    parameters: &FilenameReadParameters,
+    bytes: &[u8],
+) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
+    access.with_native(|owner| unsafe {
+        owner
+            .sexp(decode_binary_result(
+                parameters.kind,
+                bytes,
+                parameters.count,
+                parameters.size,
+                parameters.signed,
+                parameters.order,
+            ))?
+            .into_owned()
+    })
+}
+
+fn filename_encode(
+    access: &crate::sexp::owner::RuntimeAccess,
+    values: [&crate::sexp::Sexp<'static>; 4],
+) -> crate::sexp::object::SexpResult<(Vec<u8>, Vec<crate::sexp::memory::TransientReservation>)> {
+    for value in values {
+        access.domain().link(value)?;
+    }
+    access.with_native(|_| unsafe {
+        let [object, size, endian, use_bytes] = values;
+        let order = byte_order_from_arg(endian.as_raw(), "endian");
+        let _use_bytes = logical_arg_or(use_bytes.as_raw(), "useBytes", 0);
+        let mut reservations = Vec::new();
+        let mut admitted = 0;
+        let peak_factor = if object.typeof_() == SEXPTYPE::STRSXP {
+            4
+        } else {
+            3
+        };
+        let bytes =
+            encode_binary_object_admitted(object.as_raw(), size.as_raw(), order, |required| {
+                // Encoder Vec capacity can approach 2N. The browser sink
+                // clones N bytes while it remains alive; small byte Vecs
+                // allocate at least eight bytes. Raw input has a temporary
+                // N-byte copy during encoding, covered by the same bound.
+                // Character append can simultaneously retain old capacity N,
+                // new capacity 2N and the current copied string N.
+                let required = if required == 0 {
+                    0
+                } else {
+                    required
+                        .checked_mul(peak_factor)
+                        .and_then(|peak| required.checked_add(8).map(|small| peak.max(small)))
+                        .unwrap_or_else(|| r_error("binary encoder workspace is too large"))
+                };
+                let growth = required.saturating_sub(admitted);
+                if growth != 0 {
+                    reservations.try_reserve(1).unwrap_or_else(|_| {
+                        r_error("allocation failed while admitting binary encoder bytes")
+                    });
+                    let reservation = filename_owned::reserve(access, growth)
+                        .unwrap_or_else(|error| r_error(&error));
+                    reservations.push(reservation);
+                    admitted = required;
+                }
+            });
+        Ok((bytes, reservations))
+    })
+}
+
+unsafe fn filename_arguments(args: SEXP, position: usize) -> Option<crate::sexp::Sexp<'static>> {
+    unsafe {
+        let con = arg_by_name_or_position(args, position, &["con"], R_NilValue());
+        if TYPEOF(con) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        Some(
+            owner
+                .sexp(args)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| r_error(&error.to_string())),
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryKind {
     Raw,
@@ -202,14 +364,14 @@ pub unsafe fn read_binary_source(con: SEXP, limit: Option<usize>) -> Vec<u8> {
             return bytes;
         }
         if TYPEOF(con) == SEXPTYPE::STRSXP {
-            let path = check_string_arg(con, "con");
-            let mut bytes = std::fs::read(&path).unwrap_or_else(|e| {
-                r_error(&format!("cannot open file '{}': {}", path, e));
-            });
-            if let Some(limit) = limit {
-                bytes.truncate(limit);
-            }
-            return bytes;
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let con = owner
+                .sexp(con)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            return filename_owned::source_bytes(con, limit)
+                .unwrap_or_else(|error| r_error(&error));
         }
         if !inherits_class(con, "connection") {
             r_error("'con' is not a connection");
@@ -439,6 +601,15 @@ pub unsafe fn decode_binary_result(
 }
 
 pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
+    unsafe { encode_binary_object_admitted(object, size_arg, order, |_| {}) }
+}
+
+unsafe fn encode_binary_object_admitted(
+    object: SEXP,
+    size_arg: SEXP,
+    order: ByteOrder,
+    mut admit: impl FnMut(usize),
+) -> Vec<u8> {
     unsafe {
         if object.is_null() || object == R_NilValue() {
             r_error("invalid 'object' argument");
@@ -448,6 +619,7 @@ pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrde
         let mut bytes = Vec::new();
         match obj_type {
             t if t == SEXPTYPE::RAWSXP => {
+                admit(obj_len);
                 bytes.extend_from_slice(&raw_bytes_from_vector(object));
             }
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
@@ -457,6 +629,11 @@ pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrde
                     BinaryKind::Integer
                 };
                 let size = binary_size(size_arg, kind);
+                admit(
+                    obj_len
+                        .checked_mul(size)
+                        .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
+                );
                 let src = if obj_type == SEXPTYPE::LGLSXP {
                     LOGICAL(object)
                 } else {
@@ -468,6 +645,11 @@ pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrde
             }
             t if t == SEXPTYPE::REALSXP => {
                 let size = binary_size(size_arg, BinaryKind::Numeric);
+                admit(
+                    obj_len
+                        .checked_mul(size)
+                        .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
+                );
                 for index in 0..obj_len {
                     let value = *REAL(object).add(index);
                     if size == 4 {
@@ -486,6 +668,11 @@ pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrde
             }
             t if t == SEXPTYPE::CPLXSXP => {
                 let size = binary_size(size_arg, BinaryKind::Complex);
+                admit(
+                    obj_len
+                        .checked_mul(size)
+                        .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
+                );
                 for index in 0..obj_len {
                     let value = *COMPLEX(object).add(index);
                     if size == 8 {
@@ -506,8 +693,36 @@ pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrde
                 }
             }
             t if t == SEXPTYPE::STRSXP => {
+                let owner = crate::sexp::owner::OwnerToken::current()
+                    .unwrap_or_else(|error| r_error(&error.to_string()));
                 for index in 0..obj_len as R_xlen_t {
-                    bytes.extend_from_slice(string_elt(object, index).as_bytes());
+                    // Select once and keep the actual character alive through
+                    // admission callbacks. End the raw byte borrow before that
+                    // boundary; copy only after its worst-case UTF-8 workspace
+                    // has been admitted, using this saved owning character.
+                    let character = owner
+                        .sexp(STRING_ELT(object, index))
+                        .and_then(crate::sexp::Sexp::into_owned)
+                        .unwrap_or_else(|error| r_error(&error.to_string()));
+                    let source_len = {
+                        let pointer = CHAR(character.as_raw());
+                        if pointer.is_null() {
+                            0
+                        } else {
+                            CStr::from_ptr(pointer).to_bytes().len()
+                        }
+                    };
+                    let length =
+                        bytes
+                            .len()
+                            .checked_add(source_len.checked_mul(3).unwrap_or_else(|| {
+                                r_error("binary encoder workspace is too large")
+                            }))
+                            .and_then(|length| length.checked_add(1))
+                            .unwrap_or_else(|| r_error("binary encoder workspace is too large"));
+                    admit(length);
+                    let text = charsxp_to_string(character.as_raw());
+                    bytes.extend_from_slice(text.as_bytes());
                     bytes.push(0);
                 }
             }
@@ -523,10 +738,13 @@ pub unsafe fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
             return alloc_raw_result(bytes);
         }
         if TYPEOF(con) == SEXPTYPE::STRSXP {
-            let path = check_string_arg(con, "con");
-            std::fs::write(&path, bytes).unwrap_or_else(|e| {
-                r_error(&format!("cannot open file '{}': {}", path, e));
-            });
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let con = owner
+                .sexp(con)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            filename_owned::sink_bytes(con, bytes).unwrap_or_else(|error| r_error(&error));
             return R_NilValue();
         }
         if !inherits_class(con, "connection") {
@@ -543,6 +761,11 @@ pub unsafe fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
 
 pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        if let Some(arguments) = filename_arguments(args, 0) {
+            return filename_owned::read(arguments)
+                .unwrap_or_else(|error| r_error(&error))
+                .as_raw();
+        }
         let con = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
         let what_arg = arg_by_name_or_position(args, 1, &["what"], R_NilValue());
         let n_arg = arg_by_name_or_position(args, 2, &["n"], Rf_ScalarInteger(1));
@@ -571,6 +794,11 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
 pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        if let Some(arguments) = filename_arguments(args, 1) {
+            let result = filename_owned::write(arguments).unwrap_or_else(|error| r_error(&error));
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result.as_raw();
+        }
         let object = arg_by_name_or_position(args, 0, &["object"], R_NilValue());
         let con = arg_by_name_or_position(args, 1, &["con"], R_NilValue());
         let size_arg = arg_by_name_or_position(args, 2, &["size"], Rf_ScalarInteger(NA_INTEGER));

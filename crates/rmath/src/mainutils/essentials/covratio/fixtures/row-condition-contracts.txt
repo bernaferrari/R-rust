@@ -1,0 +1,7 @@
+row_warning_call=keep[-omit] <- 1L:n
+row_warning_message=number of items to replace is not a multiple of replacement length
+downstream_error='names' attribute [10] must be the same length as the vector [9]
+warn2_call=keep[-omit] <- 1L:n
+warn2_message=(converted from warning) number of items to replace is not a multiple of replacement length
+supplied_calls=keep[-omit] <- 1L:n || res/(infl$sigma * sqrt(omh)) || omh * (((n - p - 1) + e.star^2)/(n - p))^p
+supplied_values=1.7984385166642349,1.6290450378826291,1.5529426541460845,1.6373127499260918,1.5433789848080433,1.6454205829863175,1.5337027303755011,1.6533641933438721,1.7984385166642349

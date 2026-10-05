@@ -1,0 +1,15 @@
+expression	result
+.Internal(parent.env(1))	argument is not an environment
+.Internal(parent.env(NULL))	argument is not an environment
+.Internal(parent.env(emptyenv()))	the empty environment has no parent
+.Internal(parent.env())	0 arguments passed to .Internal(parent.env) which requires 1
+.Internal(parent.env(baseenv(), baseenv()))	2 arguments passed to .Internal(parent.env) which requires 1
+.Internal(`parent.env<-`(NULL, baseenv()))	use of NULL environment is defunct
+.Internal(`parent.env<-`(new.env(), 1))	'parent' is not an environment
+.Internal(`parent.env<-`(new.env(), NULL))	use of NULL environment is defunct
+.Internal(`parent.env<-`(emptyenv(), baseenv()))	can not set parent of the empty environment
+.Internal(`parent.env<-`(baseenv(), globalenv()))	cycles in parent chains are not allowed
+.Internal(`parent.env<-`(asNamespace("base"), globalenv()))	can not set the parent environment of a namespace
+.Internal(`parent.env<-`(parent.env(asNamespace("methods")), globalenv()))	can not set the parent environment of package imports
+local({ e <- new.env(); p <- new.env(parent=emptyenv()); lockEnvironment(e); identical(.Internal(`parent.env<-`(e,p)),e) && identical(parent.env(e),p) })	TRUE
+local({ e <- new.env(parent=emptyenv()); p <- new.env(parent=e); .Internal(`parent.env<-`(e,p)) })	cycles in parent chains are not allowed
