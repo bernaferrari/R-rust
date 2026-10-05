@@ -119,6 +119,8 @@ fn collecting_allocation(action: u8) {
             "paste.separator.ownership",
             CollapseSelection(selection.clone()),
         )
+        .unwrap()
+        .into_owned()
         .unwrap();
     let pin = weak.pin().unwrap();
     let instance = pin.as_ptr();
@@ -320,12 +322,12 @@ fn owned_paste_selected_collapse_survives_detachment_during_output_allocation() 
         .unwrap();
     session.with_active(|| {
         let owner = session.owner_token().unwrap();
-        let pin = owner.pin().unwrap();
+        let pin = owner.pin().unwrap().expect("managed test session");
         let instance = pin.as_ptr();
         let f = owner.node_factory();
         let args = fixture(&f, "é", None, true);
         let collapse_cell = args.try_cdr().unwrap().try_cdr().unwrap();
-        let source = f.strings(&["|"]).unwrap();
+        let source = f.strings(&["|"]).unwrap().into_owned().unwrap();
         let scalar = source
             .try_string_elt(0)
             .unwrap()
