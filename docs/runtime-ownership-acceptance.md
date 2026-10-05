@@ -1507,3 +1507,30 @@ seconds); final all-target rmath/r-embed Clippy with warnings denied passes in
 corpus436 and combined NA value checks, exiting successfully within the original
 180-second bound. This restores internal publication; it does not certify every
 options semantic or the entire runtime startup/package matrix.
+
+## Owning encoded `charToRaw` bytes (rport-jxfp.3.12.6.6.1)
+
+An unsafe-free kernel retains the argument graph, selected character and original
+runtime across scalar providers, allocation, collection and unwind. It copies the
+original encoded bytes, including canonical NA's two native bytes, without UTF-8
+conversion. Copied byte workspace is admitted before Vec allocation and retained
+through initialized raw-vector publication; the output payload is charged
+separately. This bounds represented payload workspace rather than allocator
+rounding or total process memory.
+
+The genuine baseline reports one pass and two failures, exposing NA rejection
+and loss of a selected character during collection. All seven repaired native
+controls pass in 0.02 seconds; all seven strict-provenance Miri controls complete
+in 436.13 seconds with default alias checking/isolation and successful exit.
+Final assigned source hashes and the actual loaded worktree are verified.
+Root transfers only the reviewed native adapter and its module declarations
+from mathstats, preserving every unrelated main edit, and copies the two new
+files. Integrated main's seven tests pass in 0.02 seconds; all-target rmath/r-embed
+Clippy with warnings denied passes in 30.22 seconds.
+
+The unchanged corpus436 prefix and combined NA ASCII/binary/value fixture run
+through a fresh full constructor within the original 180-second bound. All 19
+value-output lines (566 bytes) exactly match pinned GNU without trimming. GNU's
+additional warning for a multi-element `charToRaw` input is a real remaining
+condition/call difference, tracked in `rport-jxfp.3.12.6.6.1.1`; it is not counted
+as matching warning behavior. End-to-end UTF-8 paste remains a separate issue.
