@@ -121,6 +121,36 @@ pub(super) fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult
     })
 }
 
+pub(super) fn restore_methods_metadata(
+    access: &RuntimeAccess,
+    value: &Sexp<'static>,
+) -> SexpResult<()> {
+    access.domain().link(value)?;
+    let Some(namespace) = cached(access, super::image("methods").expect("registered image"))?
+    else {
+        return Ok(());
+    };
+    let name_symbol = symbol(access, "className")?;
+    access.with_native(|owner| unsafe {
+        let name = owner
+            .sexp(crate::sexp::attrib_core::getAttrib(
+                value.as_raw(),
+                name_symbol.as_raw(),
+            ))?
+            .into_owned()?;
+        if name.typeof_() == crate::sexp::SEXPTYPE::STRSXP
+            && name.len() == 1
+            && name.try_string_elt(0)?.try_char_eq(b"envRefClass")?
+        {
+            crate::mainutils::essentials::retarget_envref_definition_parent(
+                value.as_raw(),
+                namespace.as_raw(),
+            );
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn evaluate(
     access: &RuntimeAccess,
     code: &str,

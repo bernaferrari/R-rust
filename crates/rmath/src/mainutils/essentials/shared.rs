@@ -1469,19 +1469,91 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         if let Some(attach_env) = attached_package_env("methods") {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::mainutils::gram_main::R_ParseEvalString(
-                c"cd <- tryCatch(getClassDef(\"envRefClass\"), error=function(e) NULL)
+        if captured_image {
+            register_captured_dollar_primitive(ns);
+        } else {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::mainutils::gram_main::R_ParseEvalString(
+                    c"cd <- tryCatch(getClassDef(\"envRefClass\"), error=function(e) NULL)
 if (!is.null(cd) && is.environment(cd@refMethods)) {
   op <- cd@refMethods$.objectParent
   ns <- asNamespace(\"methods\")
   if (is.environment(op) && !identical(op, ns)) parent.env(op) <- ns
 }
+
 NULL"
-                    .as_ptr(),
-                ns,
-            )
-        }));
+                        .as_ptr(),
+                    ns,
+                )
+            }));
+        }
+    }
+}
+
+/// GNU methods onLoad resets `$` with getGeneric("$"). The pinned image
+/// already contains that exact generic in .BasicFunsList; use the original
+/// definition without rerunning getGeneric's recursive cache discovery.
+unsafe fn register_captured_dollar_primitive(ns: SEXP) {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let namespace = owner
+            .sexp(ns)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let table =
+            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".BasicFunsList".as_ptr()));
+        let table = owner
+            .sexp(table)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let table_raw = if TYPEOF(table.as_raw()) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(table.as_raw())
+        } else {
+            table.as_raw()
+        };
+        authority
+            .require_active()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let table = owner
+            .sexp(table_raw)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let names = owner
+            .sexp(crate::sexp::attrib_core::getAttrib(
+                table.as_raw(),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            ))
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        for index in 0..table.len() {
+            if names
+                .try_string_elt(index)
+                .and_then(|name| name.try_char_eq(b"$"))
+                .unwrap_or_else(|error| package_error(error.to_string()))
+            {
+                let generic = table
+                    .try_vector_elt(index)
+                    .unwrap_or_else(|error| package_error(error.to_string()));
+                let primitive = crate::sexp::envir::R_findVarInFrame(
+                    crate::sexp::globals::R_BaseEnv(),
+                    Rf_install(c"$".as_ptr()),
+                );
+                crate::mainutils::objects::do_set_prim_method(
+                    primitive,
+                    c"reset".as_ptr(),
+                    generic.as_raw(),
+                    R_NilValue(),
+                );
+                return;
+            }
+        }
+        package_error("captured methods image has no dollar generic");
     }
 }
 
@@ -1802,6 +1874,14 @@ unsafe fn retarget_envref_object_parent(ns: SEXP) {
         {
             return;
         }
+        retarget_envref_definition_parent(class_def, ns);
+    }
+}
+
+/// Repair the restored reference-class definition when its lazy record is
+/// actually requested, retaining GNU's deferred class-loading behavior.
+pub(crate) unsafe fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP) {
+    unsafe {
         let ref_methods =
             crate::eval::attrib_core::getAttrib(class_def, Rf_install(c"refMethods".as_ptr()));
         if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {

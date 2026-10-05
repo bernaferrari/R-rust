@@ -9,6 +9,39 @@ fn evaluate(code: &str) {
 }
 
 #[test]
+fn owned_portable_methods_reference_class_stays_lazy_until_public_use() {
+    let mut session = RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"));
+    session.with_active(|| unsafe {
+        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods").unwrap();
+        let promise = crate::sexp::envir::R_findVarInFrame(
+            namespace,
+            crate::sexp::symbol::Rf_install(c".__C__envRefClass".as_ptr()),
+        );
+        assert_eq!(
+            crate::sexp::accessors::TYPEOF(promise),
+            crate::sexp::ffi::SEXPTYPE::PROMSXP
+        );
+        assert_eq!(
+            crate::sexp::accessors::PRVALUE(promise),
+            crate::sexp::globals::R_UnboundValue()
+        );
+    });
+    for code in [
+        "x <- new('envRefClass'); identical(typeof(x$show),'closure')",
+        "identical(capture.output(show(x)), 'Reference class object of class \"envRefClass\"')",
+        "identical(capture.output(print(x)), 'Reference class object of class \"envRefClass\"')",
+    ] {
+        let (result, output, _) = session.eval_code_with_output_capture(code);
+        assert_eq!(
+            result
+                .unwrap_or_else(|error| panic!("{}: {output:?}", error.message))
+                .logical_elt(0),
+            Some(1)
+        );
+    }
+}
+
+#[test]
 fn owned_portable_methods_public_namespace_and_is_match_gnu() {
     evaluate(
         "n <- asNamespace('methods'); identical(getNamespaceName(n), 'methods') && exists('is', n, inherits=FALSE) && is(1L, 'integer') && is(1L, 'numeric') && !is(1L, 'character')",

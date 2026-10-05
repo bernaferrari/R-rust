@@ -196,6 +196,9 @@ pub(super) fn fetch(
         let raw = raw(access, &decoded)?;
         let result = super::bridge::decode(access, &raw, &hook)?;
         let result = super::bridge::force(access, &result)?;
+        if image.path == "<builtin:methods>/R/methods.rdb" {
+            super::bridge::restore_methods_metadata(access, &result)?;
+        }
         access.require_active()?;
         Ok(result)
     })
