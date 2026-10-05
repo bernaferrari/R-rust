@@ -1694,3 +1694,26 @@ The upstream runner still needs a joint feature/device/package/backend profile
 repair (rport-2gpp.3); simply enabling a feature does not install a DrawTarget.
 Unconnected native graphics routes remain in rport-wpdk.5, and the independently
 reproduced baseline bulk-reset GC failure remains in rport-2kys1.
+
+## Complete integration follow-up, 2026-10-05
+
+The later `6823f00e` runtime snapshot passes the complete 39-test native
+embedding suite, all eight portable methods controls, and all 60 Chromium
+cases (original 59 plus reset/reimport), with no skipped or flaky cases.
+This supersedes the earlier full-showcase outcome for practical integration
+acceptance; the historical reports above retain their original results.
+The [execution receipt](ci-checkpoints/package-showcase-6823f00e.json) records
+exact commits, profiles, artifact SHA-256, raw-log hashes and remaining failures.
+
+Canonical methods `$` registration now works on actual installed and portable
+namespaces after reset, preserving original namespace authority and lazy class
+records. Public new/show/print and detach/reattach controls pass under both
+constructors. The sunflower repair indexes existing canonical environment
+binding cells rather than caching method results or retaining new graph roots;
+mutation/ownership controls and strict-provenance Miri remain recorded in the
+underlying milestone. The actual production artifact passes both unchanged
+sunflower flows twice at the original execution budget.
+
+These successes establish the named integration milestone. They do not close
+the whole-engine ownership roadmap, the baseline bulk-reset GC failure, or the
+complete conformance/upstream backlog. The receipt preserves their boundaries.

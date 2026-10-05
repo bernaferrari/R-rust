@@ -41,6 +41,25 @@ runtime defect. Other failing rows preserve their recorded classification in the
 checkpoint. The runner's release profile alone does not establish its feature,
 device, package-policy or numerical-backend configuration.
 
+Later executed evidence is recorded separately in the
+[package/showcase receipt](ci-checkpoints/package-showcase-6823f00e.json).
+
+| Executed set | Commit | Pass | Fail | Other |
+| --- | --- | ---: | ---: | --- |
+| Complete exact-oracle conformance | `a766d53b` | 1048 | 133 | All 1181 accounted for; 0 timeouts |
+| Complete native embedding suite | `6823f00e` | 39 | 0 | Actual default and portable public constructors |
+| Complete Chromium showcase | `6823f00e` | 60 | 0 | Original 59 plus reset/reimport regression; 0 skipped; 0 flaky |
+
+The browser run uses the production Wasm bytes identified by the receipt.
+The unchanged sunflower gallery and editor/download flows also pass twice each
+on the actual release build output. The original 15-second evaluation and
+25 MiB package budgets remain in effect. Whole-upstream totals have not been
+replaced by selected reruns: demos and Latin-1 complete with strict output
+differences, while the selected S4 and UTF-8 diagnostics end in classified
+180-second timeouts. Those diagnostic deadlines differ from the intended CI
+1800-second profile. The receipt retains the explicit feature, device, package
+and numerical profiles and every conformance failure.
+
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the
 owned public API and bounded unsafe implementation, and

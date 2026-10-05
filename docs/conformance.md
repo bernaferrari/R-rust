@@ -524,3 +524,45 @@ The last complete showcase run remains the separately identified `3b6bac17`
 report: 46 pass, 13 fail, zero skipped/flaky. Later focused corrections do not
 rewrite that complete result. No new full conformance or whole-upstream total
 is claimed, and the graphics-enabled upstream execution profile remains open.
+
+## Complete package and showcase integration checkpoint
+
+The runtime source snapshot `6823f00e` passes all 39 native embedding tests,
+all eight portable methods controls, and all 60 Chromium tests: the original
+59 plus a worker reset/reimport regression. There are zero skipped or flaky
+browser tests. These runs exercise the real public constructors and retain the
+portable facade's explicit empty library search policy. Namespace identity,
+lazy class metadata, ownership/error recovery, compiled inherited/ANY methods,
+and the existing real package corpus remain covered.
+
+The unchanged sunflower gallery and editor/download flows pass twice each on
+the actual release output from `a2d9e494`. Binaryen 133 optimizes that output
+with `-Oz` while preserving its input features; the production package is
+22,822,273 bytes against the unchanged 26,214,400-byte budget. Node execution
+and the complete browser run use the same verified Wasm bytes. The session's
+15-second evaluation limit and the example itself are unchanged. See the
+[commit-bound execution receipt](ci-checkpoints/package-showcase-6823f00e.json)
+for source snapshots, artifact hashes, logs, profiles, and individual outcomes.
+
+The complete exact-oracle CI union at `a766d53b` reports 1,048 pass and 133 fail;
+all 1,181 cases are accounted for with zero timeouts. This is separate evidence
+from the later browser/native snapshot. Its three fewer failures compared with
+the reviewed `4a892f00` checkpoint do not verify later unexecuted cases.
+The receipt preserves every failing inventory entry rather than declaring them
+implemented from name matching.
+
+Whole-driver diagnostics now use explicit graphics/device/package/faer
+profiles and preserve completed and timed-out outcomes. `demos.R` and
+`reg-plot-latin1.R` complete both engines but retain strict output differences.
+`reg-S4.R` and `utf8.R` reach classified 180-second Rust diagnostic timeouts;
+these shorter diagnostics do not substitute for the intended 1800-second CI
+profile. Native S4 first-use dispatch and Latin-1 normalization setup are
+repaired, but those whole programs are not recorded as passing.
+
+The output-contract correction at `826b0d46` comes from independently running
+the pinned GNU executable: `capture.output(x)` does not see a caller-local
+print method, while `capture.output(print(x))` does. All five output tests pass,
+including exact local/default/qualified/global print visibility under native
+and portable constructors. No runtime lookup was changed to satisfy the old
+incorrect expectation. Full workspace and broad GNU compatibility remain
+separate gates.
