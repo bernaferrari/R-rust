@@ -468,12 +468,11 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
         let logs = [log.contains('x'), log.contains('y')];
         let mut limits = [0.; 4];
         for (axis, (name, v)) in [("xlim", x), ("ylim", y)].into_iter().enumerate() {
-            let explicit = values(
-                window_args
-                    .as_ref()
-                    .map_or_else(|| arg(args, name), |window| window[axis]),
-            );
-            let (mut lo, mut hi) = if explicit.is_empty() {
+            let argument = window_args
+                .as_ref()
+                .map_or_else(|| arg(args, name), |window| window[axis]);
+            let explicit = values(argument);
+            let (mut lo, mut hi) = if argument == R_NilValue() {
                 let finite: Vec<_> = v
                     .iter()
                     .copied()
@@ -489,6 +488,14 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
                 }
                 (explicit[0], explicit[1])
             };
+            // GNU C_plot_window rejects invalid supplied/default limits
+            // before GScale's later transformed-range correction.
+            if !lo.is_finite() || !hi.is_finite() {
+                if TYPEOF(argument) == SEXPTYPE::INTSXP && (lo.is_nan() || hi.is_nan()) {
+                    base_error(format!("NAs not allowed in '{name}'"));
+                }
+                base_error(format!("need finite '{name}' values"));
+            }
             if logs[axis] {
                 lo = lo.log10();
                 hi = hi.log10();
@@ -1972,3 +1979,7 @@ pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
 #[cfg(all(test, feature = "renderplot-device"))]
 #[path = "portable_plot/color_defaults_tests.rs"]
 mod color_defaults_tests;
+
+#[cfg(all(test, feature = "renderplot-device"))]
+#[path = "portable_plot/limits_tests.rs"]
+mod limits_tests;

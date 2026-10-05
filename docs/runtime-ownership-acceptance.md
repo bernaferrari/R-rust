@@ -1413,3 +1413,23 @@ Root transfers the exact files to main and the integrated enclosing filter
 passes 36 tests, including the existing intercept-only model regression.
 This closes the omission warning's ownership and call attribution; broad
 model compatibility and other condition/visibility contracts remain separate.
+
+## GNU finite plot-limit admission (rport-jxfp.3.12.6.14)
+
+Portable plotting now rejects nonfinite limits before transformed-range
+correction, distinguishes explicit empty limits from NULL defaults, and retains
+GNU's integer-NA versus real-NA error messages. Valid finite overrides for
+nonfinite data, mixed finite data and reversed axes remain accepted. The
+independent pinned GNU fixture checks all 18 error/validity rows; its warnings
+are recorded but are not compared by this focused fixture.
+
+The genuine unchanged production baseline fails the new error test (one pass,
+one failure). After repair both native tests pass in 3.51 seconds. The unchanged
+public `render_reports_actionable_plot_errors` test passes in 2.75 seconds with
+its default constructor under the same invocation-only macOS filesystem policy
+used for CI's portable-package profile. A separate installed-package run fails
+at the earlier nonnumeric assertion; installed-library integration remains
+separate evidence. Final all-target rmath/r-embed Clippy with warnings denied
+passes in 26.84 seconds, following correction of a test-only Clippy diagnostic.
+This milestone repairs finite-limit admission; log-axis details, device behavior,
+warning attribution and complete graphics compatibility remain separate.

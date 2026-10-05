@@ -1,0 +1,18 @@
+plot(c(Inf,Inf))	need finite 'ylim' values
+plot(c(NA_real_,NaN))	need finite 'ylim' values
+plot(c(Inf,Inf),c(Inf,Inf))	need finite 'xlim' values
+plot(numeric())	need finite 'xlim' values
+plot(1:2,xlim=c(1,Inf))	need finite 'xlim' values
+plot(1:2,ylim=c(NA_real_,1))	need finite 'ylim' values
+plot(1:2,xlim=c(NA_integer_,1L))	NAs not allowed in 'xlim'
+plot(1:2,ylim=c(NA_integer_,1L))	NAs not allowed in 'ylim'
+plot(1:2,xlim=numeric())	invalid 'xlim' value
+plot.new();plot.window(c(NaN,1),c(0,1))	need finite 'xlim' values
+plot.new();plot.window(c(0,1),c(1,Inf))	need finite 'ylim' values
+plot.new();plot.window(c(NA_integer_,1L),c(0,1))	NAs not allowed in 'xlim'
+plot.new();plot.window(c(0,1),c(NA_integer_,1L))	NAs not allowed in 'ylim'
+plot(c(Inf,Inf),ylim=c(0,1),axes=FALSE)	OK
+plot(c(Inf,Inf),c(Inf,Inf),xlim=c(0,1),ylim=c(0,1),axes=FALSE)	OK
+plot(c(1,Inf,2),c(1,2,3))	OK
+plot(1:2,xlim=c(2,1),ylim=c(2,1))	OK
+plot.new();plot.window(c(0,1),c(0,1))	OK
