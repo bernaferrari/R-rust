@@ -58,6 +58,7 @@ export function RConsole() {
   const [draft, setDraft] = useState("")
   const historyCursor = useRef<number | null>(null)
   const savedDraft = useRef("")
+  const historyCaretFrame = useRef<number | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const viewport = useRef<HTMLDivElement>(null)
@@ -84,16 +85,32 @@ export function RConsole() {
     return () => {
       // This counter invalidates pending promises when the session unmounts.
       generation.current++
+      cancelHistoryCaret()
       runtime.current?.dispose()
       ownedUrls.forEach(URL.revokeObjectURL)
     }
   }, [])
+  function cancelHistoryCaret() {
+    if (historyCaretFrame.current !== undefined) {
+      cancelAnimationFrame(historyCaretFrame.current)
+      historyCaretFrame.current = undefined
+    }
+  }
+  function scheduleHistoryCaret(field: HTMLTextAreaElement, position: number) {
+    cancelHistoryCaret()
+    historyCaretFrame.current = requestAnimationFrame(() => {
+      historyCaretFrame.current = undefined
+      field.setSelectionRange(position, position)
+    })
+  }
   function restore(code: string) {
+    cancelHistoryCaret()
     historyCursor.current = null
     setDraft(code)
     input.current?.focus()
   }
   function reset() {
+    cancelHistoryCaret()
     historyCursor.current = null
     generation.current++
     runtime.current?.reset()
@@ -106,6 +123,7 @@ export function RConsole() {
     input.current?.focus()
   }
   async function execute(commands: ConsoleCommand[], next?: ConsoleCommand) {
+    cancelHistoryCaret()
     historyCursor.current = null
     if (locked.current || !runtime.current) return
     locked.current = true
@@ -414,6 +432,7 @@ export function RConsole() {
             value={draft}
             maxLength={65536}
             onChange={(event) => {
+              cancelHistoryCaret()
               historyCursor.current = null
               setDraft(event.target.value)
             }}
@@ -443,7 +462,7 @@ export function RConsole() {
                   )
                   historyCursor.current = index
                   setDraft(entries[index].code)
-                  requestAnimationFrame(() => field.setSelectionRange(0, 0))
+                  scheduleHistoryCaret(field, 0)
                   return
                 }
                 if (
@@ -459,9 +478,7 @@ export function RConsole() {
                       ? entries[index].code
                       : savedDraft.current
                   setDraft(value)
-                  requestAnimationFrame(() =>
-                    field.setSelectionRange(value.length, value.length)
-                  )
+                  scheduleHistoryCaret(field, value.length)
                   return
                 }
               }
