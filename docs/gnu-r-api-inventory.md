@@ -192,3 +192,26 @@ rechecks the retained executable hash and reconciles 297 resolved registrations,
 5,875 unprobed function bindings and the incomplete namespace-scan evidence.
 The 45 separate producer/join tooling tests pass in 5.489 seconds; their fake
 build-tool cases remain distinct from this genuine registration run.
+
+
+## Refreshed main registration snapshot
+
+The genuine exporter completed against clean main
+`b3dd29a3a2e0743f5c4fd241c84dfb5eaeabd5d5`: one passing test, no failures or
+ignored tests, and all 512 captured registrations. The producer retains and
+checks 762 compiled-source inputs. The join rechecks the exact compiled
+executable and resolves 302 entries, leaving 210 unsupported, with zero
+reflected interface-family or arity mismatches. Fourteen `.External2`
+descriptors retain the census family-only caveat.
+
+Five entries have newly resolved descriptors since the earlier snapshot:
+`stats::.C(HoltWinters)`, `stats::.C(multi_burg)`, and the stats Fortran
+registrations `pppred`, `stl`, and `supsmu`. This exporter invokes no handlers;
+these changes are registration evidence, with behavior and safety still
+unclassified by this report. All 5,875 function bindings remain unprobed, the
+namespace census remains incomplete, and full GNU R parity remains false.
+
+The existing generation and join commands reproduce this snapshot using the
+pinned full census and this immutable source revision. Subsequent development
+requires another source-bound export; these counts do not describe every later
+commit or provide a completion percentage.
