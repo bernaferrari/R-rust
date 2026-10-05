@@ -750,8 +750,14 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
     );
     assert_eq!(
         session
-            .eval("data(package = \"corpbase\")")
-            .expect("list data"),
+            .eval("class(data(package = \"corpbase\"))")
+            .expect("data listing class"),
+        "[1] \"packageIQR\"\n"
+    );
+    assert_eq!(
+        session
+            .eval("unname(data(package = \"corpbase\")$results[, \"Item\"])")
+            .expect("list data items"),
         "[1] \"corp_data\"\n"
     );
     assert_eq!(
@@ -983,14 +989,14 @@ tiny_generic.tinything <- function(x) {value}L
                     session.load_package("tiny").expect("load package");
                     assert_eq!(
                         session.eval("tiny_value()").expect("tiny value"),
-                        format!("[1] {value}")
+                        format!("[1] {value}\n")
                     );
 
                     assert_eq!(
                         session
                             .eval("tiny_generic(make_tiny())")
                             .expect("s3 dispatch"),
-                        format!("[1] {value}")
+                        format!("[1] {value}\n")
                     );
 
                     let captured = session
@@ -1004,7 +1010,7 @@ tiny_generic.tinything <- function(x) {value}L
                     assert!(err.to_string().contains("not found"));
                     assert_eq!(
                         session.eval("tiny_value()").expect("eval after error"),
-                        format!("[1] {value}")
+                        format!("[1] {value}\n")
                     );
 
                     let png = session

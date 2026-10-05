@@ -1315,3 +1315,26 @@ lookup selecting a newer wrong variant. The repaired helper rejects ambiguous,
 missing, test/executable and unsuccessful artifacts, and preserves a failed
 Cargo status even after artifact output. Its actual build and cached rebuild
 select the same authenticated library; both production parity callers use it.
+
+
+## Exact embedding assertions and remaining methods gap (rport-jxfp.11.1)
+
+Independent pinned GNU execution of the actual corpus package confirms that
+`data(package=...)` has class `packageIQR`; its `results` Item column lists
+`corp_data`, and loading that data produces 55. Three parallel-session scalar
+assertions now retain the automatic-print newline. Explicit output capture is
+unchanged. The complete parallel test passes, including four independent
+sessions, S3 dispatch, error recovery and real PNG rendering. Warnings-denied
+Clippy passes for the changed integration test.
+
+The corpus test reaches both corrected listing assertions and later package
+checks, then fails at the separate missing S4 `is()` function. It is not a
+completed package pass. These native checks retain the default constructor;
+an invocation-only macOS filesystem policy hides installed GNU libraries to
+exercise CI's portable-package path. Runs that discover installed libraries
+retain separate `tools` and `C_devholdflush` failures. Portable methods and
+installed-package integration remain tracked implementation work.
+
+This change only updates integration assertions and this document. The active
+atomic-pairlist Miri run's compiled rmath sources remain unchanged; its broader
+source inventory records the unrelated embedding-test delta explicitly.
