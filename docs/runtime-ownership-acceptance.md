@@ -1482,3 +1482,28 @@ are **not** a completed Miri aggregate. The assigned eight source hashes remain
 fixed throughout that run. The earlier expensive fixture run was deliberately
 terminated after two tests and is also not a pass. The issue remains open until
 its required proof finishes; this is not a complete heap or attribute safety claim.
+
+## Private locked-options publication (rport-jxfp.3.12.6.17)
+
+Refreshing `.Options` uses original internal authority over its existing checked
+binding cell, preserving the public lock and shared base frame. The unsafe-free
+publisher authenticates inputs, rejects cyclic frame traversal and reads the
+current frame after pairlist construction callbacks. Its native adapter captures
+and pins the original owner; it rejects revocation after successful callbacks or
+unwind while retaining a live callback's exact panic payload. First bootstrap
+publication of a missing binding still follows ordinary environment admission.
+
+The genuine locked-binding baseline fails. Five native controls and the 20
+existing options tests pass; all five strict-provenance Miri tests complete in
+465.24 seconds with default alias checking and isolation, unchanged assigned
+hashes and successful process exit. The exact loaded worktree is authenticated.
+A later decoder-context edit is an explicit unrelated source delta after loading,
+not part of this proof. Independent pinned GNU confirms locked options updates,
+visible base projection, deletion and public assignment rejection.
+
+Root repeats all five controls and all 20 existing tests on main (0.03 and 4.97
+seconds); final all-target rmath/r-embed Clippy with warnings denied passes in
+30.22 seconds. The freshly rebuilt full constructor now reaches the unchanged
+corpus436 and combined NA value checks, exiting successfully within the original
+180-second bound. This restores internal publication; it does not certify every
+options semantic or the entire runtime startup/package matrix.
