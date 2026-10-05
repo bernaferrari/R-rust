@@ -278,11 +278,13 @@ unsafe fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP>
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return None;
         }
+        crate::sexp::env_hash::promote_to_hash_table(env);
         let table = crate::sexp::envir::R_findVarInFrame(env, S3MethodsTable_symbol());
         if table.is_null() || table == R_UnboundValue() || TYPEOF(table) != SEXPTYPE::ENVSXP {
             return None;
         }
         let _table_guard = protect(table);
+        crate::sexp::env_hash::promote_to_hash_table(table);
         let val = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
         if val.is_null() || val == R_UnboundValue() || val == R_NilValue() {
             return None;

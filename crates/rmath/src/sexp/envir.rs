@@ -1792,7 +1792,11 @@ pub unsafe fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
 
 /// Create a new hashed environment.
 pub(crate) unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
-    unsafe { NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut()) }
+    unsafe {
+        let environment = NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut());
+        super::env_hash::promote_to_hash_table(environment);
+        environment
+    }
 }
 
 /// Check that formals is a valid pairlist of distinct symbols.

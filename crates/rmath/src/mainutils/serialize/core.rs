@@ -2155,6 +2155,7 @@ unsafe fn read_environment_item(
             if TYPEOF(hash) != SEXPTYPE::VECSXP {
                 return Err("invalid environment hash table".into());
             }
+            crate::sexp::env_hash::promote_to_hash_table(env);
             for i in 0..XLENGTH(hash) {
                 chains.push(VECTOR_ELT(hash, i));
             }
@@ -2826,6 +2827,35 @@ mod bounded_frame_reader_tests {
                 current = current.try_vector_elt(0).unwrap().into_owned().unwrap();
             }
             assert!(current.is_nil());
+        });
+    }
+
+    #[test]
+    fn environment_decoder_preserves_explicit_hash_policy_for_small_frames() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            for hashed in [false, true] {
+                let mut words = vec![SEXPTYPE::ENVSXP.as_c_int(), 0, EMPTYENV_SXP, NILVALUE_SXP];
+                if hashed {
+                    words.extend([SEXPTYPE::VECSXP.as_c_int(), 1, NILVALUE_SXP]);
+                } else {
+                    words.push(NILVALUE_SXP);
+                }
+                words.push(NILVALUE_SXP);
+                let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
+                let mut reader = BinaryReader::new(&bytes);
+                let owner = OwnerToken::current().unwrap();
+                let raw = ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap();
+                let environment = owner.sexp(raw).unwrap().into_owned().unwrap();
+                assert_eq!(crate::sexp::env_hash::env_has_hash_table(raw), hashed);
+                owner.full_gc().unwrap();
+                assert_eq!(
+                    crate::sexp::env_hash::env_has_hash_table(environment.as_raw()),
+                    hashed
+                );
+            }
+            let raw = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 29);
+            assert!(crate::sexp::env_hash::env_has_hash_table(raw));
         });
     }
 
