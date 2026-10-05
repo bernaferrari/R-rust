@@ -1458,3 +1458,27 @@ reach its body because full startup hits the separate locked-options publisher
 issue. `charToRaw` ownership/NA handling (`.6.6.1`) and end-to-end UTF-8 paste's
 separator selection (`.6.6.2`) remain separate tracked repairs. No public corpus
 or complete serialization pass is inferred from the focused accessor proof.
+
+## Owning GNU time-series attribute publication (rport-jxfp.3.12.6.5)
+
+A single unsafe-free module now validates and publishes `tsp` attributes through
+owning target, parameter and option handles in the original runtime. Integer
+parameters normalize to initialized real values; GNU's numeric/factor/S4 checks,
+frequency/zero-length order, tolerance and intentional IEEE comparisons are
+preserved. Both attribute entry points and `tsp<-` delegate to that operation.
+Publication constructs its new cell before reading the current attribute chain,
+so a collecting callback cannot cause use of an obsolete saved tail. Checked
+header writes authenticate graph ownership and finish the original collector
+barrier before publishing the edge. Singleton-array `drop()` preserves names
+only when exactly one axis supplies them.
+
+The genuine public baseline fails both new contract tests. Both repaired public
+tests pass in 100.19 seconds; unchanged pinned-oracle corpus cases 262 and 268
+also pass individually, with the existing complete 1,181-case corpus unchanged.
+Six focused native ownership tests pass in 0.17 seconds and warnings-denied
+all-target Clippy passes. The native implementation is published while its
+strict-provenance six-test Miri run remains active; two observed passing tests
+are **not** a completed Miri aggregate. The assigned eight source hashes remain
+fixed throughout that run. The earlier expensive fixture run was deliberately
+terminated after two tests and is also not a pass. The issue remains open until
+its required proof finishes; this is not a complete heap or attribute safety claim.

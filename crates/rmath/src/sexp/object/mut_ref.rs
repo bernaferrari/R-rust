@@ -104,6 +104,43 @@ impl<'a> SexpMut<'a> {
         self.inner.is_vector()
     }
 
+    /// Install an owning attribute-list edge in the object's original heap.
+    pub(crate) fn try_set_attribute(&mut self, attributes: &Sexp<'_>) -> SexpResult<()> {
+        attributes.expect_any_type(
+            "attribute list or NULL",
+            &[SEXPTYPE::LISTSXP, SEXPTYPE::NILSXP],
+        )?;
+        self.inner
+            .set_checked_edge(crate::sexp::ffi::EdgeField::Attribute, attributes)
+    }
+
+    pub(crate) fn try_set_pairlist_car(&mut self, value: &Sexp<'_>) -> SexpResult<()> {
+        self.inner.expect_any_type(
+            "pairlist",
+            &[SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP],
+        )?;
+        self.inner
+            .set_checked_edge(crate::sexp::ffi::EdgeField::ListCar, value)
+    }
+
+    pub(crate) fn try_set_pairlist_cdr(&mut self, rest: &Sexp<'_>) -> SexpResult<()> {
+        self.inner.expect_any_type(
+            "pairlist",
+            &[SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP],
+        )?;
+        rest.expect_any_type(
+            "pairlist tail or NULL",
+            &[
+                SEXPTYPE::LISTSXP,
+                SEXPTYPE::LANGSXP,
+                SEXPTYPE::DOTSXP,
+                SEXPTYPE::NILSXP,
+            ],
+        )?;
+        self.inner
+            .set_checked_edge(crate::sexp::ffi::EdgeField::ListCdr, rest)
+    }
+
     /// Set the i-th logical value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.

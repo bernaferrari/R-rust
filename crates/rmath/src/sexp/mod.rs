@@ -37,6 +37,7 @@ pub(crate) mod protect;
 pub mod session;
 pub mod symbol;
 pub(crate) mod transfer;
+pub(crate) mod tsp;
 
 // Re-export commonly used types at the module level
 #[allow(unused_imports)]

@@ -46,18 +46,23 @@ pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     crate::sexp::attrib_core::R_DimNamesSymbol(),
                     R_NilValue(),
                 );
-                // A 1x1 drop keeps the first non-null dimnames entry as names.
-                // drop(matrix(1, 1, 1, dimnames=list("a", NULL))) is named "a".
+                // GNU keeps singleton names only when exactly one axis is
+                // named; two or more named singleton axes are ambiguous.
                 let mut names = R_NilValue();
+                let mut named_axes = 0;
                 if !dimnames.is_null() && dimnames != R_NilValue() {
                     for axis in 0..dim_count {
                         let candidate = super::construct::retained_dimname(dimnames, axis);
                         if !candidate.is_null() && candidate != R_NilValue() {
+                            named_axes += 1;
                             names = candidate;
-                            break;
                         }
                     }
                 }
+                if named_axes != 1 {
+                    names = R_NilValue();
+                }
+                let _names_guard = protect(names);
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_NamesSymbol(),
@@ -496,85 +501,9 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return x;
         }
 
-        let tsp = match tsp_attribute(value) {
-            Ok(tsp) => tsp,
-            Err(message) => {
-                std::panic::panic_any(RError { message });
-            }
-        };
-        let start = *REAL(tsp);
-        let end = *REAL(tsp).add(1);
-        let frequency = *REAL(tsp).add(2);
-        let n = {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-            if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) >= 1 {
-                INTEGER_ELT(dim, 0) as R_xlen_t
-            } else {
-                XLENGTH(x)
-            }
-        };
-        if n == 0 {
-            std::panic::panic_any(RError {
-                message: "cannot assign 'tsp' to zero-length vector".to_string(),
-            });
-        }
-        let eps_opt = crate::mainutils::options::GetOption1(Rf_install(c"ts.eps".as_ptr()));
-        let eps = if !eps_opt.is_null()
-            && eps_opt != R_NilValue()
-            && TYPEOF(eps_opt) == SEXPTYPE::REALSXP
-        {
-            REAL_ELT(eps_opt, 0)
-        } else {
-            1e-5
-        };
-        if frequency.is_finite() && (end - start - (n - 1) as f64 / frequency).abs() > eps {
-            std::panic::panic_any(RError {
-                message: "invalid time series parameters specified (1)".to_string(),
-            });
-        }
-
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), tsp);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
-    }
-}
-
-pub unsafe fn tsp_attribute(value: SEXP) -> Result<SEXP, String> {
-    unsafe {
-        if XLENGTH(value) != 3
-            || (TYPEOF(value) != SEXPTYPE::INTSXP && TYPEOF(value) != SEXPTYPE::REALSXP)
-        {
-            return Err("'tsp' attribute must be numeric of length three".to_string());
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        if result.is_null() {
-            return Ok(R_NilValue());
-        }
-        let _result_guard = protect(result);
-        for i in 0..3 {
-            *REAL(result).add(i) = if TYPEOF(value) == SEXPTYPE::INTSXP {
-                let n = INTEGER_ELT(value, i as c_int);
-                if n == NA_INTEGER { NA_REAL } else { n as f64 }
-            } else {
-                REAL_ELT(value, i as c_int)
-            };
-        }
-
-        let start = *REAL(result);
-        let end = *REAL(result).add(1);
-        let frequency = *REAL(result).add(2);
-        if frequency.is_infinite() || start.is_infinite() || end.is_infinite() {
-            return Err("invalid time series parameters specified (1)".to_string());
-        }
-        if !frequency.is_nan() && frequency <= 0.0 {
-            return Err("invalid time series parameters specified (0)".to_string());
-        }
-        if start.is_finite() && end.is_finite() && frequency.is_finite() && end < start {
-            return Err("invalid time series parameters specified (1)".to_string());
-        }
-        Ok(result)
     }
 }
 

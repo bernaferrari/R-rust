@@ -19,6 +19,10 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::symbol::Rf_install;
 
+#[cfg(test)]
+#[path = "tsp_tests.rs"]
+mod tsp_tests;
+
 // ---------------------------------------------------------------------------
 // Pre-interned attribute name symbols
 // ---------------------------------------------------------------------------
@@ -225,6 +229,73 @@ pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
     }
 }
 
+/// Audited raw entry: snapshots checked owners before any provider or GC.
+unsafe fn run_tsp<T>(
+    x: SEXP,
+    value: SEXP,
+    operation: impl FnOnce(
+        &super::owner::RuntimeAccess,
+        &super::object::Sexp<'static>,
+        &super::object::Sexp<'static>,
+    ) -> Result<T, String>,
+) -> T {
+    unsafe {
+        let fail =
+            |message: String| -> ! { std::panic::panic_any(super::context::RError { message }) };
+        let token =
+            super::owner::OwnerToken::current().unwrap_or_else(|error| fail(error.to_string()));
+        let authority = super::owner::StoredOwner::from_token(token);
+        let original = authority
+            .managed()
+            .unwrap_or_else(|| fail("runtime owner unavailable".into()));
+        let _pin = original
+            .pin()
+            .unwrap_or_else(|error| fail(error.to_string()));
+        let object = token
+            .sexp(x)
+            .and_then(super::object::Sexp::into_owned)
+            .unwrap_or_else(|error| fail(error.to_string()));
+        let input = token
+            .sexp(value)
+            .and_then(super::object::Sexp::into_owned)
+            .unwrap_or_else(|error| fail(error.to_string()));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::owner::with_runtime(&original, |access| operation(access, &object, &input))
+                .map_err(|error| error.to_string())?
+        }));
+        authority
+            .require_active()
+            .unwrap_or_else(|error| fail(error.to_string()));
+        match result {
+            Ok(result) => result.unwrap_or_else(|error| fail(error)),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+fn tsp_parameters(
+    access: &super::owner::RuntimeAccess,
+    object: &super::object::Sexp<'static>,
+    input: &super::object::Sexp<'static>,
+) -> Result<super::object::Sexp<'static>, String> {
+    super::tsp::normalize(access, object, input, |access| {
+        // SAFETY: the adapter pins the original owner and owns the option
+        // before scalar dispatch; no payload loan crosses that callback.
+        access
+            .with_native(|owner| unsafe {
+                let option = crate::mainutils::options::GetOption1(Rf_install(c"ts.eps".as_ptr()));
+                let option = owner.sexp(option)?.into_owned()?;
+                Ok(crate::mainutils::coerce::asReal(option.as_raw()))
+            })
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[cfg(test)]
+unsafe fn normalize_tsp(x: SEXP, value: SEXP) -> super::object::Sexp<'static> {
+    unsafe { run_tsp(x, value, tsp_parameters) }
+}
+
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
@@ -243,6 +314,22 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: format!("cannot set an attribute on a '{kind}'"),
             });
+        }
+        // Keep the target, parameters and original owner through checked
+        // publication. The attribute chain is selected after allocation.
+        if which == R_TspSymbol() && !value.is_null() {
+            run_tsp(x, value, |access, object, input| {
+                let name = access
+                    .with_native(|owner| owner.sexp(which)?.into_owned())
+                    .map_err(|error| error.to_string())?;
+                let normalized = if input.is_nil() {
+                    input.clone()
+                } else {
+                    tsp_parameters(access, object, input)?
+                };
+                super::tsp::install(access, object, &name, &normalized)
+            });
+            return;
         }
         // GNU classgets: empty/NULL class strips; non-string errors.
         // GNU dimgets: coerce dims to INTSXP first.

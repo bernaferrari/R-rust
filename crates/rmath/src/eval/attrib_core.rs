@@ -148,53 +148,9 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
                 message: format!("cannot set an attribute on a '{kind}'"),
             });
         }
-        if which == crate::sexp::attrib_core::R_TspSymbol()
-            && !value.is_null()
-            && value != R_NilValue()
-            && (TYPEOF(value) == SEXPTYPE::REALSXP || TYPEOF(value) == SEXPTYPE::INTSXP)
-            && XLENGTH(value) == 3
-        {
-            let elt = |i: i64| -> f64 {
-                if TYPEOF(value) == SEXPTYPE::INTSXP {
-                    let n = crate::sexp::accessors::INTEGER_ELT(value, i as i32);
-                    if n == crate::sexp::ffi::NA_INTEGER {
-                        f64::NAN
-                    } else {
-                        n as f64
-                    }
-                } else {
-                    crate::sexp::accessors::REAL_ELT(value, i as i32)
-                }
-            };
-            let start = elt(0);
-            let end = elt(1);
-            let frequency = elt(2);
-            let n = {
-                let dim =
-                    crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-                if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) >= 1 {
-                    crate::sexp::accessors::INTEGER_ELT(dim, 0) as i64
-                } else {
-                    XLENGTH(x)
-                }
-            };
-            let eps_opt = crate::mainutils::options::GetOption1(Rf_install(c"ts.eps".as_ptr()));
-            let eps = if !eps_opt.is_null()
-                && eps_opt != R_NilValue()
-                && TYPEOF(eps_opt) == SEXPTYPE::REALSXP
-            {
-                crate::sexp::accessors::REAL_ELT(eps_opt, 0)
-            } else {
-                1e-5
-            };
-            if n > 0
-                && frequency.is_finite()
-                && (end - start - (n - 1) as f64 / frequency).abs() > eps
-            {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "invalid time series parameters specified (1)".to_string(),
-                });
-            }
+        if which == crate::sexp::attrib_core::R_TspSymbol() {
+            crate::sexp::attrib_core::setAttrib(x, which, value);
+            return;
         }
 
         let value = if which == R_ClassSymbol() {
