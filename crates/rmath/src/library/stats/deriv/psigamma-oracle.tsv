@@ -1,0 +1,6 @@
+psigamma(x)	psigamma(x, 1L)	language	TRUE	1.1342534349966193
+psigamma(x^2)	2 * x * psigamma(x^2, 1L)	language	TRUE	2.0782281514354635
+psigamma(x, 0)	psigamma(x, 1L)	language	TRUE	1.1342534349966193
+psigamma(x, 1)	psigamma(x, 2L)	language	TRUE	-1.1984625146519565
+psigamma(x, 2)	psigamma(x, 3L)	language	TRUE	2.4010239143089267
+psigamma(x, y)	psigamma(x, y + 1L)	language	TRUE	2.4010239143089267

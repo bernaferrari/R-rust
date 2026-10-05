@@ -19,7 +19,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
+    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
     SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
@@ -544,326 +544,92 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 
 /// .Internal(paste (args, sep, collapse, recycle0))
 /// .Internal(paste0(args,      collapse, recycle0))
-pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        // Defensive null guard for direct internal-call tests.
-        if op.is_null() || args.is_null() {
-            return ptr::null_mut();
-        }
+#[path = "paste_impl/owned.rs"]
+mod owned_paste;
 
-        let collapse: SEXP;
-        let sep: SEXP;
-
-        // Check arity
-        checkArity(op, args);
-
-        // Initialize printing
-        PrintDefaults();
-
-        // Check the arguments
-        let x = CAR(args);
-        if isVectorList(x) == 0 {
-            error(c"invalid first argument".as_ptr(), 0, 0, 0);
-        }
-        let nx = XLENGTH(x);
-
-        let mut csep: *const c_char = ptr::null();
-        let mut sepw: c_int = 0;
-        let mut u_sepw: c_int = 0;
-        let mut sepASCII: bool = true;
-        let mut sepUTF8: bool = false;
-        let mut sepBytes: bool = false;
-        let mut sepKnown: bool = false;
-        let use_sep = PRIMVAL(op) == 0;
-
-        let correct_nargs: bool = true;
-        let mut recycle_0: bool = false;
-
-        if use_sep {
-            // paste(..., sep, .)
-            sep = CADR(args);
-            if Rf_isString(sep) == 0 || LENGTH(sep) <= 0 || isNA_STRING(STRING_ELT(sep, 0)) {
-                error(c"invalid separator".as_ptr(), 0, 0, 0);
-            }
-            let sep_charsxp = STRING_ELT(sep, 0);
-            csep = translateChar(sep_charsxp);
-            sepw = c_strlen(csep) as c_int;
-            u_sepw = sepw;
-            sepASCII = IS_ASCII(sep_charsxp);
-            sepKnown = ENC_KNOWN(sep_charsxp) > 0;
-            sepUTF8 = IS_UTF8(sep_charsxp);
-            sepBytes = IS_BYTES(sep_charsxp);
-            collapse = CADDR(args);
-            recycle_0 = asBool2(CADDDR(args), call);
+struct PasteNative<'execution>(&'execution crate::sexp::owner::RuntimeAccess);
+impl owned_paste::Native for PasteNative<'_> {
+    fn initialize(&self, op: &owned_paste::Value, args: &owned_paste::Value) -> crate::sexp::object::SexpResult<bool> {
+        self.0.with_native(|original| {
+            // Native projections are kept alive by the actual owning operands.
+            unsafe { checkArity(op.as_raw(), args.as_raw()); PrintDefaults(); }
+            original.require_active()?;
+            Ok(unsafe { PRIMVAL(op.as_raw()) == 0 })
+        })
+    }
+    fn boolean(&self, value: &owned_paste::Value, call: &owned_paste::Value) -> crate::sexp::object::SexpResult<bool> {
+        self.0.with_native(|original| {
+            let result=unsafe { asBool2(value.as_raw(), call.as_raw()) };
+            original.require_active()?; Ok(result)
+        })
+    }
+    fn coerce(&self, value: &owned_paste::Value, env: &owned_paste::Value) -> crate::sexp::object::SexpResult<owned_paste::Value> {
+        use crate::sexp::{ffi::SEXPTYPE,object::SexpMut};
+        let domain=self.0.domain();
+        let allocator=self.0.allocator(&domain)?;
+        if value.header().sxpinfo.obj() {
+            let function=self.0.with_native(|original| {
+                let symbol=unsafe { R_AsCharacterSymbol() };
+                original.require_active()?; original.sexp(symbol)?.into_owned()
+            })?;
+            let arguments=allocator.pairlist_cell(value,&domain.nil(),&domain.nil())?;
+            let call=allocator.call(&function,&arguments)?;
+            self.0.with_native(|original| {
+                let result=unsafe { eval(call.as_raw(),env.as_raw()) };
+                original.require_active()?;original.sexp(result)?.into_owned()
+            })
+        } else if value.typeof_()==SEXPTYPE::SYMSXP {
+            let name=value.try_printname()?.into_owned()?;
+            let mut result=SexpMut::try_from_checked(allocator.allocate(|a|Some(a.alloc_vector(SEXPTYPE::STRSXP,1)))?)?;
+            result.try_set_string_elt(0,name)?;Ok(result.freeze())
         } else {
-            // paste0(..., .)
-            u_sepw = 0;
-            sepw = 0;
-            sep = R_NilValue();
-            collapse = CADR(args);
-            recycle_0 = asBool2(CADDR(args), call);
+            // This remains the translated coercion boundary. Its selected input
+            // and original runtime remain owned through warnings and providers.
+            self.0.with_native(|original| {
+                let result=unsafe { coerceVector(value.as_raw(),SEXPTYPE::STRSXP.as_c_int()) };
+                original.require_active()?;original.sexp(result)?.into_owned()
+            })
         }
+    }
+    fn bytes(&self, value: &owned_paste::Value, mode: owned_paste::Mode, parent:&owned_paste::Value) -> crate::sexp::object::SexpResult<owned_paste::Bytes> {
+        self.0.with_native(|original| {
+            let pointer=unsafe { match mode {
+                owned_paste::Mode::Native=>translateChar(value.as_raw()),
+                owned_paste::Mode::Utf8=>translateCharUTF8(value.as_raw()),
+                owned_paste::Mode::Bytes=>CHAR(value.as_raw()),
+            }};
+            original.require_active()?;
+            if pointer.is_null() { return Err(crate::sexp::object::SexpError::MissingData { sexptype:SEXPTYPE::CHARSXP }); }
+            // Translation returns an admitted immutable span; finish its copy
+            // before allocation/provider entry, retaining the original character.
+            let span=unsafe { std::ffi::CStr::from_ptr(pointer) }.to_bytes();
+            let node=parent.allocation()?;
+            let reservation=node.heap_identity().reserve_payload_bytes(node,span.len()).ok_or(crate::sexp::object::SexpError::AllocationFailed {object:"paste translated-byte budget"})?;
+            let mut data=Vec::new();data.try_reserve_exact(span.len()).map_err(|_|crate::sexp::object::SexpError::AllocationFailed {object:"paste translated bytes"})?;
+            data.extend_from_slice(span);
+            Ok(owned_paste::Bytes { data,_reservation:reservation })
+        })
+    }
+    fn flags(&self, value:&owned_paste::Value)->(bool,bool) { (IS_UTF8(value.as_raw()),IS_BYTES(value.as_raw())) }
+    fn name(&self,op:&owned_paste::Value)->String { unsafe {std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op.as_raw()))}.to_string_lossy().into_owned() }
+}
 
-        let do_collapse = collapse != R_NilValue() && Rf_isNull(collapse) == 0;
-
-        if do_collapse
-            && (Rf_isString(collapse) == 0
-                || LENGTH(collapse) <= 0
-                || isNA_STRING(STRING_ELT(collapse, 0)))
-        {
-            error(c"invalid 'collapse' argument".as_ptr(), 0, 0, 0);
-        }
-
-        // Macro: zero_return
-        let zero_return = |do_collapse: bool| -> SEXP {
-            if do_collapse {
-                Rf_mkString(b"\0".as_ptr() as *const c_char)
-            } else {
-                Rf_allocVector(SEXPTYPE::STRSXP, 0)
-            }
-        };
-
-        if nx == 0 {
-            return zero_return(do_collapse);
-        }
-
-        // Maximum argument length, coerce if needed
-        let mut maxlen: R_xlen_t = 0;
-        let mut has_0_len: bool = false;
-
-        for j in 0..nx {
-            let xj = VECTOR_ELT(x, j);
-            if Rf_isString(xj) == 0 {
-                if isObject(xj) != 0 {
-                    // method dispatch
-                    let call2 = crate::sexp::constructors::Rf_lang2(R_AsCharacterSymbol(), xj);
-                    let coerced = eval(call2, env);
-                    SET_VECTOR_ELT(x, j, coerced);
-                } else if Rf_isSymbol(xj) != 0 {
-                    let pname = crate::sexp::accessors::PRINTNAME(xj);
-                    let scalar = crate::sexp::constructors::Rf_ScalarString(pname);
-                    SET_VECTOR_ELT(x, j, scalar);
-                } else {
-                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.as_c_int());
-                    SET_VECTOR_ELT(x, j, coerced);
-                }
-
-                if Rf_isString(VECTOR_ELT(x, j)) == 0 {
-                    let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op))
-                        .to_string_lossy();
-                    let msg =
-                        std::ffi::CString::new(format!("non-string argument to .Internal({name})"))
-                            .unwrap_or_default();
-                    error(msg.as_ptr(), 0, 0, 0);
-                }
-            }
-            if recycle_0 && !has_0_len && XLENGTH(VECTOR_ELT(x, j)) == 0 {
-                has_0_len = true;
-                break;
-            } else if maxlen < XLENGTH(VECTOR_ELT(x, j)) {
-                maxlen = XLENGTH(VECTOR_ELT(x, j));
-            }
-        }
-
-        if recycle_0 && has_0_len {
-            return zero_return(do_collapse);
-        }
-        if maxlen == 0 {
-            return zero_return(do_collapse);
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
-
-        let mut cbuff = RStringBuffer::new();
-
-        for i in 0..maxlen {
-            let mut allKnown: bool = true;
-            let mut anyKnown: bool = false;
-            let mut use_UTF8: bool = false;
-            let mut use_Bytes: bool = false;
-
-            if nx > 1 {
-                allKnown = sepKnown || sepASCII;
-                anyKnown = sepKnown;
-                use_UTF8 = sepUTF8;
-                use_Bytes = sepBytes;
-            }
-
-            for j in 0..nx {
-                let k = XLENGTH(VECTOR_ELT(x, j));
-                if k > 0 {
-                    let cs = STRING_ELT(VECTOR_ELT(x, j), i % k);
-                    if IS_UTF8(cs) {
-                        use_UTF8 = true;
-                    }
-                    if IS_BYTES(cs) {
-                        use_Bytes = true;
-                    }
-                }
-            }
-
-            if use_Bytes {
-                use_UTF8 = false;
-            }
-
-            let mut pwidth: R_xlen_t = 0;
-
-            for j in 0..nx {
-                let k = XLENGTH(VECTOR_ELT(x, j));
-                if k > 0 {
-                    let cs = STRING_ELT(VECTOR_ELT(x, j), i % k);
-                    if use_Bytes {
-                        pwidth += c_strlen(CHAR(cs));
-                    } else if use_UTF8 {
-                        pwidth += c_strlen(translateCharUTF8(cs));
-                    } else {
-                        pwidth += c_strlen(translateChar(cs));
-                    }
-                }
-            }
-
-            let mut u_csep: *const c_char = ptr::null();
-            if use_sep {
-                if use_UTF8 && u_csep.is_null() {
-                    u_csep = translateCharUTF8(sep);
-                    u_sepw = c_strlen(u_csep) as c_int;
-                }
-                pwidth += (nx - 1) * (if use_UTF8 { u_sepw } else { sepw }) as R_xlen_t;
-            }
-
-            if pwidth > c_int::MAX as R_xlen_t {
-                return ptr::null_mut();
-            }
-
-            let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
-            let cbuf = buf;
-            let mut buf_ptr = buf;
-
-            for j in 0..nx {
-                let k = XLENGTH(VECTOR_ELT(x, j));
-                if k > 0 {
-                    let cs = STRING_ELT(VECTOR_ELT(x, j), i % k);
-                    if use_UTF8 {
-                        let s = translateCharUTF8(cs);
-                        buf_ptr = R_stpcpy(buf_ptr, s);
-                    } else {
-                        let s = if use_Bytes {
-                            CHAR(cs)
-                        } else {
-                            translateChar(cs)
-                        };
-                        buf_ptr = R_stpcpy(buf_ptr, s);
-                        allKnown = allKnown && (IS_ASCII(cs) || ENC_KNOWN(cs) > 0);
-                        anyKnown = anyKnown || (ENC_KNOWN(cs) > 0);
-                    }
-                }
-                if sepw != 0 && j as R_xlen_t != nx - 1 {
-                    if use_UTF8 {
-                        c_strcpy(buf_ptr, u_csep);
-                        buf_ptr = buf_ptr.add(u_sepw as usize);
-                    } else {
-                        c_strcpy(buf_ptr, csep);
-                        buf_ptr = buf_ptr.add(sepw as usize);
-                    }
-                }
-            }
-
-            let ienc: c_int = if use_UTF8 {
-                CE_UTF8
-            } else if use_Bytes {
-                CE_BYTES
-            } else if anyKnown && allKnown {
-                CE_LATIN1
-            } else {
-                0
-            };
-
-            let ch = mkCharCE(cbuf, ienc);
-            SET_STRING_ELT(ans, i, ch);
-        }
-
-        // Now collapse, if required.
-        if do_collapse {
-            let nx2 = XLENGTH(ans);
-            if nx2 > 0 {
-                let sep_el = STRING_ELT(collapse, 0);
-                let mut use_UTF8 = IS_UTF8(sep_el);
-                let mut use_Bytes = IS_BYTES(sep_el);
-
-                for i in 0..nx2 {
-                    if !use_UTF8 && IS_UTF8(STRING_ELT(ans, i)) {
-                        use_UTF8 = true;
-                    }
-                    if !use_Bytes && IS_BYTES(STRING_ELT(ans, i)) {
-                        use_Bytes = true;
-                    }
-                }
-
-                if use_Bytes {
-                    csep = CHAR(sep_el);
-                    use_UTF8 = false;
-                } else if use_UTF8 {
-                    csep = translateCharUTF8(sep_el);
-                } else {
-                    csep = translateChar(sep_el);
-                }
-
-                sepw = c_strlen(csep) as c_int;
-                let mut anyKnown: bool = ENC_KNOWN(sep_el) > 0;
-                let mut allKnown: bool = anyKnown || IS_ASCII(sep_el);
-
-                let mut pwidth: R_xlen_t = 0;
-                for i in 0..nx2 {
-                    if use_UTF8 {
-                        pwidth += c_strlen(translateCharUTF8(STRING_ELT(ans, i)));
-                    } else {
-                        pwidth += c_strlen(CHAR(STRING_ELT(ans, i)));
-                    }
-                }
-                pwidth += (nx2 - 1) * sepw as R_xlen_t;
-
-                if pwidth > c_int::MAX as R_xlen_t {
-                    return ptr::null_mut();
-                }
-
-                let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
-                let cbuf = buf;
-                let mut buf_ptr = buf;
-
-                for i in 0..nx2 {
-                    if i > 0 {
-                        c_strcpy(buf_ptr, csep);
-                        buf_ptr = buf_ptr.add(sepw as usize);
-                    }
-                    let el = STRING_ELT(ans, i);
-                    let s = if use_UTF8 {
-                        translateCharUTF8(el)
-                    } else {
-                        CHAR(el)
-                    };
-                    buf_ptr = R_stpcpy(buf_ptr, s);
-                    allKnown = allKnown && (IS_ASCII(el) || (ENC_KNOWN(el) > 0));
-                    anyKnown = anyKnown || (ENC_KNOWN(el) > 0);
-                }
-
-                let ienc: c_int = if use_UTF8 {
-                    CE_UTF8
-                } else if use_Bytes {
-                    CE_BYTES
-                } else if anyKnown && allKnown {
-                    CE_LATIN1
-                } else {
-                    CE_NATIVE
-                };
-
-                let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-                let ch = mkCharCE(cbuf, ienc);
-                SET_STRING_ELT(ans2, 0, ch);
-                return ans2;
-            }
-        }
-
-        ans
+pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    if op.is_null() || args.is_null() { return ptr::null_mut(); }
+    use crate::sexp::owner::OwnerToken;
+    let owner=unsafe { OwnerToken::current() }.unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
+    let _pin=owner.pin().unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
+    let own=|raw|owner.sexp(raw).and_then(crate::sexp::object::Sexp::into_owned).unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
+    let (call,op,args,env)=(own(call),own(op),own(args),own(env));
+    let weak=owner.weak_owner().unwrap_or_else(||crate::sexp::context::r_error("paste requires a managed runtime"));
+    let outcome=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||crate::sexp::owner::with_runtime(&weak,|access|owned_paste::evaluate(access,&PasteNative(access),call,op,args,env))));
+    // Revocation or foreign activation must not authenticate success/unwind.
+    owner.require_active().unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value)))=>value.as_raw(),
+        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed {message})))=>crate::sexp::context::r_error(message),
+        Ok(Ok(Err(error)))|Ok(Err(error))=>crate::sexp::context::r_error(error.to_string()),
+        Err(payload)=>std::panic::resume_unwind(payload),
     }
 }
 
@@ -1639,3 +1405,7 @@ mod tests {
         assert_eq!(Rprt_adj_none, 3);
     }
 }
+
+#[cfg(test)]
+#[path = "paste_impl/tests.rs"]
+mod owned_tests;

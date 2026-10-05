@@ -1,0 +1,9 @@
+tan(x)	1/cos(x)^2	language	TRUE	1.0956889153225471
+tan(x^2)	2 * x/cos(x^2)^2	language	TRUE	0.60488636497036885
+tan(sin(x))	cos(x)/cos(sin(x))^2	language	TRUE	1.0438774522324783
+tan(x + y)	1/cos(x + y)^2	language	TRUE	1.2984464104095248
+tan(y)	0	double	TRUE	0
+-tan(x)	-(1/cos(x)^2)	language	TRUE	-1.0956889153225471
+tan(x) * sin(x)	1/cos(x)^2 * sin(x) + tan(x) * cos(x)	language	TRUE	0.61931842135399762
+cos(x)	-sin(x)	language	TRUE	-0.29552020666133955
+sqrt(x)	0.5 * x^-0.5	language	TRUE	0.9128709291752769

@@ -26,240 +26,73 @@ unsafe fn constant(x: f64) -> SEXP {
     unsafe { Rf_ScalarReal(x) }
 }
 
-unsafe fn is_numeric_const(s: SEXP) -> bool {
-    unsafe {
-        matches!(
-            ty(s),
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-        ) && LENGTH(s) >= 1
+// Raw native boundaries retain the original runtime across every callback and
+// unwind. The expression kernel itself owns checked children and result nodes.
+#[path = "deriv/owned.rs"]
+mod owned;
+
+unsafe fn run_owned_derivative(
+    first: SEXP,
+    second: Option<SEXP>,
+    operation: impl FnOnce(
+        &crate::sexp::owner::RuntimeAccess,
+        &crate::sexp::object::Sexp<'static>,
+        Option<&crate::sexp::object::Sexp<'static>>,
+    ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>>,
+) -> SEXP {
+    use crate::sexp::{
+        object::Sexp,
+        owner::{OwnerToken, StoredOwner, with_runtime},
+    };
+    let fail = |message: String| -> ! {
+        std::panic::panic_any(crate::sexp::context::RError { message });
+    };
+    let token = unsafe { OwnerToken::current() }.unwrap_or_else(|error| fail(error.to_string()));
+    let authority = StoredOwner::from_token(token);
+    let owner = authority
+        .managed()
+        .unwrap_or_else(|| fail("runtime owner unavailable".into()));
+    let _pin = owner.pin().unwrap_or_else(|error| fail(error.to_string()));
+    let first = token
+        .sexp(first)
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|error| fail(error.to_string()));
+    let second = second
+        .map(|value| token.sexp(value).and_then(Sexp::into_owned))
+        .transpose()
+        .unwrap_or_else(|error| fail(error.to_string()));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_runtime(&owner, |access| operation(access, &first, second.as_ref()))
+    }));
+    authority
+        .require_active()
+        .unwrap_or_else(|error| fail(error.to_string()));
+    match result {
+        Ok(result) => result
+            .and_then(|result| result)
+            .unwrap_or_else(|error| fail(error.to_string()))
+            .as_raw(),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
-unsafe fn as_real(s: SEXP) -> f64 {
-    unsafe {
-        match ty(s) {
-            SEXPTYPE::REALSXP => *REAL(s),
-            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => *INTEGER(s) as f64,
-            _ => f64::NAN,
-        }
-    }
-}
-
-unsafe fn is_zero(s: SEXP) -> bool {
-    unsafe { is_numeric_const(s) && as_real(s) == 0.0 }
-}
-
-unsafe fn is_one(s: SEXP) -> bool {
-    unsafe { is_numeric_const(s) && as_real(s) == 1.0 }
-}
-
-unsafe fn is_uminus(s: SEXP) -> bool {
-    unsafe { ty(s) == SEXPTYPE::LANGSXP && CAR(s) == sym("-") && LENGTH(s) == 2 }
-}
-
-unsafe fn simplify(fun: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
-    unsafe {
-        let plus = sym("+");
-        let minus = sym("-");
-        let times = sym("*");
-        let divide = sym("/");
-        let power = sym("^");
-        if fun == plus {
-            if is_zero(arg1) {
-                arg2
-            } else if is_zero(arg2) {
-                arg1
-            } else if is_uminus(arg1) {
-                simplify(minus, arg2, CADR(arg1))
-            } else if is_uminus(arg2) {
-                simplify(minus, arg1, CADR(arg2))
-            } else {
-                Rf_lang3(plus, arg1, arg2)
-            }
-        } else if fun == minus {
-            if arg2 == R_MissingArg() {
-                if is_zero(arg1) {
-                    constant(0.0)
-                } else if is_uminus(arg1) {
-                    CADR(arg1)
-                } else {
-                    Rf_lang2(minus, arg1)
-                }
-            } else if is_zero(arg2) {
-                arg1
-            } else if is_zero(arg1) {
-                simplify(minus, arg2, R_MissingArg())
-            } else if is_uminus(arg2) {
-                simplify(plus, arg1, CADR(arg2))
-            } else {
-                Rf_lang3(minus, arg1, arg2)
-            }
-        } else if fun == times {
-            if is_zero(arg1) || is_zero(arg2) {
-                constant(0.0)
-            } else if is_one(arg1) {
-                arg2
-            } else if is_one(arg2) {
-                arg1
-            } else if is_uminus(arg1) {
-                simplify(minus, simplify(times, CADR(arg1), arg2), R_MissingArg())
-            } else if is_uminus(arg2) {
-                simplify(minus, simplify(times, arg1, CADR(arg2)), R_MissingArg())
-            } else {
-                Rf_lang3(times, arg1, arg2)
-            }
-        } else if fun == divide {
-            if is_zero(arg1) {
-                constant(0.0)
-            } else if is_one(arg2) {
-                arg1
-            } else {
-                Rf_lang3(divide, arg1, arg2)
-            }
-        } else if fun == power {
-            if is_zero(arg2) {
-                constant(1.0)
-            } else if is_one(arg2) {
-                arg1
-            } else {
-                Rf_lang3(power, arg1, arg2)
-            }
-        } else if arg2 == R_MissingArg() {
-            Rf_lang2(fun, arg1)
-        } else {
-            Rf_lang3(fun, arg1, arg2)
-        }
-    }
+fn derivative_symbol(
+    access: &crate::sexp::owner::RuntimeAccess,
+    name: &str,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    let name =
+        CString::new(name).map_err(|_| crate::sexp::object::SexpError::EvaluationFailed {
+            message: "invalid variable name".into(),
+        })?;
+    access.with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })
 }
 
 unsafe fn deriv_expr(expr: SEXP, var: SEXP) -> SEXP {
     unsafe {
-        match ty(expr) {
-            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP => {
-                constant(0.0)
-            }
-            SEXPTYPE::SYMSXP => {
-                if expr == var {
-                    constant(1.0)
-                } else {
-                    constant(0.0)
-                }
-            }
-            SEXPTYPE::LANGSXP => {
-                let head = CAR(expr);
-                let a = CADR(expr);
-                let b = if LENGTH(expr) >= 3 {
-                    CADDR(expr)
-                } else {
-                    R_MissingArg()
-                };
-                if head == sym("(") {
-                    deriv_expr(a, var)
-                } else if head == sym("+") {
-                    if LENGTH(expr) == 2 {
-                        deriv_expr(a, var)
-                    } else {
-                        simplify(sym("+"), deriv_expr(a, var), deriv_expr(b, var))
-                    }
-                } else if head == sym("-") {
-                    if LENGTH(expr) == 2 {
-                        simplify(sym("-"), deriv_expr(a, var), R_MissingArg())
-                    } else {
-                        simplify(sym("-"), deriv_expr(a, var), deriv_expr(b, var))
-                    }
-                } else if head == sym("*") {
-                    simplify(
-                        sym("+"),
-                        simplify(sym("*"), deriv_expr(a, var), b),
-                        simplify(sym("*"), a, deriv_expr(b, var)),
-                    )
-                } else if head == sym("/") {
-                    simplify(
-                        sym("-"),
-                        simplify(sym("/"), deriv_expr(a, var), b),
-                        simplify(
-                            sym("/"),
-                            simplify(sym("*"), a, deriv_expr(b, var)),
-                            simplify(sym("^"), b, constant(2.0)),
-                        ),
-                    )
-                } else if head == sym("^") && is_numeric_const(b) {
-                    simplify(
-                        sym("*"),
-                        b,
-                        simplify(
-                            sym("*"),
-                            deriv_expr(a, var),
-                            simplify(sym("^"), a, constant(as_real(b) - 1.0)),
-                        ),
-                    )
-                } else if head == sym("gamma") {
-                    simplify(
-                        sym("*"),
-                        deriv_expr(a, var),
-                        simplify(sym("*"), expr, simplify(sym("digamma"), a, R_MissingArg())),
-                    )
-                } else if head == sym("lgamma") {
-                    simplify(
-                        sym("*"),
-                        deriv_expr(a, var),
-                        simplify(sym("digamma"), a, R_MissingArg()),
-                    )
-                } else if head == sym("digamma") {
-                    simplify(
-                        sym("*"),
-                        deriv_expr(a, var),
-                        simplify(sym("trigamma"), a, R_MissingArg()),
-                    )
-                } else if head == sym("trigamma") {
-                    simplify(
-                        sym("*"),
-                        deriv_expr(a, var),
-                        Rf_lang3(sym("psigamma"), a, Rf_ScalarInteger(2)),
-                    )
-                } else if head == sym("psigamma") {
-                    let order = if b == R_MissingArg() {
-                        Rf_ScalarInteger(1)
-                    } else {
-                        b
-                    };
-                    let next = if is_numeric_const(order) {
-                        Rf_ScalarInteger(as_real(order) as i32 + 1)
-                    } else {
-                        Rf_lang3(sym("+"), order, Rf_ScalarInteger(1))
-                    };
-                    simplify(
-                        sym("*"),
-                        deriv_expr(a, var),
-                        Rf_lang3(sym("psigamma"), a, next),
-                    )
-                } else if head == sym("sin") {
-                    simplify(
-                        sym("*"),
-                        simplify(sym("cos"), a, R_MissingArg()),
-                        deriv_expr(a, var),
-                    )
-                } else if head == sym("cos") {
-                    simplify(
-                        sym("*"),
-                        simplify(sym("sin"), a, R_MissingArg()),
-                        simplify(sym("-"), deriv_expr(a, var), R_MissingArg()),
-                    )
-                } else if head == sym("exp") {
-                    simplify(sym("*"), expr, deriv_expr(a, var))
-                } else if head == sym("log") {
-                    simplify(sym("/"), deriv_expr(a, var), a)
-                } else if head == sym("sqrt") {
-                    deriv_expr(Rf_lang3(sym("^"), a, constant(0.5)), var)
-                } else {
-                    crate::mainutils::errors::errorcall_str(
-                        crate::mainutils::errors::R_getCurrentCall(),
-                        "Function is not in the derivatives table",
-                    )
-                }
-            }
-            _ => constant(f64::NAN),
-        }
+        run_owned_derivative(expr, Some(var), |access, expression, variable| {
+            let variable = variable.ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
+            owned::Kernel::new(access, derivative_symbol).derive(expression, variable)
+        })
     }
 }
 
@@ -325,11 +158,16 @@ fn string_at(s: SEXP, i: R_xlen_t) -> String {
 /// `.External(C_doD, expr, name)`.
 pub unsafe fn do_d(args: SEXP) -> SEXP {
     unsafe {
-        let args = CDR(args);
-        let var = sym(&string_at(CADR(args), 0));
-        let derived = deriv_expr(expr_of(CAR(args)), var);
-        let _d = protect(derived);
-        add_parens(crate::mainutils::duplicate::Rf_duplicate(derived))
+        run_owned_derivative(args, None, |access, arguments, _| {
+            owned::direct(access, arguments, derivative_symbol, |access| {
+                access.with_native(|_| {
+                    crate::mainutils::errors::Rf_warning(
+                        c"only the first element is used as variable name".as_ptr(),
+                    );
+                    Ok(())
+                })
+            })
+        })
     }
 }
 
@@ -619,3 +457,7 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
         result
     }
 }
+
+#[cfg(test)]
+#[path = "deriv/owned_tests.rs"]
+mod owned_tests;

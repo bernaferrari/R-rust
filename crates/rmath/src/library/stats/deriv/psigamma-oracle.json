@@ -1,0 +1,10 @@
+{
+  "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "source": "https://raw.githubusercontent.com/wch/r-source/bac583951b728e97b9786804d3b4081f0fe18df5/src/library/stats/src/deriv.c",
+  "runtime": "4.7.0 Under development r90451",
+  "command": "Rscript --vanilla psigamma-oracle.R > psigamma-oracle.tsv",
+  "files_sha256": {
+    "psigamma-oracle.R": "2a324d6857b6191f2e03a11ec058bda9f67da9324f1d9481cd06a2e49c076199",
+    "psigamma-oracle.tsv": "764df04cf405d3dd6c8d06f1798677c19daa6b8e2d6b204b8f8720b7561b1a16"
+  }
+}

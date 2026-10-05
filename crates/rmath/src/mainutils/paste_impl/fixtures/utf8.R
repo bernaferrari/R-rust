@@ -1,0 +1,7 @@
+x <- c("é", NA_character_, "z")
+cat(paste(paste(x, sep=""), collapse="|"), "\n", sep="")
+cat(paste(paste(x, "β", sep="é"), collapse="|"), "\n", sep="")
+cat(paste(x, "β", sep="é", collapse="|"), "\n", sep="")
+cat(paste0(x, "β", collapse="|"), "\n", sep="")
+cat(length(paste(character(0), "β", recycle0=TRUE)), "\n", sep="")
+cat(paste(character(0), "β", sep="é", collapse="|"), "\n", sep="")

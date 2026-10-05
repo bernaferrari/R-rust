@@ -1,0 +1,10 @@
+{
+  "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "source": "https://raw.githubusercontent.com/wch/r-source/bac583951b728e97b9786804d3b4081f0fe18df5/src/library/stats/src/deriv.c",
+  "runtime": "4.7.0 Under development r90451",
+  "command": "Rscript --vanilla trig-oracle.R > trig-oracle.tsv",
+  "files_sha256": {
+    "trig-oracle.R": "24fdb403ff2fa2fcffba793d44aaddf092e60d19d442774bf0f280839e870739",
+    "trig-oracle.tsv": "bc89b554227234cba28b894b365c84216fe3ff760275a20ab44a711a7bd1e7e5"
+  }
+}
