@@ -66,19 +66,30 @@ hot_error <- tryCatch({{ serialize(hot, NULL); "" }}, error=function(e) conditio
 hot_is_private_bytecode <- grepl("cannot serialize private bytecode dialect", hot_error, fixed=TRUE)
 
 jit_unknown <- function(x) x
-unsupported <- function(x) {{ {}; jit_unknown(x) }}
+supported_call <- function(x) {{ {}; jit_unknown(x) }}
+supported_value <- supported_call(7L)
+supported_error <- tryCatch({{ serialize(supported_call, NULL); "" }}, error=function(e) conditionMessage(e))
+supported_is_private_bytecode <- grepl("cannot serialize private bytecode dialect", supported_error, fixed=TRUE)
+
+# Dots forwarding is still rejected by the private compiler. The earlier
+# unknown-function fixture now compiles successfully through OP_CALL.
+unsupported <- function(x, ...) {{ {}; jit_unknown(x, ...) }}
 unsupported_value <- unsupported(7L)
 unsupported_stayed_source <- tryCatch({{ serialize(unsupported, NULL); TRUE }}, error=function(e) FALSE)
 restored <- compiler::enableJIT(original)
 cat(cold_value, cold_source, hot_value, hot_is_private_bytecode,
+    supported_value, supported_is_private_bytecode,
     unsupported_value, unsupported_stayed_source)
 "#,
+            std::iter::repeat_n("x + 1L", 60)
+                .collect::<Vec<_>>()
+                .join(";"),
             std::iter::repeat_n("x + 1L", 60)
                 .collect::<Vec<_>>()
                 .join(";")
         ))
         .unwrap();
-    assert_eq!(output.trim(), "3 TRUE 3 TRUE 7 TRUE");
+    assert_eq!(output.trim(), "3 TRUE 3 TRUE 7 TRUE 7 TRUE");
 }
 
 #[test]

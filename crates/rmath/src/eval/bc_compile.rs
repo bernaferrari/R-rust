@@ -43,8 +43,8 @@ struct BytecodeCompiler {
     /// runtime; the private dialect's LDCLOSURE uses the compile-time env.
     rho: Sexp<'static>,
     /// Symbols assigned from a compiled function() in this body. Calls to
-    /// those locals are lowered like eager builtins; other user calls stay
-    /// rejected so user_fun(x) remains unsupported compiler syntax.
+    /// those locals retain their eager argument lowering; other closure
+    /// calls receive lazy promises through OP_CALL.
     compiled_local_funs: Vec<Sexp<'static>>,
 }
 
