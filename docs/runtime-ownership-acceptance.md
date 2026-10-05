@@ -1213,7 +1213,7 @@ five-file source ledger matches the published main milestone; no assigned
 source changed during the run. This evidence is independent of the original
 eight-case proof and does not certify unrelated concurrent changes.
 
-## Owning covratio arithmetic warning calls: native candidate (rport-wszw.6.3)
+## Verified owning covratio arithmetic warning calls (rport-wszw.6.3)
 
 Denominator, studentized-residual and final-product recycling warnings retain
 the original GNU arithmetic call, including fixed-dispersion GLM syntax and
@@ -1228,13 +1228,15 @@ handler that collects, retains warnings, releases their sole root, panics, or
 revokes the facade. All 29 covratio controls and ten intercept-model controls
 pass. Independent copied-original GNU fixtures are byte-identical, and
 all-target rmath/r-embed Clippy with memory profiling and denied warnings and
-assigned formatting pass. Seven strict Miri cases are running against their
-frozen source and have no completed aggregate yet. The native calling helper
+assigned formatting pass. All seven strict-provenance Miri cases completed
+in 2,073.39 seconds with default alias checking and isolation and a successful
+wrapper exit. The frozen seven-file ledger matches the published main source.
+The native calling helper
 is GNU error-only; investigation `rport-hah9u.78` found no supported native
 warning-registration defect and closed without a runtime change. Ordinary R
 warning handlers remain the tested contract. Row-subassignment warning calls
 (`rport-wszw.6.3.1`) remain a separate gap. This ledger is the arithmetic-phase
-candidate’s evidence, not certification of concurrently changed whole HEAD.
+completed unit’s evidence, not certification of concurrently changed whole HEAD.
 
 ## Faster unchanged parity build profile (rport-jxfp.3.12.6.2.1)
 
