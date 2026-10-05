@@ -3166,8 +3166,21 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
             let sym = installTrChar(input);
             let mut y = R_findVarInFrame(x, sym);
             if isPromise(y) {
-                let _promise_guard = protect(y);
-                y = CAR(y); /* simplified promise forcing */
+                let owner = crate::sexp::owner::OwnerToken::current()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let promise = owner
+                    .sexp(y)
+                    .and_then(crate::sexp::object::Sexp::into_owned)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let authority = crate::sexp::owner::StoredOwner::from_value(&promise)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let _pin = owner
+                    .pin()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                y = crate::sexp::envir::forcePromise(promise.as_raw());
+                authority
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
             if y != R_UnboundValue() {
                 if NAMED(y) != 0 {
@@ -3569,6 +3582,22 @@ pub unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn environment_dollar_forces_delayed_binding_once_and_matches_bracket() {
+        let mut session = crate::sexp::session::RSession::new_with_path_policy(
+            crate::mainutils::paths::RuntimePathPolicy::new(Vec::new(), "/tmp"),
+        );
+        let (result, output, _) = session.eval_code_with_output_capture(
+            "e <- new.env(); n <- 0L; delayedAssign('f', { n <<- n + 1L; function() 42L }, assign.env=e); stopifnot(identical(e$f(),42L), identical(e[['f']],e$f), identical(n,1L)); delayedAssign('bad',stop('binding failed'),assign.env=e); stopifnot(identical(tryCatch(e$bad,error=conditionMessage),'binding failed'),is.null(e$absent)); TRUE",
+        );
+        assert_eq!(
+            result
+                .unwrap_or_else(|error| panic!("{}: {output:?}", error.message))
+                .logical_elt(0),
+            Some(1)
+        );
+    }
 
     #[test]
     fn test_scalar_index_null() {
