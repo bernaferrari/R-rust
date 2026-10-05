@@ -1632,3 +1632,65 @@ and four scoped helper/test/fixture files; the main native repeat also passes
 all 14 controls. The main warnings-denied all-target rmath/r-embed Clippy
 repeat passes in 28.25 seconds. UTF8 paste conversion remains a separately
 tracked gap.
+
+## Portable package integration checkpoint (2026-10-05)
+
+The package milestone loads the captured GNU methods, utils and tools namespace
+images through the real public constructors, with original lazy environments,
+exports, imports and hooks. Default native discovery and an explicit empty
+library policy execute the same original embedding corpus bodies. Loaded
+namespace identities survive later library-path changes; package-relative file
+access and named sys.source targets work without ambient package discovery.
+Wasm continues to select its empty library policy before initialization.
+
+The tested runtime snapshot is `9dd351f90e70d19cbc9a3287acd31b30c0755fcd`.
+The receipt is [portable-namespace-9dd351f9.json](ci-checkpoints/portable-namespace-9dd351f9.json).
+Validation used an isolated checkout whose 4,429 committed build/input files
+match that snapshot, leaving unrelated local deriv and paste drafts untouched.
+The complete embedding suite passes 36/36, including the original three
+package failures, their portable-policy counterparts, namespace isolation,
+parallel sessions and every rendering test. The four focused Chromium namespace
+cases pass against the actual rebuilt Wasm; the inherited and ANY cases also
+passed twice against the earlier integration artifact. The ANY case now resets
+the actual worker and verifies a fresh S4 class, qualified and attached methods
+and utils exports, namespace identity, and removal of the previous user generic.
+The existing 15-second execution and worker budgets are unchanged.
+
+Native integration exposed two routing/admission defects. C_title now preserves
+GNU's positional main/sub/xlab/ylab arguments when reaching the named portable
+consumer, and C_arrows reaches the existing drawing implementation. LOESS checks
+the N-element weight vector actually read by the selected surface/statistics
+mode, admitting GNU's scalar placeholder for the unused vector. All seven mode
+and short-vector controls pass; the unchanged layered LOESS plotting consumer
+passes. The title adapter survives allocation-triggered collection in both a
+native control and strict-provenance Miri (1/1, 134.62 seconds).
+
+Expectation corrections came from separately executing the pinned GNU oracle:
+setClass slots use valid GNU syntax; packageDescription fields retain their
+classed contract; setGeneric prints visible generic names; contradictory
+superclass ordering warns; named S4 signature errors identify the missing names;
+and character plot coordinates coerce before finite-limit rejection. No
+meaningful output, names, NA values or attributes were removed from comparisons.
+The portable coordinate path now shares that character-coercion contract, with
+positive numeric-string and negative all-NA public checks in both policies.
+Clippy with warnings denied, website lint and website formatting pass.
+
+The last complete showcase snapshot is `3b6bac17e8b4033aebf4fd68d6c502c7b6139735`:
+46 pass, 13 fail, zero skipped or flaky. The receipt retains every failure.
+Two of those failures are the independently corrected S4 expectations and pass
+in the later focused run; this does not convert the old full report into a
+48/59 result. The remaining startup/UI waits, sunflower flows and repeated fresh
+RNG sessions are unresolved. No complete conformance or whole-upstream suite
+was rerun for this milestone. Their earlier reviewed failures remain current
+planning evidence, not proof of this snapshot's full compatibility.
+
+Sunflower profiling preserved the original program and limits. Before the
+prototype registry index, initialization took about 6.9 seconds, sampling about
+16.4 seconds and density/drawing/PNG about 7.8 seconds. A subsequent warm phase
+probe measured 11.28 seconds for sampling and 5.59 seconds for the latter phase,
+still exceeding the combined browser deadline. The exploratory GC cadence
+change was removed. The existing rport-jxfp.3.12.3.5 issue retains the next work.
+The upstream runner still needs a joint feature/device/package/backend profile
+repair (rport-2gpp.3); simply enabling a feature does not install a DrawTarget.
+Unconnected native graphics routes remain in rport-wpdk.5, and the independently
+reproduced baseline bulk-reset GC failure remains in rport-2kys1.

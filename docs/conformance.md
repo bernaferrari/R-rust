@@ -512,3 +512,15 @@ dimension/length validation. Three focused native safety tests pass. This is
 not total native memory accounting or complete complex-QR numerical parity.
 Arbitrary CRAN support remains outside scope; the other broader parity gaps
 remain tracked.
+
+## October 5 package integration execution
+
+The local package integration snapshot `9dd351f9` passes the complete 36-case
+embedding suite under the normal faer/renderplot profile and the focused real
+Chromium namespace cases, including worker reset. See the
+[execution receipt](ci-checkpoints/portable-namespace-9dd351f9.json) and
+[acceptance details](runtime-ownership-acceptance.md#portable-package-integration-checkpoint-2026-10-05).
+The last complete showcase run remains the separately identified `3b6bac17`
+report: 46 pass, 13 fail, zero skipped/flaky. Later focused corrections do not
+rewrite that complete result. No new full conformance or whole-upstream total
+is claimed, and the graphics-enabled upstream execution profile remains open.

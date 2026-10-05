@@ -1,0 +1,243 @@
+{
+  "checks": [
+    {
+      "check": "complete embedding suite",
+      "failed": 0,
+      "log": {
+        "file": "rport-9dd351f9-full-embed-final.log",
+        "sha256": "9db6fefe9dc705a41c1eabae4b01144e515a96957df1b1cd30f7b5905e791753"
+      },
+      "passed": 36,
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass",
+      "test_seconds": 28.62
+    },
+    {
+      "check": "actual Chromium namespaces including reset",
+      "failed": 0,
+      "log": {
+        "file": "rport-final-package-browser-public-controls.log",
+        "sha256": "3a1ff6565967766ddde224a48e38496807d9ddc335aece0dfc6d091b0cd7568e"
+      },
+      "passed": 4,
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass"
+    },
+    {
+      "check": "strict-provenance title allocation callback",
+      "failed": 0,
+      "log": {
+        "file": "rport-title-original-owner-strict-miri.log",
+        "sha256": "2f82a7654cb1f9fd5a1848d927853eb92503411807e805ac71996fbd25de054a"
+      },
+      "passed": 1,
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass",
+      "test_seconds": 134.62
+    },
+    {
+      "check": "seven LOESS mode and short-vector admission controls",
+      "failed": 0,
+      "log": {
+        "file": "rport-loess-conditional-buffer-controls.log",
+        "sha256": "0a874a72d923139c031a57234fe64ac5f90cdf5770bf32ecfe054d9af2961427"
+      },
+      "passed": 1,
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass"
+    },
+    {
+      "check": "warnings-denied Clippy",
+      "log": {
+        "file": "rport-native-graphics-clippy-final.log",
+        "sha256": "fad4f64e6f38e7879add57fc40d6397bd5af07c0d07871ed902c82df574d67b3"
+      },
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass"
+    },
+    {
+      "check": "website lint",
+      "log": {
+        "file": "rport-final-s4-oracle-lint.log",
+        "sha256": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438"
+      },
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass"
+    },
+    {
+      "check": "website formatting",
+      "log": {
+        "file": "rport-final-s4-oracle-format.log",
+        "sha256": "5a28d706eaf798ac47dd5b729c409d5b74197407bd06749ffaa9758a052577f3"
+      },
+      "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+      "status": "pass"
+    }
+  ],
+  "full_conformance_rerun": false,
+  "last_complete_showcase": {
+    "browser_test_commit": "3b6bac17",
+    "execution_complete": true,
+    "failed": 13,
+    "failures": [
+      {
+        "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.r-chat-files-panel')\nExpected substring: \"hello.R\"\nReceived string:    \"Import a file, then use its name in R\u2014for example, read.csv(\\\"data.csv\\\") or source(\\\"script.R\\\"). Files stay here until the session ends. Import file\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.r-chat-files-panel') with timeout 5000ms\n  - waiting for locator('.r-chat-files-panel')\n    14 \u00d7 locator resolved to <div class=\"r-chat-files-panel\">\u2026</div>\n       - unexpected value \"Import a file, then use its name in R\u2014for example, read.csv(\"data.csv\") or source(\"script.R\"). Files stay here until the session ends. Import file\"\n",
+        "file": "console-files.spec.ts",
+        "test": "console imports a file without executing its code"
+      },
+      {
+        "error": "Error: expect(locator).toHaveValue(expected) failed\n\nLocator: getByRole('textbox', { name: 'R command', exact: true })\nExpected pattern: /temperatures/\nReceived string:  \"\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\n  - waiting for getByRole('textbox', { name: 'R command', exact: true })\n    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\n       - unexpected value \"\"\n",
+        "file": "console.spec.ts",
+        "test": "console mobile layout and multiline input"
+      },
+      {
+        "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByRole('img', { name: 'Plot from command 1' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" getByRole('img', { name: 'Plot from command 1' }) with timeout 5000ms\n  - waiting for getByRole('img', { name: 'Plot from command 1' })\n",
+        "file": "console.spec.ts",
+        "test": "interactive errors keep partial console output and plots"
+      },
+      {
+        "error": "Error: expect(locator).not.toHaveValue(expected) failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \"\"\nReceived: \"\"\nTimeout:  5000ms\n\nCall log:\n  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\n  - waiting for getByRole('textbox', { name: 'R command', exact: true })\n    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\n       - unexpected value \"\"\n",
+        "file": "console.spec.ts",
+        "test": "example conversation can continue: A week in numbers"
+      },
+      {
+        "error": "Error: expect(locator).not.toHaveValue(expected) failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \"\"\nReceived: \"\"\nTimeout:  5000ms\n\nCall log:\n  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\n  - waiting for getByRole('textbox', { name: 'R command', exact: true })\n    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\n       - unexpected value \"\"\n",
+        "file": "console.spec.ts",
+        "test": "example conversation can continue: Find the rhythm"
+      },
+      {
+        "error": "Error: expect(locator).not.toHaveValue(expected) failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \"\"\nReceived: \"\"\nTimeout:  5000ms\n\nCall log:\n  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\n  - waiting for getByRole('textbox', { name: 'R command', exact: true })\n    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\n       - unexpected value \"\"\n",
+        "file": "console.spec.ts",
+        "test": "example conversation can continue: Let chance speak"
+      },
+      {
+        "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByRole('button', { name: 'Run command', exact: true })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" getByRole('button', { name: 'Run command', exact: true }) with timeout 5000ms\n  - waiting for getByRole('button', { name: 'Run command', exact: true })\n",
+        "file": "console.spec.ts",
+        "test": "arrow keys recall commands and restore the unfinished draft"
+      },
+      {
+        "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByAltText('Plot generated by your R code')\nExpected: visible\nTimeout: 30000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" getByAltText('Plot generated by your R code') with timeout 30000ms\n  - waiting for getByAltText('Plot generated by your R code')\n",
+        "file": "e2e.spec.ts",
+        "test": "filters the gallery, handles an empty search, and selects a recipe"
+      },
+      {
+        "error": "Error: expect(locator).toBeEnabled() failed\n\nLocator: getByRole('button', { name: 'Download plot', exact: true })\nExpected: enabled\nTimeout: 30000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeEnabled\" getByRole('button', { name: 'Download plot', exact: true }) with timeout 30000ms\n  - waiting for getByRole('button', { name: 'Download plot', exact: true })\n    44 \u00d7 locator resolved to <button disabled tabindex=\"0\" type=\"button\" data-disabled=\"\" data-slot=\"button\" aria-label=\"Download plot\" class=\"group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,color,transform,box-shadow] outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invali\u2026>\u2026</button>\n       - unexpected value \"disabled\"\n",
+        "file": "theme-and-mode.spec.ts",
+        "test": "editor scrolls the final line into view and download feedback resets"
+      },
+      {
+        "error": "Error: expect(received).toContain(expected) // indexOf\n\nExpected substring: \"signature argument\"\nReceived string:    \"Error: Error: Evaluation error: there are named arguments ('z') in the method signature that are missing from the generic signature, for function 'mix'\"",
+        "file": "wasm-runtime-contracts.spec.ts",
+        "test": "named S4 signatures dispatch and reject invalid argument names recoverably"
+      },
+      {
+        "error": "Error: expect(received).toBe(expected) // Object.is equality\n\n- Expected  - 0\n+ Received  + 2\n\n+ [1] \"aa\"\n+ [1] \"bb\"\n  a b",
+        "file": "wasm-runtime-contracts.spec.ts",
+        "test": "S4 generic method tables are independent"
+      },
+      {
+        "error": "Test timeout of 90000ms exceeded.",
+        "file": "wasm-stats.spec.ts",
+        "test": "portable FFT and all formerly gated RNGs match the pinned GNU R oracle"
+      },
+      {
+        "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: getByRole('log')\nExpected substring: \"series required\"\nReceived string:    \"You \u00b7 R commandmvfft(1:4)ReuseR responseRunning\u2026\"\nTimeout: 5000ms\n\nCall log:\n  - Expect \"toContainText\" getByRole('log') with timeout 5000ms\n  - waiting for getByRole('log')\n    14 \u00d7 locator resolved to <div role=\"log\" aria-busy=\"true\" aria-relevant=\"additions\" data-slot=\"message-scroller-content\" class=\"flex h-max min-h-full flex-col gap-6 r-chat-virtual-content\">\u2026</div>\n       - unexpected value \"You \u00b7 R commandmvfft(1:4)ReuseR responseRunning\u2026\"\n",
+        "file": "wasm-stats.spec.ts",
+        "test": "FFT errors are recoverable and text-only calculations need no plot mode"
+      }
+    ],
+    "flaky": 0,
+    "later_correction_note": "Two S4 expectation disagreements independently match pinned GNU and pass the later focused tests; the complete report is not reclassified.",
+    "log": {
+      "file": "rport-package-milestone-full-showcase.log",
+      "sha256": "4d9cf6d0ed14570ae8873581968934349bcfd0b113d53319ff060ac1d842a06e"
+    },
+    "passed": 46,
+    "runtime_source_commit": "85c2a091cfaeb62840885a6a71ebd2ced6517214",
+    "skipped": 0,
+    "source_commit": "3b6bac17e8b4033aebf4fd68d6c502c7b6139735",
+    "summary": {
+      "file": "rport-package-milestone-showcase-summary.json",
+      "sha256": "a8c7e5e8409e71bdabd7162f256b3950ac51cf35c3c985ce8fc0c11b4705bd74"
+    },
+    "test_seconds": 621.286064,
+    "wasm_mtime_ns": 1791230075350688203,
+    "wasm_sha256": "65875c5a06ae799b467d6c086475f175144447b67ddf755880452e97b71b9e20"
+  },
+  "oracle_checks": [
+    {
+      "log": {
+        "file": "rport-portable-reset-pinned-gnu.log",
+        "sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5"
+    },
+    {
+      "log": {
+        "file": "rport-native-graphics-errors-pinned-gnu.log",
+        "sha256": "2910a1247db5733cb26d9f667df9b78f6f67fd3452255aa109b7caec11673bca"
+      },
+      "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5"
+    },
+    {
+      "log": {
+        "file": "rport-independent-methods-pinned-gnu.log",
+        "sha256": "163acfca361af6f3ea3fb437df649ddfbcfa9e743bf16976ef900500abc422f0"
+      },
+      "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5"
+    },
+    {
+      "log": {
+        "file": "rport-named-signature-pinned-gnu.log",
+        "sha256": "d39b603ca7cac6a8447669b15e4c08ccf1f692c662d8eeed22af104bebe6412e"
+      },
+      "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5"
+    }
+  ],
+  "profiles": {
+    "native": {
+      "cargo_features": [
+        "r-embed/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "cargo_profile": "release",
+      "device": "RenderPlot backend installed by embedding render API",
+      "numerical_backend": "faer",
+      "package_policies": [
+        "default native discovery",
+        "RuntimePathPolicy::new(Vec::new(), /tmp)"
+      ],
+      "rustc": "1.96.0 (ac68faa20 2026-05-25)"
+    },
+    "wasm": {
+      "binding_target": "web",
+      "device": "browser interactive RenderPlot scene",
+      "execution_limit_ms": 15000,
+      "heap_limit_bytes": 67108864,
+      "node_limit": 500000,
+      "numerical_backend": "faer",
+      "package_policy": "explicit empty library paths before initialization",
+      "target": "wasm32-unknown-unknown",
+      "toolchain": "nightly-2026-08-25",
+      "wasm_sha256": "709c6d258ebe78f148f8743417f00797a64b9b39fc4aca80d6f664af93a4d3cb",
+      "worker_request_limit_ms": 15000
+    }
+  },
+  "remaining_issues": [
+    "rport-jxfp.3.12.3.5",
+    "rport-2gpp.3",
+    "rport-wpdk.5",
+    "rport-2kys1",
+    "rport-0d5o"
+  ],
+  "schema_version": 1,
+  "scope": "portable/default public package integration; broader all-showcase and conformance milestones remain open",
+  "source_commit": "9dd351f90e70d19cbc9a3287acd31b30c0755fcd",
+  "source_files_sha256": "d26301aa77e026c5af3683ac3f89d4d56385adad9a5126095d052948f674c707",
+  "source_input_count": 4429,
+  "source_manifest": {
+    "file": "rport-final-package-source-manifest.json",
+    "sha256": "7d3819534150cb071938947086bd63e0a617517d29be49d0844861071ce6d4a2"
+  },
+  "whole_upstream_rerun": false
+}
