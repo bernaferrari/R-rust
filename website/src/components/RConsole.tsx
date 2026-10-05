@@ -236,7 +236,11 @@ export function RConsole() {
           </Button>
         </div>
       )}
-      <ConsoleFiles runtime={runtime} busy={busy} revision={entries.length} />
+      <ConsoleFiles
+        runtime={runtime}
+        busy={busy}
+        revision={`${generation.current}:${entries.length}`}
+      />
       <div className="r-chat-workspace">
         <div className="r-chat-topline">
           <span>

@@ -90,3 +90,31 @@ test("console imports a file without executing its code", async ({ page }) => {
   await input.press("Enter")
   await expect(page.getByRole("log")).toContainText("[1] 7")
 })
+
+test("new session clears imported files and allows the same name again", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const command = page.getByRole("textbox", { name: "R command", exact: true })
+  await command.fill("1")
+  await command.press("Enter")
+  await expect(page.getByRole("log")).toContainText("[1] 1")
+  await page.getByText("Session files", { exact: true }).click()
+  const file = page.getByLabel("Import a session file")
+  const panel = page.locator(".r-chat-files-panel")
+  await file.setInputFiles({
+    name: "hello.R",
+    mimeType: "text/plain",
+    buffer: Buffer.from("hidden_answer <- 7"),
+  })
+  await expect(panel).toContainText("hello.R")
+  await page.getByRole("button", { name: "New session", exact: true }).click()
+  await expect(panel).not.toContainText("hello.R")
+  await file.setInputFiles({
+    name: "hello.R",
+    mimeType: "text/plain",
+    buffer: Buffer.from("hidden_answer <- 9"),
+  })
+  await expect(panel).toContainText("hello.R")
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+})

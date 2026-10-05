@@ -42,6 +42,11 @@ export class RRuntime {
     this.onStatus = options.onStatus
   }
 
+  /** Changes when reset, timeout, or disposal revokes the current session. */
+  get sessionGeneration(): number {
+    return this.generation
+  }
+
   run(code: string, mode: RuntimeMode): Promise<RuntimeResult> {
     if (typeof code !== "string" || code.length === 0)
       return Promise.reject(new Error("Runtime code cannot be empty"))

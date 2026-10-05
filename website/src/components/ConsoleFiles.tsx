@@ -11,17 +11,15 @@ export function ConsoleFiles({
 }: {
   runtime: RefObject<RRuntime | null>
   busy: boolean
-  revision: number
+  revision: string
 }) {
   const input = useRef<HTMLInputElement>(null)
-  const operationVersion = useRef(0)
   const [open, setOpen] = useState(false)
   const [files, setFiles] = useState<string[]>([])
   const [error, setError] = useState("")
   const [working, setWorking] = useState(false)
 
   useEffect(() => {
-    const version = ++operationVersion.current
     if (!open || busy) return
     let current = true
     runtime.current?.listFiles().then(
@@ -34,14 +32,15 @@ export function ConsoleFiles({
     )
     return () => {
       current = false
-      operationVersion.current = version + 1
     }
   }, [open, busy, revision, runtime])
 
   async function upload(file: File) {
     const session = runtime.current
     if (!session) return
-    const version = operationVersion.current
+    const generation = session.sessionGeneration
+    const isCurrent = () =>
+      runtime.current === session && session.sessionGeneration === generation
     setWorking(true)
     setError("")
     try {
@@ -53,12 +52,14 @@ export function ConsoleFiles({
           "A file with that name is already in this session. Rename it before importing."
         )
       const bytes = new Uint8Array(await file.arrayBuffer())
-      if (version !== operationVersion.current) return
+      if (!isCurrent()) return
       await session.importFile(file.name, bytes)
+      if (!isCurrent()) return
       const imported = await session.listFiles()
-      if (version === operationVersion.current) setFiles(imported)
+      if (isCurrent()) setFiles(imported)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      if (isCurrent())
+        setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setWorking(false)
     }
