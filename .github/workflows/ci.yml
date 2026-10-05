@@ -70,7 +70,9 @@ jobs:
         run: python3 scripts/capability_report.py --check
 
       - name: Test parity deadlines and log capture
-        run: python3 -m unittest scripts/tests/test_run_parity_case.py
+        run: |
+          bash scripts/conformance_artifacts_test.sh
+          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py
 
       - name: Test (workspace)
         run: cargo test --workspace
@@ -79,7 +81,12 @@ jobs:
         run: scripts/generate_uniffi_bindings.sh --check
 
   conformance:
-    name: Conformance parity vs exact R oracle
+    name: Exact R conformance shard ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     env:
@@ -115,17 +122,88 @@ jobs:
       - name: Exact-oracle conformance parity
         env:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
-        run: bash scripts/conformance_parity.sh --check --strict --report target/conformance
+        run: >-
+          bash scripts/conformance_parity.sh --check --strict
+          --shard-index "${{ matrix.shard }}" --shard-count 6
+          --report target/conformance-report
 
       - name: Upload exact-oracle conformance report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: exact-oracle-conformance
-          path: target/conformance
+          name: exact-oracle-conformance-shard-${{ matrix.shard }}
+          path: target/conformance-report
           if-no-files-found: ignore
 
+
+  conformance-coverage:
+    name: Complete exact-oracle conformance coverage
+    needs: conformance
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download every shard report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: exact-oracle-conformance-shard-*
+          path: target/conformance-shards
+      - name: Require complete immutable inventory and strict parity
+        if: always()
+        run: >-
+          python3 scripts/conformance_shards.py
+          --input-dir target/conformance-shards --shard-count 6
+          --source-commit "${{ github.sha }}"
+          --json target/conformance-union/summary.json
+          --markdown target/conformance-union/summary.md
+      - name: Upload full coverage result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-oracle-conformance-union
+          path: target/conformance-union
+          if-no-files-found: error
+
+  integration-parity:
+    name: Whole-script and pinned upstream parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      RPORT_CONFORMANCE_PROFILE: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Validate immutable R oracle manifest
+        id: oracle
+        run: |
+          python3 scripts/validate_r_oracle.py --github-output "$GITHUB_OUTPUT"
+          python3 -m unittest scripts/tests/test_validate_r_oracle.py
+          python3 -m unittest scripts/tests/test_validate_upstream_r_tests.py
+
+      - name: Cache exact R oracle build
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.oracle.outputs.cache_dir }}
+          key: ${{ runner.os }}-r-oracle-${{ steps.oracle.outputs.manifest_sha256 }}
+
+      - name: Install exact R oracle build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev
+
+      - name: Build or restore exact R oracle
+        run: |
+          bash scripts/install_r_oracle.sh
+          echo "${{ steps.oracle.outputs.cache_dir }}/bin" >> "$GITHUB_PATH"
+
       - name: Whole-script differential parity
+        id: script_diff
+        continue-on-error: true
+        env:
+          RPORT_REQUIRE_PINNED_ORACLE: "1"
         run: bash scripts/script_diff_parity.sh --check
 
       - name: Pinned upstream GNU R inventory and parity slices
@@ -136,10 +214,16 @@ jobs:
           --report target/upstream-r
 
       - name: Upload upstream GNU R disposition report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: upstream-r-dispositions
           path: target/upstream-r
+          if-no-files-found: ignore
+
+      - name: Require whole-script parity
+        if: always() && steps.script_diff.outcome == 'failure'
+        run: exit 1
 
   wasm:
     name: Rust WASM execution

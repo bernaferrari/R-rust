@@ -82,9 +82,7 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
 fi
 
 echo "INFO: building Rust rmath artifact for upstream slice runner." >&2
-RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_cargo build -p rmath >/dev/null
-
-RUST_RLIB="$(conformance_find_rmath_rlib)"
+RUST_RLIB="$(RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_build_rmath)"
 if [[ -z "$RUST_RLIB" ]]; then
     echo "ERROR: Rust rmath artifact missing after build." >&2
     exit 1

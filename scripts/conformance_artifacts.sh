@@ -72,3 +72,18 @@ conformance_find_rmath_rlib() {
     done
     printf '%s' "$found"
 }
+
+# Admit only the exact library emitted by this build, even when Cargo reused it.
+# A scoped subshell owns cleanup without replacing a caller's EXIT trap.
+conformance_build_rmath() (
+    local receipt status
+    receipt="$(mktemp "${TMPDIR:-/tmp}/rport-conformance-cargo.XXXXXX")" || exit
+    trap 'rm -f "$receipt"' EXIT
+    if conformance_cargo build -p rmath "$@" --message-format=json >"$receipt"; then
+        python3 "$ROOT_DIR/scripts/conformance_cargo_artifact.py" "$receipt"
+    else
+        status=$?
+        cat "$receipt" >&2
+        exit "$status"
+    fi
+)

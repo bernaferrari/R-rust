@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C LANG=C
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
@@ -11,7 +12,7 @@ XFAIL_FILE="$ROOT_DIR/tests/conformance/xfail.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
 usage() {
-    echo "usage: $0 [--check] [--regen-goldens] [--strict] [--case-timeout SECONDS] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+    echo "usage: $0 [--check] [--regen-goldens] [--strict] [--case-timeout SECONDS] [--shard-index INDEX --shard-count COUNT] [--report DIR] [--json FILE] [--markdown FILE]" >&2
     exit 2
 }
 
@@ -20,6 +21,8 @@ REPORT_DIR=""
 REPORT_JSON=""
 REPORT_MD=""
 STRICT=0
+SHARD_INDEX=0
+SHARD_COUNT=1
 CASE_TIMEOUT="${RPORT_CONFORMANCE_CASE_TIMEOUT:-300}"
 CASE_TIMEOUT_DETAIL=""
 
@@ -40,6 +43,16 @@ while (($# > 0)); do
         --case-timeout)
             if (($# < 2)); then usage; fi
             CASE_TIMEOUT="$2"
+            shift 2
+            ;;
+        --shard-index)
+            if (($# < 2)); then usage; fi
+            SHARD_INDEX="$2"
+            shift 2
+            ;;
+        --shard-count)
+            if (($# < 2)); then usage; fi
+            SHARD_COUNT="$2"
             shift 2
             ;;
         --report)
@@ -80,6 +93,23 @@ except ValueError:
 if not valid:
     raise SystemExit("ERROR: case timeout must be a positive finite number")
 PY
+
+SHARD_SPEC="$(python3 - "$ROOT_DIR" "$MODE" "$SHARD_INDEX" "$SHARD_COUNT" <<'PYTHON'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+from conformance_shards import inventory_at, partition
+try:
+    index, count = int(sys.argv[3]), int(sys.argv[4])
+    if sys.argv[2] == "--regen-goldens" and (index != 0 or count != 1):
+        raise ValueError("golden regeneration requires the complete corpus")
+    partition(inventory_at(Path(sys.argv[1])), index, count)
+    print(index, count)
+except ValueError as exc:
+    raise SystemExit(f"ERROR: {exc}")
+PYTHON
+)"
+read -r SHARD_INDEX SHARD_COUNT <<<"$SHARD_SPEC"
 
 if [[ -n "$REPORT_DIR" ]]; then
     mkdir -p "$REPORT_DIR"
@@ -163,9 +193,7 @@ fi
 
 if [[ "$MODE" != "--regen-goldens" ]]; then
     echo "INFO: building Rust rmath artifact for conformance runner." >&2
-    RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_cargo build -p rmath >/dev/null
-
-    RUST_RLIB="$(conformance_find_rmath_rlib)"
+    RUST_RLIB="$(RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_build_rmath)"
 
     if [[ -z "$RUST_RLIB" ]]; then
         echo "ERROR: Rust rmath artifact still missing after build." >&2
@@ -189,6 +217,7 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
     touch "$RESULTS_TSV"
     INVENTORY_TSV="$RUNNER_TMP_DIR/inventory.tsv"
     touch "$INVENTORY_TSV"
+    EXECUTION_JSON="$RUNNER_TMP_DIR/execution.json"
 
 
     if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$(conformance_dependency_dir)" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
@@ -365,6 +394,29 @@ engine_skip_reason() {
 }
 
 
+prepare_execution() {
+    python3 - "$ROOT_DIR" "$INVENTORY_TSV" "$EXECUTION_JSON" "$SHARD_INDEX" "$SHARD_COUNT" \
+        "${RPORT_CONFORMANCE_PROFILE:-debug}" "$CASE_TIMEOUT" "$STRICT" \
+        "${RPORT_REQUIRE_PINNED_ORACLE:-0}" "$R_MAJ_MIN" "$CASES_DIR" "$GOLDEN_DIR" \
+        "$ERROR_CASES_DIR" "$ERROR_GOLDEN_DIR" "$XFAIL_FILE" "${RUSTFLAGS_FOR_BUILD:--Awarnings}" <<'PYTHON'
+import csv
+import json
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "scripts"))
+from conformance_shards import capture_contract
+with Path(sys.argv[2]).open(newline="") as stream:
+    inventory = [{"case": row[0], "kind": row[1]} for row in csv.reader(stream, delimiter="\t") if row]
+contract = capture_contract(root, inventory, index=int(sys.argv[4]), count=int(sys.argv[5]),
+    profile=sys.argv[6], timeout=float(sys.argv[7]), strict=sys.argv[8] == "1",
+    pinned=sys.argv[9] == "1", engine=sys.argv[10], cases=Path(sys.argv[11]),
+    golden=Path(sys.argv[12]), errors=Path(sys.argv[13]), error_golden=Path(sys.argv[14]),
+    xfail=Path(sys.argv[15]), rustflags=sys.argv[16])
+Path(sys.argv[3]).write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n")
+PYTHON
+}
+
 record_result() {
     local case_name="$1"
     local kind="$2"
@@ -383,7 +435,7 @@ write_report() {
         return 1
     fi
 
-    python3 - "$RESULTS_TSV" "${REPORT_JSON:-}" "${REPORT_MD:-}" "$XFAIL_FILE" "$INVENTORY_TSV" <<'PY'
+    python3 - "$RESULTS_TSV" "${REPORT_JSON:-}" "${REPORT_MD:-}" "$XFAIL_FILE" "$INVENTORY_TSV" "$EXECUTION_JSON" "$ROOT_DIR" <<'PY'
 import csv
 import datetime as dt
 import json
@@ -395,6 +447,9 @@ json_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 markdown_path = pathlib.Path(sys.argv[3]) if sys.argv[3] else None
 xfail_path = pathlib.Path(sys.argv[4])
 inventory_path = pathlib.Path(sys.argv[5])
+execution = json.loads(pathlib.Path(sys.argv[6]).read_text())
+sys.path.insert(0, str(pathlib.Path(sys.argv[7]) / "scripts"))
+from conformance_shards import partition
 
 STATUS_ORDER = ("pass", "fail", "xfail", "xpass", "skip")
 
@@ -557,10 +612,15 @@ report = {
 }
 with inventory_path.open(newline="") as stream:
     inventory = [{"case": row[0], "kind": row[1]} for row in csv.reader(stream, delimiter="\t") if row]
+global_inventory_total = len(inventory)
+inventory = partition(inventory, execution["shard"]["index"], execution["shard"]["count"])
 attempted = {(row["case"], row["kind"]) for row in rows}
 unattempted = [row for row in inventory if (row["case"], row["kind"]) not in attempted]
 timed_out = sum(row["detail"].startswith("timeout:") for row in rows)
 report.update({
+    "execution": execution,
+    "global_inventory_total": global_inventory_total,
+    "full_inventory_complete": execution["shard"]["count"] == 1 and not unattempted and not timed_out,
     "inventory_total": len(inventory),
     "execution_complete": not unattempted and not timed_out,
     "timed_out": timed_out,
@@ -581,11 +641,13 @@ if markdown_path:
         "",
         "| Metric | Count |",
         "| --- | ---: |",
-        f"| Inventory cases | {report['inventory_total']} |",
+        f"| Full corpus cases | {report['global_inventory_total']} |",
+        f"| Selected inventory cases | {report['inventory_total']} |",
         f"| Attempted cases | {report['total']} |",
         f"| Unattempted cases | {report['unattempted']} |",
         f"| Timed out | {report['timed_out']} |",
-        f"| Execution complete | {report['execution_complete']} |",
+        f"| Selected execution complete | {report['execution_complete']} |",
+        f"| Full inventory complete | {report['full_inventory_complete']} |",
         f"| Passing | {report['passed']} |",
         f"| Failing | {report['failed']} |",
         f"| Expected failures | {report['expected_failures']} |",
@@ -818,7 +880,11 @@ main() {
         printf '%s\terror\n' "$(basename "$case_file" .R)" >>"$INVENTORY_TSV"
     done
 
+    prepare_execution
+    local ordinal=0
     for case_file in "${cases[@]}"; do
+        ordinal=$((ordinal + 1))
+        if (( (ordinal - 1) % SHARD_COUNT != SHARD_INDEX )); then continue; fi
         total=$((total + 1))
         local case_name
         case_name="$(basename "$case_file" .R)"
@@ -853,6 +919,8 @@ main() {
     done
 
     for case_file in "${error_cases[@]}"; do
+        ordinal=$((ordinal + 1))
+        if (( (ordinal - 1) % SHARD_COUNT != SHARD_INDEX )); then continue; fi
         total=$((total + 1))
         local case_name
         case_name="$(basename "$case_file" .R)"

@@ -1229,9 +1229,11 @@ revokes the facade. All 29 covratio controls and ten intercept-model controls
 pass. Independent copied-original GNU fixtures are byte-identical, and
 all-target rmath/r-embed Clippy with memory profiling and denied warnings and
 assigned formatting pass. Seven strict Miri cases are running against their
-frozen source and have no completed aggregate yet. Native external-pointer
-warning dispatch (`rport-hah9u.78`) and row-subassignment warning calls
-(`rport-wszw.6.3.1`) remain separate gaps. This ledger is the arithmetic-phase
+frozen source and have no completed aggregate yet. The native calling helper
+is GNU error-only; investigation `rport-hah9u.78` found no supported native
+warning-registration defect and closed without a runtime change. Ordinary R
+warning handlers remain the tested contract. Row-subassignment warning calls
+(`rport-wszw.6.3.1`) remain a separate gap. This ledger is the arithmetic-phase
 candidate’s evidence, not certification of concurrently changed whole HEAD.
 
 ## Faster unchanged parity build profile (rport-jxfp.3.12.6.2.1)
@@ -1282,3 +1284,32 @@ GNU extended precision and its undefined NaN-to-integer C cast require separate
 cross-target evidence (`rport-wszw.7.1.1.4.2`). Graphics C99 parsing is another
 contract. Atomic pairlist conversion can now rerun its unchanged six-case Miri
 selection without libc; that enclosing proof and whole-R parity remain open.
+
+## Partitioned exact-oracle validation (rport-jxfp.3.12.6.2.2–3)
+
+CI partitions the unchanged normal/error inventory across six independent jobs.
+Each case retains its full fresh session, golden comparison, normalization and
+300-second deadline; the job limit stays 50 minutes. Whole-script and upstream
+workloads have a separate job and both run even when whole-script parity fails.
+Conformance uploads contain reports, excluding the compilation cache.
+
+The union checker requires the exact commit, production input contents, corpus
+and golden bytes, oracle manifest, release profile, build flags and strict
+execution policy. Missing shards, duplicated or out-of-partition cases,
+inconsistent counts, timeouts and mixed identities fail admission. Semantic
+failures, xfails, xpasses and skips cannot become strict success. A completed
+individual shard is explicitly distinct from a completed full inventory.
+
+The real final harness passes one normal and one expected-error case against
+the pinned GNU oracle, reports 2 selected cases out of 1,181 and correctly
+reports incomplete full coverage. All 91 script unit tests, the artifact shell
+suite, syntax and workflow structure checks pass. Genuine pre-fix shard tests
+fail both partition/count assertions. These are harness checks and a partial
+runtime receipt; the complete immutable CI checkpoint remains open.
+
+Artifact selection now admits the exact rmath library Cargo emitted, including
+cached `fresh=true` builds. A genuine fixture demonstrates the old timestamp
+lookup selecting a newer wrong variant. The repaired helper rejects ambiguous,
+missing, test/executable and unsuccessful artifacts, and preserves a failed
+Cargo status even after artifact output. Its actual build and cached rebuild
+select the same authenticated library; both production parity callers use it.

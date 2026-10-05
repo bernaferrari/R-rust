@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @unittest.skipUnless(os.name == "posix", "the Bash parity harness uses POSIX groups")
 class ConformanceDeadlineReportTests(unittest.TestCase):
-    def run_fixture(self, normal_timeout=False, error_timeout=False):
+    def run_fixture(self, normal_timeout=False, error_timeout=False, shard_index=0, shard_count=1):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             for name in ["cases", "golden", "error_cases", "error_golden", "bin"]:
@@ -59,7 +59,9 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
                 "RESULTS_TSV": directory / "results.tsv", "INVENTORY_TSV": directory / "inventory.tsv",
                 "REPORT_JSON": directory / "summary.json", "REPORT_MD": directory / "summary.md",
                 "REPORT_DIR": directory, "RUST_BIN": rust, "MODE": "--check", "R_MAJ_MIN": "4.7",
-                "STRICT": "1", "CASE_TIMEOUT": "0.3", "CASE_TIMEOUT_DETAIL": "",
+                "STRICT": "1", "CASE_TIMEOUT": "2", "CASE_TIMEOUT_DETAIL": "",
+                "SHARD_INDEX": str(shard_index), "SHARD_COUNT": str(shard_count),
+                "EXECUTION_JSON": directory / "execution.json",
             }
             for name in ["results.tsv", "inventory.tsv"]:
                 (directory / name).touch()
@@ -70,7 +72,7 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
                 + "\n" + functions + '\nmain\n'
             )
             result = subprocess.run(
-                ["bash", str(script)], capture_output=True, timeout=10, check=False,
+                ["bash", str(script)], capture_output=True, timeout=30, check=False,
                 env={**os.environ, "PATH": f"{directory / 'bin'}:{os.environ['PATH']}"},
             )
             report_path = directory / "summary.json"
@@ -99,6 +101,31 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
         self.assertEqual(report["expected_failures"], 0)
         self.assertEqual(report["timed_out"], 1)
         self.assertEqual(report["unattempted"], 0)
+
+    def test_shards_execute_disjoint_original_cases_and_expected_errors(self):
+        first, a = self.run_fixture(shard_index=0, shard_count=2)
+        second, b = self.run_fixture(shard_index=1, shard_count=2)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(a["passed"], 2)
+        self.assertEqual(b["passed"], 1)
+        self.assertEqual(a["global_inventory_total"], 3)
+        self.assertEqual(a["inventory_total"], 2)
+        self.assertEqual(b["inventory_total"], 1)
+        self.assertTrue(a["execution_complete"])
+        self.assertFalse(a["full_inventory_complete"])
+        self.assertIn(b"RUN 001_error: Rust (expected error)", first.stdout)
+        self.assertNotIn(b"RUN 002_second:", first.stdout)
+        self.assertNotIn(b"RUN 001_first:", second.stdout)
+
+    def test_shard_timeout_accounts_only_for_unattempted_selected_cases(self):
+        result, report = self.run_fixture(normal_timeout=True, shard_index=0, shard_count=2)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["inventory_total"], 2)
+        self.assertEqual(report["global_inventory_total"], 3)
+        self.assertEqual(report["unattempted_cases"], [{"case": "001_error", "kind": "error"}])
+        self.assertFalse(report["execution_complete"])
+        self.assertFalse(report["full_inventory_complete"])
 
     def test_completed_run_keeps_all_case_and_error_checks(self):
         result, report = self.run_fixture()

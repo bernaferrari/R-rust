@@ -32,6 +32,10 @@ if ! command -v Rscript >/dev/null 2>&1; then
     exit 0
 fi
 
+if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == "1" ]]; then
+    python3 "$ROOT_DIR/scripts/validate_r_oracle.py" --runtime "$(command -v Rscript)"
+fi
+
 echo "script-diff parity: building harness"
 RUSTFLAGS="${RUSTFLAGS:-} -Awarnings" conformance_cargo build -p rport-script-diff
 
