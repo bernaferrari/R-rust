@@ -1380,5 +1380,1572 @@
     "Selected upstream diagnostic deadlines are 180 seconds, shorter than the intended CI 1800 seconds; their timeouts do not establish CI-budget failures.",
     "Whole upstream strict output differences and timeouts remain unresolved.",
     "These selected suites do not establish that the full workspace passes or that GNU R compatibility is complete."
-  ]
+  ],
+  "complete_upstream": {
+    "source_commit": "a766d53b3d685124af58186a1fd50cd78bbfdb6b",
+    "ci_run": "https://github.com/bernaferrari/R-rust/actions/runs/37383607814",
+    "report": {
+      "path": "target/ci-checkpoint-a766d53b/upstream-union/summary.json",
+      "sha256": "0a579ea024bf75557fd14d2300e691b259d57f8d2795c04569d9e87c7e38660d"
+    },
+    "inventory_total": 85,
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "strict_pass": false,
+    "status_counts": {
+      "fail": 30,
+      "pass": 24,
+      "skip": 31,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "by_kind": {
+      "whole": {
+        "skip": 31,
+        "pass": 12,
+        "fail": 27
+      },
+      "curated": {
+        "pass": 12,
+        "fail": 3
+      }
+    },
+    "case_timeout_seconds": 1800.0,
+    "profile": "release",
+    "runtime": {
+      "cargo_features": [
+        "default",
+        "faer",
+        "rust-backend",
+        "r-graphics-engine",
+        "renderplot-device"
+      ],
+      "device": {
+        "font": "bundled DejaVu Sans",
+        "height": 504,
+        "name": "renderplot-scene",
+        "output": "owned display list",
+        "width": 504
+      },
+      "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+      "name": "graphics",
+      "numerical_backend": "faer",
+      "package_policy": "native"
+    },
+    "cases": [
+      {
+        "kind": "curated",
+        "case": "001_arith_true_power_ieee.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16497754100001316,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.02673077,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "002_arith_attributes_complex.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16489443100002177,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.076979761999979,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "003_eval_etc_parser_relops.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16471167000000264,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.976771672000012,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "004_eval_etc_closure_calls.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16483084799997982,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.076162461999985,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "005_conditions_trycatch.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16510408400000642,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.976997547999986,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "006_subset_vector_edges.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.1648232389999862,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.0250673740000025,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "007_sequence_rep_apply.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16483828200000517,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.078596054000002,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "008_data_frame_factor_table.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16501261199999817,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.126712194999982,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "009_any_all_na_list_inputs.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.1649278879999656,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.327355581999996,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "010_structure_attribute_remap.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.1647945610000079,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.026895578999984,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "011_complex_arithmetic_identities.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16498686100004534,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.227299757000026,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "012_primitive_accounting_smoke.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21544419200000675,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.125954433999993,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "013_eval_fns_parse_deparse_smoke.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16478136199998517,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.976416976999985,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "014_simple_true_core_vectors.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16475871900001948,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.977155029999949,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "curated",
+        "case": "015_empty_vector_format_io.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16483127399999375,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.0764963319999765,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "CRANtools.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "PCRE.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "any-all.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21552246199999558,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 6.1321200120000015,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "arith-true.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.3155978749999804,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 62.53422366999996,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "arith.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16522172000000523,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.330049581999987,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "array-subset.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16538813199997549,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.676531627999992,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "classes-methods.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.4658263039999895,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 278.10745913500006,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "complex.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.1651197790000083,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.629499851999981,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "conditions.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.2151572569999871,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.380503046999991,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "d-p-q-r-tests.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.616015472999976,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 449.21468060199993,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "d-p-q-r-tst-2.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.7668254820000584,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 50.799679954,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datasets.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.3653981379999891,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 35.459739533000004,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datetime.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16508259099998668,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.430701692000014,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datetime2.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21497460699993098,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 13.249793537000073,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datetime3.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.7664869249999811,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 6.63236477800001,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datetime4.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21493387999998959,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 32.653597692000005,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "datetime5.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21871369400003005,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.882058753000024,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "demos.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 1.0670800569999983,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 83.97899092199998,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "demos2.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.9669283399999813,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 134.261482558,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "download.file.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "eval-etc-2.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "eval-etc.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.31521805800002767,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 61.86847484500004,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "eval-fns.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.1649578220000194,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.028087451000033,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "gct-foot.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "iconv.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21526557199996432,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 6.73486946700001,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "iec60559.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16488032800009478,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.575902811999981,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "internet.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "internet2.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "isas-tests.Rin",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "lapack.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "libcurl.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "lm-tests.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.2151342340000042,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 16.959575379,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "method-dispatch.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21528183099997023,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 11.044369018999987,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "misc-devel.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "no-segfault.Rin",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "ok-errors.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16485714499998494,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.028617389000033,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "p-qbeta-strict-tst.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.3656817290000163,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 18.468021485999998,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "p-r-random-tests.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.7662001439999813,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 67.83105898500003,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "primitives.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.5661757670000043,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 371.938125161,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "print-tests.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.26505893000000924,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 12.196626335999952,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "r-strict-tst.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.21549905300003047,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 5.430949169999963,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-BLAS.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-IO.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-IO2.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-S4-examples.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-S4.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.6662017119999746,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 21.265584416000024,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-encodings.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-examples1.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-examples2.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-examples3.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-large.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-packages.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-plot-latin1.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.3155583099999717,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 11.797129568999992,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-plot.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-1a.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 1.4682598469998993,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 12.248067486000082,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-1b.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 2.371032387000014,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 29.74449261799998,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-1c.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.176584293000019,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 141.64495791299998,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-1d.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.625773659999936,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 142.545728896,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-1e.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-2.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-tests-3.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-translation.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "reg-win.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "simple-true.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16506896299995333,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 6.88318360300002,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "sockets.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "structure.R",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16479188100015563,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 1,
+            "elapsed_seconds": 4.47392185700005,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "test-system.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "timezone.R",
+        "status": "pass",
+        "detail": "",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 0.16475369799996997,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 4.77751692999999,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      },
+      {
+        "kind": "whole",
+        "case": "utf8-regex.R",
+        "status": "skip",
+        "detail": "declared skip",
+        "phases": []
+      },
+      {
+        "kind": "whole",
+        "case": "utf8.R",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 9.08549332299981,
+            "timeout_seconds": 1800.0
+          },
+          {
+            "engine": "rust",
+            "state": "finished",
+            "execution_complete": true,
+            "exit_code": 0,
+            "elapsed_seconds": 1335.1215039679998,
+            "timeout_seconds": 1800.0
+          }
+        ]
+      }
+    ]
+  }
 }

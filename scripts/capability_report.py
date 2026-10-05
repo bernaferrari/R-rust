@@ -27,6 +27,7 @@ observed = checkpoint['sets']
 latest_path = root / 'docs/ci-checkpoints/package-showcase-6823f00e.json'
 latest = json.loads(latest_path.read_text())
 current_conformance = latest['conformance']
+current_upstream = latest['complete_upstream']
 current_checks = {check['check']: check for check in latest['checks']}
 showcase = current_checks['Complete Chromium showcase']
 embedding = current_checks['Complete native public embedding suite']
@@ -79,18 +80,23 @@ Later executed evidence is recorded separately in the
 | Executed set | Commit | Pass | Fail | Other |
 | --- | --- | ---: | ---: | --- |
 | Complete exact-oracle conformance | `{current_conformance['source_commit'][:8]}` | {current_conformance['status_counts']['pass']} | {current_conformance['status_counts']['fail']} | All {current_conformance['inventory_total']} accounted for; {current_conformance['timed_out']} timeouts |
+| Complete whole upstream drivers | `{current_upstream['source_commit'][:8]}` | {current_upstream['by_kind']['whole']['pass']} | {current_upstream['by_kind']['whole']['fail']} | {current_upstream['by_kind']['whole']['skip']} skipped; all 70 accounted for |
+| Complete curated upstream slices | `{current_upstream['source_commit'][:8]}` | {current_upstream['by_kind']['curated']['pass']} | {current_upstream['by_kind']['curated']['fail']} | All 15 accounted for |
 | Complete native embedding suite | `{embedding['source_commit'][:8]}` | {embedding['passed']} | {embedding['failed']} | Actual default and portable public constructors |
 | Complete Chromium showcase | `{showcase['source_commit'][:8]}` | {showcase['passed']} | {showcase['failed']} | Original 59 plus reset/reimport regression; {showcase['skipped']} skipped; {showcase['flaky']} flaky |
 
 The browser run uses the production Wasm bytes identified by the receipt.
 The unchanged sunflower gallery and editor/download flows also pass twice each
 on the actual release build output. The original 15-second evaluation and
-25 MiB package budgets remain in effect. Whole-upstream totals have not been
-replaced by selected reruns: demos and Latin-1 complete with strict output
-differences, while the selected S4 and UTF-8 diagnostics end in classified
-180-second timeouts. Those diagnostic deadlines differ from the intended CI
-1800-second profile. The receipt retains the explicit feature, device, package
-and numerical profiles and every conformance failure.
+25 MiB package budgets remain in effect. The complete upstream CI union now
+accounts for all 85 workloads. UTF-8 completes in the intended 1800-second
+profile with a strict output difference (Rust execution takes 1335.122 seconds).
+Linux GNU Latin-1 setup succeeds; its strict output difference remains a
+separate failure. Earlier selected 180-second diagnostics retain their own
+timeout classifications and do not replace the complete CI results. The receipt
+retains explicit feature, device, package and numerical profiles and every
+conformance and upstream outcome. These reports identify their actual source
+commits; later focused repairs are not a new complete union.
 
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the

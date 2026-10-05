@@ -559,6 +559,15 @@ these shorter diagnostics do not substitute for the intended 1800-second CI
 profile. Native S4 first-use dispatch and Latin-1 normalization setup are
 repaired, but those whole programs are not recorded as passing.
 
+The subsequently downloaded complete `a766d53b` upstream CI union accounts
+for all 85 workloads: whole drivers 12 pass, 27 fail, 31 skip; curated slices
+12 pass, 3 fail. Under the intended 1800-second profile, `utf8.R` completes
+(Rust 1335.122 seconds) with a strict output difference. GNU Latin-1 setup
+succeeds on Linux; that driver also has a strict output difference. These
+completed CI results supersede the earlier incomplete whole-driver join,
+while the shorter local diagnostics retain their own classifications. The
+receipt includes every case, engine phase, profile and the raw union hash.
+
 The output-contract correction at `826b0d46` comes from independently running
 the pinned GNU executable: `capture.output(x)` does not see a caller-local
 print method, while `capture.output(print(x))` does. All five output tests pass,

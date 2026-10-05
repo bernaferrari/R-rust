@@ -47,18 +47,23 @@ Later executed evidence is recorded separately in the
 | Executed set | Commit | Pass | Fail | Other |
 | --- | --- | ---: | ---: | --- |
 | Complete exact-oracle conformance | `a766d53b` | 1048 | 133 | All 1181 accounted for; 0 timeouts |
+| Complete whole upstream drivers | `a766d53b` | 12 | 27 | 31 skipped; all 70 accounted for |
+| Complete curated upstream slices | `a766d53b` | 12 | 3 | All 15 accounted for |
 | Complete native embedding suite | `6823f00e` | 39 | 0 | Actual default and portable public constructors |
 | Complete Chromium showcase | `6823f00e` | 60 | 0 | Original 59 plus reset/reimport regression; 0 skipped; 0 flaky |
 
 The browser run uses the production Wasm bytes identified by the receipt.
 The unchanged sunflower gallery and editor/download flows also pass twice each
 on the actual release build output. The original 15-second evaluation and
-25 MiB package budgets remain in effect. Whole-upstream totals have not been
-replaced by selected reruns: demos and Latin-1 complete with strict output
-differences, while the selected S4 and UTF-8 diagnostics end in classified
-180-second timeouts. Those diagnostic deadlines differ from the intended CI
-1800-second profile. The receipt retains the explicit feature, device, package
-and numerical profiles and every conformance failure.
+25 MiB package budgets remain in effect. The complete upstream CI union now
+accounts for all 85 workloads. UTF-8 completes in the intended 1800-second
+profile with a strict output difference (Rust execution takes 1335.122 seconds).
+Linux GNU Latin-1 setup succeeds; its strict output difference remains a
+separate failure. Earlier selected 180-second diagnostics retain their own
+timeout classifications and do not replace the complete CI results. The receipt
+retains explicit feature, device, package and numerical profiles and every
+conformance and upstream outcome. These reports identify their actual source
+commits; later focused repairs are not a new complete union.
 
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the
