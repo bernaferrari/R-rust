@@ -18,9 +18,26 @@ fn capture_output_does_not_duplicate_explicit_output() {
 }
 
 #[test]
-fn capture_output_dispatches_custom_print_for_visible_values() {
-    let mut s = RSession::new().unwrap();
-    assert_eq!(s.eval("local({print.zz<-function(x,...)cat('custom\n');x<-structure(1,class='zz');identical(capture.output(x), 'custom')})").unwrap().trim(),"[1] TRUE");
+fn capture_output_uses_gnu_print_method_visibility() {
+    // Independently executed with the pinned GNU R 4.7.0 r90451 oracle.
+    // utils prints visible values in its own frame; an explicit print(x)
+    // executes in the expression's caller and can see a local S3 method.
+    let cases = [
+        r#"local({print.zz<-function(x,...)cat('custom\n');x<-structure(1,class='zz');identical(capture.output(x), c('[1] 1', 'attr(,"class")', '[1] "zz"'))})"#,
+        r#"local({print.zz<-function(x,...)cat('custom\n');x<-structure(1,class='zz');identical(capture.output(print(x)), 'custom')})"#,
+        r#"local({print.zz<-function(x,...)cat('custom\n');x<-structure(1,class='zz');identical(utils::capture.output(print(x)), 'custom')})"#,
+        r#"print.zz<-function(x,...)cat('global\n'); local({print.zz<-function(x,...)cat('local\n');x<-structure(1,class='zz');identical(capture.output(x),'global') && identical(capture.output(print(x)),'local')})"#,
+        r#"rm(print.zz); !exists('print.zz', envir=globalenv(), inherits=FALSE)"#,
+    ];
+    let portable = r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp");
+    for mut session in [
+        RSession::new().unwrap(),
+        RSession::new_with_path_policy(portable).unwrap(),
+    ] {
+        for code in cases {
+            assert_eq!(session.eval(code).unwrap().trim(), "[1] TRUE", "{code}");
+        }
+    }
 }
 
 #[test]
