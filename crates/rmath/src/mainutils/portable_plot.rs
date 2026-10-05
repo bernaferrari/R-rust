@@ -2051,8 +2051,20 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
 
 /// Decode all R arguments before borrowing the live renderer.
 pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
+    unsafe { raster_image_input(args, false) }
+}
+
+pub(crate) unsafe fn native_raster_image(args: SEXP) -> SEXP {
+    unsafe { raster_image_input(args, true) }
+}
+
+unsafe fn raster_image_input(args: SEXP, native_payload: bool) -> SEXP {
     unsafe {
-        let request = crate::mainutils::graphics_raster::parse_raster_image(args);
+        let request = if native_payload {
+            crate::mainutils::graphics_raster::parse_native_raster_image(args)
+        } else {
+            crate::mainutils::graphics_raster::parse_raster_image(args)
+        };
         let coords = current();
         if coords.log.iter().any(|log| *log) {
             base_error("rasterImage on logarithmic axes is not supported");

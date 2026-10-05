@@ -52,8 +52,17 @@ pub(crate) unsafe fn do_raster_image(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
 
 /// Parse an evaluated `.Internal(rasterImage(...))` argument list.
 pub(crate) unsafe fn parse_raster_image(args: SEXP) -> RasterImageRequest {
+    unsafe { parse_raster_image_input(args, false) }
+}
+
+/// GNU C_raster receives row-major pixels even when the payload is unclassed.
+pub(crate) unsafe fn parse_native_raster_image(args: SEXP) -> RasterImageRequest {
+    unsafe { parse_raster_image_input(args, true) }
+}
+
+unsafe fn parse_raster_image_input(args: SEXP, native_payload: bool) -> RasterImageRequest {
     unsafe {
-        let image = decode_raster_image(arg(args, "image"));
+        let image = decode_raster_image_input(arg(args, "image"), native_payload);
         let x_left = numeric_vector(arg(args, "xleft"), "xleft");
         let y_bottom = numeric_vector(arg(args, "ybottom"), "ybottom");
         let x_right = numeric_vector(arg(args, "xright"), "xright");
@@ -144,6 +153,10 @@ pub(crate) fn affine_transform(
 /// Decode a color matrix, grayscale numeric matrix, or nativeRaster integer
 /// matrix into top-down row-major RGBA8 pixels.
 pub(crate) unsafe fn decode_raster_image(value: SEXP) -> RasterImage {
+    unsafe { decode_raster_image_input(value, false) }
+}
+
+unsafe fn decode_raster_image_input(value: SEXP, native_payload: bool) -> RasterImage {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             base_error("invalid raster image");
@@ -167,10 +180,17 @@ pub(crate) unsafe fn decode_raster_image(value: SEXP) -> RasterImage {
         }
         let native =
             TYPEOF(value) == SEXPTYPE::INTSXP && inherits2(value, c"nativeRaster".as_ptr()) != 0;
+        // as.raster transposes an ordinary matrix before restoring its
+        // dimensions. Both raster classes therefore carry row-major pixels.
+        let row_major = native_payload || native || inherits2(value, c"raster".as_ptr()) != 0;
         let mut pixels = Vec::with_capacity(length * 4);
         for row in 0..height {
             for column in 0..width {
-                let index = row + column * height;
+                let index = if row_major {
+                    row * width + column
+                } else {
+                    row + column * height
+                };
                 let color = if native {
                     packed_color(*INTEGER(value).add(index) as c_uint)
                 } else {

@@ -183,8 +183,9 @@ fn raster_image_numeric_and_native_raster_inputs_render() {
     // A 90-degree rotation about bottom-left keeps the source top-left at
     // the output bottom-left in the device's top-down pixel coordinates.
     assert_quadrant(&native, is_red, split_x, split_y, true, false);
-    assert_quadrant(&native, is_green, split_x, split_y, false, false);
-    assert_quadrant(&native, is_blue, split_x, split_y, true, true);
+    // GNU nativeRaster stores rows consecutively, unlike an ordinary R matrix.
+    assert_quadrant(&native, is_green, split_x, split_y, true, true);
+    assert_quadrant(&native, is_blue, split_x, split_y, false, false);
     assert_quadrant(&native, is_black, split_x, split_y, false, true);
 }
 

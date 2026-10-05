@@ -24,7 +24,6 @@ fn renderplot_backend_active() -> bool {
     })
 }
 
-#[cfg(feature = "renderplot-device")]
 unsafe fn external_routine_name(args: SEXP) -> String {
     unsafe {
         let name = crate::sexp::accessors::CAR(args);
@@ -97,7 +96,51 @@ unsafe fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> 
                 built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
             }
             owner.require_active()?;
-            let drawn = crate::mainutils::portable_plot::draw_builtin(name, built.as_raw());
+            let drawn = if name == "rasterImage" {
+                crate::mainutils::portable_plot::native_raster_image(built.as_raw())
+            } else {
+                crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
+            };
+            owner.require_active()?;
+            SexpResult::Ok(drawn)
+        })();
+        result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    }
+}
+
+/// GNU text.default passes one xy.coords list before labels and text options.
+/// Expand its original owned x/y values before the common positional adapter.
+#[cfg(feature = "renderplot-device")]
+unsafe fn draw_portable_text(args: SEXP) -> SEXP {
+    unsafe {
+        let result = (|| {
+            use crate::sexp::object::{SessionNodeFactory, SexpError, SexpResult};
+            let owner = crate::sexp::owner::OwnerToken::current()?;
+            let _pin = owner.pin()?;
+            let factory = SessionNodeFactory::new(owner);
+            let input = owner.sexp(args)?.into_owned()?;
+            let payload = input.try_cdr()?.into_owned()?;
+            let xy = payload.try_car()?.into_owned()?;
+            if xy.typeof_() != crate::sexp::ffi::SEXPTYPE::VECSXP || xy.len() < 2 {
+                return Err(SexpError::EvaluationFailed {
+                    message: "C_text requires an xy.coords list".into(),
+                });
+            }
+            let x = xy.try_vector_elt(0)?.into_owned()?;
+            let y = xy.try_vector_elt(1)?.into_owned()?;
+            let tail = payload.try_cdr()?.into_owned()?;
+            let nil = factory.nil().into_owned()?;
+            let tail = factory.pairlist_cell(&y, &tail, &nil)?.into_owned()?;
+            let tail = factory.pairlist_cell(&x, &tail, &nil)?.into_owned()?;
+            let expanded = factory.pairlist_cell(&nil, &tail, &nil)?.into_owned()?;
+            owner.require_active()?;
+            let drawn = draw_portable_positional(
+                "text",
+                expanded.as_raw(),
+                &[
+                    "x", "y", "labels", "adj", "pos", "offset", "vfont", "cex", "col", "font",
+                ],
+            );
             owner.require_active()?;
             SexpResult::Ok(drawn)
         })();
@@ -198,15 +241,18 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
             return match bare {
                 "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
                 "title" => draw_portable_title(args),
+                "text" => draw_portable_text(args),
                 "polygon" => {
                     draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
                 }
                 "box" | "segments" | "arrows" | "rect" | "abline" => forward_portable(bare, args),
-                _ => crate::sexp::globals::R_NilValue(),
+                _ => c_unsupported_graphics(args),
             };
         }
-        let _ = args;
-        crate::sexp::globals::R_NilValue()
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
     }
 }
 unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
@@ -245,8 +291,38 @@ unsafe extern "C-unwind" fn c_image(args: SEXP) -> SEXP {
 unsafe extern "C-unwind" fn c_layout(args: SEXP) -> SEXP {
     unsafe { par::C_layout(args) }
 }
-unsafe extern "C-unwind" fn c_nil(_args: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_NilValue() }
+unsafe extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' is not implemented",
+            external_routine_name(args),
+        ))
+    }
+}
+
+unsafe extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "rasterImage",
+                args,
+                &[
+                    "image",
+                    "xleft",
+                    "ybottom",
+                    "xright",
+                    "ytop",
+                    "angle",
+                    "interpolate",
+                ],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
 }
 
 /// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.
@@ -331,19 +407,23 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "filledcontour" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
-            c_nil,
+            c_unsupported_graphics,
             crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
         "convertX" | "convertY" => {
             Some(crate::mainutils::native_routines::NativeRoutine::External1(
-                c_nil,
+                c_unsupported_graphics,
                 crate::mainutils::native_routines::PayloadArity::Fixed(3),
             ))
         }
-        "persp" | "clip" | "dend" | "dendwindow" | "erase" | "path" | "raster" | "symbols"
-        | "xspline" | "locator" | "identify" => {
+        "raster" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_raster,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "persp" | "clip" | "dend" | "dendwindow" | "erase" | "path" | "symbols" | "xspline"
+        | "locator" | "identify" => {
             Some(crate::mainutils::native_routines::NativeRoutine::External1(
-                c_nil,
+                c_unsupported_graphics,
                 crate::mainutils::native_routines::PayloadArity::Variadic,
             ))
         }
