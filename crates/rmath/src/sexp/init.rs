@@ -1071,6 +1071,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  ok <- !is.na(m)\n\
                  if (any(ok)) {\n\
                      replace <- c(\"dim\", \"dimnames\", \"names\", \"tsp\", \"levels\")\n\
+                     pc <- function(nms) paste0(sQuote(nms), collapse = \", \")\n\
+                     .Deprecated(msg = paste0(\"Replacing special names \", pc(attrnames[ok]),\n\
+                         \" is deprecated; use \", pc(replace[m[ok]]), \" instead.\"))\n\
                      names(attrib)[ok] <- replace[m[ok]]\n\
                  }\n\
                  if (isTRUE(any(attrib[[\"class\", exact = TRUE]] == \"factor\"))\n\

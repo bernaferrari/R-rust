@@ -217,7 +217,7 @@ pub unsafe fn format_string_element(s: SEXP) -> *const c_char {
     unsafe {
         with_deparse_runtime(|state| {
             let buf = &mut state.string_buf;
-            if s.is_null() || s == R_NilValue() {
+            if s.is_null() || s == R_NilValue() || s == R_NaString() {
                 buf[0] = b'N';
                 buf[1] = b'A';
                 buf[2] = 0;
@@ -469,6 +469,18 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     print2buff(b"as.complex(\0".as_ptr() as *const c_char, d);
                     surround = true;
                 }
+            } else if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::STRSXP {
+                for i in 0..tlen as usize {
+                    let elt = STRING_ELT(vector, i as R_xlen_t);
+                    if !elt.is_null() && elt != R_NilValue() && elt != R_NaString() {
+                        all_na = false;
+                        break;
+                    }
+                }
+                if all_na && (d.opts & S_COMPAT != 0) {
+                    print2buff(c"as.character(".as_ptr(), d);
+                    surround = true;
+                }
             } else if TYPEOF(vector) == SEXPTYPE::RAWSXP {
                 print2buff(b"as.raw(\0".as_ptr() as *const c_char, d);
                 surround = true;
@@ -583,7 +595,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     16 => {
                         // STRSXP
                         let elt = STRING_ELT(vector, i as R_xlen_t);
-                        if all_na && (elt.is_null() || elt == R_NilValue()) {
+                        if all_na && (elt.is_null() || elt == R_NilValue() || elt == R_NaString()) {
                             strp = b"NA_character_\0".as_ptr() as *const c_char;
                         } else {
                             strp = format_string_element(elt);
