@@ -352,6 +352,18 @@ fn package_helpers_load_android_library_package() {
 
 #[test]
 fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
+    run_pure_package_corpus_smoke(RSession::new().expect("default session"));
+}
+
+#[test]
+fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages_portable() {
+    run_pure_package_corpus_smoke(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_pure_package_corpus_smoke(mut session: RSession) {
     let root = unique_test_root("rport-embed-corpus");
     let bundled = root.join("bundled-library");
 
@@ -660,7 +672,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
     );
 
     let paths = android_paths_for(&root);
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_runtime(&paths)
         .expect("path config");
@@ -1838,6 +1850,18 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
 ];
 #[test]
 fn synthetic_package_feature_matrix() {
+    run_synthetic_package_feature_matrix(RSession::new().expect("default session"));
+}
+
+#[test]
+fn synthetic_package_feature_matrix_portable() {
+    run_synthetic_package_feature_matrix(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_synthetic_package_feature_matrix(mut session: RSession) {
     assert_eq!(
         SYNTHETIC_PACKAGE_FEATURE_MATRIX.len(),
         25,
@@ -1883,7 +1907,7 @@ fn synthetic_package_feature_matrix() {
             std::fs::write(path, bytes).expect("extra file");
         }
     }
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_runtime(&android_paths_for(&root))
         .expect("path config");
@@ -1948,9 +1972,21 @@ fn wasm_m3_oracle_shape() {
 /// Statuses mirror the manifest: pass/partial/blocked with exact blockers.
 #[test]
 fn real_package_corpus() {
+    run_real_package_corpus(RSession::new().expect("default session"));
+}
+
+#[test]
+fn real_package_corpus_portable() {
+    run_real_package_corpus(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_real_package_corpus(mut session: RSession) {
     let corpus = support::PackageCorpus::new();
     let (app, cache, bundled) = (&corpus.app, &corpus.cache, &corpus.bundled);
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_paths(app, cache, Some(bundled))
         .expect("paths");
