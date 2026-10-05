@@ -19,8 +19,8 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol, Rf_length,
@@ -549,87 +549,159 @@ mod owned_paste;
 
 struct PasteNative<'execution>(&'execution crate::sexp::owner::RuntimeAccess);
 impl owned_paste::Native for PasteNative<'_> {
-    fn initialize(&self, op: &owned_paste::Value, args: &owned_paste::Value) -> crate::sexp::object::SexpResult<bool> {
+    fn initialize(
+        &self,
+        op: &owned_paste::Value,
+        args: &owned_paste::Value,
+    ) -> crate::sexp::object::SexpResult<bool> {
         self.0.with_native(|original| {
             // Native projections are kept alive by the actual owning operands.
-            unsafe { checkArity(op.as_raw(), args.as_raw()); PrintDefaults(); }
+            unsafe {
+                checkArity(op.as_raw(), args.as_raw());
+                PrintDefaults();
+            }
             original.require_active()?;
             Ok(unsafe { PRIMVAL(op.as_raw()) == 0 })
         })
     }
-    fn boolean(&self, value: &owned_paste::Value, call: &owned_paste::Value) -> crate::sexp::object::SexpResult<bool> {
+    fn boolean(
+        &self,
+        value: &owned_paste::Value,
+        call: &owned_paste::Value,
+    ) -> crate::sexp::object::SexpResult<bool> {
         self.0.with_native(|original| {
-            let result=unsafe { asBool2(value.as_raw(), call.as_raw()) };
-            original.require_active()?; Ok(result)
+            let result = unsafe { asBool2(value.as_raw(), call.as_raw()) };
+            original.require_active()?;
+            Ok(result)
         })
     }
-    fn coerce(&self, value: &owned_paste::Value, env: &owned_paste::Value) -> crate::sexp::object::SexpResult<owned_paste::Value> {
-        use crate::sexp::{ffi::SEXPTYPE,object::SexpMut};
-        let domain=self.0.domain();
-        let allocator=self.0.allocator(&domain)?;
+    fn coerce(
+        &self,
+        value: &owned_paste::Value,
+        env: &owned_paste::Value,
+    ) -> crate::sexp::object::SexpResult<owned_paste::Value> {
+        use crate::sexp::{ffi::SEXPTYPE, object::SexpMut};
+        let domain = self.0.domain();
+        let allocator = self.0.allocator(&domain)?;
         if value.header().sxpinfo.obj() {
-            let function=self.0.with_native(|original| {
-                let symbol=unsafe { R_AsCharacterSymbol() };
-                original.require_active()?; original.sexp(symbol)?.into_owned()
+            let function = self.0.with_native(|original| {
+                let symbol = unsafe { R_AsCharacterSymbol() };
+                original.require_active()?;
+                original.sexp(symbol)?.into_owned()
             })?;
-            let arguments=allocator.pairlist_cell(value,&domain.nil(),&domain.nil())?;
-            let call=allocator.call(&function,&arguments)?;
+            let arguments = allocator.pairlist_cell(value, &domain.nil(), &domain.nil())?;
+            let call = allocator.call(&function, &arguments)?;
             self.0.with_native(|original| {
-                let result=unsafe { eval(call.as_raw(),env.as_raw()) };
-                original.require_active()?;original.sexp(result)?.into_owned()
+                let result = unsafe { eval(call.as_raw(), env.as_raw()) };
+                original.require_active()?;
+                original.sexp(result)?.into_owned()
             })
-        } else if value.typeof_()==SEXPTYPE::SYMSXP {
-            let name=value.try_printname()?.into_owned()?;
-            let mut result=SexpMut::try_from_checked(allocator.allocate(|a|Some(a.alloc_vector(SEXPTYPE::STRSXP,1)))?)?;
-            result.try_set_string_elt(0,name)?;Ok(result.freeze())
+        } else if value.typeof_() == SEXPTYPE::SYMSXP {
+            let name = value.try_printname()?.into_owned()?;
+            let mut result = SexpMut::try_from_checked(
+                allocator.allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))?,
+            )?;
+            result.try_set_string_elt(0, name)?;
+            Ok(result.freeze())
         } else {
             // This remains the translated coercion boundary. Its selected input
             // and original runtime remain owned through warnings and providers.
             self.0.with_native(|original| {
-                let result=unsafe { coerceVector(value.as_raw(),SEXPTYPE::STRSXP.as_c_int()) };
-                original.require_active()?;original.sexp(result)?.into_owned()
+                let result = unsafe { coerceVector(value.as_raw(), SEXPTYPE::STRSXP.as_c_int()) };
+                original.require_active()?;
+                original.sexp(result)?.into_owned()
             })
         }
     }
-    fn bytes(&self, value: &owned_paste::Value, mode: owned_paste::Mode, parent:&owned_paste::Value) -> crate::sexp::object::SexpResult<owned_paste::Bytes> {
+    fn bytes(
+        &self,
+        value: &owned_paste::Value,
+        mode: owned_paste::Mode,
+        parent: &owned_paste::Value,
+    ) -> crate::sexp::object::SexpResult<owned_paste::Bytes> {
         self.0.with_native(|original| {
-            let pointer=unsafe { match mode {
-                owned_paste::Mode::Native=>translateChar(value.as_raw()),
-                owned_paste::Mode::Utf8=>translateCharUTF8(value.as_raw()),
-                owned_paste::Mode::Bytes=>CHAR(value.as_raw()),
-            }};
+            let pointer = unsafe {
+                match mode {
+                    owned_paste::Mode::Native => translateChar(value.as_raw()),
+                    owned_paste::Mode::Utf8 => translateCharUTF8(value.as_raw()),
+                    owned_paste::Mode::Bytes => CHAR(value.as_raw()),
+                }
+            };
             original.require_active()?;
-            if pointer.is_null() { return Err(crate::sexp::object::SexpError::MissingData { sexptype:SEXPTYPE::CHARSXP }); }
+            if pointer.is_null() {
+                return Err(crate::sexp::object::SexpError::MissingData {
+                    sexptype: SEXPTYPE::CHARSXP,
+                });
+            }
             // Translation returns an admitted immutable span; finish its copy
             // before allocation/provider entry, retaining the original character.
-            let span=unsafe { std::ffi::CStr::from_ptr(pointer) }.to_bytes();
-            let node=parent.allocation()?;
-            let reservation=node.heap_identity().reserve_payload_bytes(node,span.len()).ok_or(crate::sexp::object::SexpError::AllocationFailed {object:"paste translated-byte budget"})?;
-            let mut data=Vec::new();data.try_reserve_exact(span.len()).map_err(|_|crate::sexp::object::SexpError::AllocationFailed {object:"paste translated bytes"})?;
+            let span = unsafe { std::ffi::CStr::from_ptr(pointer) }.to_bytes();
+            let node = parent.allocation()?;
+            let reservation = node
+                .heap_identity()
+                .reserve_payload_bytes(node, span.len())
+                .ok_or(crate::sexp::object::SexpError::AllocationFailed {
+                    object: "paste translated-byte budget",
+                })?;
+            let mut data = Vec::new();
+            data.try_reserve_exact(span.len()).map_err(|_| {
+                crate::sexp::object::SexpError::AllocationFailed {
+                    object: "paste translated bytes",
+                }
+            })?;
             data.extend_from_slice(span);
-            Ok(owned_paste::Bytes { data,_reservation:reservation })
+            Ok(owned_paste::Bytes {
+                data,
+                _reservation: reservation,
+            })
         })
     }
-    fn flags(&self, value:&owned_paste::Value)->(bool,bool) { (IS_UTF8(value.as_raw()),IS_BYTES(value.as_raw())) }
-    fn name(&self,op:&owned_paste::Value)->String { unsafe {std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op.as_raw()))}.to_string_lossy().into_owned() }
+    fn flags(&self, value: &owned_paste::Value) -> (bool, bool) {
+        (IS_UTF8(value.as_raw()), IS_BYTES(value.as_raw()))
+    }
+    fn name(&self, op: &owned_paste::Value) -> String {
+        unsafe { std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op.as_raw())) }
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    if op.is_null() || args.is_null() { return ptr::null_mut(); }
+    if op.is_null() || args.is_null() {
+        return ptr::null_mut();
+    }
     use crate::sexp::owner::OwnerToken;
-    let owner=unsafe { OwnerToken::current() }.unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
-    let _pin=owner.pin().unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
-    let own=|raw|owner.sexp(raw).and_then(crate::sexp::object::Sexp::into_owned).unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
-    let (call,op,args,env)=(own(call),own(op),own(args),own(env));
-    let weak=owner.weak_owner().unwrap_or_else(||crate::sexp::context::r_error("paste requires a managed runtime"));
-    let outcome=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||crate::sexp::owner::with_runtime(&weak,|access|owned_paste::evaluate(access,&PasteNative(access),call,op,args,env))));
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let own = |raw| {
+        owner
+            .sexp(raw)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    };
+    let (call, op, args, env) = (own(call), own(op), own(args), own(env));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("paste requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            owned_paste::evaluate(access, &PasteNative(access), call, op, args, env)
+        })
+    }));
     // Revocation or foreign activation must not authenticate success/unwind.
-    owner.require_active().unwrap_or_else(|e|crate::sexp::context::r_error(e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     match outcome {
-        Ok(Ok(Ok(value)))=>value.as_raw(),
-        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed {message})))=>crate::sexp::context::r_error(message),
-        Ok(Ok(Err(error)))|Ok(Err(error))=>crate::sexp::context::r_error(error.to_string()),
-        Err(payload)=>std::panic::resume_unwind(payload),
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
+            crate::sexp::context::r_error(message)
+        }
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
