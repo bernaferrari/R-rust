@@ -30,6 +30,14 @@ mod winbitmap;
 unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devps::PDF(args) }
 }
+unsafe extern "C-unwind" fn c_dev_ask_new_page(
+    call: crate::sexp::ffi::SEXP,
+    op: crate::sexp::ffi::SEXP,
+    args: crate::sexp::ffi::SEXP,
+    env: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    unsafe { stubs::devAskNewPage(call, op, args, env) }
+}
 unsafe extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devices::devholdflush(args) }
 }
@@ -123,6 +131,10 @@ unsafe extern "C-unwind" fn c_rgb(
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
+        "devAskNewPage" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_dev_ask_new_page,
+            crate::mainutils::native_routines::PayloadArity::Fixed(1),
+        )),
         "PDF" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_pdf,
             crate::mainutils::native_routines::PayloadArity::Fixed(23),
@@ -213,6 +225,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
             "C_PDF",
             "C_palette2",
             "C_devholdflush",
+            "C_devAskNewPage",
             "C_devcur",
             "C_devoff",
             "C_devset",

@@ -812,9 +812,33 @@ unsafe fn Query(what: *const c_char, _dd: pGEDevDesc) -> SEXP {
 }
 
 pub(crate) fn parameter(name: &str) -> ParValue {
+    if name == "ask" {
+        return ParValue::Logical(vec![
+            crate::library::grdevices::device_registry::page_question(None) as c_int,
+        ]);
+    }
     with_par_state(|state| current_par_value(state, name))
 }
 pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
+    if name == "ask" {
+        let ask = match value {
+            ParValue::Logical(values) | ParValue::Integer(values) => {
+                if values.len() != 1 {
+                    par_error("graphical parameter \"ask\" has the wrong length");
+                }
+                values[0] != NA_INTEGER && values[0] != 0
+            }
+            ParValue::Real(values) => {
+                if values.len() != 1 {
+                    par_error("graphical parameter \"ask\" has the wrong length");
+                }
+                !values[0].is_nan() && values[0] != 0.0
+            }
+            ParValue::String(value) => matches!(value.as_str(), "TRUE" | "True" | "true" | "T"),
+        };
+        crate::library::grdevices::device_registry::page_question(Some(ask));
+        return;
+    }
     with_par_state(|state| {
         state.overrides.insert(name.to_owned(), value);
     });
@@ -1065,7 +1089,7 @@ unsafe fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
         let _name_guard = protect(name_vec);
         for (i, (name, known)) in slots.iter().enumerate() {
             let value = if *known {
-                let value = with_par_state(|state| current_par_value(state, name));
+                let value = parameter(name);
                 par_value_to_sexp(&value)
             } else {
                 R_NilValue()
@@ -1110,8 +1134,7 @@ unsafe fn null_named_list(names: &[String]) -> SEXP {
 }
 
 unsafe fn named_par_list(names: &[String]) -> SEXP {
-    let values: Vec<_> =
-        with_par_state(|state| names.iter().map(|n| current_par_value(state, n)).collect());
+    let values: Vec<_> = names.iter().map(|name| parameter(name)).collect();
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
         if result.is_null() {
@@ -1416,11 +1439,9 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let result = mixed_par_list(slots);
             if !set_names.is_empty() {
                 let _kept = protect(result);
-                with_par_state(|state| {
-                    for (name, value) in set_names.iter().zip(set_values) {
-                        state.overrides.insert(name.clone(), value);
-                    }
-                });
+                for (name, value) in set_names.iter().zip(set_values) {
+                    set_plot_parameter(name, value);
+                }
                 crate::sexp::globals::set_R_Visible(FALSE);
             }
             return result;
@@ -1436,11 +1457,9 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = if !set_names.is_empty() {
             let old = named_par_list(&set_names);
             let _old = protect(old);
-            with_par_state(|state| {
-                for (name, value) in set_names.iter().zip(set_values) {
-                    state.overrides.insert(name.clone(), value);
-                }
-            });
+            for (name, value) in set_names.iter().zip(set_values) {
+                set_plot_parameter(name, value);
+            }
             old
         } else {
             // Graphics' R wrapper does `value[[1L]]` for one unnamed query.

@@ -1150,6 +1150,39 @@ fn render_reports_actionable_plot_errors() {
 }
 
 #[test]
+fn device_page_questions_follow_gnu_value_visibility_and_device_lifecycle() {
+    let mut session = RSession::new().expect("default session");
+    session.record_scene(r#"
+            q <- grDevices::devAskNewPage
+            stopifnot(identical(withVisible(q(NULL)), list(value=FALSE, visible=TRUE)))
+            stopifnot(identical(withVisible(q(TRUE)), list(value=FALSE, visible=FALSE)))
+            stopifnot(identical(q(NULL), TRUE))
+            stopifnot(identical(withVisible(q(FALSE)), list(value=TRUE, visible=FALSE)))
+            for (bad in list(NA, logical(), 'yes')) {
+                stopifnot(identical(tryCatch(q(bad), error=conditionMessage), "invalid 'ask' argument"))
+                stopifnot(identical(q(NULL), FALSE))
+            }
+            stopifnot(identical(q(c(TRUE,FALSE)), FALSE), identical(q(NULL), TRUE))
+            grDevices::dev.new(noRStudioGD=TRUE)
+            stopifnot(identical(q(NULL), FALSE))
+            grDevices::dev.off()
+            stopifnot(identical(q(NULL), TRUE))
+            stopifnot(identical(par('ask'),TRUE))
+            stopifnot(identical(withVisible(par(ask=FALSE)),list(value=list(ask=TRUE),visible=FALSE)))
+            stopifnot(identical(q(NULL),FALSE))
+            for (value in list(NA,NA_integer_,NaN,'yes')) {
+                q(TRUE); par(ask=value); stopifnot(identical(q(NULL),FALSE))
+            }
+            for (bad in list(logical(),c(TRUE,FALSE))) {
+                q(TRUE)
+                stopifnot(identical(tryCatch(par(ask=bad),error=conditionMessage),'graphical parameter "ask" has the wrong length'))
+                stopifnot(identical(q(NULL),TRUE))
+            }
+            q(FALSE); plot(1:3)
+        "#, 320, 240).expect("GNU device page-question workflow");
+}
+
+#[test]
 fn render_character_coordinates_in_both_path_policies() {
     for mut session in [
         RSession::new().expect("default session"),

@@ -71,6 +71,7 @@ pub(crate) struct GEDeviceDesc {
     pub pixel_height: c_int,
     pub canvas: Vec<c_int>,
     pub holdflush_level: c_int,
+    pub ask: bool,
 }
 
 impl GEDeviceDesc {
@@ -103,6 +104,7 @@ impl GEDeviceDesc {
                     * DEFAULT_DPI) as usize
             ],
             holdflush_level: 0,
+            ask: false,
         }
     }
 }
@@ -313,6 +315,29 @@ fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -
         return None;
     }
     with_registry(|registry| registry.find_device_mut(gdd).map(f))
+}
+
+/// GNU stores this flag on each device, including across device selection.
+/// Opening the default device can evaluate R, so finish it before borrowing
+/// the registry and verify the original runtime before reading or changing it.
+pub(crate) fn page_question(ask: Option<bool>) -> bool {
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let device = unsafe { GEcurrentDevice() };
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    with_device_mut(device, |device| {
+        let old = device.ask;
+        if let Some(ask) = ask {
+            device.ask = ask;
+        }
+        old
+    })
+    .unwrap_or_else(|| crate::sexp::context::r_error("no active graphics device"))
 }
 
 pub(crate) fn reset_registry_for_tests() {
