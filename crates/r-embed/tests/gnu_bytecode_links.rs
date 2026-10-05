@@ -55,11 +55,14 @@ fn imported_gnu_inclnkstk_protects_stack_across_assignment() {
     );
     assert_eq!(
         session
-            .eval("x <- list(a=0); identical(f(x), c(1, 2)) && identical(x$a, 1)")
+            .eval("x <- list(a=0); identical(f(x), c(1, 2)) && identical(x$a, 0)")
             .unwrap()
             .trim(),
         "[1] TRUE"
     );
+    // GNU duplicates the parameter for replacement; the caller stays unchanged
+    // even when every bytecode allocation can trigger collection.
+    assert_eq!(session.eval("local({gctorture(TRUE);on.exit(gctorture(FALSE));identical(f(x),c(1,2)) && identical(x$a,0)})").unwrap().trim(),"[1] TRUE");
 }
 
 #[test]

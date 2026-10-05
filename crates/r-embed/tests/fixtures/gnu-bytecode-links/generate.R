@@ -8,8 +8,10 @@ dir.create(out, recursive = TRUE, showWarnings = FALSE)
 saveRDS(compiler::cmpfun(function(x) (x + 1)),
         file.path(out, "visible.rds"), version = 2, compress = FALSE)
 
-saveRDS(compiler::cmpfun(function(x) c(x$a <- 1, 2)),
-        file.path(out, "incnkstk.rds"), version = 2, compress = FALSE)
+linked <- compiler::cmpfun(function(x) c(x$a <- 1, 2))
+x <- list(a=0)
+stopifnot(identical(linked(x), c(1,2)), identical(x, list(a=0)))
+saveRDS(linked, file.path(out, "incnkstk.rds"), version = 2, compress = FALSE)
 
 saveRDS(compiler::cmpfun(function(x) .Internal(Sys.getpid())),
         file.path(out, "intlbuiltin.rds"), version = 2, compress = FALSE)
