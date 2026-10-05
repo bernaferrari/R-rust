@@ -25,6 +25,18 @@ fn owned_portable_methods_reference_class_stays_lazy_until_public_use() {
             crate::sexp::accessors::PRVALUE(promise),
             crate::sexp::globals::R_UnboundValue()
         );
+        let basics = crate::sexp::envir::R_findVarInFrame(
+            namespace,
+            crate::sexp::symbol::Rf_install(c".BasicFunsList".as_ptr()),
+        );
+        assert_eq!(
+            crate::sexp::accessors::TYPEOF(basics),
+            crate::sexp::ffi::SEXPTYPE::PROMSXP
+        );
+        assert_eq!(
+            crate::sexp::accessors::PRVALUE(basics),
+            crate::sexp::globals::R_UnboundValue()
+        );
     });
     for code in [
         "x <- new('envRefClass'); identical(typeof(x$show),'closure')",
@@ -45,6 +57,27 @@ fn owned_portable_methods_reference_class_stays_lazy_until_public_use() {
 fn owned_portable_methods_public_namespace_and_is_match_gnu() {
     evaluate(
         "n <- asNamespace('methods'); identical(getNamespaceName(n), 'methods') && exists('is', n, inherits=FALSE) && is(1L, 'integer') && is(1L, 'numeric') && !is(1L, 'character')",
+    );
+}
+
+#[test]
+fn owned_portable_primitive_reset_discovers_methods_and_recovers_after_error() {
+    evaluate(
+        r"
+        setClass('PrimitiveReset', slots=c(v='integer'))
+        setMethod('$','PrimitiveReset',function(x,name)x@v)
+        x <- new('PrimitiveReset',v=42L)
+        resetDollar <- function() methods::setPrimitiveMethods('$',`$`,code='reset',generic=methods::getGeneric('$'),mlist=NULL)
+        resetDollar()
+        getGeneric <- function(f) stop('generic discovery')
+        problem <- tryCatch(x$v,error=conditionMessage)
+        rm(getGeneric)
+        resetDollar()
+        stopifnot(identical(problem,'generic discovery'),identical(x$v,42L))
+        setMethod('$','PrimitiveReset',function(x,name)x@v+1L)
+        resetDollar()
+        identical(x$v,43L)
+    ",
     );
 }
 

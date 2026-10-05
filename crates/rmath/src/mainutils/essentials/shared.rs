@@ -1470,7 +1470,18 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
         if captured_image {
-            register_captured_dollar_primitive(ns);
+            let primitive = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                Rf_install(c"$".as_ptr()),
+            );
+            // Admit primitive dispatch now; restore its original captured
+            // generic when the first S4 lookup resets the method table.
+            crate::mainutils::objects::do_set_prim_method(
+                primitive,
+                c"reset".as_ptr(),
+                R_NilValue(),
+                R_NilValue(),
+            );
         } else {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::mainutils::gram_main::R_ParseEvalString(
@@ -1486,6 +1497,31 @@ NULL"
                     ns,
                 )
             }));
+        }
+    }
+}
+
+/// Materialize the original captured generic only when S4 primitive dispatch
+/// first requests it. Ordinary console and plotting work need no S4 table.
+pub(crate) unsafe fn ensure_captured_primitive_generic(op: SEXP) {
+    unsafe {
+        let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op));
+        if name != c"$" || crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
+            return;
+        }
+        let Some(ns) = cached_namespace_by_name("methods") else {
+            return;
+        };
+        let captured = crate::sexp::instance::with_required_current_instance(|instance| {
+            (*instance)
+                .package_namespace_cache
+                .get("methods")
+                .is_some_and(|(path, namespace)| {
+                    *namespace == ns && path == Path::new("<builtin:methods>")
+                })
+        });
+        if captured {
+            register_captured_dollar_primitive(ns);
         }
     }
 }

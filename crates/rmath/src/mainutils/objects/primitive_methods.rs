@@ -392,7 +392,8 @@ unsafe fn possible_dispatch_in(
                 R_NilValue(),
                 R_NilValue(),
             );
-            let mlist = get_primitive_methods(op, rho);
+            let mlist_owner = require_objects(get_primitive_methods(access, op, rho));
+            let mlist = mlist_owner.as_raw();
             require_objects(access.require_active());
             let _mlist_guard = protect(mlist);
             do_set_prim_method(
@@ -560,6 +561,36 @@ unsafe fn possible_dispatch_in(
     }
 }
 
-unsafe fn get_primitive_methods(op: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_primitive_methods(op) }
+unsafe fn get_primitive_methods(
+    access: &crate::sexp::owner::RuntimeAccess,
+    op: SEXP,
+    rho: SEXP,
+) -> crate::sexp::object::SexpResult<Sexp<'static>> {
+    unsafe {
+        crate::mainutils::essentials::ensure_captured_primitive_generic(op);
+        access.require_active()?;
+        // Discovering the generic can itself evaluate R; maintain the same
+        // suppression that GNU applies over the entire reset operation.
+        do_set_prim_method(op, c"suppressed".as_ptr(), R_NilValue(), R_NilValue());
+        let domain = access.domain();
+        let environment = domain.wrap(rho)?;
+        let allocator = access.allocator(&domain)?;
+        let name =
+            std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op)).to_string_lossy();
+        let name_value = allocator.strings(&[&name])?;
+        let get_generic = access
+            .with_native(|owner| owner.sexp(Rf_install(c"getGeneric".as_ptr()))?.into_owned())?;
+        let arguments = allocator.pairlist_cell(&name_value, &domain.nil(), &domain.nil())?;
+        let expression = allocator.call(&get_generic, &arguments)?;
+        let generic = evaluate_s4_value(access, &expression, &environment)?;
+        access.require_active()?;
+        if generic.typeof_() != SEXPTYPE::CLOSXP || IS_S4_OBJECT(generic.as_raw()) == FALSE {
+            return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                message: format!(
+                    "object returned as generic function \"{name}\" does not appear to be one"
+                ),
+            });
+        }
+        generic.try_cloenv()?.into_owned()
+    }
 }
