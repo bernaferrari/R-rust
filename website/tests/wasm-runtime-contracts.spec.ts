@@ -646,13 +646,23 @@ test("GNU compiled closures and ANY signatures work in the browser runtime", asy
         "setGeneric('wild',function(x,y) standardGeneric('wild')); setMethod('wild',c('ANY','ANY'),function(x,y) 'fallback'); setMethod('wild','numeric',function(x,y) 'number'); cat(wild(2,NULL),wild(NULL,TRUE))",
         "console"
       )
-      return { compiled: compiled.output, methods: methods.output }
+      runtime.reset()
+      const reset = await runtime.run(
+        "invisible(setClass('ResetPortable',slots=c(value='numeric'))); x<-new('ResetPortable',value=1); methods::is(x,'ResetPortable') && is(x,'ResetPortable') && identical(getNamespace('methods'),asNamespace('methods')) && identical(head(1:4,2),utils::head(1:4,2)) && !exists('wild',envir=.GlobalEnv,inherits=FALSE)",
+        "console"
+      )
+      return {
+        compiled: compiled.output,
+        methods: methods.output,
+        reset: reset.output,
+      }
     } finally {
       runtime.dispose()
     }
   }, code)
   expect(result.compiled).toBe("9 22")
   expect(result.methods).toBe('[1] "wild"\nnumber fallback')
+  expect(result.reset).toBe("[1] TRUE\n")
 })
 
 test("long vector density and deparsing remain within string buffer allocation", async ({
