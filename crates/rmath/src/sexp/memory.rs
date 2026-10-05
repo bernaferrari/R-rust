@@ -19,6 +19,8 @@
 //! stack, remembered-set edges). Dropping roots because "there is no GC" is
 //! use-after-free — do not treat this module as GC-free.
 
+mod characters;
+
 use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -709,6 +711,8 @@ impl Iterator for SlotIter {
 /// Collection retires individual allocation identities and reuses their slots.
 /// Owning values retain these pages and payloads after the facade drops.
 pub struct RArena {
+    /// Nonowning ASCII hints, capped at 4096 entries and 256 KiB of keys.
+    character_cache: characters::CharacterCache,
     /// Owned pages of interior cells keep legacy header projections stable.
     /// Node identities and collector metadata are independent of raw headers.
     backing: Rc<ArenaBacking>,
@@ -907,6 +911,7 @@ impl RArena {
         let backing_owners = heap_identity.retain_arena(backing.clone());
         let retired_resources = backing_owners.resource_drop_queue();
         let mut a = RArena {
+            character_cache: characters::CharacterCache::default(),
             backing,
             _backing_owners: backing_owners,
             retired_resources,
@@ -1294,6 +1299,9 @@ impl RArena {
     ///
     /// Returns null if allocation fails (OOM safety).
     pub(crate) fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
+        if let Some(value) = self.cached_ascii_character(s) {
+            return value;
+        }
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
         let len = s.len() as R_xlen_t;
         let total_bytes = match (len as usize).checked_add(1) {
@@ -1334,7 +1342,9 @@ impl RArena {
             c.payload = data.link();
             c
         };
-        self.allocate_core_with_payload(header, Some(data))
+        let value = self.allocate_core_with_payload(header, Some(data));
+        self.cache_ascii_character(s, value);
+        value
     }
 
     /// Allocate a CHARSXP and return an arena-scoped safe wrapper.
@@ -4981,3 +4991,7 @@ mod tests {
         assert_eq!(super::super::instance::instance_borrow_depth(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "memory/character_cache_tests.rs"]
+mod character_cache_tests;
