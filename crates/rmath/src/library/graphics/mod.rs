@@ -59,6 +59,19 @@ unsafe fn forward_portable(name: &str, args: SEXP) -> SEXP {
 #[cfg(feature = "renderplot-device")]
 unsafe fn draw_portable_title(args: SEXP) -> SEXP {
     unsafe {
+        draw_portable_positional(
+            "title",
+            args,
+            &["main", "sub", "xlab", "ylab", "line", "outer"],
+        )
+    }
+}
+
+/// Retag GNU native positional arguments before the ordinary portable draw
+/// path decodes them, retaining the original argument graph over allocations.
+#[cfg(feature = "renderplot-device")]
+unsafe fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> SEXP {
+    unsafe {
         let result = (|| {
             use crate::sexp::object::{SessionNodeFactory, SexpResult};
             let owner = crate::sexp::owner::OwnerToken::current()?;
@@ -67,7 +80,7 @@ unsafe fn draw_portable_title(args: SEXP) -> SEXP {
             let input = owner.sexp(args)?.into_owned()?;
             let mut cursor = input.try_cdr()?.into_owned()?;
             let mut labels = Vec::new();
-            for name in ["main", "sub", "xlab", "ylab", "line", "outer"] {
+            for name in formals {
                 if cursor.is_nil() {
                     break;
                 }
@@ -77,14 +90,14 @@ unsafe fn draw_portable_title(args: SEXP) -> SEXP {
             let mut built = cursor;
             for (name, value) in labels.into_iter().rev() {
                 owner.require_active()?;
-                let name = std::ffi::CString::new(name).expect("static title formal");
+                let name = std::ffi::CString::new(*name).expect("static graphics formal");
                 let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
                 owner.require_active()?;
                 let tag = owner.sexp(symbol)?.into_owned()?;
                 built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
             }
             owner.require_active()?;
-            let drawn = crate::mainutils::portable_plot::draw_builtin("title", built.as_raw());
+            let drawn = crate::mainutils::portable_plot::draw_builtin(name, built.as_raw());
             owner.require_active()?;
             SexpResult::Ok(drawn)
         })();
@@ -185,9 +198,10 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
             return match bare {
                 "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
                 "title" => draw_portable_title(args),
-                "box" | "segments" | "arrows" | "rect" | "polygon" | "abline" => {
-                    forward_portable(bare, args)
+                "polygon" => {
+                    draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
                 }
+                "box" | "segments" | "arrows" | "rect" | "abline" => forward_portable(bare, args),
                 _ => crate::sexp::globals::R_NilValue(),
             };
         }

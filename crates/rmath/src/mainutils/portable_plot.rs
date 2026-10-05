@@ -56,18 +56,36 @@ struct Style {
     colors: Vec<Color>,
     background: Vec<Color>,
     symbols: Vec<i32>,
-    width: f32,
+    widths: Vec<f32>,
     size: f32,
-    dash: Option<DashPattern>,
+    line_types: Vec<LineType>,
+}
+#[derive(Clone)]
+struct LineType {
+    intervals: Vec<f32>,
     blank: bool,
 }
 impl Style {
     fn color(&self, i: usize) -> Color {
         self.colors[i % self.colors.len()]
     }
+    fn width(&self, i: usize) -> f32 {
+        self.widths[i % self.widths.len()]
+    }
     fn stroke(&self, i: usize) -> Stroke {
-        let mut stroke = Stroke::new(if self.blank { 0. } else { self.width }, self.color(i));
-        stroke.dash_pattern.clone_from(&self.dash);
+        let width = self.width(i);
+        let line_type = &self.line_types[i % self.line_types.len()];
+        let mut stroke = Stroke::new(if line_type.blank { 0. } else { width }, self.color(i));
+        if !line_type.intervals.is_empty() {
+            stroke.dash_pattern = Some(DashPattern {
+                intervals: line_type
+                    .intervals
+                    .iter()
+                    .map(|v| v * width.max(1.))
+                    .collect(),
+                offset: 0.,
+            });
+        }
         stroke
     }
 }
@@ -249,6 +267,52 @@ unsafe fn point_size(args: SEXP) -> f32 {
             * 3.
     }
 }
+fn numeric_line_type(value: f64) -> LineType {
+    if !value.is_finite() || value < 0. || value > i32::MAX as f64 {
+        base_error("invalid line type");
+    }
+    let code = value as i32;
+    let name = [
+        "blank", "solid", "dashed", "dotted", "dotdash", "longdash", "twodash",
+    ];
+    line_type(
+        name[if code == 0 {
+            0
+        } else {
+            ((code - 1) % 6 + 1) as usize
+        }],
+    )
+}
+fn line_type(name: &str) -> LineType {
+    let intervals = match name {
+        "blank" | "solid" => vec![],
+        "dashed" => vec![4., 4.],
+        "dotted" => vec![1., 3.],
+        "dotdash" => vec![1., 3., 4., 3.],
+        "longdash" => vec![7., 3.],
+        "twodash" => vec![2., 2., 6., 2.],
+        s => {
+            if s.len() < 2 || s.len() > 8 || s.len() % 2 != 0 {
+                base_error("invalid line type: must be length 2, 4, 6 or 8");
+            }
+            s.chars()
+                .map(|c| {
+                    let value = c
+                        .to_digit(16)
+                        .unwrap_or_else(|| base_error("invalid hex digit in 'color' or 'lty'"));
+                    if value == 0 {
+                        base_error("invalid line type: zeroes are not allowed");
+                    }
+                    value as f32
+                })
+                .collect()
+        }
+    };
+    LineType {
+        intervals,
+        blank: name == "blank",
+    }
+}
 unsafe fn style(args: SEXP, size: f32) -> Style {
     unsafe {
         let foreground = colors(arg(args, "col"), par_color("fg", Color::BLACK));
@@ -285,41 +349,51 @@ unsafe fn style(args: SEXP, size: f32) -> Style {
                     .collect()
             }
         };
-        let width = scalar(
-            args,
-            "lwd",
-            par_numbers("lwd").first().copied().unwrap_or(1.),
-        ) as f32;
-        if width < 0. || size < 0. {
-            base_error("invalid line width or point size");
+        let lwd = arg(args, "lwd");
+        let widths = if lwd == R_NilValue() {
+            par_numbers("lwd")
+        } else {
+            let result = (|| {
+                let owner = crate::sexp::owner::OwnerToken::current()?;
+                let _pin = owner.pin()?;
+                let input = owner.sexp(lwd)?.into_owned()?;
+                let raw = crate::mainutils::coerce::coerceVector(
+                    input.as_raw(),
+                    SEXPTYPE::REALSXP.as_c_int(),
+                );
+                owner.require_active()?;
+                let converted = owner.sexp(raw)?.into_owned()?;
+                crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+            })();
+            result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        if widths.is_empty() || widths.contains(&f64::INFINITY) {
+            base_error("'lwd' must be non-negative and finite");
+        }
+        let widths = widths
+            .into_iter()
+            .map(|w| if w.is_nan() || w < 0. { 0. } else { w as f32 })
+            .collect();
+        if size < 0. {
+            base_error("invalid point size");
         }
         let lty = arg(args, "lty");
-        let lty = if lty == R_NilValue() {
-            "solid".to_owned()
-        } else {
-            elt_to_string(lty, 0)
-        };
-        let pattern = match lty.as_str() {
-            "0" | "blank" => vec![],
-            "1" | "solid" => vec![],
-            "2" | "dashed" => vec![4., 4.],
-            "3" | "dotted" => vec![1., 3.],
-            "4" | "dotdash" => vec![1., 3., 4., 3.],
-            "5" | "longdash" => vec![7., 3.],
-            "6" | "twodash" => vec![2., 2., 6., 2.],
-            s => {
-                if s.len() % 2 != 0 || s.len() > 8 {
-                    base_error("invalid line type");
-                }
-                s.chars()
-                    .map(|c| {
-                        c.to_digit(16)
-                            .filter(|v| *v > 0)
-                            .unwrap_or_else(|| base_error("invalid line type"))
-                            as f32
-                    })
-                    .collect()
+        let line_types = if lty == R_NilValue() || XLENGTH(lty) == 0 {
+            match parameter("lty") {
+                ParValue::String(name) => vec![line_type(&name)],
+                _ => par_numbers("lty")
+                    .into_iter()
+                    .map(numeric_line_type)
+                    .collect(),
             }
+        } else if TYPEOF(lty) == SEXPTYPE::STRSXP {
+            (0..XLENGTH(lty))
+                .map(|i| line_type(&elt_to_string(lty, i)))
+                .collect()
+        } else if matches!(SEXPTYPE(TYPEOF(lty)), SEXPTYPE::REALSXP | SEXPTYPE::INTSXP) {
+            values(lty).into_iter().map(numeric_line_type).collect()
+        } else {
+            base_error("invalid line type");
         };
         Style {
             colors: foreground,
@@ -329,17 +403,9 @@ unsafe fn style(args: SEXP, size: f32) -> Style {
             } else {
                 symbols
             },
-            width,
+            widths,
             size,
-            dash: if pattern.is_empty() {
-                None
-            } else {
-                Some(DashPattern {
-                    intervals: pattern.into_iter().map(|v| v * width.max(1.)).collect(),
-                    offset: 0.,
-                })
-            },
-            blank: matches!(lty.as_str(), "0" | "blank"),
+            line_types,
         }
     }
 }
@@ -842,9 +908,9 @@ fn point(target: &mut dyn DrawTarget, p: Point, style: &Style, i: usize) {
     let (fill, stroke) = if (15..=20).contains(&symbol) {
         (color, Stroke::new(0., open))
     } else if symbol >= 21 {
-        (bg, Stroke::new(style.width, color))
+        (bg, Stroke::new(style.width(i), color))
     } else {
-        (open, Stroke::new(style.width, color))
+        (open, Stroke::new(style.width(i), color))
     };
     let draw_line = |target: &mut dyn DrawTarget, a: Point, b: Point| {
         line(target, a, b, stroke.clone());
@@ -1358,7 +1424,7 @@ fn axis(
 
 #[cfg(test)]
 mod tests {
-    use super::{Coordinates, Style, clip_for_xpd, point, pretty_linear_ticks};
+    use super::{Coordinates, Style, clip_for_xpd, line_type, point, pretty_linear_ticks};
     use r_graphics_engine::{Color, DrawTarget, Path, PlotParameters, Point};
 
     #[test]
@@ -1408,10 +1474,9 @@ mod tests {
             colors: vec![Color::RED],
             background: vec![Color::BLUE],
             symbols: vec![symbol],
-            width: 2.,
+            widths: vec![2.],
             size: 3.,
-            dash: None,
-            blank: false,
+            line_types: vec![line_type("solid")],
         }
     }
 
@@ -1854,7 +1919,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                         (b.y - a.y).abs(),
                     );
                     path.fill = fill[i % fill.len()];
-                    path.stroke = Stroke::new(style.width, border[i % border.len()]);
+                    path.stroke = style.stroke(i);
+                    path.stroke.color = border[i % border.len()];
                     target.draw_path(&path);
                 }
                 target.set_clip(None);
@@ -1885,7 +1951,11 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                         target.draw_path(&Path {
                             commands: std::mem::take(&mut commands),
                             fill: fill[polygon % fill.len()],
-                            stroke: Stroke::new(style.width, border[polygon % border.len()]),
+                            stroke: {
+                                let mut stroke = style.stroke(polygon);
+                                stroke.color = border[polygon % border.len()];
+                                stroke
+                            },
                             anti_alias: true,
                         });
                         polygon += 1;

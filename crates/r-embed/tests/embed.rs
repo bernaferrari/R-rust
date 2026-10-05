@@ -1183,6 +1183,72 @@ fn device_page_questions_follow_gnu_value_visibility_and_device_lifecycle() {
 }
 
 #[test]
+fn graphics_style_vectors_recycle_independently_in_public_workflows() {
+    use r_graphics_engine::{Color, DrawOperation};
+    for mut session in [
+        RSession::new().expect("native session"),
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    ] {
+        let scene = session
+            .record_scene(
+                "plot(0:6,0:6,type='n'); segments(0:5,0,0:5,6,col='red',lwd=c(1,2,3),lty=c(1,2))",
+                320,
+                240,
+            )
+            .expect("recycled segment styles");
+        let strokes: Vec<_> = scene
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) if path.stroke.color == Color::RED => Some(&path.stroke),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(strokes.len(), 6);
+        for (i, stroke) in strokes.iter().enumerate() {
+            let width = [1., 2., 3.][i % 3];
+            assert_eq!(stroke.width, width);
+            if i % 2 == 0 {
+                assert!(stroke.dash_pattern.is_none());
+            } else {
+                assert_eq!(
+                    stroke.dash_pattern.as_ref().expect("dashed").intervals,
+                    vec![4. * width, 4. * width]
+                );
+            }
+        }
+        let rectangles = session.record_scene("plot(0:6,0:6,type='n'); rect(0:5,0,1:6,1,border='red',col=NA,lwd=c(1,2,3),lty=c(1,2))",320,240).expect("recycled rectangle borders");
+        let widths: Vec<_> = rectangles
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) if path.stroke.color == Color::RED => {
+                    Some(path.stroke.width)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(widths, vec![1., 2., 3., 1., 2., 3.]);
+        let polygons = session.record_scene("plot(0:6,0:6,type='n'); polygon(c(0,1,0,NA,2,3,2,NA,4,5,4),c(0,0,1,NA,0,0,1,NA,0,0,1),border='red',col=NA,lwd=c(1,2),lty=c(1,2))",320,240).expect("recycled polygon borders");
+        let widths: Vec<_> = polygons
+            .operations()
+            .iter()
+            .filter_map(|op| match op {
+                DrawOperation::Path(path) if path.stroke.color == Color::RED => {
+                    Some(path.stroke.width)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(widths, vec![1., 2., 1.]);
+        session.record_scene("plot(1:3); segments(0,0,1,1,lwd=c('1','2')); segments(0,0,1,1,lwd=c(NA,-1,0)); segments(0,0,1,1,lty=7); stopifnot(tryCatch({segments(0,0,1,1,lty=NA);FALSE},error=function(e)conditionMessage(e)=='invalid line type'))",320,240).expect("GNU style admission and recovery");
+    }
+    let mut session = RSession::new().expect("native legend session");
+    session.record_scene("plot(1:5); legend('topright',c('Raw','Smooth','Twice'),pch=c(1,-1,-1),lwd=c(1,4,2),lty=c(0,2,3),col=1:3)",320,240).expect("GNU legend with independent style vectors");
+}
+
+#[test]
 fn render_character_coordinates_in_both_path_policies() {
     for mut session in [
         RSession::new().expect("default session"),
