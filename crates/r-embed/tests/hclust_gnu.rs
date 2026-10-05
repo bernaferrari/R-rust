@@ -1,4 +1,4 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 /// GNU R 4.6.1 oracle for `hclust(dist(cbind(c(0, 0, 1, 3))))`.
 /// `dput` from `/opt/homebrew/Cellar/r/4.6.1/bin/Rscript --vanilla`:
@@ -11,10 +11,14 @@ use r_embed::RSession;
 /// Those heights are exact integers in binary64; compare with `identical`.
 #[test]
 fn hclust_matches_gnu_oracle() {
-    let mut session = RSession::new().expect("session");
-    let out = session
-        .eval(
-            r#"
+    for mut session in [
+        RSession::new().expect("session"),
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    ] {
+        let out = session
+            .eval(
+                r#"
             run <- function(label, expr) {
               tryCatch(expr, error=function(e) paste(label, "ERR", conditionMessage(e)))
             }
@@ -38,7 +42,8 @@ fn hclust_matches_gnu_oracle() {
             complete <- run("complete", check("complete", c(0, 1, 3)))
             single <- run("single", check("single", c(0, 1, 2)))
             # GNU kappa(..., LINPACK=TRUE) is 2, so dtrco's rcond is 1/2.
-            # An unknown symbol stays on the host-extension error.
+            # Both constructors reject unknown bundled native registrations;
+            # the empty library search policy does not change that admission.
             z <- matrix(c(2, 0, 1, 3), 2, 2)
             dtrco <- tryCatch(
                 sprintf("%.17g", .Fortran("dtrco", z, 2L, 2L, k = double(1), double(2), 1L)$k),
@@ -48,14 +53,16 @@ fn hclust_matches_gnu_oracle() {
                 error = function(e) conditionMessage(e))
             paste("OK", complete, single, dtrco, blocked, sep=" || ")
             "#,
-        )
-        .expect("hclust gnu oracle");
-    assert!(
-        out.contains("OK || complete || single || 0.5 || "),
-        "hclust oracle script failed: {out}"
-    );
-    assert!(
-        out.contains("native extension code, which is disabled"),
-        "unregistered .Fortran was not rejected: {out}"
-    );
+            )
+            .expect("hclust gnu oracle");
+        assert!(
+            out.contains("OK || complete || single || 0.5 || "),
+            "hclust oracle script failed: {out}"
+        );
+        assert!(
+            out.contains(".Fortran native routine is not implemented by the bundled Rust registry"),
+            "unregistered .Fortran was not rejected: {out}"
+        );
+        assert_eq!(session.eval("1L+1L").unwrap(), "[1] 2\n");
+    }
 }
