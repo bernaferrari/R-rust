@@ -1478,12 +1478,15 @@ The genuine public baseline fails both new contract tests. Both repaired public
 tests pass in 100.19 seconds; unchanged pinned-oracle corpus cases 262 and 268
 also pass individually, with the existing complete 1,181-case corpus unchanged.
 Six focused native ownership tests pass in 0.17 seconds and warnings-denied
-all-target Clippy passes. The native implementation is published while its
-strict-provenance six-test Miri run remains active; two observed passing tests
-are **not** a completed Miri aggregate. The assigned eight source hashes remain
-fixed throughout that run. The earlier expensive fixture run was deliberately
-terminated after two tests and is also not a pass. The issue remains open until
-its required proof finishes; this is not a complete heap or attribute safety claim.
+all-target Clippy passes. The native implementation was published before its
+strict-provenance proof finished. The final six-test Miri aggregate now completes
+successfully in 3,340.06 seconds with default isolation and alias checking; its
+actual process exits successfully. All eight assigned source hashes exactly
+match the complete prelaunch source inventory. Later unrelated source changes
+are recorded explicitly and are not certified by this run. The earlier expensive
+fixture run was deliberately terminated after two tests and remains an incomplete
+run. This completed proof covers these six owning publication/lifecycle controls,
+not the entire heap or every attribute operation.
 
 ## Private locked-options publication (rport-jxfp.3.12.6.17)
 
@@ -1575,3 +1578,34 @@ The unchanged native ANY and inheritance tests separately pass in 106.80 and
 203.77 seconds on the same artifact. Their browser versions still fail during
 later allocation growth. Portable methods attachment and target acceptance remain
 open; these decoder and frame milestones do not claim complete methods parity.
+
+## Durable bounded upstream execution (rport-jxfp.3.12.6.18)
+
+Upstream processes now have owned process groups and explicit deadlines, with
+durable START/FINISH journals, original combined output, exit status and retained
+engine artifacts. Actual Cargo artifact selection is sealed before compiling the
+runner. Source, corpus, dispositions, oracle and execution policy are checked
+before building and after execution. Timeout, cancellation, build failure and
+normalizer failure remain incomplete execution; they cannot become semantic
+expected failures. Completed parity failures still retain their complete output.
+
+The original tr/sed/awk comparison runs unchanged as bounded phases. Producer
+tool binaries, platform and locale are recorded and must match across shards;
+aggregation validates the archived evidence without requiring its host to run
+those tools. CI runs the 15 curated cases and four partitions of the 70 whole
+drivers independently, retaining the existing 50-minute job limit. The union
+rejects missing, duplicate, extra, changed or incomplete evidence. The separate
+whole-script job has its own existing 50-minute limit. No fixture, declared skip,
+expected failure or comparison is weakened; the legacy harness retains 120-second
+case deadlines. The core harness's new 1,800-second bound accommodates the actual
+13-minute-30-second completed numerical driver from the earlier checkpoint.
+
+All 61 tooling controls pass in 42.824 seconds, including 30 new explicit fake
+tooling tests. One actual unchanged curated case then passes through pinned GNU,
+the real Rust runner and the original comparison: all seven owned admission,
+build, engine and normalization phases exit successfully. Root independently
+validates the report against the current source and archived artifacts. That
+local report binds runtime commit `99d78c82` and the exact authored harness inputs;
+it is not an immutable full-inventory CI checkpoint. The required fresh 15+70
+union remains open, and the earlier 30 observed upstream failures remain tracked
+separately in `rport-jxfp.3.12.6.19`.

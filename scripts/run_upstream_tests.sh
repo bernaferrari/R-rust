@@ -84,11 +84,21 @@ if [[ ! -x "$STOCK_BIN/Rscript" ]]; then
     echo "WARN: stock Rscript not found at $STOCK_BIN/Rscript; secondary oracle disabled" >&2
     STOCK_BIN=""
 fi
-if ! command -v timeout >/dev/null 2>&1; then
-    echo "ERROR: timeout(1) is required" >&2
-    exit 2
-fi
+python3 - "$ROOT_DIR/scripts" "$TIMEOUT_SECS" <<'PYTIMEOUT'
+import sys
+sys.path.insert(0, sys.argv[1])
+from run_parity_case import positive_seconds
+positive_seconds(sys.argv[2])
+PYTIMEOUT
 
+# Preserve prior evidence; reruns use a fresh output directory.
+python3 - "$ROOT_DIR/scripts" "$REPORT_DIR" <<'PYREPORT'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from upstream_execution import fresh_directory
+fresh_directory(Path(sys.argv[2]))
+PYREPORT
 # Build the rport file-runner helper (standalone crate). Rebuild when the
 # helper or rmath sources are newer — otherwise oracle runs a stale rmath.
 if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
@@ -99,12 +109,15 @@ fi
 if [[ ! -x "$HELPER_BIN" ]] || [[ -n "$(find "$HELPER_CRATE/src" "$HELPER_CRATE/Cargo.toml" "$ROOT_DIR/crates/rmath/src" "$ROOT_DIR/crates/rmath/Cargo.toml" "$ROOT_DIR/crates/nmath/src" "$ROOT_DIR/crates/nmath/Cargo.toml" -newer "$HELPER_BIN" 2>/dev/null)" ]]; then
 
     echo "INFO: building rport upstream helper (release)..." >&2
-    (cd "$HELPER_CRATE" && cargo build --release --offline >/dev/null) ||
-        (cd "$HELPER_CRATE" && cargo build --release >/dev/null)
+    python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+        --directory "$REPORT_DIR/build-offline" --cwd "$HELPER_CRATE" --timeout 1800 \
+        --separate-streams -- "$ROOT_DIR/scripts/cargo_dev.sh" build --release --offline ||
+    python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+        --directory "$REPORT_DIR/build-online" --cwd "$HELPER_CRATE" --timeout 1800 \
+        --separate-streams -- "$ROOT_DIR/scripts/cargo_dev.sh" build --release
 fi
 
 
-mkdir -p "$REPORT_DIR"
 SUMMARY_TSV="$REPORT_DIR/summary.tsv"
 SUMMARY_MD="$REPORT_DIR/summary.md"
 : >"$SUMMARY_TSV"
@@ -147,10 +160,14 @@ run_engine() { # run_engine <tag> <file.R> <engine-cmd...>; writes <tag>.out/.er
     shift 2
     local out="$WORK/${STEM}.${tag}.out"
     local err="$WORK/${STEM}.${tag}.err"
-    : >"$out"
-    : >"$err"
+    local phase="$WORK/${STEM}.${tag}.process"
     local code=0
-    (cd "$TESTS_DIR" && timeout "$TIMEOUT_SECS" "$@" "$file" >"$out" 2>"$err") || code=$?
+    python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+        --directory "$phase" --cwd "$TESTS_DIR" --timeout "$TIMEOUT_SECS" \
+        --separate-streams -- "$@" "$file" >"$WORK/${STEM}.${tag}.events.out" 2>&1 || code=$?
+    # Only this process's exact streams enter the unchanged legacy comparison.
+    cp -f "$phase/stdout.log" "$out"
+    cp -f "$phase/stderr.log" "$err"
     echo "$code"
 }
 
@@ -204,7 +221,11 @@ run_file() {
     trunk_class="$(classify_exit "$trunk_exit")"
     rport_class="$(classify_exit "$rport_exit")"
 
-    if [[ "$rport_class" == timeout ]]; then
+    if [[ "$trunk_class" == timeout || "$trunk_class" == harness-error || "$trunk_class" == crash-signal ]]; then
+        verdict=FAIL reason=trunk-incomplete
+    elif [[ "$rport_class" == harness-error ]]; then
+        verdict=FAIL reason=rport-harness-error
+    elif [[ "$rport_class" == timeout ]]; then
         verdict=FAIL reason=rport-timeout
     elif [[ "$rport_class" == crash-signal || "$rport_class" == panic ]]; then
         verdict=FAIL reason=rport-crash
@@ -231,7 +252,11 @@ run_file() {
     [[ -s "$WORK/${stem}.rport.err" ]] && err_first="$(first_error_line "$WORK/${stem}.rport.err")"
     [[ -z "$err_first" ]] && err_first="-"
 
-    RESULTS+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$file" "$verdict" "$reason" "$trunk_exit" "$rport_exit" "$stock_exit" "$stdout_match" "$stock_match" "$stderr_note")")
+    local result_row
+    result_row="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$file" "$verdict" "$reason" "$trunk_exit" "$rport_exit" "$stock_exit" "$stdout_match" "$stock_match" "$stderr_note")"
+    RESULTS+=("$result_row")
+    # Each completed verdict survives cancellation of a later driver.
+    printf '%s\n' "$result_row" >>"$SUMMARY_TSV"
 
     # Per-failure catalog entry
     local catalog=""
@@ -250,7 +275,6 @@ run_file() {
 }
 
 WORK="$REPORT_DIR/raw"
-rm -rf "$WORK"
 mkdir -p "$WORK"
 
 if ((ALL)); then
@@ -264,9 +288,15 @@ fi
 
 echo "rport upstream differential runner"
 echo "  tests dir : $TESTS_DIR"
-echo "  trunk R   : $TRUNK_BIN ($("$TRUNK_BIN/Rscript" --vanilla -e 'cat(R.version.string)' 2>/dev/null))"
+python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+    --directory "$REPORT_DIR/trunk-version" --cwd "$TESTS_DIR" --timeout "$TIMEOUT_SECS" \
+    --separate-streams -- "$TRUNK_BIN/Rscript" --vanilla -e 'cat(R.version.string)'
+echo "  trunk R   : $TRUNK_BIN ($(cat "$REPORT_DIR/trunk-version/stdout.log"))"
 if [[ -n "$STOCK_BIN" ]]; then
-    echo "  stock R   : $STOCK_BIN ($("$STOCK_BIN/Rscript" --vanilla -e 'cat(R.version.string)' 2>/dev/null))"
+    python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+        --directory "$REPORT_DIR/stock-version" --cwd "$TESTS_DIR" --timeout "$TIMEOUT_SECS" \
+        --separate-streams -- "$STOCK_BIN/Rscript" --vanilla -e 'cat(R.version.string)'
+    echo "  stock R   : $STOCK_BIN ($(cat "$REPORT_DIR/stock-version/stdout.log"))"
 fi
 echo "  rport     : $HELPER_BIN"
 echo "  files     : ${#FILES[@]}  timeout: ${TIMEOUT_SECS}s"
@@ -297,7 +327,6 @@ TOTAL=$((PASS + FAIL))
     echo
     echo "| file | verdict | reason | trunk_exit | rport_exit | stock_exit | stdout=trunk | stdout=stock | stderr=trunk |"
     echo "|------|---------|--------|-----------:|-----------:|-----------:|--------------|--------------|--------------|"
-    printf '%s\n' "${RESULTS[@]}" >>"$SUMMARY_TSV"
     tail -n +2 "$SUMMARY_TSV" | awk -F'\t' '{print "| "$1" | "$2" | "$3" | "$4" | "$5" | "$6" | "$7" | "$8" | "$9" |"}'
     echo
     echo "## Failure catalog"

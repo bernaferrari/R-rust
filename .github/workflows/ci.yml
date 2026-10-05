@@ -72,7 +72,7 @@ jobs:
       - name: Test parity deadlines and log capture
         run: |
           bash scripts/conformance_artifacts_test.sh
-          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py
+          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py scripts/tests/test_upstream_execution.py
 
       - name: Test (workspace)
         run: cargo test --workspace
@@ -166,7 +166,7 @@ jobs:
           if-no-files-found: error
 
   integration-parity:
-    name: Whole-script and pinned upstream parity
+    name: Whole-script differential parity
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     env:
@@ -200,30 +200,96 @@ jobs:
           echo "${{ steps.oracle.outputs.cache_dir }}/bin" >> "$GITHUB_PATH"
 
       - name: Whole-script differential parity
-        id: script_diff
-        continue-on-error: true
         env:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
         run: bash scripts/script_diff_parity.sh --check
 
-      - name: Pinned upstream GNU R inventory and parity slices
+  upstream-parity:
+    name: Pinned upstream ${{ matrix.suite }} shard ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - {suite: curated, shard: 0, count: 1}
+          - {suite: whole, shard: 0, count: 4}
+          - {suite: whole, shard: 1, count: 4}
+          - {suite: whole, shard: 2, count: 4}
+          - {suite: whole, shard: 3, count: 4}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      RPORT_CONFORMANCE_PROFILE: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Validate immutable R oracle manifest
+        id: oracle
+        run: |
+          python3 scripts/validate_r_oracle.py --github-output "$GITHUB_OUTPUT"
+          python3 -m unittest scripts/tests/test_validate_r_oracle.py
+          python3 -m unittest scripts/tests/test_validate_upstream_r_tests.py
+
+      - name: Cache exact R oracle build
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.oracle.outputs.cache_dir }}
+          key: ${{ runner.os }}-r-oracle-${{ steps.oracle.outputs.manifest_sha256 }}
+
+      - name: Install exact R oracle build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev
+
+      - name: Build or restore exact R oracle
+        run: |
+          bash scripts/install_r_oracle.sh
+          echo "${{ steps.oracle.outputs.cache_dir }}/bin" >> "$GITHUB_PATH"
+
+      - name: Bounded unchanged pinned upstream execution
         env:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
         run: >-
-          bash scripts/upstream_core_slices.sh --strict
-          --report target/upstream-r
-
-      - name: Upload upstream GNU R disposition report
+          bash scripts/upstream_core_slices.sh --strict --timeout 1800
+          --suite "${{ matrix.suite }}" --shard-index "${{ matrix.shard }}"
+          --shard-count "${{ matrix.count }}" --report target/upstream-r
+      - name: Upload durable upstream execution and engine evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: upstream-r-dispositions
+          name: upstream-r-shard-${{ matrix.suite }}-${{ matrix.shard }}
           path: target/upstream-r
           if-no-files-found: ignore
 
-      - name: Require whole-script parity
-        if: always() && steps.script_diff.outcome == 'failure'
-        run: exit 1
+  upstream-coverage:
+    name: Complete pinned upstream15+70 inventory and strict parity
+    needs: upstream-parity
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download every completed or partial upstream report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: upstream-r-shard-*
+          path: target/upstream-shards
+      - name: Authenticate exact original inventory union and strict comparison
+        if: always()
+        run: >-
+          python3 scripts/upstream_execution.py merge
+          --input-dir target/upstream-shards --shard-count 4
+          --source-commit "${{ github.sha }}" --profile release
+          --rustflags=-Awarnings --timeout 1800 --report target/upstream-union
+      - name: Upload complete or incomplete union result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-r-exact-union
+          path: target/upstream-union
+          if-no-files-found: error
 
   wasm:
     name: Rust WASM execution

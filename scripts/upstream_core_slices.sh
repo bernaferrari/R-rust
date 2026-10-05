@@ -3,294 +3,90 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
-source "$ROOT_DIR/scripts/upstream_case_workspace.sh"
-CASES_DIR="$ROOT_DIR/tests/upstream-core/cases"
-XFAIL_FILE="$ROOT_DIR/tests/upstream-core/xfail.tsv"
-UPSTREAM_CORPUS_DIR="$ROOT_DIR/tests/upstream-r"
-UPSTREAM_VENDOR_DIR="$UPSTREAM_CORPUS_DIR/vendor"
-UPSTREAM_DISPOSITIONS="$UPSTREAM_CORPUS_DIR/dispositions.tsv"
-RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 REPORT_DIR=""
 STRICT=0
+SUITE=all
+SHARD_INDEX=0
+SHARD_COUNT=1
+# The original CI completed a numerical driver in13m30s. This newly declared
+# bound preserves that opportunity; the legacy runner's120s is unchanged.
+CASE_TIMEOUT="${RPORT_UPSTREAM_CASE_TIMEOUT:-1800}"
 
 usage() {
     cat <<'USAGE'
-Usage: scripts/upstream_core_slices.sh [--strict] [--report DIR]
+Usage: scripts/upstream_core_slices.sh [--strict] [--report NEW_OR_EMPTY_DIR]
+       [--suite all|curated|whole] [--shard-index N] [--shard-count N]
+       [--timeout POSITIVE_SECONDS]
 
-Validates the complete pinned top-level r-source/tests/*.R inventory, then runs
-every pass/xfail whole-file disposition and the curated supported slices against
-stock R and the Rust runtime.
+Runs unchanged pinned upstream drivers with the original strict merged-output
+comparison. Each process has an owned deadline and durable START/FINISH logs.
+Declared skips, completed behavior failures and incomplete execution remain
+separate. Reports and exact engine artifacts are preserved on failure.
 USAGE
 }
-
 while (($# > 0)); do
     case "$1" in
-        --report)
-            if (($# < 2)); then
-                usage >&2
-                exit 2
-            fi
-            REPORT_DIR="$2"
-            shift 2
-            ;;
-        --strict)
-            STRICT=1
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1" >&2
-            usage >&2
-            exit 2
-            ;;
+        --report|--suite|--shard-index|--shard-count|--timeout)
+            (($# >= 2)) || { usage >&2; exit 2; }
+            case "$1" in
+                --report) REPORT_DIR="$2" ;;
+                --suite) SUITE="$2" ;;
+                --shard-index) SHARD_INDEX="$2" ;;
+                --shard-count) SHARD_COUNT="$2" ;;
+                --timeout) CASE_TIMEOUT="$2" ;;
+            esac
+            shift 2 ;;
+        --strict) STRICT=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
-if [[ -n "$REPORT_DIR" ]]; then
-    python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py" \
-        --markdown "$REPORT_DIR/upstream-inventory.md"
-else
-    python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py"
-fi
-
-if ! command -v Rscript >/dev/null 2>&1; then
-    if [[ "$STRICT" -eq 1 ]]; then
-        echo "ERROR: Rscript not found; strict upstream parity requires stock GNU R." >&2
-        exit 1
-    else
-        echo "SKIP: Rscript not found; upstream parity requires stock GNU R." >&2
-        exit 0
-    fi
-fi
-
-if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == "1" ]]; then
-    python3 "$ROOT_DIR/scripts/validate_r_oracle.py" \
-        --runtime "$(command -v Rscript)"
-fi
-
-if [[ ! -d "$CASES_DIR" ]]; then
-    echo "ERROR: missing upstream slice cases directory: $CASES_DIR" >&2
-    exit 1
-fi
-
+[[ -n "$REPORT_DIR" ]] || REPORT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-upstream-evidence.XXXXXX")"
+REPORT_DIR="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).absolute())' "$REPORT_DIR")"
 RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
 if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
     RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
 fi
+POLICY_ARGS=()
+if [[ "$STRICT" == 1 ]]; then POLICY_ARGS+=(--strict); fi
+if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == 1 ]]; then POLICY_ARGS+=(--pinned); fi
 
-echo "INFO: building Rust rmath artifact for upstream slice runner." >&2
-RUST_RLIB="$(RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_build_rmath)"
-if [[ -z "$RUST_RLIB" ]]; then
-    echo "ERROR: Rust rmath artifact missing after build." >&2
-    exit 1
+# Capture all compile/corpus/policy inputs BEFORE building. Admission is checked
+# again after compiling and after running; a moving source cannot borrow proof.
+python3 "$ROOT_DIR/scripts/upstream_execution.py" prepare --root "$ROOT_DIR" \
+    --report "$REPORT_DIR" --suite "$SUITE" --shard-index "$SHARD_INDEX" \
+    --shard-count "$SHARD_COUNT" --timeout "$CASE_TIMEOUT" \
+    --profile "$(conformance_profile)" --rustflags="$RUSTFLAGS_FOR_BUILD" \
+    ${POLICY_ARGS[@]+"${POLICY_ARGS[@]}"}
+printf 'INFO: durable upstream evidence: %s\n' "$REPORT_DIR"
+python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py" --markdown "$REPORT_DIR/upstream-inventory.md"
+
+if ! command -v Rscript >/dev/null 2>&1; then
+    echo "ERROR: Rscript not found; evidence remains execution-incomplete." >&2
+    if [[ "$STRICT" == 1 ]]; then exit 1; else exit 0; fi
+fi
+GNU_BIN="$(command -v Rscript)"
+if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == 1 ]]; then
+    python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+        --directory "$REPORT_DIR/oracle-validation" --cwd "$ROOT_DIR" --timeout "$CASE_TIMEOUT" \
+        -- python3 "$ROOT_DIR/scripts/validate_r_oracle.py" --runtime "$GNU_BIN"
 fi
 
-RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-upstream-slices-runner.XXXXXX")"
-RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
-RESULTS_TSV="$RUNNER_TMP_DIR/results.tsv"
-touch "$RESULTS_TSV"
-
-cleanup_runner() {
-    rm -rf "$RUNNER_TMP_DIR"
-}
-trap cleanup_runner EXIT
-
-if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$(conformance_dependency_dir)" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
-    echo "ERROR: failed to compile Rust upstream slice runner"
-    sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
-    exit 1
-fi
-
-normalize_output() {
-    tr -d '\r' |
-        sed 's/[[:space:]]*$//' |
-        awk '
-            /^Time elapsed:/ { next }
-            { lines[++n] = $0 }
-            END {
-                while (n > 0 && lines[n] == "") n--
-                for (i = 1; i <= n; i++) print lines[i]
-            }
-        '
-}
-
-is_xfail() {
-    local case_name="$1"
-    [[ -f "$XFAIL_FILE" ]] && awk -F '\t' -v case_name="$case_name" \
-        'NF && $1 !~ /^#/ && $1 == case_name { found = 1 } END { exit found ? 0 : 1 }' \
-        "$XFAIL_FILE"
-}
-
-record_result() {
-    local case_name="$1"
-    local status="$2"
-    local note="${3:-}"
-    printf '%s\t%s\t%s\n' "$case_name" "$status" "$note" >>"$RESULTS_TSV"
-}
-
-run_case() {
-    local case_file="$1"
-    local case_name
-    case_name="$(basename "$case_file" .R)"
-
-    local tmp_dir
-    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/rport-upstream-slice.XXXXXX")"
-    local c_out="$tmp_dir/c.out"
-    local r_out="$tmp_dir/r.out"
-    local c_norm="$tmp_dir/c.norm"
-    local r_norm="$tmp_dir/r.norm"
-
-    local case_dir case_basename
-    case_dir="$(dirname "$case_file")"
-    case_basename="$(basename "$case_file")"
-
-    local c_workspace="$tmp_dir/stock"
-    local r_workspace="$tmp_dir/rust"
-    if ! upstream_stage_case_workspace "$case_dir" "$c_workspace" ||
-        ! upstream_stage_case_workspace "$case_dir" "$r_workspace"; then
-        echo "FAIL ${case_name}: unable to copy fixture workspaces"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    if ! upstream_run_case_workspace "$c_workspace" "$case_basename" \
-        Rscript --vanilla >"$c_out" 2>&1; then
-        echo "FAIL ${case_name}: stock R exited non-zero"
-        sed 's/^/  C | /' "$c_out"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    if ! upstream_run_case_workspace "$r_workspace" "$case_basename" \
-        "$RUST_BIN" >"$r_out" 2>&1; then
-        echo "FAIL ${case_name}: Rust runner exited non-zero"
-
-        sed 's/^/  R | /' "$r_out"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    normalize_output <"$c_out" >"$c_norm"
-    normalize_output <"$r_out" >"$r_norm"
-
-    if ! cmp -s "$c_norm" "$r_norm"; then
-        echo "FAIL ${case_name}: Rust output diverged from stock R"
-        diff -u "$c_norm" "$r_norm" || true
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    echo "PASS ${case_name}"
-    rm -rf "$tmp_dir"
-}
-
-write_report() {
-    [[ -n "$REPORT_DIR" ]] || return 0
-    mkdir -p "$REPORT_DIR"
-    local report="$REPORT_DIR/summary.md"
-    {
-        echo "# GNU R Upstream Parity Report"
-        echo
-        echo "| Case | Status | Note |"
-        echo "| --- | --- | --- |"
-        awk -F '\t' '{ printf("| `%s` | %s | %s |\n", $1, $2, $3) }' "$RESULTS_TSV"
-    } >"$report"
-    echo "INFO: wrote upstream slice Markdown report to $report"
-}
-
-main() {
-    shopt -s nullglob
-    local cases=("$CASES_DIR"/*.R)
-    shopt -u nullglob
-
-    if (( ${#cases[@]} == 0 )); then
-        echo "ERROR: no upstream slice cases found in $CASES_DIR" >&2
-        exit 1
-    fi
-
-    local total=0
-    local passed=0
-    local xfailed=0
-    local xpassed=0
-    local skipped=0
-    local failed=0
-
-    local case_file
-    for case_file in "${cases[@]}"; do
-        total=$((total + 1))
-        local case_name
-        case_name="$(basename "$case_file" .R)"
-        if run_case "$case_file"; then
-            if is_xfail "$case_name"; then
-                echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
-                record_result "$case_name" "xpass" "listed in xfail.tsv but now passes"
-                xpassed=$((xpassed + 1))
-                failed=$((failed + 1))
-            else
-                record_result "$case_name" "pass"
-                passed=$((passed + 1))
-            fi
-        elif is_xfail "$case_name"; then
-            echo "XFAIL ${case_name}"
-            record_result "$case_name" "xfail" "listed in xfail.tsv"
-            xfailed=$((xfailed + 1))
-        else
-            record_result "$case_name" "fail"
-            failed=$((failed + 1))
-        fi
-    done
-
-    while IFS=$'\t' read -r upstream_path disposition owner reason; do
-        [[ -n "$upstream_path" && "$upstream_path" != \#* ]] || continue
-        total=$((total + 1))
-        case_file="$UPSTREAM_VENDOR_DIR/$upstream_path"
-        case_name="upstream/$upstream_path"
-        case "$disposition" in
-            skip)
-                echo "SKIP ${case_name}: ${reason} (${owner})"
-                record_result "$case_name" "skip" "${reason} (${owner})"
-                skipped=$((skipped + 1))
-                ;;
-            pass)
-                if run_case "$case_file"; then
-                    record_result "$case_name" "pass"
-                    passed=$((passed + 1))
-                else
-                    record_result "$case_name" "fail" "declared pass"
-                    failed=$((failed + 1))
-                fi
-                ;;
-            xfail)
-                if run_case "$case_file"; then
-                    echo "XPASS ${case_name}: remove its xfail or close ${owner}"
-                    record_result "$case_name" "xpass" "${reason} (${owner})"
-                    xpassed=$((xpassed + 1))
-                    failed=$((failed + 1))
-                else
-                    echo "XFAIL ${case_name}: ${reason} (${owner})"
-                    record_result "$case_name" "xfail" "${reason} (${owner})"
-                    xfailed=$((xfailed + 1))
-                fi
-                ;;
-        esac
-    done <"$UPSTREAM_DISPOSITIONS"
-
-    # Test output belongs only to the engine workspaces. Recheck the immutable
-    # import before publishing results, including the set of imported files.
-    if ! python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py"; then
-        echo "ERROR: pinned upstream corpus changed during execution" >&2
-        failed=$((failed + 1))
-    fi
-
-    echo "Summary: ${passed}/${total} upstream cases passed, ${xfailed} expected failures, ${skipped} skipped"
-    write_report
-
-    if (( failed > 0 || xpassed > 0 )); then
-        exit 1
-    fi
-}
-
-main
+# Keep actual Cargo compiler-artifact selection; never choose a library by
+# timestamp or a stale guessed output path. Build logs also survive cancellation.
+python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+    --directory "$REPORT_DIR/library-build" --cwd "$ROOT_DIR" --timeout "$CASE_TIMEOUT" \
+    --separate-streams -- env ROOT_DIR="$ROOT_DIR" RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" \
+    bash -c 'source "$1"; conformance_build_rmath' _ "$ROOT_DIR/scripts/conformance_artifacts.sh"
+RUST_RLIB="$(cat "$REPORT_DIR/library-build/stdout.log")"
+[[ -f "$RUST_RLIB" ]] || { echo "ERROR: selected Cargo library is missing" >&2; exit 1; }
+python3 "$ROOT_DIR/scripts/upstream_execution.py" seal-library \
+    --root "$ROOT_DIR" --report "$REPORT_DIR" --rlib "$RUST_RLIB"
+RUST_BIN="$REPORT_DIR/rust_runner"
+python3 "$ROOT_DIR/scripts/upstream_execution.py" process \
+    --directory "$REPORT_DIR/runner-build" --cwd "$ROOT_DIR" --timeout "$CASE_TIMEOUT" \
+    -- rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
+    -L "dependency=$(conformance_dependency_dir)" --extern "rmath=$RUST_RLIB" -o "$RUST_BIN"
+python3 "$ROOT_DIR/scripts/upstream_execution.py" run --root "$ROOT_DIR" \
+    --report "$REPORT_DIR" --gnu "$GNU_BIN" --rust "$RUST_BIN" --rlib "$RUST_RLIB"
