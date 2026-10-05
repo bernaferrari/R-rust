@@ -810,8 +810,8 @@ unsafe fn logicalSubscript(
     ns: R_xlen_t,
     nx: R_xlen_t,
     stretch: *mut R_xlen_t,
-    call: SEXP,
-    dimno: c_int,
+    _call: SEXP,
+    _dimno: c_int,
 ) -> SEXP {
     unsafe {
         // Trunk semantics: entry value > 0 means stretching is allowed; when
@@ -829,17 +829,9 @@ unsafe fn logicalSubscript(
 
         let out_len = if ns < nx { nx } else { ns };
 
-        // PR19155: a logical subscript that does not tile the target warns.
-        // dimno 0 is a vector; an array dimension is 1-based.
-        if ns != 0 && out_len % ns != 0 {
-            let msg = if dimno == 0 {
-                "object length is not a multiple of subscript length".to_string()
-            } else {
-                format!("length of dimension {dimno} is not a multiple of logical subscript length")
-            };
-            let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-            crate::mainutils::errors::Rf_warningcall1(call, c_msg.as_ptr());
-        }
+        // The pinned GNU oracle silently recycles logical indices even
+        // when the target length is not an exact multiple. This admission
+        // also holds with warn=2; dimension-length rejection remains above.
 
         // Count TRUE and NA values to determine result length. R logical
         // subscripts recycle to the target length when shorter; NA selects an
@@ -1774,48 +1766,6 @@ mod tests {
             // arraySubscript delegates to int_arraySubscript which returns empty INTSXP
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
-        }
-    }
-
-    #[test]
-    fn trunk_r90451_logical_subscript_warns_when_recycling_is_fractional() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_real_vector(&[1.0, 2.0, 3.0, 4.0, 5.0]);
-            let s = Rf_allocVector3(SEXPTYPE::LGLSXP, 2);
-            *LOGICAL(s) = 1;
-            *LOGICAL(s).add(1) = 0;
-            let mut stretch: R_xlen_t = 0;
-            let idx = makeSubscript(x, s, &mut stretch, ptr::null_mut());
-            assert_eq!(LENGTH(idx), 3);
-            assert_eq!(*INTEGER(idx), 1);
-            assert_eq!(*INTEGER(idx).add(1), 3);
-            assert_eq!(*INTEGER(idx).add(2), 5);
-
-            let dims = make_int_vector(&[5]);
-            let array_idx = int_arraySubscript(0, s, dims, x, ptr::null_mut());
-            assert_eq!(LENGTH(array_idx), 3);
-
-            // warn >= 2 turns the recycling warning into an error, which is
-            // the readable form of the message without poking the collector.
-            crate::mainutils::options::SetOptionByName("warn", Rf_ScalarInteger(2));
-            let vector_msg = panic_message(|| {
-                let mut stretch: R_xlen_t = 0;
-                makeSubscript(x, s, &mut stretch, ptr::null_mut());
-            });
-            assert!(
-                vector_msg.contains("object length is not a multiple of subscript length"),
-                "{vector_msg}"
-            );
-            let dim_msg = panic_message(|| {
-                int_arraySubscript(0, s, dims, x, ptr::null_mut());
-            });
-            assert!(
-                dim_msg.contains(
-                    "length of dimension 1 is not a multiple of logical subscript length"
-                ),
-                "{dim_msg}"
-            );
         }
     }
 
