@@ -1433,3 +1433,28 @@ separate evidence. Final all-target rmath/r-embed Clippy with warnings denied
 passes in 26.84 seconds, following correction of a test-only Clippy diagnostic.
 This milestone repairs finite-limit admission; log-axis details, device behavior,
 warning attribution and complete graphics compatibility remain separate.
+
+## Checked missing-character native bytes (rport-jxfp.3.12.6.6)
+
+An admitted canonical NA CHARSXP now exposes GNU's immutable `NA` bytes through
+const native reads while typed string reads still return a missing value. Mutable
+data access remains rejected. Identity admission precedes the static projection;
+ordinary `"NA"`, initialized empty characters and characters from legitimate
+registered arenas retain their distinct behavior. Forged and retired projections
+are rejected. Retained earlier singleton banks keep their original identity.
+
+The genuine unchanged baseline fails all three new controls. All three native
+controls and 21 enclosing accessor tests pass in staging. The frozen two files
+also pass all three strict-provenance Miri tests in 324.66 seconds with default
+alias checking and isolation, and the actual process exits successfully. Root
+verifies both hashes, transfers those exact files to main, and repeats the three
+controls plus main's 22 enclosing tests (0.02 seconds each). Final warnings-denied
+all-target rmath/r-embed Clippy passes in 30.23 seconds.
+
+These checks exercise the real atomic paste implementation and const NA
+translation. The combined public corpus/serialization script initially cannot
+reach its body because full startup hits the separate locked-options publisher
+(`rport-jxfp.3.12.6.17`); its rerun is required before closing the parent parity
+issue. `charToRaw` ownership/NA handling (`.6.6.1`) and end-to-end UTF-8 paste's
+separator selection (`.6.6.2`) remain separate tracked repairs. No public corpus
+or complete serialization pass is inferred from the focused accessor proof.

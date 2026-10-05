@@ -794,9 +794,11 @@ pub unsafe fn CHAR(x: SEXP) -> *const c_char {
     let (value, _root) = unsafe { raw_value(x) };
     let header = value.header();
     let Some(lease) = header.payload_lease() else {
-        // The immutable NA-string sentinel has no byte payload.
+        // Admission above retains the exact canonical missing-string identity.
+        // GNU exposes its immutable "NA" bytes even though typed string reads
+        // continue to represent this sentinel as a missing value.
         if value.is_na_string() {
-            return ptr::null();
+            return c"NA".as_ptr();
         }
         super::context::r_error("character scalar has no committed byte allocation");
     };
@@ -1636,8 +1638,11 @@ mod tests {
         let session = super::super::session::RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
             let sentinel = super::super::globals::R_NaString();
-            assert!(CHAR(sentinel).is_null());
-            assert!(ROBJ_DATAPTR(sentinel).is_null());
+            assert_eq!(std::ffi::CStr::from_ptr(CHAR(sentinel)).to_bytes(), b"NA");
+            assert_eq!(
+                std::ffi::CStr::from_ptr(ROBJ_DATAPTR(sentinel).cast()).to_bytes(),
+                b"NA"
+            );
             assert!(
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| DATAPTR(sentinel)))
                     .is_err()
@@ -1843,3 +1848,7 @@ mod projection_tests;
 #[cfg(test)]
 #[path = "accessors/scalar_admission_tests.rs"]
 mod scalar_admission_tests;
+
+#[cfg(test)]
+#[path = "accessors/na_character_tests.rs"]
+mod na_character_tests;
