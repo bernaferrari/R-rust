@@ -173,7 +173,7 @@ def normalizer_policy():
         path = Path(executable).resolve()
         tools[name] = {"path": str(path), "sha256": file_hash(path)}
     return {"platform": {"system": platform.system(), "machine": platform.machine()},
-            "locale": {key: os.environ.get(key) for key in ("LANG", "LC_ALL", "LC_CTYPE")},
+            "locale": {key: "C" for key in ("LANG", "LC_ALL", "LC_CTYPE")},
             "tools": tools}
 
 
@@ -287,6 +287,8 @@ def verify_normalizer_policy(policy):
         raise ValueError("invalid normalization producer platform")
     if set(policy["locale"]) != {"LANG", "LC_ALL", "LC_CTYPE"} or any(value is not None and not isinstance(value, str) for value in policy["locale"].values()):
         raise ValueError("invalid normalization producer locale")
+    if policy["locale"] != {key: "C" for key in ("LANG", "LC_ALL", "LC_CTYPE")}:
+        raise ValueError("normalization requires the byte-preserving C locale")
     if set(policy["tools"]) != {"bash", "tr", "sed", "awk"}:
         raise ValueError("missing or extra original normalization tool")
     for row in policy["tools"].values():

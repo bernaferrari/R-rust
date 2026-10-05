@@ -210,10 +210,22 @@ class InventoryTests(unittest.TestCase):
             (directory / "gnu/combined.log").write_bytes(raw)
             receipt = execution.run_normalization(directory, "gnu", execution.normalizer_policy(), 2)
             original = subprocess.run(["bash", "-o", "pipefail", "-c", old], input=raw,
-                                      capture_output=True, timeout=2)
+                                      capture_output=True, timeout=2,
+                                      env={**os.environ, "LANG": "C", "LC_ALL": "C", "LC_CTYPE": "C"})
             self.assertEqual((directory / "gnu-normalize/stdout.log").read_bytes(), original.stdout)
             self.assertEqual(receipt["process"]["exit_code"], original.returncode)
             self.assertEqual(receipt["input_sha256"], execution.file_hash(directory / "gnu/combined.log"))
+
+    def test_latin1_bytes_are_normalized_under_an_explicit_byte_locale(self):
+        directory = self.root / "latin1-normalization"
+        (directory / "gnu").mkdir(parents=True)
+        (directory / "gnu/combined.log").write_bytes(b"caf\xe9 \r\n")
+        with patch.dict(os.environ, {"LANG": "en_US.UTF-8", "LC_ALL": "C.UTF-8", "LC_CTYPE": "C.UTF-8"}):
+            policy = execution.normalizer_policy()
+            self.assertEqual(policy["locale"], {"LANG": "C", "LC_ALL": "C", "LC_CTYPE": "C"})
+            receipt = execution.run_normalization(directory, "gnu", policy, 2)
+        self.assertEqual(receipt["process"]["exit_code"], 0)
+        self.assertEqual((directory / "gnu-normalize/stdout.log").read_bytes(), b"caf\xe9\n")
 
     def test_fixture_tampering_and_extra_vendor_files_fail_before_execution(self):
         contract = self.contract()
