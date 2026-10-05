@@ -1233,3 +1233,22 @@ frozen source and have no completed aggregate yet. Native external-pointer
 warning dispatch (`rport-hah9u.78`) and row-subassignment warning calls
 (`rport-wszw.6.3.1`) remain separate gaps. This ledger is the arithmetic-phase
 candidate’s evidence, not certification of concurrently changed whole HEAD.
+
+## Faster unchanged parity build profile (rport-jxfp.3.12.6.2.1)
+
+CI explicitly selects the existing release profile through a shared
+`cargo_dev.sh` build and artifact resolver. Local callers retain the debug
+default; user Cargo settings are unchanged. Shell tests verify relative and
+absolute targets, profile separation, invalid-profile rejection and exact
+argument/environment forwarding. The unchanged timeout and output runner
+controls pass all six tests.
+
+The real release build completed in 96 seconds. Four fresh full sessions
+(arithmetic, closures, coercion and list lookup) agree with the pinned GNU
+oracle in exact stdout, stderr and exit status, each taking 4.6–5.1 seconds.
+The older Linux debug CI log took about 92–96 seconds per simple case; these
+are different environments, so this is supporting evidence rather than a
+controlled speedup benchmark. The corpus still has 1,113 normal and 68 error
+cases: profile selection alone cannot establish completion within the existing
+50-minute job budget. Authenticated partitioning and a completed full CI
+checkpoint remain open, and no case, bootstrap step or deadline was removed.

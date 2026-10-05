@@ -21,21 +21,46 @@ conformance_target_dir() {
     fi
 }
 
+# Local callers retain the historical debug profile. CI explicitly opts into
+# the existing release profile for repeated full-runtime startup; Cargo config
+# and the user's compilation settings remain untouched.
+conformance_profile() {
+    local profile="${RPORT_CONFORMANCE_PROFILE:-debug}"
+    case "$profile" in
+        debug|release) printf '%s' "$profile" ;;
+        *) printf 'Invalid conformance profile: %s\n' "$profile" >&2; return 2 ;;
+    esac
+}
+
+conformance_cargo() {
+    local action="$1"
+    shift
+    local profile
+    profile="$(conformance_profile)" || return
+    local options=()
+    if [[ "$profile" == release ]]; then options+=(--release); fi
+    (cd "$ROOT_DIR" && "$ROOT_DIR/scripts/cargo_dev.sh" "$action" ${options[@]+"${options[@]}"} "$@")
+}
+
 conformance_dependency_dir() {
-    printf '%s/debug/deps' "$(conformance_target_dir)"
+    local profile
+    profile="$(conformance_profile)" || return
+    printf '%s/%s/deps' "$(conformance_target_dir)" "$profile"
 }
 
 conformance_find_rmath_rlib() {
     local target_dir="${1:-$(conformance_target_dir)}"
+    local profile
+    profile="$(conformance_profile)" || return
     local found=""
     local candidate
     local candidates=()
 
     shopt -s nullglob
     candidates+=(
-        "$target_dir/debug/deps/librmath-"*.rlib
-        "$target_dir/debug/deps/librmath.rlib"
-        "$target_dir/debug/librmath.rlib"
+        "$target_dir/$profile/deps/librmath-"*.rlib
+        "$target_dir/$profile/deps/librmath.rlib"
+        "$target_dir/$profile/librmath.rlib"
     )
     shopt -u nullglob
 

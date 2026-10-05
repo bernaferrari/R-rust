@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/conformance_artifacts.sh"
 cd "$ROOT_DIR"
 
 MODE="--check"
@@ -32,10 +33,10 @@ if ! command -v Rscript >/dev/null 2>&1; then
 fi
 
 echo "script-diff parity: building harness"
-env RUSTFLAGS="-Awarnings" cargo build -p rport-script-diff
+RUSTFLAGS="${RUSTFLAGS:-} -Awarnings" conformance_cargo build -p rport-script-diff
 
 echo "script-diff parity: running whole-script differential suite"
-cargo run -p rport-script-diff -- ${BIN_ARGS[@]+"${BIN_ARGS[@]}"}
+conformance_cargo run -p rport-script-diff -- ${BIN_ARGS[@]+"${BIN_ARGS[@]}"}
 
 if [[ "$MODE" == "--check" ]]; then
     echo "script-diff parity: OK"

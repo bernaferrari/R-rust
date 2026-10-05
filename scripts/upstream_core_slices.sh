@@ -82,7 +82,7 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
 fi
 
 echo "INFO: building Rust rmath artifact for upstream slice runner." >&2
-(cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" build -p rmath >/dev/null)
+RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" conformance_cargo build -p rmath >/dev/null
 
 RUST_RLIB="$(conformance_find_rmath_rlib)"
 if [[ -z "$RUST_RLIB" ]]; then

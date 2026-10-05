@@ -82,6 +82,8 @@ jobs:
     name: Conformance parity vs exact R oracle
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    env:
+      RPORT_CONFORMANCE_PROFILE: release
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
