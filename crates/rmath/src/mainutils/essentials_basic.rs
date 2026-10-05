@@ -2086,6 +2086,7 @@ unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {
         if !result.is_null() && result != R_NilValue() {
             SET_ATTRIB(result, R_NilValue());
             SET_OBJECT(result, 0);
+            crate::sexp::accessors::UNSET_S4_OBJECT(result);
         }
 
         result
@@ -2428,6 +2429,7 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
                     if SEXPTYPE(target) != SEXPTYPE::LISTSXP {
                         SET_ATTRIB(result, R_NilValue());
                         SET_OBJECT(result, 0);
+                        crate::sexp::accessors::UNSET_S4_OBJECT(result);
                     }
                 }
                 result

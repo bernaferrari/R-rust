@@ -333,7 +333,8 @@ unsafe fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
                 continue;
             }
             if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                bound = crate::sexp::envir::forcePromise(bound);
+                // Identity inspection must not execute unrelated lazy bindings.
+                bound = crate::sexp::accessors::PRVALUE(bound);
             }
             if bound == op {
                 return true;
@@ -444,7 +445,9 @@ unsafe fn collect_unwrap_methods_closures(methods: SEXP) -> Vec<SEXP> {
                 continue;
             }
             if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                bound = crate::sexp::envir::forcePromise(bound);
+                // A method currently being called has already resolved its binding.
+                // Forcing other image records here can recursively enter envhook.
+                bound = crate::sexp::accessors::PRVALUE(bound);
             }
             if !bound.is_null() && bound != crate::sexp::globals::R_UnboundValue() {
                 out.push(bound);
@@ -469,9 +472,10 @@ pub(crate) unsafe fn is_methods_matchsignature_closure(op: SEXP) -> bool {
                 None
             }
         });
-        if let Some(found) = hit {
-            return found;
+        if hit == Some(true) {
+            return true;
         }
+        // A miss is provisional: original lazy bindings can resolve later.
         let built = collect_unwrap_methods_closures(methods);
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).unwrap_methods_closures = built;

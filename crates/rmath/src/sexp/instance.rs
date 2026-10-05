@@ -496,6 +496,10 @@ pub struct RInstance {
     /// GC contract: the cached namespace env is traced as a root by `gengc`
     /// (it may have no other referee) and remapped on reference updates.
     pub(crate) package_namespace_cache: HashMap<String, (std::path::PathBuf, SEXP)>,
+    /// Selected conditional directives belong to this session's platform and policy.
+    /// Plain strings only; this cache retains no interpreter graph.
+    pub(crate) namespace_directives_cache:
+        HashMap<std::path::PathBuf, crate::mainutils::essentials::NamespaceDirectives>,
     /// Methods closures whose GNU bytecode is unwrapped at apply time.
     /// Aliases of methods-namespace bindings; rebuilt when that ns changes.
     pub(crate) unwrap_methods_ns: SEXP,
@@ -662,6 +666,7 @@ impl RInstance {
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),
             package_namespace_cache: HashMap::new(),
+            namespace_directives_cache: HashMap::new(),
             unwrap_methods_ns: std::ptr::null_mut(),
             unwrap_methods_closures: Vec::new(),
 

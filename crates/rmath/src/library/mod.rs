@@ -3,6 +3,7 @@
 #![allow(unused_doc_comments)]
 #![allow(unused_attributes)]
 pub(crate) mod datasets;
+pub(crate) mod portable_package;
 // Minimal per-package lint allowances: the C-transliterated package ports
 // still trip exactly these rustc lints (verified per package with
 // `cargo clippy -p rmath --all-targets`); everything else is lint-clean.

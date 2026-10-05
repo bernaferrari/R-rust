@@ -371,7 +371,7 @@ unsafe fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
                     .collect(),
             );
         }
-        let mut xv = values(x);
+        let mut xv = coordinate_values(x);
         let yv = if y == R_NilValue() {
             let dim =
                 crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
@@ -384,12 +384,34 @@ unsafe fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
                 y
             }
         } else {
-            values(y)
+            coordinate_values(y)
         };
         if xv.len() != yv.len() {
             base_error("'x' and 'y' lengths differ");
         }
         (xv, yv)
+    }
+}
+/// GNU xy.coords coerces character coordinates with as.double, preserving
+/// coercion warnings and letting the usual finite-limit check reject all NA.
+unsafe fn coordinate_values(value: SEXP) -> Vec<f64> {
+    unsafe {
+        if TYPEOF(value) != SEXPTYPE::STRSXP {
+            return values(value);
+        }
+        let result = (|| {
+            let owner = crate::sexp::owner::OwnerToken::current()?;
+            let _pin = owner.pin()?;
+            let input = owner.sexp(value)?.into_owned()?;
+            let raw = crate::mainutils::coerce::coerceVector(
+                input.as_raw(),
+                SEXPTYPE::REALSXP.as_c_int(),
+            );
+            owner.require_active()?;
+            let converted = owner.sexp(raw)?.into_owned()?;
+            crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+        })();
+        result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 fn renderer() -> *mut dyn DrawTarget {

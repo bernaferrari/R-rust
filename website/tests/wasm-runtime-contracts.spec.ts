@@ -350,7 +350,15 @@ test("compiled lazy calls and inherited method specificity work in Wasm", async 
       runtime.dispose()
     }
   }, Array.from(bytes).join(","))
-  expect(output).toEqual(Array(6).fill("[1] TRUE"))
+  // Pinned GNU also warns about D's contradictory superclass ordering.
+  expect(output).toEqual([
+    "[1] TRUE",
+    "[1] TRUE",
+    "[1] TRUE",
+    "[1] TRUE",
+    '[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class "D": order chosen is inconsistent with the superclasses of "C"',
+    "[1] TRUE",
+  ])
 })
 
 test("GNU math bytecode, method continuation and abort discovery work in Wasm", async ({
@@ -644,7 +652,7 @@ test("GNU compiled closures and ANY signatures work in the browser runtime", asy
     }
   }, code)
   expect(result.compiled).toBe("9 22")
-  expect(result.methods).toBe("number fallback")
+  expect(result.methods).toBe('[1] "wild"\nnumber fallback')
 })
 
 test("long vector density and deparsing remain within string buffer allocation", async ({

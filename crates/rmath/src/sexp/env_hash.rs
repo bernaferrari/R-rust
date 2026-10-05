@@ -164,6 +164,9 @@ impl BindingTables {
                 self.frames.insert(cell.tail, table);
             }
         }
+        if !chain_changed && !symbol_changed {
+            return;
+        }
         for table in self.frames.values_mut() {
             if (chain_changed && table.members.contains(&node))
                 || (symbol_changed && table.bindings.contains_key(&node))

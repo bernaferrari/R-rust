@@ -30,6 +30,8 @@ use crate::sexp::symbol::Rf_install;
 
 use super::*;
 
+mod namespace_conditions;
+
 thread_local! {
     static CACHING_ATTACHED_S4: Cell<bool> = const { Cell::new(false) };
 }
@@ -869,6 +871,11 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         if package == "base" {
             return Ok(crate::sexp::envir::R_BaseNamespace());
         }
+        // GNU keeps loaded namespace identities when .libPaths() changes.
+        // Existing closures and imports still refer to that original graph.
+        if let Some(namespace) = cached_namespace_by_name(package) {
+            return Ok(namespace);
+        }
 
         #[cfg(feature = "renderplot-device")]
         if package == "grid" {
@@ -877,6 +884,13 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
 
         let package_path = find_package_path(package);
         if package_path.is_empty() {
+            if package == "methods" {
+                return crate::library::methods::portable::namespace()
+                    .map(|namespace| namespace.as_raw());
+            }
+            if let Some(image) = crate::library::portable_package::image(package) {
+                return image.namespace().map(|namespace| namespace.as_raw());
+            }
             if package == "datasets" {
                 return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
             }
@@ -1383,6 +1397,39 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
     }
 }
 
+/// Finish the same original namespace lifecycle for installed and portable images.
+/// No runtime/field loan remains live while a step can evaluate R code.
+pub(crate) unsafe fn finalize_methods_namespace(namespace: SEXP) {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let namespace = owner
+            .sexp(namespace)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for step in [
+            bind_methods_base_primitives as unsafe fn(SEXP),
+            purge_missing_arg_placeholders,
+            retarget_methods_generics,
+            run_methods_onload_cache_metadata,
+            retarget_envref_object_parent,
+        ] {
+            authority
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            step(namespace.as_raw());
+            authority
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+    }
+}
+
 /// Restore the session-specific methods dispatch state after loading its image.
 /// The installed image contains its class and implicit-generic tables already;
 /// GNU's installed `.onLoad` initializes dispatch without recaching that namespace.
@@ -1395,7 +1442,20 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
             return;
         };
         eval_methods_ns_fun(ns, c".initImplicitGenerics", where_env, None);
-        register_implicit_generics_table(ns);
+        let captured_image = crate::sexp::instance::with_required_current_instance(|instance| {
+            (*instance)
+                .package_namespace_cache
+                .get("methods")
+                .is_some_and(|(path, namespace)| {
+                    *namespace == ns && path == Path::new("<builtin:methods>")
+                })
+        });
+        // The original installed image includes .implicitTable and its method
+        // environments after registration. Re-registering replays loading work
+        // that GNU's installed .onLoad does not perform.
+        if !captured_image {
+            register_implicit_generics_table(ns);
+        }
         // GNU zzz.R: initMethodDispatch(where); .Call(C_R_set_method_dispatch, TRUE).
         // The installed image already ran onLoad, so the session must still
         // install the standardGeneric pointer or .isMethodsDispatchOn() stays FALSE.
@@ -1929,6 +1989,11 @@ pub(crate) unsafe fn load_package_namespace(
         if package == "methods" {
             crate::library::methods::native_calls::install_methods_call_symbols(package_env);
         }
+        if package == "grDevices" {
+            // Its sourced initialization calls color wrappers before the
+            // post-load setup; their typed native descriptors must exist now.
+            crate::library::grdevices::install_call_symbols(package_env);
+        }
 
         let populated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             populate_package_namespace(package, package_dir, package_env, loading)
@@ -1949,11 +2014,7 @@ pub(crate) unsafe fn load_package_namespace(
             }
         };
         if package == "methods" {
-            bind_methods_base_primitives(package_env);
-            purge_missing_arg_placeholders(package_env);
-            retarget_methods_generics(package_env);
-            run_methods_onload_cache_metadata(package_env);
-            retarget_envref_object_parent(package_env);
+            finalize_methods_namespace(package_env);
         }
 
         if package == "stats" {
@@ -2718,7 +2779,9 @@ pub(crate) unsafe fn source_package_lazy_data(
         if rdata_base.with_extension("rdx").is_file() {
             eager_lazy_load_package_db(&rdata_base, package_env, &[])?;
         } else if !package_declares_lazy_data(package_dir)? {
-            // No lazy-load database and no LazyData: yes — only source data/*.R.
+            // Ordinary source datasets belong to explicit data(..., envir=).
+            // Attaching them here leaks those values into the search path.
+            return Ok(Vec::new());
         }
 
         let before = frame_binding_names(package_env, true)
@@ -3279,6 +3342,15 @@ unsafe fn make_package_attach_env_inner(
             {
                 value = crate::sexp::envir::R_findVar(symbol, package_env);
             }
+            if package == "graphics"
+                && export == "plot"
+                && value == crate::sexp::globals::R_UnboundValue()
+                && let Some(primitive) = crate::eval::eval::primitive_for_symbol(
+                    crate::sexp::object::Sexp::from_raw_unchecked(symbol),
+                )
+            {
+                value = primitive.as_raw();
+            }
             if value.is_null()
                 || value == R_NilValue()
                 || value == crate::sexp::globals::R_UnboundValue()
@@ -3311,28 +3383,51 @@ unsafe fn make_package_attach_env_inner(
 pub(crate) fn read_namespace_directives(
     package_dir: &Path,
 ) -> Result<Option<NamespaceDirectives>, String> {
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok();
+    let _pin = owner
+        .map(|owner| owner.pin())
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    if let Some(owner) = owner
+        && let Some(hit) = unsafe {
+            (*owner.as_ptr())
+                .namespace_directives_cache
+                .get(package_dir)
+                .cloned()
+        }
+    {
+        return Ok(Some(hit));
+    }
     let namespace = package_dir.join("NAMESPACE");
     if !namespace.is_file() {
         return Ok(None);
     }
     let content = std::fs::read_to_string(&namespace)
         .map_err(|err| format!("could not read {}: {err}", namespace.display()))?;
-    Ok(Some(parse_namespace_directives(&content)))
+    let content = if parse_namespace_calls(&strip_namespace_comments(&content))
+        .iter()
+        .any(|(name, _)| name == "if")
+    {
+        namespace_conditions::selected_source(&content)?
+    } else {
+        content
+    };
+    let directives = parse_namespace_directives(&content);
+    if let Some(owner) = owner {
+        owner.require_active().map_err(|error| error.to_string())?;
+        unsafe {
+            (*owner.as_ptr())
+                .namespace_directives_cache
+                .insert(package_dir.to_owned(), directives.clone());
+        }
+    }
+    Ok(Some(directives))
 }
 
 /// `::` checks exports on every lookup. Parsing `NAMESPACE` again each time
 /// dominates `UseMethod` on bytecode. The file is immutable for a session.
 pub(crate) fn cached_namespace_directives(package_dir: &Path) -> Option<NamespaceDirectives> {
-    use std::sync::Mutex;
-    static CACHE: Mutex<Option<BTreeMap<PathBuf, Option<NamespaceDirectives>>>> = Mutex::new(None);
-    let mut guard = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
-    let cache = guard.get_or_insert_with(BTreeMap::new);
-    if let Some(hit) = cache.get(package_dir) {
-        return hit.clone();
-    }
-    let parsed = read_namespace_directives(package_dir).ok().flatten();
-    cache.insert(package_dir.to_path_buf(), parsed.clone());
-    parsed
+    read_namespace_directives(package_dir).ok().flatten()
 }
 
 /// Public `::` export check. Directive strings are cached; `exportPattern`
@@ -3490,7 +3585,7 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 ));
             };
             let method_sym = Rf_install(method_cstr.as_ptr());
-            let mut method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
+            let method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
             if method_value.is_null()
                 || method_value == R_NilValue()
                 || method_value == crate::sexp::globals::R_UnboundValue()
@@ -3499,10 +3594,8 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                 // in the namespace (Windows-only utils methods on Unix).
                 continue;
             }
-            if TYPEOF(method_value) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(method_value);
-                method_value = crate::sexp::accessors::PRVALUE(method_value);
-            }
+            // GNU registers namespace methods lazily. Dispatch forces the
+            // promise; initialization must not deserialize every method body.
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
             record_s3_method_row(package_env, local_generic, &method.class, &method_name);
 

@@ -84,6 +84,14 @@ unsafe fn attach_recommended_package_stub(package: &str) {
             return;
         }
         let lib_path = find_package_path(package);
+        if lib_path.is_empty()
+            && let Some(image) = crate::library::portable_package::image(package)
+        {
+            image.attach().unwrap_or_else(|message| {
+                std::panic::panic_any(crate::sexp::context::RError { message })
+            });
+            return;
+        }
         if lib_path.is_empty() && package == "datasets" {
             crate::library::datasets::attach().unwrap_or_else(|message| {
                 std::panic::panic_any(crate::sexp::context::RError { message })

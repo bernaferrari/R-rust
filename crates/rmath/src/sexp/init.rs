@@ -3546,6 +3546,12 @@ unsafe fn initialize_primitive_metadata_in(base_env: SEXP) {
         install_prototypes(args_env, base_env, NON_GENERIC_PROTOTYPES);
         install_prototypes(generic_args_env, base_env, GENERIC_PROTOTYPES);
 
+        // Every primitive checks these registries, including absent names.
+        // Index their canonical frames even below the general size threshold;
+        // the existing index reads live cells and invalidates structural edits.
+        super::env_hash::promote_to_hash_table(args_env);
+        super::env_hash::promote_to_hash_table(generic_args_env);
+
         defineVar(Rf_install_in_current(".ArgsEnv"), args_env, base_env);
         defineVar(
             Rf_install_in_current(".GenericArgsEnv"),

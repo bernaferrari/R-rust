@@ -659,11 +659,25 @@ pub(crate) fn loess_raw(b: &[NativeBuffer]) -> Result<(), BufferError> {
     let (d, n) = loess_fit(b, 4, 5, 6, 7, 8, 9)?;
     minimum(b, 0, n)?;
     minimum(b, 1, product(&[n, d])?)?;
-    minimum(b, 2, n)?;
-    minimum(b, 3, n)?;
     for i in [10, 11, 12, 20, 21, 22, 23] {
         minimum(b, i, 1)?;
     }
+    let NativeBuffer::Character(surfaces) = &b[12] else {
+        return Err(BufferError::new("expected LOESS surface/statistics string"));
+    };
+    // GNU simpleLoess supplies a scalar placeholder for the unused vector.
+    // loess_raw reads robust only for /none, and weights for statistics.
+    let (selected, unused) = match surfaces[0].as_slice() {
+        b"interpolate/none\0" | b"direct/none\0" => (3, 2),
+        b"interpolate/1.approx\0"
+        | b"interpolate/2.approx\0"
+        | b"direct/approximate\0"
+        | b"interpolate/exact\0"
+        | b"direct/exact\0" => (2, 3),
+        _ => return Err(BufferError::new("invalid LOESS surface/statistics mode")),
+    };
+    minimum(b, selected, n)?;
+    minimum(b, unused, 1)?;
     minimum(b, 13, n)?;
     minimum(b, 14, 7)?;
     Ok(())
@@ -855,6 +869,57 @@ pub(crate) fn dtrco_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
 #[cfg(test)]
 mod registration_tests {
     use super::*;
+    #[test]
+    fn loess_weight_admission_tracks_the_gnu_surface_branch() {
+        let routine = crate::library::tools::native_calls::lookup_buffer("loess_raw").unwrap();
+        let before = invocation_count();
+        for mode in [
+            "interpolate/none",
+            "direct/none",
+            "interpolate/1.approx",
+            "interpolate/2.approx",
+            "direct/approximate",
+            "interpolate/exact",
+            "direct/exact",
+        ] {
+            let mut buffers: Vec<_> = routine
+                .types()
+                .iter()
+                .map(|kind| match kind {
+                    BufferType::Integer => NativeBuffer::Integer(vec![0]),
+                    BufferType::Real => NativeBuffer::Real(vec![1.0]),
+                    BufferType::Character => {
+                        NativeBuffer::Character(vec![format!("{mode}\0").into_bytes()])
+                    }
+                })
+                .collect();
+            for index in [0, 1, 13] {
+                buffers[index] = NativeBuffer::Real(vec![1.0; 4]);
+            }
+            buffers[4] = NativeBuffer::Integer(vec![1]);
+            buffers[5] = NativeBuffer::Integer(vec![4]);
+            buffers[6] = NativeBuffer::Real(vec![0.75]);
+            buffers[7] = NativeBuffer::Integer(vec![1]);
+            buffers[8] = NativeBuffer::Integer(vec![1]);
+            buffers[14] = NativeBuffer::Integer(vec![0; 7]);
+            let selected = if mode.ends_with("/none") { 3 } else { 2 };
+            buffers[selected] = NativeBuffer::Real(vec![1.0; 4]);
+            assert!(
+                routine
+                    .validate_buffers(BufferInterface::C, &buffers)
+                    .is_ok(),
+                "{mode}"
+            );
+            buffers[selected] = NativeBuffer::Real(vec![1.0]);
+            assert!(
+                routine
+                    .validate_buffers(BufferInterface::C, &buffers)
+                    .is_err(),
+                "{mode} must check the vector actually read"
+            );
+        }
+        assert_eq!(invocation_count(), before);
+    }
     #[test]
     fn typed_buffer_registry_matches_independent_pinned_interfaces_counts_and_rejects_empty_storage()
      {

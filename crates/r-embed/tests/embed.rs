@@ -352,6 +352,18 @@ fn package_helpers_load_android_library_package() {
 
 #[test]
 fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
+    run_pure_package_corpus_smoke(RSession::new().expect("default session"));
+}
+
+#[test]
+fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages_portable() {
+    run_pure_package_corpus_smoke(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_pure_package_corpus_smoke(mut session: RSession) {
     let root = unique_test_root("rport-embed-corpus");
     let bundled = root.join("bundled-library");
 
@@ -518,7 +530,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
             sources: &[(
                 "s4.R",
                 concat!(
-                    "setClass(\"CorpusPerson\", name = \"character\", score = \"numeric\")\n",
+                    "setClass(\"CorpusPerson\", slots = c(name = \"character\", score = \"numeric\"))\n",
                     "make_person <- function() new(\"CorpusPerson\", name = \"Ada\", score = 42)\n",
                     "person_name <- function(x) slot(x, \"name\")\n",
                     "person_slots <- function() slotNames(\"CorpusPerson\")\n",
@@ -660,7 +672,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
     );
 
     let paths = android_paths_for(&root);
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_runtime(&paths)
         .expect("path config");
@@ -708,7 +720,7 @@ fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
     );
     assert_eq!(
         session
-            .eval("packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))")
+            .eval("unname(unlist(packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))))")
             .expect("package description fields"),
         "[1] \"corpbase\" \"0.1.0\"   \n"
     );
@@ -1122,12 +1134,45 @@ fn render_reports_actionable_plot_errors() {
     let non_numeric = session
         .render_with_dimensions("plot(c(\"a\", \"b\"))", 320, 240)
         .expect_err("non-numeric plot should fail");
-    assert!(non_numeric.to_string().contains("numeric"));
+    // Pinned GNU xy.coords coerces character data to NA, then plot.window
+    // reports the unusable y limits. Check that public error contract.
+    assert!(
+        non_numeric
+            .to_string()
+            .contains("need finite 'ylim' values"),
+        "{non_numeric}"
+    );
 
     let non_finite = session
         .render_with_dimensions("plot(c(Inf, Inf))", 320, 240)
         .expect_err("plot with no finite limits should fail");
     assert!(non_finite.to_string().contains("finite"));
+}
+
+#[test]
+fn render_character_coordinates_in_both_path_policies() {
+    for mut session in [
+        RSession::new().expect("default session"),
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    ] {
+        for code in [
+            "plot(c('1','2','3'),col='red')",
+            "plot(c('1','2'),c('2','4'),col='red')",
+        ] {
+            let png = session
+                .render_with_dimensions(code, 320, 240)
+                .expect("numeric character coordinates");
+            assert!(decode_png_rgba(&png).red_pixels() > 5);
+        }
+        let error = session
+            .render_with_dimensions("plot(c('a','b'))", 320, 240)
+            .expect_err("all NA coordinates");
+        assert!(
+            error.to_string().contains("need finite 'ylim' values"),
+            "{error}"
+        );
+    }
 }
 
 #[test]
@@ -1544,7 +1589,7 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
         sources: &[(
             "s4.R",
             concat!(
-                "setClass(\"PxS4Person\", name = \"character\", score = \"numeric\")\n",
+                "setClass(\"PxS4Person\", slots = c(name = \"character\", score = \"numeric\"))\n",
                 "pxs4_make <- function() new(\"PxS4Person\", name = \"Ada\", score = 42)\n",
                 "pxs4_name <- function(x) slot(x, \"name\")\n",
                 "pxs4_slots <- function() slotNames(\"PxS4Person\")\n",
@@ -1838,6 +1883,18 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
 ];
 #[test]
 fn synthetic_package_feature_matrix() {
+    run_synthetic_package_feature_matrix(RSession::new().expect("default session"));
+}
+
+#[test]
+fn synthetic_package_feature_matrix_portable() {
+    run_synthetic_package_feature_matrix(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_synthetic_package_feature_matrix(mut session: RSession) {
     assert_eq!(
         SYNTHETIC_PACKAGE_FEATURE_MATRIX.len(),
         25,
@@ -1883,7 +1940,7 @@ fn synthetic_package_feature_matrix() {
             std::fs::write(path, bytes).expect("extra file");
         }
     }
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_runtime(&android_paths_for(&root))
         .expect("path config");
@@ -1948,9 +2005,21 @@ fn wasm_m3_oracle_shape() {
 /// Statuses mirror the manifest: pass/partial/blocked with exact blockers.
 #[test]
 fn real_package_corpus() {
+    run_real_package_corpus(RSession::new().expect("default session"));
+}
+
+#[test]
+fn real_package_corpus_portable() {
+    run_real_package_corpus(
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    );
+}
+
+fn run_real_package_corpus(mut session: RSession) {
     let corpus = support::PackageCorpus::new();
     let (app, cache, bundled) = (&corpus.app, &corpus.cache, &corpus.bundled);
-    let mut session = RSession::new().expect("session");
+
     session
         .configure_android_paths(app, cache, Some(bundled))
         .expect("paths");

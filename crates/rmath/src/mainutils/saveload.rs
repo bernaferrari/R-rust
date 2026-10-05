@@ -122,6 +122,9 @@ pub fn R_ReadMagic(fp: &mut impl Read) -> c_int {
             if s.starts_with("RD") {
                 return R_MAGIC_MAYBE_TOONEW;
             }
+            if !buf[..4].iter().all(u8::is_ascii_digit) || buf[4] != b'\n' {
+                return R_MAGIC_CORRUPT;
+            }
             // Try to parse as 4-digit number
             let d1 = (buf[3] as i32 - b'0' as i32).rem_euclid(10);
             let d2 = (buf[2] as i32 - b'0' as i32).rem_euclid(10);
@@ -1567,6 +1570,14 @@ mod tests {
             let mut cursor = std::io::Cursor::new(buf);
             assert_eq!(R_ReadMagic(&mut cursor), magic);
         }
+    }
+
+    #[test]
+    fn magic_rejects_non_digit_legacy_headers() {
+        let mut invalid = std::io::Cursor::new(b"unsupported serialized data");
+        assert_eq!(R_ReadMagic(&mut invalid), R_MAGIC_CORRUPT);
+        let mut legacy = std::io::Cursor::new(b"1234\n");
+        assert_eq!(R_ReadMagic(&mut legacy), 1234);
     }
 
     #[test]

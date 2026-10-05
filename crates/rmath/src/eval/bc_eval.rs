@@ -42,6 +42,24 @@ fn bc_mismatch(detail: impl Into<String>) -> ! {
     bc_error(format!("BCMISMATCH: {}", detail.into()));
 }
 
+/// Instruction boundaries retain the body, environment, constants, call
+/// frames and operand stack as owning values, with no native payload loan.
+fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
+    pin.require_live()
+        .unwrap_or_else(|error| bc_error(error.to_string()));
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| bc_error(error.to_string()));
+    if owner.as_ptr() != pin.as_ptr() {
+        bc_error("bytecode collection requires the original active runtime");
+    }
+    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+    owner
+        .require_active()
+        .unwrap_or_else(|error| bc_error(error.to_string()));
+    pin.require_live()
+        .unwrap_or_else(|error| bc_error(error.to_string()));
+}
+
 /// Language object of the CALL that follows this GETFUN in the GNU stream,
 /// falling back to the current function context. GNU `findFun` attributes
 /// `R_FunctionNotFoundError` with `R_CurrentExpression`; in bytecode that
@@ -1315,9 +1333,14 @@ unsafe fn eval_gnu_adapter(
         // the operand stack lets the validator and runtime reject malformed
         // streams without guessing an argument count from the call object.
         let mut gnu_call_frames: Vec<GnuCallFrame> = Vec::new();
+        let mut instructions_since_check = 0u8;
         while pc < words.len() {
             pin.require_live()
                 .unwrap_or_else(|error| bc_error(error.to_string()));
+            if instructions_since_check == 0 {
+                collect_at_instruction_boundary(pin);
+            }
+            instructions_since_check = (instructions_since_check + 1) & 63;
             let opcode = words[pc];
             pc += 1;
             match opcode {
@@ -3972,9 +3995,14 @@ unsafe fn bc_eval_private(
         // values awaiting a call opcode; the call handlers apply them to
         // the rebuilt argument cells (eval.c SETTAG semantics).
         let mut pending_arg_tags: Vec<(usize, Sexp<'static>)> = Vec::new();
+        let mut instructions_since_check = 0u8;
         while pc < code_len {
             pin.require_live()
                 .unwrap_or_else(|error| bc_error(error.to_string()));
+            if instructions_since_check == 0 {
+                collect_at_instruction_boundary(pin);
+            }
+            instructions_since_check = (instructions_since_check + 1) & 63;
             let op = code_ptr[pc as usize];
             pc += 1;
 
@@ -5680,6 +5708,39 @@ mod tests {
                 });
                 assert!(error.message.contains("stack hint"), "{}", error.message);
             }
+        });
+    }
+
+    #[test]
+    fn owned_gnu_instruction_safe_point_keeps_original_pool_snapshot() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let value = Rf_ScalarInteger(17);
+            let pool = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(pool, 0, value);
+            let body = own_operand(gnu_tagged_bcode(
+                &[
+                    super::super::bytecode::GNU_BC_MAX_VERSION,
+                    super::super::bytecode::GNU_OP_LDCONST,
+                    0,
+                    super::super::bytecode::GNU_OP_RETURN,
+                ],
+                pool,
+            ));
+            let pool = own_operand(pool);
+            let callbacks = std::rc::Rc::new(std::cell::Cell::new(0));
+            let observed = callbacks.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                SET_VECTOR_ELT(pool.as_raw(), 0, R_NilValue());
+                observed.set(observed.get() + 1);
+            }));
+            session.with_active_in(|instance| {
+                (*instance).gc_state.gc_pending = true;
+                (*instance).gc_state.safe_point_collections = 63;
+            });
+            let result = own_operand(bcEval(body.as_raw(), R_BaseEnv()));
+            assert_eq!(callbacks.get(), 1);
+            assert_eq!(result.integer_elt(0), Some(17));
         });
     }
 

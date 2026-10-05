@@ -45,6 +45,9 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         );
 
         let mut description = check_string_arg(scmd, "description");
+        if !description.is_empty() {
+            description = crate::mainutils::essentials::resolve_package_relative_path(description);
+        }
         let open = check_string_arg(sopen, "open");
         let encoding = check_string_arg(_enc, "encoding");
         if encoding == "unknown" {
