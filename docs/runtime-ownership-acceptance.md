@@ -1378,3 +1378,38 @@ Valid filename shorthand and independent session stores are complete for
 this milestone. Ordinary invalid-size open/truncate ordering (`rport-wszw.15`),
 generic byte-buffer reservation lifetime (`rport-wszw.16`) and admission before
 the raw filename classifier (`rport-wszw.11.1`) remain tracked separately.
+
+## Completed conformance execution (rport-jxfp.3.12.6.2)
+
+Immutable main `78cf83e1` CI run `37249215715` completes all six conformance
+shards and their authenticated union: 1,181 attempted, 1,011 passing, 170
+failing, zero timeouts, unattempted cases, skips or expected failures. Root
+downloads each report and independently merges them in a clean checkout of
+that exact commit; the resulting union equals CI's JSON, with no admission
+errors and complete inventory coverage. The strict parity gate correctly
+fails because the 170 behavior differences remain.
+
+The execution-budget issue is complete. The failed cases are tracked in
+`rport-jxfp.3.12.6.16`, with focused causal issues for known families. These
+are counts from the checked-in test corpus, not a percentage of GNU R APIs
+implemented. Later main repairs require their own execution evidence. The
+complete all-green checkpoint remains open, including upstream, package,
+graphics and browser acceptance.
+
+## Owning row-map warning calls (rport-wszw.6.3.1)
+
+The covratio omission-map warning now retains GNU's actual
+`keep[-omit] <- 1L:n` call with an initialized integer literal. Selected
+influence children are captured before residual processing invokes a warning
+handler. Owning syntax, values and original runtime authority survive source
+detachment, full collection, a live handler panic and session revocation.
+
+The unchanged baseline genuinely fails both new warning-call controls. Final
+native six, enclosing 35, linear-model ten and public model one pass, with an
+independent pinned GNU fixture. All six Miri cases finish in 1,887.16 seconds
+under strict provenance, default alias checking and default isolation; the
+process exits successfully and all seven assigned hashes remain unchanged.
+Root transfers the exact files to main and the integrated enclosing filter
+passes 36 tests, including the existing intercept-only model regression.
+This closes the omission warning's ownership and call attribution; broad
+model compatibility and other condition/visibility contracts remain separate.

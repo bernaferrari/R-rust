@@ -199,10 +199,11 @@ fn weighted_residuals(
     weights: &Value,
     drop_weights: &Value,
     omitted: Option<&rows::Rows>,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
 ) -> Result<ResidualSnapshot> {
     let raw = numeric(access, residuals)?;
     let mut values = if let Some(rows) = omitted {
-        rows.restore(access, &raw)?
+        rows.restore(access, &raw, intern)?
     } else {
         raw
     };
@@ -214,7 +215,7 @@ fn weighted_residuals(
     if !weights.is_nil() {
         let weights = numeric(access, weights)?;
         let weights = if let Some(rows) = omitted {
-            rows.restore(access, &weights)?
+            rows.restore(access, &weights, intern)?
         } else {
             weights
         };
@@ -234,7 +235,7 @@ fn weighted_residuals(
     }
     let weights = numeric(access, drop_weights)?;
     let weights = if let Some(rows) = omitted {
-        rows.restore(access, &weights)?
+        rows.restore(access, &weights, intern)?
     } else {
         weights
     };
@@ -271,13 +272,14 @@ fn warn_recycling(
     }
     Ok(())
 }
-fn warn_recycling_assignment(access: &RuntimeAccess, target: usize, source: usize) -> Result<()> {
+fn warn_recycling_assignment(
+    access: &RuntimeAccess,
+    target: usize,
+    source: usize,
+    intern: &mut impl FnMut(&str) -> Result<Value>,
+) -> Result<()> {
     if target > 0 && source > 0 && !target.is_multiple_of(source) {
-        active(access)?;
-        crate::mainutils::errors::nmath_warning_hook(
-            "number of items to replace is not a multiple of replacement length",
-        );
-        active(access)?;
+        condition_calls::emit(access, condition_calls::Phase::RowMap, intern)?;
     }
     Ok(())
 }
@@ -393,6 +395,20 @@ pub(super) fn evaluate(
     } else {
         model_names.clone()
     };
+    // A row-map warning can invoke user handlers. Keep the exact selected
+    // influence children before default residual preprocessing reaches it.
+    let supplied_influence = if let Some(influence) = &influence {
+        Some((
+            field(access, influence, b"hat")?,
+            if fixed_sigma.is_none() {
+                field(access, influence, b"sigma")?
+            } else {
+                domain.nil()
+            },
+        ))
+    } else {
+        None
+    };
     let default_residuals = if default_needed {
         Some(weighted_residuals(
             access,
@@ -401,6 +417,7 @@ pub(super) fn evaluate(
             &weights,
             &drop_weights,
             omitted.as_ref(),
+            &mut intern,
         )?)
     } else {
         None
@@ -445,15 +462,8 @@ pub(super) fn evaluate(
     } else {
         Vec::new()
     };
-    let (hat_value, sigma_value) = if let Some(influence) = &influence {
-        (
-            field(access, influence, b"hat")?,
-            if fixed_sigma.is_none() {
-                field(access, influence, b"sigma")?
-            } else {
-                domain.nil()
-            },
-        )
+    let (hat_value, sigma_value) = if let Some(values) = supplied_influence {
+        values
     } else if qr_matrix.is_nil() {
         (cached_hat.clone(), domain.nil())
     } else {
@@ -527,12 +537,12 @@ pub(super) fn evaluate(
             let fallback = (cleaned.iter().map(|v| v * v).sum::<f64>() / df).sqrt();
             let names = rows.names(access, &names, e.len())?;
             hat = rows
-                .restore(access, &hat)?
+                .restore(access, &hat, &mut intern)?
                 .into_iter()
                 .map(|v| if v.is_nan() { 0. } else { v })
                 .collect();
             sigma = rows
-                .restore(access, &sigma)?
+                .restore(access, &sigma, &mut intern)?
                 .into_iter()
                 .map(|v| if v.is_nan() { fallback } else { v })
                 .collect();

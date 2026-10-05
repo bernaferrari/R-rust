@@ -7,6 +7,7 @@ pub(super) enum Phase {
     Denominator,
     Studentized { fixed_dispersion: bool },
     Product,
+    RowMap,
 }
 struct Syntax<'a, I> {
     access: &'a RuntimeAccess,
@@ -46,6 +47,19 @@ impl<I: FnMut(&str) -> Result<Value>> Syntax<'_, I> {
             Some(pointer)
         }))
     }
+    fn integer(&self, value: i32) -> Result<Value> {
+        let domain = self.access.domain();
+        let allocator = checked(self.access.allocator(&domain))?;
+        checked(allocator.allocate(|arena| {
+            let pointer = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+            let node = arena.node_token(pointer)?;
+            arena
+                .heap_identity()
+                .payload_lease(&node)?
+                .set_integer_elt(0, value)?;
+            Some(pointer)
+        }))
+    }
     fn denominator(&mut self, fixed: bool) -> Result<Value> {
         let sigma = if fixed {
             let model = self.symbol("model")?;
@@ -61,6 +75,16 @@ impl<I: FnMut(&str) -> Result<Value>> Syntax<'_, I> {
     }
     fn build(&mut self, phase: Phase) -> Result<Value> {
         match phase {
+            Phase::RowMap => {
+                let keep = self.symbol("keep")?;
+                let omit = self.symbol("omit")?;
+                let negative = self.call("-", &[omit])?;
+                let target = self.call("[", &[keep, negative])?;
+                let one = self.integer(1)?;
+                let n = self.symbol("n")?;
+                let sequence = self.call(":", &[one, n])?;
+                self.call("<-", &[target, sequence])
+            }
             Phase::Denominator => self.denominator(false),
             Phase::Studentized { fixed_dispersion } => {
                 let residuals = self.symbol("res")?;
@@ -99,11 +123,14 @@ pub(super) fn emit(
     intern: &mut impl FnMut(&str) -> Result<Value>,
 ) -> Result<()> {
     active(access)?;
+    let message = if matches!(phase, Phase::RowMap) {
+        "number of items to replace is not a multiple of replacement length"
+    } else {
+        "longer object length is not a multiple of shorter object length"
+    };
     let call = Syntax { access, intern }.build(phase)?;
     active(access)?;
     let _attribution = crate::mainutils::errors::warning_call_guard(call.as_raw());
-    crate::mainutils::errors::nmath_warning_hook(
-        "longer object length is not a multiple of shorter object length",
-    );
+    crate::mainutils::errors::nmath_warning_hook(message);
     active(access)
 }
