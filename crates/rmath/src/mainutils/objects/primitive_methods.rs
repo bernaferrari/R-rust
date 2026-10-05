@@ -567,7 +567,7 @@ unsafe fn get_primitive_methods(
     rho: SEXP,
 ) -> crate::sexp::object::SexpResult<Sexp<'static>> {
     unsafe {
-        crate::mainutils::essentials::ensure_captured_primitive_generic(op);
+        crate::mainutils::essentials::ensure_methods_primitive_generic(op);
         access.require_active()?;
         // Discovering the generic can itself evaluate R; maintain the same
         // suppression that GNU applies over the entire reset operation.

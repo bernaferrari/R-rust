@@ -1183,6 +1183,38 @@ fn device_page_questions_follow_gnu_value_visibility_and_device_lifecycle() {
 }
 
 #[test]
+fn reference_class_methods_survive_native_and_portable_reattachment() {
+    for mut session in [
+        RSession::new().expect("native session"),
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    ] {
+        let result = session
+            .eval(
+                r#"
+            library(methods)
+            ns <- getNamespace("methods")
+            x <- new("envRefClass")
+            stopifnot(typeof(x$show) == "closure")
+            show(x); print(x)
+            detach("package:methods"); library(methods)
+            stopifnot(identical(ns, getNamespace("methods")))
+            y <- new("envRefClass")
+            stopifnot(typeof(y$show) == "closure")
+            show(y); print(y)
+        "#,
+            )
+            .expect("original reference-class lifecycle");
+        assert_eq!(
+            result
+                .matches("Reference class object of class \"envRefClass\"")
+                .count(),
+            4
+        );
+    }
+}
+
+#[test]
 fn graphics_style_vectors_recycle_independently_in_public_workflows() {
     use r_graphics_engine::{Color, DrawOperation};
     for mut session in [

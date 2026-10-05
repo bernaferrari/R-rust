@@ -1469,12 +1469,13 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
         if let Some(attach_env) = attached_package_env("methods") {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
-        if captured_image {
+        {
             let primitive = crate::sexp::envir::R_findVarInFrame(
                 crate::sexp::globals::R_BaseEnv(),
                 Rf_install(c"$".as_ptr()),
             );
-            // Admit primitive dispatch now; restore its original captured
+            // Admit primitive dispatch for both installed and captured namespaces;
+            // restore the original
             // generic when the first S4 lookup resets the method table.
             crate::mainutils::objects::do_set_prim_method(
                 primitive,
@@ -1482,7 +1483,8 @@ pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
                 R_NilValue(),
                 R_NilValue(),
             );
-        } else {
+        }
+        if !captured_image {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::mainutils::gram_main::R_ParseEvalString(
                     c"cd <- tryCatch(getClassDef(\"envRefClass\"), error=function(e) NULL)
@@ -1501,9 +1503,9 @@ NULL"
     }
 }
 
-/// Materialize the original captured generic only when S4 primitive dispatch
+/// Materialize the original methods generic only when S4 primitive dispatch
 /// first requests it. Ordinary console and plotting work need no S4 table.
-pub(crate) unsafe fn ensure_captured_primitive_generic(op: SEXP) {
+pub(crate) unsafe fn ensure_methods_primitive_generic(op: SEXP) {
     unsafe {
         let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op));
         if name != c"$" || crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
@@ -1512,24 +1514,14 @@ pub(crate) unsafe fn ensure_captured_primitive_generic(op: SEXP) {
         let Some(ns) = cached_namespace_by_name("methods") else {
             return;
         };
-        let captured = crate::sexp::instance::with_required_current_instance(|instance| {
-            (*instance)
-                .package_namespace_cache
-                .get("methods")
-                .is_some_and(|(path, namespace)| {
-                    *namespace == ns && path == Path::new("<builtin:methods>")
-                })
-        });
-        if captured {
-            register_captured_dollar_primitive(ns);
-        }
+        register_original_dollar_primitive(ns);
     }
 }
 
 /// GNU methods onLoad resets `$` with getGeneric("$"). The pinned image
 /// already contains that exact generic in .BasicFunsList; use the original
 /// definition without rerunning getGeneric's recursive cache discovery.
-unsafe fn register_captured_dollar_primitive(ns: SEXP) {
+unsafe fn register_original_dollar_primitive(ns: SEXP) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| package_error(error.to_string()));
@@ -1589,7 +1581,7 @@ unsafe fn register_captured_dollar_primitive(ns: SEXP) {
                 return;
             }
         }
-        package_error("captured methods image has no dollar generic");
+        package_error("methods namespace has no dollar generic");
     }
 }
 
