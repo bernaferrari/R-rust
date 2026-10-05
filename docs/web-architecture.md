@@ -38,7 +38,13 @@ cd apps/workbench
 R nonlocal control flow uses `catch_unwind`, including errors and `return`.
 The default aborting wasm32 build cannot implement these semantics. The runtime
 build script pins `nightly-2026-08-25`, rebuilds std/panic_unwind, and enables
-`-Cpanic=unwind`. It skips wasm-opt to avoid optimizer/EH encoding mismatches.
+`-Cpanic=unwind`. It skips wasm-pack's older bundled optimizer, then processes
+release assets with checksum-pinned Binaryen 133. Optimization preserves the
+input module's declared features; enabling every proposal would introduce
+encodings unsupported by current Node/browser engines. Development and profiling
+builds retain their original assets. The package includes
+`rust-runtime-optimization.json` with exact input/output hashes, sizes, and the
+optimizer hash. Cargo compilation settings and execution budgets are unchanged.
 See the [Rust Wasm target documentation](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html)
 and [wasm-bindgen unwinding requirements](https://wasm-bindgen.github.io/wasm-bindgen/reference/catch-unwind.html).
 Install the pinned toolchain with rust-src before building:

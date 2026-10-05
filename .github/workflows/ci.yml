@@ -74,7 +74,7 @@ jobs:
       - name: Test parity deadlines and log capture
         run: |
           bash scripts/conformance_artifacts_test.sh
-          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py scripts/tests/test_upstream_execution.py
+          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py scripts/tests/test_upstream_execution.py scripts/tests/test_optimize_wasm_runtime.py
 
       - name: Test (workspace)
         run: cargo test --workspace

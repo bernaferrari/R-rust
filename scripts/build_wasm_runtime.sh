@@ -12,11 +12,26 @@ if ! rustup run "$WASM_TOOLCHAIN" rustc --version >/dev/null 2>&1; then
     echo "Install prerequisites: rustup toolchain install $WASM_TOOLCHAIN --profile minimal --component rust-src --target wasm32-unknown-unknown" >&2
     exit 2
 fi
-# Skip wasm-opt: the stable bundled optimiser can lag Rust's Wasm EH encoding.
-# The release size gate measures the actual unoptimised-by-wasm-opt artifact.
+# Skip wasm-pack's old bundled optimizer, which crashes on Rust's Wasm EH.
+# Release assets use the separately pinned, verified Binaryen below.
 # Optional GPU builds stay separate from the default CPU distribution.
 if [[ -n "${RPORT_WASM_FEATURES:-}" ]]; then
-    exec wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
+    wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
 else
-    exec wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind
+    wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind
+fi
+
+OUTPUT_DIR="pkg"
+OPTIMIZE=1
+while (($# > 0)); do
+    case "$1" in
+        --out-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --out-dir=*) OUTPUT_DIR="${1#--out-dir=}"; shift ;;
+        --dev|--profiling) OPTIMIZE=0; shift ;;
+        *) shift ;;
+    esac
+done
+if [[ "$OPTIMIZE" == 1 ]]; then
+    if [[ "$OUTPUT_DIR" != /* ]]; then OUTPUT_DIR="$ROOT_DIR/crates/r-wasm/$OUTPUT_DIR"; fi
+    python3 "$ROOT_DIR/scripts/optimize_wasm_runtime.py" --package "$OUTPUT_DIR"
 fi
