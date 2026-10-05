@@ -10,17 +10,36 @@ or a claim that tests passed on a particular commit.
 | Curated error fixtures | 68 |
 | Total curated fixtures | 1181 |
 | Whole upstream files tracked | 70 |
-| Upstream files marked pass | 39 |
+| Upstream files declared expected-pass | 39 |
 | Upstream files marked xfail | 0 |
 | Upstream files marked skip | 31 |
 | Real packages with selected probes | 7 |
-| Package probe sets marked pass | 7 |
+| Package probe sets declared expected-pass | 7 |
 | Package probe sets marked partial | 0 |
 | Package probe sets marked blocked | 0 |
 
 Whole-file dispositions are in `tests/upstream-r/dispositions.tsv`; package
 versions, hashes, probes and blockers are in `tests/real-packages/manifest.toml`.
 Passing selected package probes does not establish full package compatibility.
+
+The inspected [execution checkpoint](https://github.com/bernaferrari/R-rust/actions/runs/37259644379) used commit
+`4a892f00d9e55e6791ee452db2f6ce5989b67637`. Its downloaded artifact summaries are captured in
+[`docs/ci-checkpoints/37259644379.json`](ci-checkpoints/37259644379.json), with their
+SHA-256 hashes. These observed results supersede historical passing declarations
+for that snapshot; they do not verify later source changes.
+
+| Executed set | Pass | Fail | Other |
+| --- | ---: | ---: | --- |
+| Exact-oracle conformance | 1045 | 136 | All 1181 accounted for; 0 timeouts |
+| Whole upstream drivers | 12 | 26 | 31 skipped; 1 without a completed result |
+| Curated upstream slices | 12 | 3 | All 15 accounted for |
+| Showcase Chromium | 55 | 4 | 0 skipped; 0 flaky |
+
+The whole-driver join is incomplete because `utf8.R` has no completed result.
+`reg-plot-latin1.R` failed on the GNU side, so that row does not establish a Rust
+runtime defect. Other failing rows preserve their recorded classification in the
+checkpoint. The runner's release profile alone does not establish its feature,
+device, package-policy or numerical-backend configuration.
 
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the

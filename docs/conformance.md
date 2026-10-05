@@ -207,7 +207,7 @@ gate for current executable proof.
 | Total conformance fixtures | 1,181 |
 | Conformance xfail entries | 0 |
 | Curated upstream slices | 15 |
-| Whole upstream drivers marked pass | 39 |
+| Whole upstream drivers declared expected-pass | 39 |
 | Whole upstream drivers marked skip | 31 |
 
 Current domain coverage:
@@ -226,7 +226,12 @@ Current domain coverage:
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
 
-The last recorded curated upstream slice gate passed 15/15 live stock-R comparison
+The inspected October 5 checkpoint at `4a892f00` observed 12/15 curated slices
+passing and 12 whole drivers passing, with 26 whole-driver failures, 31 skips and
+`utf8.R` unfinished. See [the execution evidence](capability-evidence.md) for the
+complete same-commit counts and GNU-side failure distinction.
+
+An earlier curated upstream slice gate passed 15/15 live stock-R comparison
 cases with zero expected failures. This is historical evidence, not a fresh
 verification of the current revision. The slices include the `any-all.R` helper path through
 `deparse(substitute(.))`, `do.call()`, list concatenation, named `na.rm`, and

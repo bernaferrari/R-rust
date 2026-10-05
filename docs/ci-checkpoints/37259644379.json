@@ -1,0 +1,909 @@
+{
+  "run_url": "https://github.com/bernaferrari/R-rust/actions/runs/37259644379",
+  "schema_version": 1,
+  "sets": {
+    "conformance": {
+      "artifact_summary_sha256": "a6b2e750b2d99ce70dfa0a2381573d2b21e09141778103a835568a69eb6647c7",
+      "execution_complete": true,
+      "execution_profile": {
+        "case_timeout_seconds": 300.0,
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "profile": "release",
+        "source_commit": "4a892f00d9e55e6791ee452db2f6ce5989b67637",
+        "source_sha256": "9008ff0d20377268b1f8f68ce61ebaf2e8cf2823cfb2b729cac37c740bf74550"
+      },
+      "failures": [
+        {
+          "case": "023_stop_simple",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "024_sample_int_too_large",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "026_sample_prob_too_few_positive",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "033_read_fwf_empty_widths",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "082_unserialize_non_connection",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "088_stop_no_location_by_default",
+          "detail": "",
+          "kind": "error"
+        },
+        {
+          "case": "042_logical_subset_recycling",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "043_logical_subset_na",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1000_plclust",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1005_heatmap",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1006_rect_hclust",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1007_qqline",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1012_monthplot_scatter",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1013_interaction_lag_eff",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1014_ar_mle",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1015_struct_ts_trend",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1016_struct_ts_bsm",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1017_arima_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1018_arima_ar0_ma1",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1019_arima_ar2_diff",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1021_arima_sar1",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1027_arima_cross_seasonal",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1031_arima_ma2_111",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1032_arima_ima_ar210",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1034_arima_seasonal_ima_ma2nm",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1039_arima_d_arma_sar",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1040_arima_d_arma_sma",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1041_arima_arma_sar_sma",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1042_arima_d_arma_sar_sma",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1044_arima_arma11_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1046_arima_ma2_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1047_arima_ar1_sar1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1048_arima_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1049_arima_ma1_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1050_arima_ar1_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1051_arima_ma1_sar1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1052_arima_sar1_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1053_arima_sar1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1054_arima_ar3_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1055_arima_arma21_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1056_arima_arma11_sar1_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1059_arima_111_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1060_arima_arma12_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1063_arima_arma11_sar1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1064_arima_arma11_sma1_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1065_arima_arma11_nomean_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1066_arima_arma21_nomean_ml",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1067_holtwinters",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1068_structts_level",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1069_structts_trend",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1070_stl",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1079_structure_keep",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1091_table_class_sort",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1094_cat_complex_fft",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "1102_str_atomic_preview",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "150_ls_empty",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "151_ls_bindings_sorted",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "152_ls_hidden_filter",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "153_ls_after_rm",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "154_ls_all_names",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "260_length_replacement",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "284_methods_runtime_registry",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "288_with_calling_handlers",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "293_read_write_char_connections",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "328_date_arithmetic",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "329_posixct_arithmetic",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "331_datetime_c_rep",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "333_difftime_ops",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "381_no_random_seed_loadrds_functions",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "385_no_string_reshape_alias_builtins",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "387_no_runtime_helper_alias_builtins",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "388_no_print_summary_method_aliases",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "389_no_reflection_helper_alias_builtins",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "393_summary_default_vectors",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "432_prop_table_margins",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "492_rep_int_len_helpers",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "523_signif_fprec_edge_matrix",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "537_strptime_posixlt_parity",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "538_print_sprintf_switch_if_parity",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "540_ascharacter_precision_condition_print_parity",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "544_complex_constructor_format_str_parity",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "551_round_signif_complex_parity",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "570_loess_contracts",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "571_loess_na_exclude",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "584_outer",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "599_density",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "602_supsmu",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "604_isoreg",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "612_smooth_spline",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "614_stl",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "617_holtwinters",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "621_ks_test",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "623_ccf",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "637_diffinv",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "643_D_trig",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "646_D_hyp",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "650_D_atan",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "651_D_gamma",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "652_holtwinters_alpha",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "653_deriv3",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "654_holtwinters_sse",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "656_nlminb",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "657_holtwinters_coef",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "660_armaacf",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "666_holtwinters_x",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "671_is_ts",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "689_adist",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "697_bindtextdomain",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "705_localeToCharset",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "710_ISOdate",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "720_as_POSIXct_lt",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "724_mean_Date",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "726_trunc_POSIXt",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "727_round_POSIXt",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "731_as_list_Date",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "739_xtfrm_julian_POSIXt",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "757_ansari_test",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "769_pp_test",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "774_aregexec",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "793_covratio",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "809_lm_influence",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "820_dummy_coef",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "858_dfbetas",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "863_struct_ts_level",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "864_factanal",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "888_ts_smooth",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "891_arima0",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "901_ar_burg",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "927_loglin",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "929_psmirnov",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "930_qsmirnov",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "961_density_default",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "983_loess_smooth",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "988_ppr",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "995_rsmirnov",
+          "detail": "",
+          "kind": "normal"
+        },
+        {
+          "case": "999_arima0_diag",
+          "detail": "",
+          "kind": "normal"
+        }
+      ],
+      "full_inventory_complete": true,
+      "inventory_total": 1181,
+      "status_counts": {
+        "fail": 136,
+        "pass": 1045,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "timed_out": 0,
+      "total": 1181,
+      "unattempted_cases": []
+    },
+    "showcase": {
+      "artifact_summary_sha256": "c27fceb2e835c0a50c10a9185fbb18ede64b01d8940b6f1d6ef2ca8a6ab68c01",
+      "stats": {
+        "duration": 173547.407,
+        "expected": 55,
+        "flaky": 0,
+        "skipped": 0,
+        "startTime": "2026-10-05T03:42:45.864Z",
+        "unexpected": 4
+      }
+    },
+    "upstream": {
+      "artifact_summary_sha256": "397fa98537392f3a2a7a1a40658b23416128775158f0faed689a7f412a67809f",
+      "by_kind": {
+        "curated": {
+          "fail": 3,
+          "pass": 12
+        },
+        "whole": {
+          "fail": 26,
+          "pass": 12,
+          "skip": 31
+        }
+      },
+      "execution_complete": false,
+      "execution_profile": {
+        "case_timeout_seconds": 1800.0,
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "profile": "release",
+        "source_commit": "4a892f00d9e55e6791ee452db2f6ce5989b67637",
+        "source_sha256": "6b6a7600b55e985f606b2e403978c283ce046be111ab8c24ab563b4f1303accb"
+      },
+      "failures": [
+        {
+          "case": "006_subset_vector_edges.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "curated"
+        },
+        {
+          "case": "008_data_frame_factor_table.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "curated"
+        },
+        {
+          "case": "010_structure_attribute_remap.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "curated"
+        },
+        {
+          "case": "classes-methods.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "complex.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "conditions.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "d-p-q-r-tests.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "d-p-q-r-tst-2.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "datasets.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "datetime2.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "datetime3.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "datetime4.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "datetime5.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "demos.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "demos2.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "eval-etc.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "iconv.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "lm-tests.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "ok-errors.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "p-qbeta-strict-tst.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "print-tests.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "r-strict-tst.R",
+          "detail": "Rust output diverged from stock R",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-S4.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-plot-latin1.R",
+          "detail": "stock R exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-tests-1a.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-tests-1b.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-tests-1c.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "reg-tests-1d.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        },
+        {
+          "case": "structure.R",
+          "detail": "Rust runner exited non-zero",
+          "kind": "whole"
+        }
+      ],
+      "full_inventory_complete": false,
+      "inventory_total": 85,
+      "status_counts": {
+        "fail": 29,
+        "pass": 24,
+        "skip": 31,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "total": 84,
+      "unattempted_cases": [
+        {
+          "case": "utf8.R",
+          "kind": "whole"
+        }
+      ]
+    }
+  },
+  "source_commit": "4a892f00d9e55e6791ee452db2f6ce5989b67637",
+  "verified_at_utc": "2026-10-05"
+}
