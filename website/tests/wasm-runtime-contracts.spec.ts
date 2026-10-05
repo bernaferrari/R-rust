@@ -584,7 +584,9 @@ test("named S4 signatures dispatch and reject invalid argument names recoverably
       runtime.dispose()
     }
   })
-  expect(result.error).toContain("signature argument")
+  expect(result.error).toContain(
+    "there are named arguments ('z') in the method signature that are missing from the generic signature, for function 'mix'"
+  )
   expect(result.output).toContain("matched")
 })
 
@@ -604,7 +606,7 @@ test("S4 generic method tables are independent", async ({ page }) => {
       runtime.dispose()
     }
   })
-  expect(output).toBe("a b")
+  expect(output).toBe('[1] "aa"\n[1] "bb"\na b')
 })
 
 test("nested grob edits preserve the original in Wasm", async ({ page }) => {

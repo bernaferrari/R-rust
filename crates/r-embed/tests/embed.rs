@@ -1134,12 +1134,45 @@ fn render_reports_actionable_plot_errors() {
     let non_numeric = session
         .render_with_dimensions("plot(c(\"a\", \"b\"))", 320, 240)
         .expect_err("non-numeric plot should fail");
-    assert!(non_numeric.to_string().contains("numeric"));
+    // Pinned GNU xy.coords coerces character data to NA, then plot.window
+    // reports the unusable y limits. Check that public error contract.
+    assert!(
+        non_numeric
+            .to_string()
+            .contains("need finite 'ylim' values"),
+        "{non_numeric}"
+    );
 
     let non_finite = session
         .render_with_dimensions("plot(c(Inf, Inf))", 320, 240)
         .expect_err("plot with no finite limits should fail");
     assert!(non_finite.to_string().contains("finite"));
+}
+
+#[test]
+fn render_character_coordinates_in_both_path_policies() {
+    for mut session in [
+        RSession::new().expect("default session"),
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "/tmp"))
+            .expect("portable session"),
+    ] {
+        for code in [
+            "plot(c('1','2','3'),col='red')",
+            "plot(c('1','2'),c('2','4'),col='red')",
+        ] {
+            let png = session
+                .render_with_dimensions(code, 320, 240)
+                .expect("numeric character coordinates");
+            assert!(decode_png_rgba(&png).red_pixels() > 5);
+        }
+        let error = session
+            .render_with_dimensions("plot(c('a','b'))", 320, 240)
+            .expect_err("all NA coordinates");
+        assert!(
+            error.to_string().contains("need finite 'ylim' values"),
+            "{error}"
+        );
+    }
 }
 
 #[test]
