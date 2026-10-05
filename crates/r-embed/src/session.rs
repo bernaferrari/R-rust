@@ -592,6 +592,9 @@ impl RSession {
             (result, target.budget_exceeded, target.drew)
         };
         if budget_exceeded {
+            // A partial retained scene at the budget is unusable for future
+            // drawing. Drop it before returning so a new plot can recover.
+            self.interactive_scene = None;
             return Err(RSessionError::RenderError(
                 "interactive graphics scene exceeds the 16 MiB memory budget".into(),
             ));
