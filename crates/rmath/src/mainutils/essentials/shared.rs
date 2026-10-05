@@ -2050,6 +2050,8 @@ pub(crate) unsafe fn load_package_namespace(
             if package == "grDevices" {
                 crate::library::grdevices::install_call_symbols(env);
                 crate::library::grdevices::colors::initPalette();
+                #[cfg(feature = "renderplot-device")]
+                crate::mainutils::graphics_recording::install_namespace_replay(env);
             }
             if package == "grid" {
                 crate::library::grid::install_call_symbols(env);
@@ -2142,6 +2144,8 @@ pub(crate) unsafe fn load_package_namespace(
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
             crate::library::grdevices::colors::initPalette();
+            #[cfg(feature = "renderplot-device")]
+            crate::mainutils::graphics_recording::install_namespace_replay(package_env);
         }
         if package == "grid" {
             crate::library::grid::install_call_symbols(package_env);

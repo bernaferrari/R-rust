@@ -1,6 +1,6 @@
 //! End-to-end recordPlot/replayPlot coverage for the portable renderer.
 
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 use std::io::Cursor;
 
 struct DecodedPng {
@@ -100,7 +100,10 @@ fn malformed_recordings_fail_without_poisoning_the_session() {
             240,
         )
         .expect_err("empty recording should be rejected");
-    assert!(error.to_string().contains("invalid recorded plot"));
+    assert!(
+        error.to_string().contains("invalid recorded plot"),
+        "{error}"
+    );
 
     let png = session
         .render_with_dimensions("plot(1:3, c(1,4,9), col='red')", 320, 240)
@@ -118,7 +121,10 @@ fn malformed_portable_state_metadata_is_rejected() {
             240,
         )
         .expect_err("invalid portable state should be rejected");
-    assert!(error.to_string().contains("graphics state metadata"));
+    assert!(
+        error.to_string().contains("graphics state metadata"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -132,4 +138,68 @@ fn record_serialization_survives_gc_torture() {
         )
         .expect("record serialization under gc torture");
     assert!(png.len() > 256);
+}
+
+#[test]
+fn recording_admission_and_recovery_match_after_recreation_under_both_policies() {
+    for portable in [false, true] {
+        let make_session = || {
+            if portable {
+                RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp")).unwrap()
+            } else {
+                RSession::new().unwrap()
+            }
+        };
+        let mut session = make_session();
+        for recreate in [false, true] {
+            if recreate {
+                let old_id = session.session_id();
+                session.close();
+                session = make_session();
+                assert_ne!(session.session_id(), old_id);
+            }
+            let scene = session.record_scene(r#"
+                plot.new(); plot.window(c(0,1),c(0,1)); points(0.5,0.5,col='red')
+                saved <- serialize(recordPlot(), NULL)
+                p <- unserialize(saved)
+                attr(p, 'pid') <- NULL
+                replayPlot(p)
+                bad <- p; attr(bad, 'rport.graphics.state') <- rep(0,18)
+                msg <- tryCatch(replayPlot(bad),error=conditionMessage)
+                stopifnot(grepl('graphics state metadata',msg,fixed=TRUE))
+                msg <- tryCatch(replayPlot(structure(raw(0),class='recordedplot')),error=conditionMessage)
+                stopifnot(grepl('invalid recorded plot',msg,fixed=TRUE))
+                replayPlot(p)
+            "#,320,240).expect("recording admission and recovery");
+            assert!(!scene.operations().is_empty());
+        }
+    }
+}
+
+#[test]
+fn qualified_namespace_replay_keeps_identity_and_original_class_admission() {
+    let mut session = RSession::new().unwrap();
+    for recreate in [false, true] {
+        if recreate {
+            session.close();
+            session = RSession::new().unwrap();
+        }
+        session
+            .record_scene(
+                r#"
+            ns <- asNamespace('grDevices')
+            f <- grDevices::replayPlot
+            stopifnot(identical(environment(f),ns))
+            stopifnot(identical(f,get('replayPlot',envir=loadNamespace('grDevices'))))
+            stopifnot(!exists('original',envir=globalenv(),inherits=FALSE))
+            msg <- tryCatch(grDevices::replayPlot(1),error=conditionMessage)
+            stopifnot(grepl('argument is not of class',msg,fixed=TRUE))
+            plot(1:3); p <- grDevices::recordPlot(); attr(p,'pid') <- NULL
+            grDevices::replayPlot(unserialize(serialize(p,NULL)))
+        "#,
+                320,
+                240,
+            )
+            .expect("qualified namespace replay after recreation");
+    }
 }
