@@ -1252,3 +1252,33 @@ controlled speedup benchmark. The corpus still has 1,113 normal and 68 error
 cases: profile selection alone cannot establish completion within the existing
 50-minute job budget. Authenticated partitioning and a completed full CI
 checkpoint remain open, and no case, bootstrap step or deadline was removed.
+
+## Bounded Rust GNU number conversion (rport-wszw.7.1.1.4)
+
+Scalar real, integer and complex text coercion now share a bounded Rust parser
+with the GNU prefix/accuracy adapter. Both parsing and text-coercion kernels
+forbid unsafe code. This removes the native libc `strtod` dependency and the
+separate incomplete Wasm coercion parser, including raw byte-walking and
+unchecked UTF-8 conversion. The lexer calls its complete-token helper safely;
+raw C string/end-pointer projections remain limited adapter obligations.
+
+Independent pinned GNU controls cover 201 scalar value/warning rows and 102
+direct adapter return-bit, offset, missing-value and accuracy-warning rows.
+The genuine scalar and exact-admission baselines fail; the final enclosing
+native suite passes 65 cases and the utility suite passes 20. The scalar table
+passes strict-provenance Miri in 94.53 seconds. Six bounded-kernel/adapter cases
+previously passed in 713.62 seconds; the final six affected adapter/numeric
+cases pass in 496.81 seconds with default alias checking and isolation,
+including a warning callback that frees its source and collects. Their
+production kernel and adapter stayed frozen; the sole later test-only change
+corrects an old signaling-NA assertion to the independently observed quiet
+return bits. All-target rmath/r-embed Clippy with memory profiling and denied
+warnings, scoped formatting and byte-identical GNU fixture regeneration pass.
+
+Finite operation order preserves actual GNU quirks, including repeated hex
+points and intermediate underflow, rather than substituting C99 conversion.
+These numerical receipts describe the captured aarch64 GNU build; conditional
+GNU extended precision and its undefined NaN-to-integer C cast require separate
+cross-target evidence (`rport-wszw.7.1.1.4.2`). Graphics C99 parsing is another
+contract. Atomic pairlist conversion can now rerun its unchanged six-case Miri
+selection without libc; that enclosing proof and whole-R parity remain open.

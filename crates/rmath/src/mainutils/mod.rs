@@ -57,6 +57,7 @@ pub mod memory_main;
 pub mod mkdtemp;
 pub mod names;
 pub(crate) mod native_routines;
+pub(crate) mod number_parse;
 pub mod objects;
 pub mod options;
 pub mod paste;

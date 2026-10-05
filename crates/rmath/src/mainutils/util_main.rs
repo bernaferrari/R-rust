@@ -54,14 +54,6 @@ const HIGH_SURROGATE_START: u32 = 0xD800;
 const LOW_SURROGATE_START: u32 = 0xDC00;
 const IS_HIGH_SURROGATE_MASK: u32 = 0xF800;
 
-/// The largest finite double, used for overflow detection.
-/// Equivalent to C's DBL_MAX.
-const DBL_MAX: f64 = 1.7976931348623157e308;
-
-/// The largest exactly representable integer in an IEEE 754 double
-/// (2^53 - 1), used for the exact clause in R_strtod5.
-const MAX_EXACT_DOUBLE: f64 = 9007199254740991.0; // 0x1.fffffffffffffp52
-
 // ---------------------------------------------------------------------------
 // Minimal libc helpers (avoiding the libc crate)
 // ---------------------------------------------------------------------------
@@ -778,16 +770,12 @@ pub unsafe fn Rf_AdobeSymbol2ucs2(n: c_int) -> c_int {
 // R_strtod5 / R_strtod4 / R_strtod / R_atof: string-to-double conversion
 // ---------------------------------------------------------------------------
 
-/// Maximum exponent prefix to prevent overflow (from R's util.c).
-const MAX_EXPONENT_PREFIX: c_int = 9999;
-
-/// R's custom string-to-double conversion.
+/// R's custom string-to-double conversion with GNU prefix/accuracy semantics.
 ///
-/// This is the most general form, allowing the decimal point character,
-/// "NA" acceptance, and exactness checking.
-///
-/// Port of R's `R_strtod5` from util.c.
-#[allow(clippy::overly_complex_bool_expr)]
+/// # Safety
+/// `str` must point to a valid NUL-terminated byte string. A non-null `endptr`
+/// must be writable. The bounded parser does not invoke providers or native
+/// conversion routines. Accuracy warnings may call back into the runtime.
 pub unsafe fn R_strtod5(
     str: *const c_char,
     endptr: *mut *mut c_char,
@@ -795,312 +783,45 @@ pub unsafe fn R_strtod5(
     na: Rboolean,
     exact: c_int,
 ) -> c_double {
-    unsafe {
-        let mut ans: f64 = 0.0;
-        let mut sign: c_int = 1;
-        let mut p = str;
-        let dec_byte = dec as u8;
-
-        // optional whitespace
-        while libc_isspace(*p) {
-            p = p.add(1);
-        }
-
-        // check for "NA"
-        if na != 0 && libc_strncmp(p, b"NA\0", 2) == 0 {
-            ans = R_NA_REAL;
-            p = p.add(2);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return ans;
-        }
-
-        // optional sign
-        let p_byte = *p as u8;
-        if p_byte == b'-' {
-            sign = -1;
-            p = p.add(1);
-        } else if p_byte == b'+' {
-            p = p.add(1);
-        }
-
-        // check for NaN / Inf
-        if libc_strncasecmp(p, b"NaN\0", 3) == 0 {
-            ans = R_NaN;
-            p = p.add(3);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        } else if libc_strncasecmp(p, b"infinity\0", 8) == 0 {
-            ans = R_PosInf;
-            p = p.add(8);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        } else if libc_strncasecmp(p, b"Inf\0", 3) == 0 {
-            ans = R_PosInf;
-            p = p.add(3);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        }
-
-        let mut expn: c_int = 0;
-
-        // Hexadecimal "0x..."
-        if libc_strlen(p) > 2
-            && *p as u8 == b'0'
-            && (*p.add(1) as u8 == b'x' || *p.add(1) as u8 == b'X')
-        {
-            let mut exph: c_int = -1;
-            p = p.add(2);
-
-            loop {
-                let ch = *p as u8;
-                if ch >= b'0' && ch <= b'9' {
-                    ans = 16.0 * ans + (ch - b'0') as f64;
-                } else if ch >= b'a' && ch <= b'f' {
-                    ans = 16.0 * ans + (ch - b'a' + 10) as f64;
-                } else if ch >= b'A' && ch <= b'F' {
-                    ans = 16.0 * ans + (ch - b'A' + 10) as f64;
-                } else if ch == dec_byte {
-                    exph = 0;
-                    p = p.add(1);
-                    continue;
-                } else {
-                    break;
-                }
-                if exph >= 0 {
-                    exph += 4;
-                }
-                p = p.add(1);
-            }
-
-            // EXACT clause
-            if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE && exact == 1 {
-                ans = R_NA_REAL;
-                p = str;
-                if !endptr.is_null() {
-                    *endptr = p as *mut c_char;
-                }
-                return sign as c_double * ans;
-            }
-
-            // Binary exponent
-            if *p as u8 == b'p' || *p as u8 == b'P' {
-                let mut expsign: c_int = 1;
-                p = p.add(1);
-                let psign_byte = *p as u8;
-                if psign_byte == b'-' {
-                    expsign = -1;
-                    p = p.add(1);
-                } else if psign_byte == b'+' {
-                    p = p.add(1);
-                }
-                let mut n: c_int = 0;
-                let mut ndig: c_int = 0;
-                while *p as u8 >= b'0' && *p as u8 <= b'9' {
-                    n = if n < MAX_EXPONENT_PREFIX {
-                        n * 10 + (*p as u8 - b'0') as c_int
-                    } else {
-                        n
-                    };
-                    ndig += 1;
-                    p = p.add(1);
-                }
-                if ndig == 0 {
-                    ans = R_NA_REAL;
-                    p = str;
-                    if !endptr.is_null() {
-                        *endptr = p as *mut c_char;
-                    }
-                    return ans;
-                }
-                expn += expsign * n;
-            }
-
-            if ans != 0.0 {
-                let mut fac: f64 = 1.0;
-                let mut p2: f64 = 2.0;
-                if exph > 0 {
-                    if expn - exph < -122 {
-                        let mut n2 = exph;
-                        fac = 1.0;
-                        while n2 != 0 {
-                            if n2 & 1 != 0 {
-                                fac *= p2;
-                            }
-                            n2 >>= 1;
-                            p2 *= p2;
-                        }
-                        ans /= fac;
-                        p2 = 2.0;
-                    } else {
-                        expn -= exph;
-                    }
-                }
-                if expn < 0 {
-                    let mut n2 = -expn;
-                    fac = 1.0;
-                    while n2 != 0 {
-                        if n2 & 1 != 0 {
-                            fac *= p2;
-                        }
-                        n2 >>= 1;
-                        p2 *= p2;
-                    }
-                    ans /= fac;
-                } else {
-                    let mut n2 = expn;
-                    fac = 1.0;
-                    while n2 != 0 {
-                        if n2 & 1 != 0 {
-                            fac *= p2;
-                        }
-                        n2 >>= 1;
-                        p2 *= p2;
-                    }
-                    ans *= fac;
-                }
-            }
-
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        }
-
-        // Decimal parsing
-        let mut ndigits: c_int = 0;
-        while *p as u8 >= b'0' && *p as u8 <= b'9' {
-            ans = 10.0 * ans + (*p as u8 - b'0') as f64;
-            ndigits += 1;
-            p = p.add(1);
-        }
-        if *p as u8 == dec_byte {
-            p = p.add(1);
-            while *p as u8 >= b'0' && *p as u8 <= b'9' {
-                ans = 10.0 * ans + (*p as u8 - b'0') as f64;
-                ndigits += 1;
-                expn -= 1;
-                p = p.add(1);
-            }
-        }
-
-        if ndigits == 0 {
-            ans = R_NA_REAL;
-            p = str;
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return ans;
-        }
-
-        // EXACT clause for decimal
-        if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE && exact == 1 {
-            ans = R_NA_REAL;
-            p = str;
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        }
-
-        // Exponent
-        if *p as u8 == b'e' || *p as u8 == b'E' {
-            let mut expsign: c_int = 1;
-            p = p.add(1);
-            let psign_byte = *p as u8;
-            if psign_byte == b'-' {
-                expsign = -1;
-                p = p.add(1);
-            } else if psign_byte == b'+' {
-                p = p.add(1);
-            }
-            let mut n: c_int = 0;
-            let mut ndig: c_int = 0;
-            while *p as u8 >= b'0' && *p as u8 <= b'9' {
-                n = if n < MAX_EXPONENT_PREFIX {
-                    n * 10 + (*p as u8 - b'0') as c_int
-                } else {
-                    n
-                };
-                ndig += 1;
-                p = p.add(1);
-            }
-            if ndig == 0 {
-                ans = R_NA_REAL;
-                p = str;
-                if !endptr.is_null() {
-                    *endptr = p as *mut c_char;
-                }
-                return ans;
-            }
-            expn += expsign * n;
-        }
-
-        // Apply exponent
-        // avoid unnecessary underflow for large negative exponents
-        if expn + ndigits < -300 {
-            for _ in 0..ndigits {
-                ans /= 10.0;
-            }
-            expn += ndigits;
-        }
-
-        let mut p10: f64 = 10.0;
-        if expn < -307 {
-            let mut n2 = -expn;
-            let mut fac: f64 = 1.0;
-            while n2 != 0 {
-                if n2 & 1 != 0 {
-                    fac /= p10;
-                }
-                n2 >>= 1;
-                p10 *= p10;
-            }
-            ans *= fac;
-        } else if expn < 0 {
-            let mut n2 = -expn;
-            let mut fac: f64 = 1.0;
-            while n2 != 0 {
-                if n2 & 1 != 0 {
-                    fac *= p10;
-                }
-                n2 >>= 1;
-                p10 *= p10;
-            }
-            ans /= fac;
-        } else if ans != 0.0 {
-            let mut n2 = expn;
-            let mut fac: f64 = 1.0;
-            while n2 != 0 {
-                if n2 & 1 != 0 {
-                    fac *= p10;
-                }
-                n2 >>= 1;
-                p10 *= p10;
-            }
-            ans *= fac;
-        }
-
-        // explicit overflow to infinity
-        if ans > DBL_MAX {
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return if sign > 0 { R_PosInf } else { R_NegInf };
-        }
-
-        if !endptr.is_null() {
-            *endptr = p as *mut c_char;
-        }
-        sign as c_double * ans
+    let (parsed, warning) = {
+        // SAFETY: the translated C boundary requires a valid terminated string.
+        // Complete every source read before a warning can reenter or detach it.
+        let input = unsafe { CStr::from_ptr(str) }.to_bytes();
+        let parsed = super::number_parse::parse_number(input, dec as u8, na != 0, exact);
+        let warning = parsed.accuracy_loss.then(|| {
+            std::ffi::CString::new(format!(
+                "accuracy loss in conversion from \"{}\" to numeric",
+                String::from_utf8_lossy(input)
+            ))
+            .expect("a terminated source contains no embedded NUL")
+        });
+        (parsed, warning)
+    };
+    // The original target's floating return path yields positive quiet NA or
+    // its preferred positive NaN, including rejected negative tokens. Encode
+    // that observed ABI result directly: Rust NaN arithmetic does not promise
+    // a particular payload/sign, and must not determine compatibility here.
+    let value = if parsed.value.is_nan() {
+        let bits = if crate::sexp::ffi::R_IsNA(parsed.value) {
+            R_NA_REAL.to_bits() | 0x0008_0000_0000_0000
+        } else {
+            0x7ff8_0000_0000_0000
+        };
+        f64::from_bits(bits)
+    } else {
+        parsed.value
+    };
+    if !endptr.is_null() {
+        // SAFETY: consumed is bounded by the source bytes, and the destination
+        // is writable by contract. Publish before any warning callback runs.
+        unsafe { *endptr = str.add(parsed.consumed) as *mut c_char };
     }
+    if let Some(message) = warning {
+        // The message has independent storage throughout signaling. Neither
+        // the source bytes nor their end-pointer destination are read again.
+        unsafe { crate::mainutils::errors::Rf_warning1(message.as_ptr()) };
+    }
+    value
 }
 
 /// R's string-to-double with custom decimal point.
@@ -1694,6 +1415,252 @@ mod tests {
     }
 
     #[test]
+    fn gnu_number_parser_raw_na_and_nan_bits_match_original_abi() {
+        // Independently obtained via original exported R_strtod5 at pinned
+        // bac583951b728e97b9786804d3b4081f0fe18df5, not via our parser.
+        // input hex | allow NA | exact | original bytes | offset | isNA | warning
+        const ORIGINAL: &str = r#"|0|0|a20700000000f87f|0|TRUE|
+|0|1|a20700000000f87f|0|TRUE|
+|0|NA|a20700000000f87f|0|TRUE|
+|1|0|a20700000000f87f|0|TRUE|
+|1|1|a20700000000f87f|0|TRUE|
+|1|NA|a20700000000f87f|0|TRUE|
+20|0|0|a20700000000f87f|0|TRUE|
+20|0|1|a20700000000f87f|0|TRUE|
+20|0|NA|a20700000000f87f|0|TRUE|
+20|1|0|a20700000000f87f|0|TRUE|
+20|1|1|a20700000000f87f|0|TRUE|
+20|1|NA|a20700000000f87f|0|TRUE|
+2e|0|0|a20700000000f87f|0|TRUE|
+2e|0|1|a20700000000f87f|0|TRUE|
+2e|0|NA|a20700000000f87f|0|TRUE|
+2e|1|0|a20700000000f87f|0|TRUE|
+2e|1|1|a20700000000f87f|0|TRUE|
+2e|1|NA|a20700000000f87f|0|TRUE|
+2b2e|0|0|a20700000000f87f|0|TRUE|
+2b2e|0|1|a20700000000f87f|0|TRUE|
+2b2e|0|NA|a20700000000f87f|0|TRUE|
+2b2e|1|0|a20700000000f87f|0|TRUE|
+2b2e|1|1|a20700000000f87f|0|TRUE|
+2b2e|1|NA|a20700000000f87f|0|TRUE|
+2d2e|0|0|a20700000000f87f|0|TRUE|
+2d2e|0|1|a20700000000f87f|0|TRUE|
+2d2e|0|NA|a20700000000f87f|0|TRUE|
+2d2e|1|0|a20700000000f87f|0|TRUE|
+2d2e|1|1|a20700000000f87f|0|TRUE|
+2d2e|1|NA|a20700000000f87f|0|TRUE|
+2b31652b|0|0|a20700000000f87f|0|TRUE|
+2b31652b|0|1|a20700000000f87f|0|TRUE|
+2b31652b|0|NA|a20700000000f87f|0|TRUE|
+2b31652b|1|0|a20700000000f87f|0|TRUE|
+2b31652b|1|1|a20700000000f87f|0|TRUE|
+2b31652b|1|NA|a20700000000f87f|0|TRUE|
+2d31652b|0|0|a20700000000f87f|0|TRUE|
+2d31652b|0|1|a20700000000f87f|0|TRUE|
+2d31652b|0|NA|a20700000000f87f|0|TRUE|
+2d31652b|1|0|a20700000000f87f|0|TRUE|
+2d31652b|1|1|a20700000000f87f|0|TRUE|
+2d31652b|1|NA|a20700000000f87f|0|TRUE|
+39303037313939323534373430393933|0|0|0000000000004043|16|FALSE|
+39303037313939323534373430393933|0|1|a20700000000f87f|0|TRUE|
+39303037313939323534373430393933|0|NA|0000000000004043|16|FALSE|accuracy loss in conversion from "9007199254740993" to numeric
+39303037313939323534373430393933|1|0|0000000000004043|16|FALSE|
+39303037313939323534373430393933|1|1|a20700000000f87f|0|TRUE|
+39303037313939323534373430393933|1|NA|0000000000004043|16|FALSE|accuracy loss in conversion from "9007199254740993" to numeric
+2b39303037313939323534373430393933|0|0|0000000000004043|17|FALSE|
+2b39303037313939323534373430393933|0|1|a20700000000f87f|0|TRUE|
+2b39303037313939323534373430393933|0|NA|0000000000004043|17|FALSE|accuracy loss in conversion from "+9007199254740993" to numeric
+2b39303037313939323534373430393933|1|0|0000000000004043|17|FALSE|
+2b39303037313939323534373430393933|1|1|a20700000000f87f|0|TRUE|
+2b39303037313939323534373430393933|1|NA|0000000000004043|17|FALSE|accuracy loss in conversion from "+9007199254740993" to numeric
+2d39303037313939323534373430393933|0|0|00000000000040c3|17|FALSE|
+2d39303037313939323534373430393933|0|1|a20700000000f87f|0|TRUE|
+2d39303037313939323534373430393933|0|NA|00000000000040c3|17|FALSE|accuracy loss in conversion from "-9007199254740993" to numeric
+2d39303037313939323534373430393933|1|0|00000000000040c3|17|FALSE|
+2d39303037313939323534373430393933|1|1|a20700000000f87f|0|TRUE|
+2d39303037313939323534373430393933|1|NA|00000000000040c3|17|FALSE|accuracy loss in conversion from "-9007199254740993" to numeric
+30783230303030303030303030303031|0|0|0000000000004043|16|FALSE|
+30783230303030303030303030303031|0|1|a20700000000f87f|0|TRUE|
+30783230303030303030303030303031|0|NA|0000000000004043|16|FALSE|accuracy loss in conversion from "0x20000000000001" to numeric
+30783230303030303030303030303031|1|0|0000000000004043|16|FALSE|
+30783230303030303030303030303031|1|1|a20700000000f87f|0|TRUE|
+30783230303030303030303030303031|1|NA|0000000000004043|16|FALSE|accuracy loss in conversion from "0x20000000000001" to numeric
+2d30783230303030303030303030303031|0|0|00000000000040c3|17|FALSE|
+2d30783230303030303030303030303031|0|1|a20700000000f87f|0|TRUE|
+2d30783230303030303030303030303031|0|NA|00000000000040c3|17|FALSE|accuracy loss in conversion from "-0x20000000000001" to numeric
+2d30783230303030303030303030303031|1|0|00000000000040c3|17|FALSE|
+2d30783230303030303030303030303031|1|1|a20700000000f87f|0|TRUE|
+2d30783230303030303030303030303031|1|NA|00000000000040c3|17|FALSE|accuracy loss in conversion from "-0x20000000000001" to numeric
+4e41|0|0|a20700000000f87f|0|TRUE|
+4e41|0|1|a20700000000f87f|0|TRUE|
+4e41|0|NA|a20700000000f87f|0|TRUE|
+4e41|1|0|a20700000000f87f|2|TRUE|
+4e41|1|1|a20700000000f87f|2|TRUE|
+4e41|1|NA|a20700000000f87f|2|TRUE|
+2b4e41|0|0|a20700000000f87f|0|TRUE|
+2b4e41|0|1|a20700000000f87f|0|TRUE|
+2b4e41|0|NA|a20700000000f87f|0|TRUE|
+2b4e41|1|0|a20700000000f87f|0|TRUE|
+2b4e41|1|1|a20700000000f87f|0|TRUE|
+2b4e41|1|NA|a20700000000f87f|0|TRUE|
+2d4e41|0|0|a20700000000f87f|0|TRUE|
+2d4e41|0|1|a20700000000f87f|0|TRUE|
+2d4e41|0|NA|a20700000000f87f|0|TRUE|
+2d4e41|1|0|a20700000000f87f|0|TRUE|
+2d4e41|1|1|a20700000000f87f|0|TRUE|
+2d4e41|1|NA|a20700000000f87f|0|TRUE|
+204e614e|0|0|000000000000f87f|4|FALSE|
+204e614e|0|1|000000000000f87f|4|FALSE|
+204e614e|0|NA|000000000000f87f|4|FALSE|
+204e614e|1|0|000000000000f87f|4|FALSE|
+204e614e|1|1|000000000000f87f|4|FALSE|
+204e614e|1|NA|000000000000f87f|4|FALSE|
+2d4e614e|0|0|000000000000f87f|4|FALSE|
+2d4e614e|0|1|000000000000f87f|4|FALSE|
+2d4e614e|0|NA|000000000000f87f|4|FALSE|
+2d4e614e|1|0|000000000000f87f|4|FALSE|
+2d4e614e|1|1|000000000000f87f|4|FALSE|
+2d4e614e|1|NA|000000000000f87f|4|FALSE|"#;
+        let decode = |text: &str| {
+            text.as_bytes()
+                .chunks_exact(2)
+                .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            (*instance).error_state.nwarnings = 1;
+            let mut cases = 0;
+            for row in ORIGINAL.lines() {
+                let columns = row.split('|').collect::<Vec<_>>();
+                let input = std::ffi::CString::new(decode(columns[0])).unwrap();
+                let exact = if columns[2] == "NA" {
+                    NA_INTEGER
+                } else {
+                    columns[2].parse::<c_int>().unwrap()
+                };
+                let expected = u64::from_le_bytes(decode(columns[3]).try_into().unwrap());
+                let mut end = ptr::null_mut();
+                (*instance).error_state.collect_warnings = 0;
+                let value = R_strtod5(
+                    input.as_ptr(),
+                    &mut end,
+                    b'.' as c_char,
+                    columns[1].parse::<c_int>().unwrap(),
+                    exact,
+                );
+                assert_eq!(value.to_bits(), expected, "original ABI row {row}");
+                assert_eq!(
+                    end,
+                    input.as_ptr().add(columns[4].parse::<usize>().unwrap()) as *mut c_char,
+                    "original ABI row {row}"
+                );
+                assert_eq!(crate::sexp::ffi::R_IsNA(value), columns[5] == "TRUE");
+                if columns[6].is_empty() {
+                    assert_eq!((*instance).error_state.collect_warnings, 0);
+                } else {
+                    assert_eq!((*instance).error_state.collect_warnings, 1);
+                    let warnings = (*instance).error_state.warnings.owned().unwrap();
+                    let names = warnings.try_attrib().unwrap().try_car().unwrap();
+                    assert_eq!(
+                        names.try_string_elt(0).unwrap().try_as_string().unwrap(),
+                        columns[6]
+                    );
+                }
+                cases += 1;
+            }
+            assert_eq!(cases, 102);
+        });
+    }
+
+    #[test]
+    fn gnu_number_parser_exact_rejects_decimal_and_hex_mantissas() {
+        for text in ["9007199254740993", "0x20000000000001"] {
+            let input = std::ffi::CString::new(text).unwrap();
+            let mut end = std::ptr::null_mut();
+            let value = unsafe { R_strtod5(input.as_ptr(), &mut end, b'.' as c_char, FALSE, TRUE) };
+            assert!(
+                crate::sexp::ffi::R_IsNA(value),
+                "original exact=TRUE must reject {text}"
+            );
+            assert_eq!(
+                end.cast_const(),
+                input.as_ptr(),
+                "original rejection consumes no bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn gnu_number_parser_wrappers_preserve_prefix_defaults_and_bounded_offsets() {
+        for (input, value, offset) in [
+            (c"  -12.5rest", -12.5, 7),
+            (c"0x1.2.3tail", 18.1875, 7),
+            (c"0x.", 0.0, 3),
+            (c"0x1p-1074", 0.0, 9),
+        ] {
+            let mut end = ptr::null_mut();
+            let actual = unsafe { R_strtod(input.as_ptr(), &mut end) };
+            assert_eq!(actual, value);
+            assert_eq!(end, unsafe { input.as_ptr().add(offset) } as *mut c_char);
+            assert_eq!(unsafe { R_atof(input.as_ptr()) }, value);
+        }
+        let input = c" -1,25tail";
+        let mut end = ptr::null_mut();
+        assert_eq!(
+            unsafe { R_strtod4(input.as_ptr(), &mut end, b',' as c_char, FALSE) },
+            -1.25
+        );
+        assert_eq!(end, unsafe { input.as_ptr().add(6) } as *mut c_char);
+    }
+
+    #[test]
+    fn gnu_number_parser_warning_owns_source_before_collecting_callback() {
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+        };
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let source = Rc::new(RefCell::new(Some(
+            std::ffi::CString::new("9007199254740993").unwrap(),
+        )));
+        let pointer = source.borrow().as_ref().unwrap().as_ptr();
+        let expected_end = unsafe { pointer.add(16) } as *mut c_char;
+        let detached = source.clone();
+        let collected = Rc::new(Cell::new(false));
+        let observed = collected.clone();
+        session.with_active_in(|instance| unsafe {
+            (*instance).error_state.nwarnings = 1;
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                (*instance).memory_state.gc_force_gap = 0;
+                // Remove the sole source allocation while the warning is
+                // signaling. Any reread of its bytes after this point is invalid.
+                drop(detached.borrow_mut().take());
+                crate::sexp::gengc::full_gc_in(instance);
+                observed.set(true);
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let mut end = ptr::null_mut();
+            let value = R_strtod5(pointer, &mut end, b'.' as c_char, FALSE, NA_INTEGER);
+            assert!(
+                collected.get(),
+                "the actual warning must allocate and collect"
+            );
+            assert!(source.borrow().is_none());
+            assert_eq!(value, 9_007_199_254_740_992.0);
+            assert_eq!(end, expected_end);
+            let warnings = (*instance).error_state.warnings.owned().unwrap();
+            let names = warnings.try_attrib().unwrap().try_car().unwrap();
+            assert_eq!(
+                names.try_string_elt(0).unwrap().try_as_string().unwrap(),
+                "accuracy loss in conversion from \"9007199254740993\" to numeric"
+            );
+            assert_eq!((*instance).error_state.collect_warnings, 1);
+        });
+    }
+
+    #[test]
     fn test_R_strtod_basic() {
         unsafe {
             let mut endptr: *mut c_char = ptr::null_mut();
@@ -1748,7 +1715,10 @@ mod tests {
                 TRUE,
                 0,
             );
-            assert!(val.to_bits() == R_NA_REAL.to_bits());
+            // The original exported function returns quiet NA, not the
+            // signaling in-memory NA constant (pinned direct ABI controls).
+            assert_eq!(val.to_bits(), 0x7ff8_0000_0000_07a2);
+            assert_eq!(endptr, s.as_ptr().add(2) as *mut c_char);
         }
     }
 

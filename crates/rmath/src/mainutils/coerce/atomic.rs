@@ -129,59 +129,15 @@ pub unsafe fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
         if x.is_null() || x == R_NaString() {
             return NA_INTEGER;
         }
-        let s = CHAR(x);
-        if s.is_null() {
+        let text = CHAR(x);
+        if text.is_null() {
             return NA_INTEGER;
         }
-
-        // Check for blank string
-        let mut p = s;
-        while *p != 0 {
-            if *p != b' ' as c_char
-                && *p != b'\t' as c_char
-                && *p != b'\n' as c_char
-                && *p != b'\r' as c_char
-            {
-                break;
-            }
-            p = p.add(1);
+        let (value, flags) = super::text_number::integer(CStr::from_ptr(text).to_bytes());
+        if !warn.is_null() {
+            *warn |= flags;
         }
-        if *p == 0 {
-            // Blank string
-            return NA_INTEGER;
-        }
-
-        // Parse as double using strtod
-        let mut endp: *mut c_char = ptr::null_mut();
-        let xdouble = strtod(s, &mut endp);
-
-        // Check that entire string was consumed
-        let mut ep = endp;
-        while *ep != 0 {
-            if *ep != b' ' as c_char
-                && *ep != b'\t' as c_char
-                && *ep != b'\n' as c_char
-                && *ep != b'\r' as c_char
-            {
-                if !warn.is_null() {
-                    *warn |= WARN_NA;
-                }
-                return NA_INTEGER;
-            }
-            ep = ep.add(1);
-        }
-
-        // Convert double to integer with range checking (same as IntegerFromReal)
-        if ISNAN(xdouble) {
-            NA_INTEGER
-        } else if xdouble >= (c_int::MAX as f64) + 1.0 || xdouble <= c_int::MIN as f64 {
-            if !warn.is_null() {
-                *warn |= WARN_INT_NA;
-            }
-            NA_INTEGER
-        } else {
-            xdouble as c_int
-        }
+        value
     }
 }
 
@@ -237,49 +193,15 @@ pub unsafe fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
         if x.is_null() || x == R_NaString() {
             return NA_REAL;
         }
-        let s = CHAR(x);
-        if s.is_null() {
+        let text = CHAR(x);
+        if text.is_null() {
             return NA_REAL;
         }
-
-        // Check for blank string
-        let mut p = s;
-        while *p != 0 {
-            if *p != b' ' as c_char
-                && *p != b'\t' as c_char
-                && *p != b'\n' as c_char
-                && *p != b'\r' as c_char
-            {
-                break;
-            }
-            p = p.add(1);
+        let (value, flags) = super::text_number::real(CStr::from_ptr(text).to_bytes());
+        if !warn.is_null() {
+            *warn |= flags;
         }
-        if *p == 0 {
-            // Blank string
-            return NA_REAL;
-        }
-
-        // Parse as double
-        let mut endp: *mut c_char = ptr::null_mut();
-        let xdouble = strtod(s, &mut endp);
-
-        // Check that entire string was consumed
-        let mut ep = endp;
-        while *ep != 0 {
-            if *ep != b' ' as c_char
-                && *ep != b'\t' as c_char
-                && *ep != b'\n' as c_char
-                && *ep != b'\r' as c_char
-            {
-                if !warn.is_null() {
-                    *warn |= WARN_NA;
-                }
-                return NA_REAL;
-            }
-            ep = ep.add(1);
-        }
-
-        xdouble
+        value
     }
 }
 
@@ -337,66 +259,11 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
                 i: NA_REAL,
             };
         }
-        let bytes = CStr::from_ptr(s).to_bytes();
-        let str = std::str::from_utf8_unchecked(bytes).trim();
-
-        if str.is_empty() {
-            return Rcomplex {
-                r: NA_REAL,
-                i: NA_REAL,
-            };
-        }
-
-        // Try "a+bi" or "a-bi" format
-        let mut split_pos: Option<usize> = None;
-        for (i, ch) in str.char_indices() {
-            match ch {
-                '+' | '-' if i > 0 => {
-                    split_pos = Some(i);
-                    break;
-                }
-                _ => {} // intentionally unhandled: non-sign character in exponent parsing
-            }
-        }
-
-        if let Some(pos) = split_pos {
-            let real_str = &str[..pos];
-            let sign: f64 = if str.as_bytes()[pos] == b'-' {
-                -1.0
-            } else {
-                1.0
-            };
-            let imag_str = &str[pos + 1..];
-
-            // Imaginary part should end with 'i'
-            let imag_body = if let Some(stripped) = imag_str.strip_suffix('i') {
-                stripped
-            } else {
-                imag_str
-            };
-
-            if let (Some(r), Some(i)) = (parse_double_str(real_str), parse_double_str(imag_body)) {
-                return Rcomplex { r, i: sign * i };
-            }
-        } else if let Some(body) = str.strip_suffix('i') {
-            // Pure imaginary: "3i"
-            if let Some(i) = parse_double_str(body) {
-                return Rcomplex { r: 0.0, i };
-            }
-        } else {
-            // Pure real
-            if let Some(r) = parse_double_str(str) {
-                return Rcomplex { r, i: 0.0 };
-            }
-        }
-
+        let (value, flags) = super::text_number::complex(CStr::from_ptr(s).to_bytes());
         if !warn.is_null() {
-            *warn |= WARN_NA;
+            *warn |= flags;
         }
-        Rcomplex {
-            r: NA_REAL,
-            i: NA_REAL,
-        }
+        value
     }
 }
 
@@ -405,106 +272,22 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
 /// Faithfully ports R's ComplexFromString from coerce.c which uses R_strtod.
 pub unsafe fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
     unsafe {
-        let mut z = Rcomplex {
+        let missing = Rcomplex {
             r: NA_REAL,
             i: NA_REAL,
         };
-
         if x.is_null() || x == R_NaString() {
-            return z;
+            return missing;
         }
-
-        let xx = CHAR(x);
-        if xx.is_null() {
-            return z;
+        let text = CHAR(x);
+        if text.is_null() {
+            return missing;
         }
-
-        // Check for blank string
-        let mut p = xx;
-        while *p != 0 {
-            if *p != b' ' as c_char
-                && *p != b'\t' as c_char
-                && *p != b'\n' as c_char
-                && *p != b'\r' as c_char
-            {
-                break;
-            }
-            p = p.add(1);
-        }
-        if *p == 0 {
-            // Blank string
-            return z;
-        }
-
-        // Try parsing: "real" or "imaginary i" or "real+/-imaginary i"
-        let mut endp: *mut c_char = ptr::null_mut();
-        let xr = strtod(xx, &mut endp);
-
-        // Check if rest is blank => pure real
-        let mut ep = endp;
-        while *ep != 0 {
-            if *ep != b' ' as c_char
-                && *ep != b'\t' as c_char
-                && *ep != b'\n' as c_char
-                && *ep != b'\r' as c_char
-            {
-                break;
-            }
-            ep = ep.add(1);
-        }
-        if *ep == 0 {
-            z.r = xr;
-            z.i = 0.0;
-            return z;
-        }
-
-        // Check for pure imaginary: "3i"
-        if *endp == b'i' as c_char {
-            let mut ep2 = endp.add(1);
-            while *ep2 != 0 {
-                if *ep2 != b' ' as c_char
-                    && *ep2 != b'\t' as c_char
-                    && *ep2 != b'\n' as c_char
-                    && *ep2 != b'\r' as c_char
-                {
-                    break;
-                }
-                ep2 = ep2.add(1);
-            }
-            if *ep2 == 0 {
-                z.r = 0.0;
-                z.i = xr;
-                return z;
-            }
-        }
-
-        // Check for "real+/-imaginary i"
-        if *endp == b'+' as c_char || *endp == b'-' as c_char {
-            let xi = strtod(endp, &mut endp);
-            if *endp == b'i' as c_char {
-                let mut ep3 = endp.add(1);
-                while *ep3 != 0 {
-                    if *ep3 != b' ' as c_char
-                        && *ep3 != b'\t' as c_char
-                        && *ep3 != b'\n' as c_char
-                        && *ep3 != b'\r' as c_char
-                    {
-                        break;
-                    }
-                    ep3 = ep3.add(1);
-                }
-                if *ep3 == 0 {
-                    z.r = xr;
-                    z.i = xi;
-                    return z;
-                }
-            }
-        }
-
+        let (value, flags) = super::text_number::complex(CStr::from_ptr(text).to_bytes());
         if !warn.is_null() {
-            *warn |= WARN_NA;
+            *warn |= flags;
         }
-        z
+        value
     }
 }
 

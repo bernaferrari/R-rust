@@ -335,28 +335,20 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// strtod wrapper (C lib)
+// Shared GNU number parser
 // ---------------------------------------------------------------------------
 
-/// Parse a full Rust string as a double via libc `strtod` (the same
-/// conversion family as R's `R_strtod`: correctly rounded decimals, C99
-/// hex floats such as "0x1p3", surrounding C whitespace allowed).
-///
-/// Returns `None` when the (whitespace-trimmed) string is not fully
-/// consumed, mirroring the "rest is not blank" NA rule in
-/// `RealFromString`/`ComplexFromString`.
-pub unsafe fn parse_double_str(s: &str) -> Option<c_double> {
+/// Parse a complete numeric token using the same bounded Rust grammar as
+/// scalar text coercion. Surrounding C whitespace is accepted; embedded NUL
+/// and unconsumed text are rejected.
+pub fn parse_double_str(s: &str) -> Option<c_double> {
     let trimmed =
         s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r'));
-    let Ok(cstr) = std::ffi::CString::new(trimmed) else {
-        return None;
-    };
-    let mut endp: *mut c_char = ptr::null_mut();
-    let v = unsafe { strtod(cstr.as_ptr(), &mut endp) };
-    if endp.is_null() || unsafe { *endp } != 0 {
+    if trimmed.is_empty() || trimmed.as_bytes().contains(&0) {
         return None;
     }
-    Some(v)
+    let parsed = crate::mainutils::number_parse::parse_number(trimmed.as_bytes(), b'.', false, 0);
+    (parsed.consumed == trimmed.len()).then_some(parsed.value)
 }
 
 // ---------------------------------------------------------------------------

@@ -456,10 +456,10 @@ impl Lexer {
                     return Token::Invalid;
                 }
             }
-            // libc strtod is correctly rounded for C99 hex floats, matching
-            // trunk's R_strtod on the hex path; it also accepts arbitrarily
-            // long hex integers (beyond u64).
-            let Some(v) = (unsafe { crate::mainutils::coerce::parse_double_str(&s) }) else {
+            // Use the bounded GNU numeric parser for accepted hexadecimal
+            // syntax, including integers longer than u64. The lexer above
+            // remains responsible for the source-language token boundaries.
+            let Some(v) = crate::mainutils::coerce::parse_double_str(&s) else {
                 return Token::Invalid;
             };
             if self.peek_char() == Some('i') {
