@@ -14,6 +14,7 @@ fn invalid_input() -> SexpError {
 pub(super) fn evaluate(
     access: &RuntimeAccess,
     arguments: Sexp<'static>,
+    call: Sexp<'static>,
 ) -> SexpResult<Sexp<'static>> {
     access.require_active()?;
     if arguments.is_nil() {
@@ -22,6 +23,15 @@ pub(super) fn evaluate(
     let input = arguments.try_car()?.into_owned()?;
     if input.typeof_() != SEXPTYPE::STRSXP || input.is_empty() {
         return Err(invalid_input());
+    }
+    if input.len() > 1 {
+        // GNU warns before asking an ALTREP provider for the first element.
+        // Keep the actual call and input through handler allocation/reentry.
+        let _attribution = crate::mainutils::errors::warning_call_guard(call.as_raw());
+        crate::mainutils::errors::nmath_warning_hook(
+            "argument should be a character vector of length 1\nall but the first element will be ignored",
+        );
+        access.require_active()?;
     }
     // The provider can detach its container, collect, or revoke this runtime.
     // Keep its actual selected child before allocating any output.

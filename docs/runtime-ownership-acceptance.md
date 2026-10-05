@@ -1609,3 +1609,26 @@ local report binds runtime commit `99d78c82` and the exact authored harness inpu
 it is not an immutable full-inventory CI checkpoint. The required fresh 15+70
 union remains open, and the earlier 30 observed upstream failures remain tracked
 separately in `rport-jxfp.3.12.6.19`.
+
+## Owning multi-element character warnings (rport-jxfp.3.12.6.6.1.1)
+
+`charToRaw` now emits GNU's multi-element warning before requesting the first
+character from an ALTREP provider. The adapter retains the actual call and the
+argument graph; warning handlers may collect or change runtime availability
+without leaving borrowed character data behind. `warn = 2` rejects before
+provider access or output allocation. The existing warning attribution guard
+restores the previous call on normal return and unwinding. The byte-copy helper
+continues to forbid unsafe code.
+
+The unchanged byte controls and seven new warning controls pass together
+(14 native tests). The warning controls exercise exact condition message/call,
+deferred call ownership, converted warnings, provider ordering, collecting
+handlers, session closure and nested warning attribution. All seven pass under
+strict-provenance Miri with default alias checking and isolation in 1,393.19
+seconds on the frozen staging sources. The original full-constructor public
+character script produces all 715 combined output bytes identically to pinned
+GNU R, including warnings. Root transfers only the reviewed adapter/declaration
+and four scoped helper/test/fixture files; the main native repeat also passes
+all 14 controls. The main warnings-denied all-target rmath/r-embed Clippy
+repeat passes in 28.25 seconds. UTF8 paste conversion remains a separately
+tracked gap.

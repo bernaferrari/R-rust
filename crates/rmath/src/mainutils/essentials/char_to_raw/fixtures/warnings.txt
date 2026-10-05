@@ -1,0 +1,6 @@
+message=argument should be a character vector of length 1|all but the first element will be ignored
+call=charToRaw(c("first", "ignored"))
+bytes=66|69|72|73|74
+error=(converted from warning) argument should be a character vector of length 1|all but the first element will be ignored
+error_call=charToRaw(c("first", "ignored"))
+recovery=6f|6b

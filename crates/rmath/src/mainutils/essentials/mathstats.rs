@@ -14735,7 +14735,7 @@ unsafe fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
 }
 
 /// Checked original-owner native boundary for GNU `charToRaw(x)`.
-pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     use crate::sexp::owner::OwnerToken;
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -14746,11 +14746,17 @@ pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         .sexp(args)
         .and_then(crate::sexp::object::Sexp::into_owned)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let call = owner
+        .sexp(call)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| crate::sexp::context::r_error("charToRaw requires a managed runtime"));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::sexp::owner::with_runtime(&weak, |access| char_to_raw::evaluate(access, arguments))
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            char_to_raw::evaluate(access, arguments, call)
+        })
     }));
     owner
         .require_active()
@@ -16453,3 +16459,6 @@ mod lm_intercept_tests;
 #[cfg(test)]
 #[path = "char_to_raw_tests.rs"]
 mod char_to_raw_tests;
+#[cfg(test)]
+#[path = "char_to_raw_warning_tests.rs"]
+mod char_to_raw_warning_tests;
