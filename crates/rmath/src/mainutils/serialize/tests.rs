@@ -251,25 +251,43 @@ fn test_decode_version() {
 
 #[test]
 fn test_write_hash_table() {
-    let _session = crate::sexp::session::RSession::new();
+    let session = crate::sexp::session::RSession::new();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let first = factory.strings(&["write-hash-first"]).unwrap();
+    let second = factory.strings(&["write-hash-second"]).unwrap();
+    let absent = factory.strings(&["write-hash-absent"]).unwrap();
+    let first_node = first.allocation().unwrap().clone();
+    let second_node = second.allocation().unwrap().clone();
+    let first_pointer = first.as_raw();
+    let second_pointer = second.as_raw();
     let mut ht = WriteHashTable::new();
     assert_eq!(ht.count, 0);
 
-    // Getting a non-existent key returns 0
-    let fake_ptr = 0x1000 as *mut std::os::raw::c_void as SEXP;
-    assert_eq!(ht.get(fake_ptr), 0);
+    assert_eq!(ht.get(absent.as_raw()), 0);
 
-    // Add and retrieve
-    ht.add(fake_ptr);
+    ht.add(first_pointer);
     assert_eq!(ht.count, 1);
-    assert_eq!(ht.get(fake_ptr), 1);
+    assert_eq!(ht.get(first_pointer), 1);
 
-    // Add second
-    let fake_ptr2 = 0x2000 as *mut std::os::raw::c_void as SEXP;
-    ht.add(fake_ptr2);
+    ht.add(second_pointer);
     assert_eq!(ht.count, 2);
-    assert_eq!(ht.get(fake_ptr2), 2);
-    assert_eq!(ht.get(fake_ptr), 1);
+    assert_eq!(ht.get(second_pointer), 2);
+    assert_eq!(ht.get(first_pointer), 1);
+
+    // Remove incidental roots: the serializer table must retain its values.
+    drop(first);
+    drop(second);
+    owner.full_gc().unwrap();
+    assert!(first_node.is_live());
+    assert!(second_node.is_live());
+    assert_eq!(ht.get(first_pointer), 1);
+    assert_eq!(ht.get(second_pointer), 2);
+
+    drop(ht);
+    owner.full_gc().unwrap();
+    assert!(!first_node.is_live());
+    assert!(!second_node.is_live());
 }
 
 #[test]

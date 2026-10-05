@@ -1454,10 +1454,12 @@ all-target rmath/r-embed Clippy passes in 30.23 seconds.
 These checks exercise the real atomic paste implementation and const NA
 translation. The combined public corpus/serialization script initially cannot
 reach its body because full startup hits the separate locked-options publisher
-(`rport-jxfp.3.12.6.17`); its rerun is required before closing the parent parity
-issue. `charToRaw` ownership/NA handling (`.6.6.1`) and end-to-end UTF-8 paste's
-separator selection (`.6.6.2`) remain separate tracked repairs. No public corpus
-or complete serialization pass is inferred from the focused accessor proof.
+(`rport-jxfp.3.12.6.17`). After that independent repair, the unchanged corpus436
+prefix and combined NA/ASCII/binary/value checks complete through the original
+full constructor within 180 seconds. All 19 stdout lines match pinned GNU
+exactly; its additional `charToRaw` warning is a separate condition/call gap.
+End-to-end UTF-8 paste's separator selection (`.6.6.2`) remains tracked. This
+single public script does not certify the complete serialization family.
 
 ## Owning GNU time-series attribute publication (rport-jxfp.3.12.6.5)
 
@@ -1534,3 +1536,42 @@ value-output lines (566 bytes) exactly match pinned GNU without trimming. GNU's
 additional warning for a multi-element `charToRaw` input is a real remaining
 condition/call difference, tracked in `rport-jxfp.3.12.6.6.1.1`; it is not counted
 as matching warning behavior. End-to-end UTF-8 paste remains a separate issue.
+
+## Bounded recursive frames and compiled promise expressions (rport-jxfp.3.12.3.7.2–4)
+
+The binary decoder dispatches recursive payload branches through separate small
+frames. Evaluator symbol/call-head lookup and private bytecode dispatch also have
+separate frames, so a GNU execution path does not reserve private dispatch's
+locals. The existing depth, stack and allocation limits are unchanged. Measured
+debug decoder entry falls from 10,928 to 336 bytes, and the GNU bytecode facade
+falls from 17,568 to 448 bytes. The original methods class-cache test now passes
+in 49.67 seconds after these changes.
+
+An explicit decoder context distinguishes ordinary data, a closure body and a
+promise expression. GNU bytecode in PRCODE uses the existing validated executable
+adapter; standalone bytecode and bytecode in PRVALUE retain their rejection.
+The actual decoded promise survives full collection, forces its compiled 42,
+caches that value and survives a second collection. Malformed opcode and
+original depth/truncation controls still reject. Five focused decoder controls
+pass natively; strict-provenance Miri's decoder/reference/parent callback five
+complete in 451.38 seconds, and the subsequent two compiled-field controls
+complete in 188.85 seconds with default alias checking and isolation. These
+proofs have distinct frozen source inventories.
+
+Root transfers the exact three reviewed production files and repeats the five
+decoder controls (0.01 seconds), four bytecode ownership controls (4.53 seconds)
+and collecting Recall control (0.07 seconds). The enclosing serializer run
+reports 94 passes and one failure in 524.12 seconds: an older hash-table fixture
+inserts invented addresses into a table that now retains checked roots. Its
+separate unchanged repeat fails again. The repaired fixture uses real managed
+values, removes incidental roots, checks collection while only the table retains
+them, then checks retirement after dropping the table; it passes in 53.65 seconds.
+The enclosing aggregate is retained as a failed run, rather than renamed green.
+Warnings-denied all-target rmath/r-embed Clippy passes in 43.34 seconds. Independent
+review finds no changed lookup order, fallback, execution algorithm or unrelated
+production logic in the three-file transfer.
+
+The unchanged native ANY and inheritance tests separately pass in 106.80 and
+203.77 seconds on the same artifact. Their browser versions still fail during
+later allocation growth. Portable methods attachment and target acceptance remain
+open; these decoder and frame milestones do not claim complete methods parity.
