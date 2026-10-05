@@ -1342,3 +1342,39 @@ installed-package integration remain tracked implementation work.
 This change only updates integration assertions and this document. The active
 atomic-pairlist Miri run's compiled rmath sources remain unchanged; its broader
 source inventory records the unrelated embedding-test delta explicitly.
+
+## Owning binary filename I/O (rport-wszw.11)
+
+Filename `readBin` and `writeBin` use the original session's browser file store,
+with controlled host-file fallback. An unsafe-free selection module retains
+the argument graph, checked filename and original runtime authority through
+providers, file access, decoding and publication. The original owner remains
+physically pinned through successful callbacks and unwind; revocation rejects
+publication, while a live provider's panic payload is preserved.
+
+Byte/String/vector workspace admission covers the selected input, decoding,
+encoder reallocation and browser sink copy. Character encoding selects each
+owning CHARSXP once before admission callbacks and copies it afterward. Genuine
+old-code failures demonstrate the corrected character reallocation peak and
+host-reader simultaneous old/new buffers plus its fixed 8 KiB stack chunk.
+These formulas bound represented payload workspace; allocator rounding,
+reservation bookkeeping, runtime allocations and total RSS remain separate.
+
+The frozen six-file candidate passes ten focused native tests, two public
+session tests, nine freshly rebuilt Wasm checks, the complete 592,931-byte
+dataset stream and a character round-trip. All ten strict-provenance Miri
+tests complete in 549.35 seconds with default alias checking. **Miri isolation
+is explicitly disabled** for the actual browser-store clock and controlled
+ephemeral host file; this is not evidence from default-isolated execution.
+The receipt authenticates the six inputs and actual loaded worktree. Its
+broader reused preload keyset omitted later portable-methods files, which
+these minimal tests do not initialize; separate public/Wasm receipts retain
+the complete source inventory.
+
+Root review verifies the unchanged six hashes and repeats the ten native
+tests and two public tests on main: 10/0 in 0.03 seconds and 2/0 in 10.22
+seconds. Warning-denied all-target rmath/r-embed Clippy passes in 39.94 seconds.
+Valid filename shorthand and independent session stores are complete for
+this milestone. Ordinary invalid-size open/truncate ordering (`rport-wszw.15`),
+generic byte-buffer reservation lifetime (`rport-wszw.16`) and admission before
+the raw filename classifier (`rport-wszw.11.1`) remain tracked separately.
