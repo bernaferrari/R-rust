@@ -44,7 +44,7 @@ integration_local = integration['batch_last_value']
 view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
-complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-91babc00.json').read_text())
+complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-5483fec6.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -149,7 +149,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
 The latest independently verified complete inventory is recorded at
-`91babc00` in the [complete inventory receipt](ci-checkpoints/complete-inventory-91babc00.json).
+`5483fec6` in the [complete inventory receipt](ci-checkpoints/complete-inventory-5483fec6.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
 joins them without errors; semantic failures remain failures.
@@ -166,10 +166,13 @@ uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits
 successfully; the Rust native graphics operation still fails. Every outcome and
 producer hash remains in the receipt. The randomized `p-r-random-tests.R` driver
-now fails its Cauchy DKW check; its independently sampled seeds need a matched
-reproduction before assigning a cause. The preceding `6ccae790` checkpoint
-reported 17 whole-driver passes and 22 failures. Later selected checks are not added to
-these totals. The preceding `4cd0f941` complete report had twelve fewer failures
+passes this checkpoint; its independently sampled GNU and Rust seeds are now
+captured in the actual execution artifacts. The older `91babc00` Cauchy DKW failure
+still needs a matched-seed reproduction before assigning a cause. That complete
+checkpoint recorded 16 whole-driver passes and 23 failures; `6ccae790` recorded
+17 passes and 22 failures. These changing random outcomes do not prove an RNG
+repair. Later selected checks are not added to these totals.
+The preceding `4cd0f941` complete report had twelve fewer failures
 than the reviewed checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
 case 540 still differs in warning call attribution. Selected checks do not alter
 the complete union totals. The original `utils::data` closure now reaches its
@@ -343,6 +346,15 @@ with 57 passing and three failing: both original sunflower timeout flows recur,
 and the combined FFT/RNG case exceeds its unchanged 90-second test limit.
 The older Linux 60/60 pass and current local 60/60 pass remain distinct receipts;
 repeated Linux budget stability is still an open requirement.
+
+The latest immutable [Linux 5483fec6 checkpoint](ci-checkpoints/linux-browser-package-5483fec6.json)
+completes all 54 selected native public checks in debug with zero failures.
+Chromium completes all 60 cases with 56 passing and four failing: both original
+sunflower flows time out, the compiled-lazy/inherited-method case reports a
+runtime timeout and reset, and the combined FFT/RNG test exceeds its unchanged
+90-second limit. This methods failure is a timeout; the native package and
+complete upstream S4 contracts pass. The current local 60/60 result remains
+separate from Linux acceptance, and full workspace execution is still incomplete.
 
 The focused [canonical character-read repair](ci-checkpoints/character-read-9f2f28a6.json)
 at `9f2f28a6` passes the existing native projection controls, strict Miri and

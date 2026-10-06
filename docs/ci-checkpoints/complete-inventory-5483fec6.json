@@ -1,0 +1,2989 @@
+{
+  "conformance": {
+    "errors": [],
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "inventory_total": 1181,
+    "received_shards": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "shard_count": 6,
+    "status_counts": {
+      "fail": 119,
+      "pass": 1062,
+      "skip": 0,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "strict_pass": false,
+    "timed_out": 0,
+    "total": 1181,
+    "unattempted_cases": [],
+    "execution": {
+      "build_rustflags": "-Awarnings",
+      "case_timeout_seconds": 300.0,
+      "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+      "engine_major_minor": "4.7",
+      "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+      "pinned_oracle_required": true,
+      "profile": "release",
+      "schema_version": 1,
+      "source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "source_sha256": "74307ccbe067095925644927a9e57f3d815faffe26b9f7827533a021aaeb0c10",
+      "strict": true
+    },
+    "failures": [
+      {
+        "case": "024_sample_int_too_large",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "026_sample_prob_too_few_positive",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "033_read_fwf_empty_widths",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "082_unserialize_non_connection",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "1000_plclust",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1003_plot_stepfun",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1005_heatmap",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1006_rect_hclust",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1007_qqline",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1009_cpgram",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1010_plot_ts",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1012_monthplot_scatter",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1013_interaction_lag_eff",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1014_ar_mle",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1015_struct_ts_trend",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1016_struct_ts_bsm",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1017_arima_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1018_arima_ar0_ma1",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1019_arima_ar2_diff",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1021_arima_sar1",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1027_arima_cross_seasonal",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1031_arima_ma2_111",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1032_arima_ima_ar210",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1034_arima_seasonal_ima_ma2nm",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1039_arima_d_arma_sar",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1040_arima_d_arma_sma",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1041_arima_arma_sar_sma",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1042_arima_d_arma_sar_sma",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1044_arima_arma11_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1046_arima_ma2_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1047_arima_ar1_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1048_arima_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1049_arima_ma1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1050_arima_ar1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1051_arima_ma1_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1052_arima_sar1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1053_arima_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1054_arima_ar3_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1055_arima_arma21_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1056_arima_arma11_sar1_sma1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1059_arima_111_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1060_arima_arma12_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1063_arima_arma11_sar1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1064_arima_arma11_sma1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1065_arima_arma11_nomean_ml",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1066_arima_arma21_nomean_ml",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1067_holtwinters",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1068_structts_level",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1069_structts_trend",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1070_stl",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1102_str_atomic_preview",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "260_length_replacement",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "284_methods_runtime_registry",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "288_with_calling_handlers",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "293_read_write_char_connections",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "328_date_arithmetic",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "329_posixct_arithmetic",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "331_datetime_c_rep",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "333_difftime_ops",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "381_no_random_seed_loadrds_functions",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "385_no_string_reshape_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "387_no_runtime_helper_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "388_no_print_summary_method_aliases",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "389_no_reflection_helper_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "393_summary_default_vectors",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "432_prop_table_margins",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "492_rep_int_len_helpers",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "523_signif_fprec_edge_matrix",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "537_strptime_posixlt_parity",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "570_loess_contracts",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "599_density",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "602_supsmu",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "604_isoreg",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "612_smooth_spline",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "614_stl",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "617_holtwinters",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "621_ks_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "623_ccf",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "637_diffinv",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "646_D_hyp",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "650_D_atan",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "651_D_gamma",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "652_holtwinters_alpha",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "653_deriv3",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "654_holtwinters_sse",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "656_nlminb",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "657_holtwinters_coef",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "660_armaacf",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "666_holtwinters_x",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "671_is_ts",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "689_adist",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "697_bindtextdomain",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "705_localeToCharset",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "710_ISOdate",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "720_as_POSIXct_lt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "724_mean_Date",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "726_trunc_POSIXt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "727_round_POSIXt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "731_as_list_Date",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "739_xtfrm_julian_POSIXt",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "757_ansari_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "769_pp_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "774_aregexec",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "793_covratio",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "809_lm_influence",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "820_dummy_coef",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "858_dfbetas",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "863_struct_ts_level",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "864_factanal",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "888_ts_smooth",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "891_arima0",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "901_ar_burg",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "927_loglin",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "929_psmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "930_qsmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "961_density_default",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "988_ppr",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "995_rsmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "999_arima0_diag",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      }
+    ],
+    "independent_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-independent/summary.json",
+      "bytes": 200728,
+      "sha256": "10d43058afe065723c222fa317b9691dfd69767a2cf5a45f9c8765449019a38d"
+    },
+    "producer_union_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-union/summary.json",
+      "bytes": 200728,
+      "sha256": "10d43058afe065723c222fa317b9691dfd69767a2cf5a45f9c8765449019a38d"
+    },
+    "producer_summaries": [
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-0/summary.json",
+        "bytes": 41589,
+        "sha256": "d514d5473424dc0a7817ae13fe26ed287e5daa1177d2d383082d277dfabe2f0d"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-1/summary.json",
+        "bytes": 41492,
+        "sha256": "d62b4594cb110ed7c8f84da719c6eabe9a2dcea02a29f7f4ffc4f2e87243bc51"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-2/summary.json",
+        "bytes": 41663,
+        "sha256": "af068c40670fe713a0bb7033dd81e8274fa5e1beff4c07142652dfdba8c3068c"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-3/summary.json",
+        "bytes": 41789,
+        "sha256": "4df8e0391ab26838bdb61ab603b8dc46b8f8117ea54a2c654791cd16a0fcb757"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-4/summary.json",
+        "bytes": 41656,
+        "sha256": "95cf05e2fc333340e7f42fd13861e8abbde5c199064aaec3e694aa3989f4c7f1"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/conformance-shards/exact-oracle-conformance-shard-5/summary.json",
+        "bytes": 41663,
+        "sha256": "925e008b5e295f07b2b28e7bca197118eb0343e4186f1feada0a13e94d880e3e"
+      }
+    ]
+  },
+  "upstream": {
+    "errors": [],
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "inventory_total": 85,
+    "schema_version": 1,
+    "status_counts": {
+      "fail": 22,
+      "pass": 32,
+      "skip": 31,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "strict_pass": false,
+    "total": 85,
+    "unattempted_cases": [],
+    "execution": {
+      "case_locale_policy": {
+        "default": "C",
+        "overrides": {
+          "whole/reg-plot-latin1.R": "en_US.ISO8859-1"
+        }
+      },
+      "case_timeout_seconds": 1800.0,
+      "inventory_sha256": "80bd9e7cf2a1f583900aad16fe8509cb404b785032c6adc2161c8aa2ca4b0e88",
+      "normalization": "core-v1:original-tr-sed-awk-pipeline",
+      "normalizer_policy": {
+        "locale": {
+          "LANG": "C",
+          "LC_ALL": "C",
+          "LC_CTYPE": "C"
+        },
+        "platform": {
+          "machine": "x86_64",
+          "system": "Linux"
+        },
+        "tools": {
+          "awk": {
+            "path": "/usr/bin/gawk",
+            "sha256": "9150b42e78b22231bd83131e1db2530a7a7fa0677e189ac7c5cc1520c42c9e88"
+          },
+          "bash": {
+            "path": "/usr/bin/bash",
+            "sha256": "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1"
+          },
+          "sed": {
+            "path": "/usr/bin/sed",
+            "sha256": "23f70dd6496d75419823039e1cebf95a2fd0508c6dfec72ac2352f7e08391dd5"
+          },
+          "tr": {
+            "path": "/usr/bin/tr",
+            "sha256": "35ee22fe3bc5387017902f243d19f5d967e74d9f682b10d1c25fe0bce2b03733"
+          }
+        }
+      },
+      "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+      "pinned_oracle_required": true,
+      "profile": "release",
+      "runtime": {
+        "cargo_features": [
+          "default",
+          "faer",
+          "rust-backend",
+          "r-graphics-engine",
+          "renderplot-device"
+        ],
+        "device": {
+          "font": "bundled DejaVu Sans",
+          "height": 504,
+          "name": "renderplot-scene",
+          "output": "owned display list",
+          "width": 504
+        },
+        "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+        "name": "graphics",
+        "numerical_backend": "faer",
+        "package_policy": "native",
+        "top_level_evaluation_mode": "Script"
+      },
+      "rustflags": "-Awarnings",
+      "schema_version": 1,
+      "source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "source_sha256": "d85f3ab36876e09fb7fe8762eac3282abbeccfd6347f57bddca62495f39ee511",
+      "strict": true
+    },
+    "failures": [
+      {
+        "case": "classes-methods.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "5bf85949a87f3b3c72270b8442e260203dc0cc214807d3f5b4a91c183cf8fc8f",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R",
+              "elapsed_seconds": 0.004994103999990784,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:04.215155+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "1451b9993efa232d7088c314af0cde2550021dd597480c4ca1f1247f7cc76d90"
+              },
+              "pid": 3474,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:04.208508+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "0b802a848ca8dd9172884f5a6ca72cb02ead222d0f06a458b4aea125494464e1",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R",
+              "elapsed_seconds": 0.00450002399998084,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:04.222750+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "e1f128e4c9851b00a86f6ada967d7ea8a469fa4c7d8bdbd4509869a34a44395d"
+              },
+              "pid": 3478,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:04.216966+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/classes-methods.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "classes-methods.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R/gnu-workspace",
+              "elapsed_seconds": 0.41592072200000985,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:54:55.467100+00:00",
+              "logs": {
+                "combined.log": "5bf85949a87f3b3c72270b8442e260203dc0cc214807d3f5b4a91c183cf8fc8f"
+              },
+              "pid": 3432,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:54:55.046184+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "classes-methods.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-classes-methods.R/rust-workspace",
+              "elapsed_seconds": 68.68346018599999,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:04.170424+00:00",
+              "logs": {
+                "combined.log": "0b802a848ca8dd9172884f5a6ca72cb02ead222d0f06a458b4aea125494464e1"
+              },
+              "pid": 3444,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:54:55.484998+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "conditions.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/conditions.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "conditions.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/gnu-workspace",
+              "elapsed_seconds": 0.16529455500000267,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:11.854899+00:00",
+              "logs": {
+                "combined.log": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9"
+              },
+              "pid": 3174,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:11.688557+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "conditions.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/rust-workspace",
+              "elapsed_seconds": 3.222992545000011,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:51:15.105784+00:00",
+              "logs": {
+                "combined.log": "4bf8cec4c523707230d5907fc2056fab10d53d6b2bd27887f81bec2ad83fa028"
+              },
+              "pid": 3186,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:11.881644+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "d-p-q-r-tests.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "74377f804f6045b905cbfe67dbb97f8554080c2e90602eaef44907d750d4228a",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R",
+              "elapsed_seconds": 0.0044648269999925105,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:29.106462+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "10bee05eac11fada3bf98a9038b60ffa032bc3d2ab1f26000c175a31cb9b33c4"
+              },
+              "pid": 3459,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:29.100702+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "0e7f020d2e575597dc99e84b168fc86605be3f0fa2b9c7b008f98c3d31085f2d",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R",
+              "elapsed_seconds": 0.004237031999991814,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:29.113290+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "6a56a1ab44a67a73f4c3dd21ff04ee16f3c5f0c36ddc680e8b24dccc39d1c16f"
+              },
+              "pid": 3463,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:29.108118+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/d-p-q-r-tests.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "d-p-q-r-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R/gnu-workspace",
+              "elapsed_seconds": 0.7165975890000027,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:55:22.681939+00:00",
+              "logs": {
+                "combined.log": "74377f804f6045b905cbfe67dbb97f8554080c2e90602eaef44907d750d4228a"
+              },
+              "pid": 3373,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:55:21.964063+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "d-p-q-r-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tests.R/rust-workspace",
+              "elapsed_seconds": 306.35593209699994,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:29.075832+00:00",
+              "logs": {
+                "combined.log": "0e7f020d2e575597dc99e84b168fc86605be3f0fa2b9c7b008f98c3d31085f2d"
+              },
+              "pid": 3385,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:55:22.718506+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "d-p-q-r-tst-2.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "e296ebb5a10f753889ce0ca4b938ef52888a55adb13793034471f86d3f8e6a5c",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R",
+              "elapsed_seconds": 0.00475213699996857,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:32.430567+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "168bae27d00510b8d37e243c35a19c261520c63fd1cf21bcb7b4bfc42d0c92e4"
+              },
+              "pid": 3501,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:32.423803+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "a55e50a84c8bf4f0642a41fca10e78ecb89b1f529f2de102fad2b38ed69471a0",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R",
+              "elapsed_seconds": 0.0044534959999964485,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:32.438047+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "9087b64844fd3790b505c9d0a0a2c9efa835907ab6128a99333b0758d1140331"
+              },
+              "pid": 3505,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:32.432373+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/d-p-q-r-tst-2.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "d-p-q-r-tst-2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R/gnu-workspace",
+              "elapsed_seconds": 0.666464904999998,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:04.910254+00:00",
+              "logs": {
+                "combined.log": "e296ebb5a10f753889ce0ca4b938ef52888a55adb13793034471f86d3f8e6a5c"
+              },
+              "pid": 3482,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:04.241534+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "d-p-q-r-tst-2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-d-p-q-r-tst-2.R/rust-workspace",
+              "elapsed_seconds": 27.486946981000017,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:32.417856+00:00",
+              "logs": {
+                "combined.log": "a55e50a84c8bf4f0642a41fca10e78ecb89b1f529f2de102fad2b38ed69471a0"
+              },
+              "pid": 3494,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:04.928629+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "datasets.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "0af2e5b77094f5ea3b74e901394116686c1047487e890b12ee1cae6cfe514fee",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R",
+              "elapsed_seconds": 0.004607636999992337,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:12.464822+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "334bd09f7cbf5729f94c7377a50f86fc4a81d848577cd14cebdab46fa6e97b28"
+              },
+              "pid": 3460,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:12.459207+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "93cffe5ce41e7efa7cdb42be99d67acb12846a8899e2d63053e69b9883e2cf7b",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R",
+              "elapsed_seconds": 0.004171127000006436,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:12.470994+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "e1690ccc2f6333304e4ef576db2d34699ae0283ffd078613d6c129a8dd415d53"
+              },
+              "pid": 3464,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:12.466105+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/datasets.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "datasets.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R/gnu-workspace",
+              "elapsed_seconds": 0.31516552699997646,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:55:53.041347+00:00",
+              "logs": {
+                "combined.log": "0af2e5b77094f5ea3b74e901394116686c1047487e890b12ee1cae6cfe514fee"
+              },
+              "pid": 3435,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:55:52.724947+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "datasets.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datasets.R/rust-workspace",
+              "elapsed_seconds": 79.36262891299998,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:12.439211+00:00",
+              "logs": {
+                "combined.log": "93cffe5ce41e7efa7cdb42be99d67acb12846a8899e2d63053e69b9883e2cf7b"
+              },
+              "pid": 3447,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:55:53.075221+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "datetime2.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "ac821a37c16e2898359a4a6d642644cdca5296a670befa9145b7b8d9995eea61",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R",
+              "elapsed_seconds": 0.008459800999958134,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:38.609378+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "7605eb0b0c0ccdf99532a6413c4c29c7d057538b221140e37bb640fbeae0eb20"
+              },
+              "pid": 3480,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:38.599814+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "f1a0219db01d8c25b0d140acd3fc408c3f189c1e3bec9fb645181339989166db",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R",
+              "elapsed_seconds": 0.004274361000000226,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:38.616009+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "2787fe81938ce6235ff6bb62c088f93f25af9e855b8409ee4aeb94611b86105a"
+              },
+              "pid": 3484,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:38.610850+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/datetime2.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "datetime2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R/gnu-workspace",
+              "elapsed_seconds": 0.21511964500001568,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:29.364219+00:00",
+              "logs": {
+                "combined.log": "ac821a37c16e2898359a4a6d642644cdca5296a670befa9145b7b8d9995eea61"
+              },
+              "pid": 3467,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:29.147744+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "datetime2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime2.R/rust-workspace",
+              "elapsed_seconds": 9.18860996799998,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:38.590876+00:00",
+              "logs": {
+                "combined.log": "f1a0219db01d8c25b0d140acd3fc408c3f189c1e3bec9fb645181339989166db"
+              },
+              "pid": 3479,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:29.400817+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "datetime3.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/datetime3.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "datetime3.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime3.R/gnu-workspace",
+              "elapsed_seconds": 0.9169387119999897,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:33.383453+00:00",
+              "logs": {
+                "combined.log": "30f8237a9f0391cbecdea03025ae8e736aeb47a5ccb191dde0a18b4a2545bbef"
+              },
+              "pid": 3509,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:32.460701+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "datetime3.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime3.R/rust-workspace",
+              "elapsed_seconds": 3.8239198090000173,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:56:37.229145+00:00",
+              "logs": {
+                "combined.log": "cccac05e51eb8d65fc32af4a33a51568f504bb4c53f435b34ff5cf3a0da34cf7"
+              },
+              "pid": 3522,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:33.402583+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "datetime4.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "3b13db0241933f28e33742525ca0ed8260ee2507945b9ef0950c26a46a773090",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R",
+              "elapsed_seconds": 0.008393107999950189,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:36.446239+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "a3801d61bcf84cc208b5dcfec0c2443f452a1a7d282e03b8f3ea4e6f8f03440f"
+              },
+              "pid": 3487,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:36.436808+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "6f819445aef557fb76a6fcb0bc90dde212268e8437ed760f6af0da1a7ebc31cd",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R",
+              "elapsed_seconds": 0.004205808000051547,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:36.452699+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "806ff8653baa16324bdc61168fe42f18254289c30a7b5d97479ace186a6e365d"
+              },
+              "pid": 3491,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:36.447675+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/datetime4.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "datetime4.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R/gnu-workspace",
+              "elapsed_seconds": 0.2149684089999937,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:12.719697+00:00",
+              "logs": {
+                "combined.log": "3b13db0241933f28e33742525ca0ed8260ee2507945b9ef0950c26a46a773090"
+              },
+              "pid": 3468,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:12.502572+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "datetime4.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime4.R/rust-workspace",
+              "elapsed_seconds": 23.673460819000013,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:36.428190+00:00",
+              "logs": {
+                "combined.log": "6f819445aef557fb76a6fcb0bc90dde212268e8437ed760f6af0da1a7ebc31cd"
+              },
+              "pid": 3480,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:12.753484+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "datetime5.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "4f69e4d4798fd04ae528d9ab89cbe5c45c8c22967902df32c0768a318cae437a",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R",
+              "elapsed_seconds": 0.0043727500000159125,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:22.603728+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "62c54271aaf30cfdcd862005eecfd11ebf76deac77a11e2fae8af5c75e447f81"
+              },
+              "pid": 3223,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:22.598410+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "32e4cffb3b0d56586cedf48a0451be01d5764b9517e9786ab7292c3def92b061",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R",
+              "elapsed_seconds": 0.004322362999971574,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:22.609996+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "2956cec722de630311f4ceadf499444d8b271dea73e558f231b2e5f6484dcace"
+              },
+              "pid": 3227,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:22.604978+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/datetime5.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "datetime5.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R/gnu-workspace",
+              "elapsed_seconds": 0.21516134900002726,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:19.133488+00:00",
+              "logs": {
+                "combined.log": "4f69e4d4798fd04ae528d9ab89cbe5c45c8c22967902df32c0768a318cae437a"
+              },
+              "pid": 3208,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:18.868754+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "datetime5.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-datetime5.R/rust-workspace",
+              "elapsed_seconds": 3.4227087040000015,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:22.590904+00:00",
+              "logs": {
+                "combined.log": "32e4cffb3b0d56586cedf48a0451be01d5764b9517e9786ab7292c3def92b061"
+              },
+              "pid": 3222,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:19.159382+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "demos.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/demos.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "demos.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-demos.R/gnu-workspace",
+              "elapsed_seconds": 1.2172839240000144,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:00:39.868989+00:00",
+              "logs": {
+                "combined.log": "5f1e20b9c50dd4c15c0453a04cde40aeadc5c791b042d9eeac27a17eee429196"
+              },
+              "pid": 3488,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:38.650432+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "demos.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-demos.R/rust-workspace",
+              "elapsed_seconds": 34.40564423799992,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T09:01:14.313393+00:00",
+              "logs": {
+                "combined.log": "c74d7ea9c79296e40ae280b96154d4254ad78ab2a62a2496e1376c239877c38e"
+              },
+              "pid": 3501,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:00:39.906307+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "demos2.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/demos2.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "demos2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-demos2.R/gnu-workspace",
+              "elapsed_seconds": 0.8168488089999641,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:56:38.071151+00:00",
+              "logs": {
+                "combined.log": "cdf7614068f188ce7a96aeed47cd63d64a688392b2ca26909d7b2c963f0236bf"
+              },
+              "pid": 3525,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:37.252219+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "demos2.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-demos2.R/rust-workspace",
+              "elapsed_seconds": 3.272841433999986,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:56:41.364686+00:00",
+              "logs": {
+                "combined.log": "ae431d174f4939185c7d3d6e06ac9abb67b42fa60269b6968e1b8252192dbf1e"
+              },
+              "pid": 3537,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:56:38.089499+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "iconv.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/iconv.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "iconv.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-iconv.R/gnu-workspace",
+              "elapsed_seconds": 0.16486216999999215,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:22.803663+00:00",
+              "logs": {
+                "combined.log": "0412d43c7357f9ec140103c347e81f3cbad081a23225c140c979f5443255a0b6"
+              },
+              "pid": 3231,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:22.637814+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "iconv.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-iconv.R/rust-workspace",
+              "elapsed_seconds": 3.873346202999983,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:51:26.705070+00:00",
+              "logs": {
+                "combined.log": "8e9a737826bfff198ddf97d0f02ff9262ad89ccd0597ed9c7e9254d0cea365d2"
+              },
+              "pid": 3243,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:22.830179+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "lm-tests.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "40bb263a2ed15b4071bb97ced12a0a65e33f1ace1d91e3a93d81b03b315f9ad6",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R",
+              "elapsed_seconds": 0.004462905999957911,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:48.153452+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "cabdc2d62cd1347ac6088527091810cf914f068a3c70d307f0d21216dd888e49"
+              },
+              "pid": 3510,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:48.148108+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "48d219ecb274d2ef387de7d91177c0558ceee37c181943a9ad47438f2d53b226",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R",
+              "elapsed_seconds": 0.004235160999996879,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:48.159760+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "13daac09aa414728bedbd8abcd0ec3cb7817ae4d4e392ad29332a821d8d7a295"
+              },
+              "pid": 3514,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:48.154841+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/lm-tests.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "lm-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R/gnu-workspace",
+              "elapsed_seconds": 0.2151228989999936,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:36.713234+00:00",
+              "logs": {
+                "combined.log": "40bb263a2ed15b4071bb97ced12a0a65e33f1ace1d91e3a93d81b03b315f9ad6"
+              },
+              "pid": 3495,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:36.496801+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "lm-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-lm-tests.R/rust-workspace",
+              "elapsed_seconds": 11.391532183000095,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:48.139493+00:00",
+              "logs": {
+                "combined.log": "48d219ecb274d2ef387de7d91177c0558ceee37c181943a9ad47438f2d53b226"
+              },
+              "pid": 3507,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:36.746763+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "p-qbeta-strict-tst.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/p-qbeta-strict-tst.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "p-qbeta-strict-tst.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-p-qbeta-strict-tst.R/gnu-workspace",
+              "elapsed_seconds": 0.2650112839999679,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:32.313994+00:00",
+              "logs": {
+                "combined.log": "073222470d496357d6bba60abfa1184c2dd8814cb8afda72c013e5872a93ae70"
+              },
+              "pid": 3271,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:32.029804+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "p-qbeta-strict-tst.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-p-qbeta-strict-tst.R/rust-workspace",
+              "elapsed_seconds": 5.378358393000042,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:51:37.724087+00:00",
+              "logs": {
+                "combined.log": "d75fe31cc327c89a1257e0435cf1d792400de9fb1b8abe3b5c5a381824c0d06d"
+              },
+              "pid": 3283,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:32.344138+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "print-tests.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/print-tests.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "print-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-print-tests.R/gnu-workspace",
+              "elapsed_seconds": 0.26500149299999975,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:57:52.983722+00:00",
+              "logs": {
+                "combined.log": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+              },
+              "pid": 3539,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:52.717687+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "print-tests.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-print-tests.R/rust-workspace",
+              "elapsed_seconds": 8.73479154100005,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:58:01.753358+00:00",
+              "logs": {
+                "combined.log": "1d1a3ab0fce89ae141b7f65b30fd9169e454b4c448807cfc85bac6af4671dd13"
+              },
+              "pid": 3551,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:57:53.017239+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "r-strict-tst.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "359289c65e3a43260ab592bb3686bd45eca0b5cab73a322d515b43e6b4805921",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R",
+              "elapsed_seconds": 0.00434755399999176,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:41.450835+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "b5adf8e209995a9e4ce62bb93eee3e70603d7debd2fe7de3bf1e84de13d67d0e"
+              },
+              "pid": 3320,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:41.445555+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "22c2af8153b66b80db3e936a8eaa261ff709da59626d85558527870bfe5aa1d4",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R",
+              "elapsed_seconds": 0.004171009000003778,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:41.457272+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "afcef27325bf47305fedaa091cdfdf032bf27c571cefa4c6f17fac7a6d3263e1"
+              },
+              "pid": 3324,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:41.452342+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/r-strict-tst.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "r-strict-tst.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R/gnu-workspace",
+              "elapsed_seconds": 0.16470013099996095,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:38.101425+00:00",
+              "logs": {
+                "combined.log": "359289c65e3a43260ab592bb3686bd45eca0b5cab73a322d515b43e6b4805921"
+              },
+              "pid": 3305,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:37.813555+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "r-strict-tst.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-r-strict-tst.R/rust-workspace",
+              "elapsed_seconds": 3.271667659000002,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:41.433976+00:00",
+              "logs": {
+                "combined.log": "22c2af8153b66b80db3e936a8eaa261ff709da59626d85558527870bfe5aa1d4"
+              },
+              "pid": 3317,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:38.127541+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "reg-plot-latin1.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/reg-plot-latin1.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "reg-plot-latin1.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-plot-latin1.R/gnu-workspace",
+              "elapsed_seconds": 0.16474895900000774,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:41.656222+00:00",
+              "logs": {
+                "combined.log": "8623d29fb2f0be27da4bca3b8c6ff36d0cc64d4e7be2e95cc71d20bdcb89486f"
+              },
+              "pid": 3328,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:41.490435+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "reg-plot-latin1.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-plot-latin1.R/rust-workspace",
+              "elapsed_seconds": 5.877704893000043,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:51:47.572248+00:00",
+              "logs": {
+                "combined.log": "3452a03aa0f958f1c259accded590e99fe52b1d6c92eb4e3bbfeda222f181a93"
+              },
+              "pid": 3340,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:41.682301+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1a.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/reg-tests-1a.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "reg-tests-1a.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1a.R/gnu-workspace",
+              "elapsed_seconds": 1.317231917000015,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:58:28.541215+00:00",
+              "logs": {
+                "combined.log": "ed5ab12c0b2ef5c7a32ee6b21adea3b3031833e9af00994e071f89ce9d505530"
+              },
+              "pid": 4275,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:58:27.217604+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "reg-tests-1a.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1a.R/rust-workspace",
+              "elapsed_seconds": 25.781456037999988,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:58:54.343413+00:00",
+              "logs": {
+                "combined.log": "5e32ab1beb2d195df81848b97617f7bfad3b199744d20683db842cd9366a1168"
+              },
+              "pid": 4293,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:58:28.559506+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1b.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/reg-tests-1b.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "reg-tests-1b.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1b.R/gnu-workspace",
+              "elapsed_seconds": 2.1191855749999604,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:58:03.927334+00:00",
+              "logs": {
+                "combined.log": "0f4241557a308d129cca406622fac00ee5b8535a2451bb08150832308db758bf"
+              },
+              "pid": 3553,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:58:01.806909+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "reg-tests-1b.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1b.R/rust-workspace",
+              "elapsed_seconds": 17.455582705999973,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:58:21.418263+00:00",
+              "logs": {
+                "combined.log": "bebaab9e96fd43fbfe371646eac36b813eb74805153e0a3226277e5abd792618"
+              },
+              "pid": 3566,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:58:03.961404+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1c.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/reg-tests-1c.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "reg-tests-1c.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1c.R/gnu-workspace",
+              "elapsed_seconds": 3.17511456699998,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T08:51:50.780147+00:00",
+              "logs": {
+                "combined.log": "48c15407252926e37c90a7cfd47bfe8f2bab2533d3cf94e6b5b8e250f2cf1869"
+              },
+              "pid": 3347,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:47.603514+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "reg-tests-1c.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1c.R/rust-workspace",
+              "elapsed_seconds": 32.284878030000016,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T08:52:23.092312+00:00",
+              "logs": {
+                "combined.log": "a4608efe55c32ec8acc9b19d44b5e736cd2f697bb3f05dc43289aee3752e4bd6"
+              },
+              "pid": 3401,
+              "schema_version": 1,
+              "started_at": "2026-10-06T08:51:50.806389+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1d.R",
+        "detail": "Rust runner exited non-zero",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/reg-tests-1d.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "reg-tests-1d.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1d.R/gnu-workspace",
+              "elapsed_seconds": 5.37848313500001,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:06:27.907514+00:00",
+              "logs": {
+                "combined.log": "6bee3d55377be92c8af1d3026fccaa6c3103f9a2ec2b03dfd1b5a2618967b813"
+              },
+              "pid": 3624,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:06:22.527595+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "reg-tests-1d.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-reg-tests-1d.R/rust-workspace",
+              "elapsed_seconds": 57.01093210700003,
+              "execution_complete": true,
+              "exit_code": 1,
+              "finished_at": "2026-10-06T09:07:24.956910+00:00",
+              "logs": {
+                "combined.log": "432edcdd67b43deaffca184be7a9ba9862bb125ab9362ac282896e469c9fd84b"
+              },
+              "pid": 3637,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:06:27.944602+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      },
+      {
+        "case": "utf8.R",
+        "detail": "Rust output diverged from stock R",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "2c18f600704b43515774628cfb3b10646ec6739ba8cbb77d26f0991d30c4c9dd",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R",
+              "elapsed_seconds": 0.004593495999870356,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:29:51.818431+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "46f1b692bc528a8dbef63ce3e0d5ba8146cf241836e63b80288d7766ce4983e6"
+              },
+              "pid": 3877,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:29:51.812683+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "6b3ce4e967e61200bfa07c5ef621ee9a5e1d634b865563513eaadbb7b3177d16",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R",
+              "elapsed_seconds": 0.004276095000022906,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:29:51.825066+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "430f3fd3619c210cc49372af7a4a02e24bc0e080d0244ced13b3c9e44c034a2b"
+              },
+              "pid": 3881,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:29:51.819843+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/utf8.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "utf8.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R/gnu-workspace",
+              "elapsed_seconds": 10.093773371999987,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:07:39.100099+00:00",
+              "logs": {
+                "combined.log": "2c18f600704b43515774628cfb3b10646ec6739ba8cbb77d26f0991d30c4c9dd"
+              },
+              "pid": 3685,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:07:29.005023+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "utf8.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-utf8.R/rust-workspace",
+              "elapsed_seconds": 1332.64679568,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-06T09:29:51.785239+00:00",
+              "logs": {
+                "combined.log": "6b3ce4e967e61200bfa07c5ef621ee9a5e1d634b865563513eaadbb7b3177d16"
+              },
+              "pid": 3700,
+              "schema_version": 1,
+              "started_at": "2026-10-06T09:07:39.137149+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "fail"
+      }
+    ],
+    "independent_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-independent/summary.json",
+      "bytes": 559324,
+      "sha256": "1b084b332a64f8454c19e69a467831294a5f8a2e10f51525b829473dbeedb094"
+    },
+    "producer_union_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-union/summary.json",
+      "bytes": 559324,
+      "sha256": "1b084b332a64f8454c19e69a467831294a5f8a2e10f51525b829473dbeedb094"
+    },
+    "producer_summaries": [
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-shards/upstream-r-shard-curated-0/summary.json",
+        "bytes": 388954,
+        "sha256": "85ea4cf442f862ee622207aaa28112e937c988fbe827b8783d605d0f1a3ea679"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-shards/upstream-r-shard-whole-0/summary.json",
+        "bytes": 351884,
+        "sha256": "1690c024c60bd6ecafe1455f75cb11579b87ba2b9094f6caaf1bcac3c693dd22"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-shards/upstream-r-shard-whole-1/summary.json",
+        "bytes": 364578,
+        "sha256": "16d716d1f54fd93f91995e20812106aacdd9327ba3cfe4e599520a7486230f11"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-shards/upstream-r-shard-whole-2/summary.json",
+        "bytes": 347843,
+        "sha256": "8c7d177607df308606382aa3676fd153257acb8d7b6e21b1288b408ada8cfe86"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-5483fec6/upstream-shards/upstream-r-shard-whole-3/summary.json",
+        "bytes": 359323,
+        "sha256": "1d8f2c40a153c25860b8b06abde8a3e64a4f648bbfaf0b51476f8ad54d921a3b"
+      }
+    ]
+  },
+  "upstream_by_kind": {
+    "whole": {
+      "skip": 31,
+      "pass": 17,
+      "fail": 22
+    },
+    "curated": {
+      "pass": 15
+    }
+  },
+  "source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+  "run_url": "https://github.com/bernaferrari/R-rust/actions/runs/37438638381",
+  "description": "Complete immutable six-producer conformance and five-producer curated15/whole70 inventories independently rejoined from clean exact5483fec6 checkout. All original failures retained. Compact receipt seals complete raw reports and lists failures; source-file manifests remain in the authenticated raw artifacts.",
+  "randomized_driver": "p-r-random-tests.R passes this checkpoint with independently generated GNU/Rust seeds captured by the harness. Older failures still require same-seed replay; this is not proof of an RNG repair."
+}
