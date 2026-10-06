@@ -33,6 +33,7 @@ use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpVa
 use crate::sexp::output;
 use crate::sexp::session::CancellationToken;
 pub use crate::sexp::session::RetainedValueId;
+pub use crate::sexp::session::TopLevelEvaluationMode;
 
 // ---------------------------------------------------------------------------
 // RSession — per-thread interpreter context
@@ -358,6 +359,13 @@ impl RSession {
 
     pub fn set_capabilities(&mut self, capabilities: crate::sexp::instance::SessionCapabilities) {
         self.core.set_capabilities(capabilities);
+    }
+
+    /// Select console last-value publication or GNU Rscript-style evaluation.
+    /// Script mode preserves user-created `.Last.value` bindings without
+    /// reading or writing them during automatic top-level result handling.
+    pub fn set_top_level_evaluation_mode(&mut self, mode: TopLevelEvaluationMode) {
+        self.core.set_top_level_evaluation_mode(mode);
     }
 
     /// Enable trusted process capabilities for desktop-style hosts. Mobile

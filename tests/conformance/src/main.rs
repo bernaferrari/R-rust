@@ -33,8 +33,15 @@ fn main() {
         }
     };
     session.enable_host_process_capabilities();
+    session.set_top_level_evaluation_mode(rmath::android::TopLevelEvaluationMode::Script);
     if let Some(receipt) = env::var_os("RPORT_RUNTIME_RECEIPT") {
-        if let Err(error) = fs::write(receipt, format!("{:#?}\n", session.runtime_info())) {
+        if let Err(error) = fs::write(
+            receipt,
+            format!(
+                "top_level_evaluation_mode: Script\n{:#?}\n",
+                session.runtime_info()
+            ),
+        ) {
             eprintln!("failed to record initialized runtime policy: {error}");
             std::process::exit(2);
         }

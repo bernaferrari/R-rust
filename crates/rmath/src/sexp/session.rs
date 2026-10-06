@@ -530,6 +530,15 @@ impl Drop for ProtectScope {
     }
 }
 
+/// Whether top-level evaluation publishes the console's `.Last.value`.
+/// Batch scripts preserve existing user bindings, as GNU Rscript does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TopLevelEvaluationMode {
+    #[default]
+    Console,
+    Script,
+}
+
 /// An R interpreter session with its own isolated instance state.
 ///
 /// Each `RSession` owns an [`RInstance`] containing a private arena,
@@ -545,6 +554,7 @@ impl Drop for ProtectScope {
 pub struct RSession {
     /// Whether this session is active.
     active: bool,
+    top_level_evaluation_mode: TopLevelEvaluationMode,
     /// Host values own their physical leases outside the R binding graph.
     retained_values: retained::RetainedValues,
     /// Native projection of the shared interior cell owned below.
@@ -557,6 +567,12 @@ pub struct RSession {
 }
 
 impl RSession {
+    /// Set the policy for subsequent top-level evaluations. Console mode
+    /// publishes `.Last.value`; Script mode preserves user-created bindings.
+    pub fn set_top_level_evaluation_mode(&mut self, mode: TopLevelEvaluationMode) {
+        self.top_level_evaluation_mode = mode;
+    }
+
     /// Bound per-evaluation captured output. `None` preserves the native
     /// unbounded behavior; embedders such as Wasm set a finite limit.
     pub fn set_output_limit(&mut self, max_bytes: Option<usize>) {
@@ -620,6 +636,7 @@ impl RSession {
         // also detaches the thread-local runtime state through normal Drop.
         let session = RSession {
             active: true,
+            top_level_evaluation_mode: TopLevelEvaluationMode::Console,
             retained_values: retained::RetainedValues::default(),
             instance,
             _instance_owner: instance_owner,
@@ -1230,7 +1247,9 @@ impl RSession {
                     result = Err(error);
                     break;
                 }
-                if let Ok(value) = result.as_ref() {
+                if self.top_level_evaluation_mode == TopLevelEvaluationMode::Console
+                    && let Ok(value) = result.as_ref()
+                {
                     if let Err(error) = _toplevel_no_guard
                         .run_checked(|| remember_last_value(value.clone().as_raw()))
                     {
@@ -1430,7 +1449,9 @@ impl RSession {
                     result = Err(error);
                     break;
                 }
-                if let Ok(value) = result.as_ref() {
+                if self.top_level_evaluation_mode == TopLevelEvaluationMode::Console
+                    && let Ok(value) = result.as_ref()
+                {
                     if let Err(error) = _toplevel_no_guard
                         .run_checked(|| remember_last_value(value.clone().as_raw()))
                     {

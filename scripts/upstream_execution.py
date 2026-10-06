@@ -49,6 +49,7 @@ def runtime_configuration(runtime_profile, package_policy):
                   "font": "bundled DejaVu Sans", "output": "owned display list"}
     return {"name": runtime_profile, "cargo_features": features,
             "device": device, "package_policy": package_policy, "numerical_backend": "faer",
+            "top_level_evaluation_mode": "Script",
             "gnu_device_policy": "Rscript default device; driver device calls unchanged"}
 
 
@@ -381,6 +382,7 @@ def publish_report(directory, contract, rows, error=None, finalized=False):
              f"Runtime: **{contract['runtime']['name']}**; features: `{','.join(contract['runtime']['cargo_features'])}`",
              f"Device: `{json.dumps(contract['runtime']['device'], sort_keys=True)}`",
              f"Package policy: **{contract['runtime']['package_policy']}**; numerical backend: **{contract['runtime']['numerical_backend']}**", "",
+             f"Top-level evaluation: **{contract['runtime']['top_level_evaluation_mode']}** (preserve user `.Last.value`)", "",
              "| Case | Status | Detail |", "| --- | --- | --- |"]
     lines.extend(f"| {row['kind']}/{row['case']} | {row['status']} | {row['detail']} |" for row in rows)
     (directory / "summary.md").write_text("\n".join(lines) + "\n")

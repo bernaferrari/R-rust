@@ -175,6 +175,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(graphics["device"]["width"], 504)
         self.assertEqual(graphics["package_policy"], "portable")
         self.assertEqual(graphics["numerical_backend"], "faer")
+        self.assertEqual(graphics["top_level_evaluation_mode"], "Script")
         self.assertIn("renderplot-device", graphics["cargo_features"])
         self.assertIsNone(execution.runtime_configuration("core", "native")["device"])
         for profile, policy in (("missing", "native"), ("core", "missing")):
