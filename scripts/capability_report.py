@@ -44,7 +44,7 @@ integration_local = integration['batch_last_value']
 view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
-complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-5483fec6.json').read_text())
+complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-7691b601.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -149,10 +149,12 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
 The latest independently verified complete inventory is recorded at
-`5483fec6` in the [complete inventory receipt](ci-checkpoints/complete-inventory-5483fec6.json).
+`7691b601` in the [complete inventory receipt](ci-checkpoints/complete-inventory-7691b601.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
 joins them without errors; semantic failures remain failures.
+The official CI aggregation jobs were still queued at capture; the independently
+executed same-source joins authenticate all producer reports and outcomes.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
@@ -408,6 +410,18 @@ final optimized Wasm passes 13 contracts in two fresh sessions and all 60
 original local Chromium tests without changing examples or browser budgets. The real callback
 and collection test passes natively and in a refreshed strict-Miri test image.
 The unchanged whole driver still fails later at explicitly unsupported `C_mtext`.
+
+At `4d492679`, the [BFGS and original ARIMA0 CSS repair](ci-checkpoints/bfgs-arima0-4d492679.json)
+preserves progress through optimizer restarts and raises GNU errors for invalid
+REPORT values and non-finite initial objectives. Explicit fused scalar arithmetic
+matches the pinned oracle's analytic, numerical, compiled, scaled and Hessian
+workflows, including evaluation counts. The unchanged original conformance case
+891 now matches GNU in two fresh production Wasm sessions. All 54 selected native
+public checks, one strict-Miri callback regression, 14 GNU contracts in two fresh
+Wasm sessions, and all 60 original local Chromium tests pass. Compiler/platform
+contraction can change numerical iteration counts elsewhere; this receipt names
+the oracle profile. These later selected passes are not added to the complete
+7691b601 inventory totals. The enclosing whole driver still needs `C_mtext`.
 
 At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
 pass under both constructors in two fresh sessions each, with original GNU output.

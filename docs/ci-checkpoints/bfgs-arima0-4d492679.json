@@ -1,0 +1,161 @@
+{
+  "source_commit": "4d4926790580777c12e9b1ba210e070dd657266d",
+  "description": "BFGS restarts retain the actual no-progress count; invalid REPORT and non-finite initial objectives raise canonical R errors. Scalar fused arithmetic explicitly uses Rust mul_add for consistent native/Wasm rounding and strict Miri support. The original ARIMA0CSS fixture now reaches0,2 instead of false-converged0.0079,2.0033.",
+  "source": {
+    "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/appl/optim.rs",
+    "bytes": 26562,
+    "sha256": "a833cf86412d921b7b80bab47de3b3ae40657a52404566689652165106666d46"
+  },
+  "oracle": {
+    "manifest": {
+      "path": "/Users/bernardoferrari/Downloads/rport/oracle/r-oracle.json",
+      "bytes": 762,
+      "sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679"
+    },
+    "platform": "Pinned GNU executable on darwin/aarch64; scalar vmmin fused instructions independently inspected. Compiler/platform contraction may change iteration counts elsewhere; no universal bit-identical numerical claim.",
+    "public_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/arima0-css-optim-public-contract.R",
+      "bytes": 1803,
+      "sha256": "5309a361150d48c8463449fddb659a03603a4c566161db8e99495ed0829e4d11"
+    },
+    "public_expected": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/arima0-css-optim-public-contract.out",
+      "bytes": 1051,
+      "sha256": "ec47ad1da7b296f6ac484ff3528b053ea773b93d65686c50feb5073601eb7a8e"
+    },
+    "native_callback_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/bfgs-native-callback-oracle.c",
+      "bytes": 803,
+      "sha256": "b847bab55ee4760b1fdccfa1f606c1e94b80d2beff015575644353c7faf9891a"
+    },
+    "native_callback_capture": {
+      "path": "/private/tmp/rport-bfgs-gnu-native-callback-final.log",
+      "bytes": 71,
+      "sha256": "075a79c70f1d5fb241d16fec9138f1e4c5ae075bb29dca1d33387a02f00cf2a5"
+    },
+    "native_callback_result": "0.99999999944204743,0.99999999893888603,6.1151832228143823e-19,99,44,0",
+    "disassembly": {
+      "path": "/private/tmp/rport-gnu-vmmin-disassembly.txt",
+      "bytes": 27317,
+      "sha256": "c605ad9863894b38cbe481f0447ea3bb9a7383bc0f0ed90acec02dd92157cfab"
+    }
+  },
+  "validation": {
+    "native_public": {
+      "passed": 54,
+      "failed": 0,
+      "ignored": 0,
+      "suites": 12,
+      "build_profile": "release",
+      "policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "log": {
+        "path": "/private/tmp/rport-bfgs-public-native-mul-add.log",
+        "bytes": 6629,
+        "sha256": "21e273d46191d36b46244c5de3ef3a962b6923244bff062c3efd3f5de419c1e1"
+      }
+    },
+    "strict_miri": {
+      "passed": 1,
+      "seconds": 53.09,
+      "matched": "appl::optim::tests::bfgs_restarts_preserve_progress_to_the_public_rosenbrock_minimum",
+      "log": {
+        "path": "/private/tmp/rport-bfgs-strict-miri-mul-add.log",
+        "bytes": 4220,
+        "sha256": "cc884e23d152afea71ebb924d2c79c09c965d6d1874943f79a3861a1f9faddb9"
+      }
+    },
+    "production_wasm": {
+      "binary": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/wasm-bfgs-public-final/r_wasm_bg.wasm",
+        "bytes": 25957999,
+        "sha256": "8b459e863e4e8df64ed0f0718b92f2e25fc4faf81c2228a6a7835040cba80717"
+      },
+      "contracts_per_fresh_session": 14,
+      "fresh_sessions": 2,
+      "passed": true,
+      "runner": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/arima0-css-bfgs/check-public-contracts.mjs",
+        "bytes": 1813,
+        "sha256": "9e5fcee7f15be9f5e14a8b2867e630ee049b49e4471b15f4085f371e8ed6eb7c"
+      },
+      "log": {
+        "path": "/private/tmp/rport-bfgs-public-node-final.log",
+        "bytes": 2997,
+        "sha256": "906a9b50b4714b832367bf6f4bee738bfb234ad63eef1d3003c83dd0487d2f0a"
+      }
+    },
+    "unchanged_original_891": {
+      "source": {
+        "path": "/Users/bernardoferrari/Downloads/rport/tests/conformance/cases/891_arima0.R",
+        "bytes": 188,
+        "sha256": "767d7c032533b3d6989ba099cb796d9c0a4674e5aaa8dbf0c37cc620c7ec4b6f"
+      },
+      "gnu_output": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/arima0-css-bfgs/original-891.out",
+        "bytes": 11,
+        "sha256": "acda29a0bef822045c6fa2c8b73387174b9f73bfe04698eb6b534a097548c786"
+      },
+      "runner": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/arima0-css-bfgs/check-original-891.mjs",
+        "bytes": 1279,
+        "sha256": "90d5289d46ff87775baaa9c092fada46d859b7e7e64175333cfa8b3a7b19a5ba"
+      },
+      "fresh_sessions": 2,
+      "passed": true,
+      "log": {
+        "path": "/private/tmp/rport-bfgs-original-891-node.log",
+        "bytes": 267,
+        "sha256": "09b98a64fe075b5991200aeccc843760a28d62b085c6a0f34d58279c84dfa597"
+      }
+    },
+    "original_local_chromium": {
+      "stats": {
+        "startTime": "2026-10-06T11:02:48.069Z",
+        "duration": 277518.717,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "/private/tmp/rport-bfgs-full-browser.json",
+        "bytes": 67428,
+        "sha256": "891bd574dd9f164d5b95739a0a651da19551ef2ec19d0378208b8acf0f0fccd5"
+      },
+      "activity": "No other Cargo/native/Miri/Node CPU validators active. The final upstream artifact download was active at start and finished during this run. Original workloads, assertions and15s runtime/client,20s editor and90s aggregateFFT/RNG budgets unchanged."
+    },
+    "workspace_warnings_denied_clippy": {
+      "passed": true,
+      "log": {
+        "path": "/private/tmp/rport-bfgs-clippy-final.log",
+        "bytes": 962,
+        "sha256": "741b9be82b04e15d4f7caf906e3deabb9cafb5083b5782896bf1f4f2a7336746"
+      }
+    },
+    "fmt": {
+      "passed": true,
+      "log": {
+        "path": "/private/tmp/rport-bfgs-fmt-final.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "diagnosis": {
+    "termination_only_numeric_counts": [
+      118,
+      38
+    ],
+    "gnu_numeric_counts": [
+      120,
+      38
+    ],
+    "first_line_search_rounding_difference": "Objective callback8: GNU7.4240191999990408 vs separately rounded Rust7.4240191999990417; exact high-precision fused expression reproduces GNU.",
+    "retained_callback_parameters": "Independent public saved-parameter probe matches GNU; no ownership-copy refactor made.",
+    "discarded_miri_candidate": "libm aarch64 fma inline assembly is unsupported by Miri; final code uses the same standard mul_add intrinsic on all targets."
+  },
+  "remaining": "Complete inventory counts remain1062PASS119FAIL and whole17PASS22FAIL31SKIP at independently joined7691b601. Selected later original891 passes are not added. Whole reg-tests-1a.R still reaches unsupported C_mtext; full workspace remains incomplete and repeated Linux browser reliability remains open."
+}
