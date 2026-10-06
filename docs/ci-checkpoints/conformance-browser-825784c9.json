@@ -3,7 +3,7 @@
   "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
   "immutable_run": 37488493732,
   "url": "https://github.com/bernaferrari/R-rust/actions/runs/37488493732",
-  "scope": "Completed original1181 conformance and original60 Chromium reports at825; selected native package/workspace jobs have no completed acceptance in this receipt. Later list-growth/repetition repairs are separate commits.",
+  "scope": "Completed original1181 conformance, original60 Chromium and selected Linux public58 package/IO execution at825; full workspace job is cancelled and is not accepted. Later list-growth/repetition repairs are separate commits.",
   "conformance": {
     "status_counts": {
       "pass": 1085,
@@ -924,5 +924,96 @@
       }
     ]
   },
-  "follow_up": "rport-c0hoo tracks exact Linux fresh-session FFT/RNG timeout; rport-jm774 retains full workspace acceptance."
+  "follow_up": "rport-c0hoo tracks exact Linux fresh-session FFT/RNG timeout; rport-jm774 retains full workspace acceptance.",
+  "native_public": {
+    "profile": {
+      "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+      "build_profile": "debug",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 2400,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--test",
+        "embed",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "portable_grdevices_namespace",
+        "--test",
+        "portable_stats_namespace",
+        "--test",
+        "complex_print_contract",
+        "--test",
+        "get_lazy_mode",
+        "--test",
+        "correlation_public_contract",
+        "--test",
+        "palette_public_contract",
+        "--test",
+        "bincode_public_contract",
+        "--test",
+        "arima0_public_contract",
+        "--test",
+        "utils_console_public_contract",
+        "--test",
+        "mapply_public_contract",
+        "--test",
+        "sample_condition_contract",
+        "--test",
+        "rep_len_admission_contract",
+        "--test",
+        "unserialize_connection_contract"
+      ],
+      "cwd": "/home/runner/work/R-rust/R-rust",
+      "elapsed_seconds": 2125.571355624,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T16:09:18.091743+00:00",
+      "logs": {
+        "stderr.log": "b34a92211fe0802a80211849e3d652ae3f36ed1daea8c4582966f9276a3fbe0e",
+        "stdout.log": "46c056246b2c7809655a6073f94420c5ba56fc19ed632a73380415726f11faaa"
+      },
+      "pid": 2485,
+      "schema_version": 1,
+      "started_at": "2026-10-06T15:33:52.513077+00:00",
+      "state": "finished",
+      "timeout_seconds": 2400.0
+    },
+    "passed": 58,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 16,
+    "logs": [
+      {
+        "path": "target/ci-checkpoint-825784c9/public-package/execute/stdout.log",
+        "sha256": "46c056246b2c7809655a6073f94420c5ba56fc19ed632a73380415726f11faaa",
+        "bytes": 8680
+      },
+      {
+        "path": "target/ci-checkpoint-825784c9/public-package/execute/stderr.log",
+        "sha256": "b34a92211fe0802a80211849e3d652ae3f36ed1daea8c4582966f9276a3fbe0e",
+        "bytes": 2565
+      }
+    ]
+  }
 }

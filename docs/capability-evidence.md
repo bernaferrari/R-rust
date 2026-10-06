@@ -93,8 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `189f5515` | 56 | 0 | Original 54 plus sampling/mapply; actual constructors, debug profile |
-| Linux complete Chromium showcase | `189f5515` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `825784c9` | 58 | 0 | Original 54 plus sampling/mapply and repetition/connection IO; actual constructors, debug profile |
+| Linux complete Chromium showcase | `825784c9` | 59 | 1 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -141,7 +141,10 @@ all 1181 accounted for, zero timeouts, and no added failures versus 189. Origina
 fixed-width input error033 and unserialize error082 newly pass. Its Linux Chromium
 report is **59 pass / 1 fail**: both sunflower flows and methods pass; the original
 29-case FFT/RNG aggregate times out at its unchanged 90-second limit. This newer
-failure remains recorded separately from the earlier 60/60 Linux checkpoint.
+failure remains recorded separately from the earlier 60/60 Linux checkpoint. Its
+selected public package producer independently completes 58/58 checks in 16 suites
+with both actual constructor policies and no host Rscript or R_HOME. The full
+workspace job is cancelled and remains outside passing acceptance.
 The latest complete conformance report has forty fewer failures than the reviewed
 checkpoint and four fewer than 711, with no added failures. The 711 union
 reproduced `4d492679`, including its nineteen newly passing cases versus `7691b601`. The upstream runtime
