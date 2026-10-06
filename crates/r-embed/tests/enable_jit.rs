@@ -65,22 +65,32 @@ hot_value <- hot(2L)
 hot_error <- tryCatch({{ serialize(hot, NULL); "" }}, error=function(e) conditionMessage(e))
 hot_is_private_bytecode <- grepl("cannot serialize private bytecode dialect", hot_error, fixed=TRUE)
 
-jit_unknown <- function(x) x
+jit_unknown <- function(x, ...) x
 supported_call <- function(x) {{ {}; jit_unknown(x) }}
 supported_value <- supported_call(7L)
 supported_error <- tryCatch({{ serialize(supported_call, NULL); "" }}, error=function(e) conditionMessage(e))
 supported_is_private_bytecode <- grepl("cannot serialize private bytecode dialect", supported_error, fixed=TRUE)
 
-# Dots forwarding is still rejected by the private compiler. The earlier
-# unknown-function fixture now compiles successfully through OP_CALL.
-unsupported <- function(x, ...) {{ {}; jit_unknown(x, ...) }}
+# Dots forwarding now compiles while retaining unused promises.
+dots_forwarding <- function(x, ...) {{ {}; jit_unknown(x, ...) }}
+dots_value <- dots_forwarding(7L, stop("unused dots were forced"))
+dots_error <- tryCatch({{ serialize(dots_forwarding, NULL); "" }}, error=function(e) conditionMessage(e))
+dots_is_private_bytecode <- grepl("cannot serialize private bytecode dialect", dots_error, fixed=TRUE)
+
+# Computed function heads still use the source evaluator. Keep real failed
+# compilation coverage rather than requiring supported dots to stay source.
+unsupported <- function(x) {{ {}; (jit_unknown)(x) }}
 unsupported_value <- unsupported(7L)
 unsupported_stayed_source <- tryCatch({{ serialize(unsupported, NULL); TRUE }}, error=function(e) FALSE)
 restored <- compiler::enableJIT(original)
 cat(cold_value, cold_source, hot_value, hot_is_private_bytecode,
     supported_value, supported_is_private_bytecode,
-    unsupported_value, unsupported_stayed_source)
+    unsupported_value, unsupported_stayed_source,
+    dots_value, dots_is_private_bytecode)
 "#,
+            std::iter::repeat_n("x + 1L", 60)
+                .collect::<Vec<_>>()
+                .join(";"),
             std::iter::repeat_n("x + 1L", 60)
                 .collect::<Vec<_>>()
                 .join(";"),
@@ -89,7 +99,7 @@ cat(cold_value, cold_source, hot_value, hot_is_private_bytecode,
                 .join(";")
         ))
         .unwrap();
-    assert_eq!(output.trim(), "3 TRUE 3 TRUE 7 TRUE 7 TRUE");
+    assert_eq!(output.trim(), "3 TRUE 3 TRUE 7 TRUE 7 TRUE 7 TRUE");
 }
 
 #[test]

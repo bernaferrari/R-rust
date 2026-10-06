@@ -2733,6 +2733,72 @@ fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
     }
 }
 
+// Public printing emits headers and completed children before calling the
+// next method. A caught error must not discard earlier output or move a
+// method's stderr/message traffic out of its original capture/sink order.
+fn print_list_child(elem: Sexp<'_>, path: &str) {
+    if unsafe { crate::mainutils::coerce::IS_S4_OBJECT(elem.as_raw()) } != 0 {
+        print_value(elem);
+    } else if dispatch_print_method(elem.clone()).is_some() {
+        // The method wrote directly into the caller's capture.
+    } else {
+        match elem.typeof_() {
+            SEXPTYPE::VECSXP
+                if !has_class(elem.clone(), "data.frame")
+                    && !has_class(elem.clone(), "POSIXlt")
+                    && !has_class(elem.clone(), "summary.warnings") =>
+            {
+                print_list_with_path(elem, path)
+            }
+            SEXPTYPE::LISTSXP => print_pairlist_with_path(elem, path),
+            _ => print_value(elem),
+        }
+    }
+}
+
+fn print_list_attributes(x: Sexp<'_>) {
+    let attributes = format_printable_attributes(x);
+    if !attributes.is_empty() {
+        // The last child already emitted the separator before attributes.
+        emit(attributes.strip_prefix('\n').unwrap_or(&attributes));
+        emit("\n");
+    }
+}
+
+fn print_list_with_path(x: Sexp<'_>, path: &str) {
+    if x.len() == 0 {
+        emit(&format!("{}\n", format_list_with_path(x, path)));
+        return;
+    }
+    let names = list_names(x.clone());
+    for (index, elem) in x.clone().iter_vector().enumerate() {
+        let header = format!("{path}{}", list_element_header(index, &names));
+        emit(&format!("{header}\n"));
+        print_list_child(elem, &header);
+        emit("\n");
+    }
+    print_list_attributes(x);
+}
+
+fn print_pairlist_with_path(x: Sexp<'_>, path: &str) {
+    for (index, cell) in crate::sexp::object::PairlistIter::new(x.clone()).enumerate() {
+        let tag = unsafe { printable_attribute_name(cell.as_raw()) };
+        let tag = match tag {
+            Some(name) if !name.is_empty() => list_name_tag(&name),
+            _ => format!("[[{}]]", index + 1),
+        };
+        let header = format!("{path}{tag}");
+        emit(&format!("{header}\n"));
+        if let Some(elem) = cell.car() {
+            print_list_child(elem, &header);
+        } else {
+            emit("NULL\n");
+        }
+        emit("\n");
+    }
+    print_list_attributes(x);
+}
+
 /// Format a value for top-level emission, excluding the caller-owned final
 /// line terminator.
 ///
@@ -2901,7 +2967,7 @@ unsafe fn encode_cstr(p: *const std::os::raw::c_char) -> String {
 fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
     unsafe {
         let width = crate::mainutils::print::get_R_print_data().width;
-        let max = crate::mainutils::options::GetOptionMaxPrint();
+        let max = print_max_cells();
         let gap = crate::mainutils::print::get_R_print_data().gap;
         (width, gap, max as i64)
     }
@@ -2909,7 +2975,10 @@ fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
 
 /// Stock VectorIndex: right-justify "[i]" in `labwidth` columns.
 fn vector_index(i: R_xlen_t, labwidth: usize) -> String {
-    format!("{:>labwidth$}", format!("[{i}]"))
+    let label = format!("[{i}]");
+    // GNU uses a signed %*s padding width. At max=0 its two-column
+    // labwidth is narrower than [1], so the negative width emits one space.
+    format!("{}{}", " ".repeat(labwidth.abs_diff(label.len())), label)
 }
 
 /// The stock type-specific field width `w` (before the gap is added by the
@@ -3528,7 +3597,7 @@ pub fn print_value(x: Sexp<'_>) {
         }
 
         SEXPTYPE::LISTSXP => {
-            emit(&format!("{}\n", format_sexp_top_level(x)));
+            print_pairlist_with_path(x, "");
         }
 
         SEXPTYPE::NILSXP => {
@@ -3697,7 +3766,7 @@ pub fn print_value(x: Sexp<'_>) {
                 }
                 return;
             }
-            emit(&format!("{}\n", format_sexp_top_level(x)));
+            print_list_with_path(x, "");
         }
 
         SEXPTYPE::EXPRSXP => {

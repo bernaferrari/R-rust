@@ -824,11 +824,51 @@ unsafe fn print_s4_data_part(s: SEXP, _data: &R_PrintData) {
     }
 }
 
+struct PrintFormatGuard {
+    owner: crate::sexp::owner::OwnerPin,
+    previous: crate::mainutils::format::RPrint,
+}
+
+impl PrintFormatGuard {
+    unsafe fn new(data: &R_PrintData) -> Self {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+            .expect("print formatting requires a current runtime")
+            .weak_owner()
+            .expect("print formatting requires a managed runtime")
+            .pin()
+            .expect("print formatting requires an active runtime");
+        let previous = unsafe {
+            crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
+                digits: data.digits,
+                scipen: data.scipen,
+                na_width: data.na_width,
+                na_width_noquote: data.na_width_noquote,
+            })
+        };
+        Self { owner, previous }
+    }
+}
+
+impl Drop for PrintFormatGuard {
+    fn drop(&mut self) {
+        unsafe {
+            // Cleanup retains its starting allocation even after revocation.
+            // This primitive field write ends without callbacks or admission
+            // through an ambient owner that may now belong to another session.
+            (*self.owner.as_ptr()).eval_state.format_print = self.previous;
+        }
+    }
+}
+
 /// `do_printdefault` body: S4 with no extra args uses `show()`; extra args
 /// (GNU `useS4=FALSE`) print the data part; non-S4 uses `print_value` so
 /// `capture.output(print(m))` sees the same matrix layout as auto-print.
 unsafe fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
     unsafe {
+        // The shared numeric formatter otherwise reads options("digits").
+        // Scope the admitted print.default parameters across recursive calls,
+        // restoring the previous formatter even when a print method errors.
+        let _format = PrintFormatGuard::new(data);
         if show_s4 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
             PrintObject(x, data);
         } else if IS_S4_OBJECT(x) != 0 {
@@ -2193,6 +2233,45 @@ mod tests {
     use std::ptr;
 
     #[test]
+    fn print_format_cleanup_restores_revoked_original_owner_without_touching_foreign_owner() {
+        let mut original = RSession::new_for_gc_tests();
+        let (guard, observer, weak, previous) = original.with_active(|| {
+            let owner = original.owner_token().unwrap().weak_owner().unwrap();
+            let observer = owner.pin().unwrap();
+            let previous = unsafe { (*observer.as_ptr()).eval_state.format_print };
+            let mut data = R_PRINT_INIT.clone();
+            data.digits = 2;
+            (
+                unsafe { PrintFormatGuard::new(&data) },
+                observer,
+                owner,
+                previous,
+            )
+        });
+        original.close();
+        drop(original);
+        assert_eq!(weak.allocation_strong_count(), 2);
+        assert!(matches!(
+            weak.pin(),
+            Err(crate::sexp::object::SexpError::RootUnavailable)
+        ));
+        let foreign = RSession::new_for_gc_tests();
+        foreign.with_active(|| unsafe {
+            let foreign_owner = foreign.owner_token().unwrap().as_ptr();
+            (*foreign_owner).eval_state.format_print.digits = 11;
+            drop(guard);
+            assert_eq!((*foreign_owner).eval_state.format_print.digits, 11);
+            assert_eq!(
+                (*observer.as_ptr()).eval_state.format_print.digits,
+                previous.digits
+            );
+        });
+        assert_eq!(weak.allocation_strong_count(), 1);
+        drop(observer);
+        assert_eq!(weak.allocation_strong_count(), 0);
+    }
+
+    #[test]
     fn test_do_printdefault_null() {
         unsafe {
             let result = do_printdefault(
@@ -2548,29 +2627,31 @@ mod tests {
     }
 
     #[test]
-    fn test_do_prmatrix_nil() {
-        let _session = RSession::new();
-        unsafe {
+    fn test_do_prmatrix_admitted_matrix() {
+        let mut session = RSession::new();
+        let (arguments, _, _) = session.eval_code_with_output_capture(
+            "as.pairlist(list(matrix(1:4, 2), NULL, NULL, FALSE, TRUE, NULL))",
+        );
+        let arguments = arguments.unwrap().into_owned().unwrap();
+        session.with_active(|| unsafe {
+            let matrix = CAR(arguments.as_raw());
             let result = do_prmatrix(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                R_NilValue(),
-                ptr::null_mut(),
+                arguments.as_raw(),
+                R_GlobalEnv(),
             );
-            assert!(result.is_null());
-        }
+            assert_eq!(result, matrix);
+            assert_eq!(INTEGER_ELT(result, 3), 4);
+        });
     }
 
     #[test]
-    fn test_do_unclass_null() {
-        unsafe {
-            let result = do_unclass(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                R_NilValue(),
-                ptr::null_mut(),
-            );
-            assert!(result.is_null());
-        }
+    fn test_unclass_public_call_preserves_original_class_and_names() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "local({ x <- structure(1:3, class='foo', names=c('a','b','c')); identical(unclass(x), setNames(1:3,c('a','b','c'))) && identical(class(x),'foo') })",
+        );
+        assert_eq!(result.unwrap().logical_elt(0), Some(crate::sexp::TRUE));
     }
 }

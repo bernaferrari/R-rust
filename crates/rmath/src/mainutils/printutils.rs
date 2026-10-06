@@ -800,10 +800,14 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
 /// Compute the display width needed for an index label.
 ///
 /// Returns the number of decimal digits in `n`.
+/// GNU's log10(n + 0.5) convention gives zero columns for zero.
 /// Note: `IndexWidth` is also defined in format.rs (c_int variant).
 /// This version uses R_xlen_t for wider range.
 pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
-    if n <= 0 {
+    if n == 0 {
+        return 0;
+    }
+    if n < 0 {
         return 1;
     }
     (n as f64).log10().floor() as c_int + 1

@@ -1,0 +1,161 @@
+original Date max workflow: 121 
+class: integer max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: integer max: 1 
+[1] 1
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: integer max: 3 
+[1] 1 2 3
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: integer max: 6 
+[1] 1 2 3 4 5 6 7
+class: integer max: 7 
+[1] 1 2 3 4 5 6 7
+class: integer max: 8 
+[1] 1 2 3 4 5 6 7
+option restored after explicit max:
+[1] 1 2 3
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: numeric max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: numeric max: 1 
+[1] 1.5
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: numeric max: 3 
+[1] 1.5  NA Inf
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: numeric max: 6 
+[1]  1.5   NA  Inf -Inf  NaN  2.5  3.5
+class: numeric max: 7 
+[1]  1.5   NA  Inf -Inf  NaN  2.5  3.5
+class: numeric max: 8 
+[1]  1.5   NA  Inf -Inf  NaN  2.5  3.5
+option restored after explicit max:
+[1] 1.5  NA Inf
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: logical max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: logical max: 1 
+[1] TRUE
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: logical max: 3 
+[1]  TRUE FALSE    NA
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: logical max: 6 
+[1]  TRUE FALSE    NA  TRUE FALSE    NA  TRUE
+class: logical max: 7 
+[1]  TRUE FALSE    NA  TRUE FALSE    NA  TRUE
+class: logical max: 8 
+[1]  TRUE FALSE    NA  TRUE FALSE    NA  TRUE
+option restored after explicit max:
+[1]  TRUE FALSE    NA
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: character max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: character max: 1 
+[1] "a"
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: character max: 3 
+[1] "a" "b" NA 
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: character max: 6 
+[1] "a" "b" NA  "d" "e" "f" "g"
+class: character max: 7 
+[1] "a" "b" NA  "d" "e" "f" "g"
+class: character max: 8 
+[1] "a" "b" NA  "d" "e" "f" "g"
+option restored after explicit max:
+[1] "a" "b" NA 
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: complex max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: complex max: 1 
+[1] 1+2i
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: complex max: 3 
+[1] 1+2i   NA 2-3i
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: complex max: 6 
+[1]  1+ 2i     NA  2- 3i  4+ 5i  6- 7i  8+ 9i 10-11i
+class: complex max: 7 
+[1]  1+ 2i     NA  2- 3i  4+ 5i  6- 7i  8+ 9i 10-11i
+class: complex max: 8 
+[1]  1+ 2i     NA  2- 3i  4+ 5i  6- 7i  8+ 9i 10-11i
+option restored after explicit max:
+[1] 1+2i   NA 2-3i
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: raw max: 0 
+ [1]
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: raw max: 1 
+[1] 01
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: raw max: 3 
+[1] 01 02 03
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: raw max: 6 
+[1] 01 02 03 04 05 06 07
+class: raw max: 7 
+[1] 01 02 03 04 05 06 07
+class: raw max: 8 
+[1] 01 02 03 04 05 06 07
+option restored after explicit max:
+[1] 01 02 03
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: integer max: 0 
+
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: integer max: 1 
+a 
+1 
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: integer max: 3 
+a b c 
+1 2 3 
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: integer max: 6 
+a b c d e f g 
+1 2 3 4 5 6 7 
+class: integer max: 7 
+a b c d e f g 
+1 2 3 4 5 6 7 
+class: integer max: 8 
+a b c d e f g 
+1 2 3 4 5 6 7 
+option restored after explicit max:
+a b c 
+1 2 3 
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: Date max: 0 
+character(0)
+ [ reached 'max' / getOption("max.print") -- omitted 7 entries ]
+class: Date max: 1 
+[1] "2012-03-12"
+ [ reached 'max' / getOption("max.print") -- omitted 6 entries ]
+class: Date max: 3 
+[1] "2012-03-12" "2012-03-13" "2012-03-14"
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+class: Date max: 6 
+[1] "2012-03-12" "2012-03-13" "2012-03-14" "2012-03-15" "2012-03-16"
+[6] "2012-03-17"
+ [ reached 'max' / getOption("max.print") -- omitted 1 entries ]
+class: Date max: 7 
+[1] "2012-03-12" "2012-03-13" "2012-03-14" "2012-03-15" "2012-03-16"
+[6] "2012-03-17" "2012-03-18"
+class: Date max: 8 
+[1] "2012-03-12" "2012-03-13" "2012-03-14" "2012-03-15" "2012-03-16"
+[6] "2012-03-17" "2012-03-18"
+option restored after explicit max:
+[1] "2012-03-12" "2012-03-13" "2012-03-14"
+ [ reached 'max' / getOption("max.print") -- omitted 4 entries ]
+direct print.default and compiled forwarding:
+[1] 1 2 3 4 5 6 7
+[1] 1 2 3 4 5 6 7
+[1] "2012-03-12" "2012-03-13" "2012-03-14" "2012-03-15" "2012-03-16"
+[6] "2012-03-17"
+ [ reached 'max' / getOption("max.print") -- omitted 1 entries ]
