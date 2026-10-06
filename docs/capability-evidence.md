@@ -131,12 +131,19 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`189f5515`) | 1083 | 98 | All 1181 accounted for; zero timeouts |
+| Exact-oracle conformance (`825784c9`) | 1085 | 96 | All 1181 accounted for; zero timeouts |
 | Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for |
 | Curated upstream slices | 15 | 0 | All 15 accounted for |
 
-The latest complete conformance report has thirty-eight fewer failures than the
-reviewed checkpoint and two fewer than 711, with no added failures. The 711 union
+The [later conformance/browser receipt](ci-checkpoints/conformance-browser-825784c9.json)
+independently authenticates all six producers at `825784c9`: **1085 pass / 96 fail**,
+all 1181 accounted for, zero timeouts, and no added failures versus 189. Original
+fixed-width input error033 and unserialize error082 newly pass. Its Linux Chromium
+report is **59 pass / 1 fail**: both sunflower flows and methods pass; the original
+29-case FFT/RNG aggregate times out at its unchanged 90-second limit. This newer
+failure remains recorded separately from the earlier 60/60 Linux checkpoint.
+The latest complete conformance report has forty fewer failures than the reviewed
+checkpoint and four fewer than 711, with no added failures. The 711 union
 reproduced `4d492679`, including its nineteen newly passing cases versus `7691b601`. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits

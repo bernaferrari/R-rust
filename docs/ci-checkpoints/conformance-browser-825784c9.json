@@ -1,0 +1,928 @@
+{
+  "schema_version": 1,
+  "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+  "immutable_run": 37488493732,
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37488493732",
+  "scope": "Completed original1181 conformance and original60 Chromium reports at825; selected native package/workspace jobs have no completed acceptance in this receipt. Later list-growth/repetition repairs are separate commits.",
+  "conformance": {
+    "status_counts": {
+      "pass": 1085,
+      "fail": 96,
+      "xfail": 0,
+      "xpass": 0,
+      "skip": 0
+    },
+    "inventory_total": 1181,
+    "total": 1181,
+    "errors": [],
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "timed_out": 0
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-06T15:43:47.444Z",
+      "duration": 558114.8150000001,
+      "expected": 59,
+      "skipped": 0,
+      "unexpected": 1,
+      "flaky": 0
+    },
+    "failures": [
+      {
+        "name": "portable FFT and all formerly gated RNGs match the pinned GNU R oracle",
+        "status": "unexpected",
+        "errors": [
+          {
+            "message": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+          },
+          {
+            "location": {
+              "file": "/home/runner/work/R-rust/R-rust/website/tests/wasm-stats.spec.ts",
+              "column": 31,
+              "line": 10
+            },
+            "message": "Error: page.evaluate: Test timeout of 90000ms exceeded.\n\n   8 |   await page.goto(\"/console/\")\n   9 |   for (const item of fixture.cases) {\n> 10 |     const output = await page.evaluate(async (code) => {\n     |                               ^\n  11 |       // Exercise the shipped worker and actual Wasm module, not a host-side substitute.\n  12 |       const { RRuntime } = await import(\"/src/runtime/r-runtime.ts\")\n  13 |       const runtime = new RRuntime()\n    at /home/runner/work/R-rust/R-rust/website/tests/wasm-stats.spec.ts:10:31"
+          }
+        ]
+      }
+    ],
+    "report": {
+      "path": "target/ci-checkpoint-825784c9/showcase/_temp/showcase-evidence/playwright.json",
+      "bytes": 71145,
+      "sha256": "f010b1cfed9b212f83d00808ed8597a9876f479175de21665067f8b9f6bc224f"
+    },
+    "budgets": "Unchanged runtime15s/client15s/editor20s and original FFT/RNG90s; original29-case fresh-runtime-per-case FFT/RNG aggregate fails. No skips/retries/flaky acceptance."
+  },
+  "changes_from_189": [
+    {
+      "case": "033_read_fwf_empty_widths",
+      "detail": "",
+      "domain": "Error semantics",
+      "kind": "error",
+      "status": "pass",
+      "previous_status": "fail"
+    },
+    {
+      "case": "082_unserialize_non_connection",
+      "detail": "",
+      "domain": "Error semantics",
+      "kind": "error",
+      "status": "pass",
+      "previous_status": "fail"
+    }
+  ],
+  "conformance_failures": [
+    {
+      "case": "1000_plclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1003_plot_stepfun",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1005_heatmap",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1006_rect_hclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1007_qqline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1009_cpgram",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1010_plot_ts",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1012_monthplot_scatter",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1013_interaction_lag_eff",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1015_struct_ts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1016_struct_ts_bsm",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1046_arima_ma2_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1047_arima_ar1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1048_arima_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1049_arima_ma1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1050_arima_ar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1051_arima_ma1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1052_arima_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1053_arima_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1054_arima_ar3_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1056_arima_arma11_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1060_arima_arma12_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1063_arima_arma11_sar1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1064_arima_arma11_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1067_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1068_structts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1069_structts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1070_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1102_str_atomic_preview",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "260_length_replacement",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "284_methods_runtime_registry",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "288_with_calling_handlers",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "293_read_write_char_connections",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "328_date_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "329_posixct_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "331_datetime_c_rep",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "333_difftime_ops",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "381_no_random_seed_loadrds_functions",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "385_no_string_reshape_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "387_no_runtime_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "388_no_print_summary_method_aliases",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "389_no_reflection_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "393_summary_default_vectors",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "432_prop_table_margins",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "492_rep_int_len_helpers",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "523_signif_fprec_edge_matrix",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "537_strptime_posixlt_parity",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "570_loess_contracts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "599_density",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "602_supsmu",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "604_isoreg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "612_smooth_spline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "614_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "617_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "621_ks_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "623_ccf",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "637_diffinv",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "646_D_hyp",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "650_D_atan",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "651_D_gamma",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "652_holtwinters_alpha",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "653_deriv3",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "654_holtwinters_sse",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "656_nlminb",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "657_holtwinters_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "660_armaacf",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "666_holtwinters_x",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "671_is_ts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "689_adist",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "697_bindtextdomain",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "705_localeToCharset",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "710_ISOdate",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "720_as_POSIXct_lt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "724_mean_Date",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "726_trunc_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "727_round_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "731_as_list_Date",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "739_xtfrm_julian_POSIXt",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "757_ansari_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "769_pp_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "774_aregexec",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "793_covratio",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "809_lm_influence",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "820_dummy_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "858_dfbetas",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "863_struct_ts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "864_factanal",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "888_ts_smooth",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "901_ar_burg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "927_loglin",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "929_psmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "930_qsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "961_density_default",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "988_ppr",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "995_rsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "999_arima0_diag",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    }
+  ],
+  "conformance_authentication": {
+    "independent_join_equals_official": true,
+    "source_checkout": "clean detached825784c9",
+    "official": {
+      "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-union/summary.json",
+      "bytes": 200727,
+      "sha256": "3c8a952bd0b56a140770fa24920ae69c35af3872a6a17ba41baa15f4dbdb4a16"
+    },
+    "independent_join": {
+      "path": "target/ci-checkpoint-825784c9/independent-conformance.json",
+      "bytes": 200727,
+      "sha256": "79d7ee53b92cbe74bed992c8321698d8da2b9d4316dc277c8da389ebfe9e6253"
+    },
+    "producers": [
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-0/summary.json",
+          "bytes": 41589,
+          "sha256": "80db2c8175a405594ddcf0b6f7ad57f09332bf2b349c47c66b95ce3b734881a3"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 0,
+            "selected_sha256": "af38a974d8e62258ea0a4b3c3e04d2a5f9cbf6b089d0bef824cde9fa1f670467",
+            "selected_total": 197
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      },
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-1/summary.json",
+          "bytes": 41491,
+          "sha256": "7833c4f4f51e796aed19dd6dc89b221ae106e1916c462cac1b2489a88005e03e"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 1,
+            "selected_sha256": "7bb4905efc2f78859462fe291c1bc074a5438b6f2870ce55fcd3a6990ec7a90d",
+            "selected_total": 197
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      },
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-2/summary.json",
+          "bytes": 41662,
+          "sha256": "8d0dd89e8363d78141c77aa7cb348c12504c849b2baf95d133a4fe4bc886b271"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 2,
+            "selected_sha256": "6e94b57f7c227bc195ee09e22449b7fbe467c2a6e6729142326a8c4bf7008e7f",
+            "selected_total": 197
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      },
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-3/summary.json",
+          "bytes": 41788,
+          "sha256": "e51d12bd98e231a00dd0615903c9c4fcd7a98da89c1396c24439069938b9074e"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 3,
+            "selected_sha256": "985fa651910a555f1e249ae0b75b630e5507aca61e4190e95334f938f736724f",
+            "selected_total": 197
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      },
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-4/summary.json",
+          "bytes": 41656,
+          "sha256": "636160901f13354d1118fe33b8949389794399cb0a57465cb54433031abb68cb"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 4,
+            "selected_sha256": "cc02a30dc036a05d1857ffd73ced9c86b0d274aa9f09cf59ffd5be7c7fc4aaf5",
+            "selected_total": 197
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      },
+      {
+        "report": {
+          "path": "target/ci-checkpoint-825784c9/conformance/exact-oracle-conformance-shard-5/summary.json",
+          "bytes": 41663,
+          "sha256": "77c1f4ee1013a3d47e69e44b876cf566784bfe20310d4d9794fe8db5f162e62d"
+        },
+        "execution": {
+          "build_rustflags": "-Awarnings",
+          "case_timeout_seconds": 300.0,
+          "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+          "engine_major_minor": "4.7",
+          "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+          "pinned_oracle_required": true,
+          "profile": "release",
+          "schema_version": 1,
+          "shard": {
+            "count": 6,
+            "global_inventory_total": 1181,
+            "index": 5,
+            "selected_sha256": "aba91f52c404b1f997e56154f5577cdf34468b3e827bc668ced58aebe0f04480",
+            "selected_total": 196
+          },
+          "source_commit": "825784c94fb3262ff855e12f880671ad227be7bf",
+          "source_sha256": "fc36e6af0bfec47945775363cd29736926aa6232d97d321808d5bfa2b558e0f7",
+          "strict": true
+        }
+      }
+    ]
+  },
+  "follow_up": "rport-c0hoo tracks exact Linux fresh-session FFT/RNG timeout; rport-jm774 retains full workspace acceptance."
+}
