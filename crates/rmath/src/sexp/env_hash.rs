@@ -12,12 +12,24 @@ use super::{
 use hashbrown::{HashMap, HashSet};
 const PROMOTION_THRESHOLD: usize = 100;
 
-#[derive(Default)]
 pub(crate) struct BindingTables {
     // The frame's exact allocation generation is the sole proof identity.
     // Environment markers grant rebuild permission, never graph ownership.
     frames: HashMap<NodeLink, BindingIndex>,
     promoted: HashSet<NodeLink>,
+    // A conservative union of indexed cells and tags. A miss can avoid
+    // scanning every frame when an unrelated fresh list node is initialized.
+    // Stale entries only cost work; failed reservation disables the filter.
+    affected_nodes: Option<HashSet<NodeLink>>,
+}
+impl Default for BindingTables {
+    fn default() -> Self {
+        Self {
+            frames: HashMap::new(),
+            promoted: HashSet::new(),
+            affected_nodes: Some(HashSet::new()),
+        }
+    }
 }
 struct BindingIndex {
     frame: NodeLink,
@@ -121,6 +133,31 @@ impl BindingIndex {
 }
 
 impl BindingTables {
+    fn remember_index_nodes(&mut self, table: &BindingIndex) {
+        let Some(nodes) = &mut self.affected_nodes else {
+            return;
+        };
+        let count = table.members.len().checked_add(table.bindings.len());
+        if count.is_none_or(|count| nodes.try_reserve(count).is_err()) {
+            self.affected_nodes = None;
+            return;
+        }
+        nodes.extend(table.members.iter().copied());
+        nodes.extend(table.bindings.keys().copied());
+    }
+
+    fn remember_prepend(&mut self, cell: &BindingPrepend) {
+        let Some(nodes) = &mut self.affected_nodes else {
+            return;
+        };
+        if nodes.try_reserve(2).is_err() {
+            self.affected_nodes = None;
+            return;
+        }
+        nodes.insert(cell.head);
+        nodes.insert(cell.tag);
+    }
+
     pub(crate) fn invalidate_node(
         &mut self,
         node: NodeLink,
@@ -159,12 +196,20 @@ impl BindingTables {
             && let Some(mut table) = self.frames.remove(&cell.tail)
         {
             if table.prepend(cell) {
+                self.remember_prepend(cell);
                 self.frames.insert(cell.head, table);
             } else {
                 self.frames.insert(cell.tail, table);
             }
         }
         if !chain_changed && !symbol_changed {
+            return;
+        }
+        if self
+            .affected_nodes
+            .as_ref()
+            .is_some_and(|nodes| !nodes.contains(&node))
+        {
             return;
         }
         for table in self.frames.values_mut() {
@@ -195,10 +240,28 @@ impl BindingTables {
                 }
                 None => false,
             });
+        // Rebuild from retained valid proofs, so the optimization cannot keep
+        // a session-long history of dead or invalidated index memberships.
+        let mut nodes = HashSet::new();
+        for table in self.frames.values().filter(|table| table.valid) {
+            if table
+                .members
+                .len()
+                .checked_add(table.bindings.len())
+                .is_none_or(|count| nodes.try_reserve(count).is_err())
+            {
+                self.affected_nodes = None;
+                return;
+            }
+            nodes.extend(table.members.iter().copied());
+            nodes.extend(table.bindings.keys().copied());
+        }
+        self.affected_nodes = Some(nodes);
     }
     pub(crate) fn clear(&mut self) {
         self.frames.clear();
         self.promoted.clear();
+        self.affected_nodes = Some(HashSet::new());
     }
 }
 
@@ -324,6 +387,7 @@ fn binding_lookup(
         let built = build_index(heap, body.frame)?;
         heap.with_binding_tables(|tables| {
             tables.frames.try_reserve(1).ok()?;
+            tables.remember_index_nodes(&built);
             tables.frames.insert(body.frame, built);
             Some(())
         })??;
@@ -1124,6 +1188,13 @@ mod tests {
         for env in [&left, &right] {
             assert_eq!(lookup(env, &later).unwrap().integer_elt(0), Some(42));
         }
+        // A failed filter reservation must retain complete invalidation;
+        // the later full GC rebuild exercises returning to the fast path.
+        session.with_active_in(|instance| unsafe {
+            (*instance).heap_identity.with_binding_tables(|tables| {
+                tables.affected_nodes = None;
+            });
+        });
         unsafe {
             crate::sexp::accessors::SETTAG(tail.as_raw(), first.as_raw());
             crate::sexp::accessors::SET_FRAME(left.as_raw(), tail.as_raw());
