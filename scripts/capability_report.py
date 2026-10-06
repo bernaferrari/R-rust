@@ -137,6 +137,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Linux complete Chromium showcase | `{integration_linux['source_commit'][:8]}` | {integration_linux['stats']['expected']} | {integration_linux['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Complete native package integration | `{view['source_commit'][:8]}` | {view_checks['public_packages']['passed']} | {view_checks['public_packages']['failed']} | Both actual public constructor policies |
 | Local complete Chromium showcase | `{view['source_commit'][:8]}` | {view_checks['chromium_complete']['expected']} | {view_checks['chromium_complete']['unexpected']} | Original 59 plus reset regression; zero skipped or flaky |
+| Linux native package integration | `{view['source_commit'][:8]}` | {view['linux_public_packages']['passed']} | {view['linux_public_packages']['failed']} | Explicit empty and native policy; no host Rscript or R_HOME |
+| Linux complete Chromium showcase | `{view['source_commit'][:8]}` | {view['linux_showcase']['stats']['expected']} | {view['linux_showcase']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `{integration_checks['native_packages_and_data']['source_commit'][:8]}` | {integration_checks['native_packages_and_data']['passed']} | {integration_checks['native_packages_and_data']['failed']} | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `{integration_checks['wasm_datasets']['source_commit'][:8]}` | {integration_checks['wasm_datasets']['passed']} | {integration_checks['wasm_datasets']['failed']} | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -265,8 +267,10 @@ six GNU package contracts twice, all 205 dataset checks and the original six
 plotting workflows twice. Quiet sequential Node measurements reduce the median
 superclass workflow from 10.223 to 7.908 seconds. These results are recorded in
 [native-view evidence](ci-checkpoints/native-view-methods-6ccae790.json). Its
-immutable Linux checkpoint is still running; the latest completed Linux report
-above remains 59 passes and one timeout. The unchanged original time-series
+immutable Linux checkpoint passes all 49 public package checks but records 56
+showcase passes and four failures: the original methods timeout, both sunflower
+flows, and the aggregate FFT/RNG test's 90-second limit. The native-view change
+improves local measured execution but has not resolved Linux browser budgets. The unchanged original time-series
 case 668 also passes strict GNU comparison at `88e1f39b`.
 
 The receipt joins each selected inventory key to actual wrappers, implementation
