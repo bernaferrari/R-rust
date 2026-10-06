@@ -252,7 +252,12 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
                 "polygon" => {
                     draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
                 }
-                "box" | "segments" | "arrows" | "rect" | "abline" => forward_portable(bare, args),
+                "abline" => draw_portable_positional(
+                    "abline",
+                    args,
+                    &["a", "b", "h", "v", "untf", "col", "lty", "lwd"],
+                ),
+                "box" | "segments" | "arrows" | "rect" => forward_portable(bare, args),
                 _ => c_unsupported_graphics(args),
             };
         }

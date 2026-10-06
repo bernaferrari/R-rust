@@ -1,4 +1,4 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 fn render(command: &str) -> Vec<u8> {
     let mut session = RSession::new().unwrap();
@@ -27,5 +27,45 @@ fn nonfinite_abline_coefficients_error_and_session_recovers() {
         let error = session.render_with_dimensions(code, 160, 120).unwrap_err();
         assert!(error.to_string().contains("must be finite"));
         assert_eq!(session.eval("1+1").unwrap().trim(), "[1] 2");
+    }
+}
+
+#[test]
+fn native_abline_horizontal_vertical_and_styles_match_segments_under_both_policies() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        let mut draw = |command: &str| {
+            session.render_with_dimensions(
+                &format!("par(xaxs='i',yaxs='i');plot.new();plot.window(c(1,100),c(1,100),log='xy');{command}"),
+                240,
+                180,
+            ).unwrap()
+        };
+        for (actual, expected) in [
+            (
+                "abline(h=10,col='red',lwd=3,lty=2)",
+                "segments(1,10,100,10,col='red',lwd=3,lty=2)",
+            ),
+            (
+                "abline(v=10,col='blue',lwd=2,lty=3)",
+                "segments(10,1,10,100,col='blue',lwd=2,lty=3)",
+            ),
+        ] {
+            assert_eq!(
+                draw(actual),
+                draw(expected),
+                "{actual}: portable={portable}"
+            );
+        }
+        assert_ne!(
+            draw("abline(h=10,col='red',lwd=3,lty=2)"),
+            draw("abline(h=10)")
+        );
+        session.close();
     }
 }

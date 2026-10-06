@@ -1,0 +1,4 @@
+abline(1,.5,col='red'): NULL=TRUE, visible=FALSE
+abline(1,1,untf=TRUE,col='red'): NULL=TRUE, visible=FALSE
+abline(h=10,col='red',lwd=3,lty=2): NULL=TRUE, visible=FALSE
+abline(v=10,col='blue',lwd=2,lty=3): NULL=TRUE, visible=FALSE

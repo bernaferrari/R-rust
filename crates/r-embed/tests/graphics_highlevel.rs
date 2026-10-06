@@ -127,7 +127,7 @@ fn par_background_and_label_colors_reach_native_pixels() {
 fn barplot_plot_false_returns_bar_centers_and_plotting_works() {
     let mut session = RSession::new().expect("session");
     let result = session
-        .eval("identical(round(barplot(c(2,4,3), plot=FALSE), 10), c(.7,1.9,3.1))")
+        .eval("identical(round(barplot(c(2,4,3), plot=FALSE), 10), matrix(c(.7,1.9,3.1), ncol=1))")
         .expect("barplot");
     assert_eq!(result, "[1] TRUE\n");
     let matrix_positions = session
@@ -138,6 +138,15 @@ fn barplot_plot_false_returns_bar_centers_and_plotting_works() {
         .render_with_dimensions("barplot(c(2,4,3), col='red', main='bars')", 320, 240)
         .expect("barplot render");
     assert!(png.len() > 100, "rendered PNG should contain a plot");
+    let (_, _, pixels) = decode_rgba(&png);
+    let red = pixels
+        .chunks_exact(4)
+        .filter(|p| p[0] > 180 && p[1] < 70 && p[2] < 70 && p[3] > 200)
+        .count();
+    assert!(
+        red > 100,
+        "barplot must draw real red bars: {red} red pixels"
+    );
     let signed = session
         .eval("p <- barplot(c(-2,0,3), names.arg=c('neg','zero','pos'), plot=FALSE); length(p) == 3L && p[1] < p[2] && p[2] < p[3]")
         .expect("signed bars");
