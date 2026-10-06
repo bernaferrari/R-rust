@@ -296,6 +296,55 @@ class InventoryTests(unittest.TestCase):
                  for engine in ("gnu", "rust")]
         self.assertEqual(execution.verdict(row, phases, self.root, norms), ("fail", "normalization harness failure"))
 
+    def test_original_random_seed_survives_workspace_cleanup_and_is_admitted_exactly(self):
+        name = "p-r-random-tests.R"
+        path = self.corpus / "vendor" / name
+        path.write_text("same\n")
+        inventory = self.corpus / "inventory.tsv"
+        inventory.write_text("\n".join(sorted(inventory.read_text().splitlines() + [name + "\t" + execution.file_hash(path)])) + "\n")
+        dispositions = self.corpus / "dispositions.tsv"
+        dispositions.write_text("\n".join(sorted(dispositions.read_text().splitlines() + [name + "\tpass\t-\t-"])) + "\n")
+        for engine, seed in ((self.gnu, 7), (self.rust, 11)):
+            engine.write_text("#!/usr/bin/env python3\nfrom pathlib import Path\n"
+                              + f"Path('p-r-random-tests_seed').write_text('iseed <-\\n{seed}L\\n')\n"
+                              + "print('same')\n")
+        directory, report = self.report("random", "whole")
+        self.assertTrue(report["strict_pass"])
+        common = {key: value for key, value in report["execution"].items()
+                  if key not in {"shard", "normalizer_policy"}}
+        execution.validate_report(self.root, directory, common)
+        case = directory / "cases" / ("whole-" + name)
+        row = next(row for row in report["cases"] if row["case"] == name)
+        for phase, seed in zip(row["phases"], (7, 11)):
+            location = case / phase["engine"]
+            artifact = location / "p-r-random-tests_seed"
+            self.assertEqual(artifact.read_text(), f"iseed <-\n{seed}L\n")
+            self.assertEqual(phase["generated_artifacts"][artifact.name]["sha256"], execution.file_hash(artifact))
+            self.assertFalse((case / (phase["engine"] + "-workspace")).exists())
+        (case / "rust/p-r-random-tests_seed").write_text("iseed <- 13L\n")
+        with self.assertRaisesRegex(ValueError, "seed artifact changed"):
+            execution.validate_report(self.root, directory, common)
+
+    def test_generated_random_seed_is_retained_after_a_semantic_failure(self):
+        name = "p-r-random-tests.R"
+        path = self.corpus / "vendor" / name
+        path.write_text("same\n")
+        inventory = self.corpus / "inventory.tsv"
+        inventory.write_text("\n".join(sorted(inventory.read_text().splitlines() + [name + "\t" + execution.file_hash(path)])) + "\n")
+        dispositions = self.corpus / "dispositions.tsv"
+        dispositions.write_text("\n".join(sorted(dispositions.read_text().splitlines() + [name + "\tpass\t-\t-"])) + "\n")
+        self.rust.write_text("#!/usr/bin/env python3\nfrom pathlib import Path\n"
+                             "Path('p-r-random-tests_seed').write_text('iseed <- 17L\\n')\n"
+                             "print('semantic failure')\nraise SystemExit(1)\n")
+        directory, report = self.report("random-failure", "whole")
+        self.assertTrue(report["execution_complete"])
+        self.assertFalse(report["strict_pass"])
+        row = next(row for row in report["cases"] if row["case"] == name)
+        phase = row["phases"][1]
+        self.assertEqual(phase["process"]["exit_code"], 1)
+        self.assertEqual((directory / "cases" / ("whole-" + name) / "rust/p-r-random-tests_seed").read_text(),
+                         "iseed <- 17L\n")
+
     def test_source_change_after_build_rejects_stale_runner(self):
         contract = self.contract()
         (self.root / "crates/fake/src/lib.rs").write_text("changed\n")

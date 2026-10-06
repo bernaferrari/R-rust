@@ -389,6 +389,22 @@ def publish_report(directory, contract, rows, error=None, finalized=False):
     return report
 
 
+def capture_generated_artifacts(entry, workspace, directory):
+    # The original randomized driver dumps its selected seed before the tests.
+    # Preserve that exact input before removing its isolated working directory.
+    if (entry["kind"], entry["case"]) != ("whole", "p-r-random-tests.R"):
+        return {}
+    name = "p-r-random-tests_seed"
+    source = workspace / name
+    if not source.exists():
+        return {}
+    if source.is_symlink() or not source.is_file() or source.stat().st_size > 4096:
+        raise ValueError("invalid original random-driver seed artifact")
+    data = source.read_bytes()
+    (directory / name).write_bytes(data)
+    return {name: {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}}
+
+
 def execute(root, directory, contract, gnu, rust):
     root, directory = Path(root), Path(directory)
     gnu, rust = Path(gnu).resolve(), Path(rust).resolve()
@@ -412,7 +428,8 @@ def execute(root, directory, contract, gnu, rust):
                         env={**os.environ, "LC_ALL": locale, "LANG": locale, "TZ": "UTC", "SRCDIR": str(workspace),
                              "RPORT_RUNTIME_PACKAGE_POLICY": contract["runtime"]["package_policy"],
                              "RPORT_RUNTIME_RECEIPT": str((case_dir / "runtime-info.txt").resolve())})
-                    phases.append({"engine": engine, "process": process})
+                    generated = capture_generated_artifacts(entry, workspace, case_dir / engine)
+                    phases.append({"engine": engine, "process": process, "generated_artifacts": generated})
                     shutil.rmtree(workspace)
                     if not process["execution_complete"] or process["exit_code"] != 0:
                         break
@@ -534,6 +551,16 @@ def checked_phase(directory, phase):
     receipt = checked_process(directory / engine, phase["process"])
     if set(receipt["logs"]) != {"combined.log"}:
         raise ValueError("core comparison needs exact combined engine logs")
+    for name, metadata in phase.get("generated_artifacts", {}).items():
+        if name != "p-r-random-tests_seed":
+            raise ValueError("unknown generated upstream artifact")
+        path = directory / engine / name
+        if (path.is_symlink() or not path.is_file()
+                or type(metadata.get("bytes")) is not int
+                or not 0 <= metadata["bytes"] <= 4096
+                or path.stat().st_size != metadata["bytes"]
+                or file_hash(path) != metadata.get("sha256")):
+            raise ValueError("original random-driver seed artifact changed")
 
 
 def checked_builds(directory, contract):
@@ -626,6 +653,8 @@ def validate_report(root, directory, expected_common):
         if len(phases) > 2 or len({phase["engine"] for phase in phases}) != len(phases):
             raise ValueError("duplicate or extra engine phase")
         for phase in phases:
+            if phase.get("generated_artifacts") and key != ("whole", "p-r-random-tests.R"):
+                raise ValueError("generated seed artifact belongs to another case")
             checked_phase(location, phase)
             process, engine = phase["process"], phase["engine"]
             command = [artifacts[engine]["original"]] + (["--vanilla"] if engine == "gnu" else []) + [row["case"]]
