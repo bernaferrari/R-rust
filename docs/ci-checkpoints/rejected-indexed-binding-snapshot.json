@@ -1,0 +1,190 @@
+{
+  "status": "rejected_performance_candidate",
+  "base_runtime_source_commit": "9f2f28a6f4aab22f58054021e43e98c92c584b05",
+  "candidate_patch_sha256": "d61240e9c18d129f055e9ffc31b284d42d9828b00fbec34136afc665a40cc404",
+  "description": "Ordinary indexed lookup copied the current binding-cell canonical header and rooted its current value once, retaining the original active-binding cell root across callbacks. Existing semantics/provenance controls passed, but matched original sunflower production timings show no useful improvement, so the candidate runtime change was discarded.",
+  "validation": {
+    "native_environment": {
+      "passed": 50,
+      "failed": 0
+    },
+    "native_index": {
+      "passed": 16,
+      "failed": 0
+    },
+    "strict_miri_ordinary_index": {
+      "passed": 1
+    },
+    "strict_miri_active_binding_collection": {
+      "passed": 1
+    },
+    "wasm_public": {
+      "contracts": 9,
+      "fresh_sessions": 2,
+      "passed": true
+    },
+    "warnings_denied_workspace_clippy": true,
+    "fmt": true
+  },
+  "matched_original_sunflower": {
+    "scope": "Sequential production Node, three fresh sessions each cold/warm, no task CPU validation or artifact downloads active. Same unchanged800x600 source and budgets. These diagnostics are not Linux browser acceptance.",
+    "samples": {
+      "before": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-char-canonical-byte-admission",
+            "wasm_sha256": "ea2211d06da5e7c964bbb908077d220ef435ec6b4e5170a2e94d971072a1bcbc",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1616.77075
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11288.743499999999,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11543.979666999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1378.6549169999998
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 11000.538707999996,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11615.077624999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1410.5671250000014
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 11024.754541000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11519.598208000003,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "sha256": "8d93bff67139fa6e937b7bbca5388e7e0f00cfb5d0464154fc2d805952721455",
+        "medians_ms": {
+          "initialize": 1410.5671250000014,
+          "cold": 11024.754541000002,
+          "warm": 11543.979666999998
+        }
+      },
+      "after": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-indexed-binding-canonical-snapshot",
+            "wasm_sha256": "f3965b1212b76187453ea5d90b633199a56c107ea6835893a1eac1aa5ab5bb18",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1618.692334
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11447.532916,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11582.155917000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1454.000167000002
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 11021.458791999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11458.306375,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1390.3182920000036
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 11180.172374999995,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11550.510791,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "sha256": "e5459cdd5857fbce1c50caf76ede44c5153ee4f7963877ab90e74e8b95dba644",
+        "medians_ms": {
+          "initialize": 1454.000167000002,
+          "cold": 11180.172374999995,
+          "warm": 11550.510791
+        }
+      }
+    },
+    "all_png_bytes": 43864,
+    "all_png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+  },
+  "fixture_repair": {
+    "source_commit": "c3824f42bb0d41dfd5fa1abbe8d820eefa355ab1",
+    "reason": "Broader suite exposed an existing mutation fixture that adds bindings to a locked initialized base namespace. Unchanged baseline reproduces identical rejection. The fixture now uses existing original unlocked shared-base aliases before bootstrap; original mutation/closure/removal/collection assertions retained. Runtime locks unchanged."
+  }
+}
