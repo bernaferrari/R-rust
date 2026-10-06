@@ -3186,6 +3186,15 @@ pub(crate) unsafe fn print_named_vector_stock(
             }
         };
         crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
+        // Names use the unquoted missing label from PrintInit (normally
+        // "<NA>"). The numeric-format settings can have a narrower NA width;
+        // measure against the same label that EncodeString will emit.
+        if (0..n_pr).any(|index| {
+            crate::sexp::accessors::STRING_ELT(names_raw, index)
+                == crate::sexp::globals::R_NaString()
+        }) {
+            wn = wn.max(crate::mainutils::print::get_R_print_data().na_width_noquote);
+        }
         if w < wn {
             w = wn;
         }
@@ -3309,7 +3318,14 @@ pub(crate) unsafe fn format_vector_stock_n(
         };
 
         let mut out = match names_sexp(x.clone()) {
-            Some(names) => print_named_vector_stock(x, names, quote, n_pr),
+            Some(names) => {
+                let title = one_dim_array_title(x.clone());
+                let body = print_named_vector_stock(x, names, quote, n_pr);
+                match title {
+                    Some(title) => format!("{title}\n{body}"),
+                    None => body,
+                }
+            }
             None => print_vector_stock(x, quote, n_pr),
         };
         if n_pr < n {
@@ -3324,6 +3340,36 @@ pub(crate) unsafe fn format_vector_stock_n(
             out.pop();
         }
         out
+    }
+}
+
+/// GNU PrintValueRec passes names(dimnames)[1] as the named-vector title.
+/// An empty title still emits its line; a missing title label prints "NA".
+fn one_dim_array_title(x: Sexp<'_>) -> Option<String> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
+            return None;
+        }
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if dimnames.is_null() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            dimnames,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let names = Sexp::from_raw(names)?;
+        if names.typeof_() != SEXPTYPE::STRSXP || names.len() == 0 {
+            return None;
+        }
+        Some(string_element_text(names, 0)?.unwrap_or_else(|| "NA".to_string()))
     }
 }
 
@@ -3559,7 +3605,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let quote = print_quote_flag()
+                && !has_class(x.clone(), "noquote")
+                && !has_class(x.clone(), "table");
+            let base = unsafe { format_vector_stock(x.clone(), quote) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
@@ -4090,7 +4139,6 @@ pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
 #[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use super::*;
-    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     #[test]
@@ -4364,22 +4412,30 @@ mod tests {
 
     #[test]
     fn test_capture_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        // A bare allocator is not an initialized executable runtime. Keep
+        // both actual session owners alive while targeting their private state.
+        let left_session = RSession::new_for_gc_tests();
+        let left = left_session.with_active(|| {
+            crate::sexp::instance::with_required_current_instance(|instance| instance)
+        });
+        let right_session = RSession::new_for_gc_tests();
+        let right = right_session.with_active(|| {
+            crate::sexp::instance::with_required_current_instance(|instance| instance)
+        });
 
-        start_capture_in(&mut left);
-        capture_stdout_in(&mut left, "left");
-        capture_stderr_in(&mut left, "left err");
-        assert!(is_capturing_in(&mut left));
-        assert!(!is_capturing_in(&mut right));
+        start_capture_in(left);
+        capture_stdout_in(left, "left");
+        capture_stderr_in(left, "left err");
+        assert!(is_capturing_in(left));
+        assert!(!is_capturing_in(right));
 
-        start_capture_in(&mut right);
-        capture_stdout_in(&mut right, "right");
-        let right_output = stop_capture_in(&mut right);
+        start_capture_in(right);
+        capture_stdout_in(right, "right");
+        let right_output = stop_capture_in(right);
         assert_eq!(right_output.stdout, "right");
         assert_eq!(right_output.stderr, "");
 
-        let left_output = stop_capture_in(&mut left);
+        let left_output = stop_capture_in(left);
         assert_eq!(left_output.stdout, "left");
         assert_eq!(left_output.stderr, "left err");
     }

@@ -1,0 +1,47 @@
+before
+
+   a    b <NA> 
+   2    1    1 
+after
+[1] "capture before"  ""                "   a    b <NA> "
+[4] "   2    1    1 " "capture after"  
+
+   a    b <NA> 
+ "2"  "1"  "1" 
+     col
+row   left   right
+  one    . missing
+  two    2       7
+, , c = c1
+
+    b
+a    b1 b2
+  a1  1  3
+  a2  2  4
+
+, , c = c2
+
+    b
+a    b1 b2
+  a1  5  7
+  a2  6  8
+
+< table of extent 0 >
+   low   high 
+  1.23 100.23 
+
+one two 
+  a  bb 
+NA
+one two 
+  a  bb 
+NA
+one two 
+  a  bb 
+title
+one two 
+  a  bb 
+<NA>   NA 
+   1    2 
+custom table callback
+[1] TRUE
