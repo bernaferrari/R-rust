@@ -239,3 +239,13 @@ pass in two fresh sessions, and all 60 local Chromium tests pass on the same
 production runtime. This remains a partial join. The same receipt records
 the enclosing driver failure at unsupported `C_mtext` and the independent ARIMA0
 AR1 CSS coefficient mismatch, rather than treating namespace presence as passing.
+
+The [b5f9f8a5 public-family execution join](ci-checkpoints/repetition-compiled-calls-b5f9f8a5.json)
+links base repetition, vector growth and unserialize, utils fixed-width input, and
+compiler calls to their actual wrappers and execution paths. It records argument
+admission, reflection, typed tails, original compiled expressions, GC and cached
+promise evaluation, together with native/portable and production Wasm targets.
+Six unchanged original cases pass strict pinned GNU comparison; 19 public Wasm
+contracts pass in two fresh sessions and the original Chromium suite passes60/60.
+The independent complete inventory at1d remains1086 pass/95 fail. This partial
+join does not declare all options or unexecuted inventory entries passing.

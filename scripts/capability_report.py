@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-825784c9.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-1d3d8184.json').read_text())
 latest_linux = latest_completed
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
@@ -182,22 +182,35 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`825784c9`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
+| Exact-oracle conformance (`1d3d8184`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
 | Whole upstream drivers | {complete['upstream_by_kind']['whole']['pass']} | {complete['upstream_by_kind']['whole']['fail']} | 31 skipped; all 70 accounted for |
 | Curated upstream slices | {complete['upstream_by_kind']['curated']['pass']} | 0 | All 15 accounted for |
 
-The [later conformance/browser receipt](ci-checkpoints/conformance-browser-825784c9.json)
-independently authenticates all six producers at `825784c9`: **1085 pass / 96 fail**,
-all 1181 accounted for, zero timeouts, and no added failures versus 189. Original
-fixed-width input error033 and unserialize error082 newly pass. Its Linux Chromium
-report is **59 pass / 1 fail**: both sunflower flows and methods pass; the original
-29-case FFT/RNG aggregate times out at its unchanged 90-second limit. This newer
-failure remains recorded separately from the earlier 60/60 Linux checkpoint. Its
-selected public package producer independently completes 58/58 checks in 16 suites
-with both actual constructor policies and no host Rscript or R_HOME. The full
-workspace job is cancelled and remains outside passing acceptance.
-The latest complete conformance report has forty fewer failures than the reviewed
-checkpoint and four fewer than 711, with no added failures. The 711 union
+The [latest conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
+independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
+all 1181 accounted for, zero timeouts, and no added failures versus 825. Original
+list-growth case260 newly passes. Its Linux Chromium report is **60 pass / 0 fail**,
+with zero skipped or flaky results; both sunflower flows, methods and the original
+29-case FFT/RNG aggregate pass under unchanged budgets. Its selected package
+producer completes **58/58 checks in 16 suites** with both actual constructor
+policies and no host Rscript or R_HOME. The full workspace job is cancelled and
+remains outside passing acceptance.
+The earlier [825 receipt](ci-checkpoints/conformance-browser-825784c9.json) retains
+its **1085 pass / 96 fail** conformance result and **59 pass / 1 fail** browser
+result. Its FFT/RNG aggregate timed out at the unchanged 90-second limit. The later
+passing run does not establish that timeout's cause.
+The [public repetition and compiled-call receipt](ci-checkpoints/repetition-compiled-calls-b5f9f8a5.json)
+joins real base closures, vector growth, fixed-width input, connection admission
+and compiler calls to their public wrappers and implementations. All six selected
+unchanged original cases pass strict pinned GNU comparison at `b5f9f8a5`; the
+existing compiler46 and native61 neighboring tests pass. Production Wasm runs
+19 public contracts in two fresh sessions, and the unchanged local Chromium
+suite passes60/60. Compiled calls preserve original conditionCall, sys.call and
+substitute expressions while cached arguments execute once. These selected
+results are separate from the completed1181 inventory; sequential serialization
+streams, full workspace and current Miri acceptance remain unverified.
+The latest complete conformance report has forty-one fewer failures than the
+reviewed checkpoint and five fewer than 711, with no added failures. The 711 union
 reproduced `4d492679`, including its nineteen newly passing cases versus `7691b601`. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits

@@ -1,0 +1,818 @@
+{
+  "schema_version": 1,
+  "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+  "scope": "Selected public repetition/input/serialization function families and compiled-call context; six original strict conformance cases, not a complete1181 inventory. Existing ownership tests retained; no current Miri or complete workspace claim.",
+  "profile": {
+    "numerical_backend": "faer",
+    "native_features": [
+      "rust-backend",
+      "renderplot-device"
+    ],
+    "native_build": "release",
+    "package_policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "browser_limits": {
+      "runtime_seconds": 15,
+      "client_seconds": 15,
+      "editor_seconds": 20,
+      "fft_rng_seconds": 90,
+      "production_wasm_bytes": 26214400
+    }
+  },
+  "wasm": {
+    "path": "target/wasm-repetition-source/r_wasm_bg.wasm",
+    "bytes": 25847629,
+    "sha256": "e49567a1a32fd24bfe20df58e6b525d4c5fc643743f1580c059421a7f4f38ae5"
+  },
+  "checks": [
+    {
+      "id": "repetition-source-and-promise-gnu",
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/rep-len-admission-contract.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.2857488750014454,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:08:18.078110+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "7617c12f392319b3510c6ef95c2b142c6347899edaf80ece68022d0aecd9c235"
+        },
+        "pid": 48366,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:08:17.791716+00:00",
+        "state": "finished",
+        "timeout_seconds": 60.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-and-promise-gnu/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-and-promise-gnu/stdout.log",
+          "bytes": 975,
+          "sha256": "7617c12f392319b3510c6ef95c2b142c6347899edaf80ece68022d0aecd9c235"
+        }
+      ]
+    },
+    {
+      "id": "repetition-source-and-promise-native",
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "rep_len_admission_contract"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 56.31654758390505,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:09:14.397861+00:00",
+        "logs": {
+          "stderr.log": "930f9414db9b12da0a24dfa1b12f282c1693801cb626c4f650b4df6743e980b9",
+          "stdout.log": "bf712c424159c5269a6f3d8587399eef4f52b038e1b990c3cc48634a57011229"
+        },
+        "pid": 48377,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:08:18.080299+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-and-promise-native/stderr.log",
+          "bytes": 504,
+          "sha256": "930f9414db9b12da0a24dfa1b12f282c1693801cb626c4f650b4df6743e980b9"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-and-promise-native/stdout.log",
+          "bytes": 305,
+          "sha256": "bf712c424159c5269a6f3d8587399eef4f52b038e1b990c3cc48634a57011229"
+        }
+      ],
+      "passed": 1,
+      "failed": 0,
+      "suites": 1
+    },
+    {
+      "id": "repetition-source-call-compiler",
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "rmath",
+          "--release",
+          "--lib",
+          "eval::bc_compile"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 79.91613312496338,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:10:34.322340+00:00",
+        "logs": {
+          "stderr.log": "51fc3b16dbea229374bd8623874f3ca94b1a6cba8564c24ca7cb5017afd1381e",
+          "stdout.log": "dc228b53da9f368f91749fb19b046a16918ad36b25af9dc9d8b1e953f244eb91"
+        },
+        "pid": 49591,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:09:14.404556+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-compiler/stderr.log",
+          "bytes": 384,
+          "sha256": "51fc3b16dbea229374bd8623874f3ca94b1a6cba8564c24ca7cb5017afd1381e"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-compiler/stdout.log",
+          "bytes": 5250,
+          "sha256": "dc228b53da9f368f91749fb19b046a16918ad36b25af9dc9d8b1e953f244eb91"
+        }
+      ],
+      "passed": 46,
+      "failed": 0,
+      "suites": 1
+    },
+    {
+      "id": "repetition-source-call-neighbors",
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "serialize_roundtrip"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 114.45730891695712,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:12:28.782602+00:00",
+        "logs": {
+          "stderr.log": "51fff48fe5a48b303f10db5ba6feb4d2b880d302b39ce798480e0ea0339ed2d2",
+          "stdout.log": "ad9ab716a623d35bb3392c1f33d1b209fb703d3efa33615999332f7c4d841b8d"
+        },
+        "pid": 51040,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:10:34.324036+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-neighbors/stderr.log",
+          "bytes": 2165,
+          "sha256": "51fff48fe5a48b303f10db5ba6feb4d2b880d302b39ce798480e0ea0339ed2d2"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-neighbors/stdout.log",
+          "bytes": 5994,
+          "sha256": "ad9ab716a623d35bb3392c1f33d1b209fb703d3efa33615999332f7c4d841b8d"
+        }
+      ],
+      "passed": 61,
+      "failed": 0,
+      "suites": 17
+    },
+    {
+      "id": "repetition-source-call-clippy",
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "clippy",
+          "-p",
+          "rmath",
+          "-p",
+          "r-embed",
+          "-p",
+          "r-wasm",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 29.0808749999851,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:12:57.866054+00:00",
+        "logs": {
+          "stderr.log": "9bbcf0f4c0bafc632d85435e6b0d763d5d2c351110124909193b7d281c40d6d3",
+          "stdout.log": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        },
+        "pid": 54518,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:12:28.784407+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-clippy/stderr.log",
+          "bytes": 477,
+          "sha256": "9bbcf0f4c0bafc632d85435e6b0d763d5d2c351110124909193b7d281c40d6d3"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-clippy/stdout.log",
+          "bytes": 122,
+          "sha256": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        }
+      ]
+    },
+    {
+      "id": "repetition-source-call-fmt",
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 5.01364633301273,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:13:02.882179+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 55196,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:12:57.867880+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-fmt/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-call-fmt/stdout.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "id": "repetition-source-wasm-build",
+      "process": {
+        "command": [
+          "scripts/build_wasm_runtime.sh",
+          "--target",
+          "web",
+          "--release",
+          "--out-dir",
+          "/Users/bernardoferrari/Downloads/rport/target/wasm-repetition-source"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 91.37439841590822,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:15:41.199691+00:00",
+        "logs": {
+          "stderr.log": "05d544ce87273b9043004fc701b8e1d768426a7f8c0cc2822bbe3c44e44669e8",
+          "stdout.log": "c268a642e3b14143940345a86b09e665bbd61b75c97b0ce919882f15c6575467"
+        },
+        "pid": 56777,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:14:09.823260+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-wasm-build/stderr.log",
+          "bytes": 4195,
+          "sha256": "05d544ce87273b9043004fc701b8e1d768426a7f8c0cc2822bbe3c44e44669e8"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-wasm-build/stdout.log",
+          "bytes": 67,
+          "sha256": "c268a642e3b14143940345a86b09e665bbd61b75c97b0ce919882f15c6575467"
+        }
+      ]
+    },
+    {
+      "id": "repetition-source-wasm-public",
+      "process": {
+        "command": [
+          "node",
+          "tests/browser/portable-package-contracts.mjs",
+          "/Users/bernardoferrari/Downloads/rport/target/wasm-repetition-source"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 18.466181375086308,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:17:44.178913+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "1dbcf1ccae5114a90b640e252eef23175521e90b174f476a3552d310a8ce3f3a"
+        },
+        "pid": 60038,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:17:25.711880+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-wasm-public/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-wasm-public/stdout.log",
+          "bytes": 161,
+          "sha256": "1dbcf1ccae5114a90b640e252eef23175521e90b174f476a3552d310a8ce3f3a"
+        }
+      ],
+      "contracts": 19,
+      "fresh_sessions": 2,
+      "passed": 38
+    },
+    {
+      "id": "repetition-source-showcase-prepare",
+      "process": {
+        "command": [
+          "node",
+          "scripts/prepare-runtime.mjs"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 0.12215283303521574,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:17:44.303163+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "c409ab4a58d1726bb0043d426a90588d23ce347a1304b4974d17c76ea48fafe8"
+        },
+        "pid": 60451,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:17:44.180546+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-showcase-prepare/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-showcase-prepare/stdout.log",
+          "bytes": 98,
+          "sha256": "c409ab4a58d1726bb0043d426a90588d23ce347a1304b4974d17c76ea48fafe8"
+        }
+      ]
+    },
+    {
+      "id": "repetition-source-showcase",
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "--workers=1",
+          "--reporter=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 294.0794735419331,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T16:22:38.386563+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "f0f8cf67b05408cf53616fba6e58a4bf63b300ec3d1e27e044bd8c8f9382542f"
+        },
+        "pid": 60454,
+        "schema_version": 1,
+        "started_at": "2026-10-06T16:17:44.304394+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/repetition-source-showcase/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/repetition-source-showcase/stdout.log",
+          "bytes": 67429,
+          "sha256": "f0f8cf67b05408cf53616fba6e58a4bf63b300ec3d1e27e044bd8c8f9382542f"
+        }
+      ],
+      "stats": {
+        "startTime": "2026-10-06T16:17:44.958Z",
+        "duration": 293384.179,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    }
+  ],
+  "selected_original_conformance": [
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/033_read_fwf_empty_widths/summary.json",
+        "bytes": 2967,
+        "sha256": "f7f85abc1f5c6326250d2cfb87c593af937087092487141cd5b2b70906393a07"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 1125,
+          "selected_sha256": "9f4106409aa6de5a78db8bbb6df98929f01670f7697e7e2a7494321cc34af3f1",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "033_read_fwf_empty_widths",
+          "detail": "",
+          "domain": "Error semantics",
+          "kind": "error",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/082_unserialize_non_connection/summary.json",
+        "bytes": 2972,
+        "sha256": "e9b13457cb5f2444f4198cabe3fcee43fd9fc42739ab1873da6375106c41331f"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 1173,
+          "selected_sha256": "364704b2bebf4ca122f8a88ea7b7426f60034bcfc05a2c09651338863bb68857",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "082_unserialize_non_connection",
+          "detail": "",
+          "domain": "Error semantics",
+          "kind": "error",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/260_length_replacement/summary.json",
+        "bytes": 2988,
+        "sha256": "12ffb3a870034fbd03983a4eaa57192d3e130c97f122551ea23efb3148248cea"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 376,
+          "selected_sha256": "3a5fc5954ecb806ae24c3c62b66c2d8a0598eca2622bb7ec0d7b43dc32e6cea6",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "260_length_replacement",
+          "detail": "",
+          "domain": "Vectors, lists, attributes, and objects",
+          "kind": "normal",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/373_read_fwf_width_edges/summary.json",
+        "bytes": 2990,
+        "sha256": "336d44236cf20f11686ad141c0c346f82622c66c06af412679d7ec947ad7f183"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 489,
+          "selected_sha256": "d3cee6d0707b4eec4aebd44671059f93b3fca977542ae75236eb232d4197536c",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "373_read_fwf_width_edges",
+          "detail": "",
+          "domain": "Vectors, lists, attributes, and objects",
+          "kind": "normal",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/492_rep_int_len_helpers/summary.json",
+        "bytes": 2970,
+        "sha256": "8495cb35715d273bc405dd9c68f9f4b4d9f18fc1865626d0082815d8bebe1d0d"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 607,
+          "selected_sha256": "07e99075d3febd323c33feb9828fcd87da83406eab2d579d1ad5253eb5dcb87f",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "492_rep_int_len_helpers",
+          "detail": "",
+          "domain": "Stats, math, and RNG",
+          "kind": "normal",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "target/integration-repair-evidence/repetition-source-original-conformance-b5f9f8a5/494_rep_list_complex/summary.json",
+        "bytes": 2986,
+        "sha256": "b590285efd40c2659fa546bd98c1d3ab7ec74c2408d1d318882a14f6dc686bcb"
+      },
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 609,
+          "selected_sha256": "4212a86b2bc740bb65ee84ae87964494b82b1a52b60a9539fc9169139df249b9",
+          "selected_total": 1
+        },
+        "source_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf",
+        "source_sha256": "73432358e239c0988a7d5a8fe3e45884fdd89ea37809b45272740634878b58ea",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "494_rep_list_complex",
+          "detail": "",
+          "domain": "Vectors, lists, attributes, and objects",
+          "kind": "normal",
+          "status": "pass"
+        }
+      ]
+    }
+  ],
+  "function_workflows": [
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "rep.int",
+          "rep_len"
+        ]
+      },
+      "public_wrapper": "Stock base closures installed in canonical base namespace; actual .Internal dispatch",
+      "implementation": "sexp/init.rs; seq/rep.rs; eval/bc_eval.rs; eval/bc_compile.rs",
+      "tested_options_and_edges": "Reflection through exists/get/formals/body/environment, scalar and vector times, NULL and nonvector admission, negative/fractional/NA lengths, original argument expressions in compiled conditions, sys.call/substitute, handler GC and single evaluation",
+      "execution_checks": [
+        "repetition-source-and-promise-native",
+        "repetition-source-call-neighbors",
+        "repetition-source-wasm-public",
+        "repetition-source-showcase"
+      ],
+      "target_profiles": [
+        "native/default/release",
+        "native/portable-explicit-empty/release",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf"
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "length<-"
+        ]
+      },
+      "public_wrapper": "Public replacement dispatch through essentials::do_length_set",
+      "implementation": "mainutils/essentials/matrix/summary.rs::resize_vector; mainutils/builtin.rs::xlengthgets",
+      "tested_options_and_edges": "Whole original260; list/expression NULL tails and typed character/complex NA tails; empty rep_len sources",
+      "execution_checks": [
+        "repetition-source-and-promise-native",
+        "repetition-source-call-neighbors",
+        "repetition-source-wasm-public",
+        "repetition-source-showcase"
+      ],
+      "target_profiles": [
+        "native/default/release",
+        "native/portable-explicit-empty/release",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf"
+    },
+    {
+      "inventory_key": {
+        "namespace": "utils",
+        "bindings": [
+          "read.fwf"
+        ]
+      },
+      "public_wrapper": "Stock portable utils closure, including GNU-compiled rep_len application",
+      "implementation": "eval/bc_eval.rs CALLBUILTIN implicit error context; seq/rep.rs",
+      "tested_options_and_edges": "Whole original373/error033; empty/negative widths, genuine applied conditionCall, file input and output shape",
+      "execution_checks": [
+        "repetition-source-and-promise-native",
+        "repetition-source-call-neighbors",
+        "repetition-source-wasm-public",
+        "repetition-source-showcase"
+      ],
+      "target_profiles": [
+        "native/default/release",
+        "native/portable-explicit-empty/release",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf"
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "unserialize"
+        ]
+      },
+      "public_wrapper": "Public base internal and connection admission",
+      "implementation": "mainutils/serialize/api.rs; mainutils/connections/state.rs; crates/r-wasm/src/lib.rs",
+      "tested_options_and_edges": "Whole original error082; raw payload, genuine raw/file connections, invalid bare integer/nonconnection; browser-relative tempfile paths. Sequential stream/refhook cursor remains unverified",
+      "execution_checks": [
+        "repetition-source-and-promise-native",
+        "repetition-source-call-neighbors",
+        "repetition-source-wasm-public",
+        "repetition-source-showcase"
+      ],
+      "target_profiles": [
+        "native/default/release",
+        "native/portable-explicit-empty/release",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf"
+    },
+    {
+      "inventory_key": {
+        "namespace": "compiler",
+        "bindings": [
+          "cmpfun"
+        ]
+      },
+      "public_wrapper": "Portable compiler namespace public closure",
+      "implementation": "eval/bc_compile.rs OP_CALL_WITH_SOURCE; eval/bc_eval.rs private_call_owned/eval_source_call",
+      "tested_options_and_edges": "Original arguments in conditionCall/sys.call/substitute; evaluated promise cached once; GC and ownership/promise/namespace regressions in existing46 compiler tests",
+      "execution_checks": [
+        "repetition-source-and-promise-native",
+        "repetition-source-call-neighbors",
+        "repetition-source-wasm-public",
+        "repetition-source-showcase"
+      ],
+      "target_profiles": [
+        "native/default/release",
+        "native/portable-explicit-empty/release",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "b5f9f8a57a2b1172274924722dbe2df619c7d1bf"
+    }
+  ],
+  "limitations": [
+    "Latest completed full inventory1d has1086 pass/95 fail; selected b5 results are not added to that union.",
+    "Complete workspace and LOESS GC-torture acceptance remain unresolved.",
+    "Sequential serialization stream/refhook cursor remains tracked separately.",
+    "Earlier825 FFT/RNG timeout remains a diagnostic gap despite later full60 passing runs."
+  ]
+}
