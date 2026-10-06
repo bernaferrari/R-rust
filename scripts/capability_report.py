@@ -341,7 +341,8 @@ at `9f2f28a6` passes the existing native projection controls, strict Miri and
 nine Wasm public contracts in two fresh sessions. Three sequential production
 Node runs of the unchanged sunflower example reduce median cold execution from
 12.14 to 11.12 seconds and retain byte-identical PNG output. These local timings
-are diagnostic; Linux browser acceptance remains the two failures recorded above.
+are diagnostic; the later Linux `c3824f42` receipt records all 60 browser tests
+passing, including both unchanged sunflower flows.
 
 The [public binning workflow repair](ci-checkpoints/bincode-2920368c.json)
 at `2920368c` connects the original `.bincode` closure through canonical base
@@ -351,6 +352,15 @@ GNU output under both constructor policies and through the actual Wasm facade.
 Forced collection and strict Miri preserve both original converted inputs and the
 result. The complete unchanged `reg-tests-1a.R` driver is still red under explicit
 graphics/native/faer release, now reaching the ARIMA setup order-admission error.
+
+The [original ARIMA0 and print-gap repair](ci-checkpoints/arima0-print-f1dc3091.json)
+at `f1dc3091` admits the original seven-entry model metadata and honors GNU's
+active matrix/vector print gap, including scalar coercion and invalid arguments.
+Seasonal ML/CSS workflows and exact output pass under both constructor policies;
+12 production Wasm public contracts pass in two fresh sessions. Existing STARMA
+20 native controls and the seasonal/regression collection control under strict
+Miri pass. The complete unchanged `reg-tests-1a.R` still fails in the explicit
+release profile, now after these sections at missing `utils::C_flushconsole`.
 
 At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
 pass under both constructors in two fresh sessions each, with original GNU output.
