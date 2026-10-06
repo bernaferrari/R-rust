@@ -12,7 +12,7 @@ import {
   MessageScrollerItem,
   MessageScrollerButton,
 } from "@/components/ui/message-scroller"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   RotateCcw,
@@ -58,7 +58,7 @@ export function RConsole() {
   const [draft, setDraft] = useState("")
   const historyCursor = useRef<number | null>(null)
   const savedDraft = useRef("")
-  const historyCaretFrame = useRef<number | undefined>(undefined)
+  const historyCaret = useRef<{ value: string; position: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const viewport = useRef<HTMLDivElement>(null)
@@ -90,18 +90,20 @@ export function RConsole() {
       ownedUrls.forEach(URL.revokeObjectURL)
     }
   }, [])
-  function cancelHistoryCaret() {
-    if (historyCaretFrame.current !== undefined) {
-      cancelAnimationFrame(historyCaretFrame.current)
-      historyCaretFrame.current = undefined
+  useLayoutEffect(() => {
+    const caret = historyCaret.current
+    historyCaret.current = null
+    const field = input.current
+    if (caret && field?.value === caret.value) {
+      field.setSelectionRange(caret.position, caret.position)
     }
+  }, [draft])
+  function cancelHistoryCaret() {
+    historyCaret.current = null
   }
-  function scheduleHistoryCaret(field: HTMLTextAreaElement, position: number) {
-    cancelHistoryCaret()
-    historyCaretFrame.current = requestAnimationFrame(() => {
-      historyCaretFrame.current = undefined
-      field.setSelectionRange(position, position)
-    })
+  function scheduleHistoryCaret(value: string, position: number) {
+    // Commit selection with the recalled value, before another edit can begin.
+    historyCaret.current = { value, position }
   }
   function restore(code: string) {
     cancelHistoryCaret()
@@ -462,7 +464,7 @@ export function RConsole() {
                   )
                   historyCursor.current = index
                   setDraft(entries[index].code)
-                  scheduleHistoryCaret(field, 0)
+                  scheduleHistoryCaret(entries[index].code, 0)
                   return
                 }
                 if (
@@ -478,7 +480,7 @@ export function RConsole() {
                       ? entries[index].code
                       : savedDraft.current
                   setDraft(value)
-                  scheduleHistoryCaret(field, value.length)
+                  scheduleHistoryCaret(value, value.length)
                   return
                 }
               }
