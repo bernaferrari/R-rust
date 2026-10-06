@@ -290,3 +290,16 @@ two fresh sessions, and all60 local Chromium tests plus nine repeated gallery/ed
 flows pass. Native namespace/interpreter/compiler regressions and Clippy pass.
 This remains a partial join: whole `print-tests.R` and same-source Linux execution
 are pending, and the recorded Node timings are not hard browser deadline proof.
+
+The [640 portable export execution receipt](ci-checkpoints/portable-export-startup-640966a2.json)
+connects `loadNamespace`, `library`, and namespace export lookup to checked typed
+binding in `library/portable_package/owned.rs`, retaining original lazy objects,
+exports and hooks. Both constructor policies pass69 selected Linux public tests
+and both S4 tests;31 production Wasm contracts pass in two fresh sessions.
+All61 Linux Chromium tests pass, including original methods, sunflower and FFT
+flows. The actual public browser reset test checks original namespace, print and
+compiled-dots fixtures and absence of an earlier global marker after worker
+replacement. Local reset repetitions pass three times alongside nine repeated
+original gallery/editor/FFT flows. Explicit-empty browser policy and original
+budgets remain intact. This is a partial execution join: complete640 conformance
+and upstream reports and repeated-Linux deadline reliability are separate.

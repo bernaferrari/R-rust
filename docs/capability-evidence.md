@@ -231,6 +231,21 @@ GNU fixtures preserve original method identity, missing values, row labels,
 lazy forwarded dots and call attribution. Whole-print and Linux results at2288
 remain pending; local timing does not certify Linux deadlines.
 
+The [640 export/startup receipt](ci-checkpoints/portable-export-startup-640966a2.json)
+records checked typed export binding with original lazy databases and hooks.
+Matched three-round measurements reduce median constructor wall time31.7% and
+process CPU28.3% against2288. Linux69 selected native tests and both S4 tests
+pass; the original warm S4 workload takes13.09s and13.18s under its15s limit.
+Production Wasm31 contracts pass in each of two fresh sessions. Linux Chromium
+passes all61 tests with zero failures, skips or flaky results, including the
+original methods, sunflower and FFT flows. Local61 tests and12 additional
+repetitions pass. A new public `RRuntime.reset()` test checks original namespace,
+print and compiled-dots workflows before and after actual worker replacement,
+including clearance of a global marker. Local production was built before
+commit with its exact source fingerprint preserved. This is one complete Linux
+browser run; repeated-Linux deadline reliability and the complete640 inventories
+remain separate from these public-package results.
+
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
 all 1181 accounted for with zero timeouts. Both original cases 538 and 540
