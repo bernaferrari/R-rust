@@ -88,7 +88,7 @@ pub fn R_tmpnam2(prefix: &str, tempdir: &str, fileext: &str) -> Option<String> {
     let prefix = if prefix.is_empty() { "" } else { prefix };
     let fileext = if fileext.is_empty() { "" } else { fileext };
 
-    let pid = std::process::id();
+    let pid = super::platform::process_id();
 
     for _ in 0..100 {
         let r1 = next_tempfile_serial()?;

@@ -29,17 +29,27 @@ const contracts = [
     'stats-namespace-public-contract',
     'get-lazy-mode-public-contract',
     'correlation-public-contract',
+    'palette-public-contract',
+    'tempfile-public-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 
+const temporaryNames = new Set();
 for (let generation = 0; generation < 2; generation++) {
   const session = new WasmRSession();
   try {
     for (const [source, expected] of contracts) {
-      assert.equal(session.eval_checked(readFileSync(source, 'utf8')),
-        readFileSync(expected, 'utf8'), `generation=${generation}, source=${source}`);
+      try {
+        assert.equal(session.eval_checked(readFileSync(source, 'utf8')),
+          readFileSync(expected, 'utf8'), `generation=${generation}, source=${source}`);
+      } catch (error) {
+        throw new Error(`generation=${generation}, source=${source}`, { cause: error });
+      }
       assert.equal(session.eval_checked('1 + 1'), '[1] 2\n');
     }
+    const name = session.eval_checked("tempfile(pattern='rport',fileext='.tmp')");
+    assert.equal(temporaryNames.has(name), false, 'Uncreated names must remain distinct across fresh sessions');
+    temporaryNames.add(name);
     console.log(JSON.stringify({ generation, contracts_passed: contracts.length }));
   } finally {
     session.close();

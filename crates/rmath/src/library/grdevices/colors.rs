@@ -3248,8 +3248,8 @@ unsafe fn name2col(nm: *const c_char) -> rcolor {
                 return entry.code;
             }
         }
-        Rf_error(b"invalid color name\0".as_ptr() as *const c_char);
-        0
+        let name = std::ffi::CStr::from_ptr(nm).to_string_lossy();
+        crate::sexp::context::r_error(format!("invalid color name '{name}'"))
     }
 }
 

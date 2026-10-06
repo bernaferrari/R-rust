@@ -73,6 +73,9 @@ unsafe extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::se
 unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devices::devprev(args) }
 }
+unsafe extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { colors::do_palette(args) }
+}
 unsafe extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { colors::do_palette2(args) }
 }
@@ -144,6 +147,9 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         "PDF" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_pdf,
             crate::mainutils::native_routines::PayloadArity::Fixed(23),
+        )),
+        "palette" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_palette),
         )),
         "palette2" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_palette2),
@@ -230,6 +236,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
         for name in [
             "C_cairoProps",
             "C_PDF",
+            "C_palette",
             "C_palette2",
             "C_devholdflush",
             "C_devAskNewPage",

@@ -2264,19 +2264,22 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
     }
 }
 
+/// Stable process identity for public metadata and temporary names.
+/// Bare Wasm has one virtual process; querying an OS PID there would panic.
+pub(crate) fn process_id() -> u32 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        1
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::process::id()
+    }
+}
+
 /// R's `Sys.getpid()` — get process ID.
 pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::Rf_ScalarInteger;
-        // A browser Wasm module has one virtual process and no OS process ID.
-        // Keep its identity stable across sessions (recordPlot uses it as
-        // metadata); std::process::id() panics on wasm32-unknown-unknown.
-        #[cfg(target_arch = "wasm32")]
-        let pid = 1;
-        #[cfg(not(target_arch = "wasm32"))]
-        let pid = std::process::id() as c_int;
-        Rf_ScalarInteger(pid)
-    }
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(process_id() as c_int) }
 }
 
 /// R's `dir.create()` — create directory/directories.
