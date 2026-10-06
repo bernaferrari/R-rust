@@ -405,6 +405,8 @@ jobs:
 
       - name: Build and budget the production bundle
         working-directory: apps/workbench
+        env:
+          RPORT_WASM_PROFILE_NAMES: ${{ runner.temp }}/showcase-evidence/runtime-profile.wasm
         run: ./gradlew --no-daemon :webApp:checkWasmProductionBundleSize
 
       - name: Verify original portable package contracts in production Wasm
@@ -459,6 +461,15 @@ jobs:
         run: |
           # Bound the complete serial suite; individual R requests keep 15s.
           python3 ../scripts/run_parity_case.py --timeout 1200 --timeout-marker "$RUNNER_TEMP/showcase-evidence/browser.timeout" --combined-log "$RUNNER_TEMP/showcase-evidence/browser.log" -- pnpm test:e2e --reporter=line,json
+      - name: Profile unchanged cold and warm Wasm workflows
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/showcase-evidence/runtime-profile.wasm" && -f "$RPORT_WASM_PKG/rust-runtime-optimization.json" ]]; then
+            node tests/browser/wasm-workflow-profile.mjs "$RPORT_WASM_PKG" "$RUNNER_TEMP/showcase-evidence/cpu-profiles" "$RUNNER_TEMP/showcase-evidence/runtime-profile.wasm" | tee "$RUNNER_TEMP/showcase-evidence/workflow-profile.jsonl"
+          else
+            echo '{"state":"unavailable","reason":"production profile module was not built"}' > "$RUNNER_TEMP/showcase-evidence/workflow-profile.jsonl"
+          fi
       - name: Preserve showcase command and browser evidence
         if: always()
         uses: actions/upload-artifact@v4

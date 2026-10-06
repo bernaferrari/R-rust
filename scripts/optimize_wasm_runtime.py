@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -50,7 +51,37 @@ def binaryen(cache):
     return executable
 
 
-def optimize(package, executable):
+def execution_sections(path):
+    """Exact encoded standard sections; custom names cannot change execution."""
+    data = Path(path).read_bytes()
+    if data[:8] != b"\x00asm\x01\x00\x00\x00":
+        raise ValueError("Invalid Wasm header in profiling module")
+    position = 8
+    result = bytearray(data[:8])
+    while position < len(data):
+        start = position
+        kind = data[position]
+        position += 1
+        length = shift = 0
+        while True:
+            if position >= len(data) or shift > 28:
+                raise ValueError("Invalid Wasm section length")
+            value = data[position]
+            position += 1
+            length |= (value & 127) << shift
+            if not value & 128:
+                break
+            shift += 7
+        end = position + length
+        if end > len(data):
+            raise ValueError("Truncated Wasm profiling section")
+        if kind:
+            result.extend(data[start:end])
+        position = end
+    return bytes(result)
+
+
+def optimize(package, executable, profile_names=None):
     package = Path(package)
     wasm = package / "r_wasm_bg.wasm"
     before = {"bytes": wasm.stat().st_size, "sha256": digest(wasm)}
@@ -61,10 +92,25 @@ def optimize(package, executable):
     if not temporary.stat().st_size:
         raise ValueError("Binaryen produced an empty Wasm module")
     after = {"bytes": temporary.stat().st_size, "sha256": digest(temporary)}
+    names_receipt = None
+    if profile_names is not None:
+        profile_names = Path(profile_names)
+        profile_names.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([str(executable), str(wasm), "-Oz", "-g", "-o", str(profile_names)], check=True)
+        standard = execution_sections(temporary)
+        if execution_sections(profile_names) != standard:
+            raise ValueError("Profiling names changed production Wasm execution sections")
+        names_receipt = {"file": str(profile_names), "bytes": profile_names.stat().st_size,
+                         "sha256": digest(profile_names),
+                         "execution_sections_sha256": hashlib.sha256(standard).hexdigest(),
+                         "arguments": ["-Oz", "-g"],
+                         "scope": "Diagnostic names only; all standard execution sections byte-identical to production"}
     temporary.replace(wasm)
     receipt = {"schema_version": 1, "binaryen_version": VERSION,
                "optimizer_sha256": digest(executable), "arguments": ["-Oz"],
                "feature_policy": "preserve input target_features", "input": before, "output": after}
+    if names_receipt is not None:
+        receipt["profile_names"] = names_receipt
     (package / "rust-runtime-optimization.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(f"Rust Wasm release asset: {before['bytes']} -> {after['bytes']} bytes (Binaryen {VERSION})")
 
@@ -74,7 +120,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
     args = parser.parse_args()
-    optimize(args.package, binaryen(root / "target/task-tools/binaryen-133"))
+    optimize(args.package, binaryen(root / "target/task-tools/binaryen-133"),
+             os.environ.get("RPORT_WASM_PROFILE_NAMES"))
 
 
 if __name__ == "__main__":
