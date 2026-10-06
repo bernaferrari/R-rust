@@ -273,5 +273,20 @@ The [bfca startup receipt](ci-checkpoints/namespace-startup-bfca2d4c.json) links
 native construction per namespace. Both public policies exercise the original
 six-package dimensions, registered lazy methods and full GC. It retains measured
 before/after module hashes, native gates, all60 local browser tests and nine
-unchanged repeated gallery/editor/FFT flows. The immutable Linux run is pending;
-the e640 complete-inventory results remain the current authenticated census.
+unchanged repeated gallery/editor/FFT flows. The independently authenticated
+[bfca Linux receipt](ci-checkpoints/conformance-browser-bfca2d4c.json) records
+68 selected native passes, both S4 passes, 28 production Wasm contracts in two
+sessions and Chromium59/1: only the original FFT90-second deadline fails.
+All1181 conformance cases and85 upstream workloads are accounted for; counts
+remain1089/92 and whole17/22/31 plus curated15/0. Full workspace remains incomplete.
+
+The [2288 print and compiled-dots execution join](ci-checkpoints/base-print-compiled-dots-2288ff7f.json)
+connects the original base print closures, formatting and `compiler::cmpfun`
+to their implementations and complete GNU-captured public workflows. It records
+method/source identity, missing values, row labels, print windows, lazy forwarded
+arguments, tags, missingness, call attribution and collecting callbacks. Both real
+public constructor policies pass; 31 production Wasm contracts pass in each of
+two fresh sessions, and all60 local Chromium tests plus nine repeated gallery/editor/FFT
+flows pass. Native namespace/interpreter/compiler regressions and Clippy pass.
+This remains a partial join: whole `print-tests.R` and same-source Linux execution
+are pending, and the recorded Node timings are not hard browser deadline proof.

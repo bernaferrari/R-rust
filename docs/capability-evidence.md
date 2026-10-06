@@ -93,8 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `e64082fc` | 68 | 0 | Explicit release; separate S4 2 pass / 0 fail |
-| Linux complete Chromium showcase | `e64082fc` | 50 | 10 | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `bfca2d4c` | 68 | 0 | Explicit release; separate S4 2 pass / 0 fail |
+| Linux complete Chromium showcase | `bfca2d4c` | 59 | 1 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -131,9 +131,9 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`e64082fc`) | 1089 | 92 | All 1181 accounted for; zero timeouts |
-| Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for (`e64082fc`) |
-| Curated upstream slices | 15 | 0 | All 15 accounted for (`e64082fc`) |
+| Exact-oracle conformance (`bfca2d4c`) | 1089 | 92 | All 1181 accounted for; zero timeouts |
+| Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for (`bfca2d4c`) |
+| Curated upstream slices | 15 | 0 | All 15 accounted for (`bfca2d4c`) |
 
 The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
@@ -218,8 +218,18 @@ records the measured discarded-copy repair: median initialization4.07s to1.35s,
 The production candidate passes28 contracts in each of two fresh sessions,
 all60 local Chromium cases, and nine repeated gallery/editor/FFT flows under
 unchanged budgets. The artifact was built before commit and a formatting-only
-line wrap; the immutable bfca Linux checkpoint is separately pending. These
-local passes do not supersede e640's complete reports or certify Linux timing.
+line wrap. The independently authenticated
+[bfca Linux checkpoint](ci-checkpoints/conformance-browser-bfca2d4c.json) passes
+68 selected native tests, both S4 checks and28 Wasm contracts in each session.
+Chromium records59/1; all methods and sunflower flows pass, while the unchanged
+FFT90-second deadline remains red. Complete conformance remains1089/92 and
+whole upstream17/22/31 plus curated15/0. Full workspace remains incomplete.
+The [2288 print/compiler receipt](ci-checkpoints/base-print-compiled-dots-2288ff7f.json)
+records69 native public passes,31 production Wasm contracts in two sessions,
+all60 local Chromium cases and nine unchanged repeated flows. Its independent
+GNU fixtures preserve original method identity, missing values, row labels,
+lazy forwarded dots and call attribution. Whole-print and Linux results at2288
+remain pending; local timing does not certify Linux deadlines.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-e64082fc.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-bfca2d4c.json').read_text())
 latest_linux = latest_completed
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
@@ -269,8 +269,18 @@ records the measured discarded-copy repair: median initialization4.07s to1.35s,
 The production candidate passes28 contracts in each of two fresh sessions,
 all60 local Chromium cases, and nine repeated gallery/editor/FFT flows under
 unchanged budgets. The artifact was built before commit and a formatting-only
-line wrap; the immutable bfca Linux checkpoint is separately pending. These
-local passes do not supersede e640's complete reports or certify Linux timing.
+line wrap. The independently authenticated
+[bfca Linux checkpoint](ci-checkpoints/conformance-browser-bfca2d4c.json) passes
+68 selected native tests, both S4 checks and28 Wasm contracts in each session.
+Chromium records59/1; all methods and sunflower flows pass, while the unchanged
+FFT90-second deadline remains red. Complete conformance remains1089/92 and
+whole upstream17/22/31 plus curated15/0. Full workspace remains incomplete.
+The [2288 print/compiler receipt](ci-checkpoints/base-print-compiled-dots-2288ff7f.json)
+records69 native public passes,31 production Wasm contracts in two sessions,
+all60 local Chromium cases and nine unchanged repeated flows. Its independent
+GNU fixtures preserve original method identity, missing values, row labels,
+lazy forwarded dots and call attribution. Whole-print and Linux results at2288
+remain pending; local timing does not certify Linux deadlines.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

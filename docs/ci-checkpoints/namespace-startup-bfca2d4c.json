@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source_commit": "bfca2d4c5c95417b2475c49aefb86333d7a02e68",
-  "scope": "Verified local metadata/startup milestone. Production candidate was built before commit and a subsequent formatting-only line wrap; immutable same-source Linux run37531625229 is pending and independently attributed. No complete-runtime or Linux deadline reliability claim.",
+  "scope": "Verified local metadata/startup milestone. Production candidate was built before commit and a subsequent formatting-only line wrap; immutable same-source Linux37531625229 is complete and independently authenticated in conformance-browser-bfca2d4c.json. No complete-runtime or Linux deadline reliability claim.",
   "problem": "Live portable namespace repair at e640 exposed per-row growth/copy of original S3 metadata, whose result was discarded after registration. Native source loading registered before namespace info existed, leaving its public metadata0x4.",
   "change": "Portable registration retains original captured metadata. Native namespace info exists before registration and metadata is built once for every parsed directive, including unavailable platform bindings; registered method binding/lazy promise behavior unchanged.",
   "public_metadata": {
@@ -439,14 +439,39 @@
     }
   },
   "immutable_linux": {
+    "receipt": "docs/ci-checkpoints/conformance-browser-bfca2d4c.json",
     "run": 37531625229,
-    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37531625229",
-    "status": "in_progress"
+    "selected_native_passed": 68,
+    "separate_s4_passed": 2,
+    "production_contracts_per_session": 28,
+    "fresh_sessions": 2,
+    "chromium": {
+      "passed": 59,
+      "failed": 1,
+      "skipped": 0,
+      "flaky": 0,
+      "remaining_failure": "Original FFT/RNG aggregate90-second deadline"
+    },
+    "complete_conformance": {
+      "passed": 1089,
+      "failed": 92,
+      "total": 1181
+    },
+    "whole_upstream": {
+      "passed": 17,
+      "failed": 22,
+      "skipped": 31
+    },
+    "curated_upstream": {
+      "passed": 15,
+      "failed": 0
+    },
+    "workspace": "Incomplete; cancelled atCI deadline"
   },
   "remaining": [
-    "92 conformance failures and22 whole-driver failures in authenticated e640 inventory",
-    "Linux startup/deadline stability pending source-bound bfca run",
-    "print.function and print.data.frame original base public bindings remain tracked separately",
+    "92 conformance failures and22 whole-driver failures in authenticated bfca inventory",
+    "Linux original FFT/RNG90-second deadline remains red; no reliability claim",
+    "Original base print-method and compiled-dots repairs verified separately at2288 locally; complete same-source Linux results pending",
     "Full workspace cancelled35min; no passing claim"
   ]
 }
