@@ -75,7 +75,10 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             bytes
         } else {
             let file_path = elt_to_string(file_arg, 0);
-            match std::fs::read(&file_path) {
+            let read = crate::library::datasets::file_bytes(&file_path)
+                .map(|bytes| Ok(bytes.to_vec()))
+                .unwrap_or_else(|| std::fs::read(&file_path));
+            match read {
                 Ok(bytes) => bytes,
                 Err(err) => {
                     std::panic::panic_any(RError {

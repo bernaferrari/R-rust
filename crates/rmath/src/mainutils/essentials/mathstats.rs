@@ -13906,6 +13906,10 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             }
 
             let path = CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("").to_string();
+            if crate::library::datasets::path_exists(&path) {
+                SET_STRING_ELT(result, i, elt);
+                continue;
+            }
             match std::fs::canonicalize(&path) {
                 Ok(p) => SET_STRING_ELT(
                     result,

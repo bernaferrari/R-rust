@@ -891,6 +891,21 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
+                if crate::library::datasets::path_exists(path) {
+                    let is_directory = crate::library::datasets::is_directory(path);
+                    *crate::sexp::accessors::REAL(size_col).add(i) =
+                        crate::library::datasets::file_bytes(path)
+                            .map_or(0.0, |bytes| bytes.len() as f64);
+                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
+                        if is_directory { TRUE } else { FALSE };
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) =
+                        if is_directory { 0o555 } else { 0o444 };
+                    *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = FALSE;
+                    continue;
+                }
                 if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                     *crate::sexp::accessors::REAL(size_col).add(i) = info.size as f64;
                     *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = FALSE;
@@ -1182,7 +1197,9 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if crate::mainutils::browser_files::enabled()
+                *pa.add(i) = if crate::library::datasets::is_directory(path) {
+                    TRUE
+                } else if crate::mainutils::browser_files::enabled()
                     || crate::mainutils::browser_files::contains_current(path)
                 {
                     FALSE
@@ -1598,7 +1615,9 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if crate::mainutils::browser_files::contains_current(path) {
+                *pa.add(i) = if crate::library::datasets::path_exists(path)
+                    || crate::mainutils::browser_files::contains_current(path)
+                {
                     TRUE
                 } else if crate::mainutils::browser_files::enabled() {
                     FALSE

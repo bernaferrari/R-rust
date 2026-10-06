@@ -6245,7 +6245,7 @@ pub unsafe fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let mut paths = Vec::new();
         for i in 0..XLENGTH(package_arg) {
             let package = elt_to_string(package_arg, i);
-            let path = find_package_path(&package);
+            let path = public_package_path(&package);
             if !path.is_empty() {
                 paths.push(path);
             }

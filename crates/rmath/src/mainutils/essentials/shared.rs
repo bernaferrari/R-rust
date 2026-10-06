@@ -837,6 +837,17 @@ pub(crate) fn find_package_path(package: &str) -> String {
     })
 }
 
+/// Public package discovery includes the shipped datasets image. Internal
+/// loader decisions continue to distinguish installed and portable storage.
+pub(crate) fn public_package_path(package: &str) -> String {
+    let path = find_package_path(package);
+    if path.is_empty() && package == "datasets" {
+        crate::library::datasets::PACKAGE_DIRECTORY.into()
+    } else {
+        path
+    }
+}
+
 pub(crate) fn package_description_fields(
     package: &str,
 ) -> Result<BTreeMap<String, String>, String> {

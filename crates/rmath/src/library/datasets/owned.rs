@@ -332,11 +332,12 @@ pub(super) fn read_database(
         access.domain().link(&key).map_err(|e| e.to_string())?;
         if file.typeof_() != SEXPTYPE::STRSXP
             || file.len() != 1
-            || file
-                .try_string_value_elt(0)
-                .map_err(|e| e.to_string())?
-                .as_deref()
-                != Some(super::DATABASE)
+            || !matches!(
+                file.try_string_value_elt(0)
+                    .map_err(|e| e.to_string())?
+                    .as_deref(),
+                Some(super::DATABASE) | Some(super::PACKAGE_DATABASE)
+            )
         {
             return Ok(None);
         }

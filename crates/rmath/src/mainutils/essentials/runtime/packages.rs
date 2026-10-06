@@ -255,7 +255,7 @@ pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             if package_name.is_empty() {
                 return attached_package_paths();
             }
-            let path = find_package_path(&package_name);
+            let path = public_package_path(&package_name);
             if path.is_empty() {
                 return R_NilValue();
             }
@@ -264,7 +264,7 @@ pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let mut paths = Vec::new();
         for i in 0..n {
             let package_name = elt_to_string(pkg_arg, i);
-            let path = find_package_path(&package_name);
+            let path = public_package_path(&package_name);
             if !path.is_empty() {
                 paths.push(path);
             }
@@ -280,7 +280,7 @@ unsafe fn attached_package_paths() -> SEXP {
             let Some(package) = label.strip_prefix("package:") else {
                 continue;
             };
-            let path = find_package_path(package);
+            let path = public_package_path(package);
             if !path.is_empty() {
                 paths.push(path);
             }

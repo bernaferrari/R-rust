@@ -9,6 +9,34 @@ mod owned;
 
 pub(crate) const DATABASE: &str = "<builtin:datasets>/data/Rdata.rdb";
 const DIRECTORY: &str = "<builtin:datasets>";
+// A package-shaped public path lets the unchanged GNU utils::data derive the
+// package name with basename(), while existing namespace promises keep their
+// original private database path.
+pub(crate) const PACKAGE_DIRECTORY: &str = "<builtin>/datasets";
+pub(crate) const PACKAGE_DATABASE: &str = "<builtin>/datasets/data/Rdata.rdb";
+
+pub(crate) fn is_directory(path: &str) -> bool {
+    matches!(
+        path,
+        "<builtin>/datasets" | "<builtin>/datasets/data" | "<builtin>/datasets/Meta"
+    )
+}
+
+pub(crate) fn file_bytes(path: &str) -> Option<&'static [u8]> {
+    match path {
+        "<builtin>/datasets/DESCRIPTION" => Some(include_bytes!("assets/DESCRIPTION")),
+        "<builtin>/datasets/NAMESPACE" => Some(include_bytes!("assets/NAMESPACE")),
+        "<builtin>/datasets/Meta/data.rds" => Some(include_bytes!("assets/data-index.rds")),
+        "<builtin>/datasets/data/Rdata.rds" => Some(include_bytes!("assets/Rdata.rds")),
+        "<builtin>/datasets/data/Rdata.rdx" => Some(include_bytes!("assets/Rdata.rdx")),
+        PACKAGE_DATABASE => Some(include_bytes!("assets/Rdata.rdb")),
+        _ => None,
+    }
+}
+
+pub(crate) fn path_exists(path: &str) -> bool {
+    is_directory(path) || file_bytes(path).is_some()
+}
 
 pub(crate) fn namespace() -> Result<Sexp<'static>, String> {
     owned::namespace(current_base()?)
@@ -52,7 +80,8 @@ pub(crate) fn is_database(file: &Sexp<'_>) -> SexpResult<bool> {
     {
         return Ok(false);
     }
-    file.try_string_elt(0)?.try_char_eq(DATABASE.as_bytes())
+    let path = file.try_string_elt(0)?;
+    Ok(path.try_char_eq(DATABASE.as_bytes())? || path.try_char_eq(PACKAGE_DATABASE.as_bytes())?)
 }
 
 pub(crate) fn fetch(

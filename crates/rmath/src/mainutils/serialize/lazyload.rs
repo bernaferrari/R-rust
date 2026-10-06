@@ -87,7 +87,9 @@ pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
                 .expect("exact portable methods database path")
                 .as_raw();
         }
-        if path == std::path::Path::new(crate::library::datasets::DATABASE) {
+        if path == std::path::Path::new(crate::library::datasets::DATABASE)
+            || path == std::path::Path::new(crate::library::datasets::PACKAGE_DATABASE)
+        {
             let result = (|| {
                 let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
                 let file = owner
