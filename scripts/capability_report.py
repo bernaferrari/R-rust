@@ -44,7 +44,7 @@ integration_local = integration['batch_last_value']
 view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
-complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-6ccae790.json').read_text())
+complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-91babc00.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -149,7 +149,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
 The latest independently verified complete inventory is recorded at
-`6ccae790` in the [complete inventory receipt](ci-checkpoints/complete-inventory-6ccae790.json).
+`91babc00` in the [complete inventory receipt](ci-checkpoints/complete-inventory-91babc00.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
 joins them without errors; semantic failures remain failures.
@@ -163,9 +163,12 @@ joins them without errors; semantic failures remain failures.
 This complete conformance report has seventeen fewer failures than the reviewed
 checkpoint (five fewer than the preceding `4cd0f941` union). The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
-completes in 843.691 seconds with a strict output difference. GNU Latin-1 exits
+completes with a strict output difference. GNU Latin-1 exits
 successfully; the Rust native graphics operation still fails. Every outcome and
-producer hash remains in the receipt. Later selected checks are not added to
+producer hash remains in the receipt. The randomized `p-r-random-tests.R` driver
+now fails its Cauchy DKW check; its independently sampled seeds need a matched
+reproduction before assigning a cause. The preceding `6ccae790` checkpoint
+reported 17 whole-driver passes and 22 failures. Later selected checks are not added to
 these totals. The preceding `4cd0f941` complete report had twelve fewer failures
 than the reviewed checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
 case 540 still differs in warning call attribution. Selected checks do not alter
@@ -323,6 +326,13 @@ warm, directly and after a prior plot; evaluation takes 19.0–19.9 seconds.
 The sampled distribution kernels and duplication consume little time; environment
 lookup and character/header/link bookkeeping are the useful next targets.
 These diagnostics preserve the original 15-second evaluation budget.
+
+The focused [canonical character-read repair](ci-checkpoints/character-read-9f2f28a6.json)
+at `9f2f28a6` passes the existing native projection controls, strict Miri and
+nine Wasm public contracts in two fresh sessions. Three sequential production
+Node runs of the unchanged sunflower example reduce median cold execution from
+12.14 to 11.12 seconds and retain byte-identical PNG output. These local timings
+are diagnostic; Linux browser acceptance remains the two failures recorded above.
 
 At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
 pass under both constructors in two fresh sessions each, with original GNU output.

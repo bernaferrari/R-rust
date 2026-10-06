@@ -1,0 +1,215 @@
+{
+  "source_commit": "9f2f28a6f4aab22f58054021e43e98c92c584b05",
+  "description": "CHAR const byte reads admit the original canonical checked node/payload directly without constructing a temporary owning value. No callback or R allocation crosses the const projection. Original caller retention and mutable projection rejection preserved. This focused optimization does not establish Linux browser timeout acceptance.",
+  "production_wasm": {
+    "path": "target/wasm-char-canonical-byte-admission/r_wasm_bg.wasm",
+    "bytes": 25835700,
+    "sha256": "ea2211d06da5e7c964bbb908077d220ef435ec6b4e5170a2e94d971072a1bcbc"
+  },
+  "validation": {
+    "native_projection": {
+      "passed": 35,
+      "ignored": 1,
+      "note": "Existing ignored test retained, not counted as pass."
+    },
+    "strict_miri": {
+      "passed": 1,
+      "test": "sexp::accessors::tests::character_native_reads_are_const_and_mutable_projection_is_rejected",
+      "flags": [
+        "strict-provenance",
+        "symbolic-alignment-check"
+      ]
+    },
+    "wasm_public": {
+      "contracts": 9,
+      "fresh_session_repetitions": 2,
+      "passed": true
+    },
+    "fmt": {
+      "passed": true
+    },
+    "warnings_denied_workspace_clippy": {
+      "passed": true
+    },
+    "logs": {
+      "native_projection": {
+        "path": "/tmp/rport-char-native-projection-controls.log",
+        "sha256": "fe65f0f93ca9a235f41fe5afbd84b727104b4f8fac9403469ef03e6df0f05df0"
+      },
+      "strict_miri": {
+        "path": "/tmp/rport-char-canonical-byte-strict-miri.log",
+        "sha256": "7b20b8cc447b7f82209fd3297ba35f0e0f64479bd04c551602994ac3dc043c64"
+      },
+      "wasm_public": {
+        "path": "/tmp/rport-char-canonical-byte-wasm-public.log",
+        "sha256": "11bbc731f5b51ccfeaed3023c8d3320b11bd6eac9ad061fe192b6162b4148c8b"
+      },
+      "fmt": {
+        "path": "/tmp/rport-char-canonical-byte-final-fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "clippy": {
+        "path": "/tmp/rport-char-canonical-byte-final-clippy.log",
+        "sha256": "f1276e074ac82a95eb5f307ea0cc364a094c102f17936fdb4920b190caaa8cd6"
+      }
+    }
+  },
+  "matched_production_node": {
+    "scope": "Sequential original sunflower800x600, three fresh sessions each cold/warm. Profiling disabled. No task Cargo/native/Miri/browser CPU workloads active; CI artifact-download IO was active. Browser acceptance still uses original15-second client/evaluation budgets.",
+    "baseline_source_commit": "f148143ce17c08abd7a36905ed76df67e481415a",
+    "samples": {
+      "before": {
+        "metadata": {
+          "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-palette-tempfile-contract",
+          "wasm_sha256": "9de73fb87cc2146d3fdb1589de420a2b8e348b621e589e01c6e29e75e476b398",
+          "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+          "node": "v24.21.0",
+          "platform": "darwin",
+          "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+        },
+        "samples": [
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1763.8585
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 12690.308959,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 12665.727666,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1507.0327920000018
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 12114.035458999999,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 12593.441625,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1482.703834
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 12140.915375000004,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 12654.611208000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "raw_log_sha256": "b80116c1d0e8e63d6329df1e4a5762b217792bf0244121e7599baabed2cfecd0",
+        "medians_ms": {
+          "initialize": 1507.0327920000018,
+          "cold": 12140.915375000004,
+          "warm": 12654.611208000002
+        }
+      },
+      "after": {
+        "metadata": {
+          "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-char-canonical-byte-admission",
+          "wasm_sha256": "ea2211d06da5e7c964bbb908077d220ef435ec6b4e5170a2e94d971072a1bcbc",
+          "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+          "node": "v24.21.0",
+          "platform": "darwin",
+          "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+        },
+        "samples": [
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1670.680542
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11323.150334,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11619.400124999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1420.2157499999994
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 11088.485999999997,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11515.864625000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1369.8341250000012
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 11124.721749999997,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11603.185124999996,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "raw_log_sha256": "ff670eda59c86a77a3eca9300e272c1a31d7da776805ba87b3f449a555242c48",
+        "medians_ms": {
+          "initialize": 1420.2157499999994,
+          "cold": 11124.721749999997,
+          "warm": 11603.185124999996
+        }
+      }
+    },
+    "all_png_bytes": 43864,
+    "all_png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+  }
+}
