@@ -199,6 +199,24 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(result["total"], 5)
         self.assertEqual(result["status_counts"], {"pass": 3, "fail": 1, "xfail": 0, "xpass": 0, "skip": 1})
 
+    def test_downloaded_producer_paths_do_not_resolve_against_consumer_filesystem(self):
+        paths = self.reports()
+        original_resolve = Path.resolve
+        producer_selected = str(self.rlib.resolve())
+
+        def consumer_resolve(path, *args, **kwargs):
+            # macOS remaps /home to /System/Volumes/Data/home. A downloaded
+            # Linux producer path must retain its producer-side identity.
+            if str(path) == producer_selected:
+                return Path("/consumer/remapped") / path.name
+            return original_resolve(path, *args, **kwargs)
+
+        with patch.object(Path, "resolve", consumer_resolve):
+            result = self.merge(paths)
+        self.assertTrue(result["execution_complete"], result["errors"])
+        self.assertFalse(result["strict_pass"])
+        self.assertEqual(result["total"], 5)
+
     def test_normalization_is_exact_original_pipeline_including_host_byte_edges(self):
         # This differential test originally failed for the Python translation
         # on Unicode whitespace and embedded NUL; keep the original tools.

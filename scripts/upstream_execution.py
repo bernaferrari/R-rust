@@ -598,7 +598,10 @@ def validate_report(root, directory, expected_common):
     rlib_hash = artifacts["rust_rlib_sha256"]
     if not isinstance(rlib_hash, str) or len(rlib_hash) != 64 or any(c not in "0123456789abcdef" for c in rlib_hash):
         raise ValueError("missing compiled library hash")
-    if str(Path((directory / "library-build/stdout.log").read_text().strip()).resolve()) != artifacts["rust_rlib_original"]:
+    # These are producer-side paths sealed during compilation. Resolving them
+    # on the consumer can follow unrelated mount aliases (macOS /home, for
+    # example) and change the identity of an otherwise exact Cargo receipt.
+    if (directory / "library-build/stdout.log").read_text().strip() != artifacts["rust_rlib_original"]:
         raise ValueError("selected library differs from actual Cargo artifact receipt")
     sealed = json.loads((directory / "library.json").read_text())
     if sealed != sealed_inputs(directory, artifacts["rust_rlib_original"], rlib_hash, contract):
