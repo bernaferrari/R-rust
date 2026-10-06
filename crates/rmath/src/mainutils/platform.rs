@@ -11,7 +11,6 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
-use std::process;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::instance::with_required_current_instance;
@@ -2275,7 +2274,7 @@ pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
         #[cfg(target_arch = "wasm32")]
         let pid = 1;
         #[cfg(not(target_arch = "wasm32"))]
-        let pid = process::id() as c_int;
+        let pid = std::process::id() as c_int;
         Rf_ScalarInteger(pid)
     }
 }

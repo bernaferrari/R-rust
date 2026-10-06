@@ -86,6 +86,8 @@ jobs:
     name: Public package integration
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      RPORT_PACKAGE_REPORT: ${{ runner.temp }}/public-package-checkpoint
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -93,7 +95,7 @@ jobs:
 
       - name: Record immutable package execution profile
         run: |
-          mkdir -p target/public-package-checkpoint
+          mkdir -p "$RPORT_PACKAGE_REPORT"
           python3 - <<'PY'
           import json, os, pathlib, shutil, subprocess
           profile = {
@@ -108,13 +110,13 @@ jobs:
               "timeout_seconds": 1200,
               "scope": "Selected public package tests; separate from complete workspace and conformance results",
           }
-          pathlib.Path("target/public-package-checkpoint/profile.json").write_text(json.dumps(profile, indent=2) + "\n")
+          (pathlib.Path(os.environ["RPORT_PACKAGE_REPORT"]) / "profile.json").write_text(json.dumps(profile, indent=2) + "\n")
           PY
 
       - name: Execute original public package workflows
         run: >-
           python3 scripts/upstream_execution.py process
-          --directory target/public-package-checkpoint/execute
+          --directory "$RPORT_PACKAGE_REPORT/execute"
           --cwd "$PWD" --timeout 1200 --separate-streams --
           scripts/cargo_dev.sh test -p r-embed
           --test embed --test namespace_initialization
@@ -125,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: public-package-checkpoint
-          path: target/public-package-checkpoint
+          path: ${{ env.RPORT_PACKAGE_REPORT }}
           if-no-files-found: error
 
   conformance:
