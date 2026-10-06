@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "source_commit": "a9ef33811aae9460f9497a9f51a1c77d9a641017",
+  "scope": "Focused sampling public workflow and unchanged original two conformance cases. Does not replace complete 1181-case reports or establish full sampling/long-vector compatibility.",
+  "profile": {
+    "native": "release, r-embed defaults with renderplot-device",
+    "package_policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "numerical_backend": "faer",
+    "conformance": "release core-default, pinned GNU required"
+  },
+  "public": {
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "sample_condition_contract"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 4.507577916025184,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T14:19:25.194814+00:00",
+      "logs": {
+        "stderr.log": "bbd314a13313fefd680fc2c37d04604d850850f3f236c5f9f4313fd807f6addd",
+        "stdout.log": "6888a5cc91d6b794d98ec26165eed991792b49ce0b1f0004a42d8d48a9ea5366"
+      },
+      "pid": 21194,
+      "schema_version": 1,
+      "started_at": "2026-10-06T14:19:20.686449+00:00",
+      "state": "finished",
+      "timeout_seconds": 180.0
+    },
+    "logs": [
+      {
+        "path": "target/integration-repair-evidence/sample-condition-final/stderr.log",
+        "bytes": 421,
+        "sha256": "bbd314a13313fefd680fc2c37d04604d850850f3f236c5f9f4313fd807f6addd"
+      },
+      {
+        "path": "target/integration-repair-evidence/sample-condition-final/stdout.log",
+        "bytes": 313,
+        "sha256": "6888a5cc91d6b794d98ec26165eed991792b49ce0b1f0004a42d8d48a9ea5366"
+      }
+    ]
+  },
+  "package_neighbors": {
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "embed",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "portable_stats_namespace",
+        "--test",
+        "portable_grdevices_namespace",
+        "--test",
+        "arima0_public_contract",
+        "--test",
+        "bincode_public_contract",
+        "--test",
+        "complex_print_contract",
+        "--test",
+        "correlation_public_contract",
+        "--test",
+        "get_lazy_mode",
+        "--test",
+        "palette_public_contract",
+        "--test",
+        "utils_console_public_contract",
+        "--test",
+        "mapply_public_contract"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 95.4455713329371,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T14:24:07.479014+00:00",
+      "logs": {
+        "stderr.log": "ea782ad03362818291f359dbb5a4897389664a6019e7ae23f403f09f85c3e18f",
+        "stdout.log": "36c8fd0f763563b0f97f44026ca2958dac7c3eafe9e389bd7f671556b2840ffd"
+      },
+      "pid": 24314,
+      "schema_version": 1,
+      "started_at": "2026-10-06T14:22:32.031880+00:00",
+      "state": "finished",
+      "timeout_seconds": 600.0
+    },
+    "logs": [
+      {
+        "path": "target/integration-repair-evidence/sample-package-regressions/stderr.log",
+        "bytes": 1711,
+        "sha256": "ea782ad03362818291f359dbb5a4897389664a6019e7ae23f403f09f85c3e18f"
+      },
+      {
+        "path": "target/integration-repair-evidence/sample-package-regressions/stdout.log",
+        "bytes": 5135,
+        "sha256": "36c8fd0f763563b0f97f44026ca2958dac7c3eafe9e389bd7f671556b2840ffd"
+      }
+    ]
+  },
+  "original_conformance": [
+    {
+      "case": "024_sample_int_too_large",
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 1116,
+          "selected_sha256": "c680a8afcb4e69c67fef1c3b23451c994b90a059278d25b493cca79b2fd4b363",
+          "selected_total": 1
+        },
+        "source_commit": "a9ef33811aae9460f9497a9f51a1c77d9a641017",
+        "source_sha256": "8021588acd807fc753fdbb8172177287561fdcd99a355028500fd8f2c27b70b9",
+        "strict": true
+      },
+      "passed": 1,
+      "failed": 0,
+      "summary": {
+        "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/024_sample_int_too_large/summary.json",
+        "bytes": 2966,
+        "sha256": "9ba7af05a3d5ea27b7e18b2f40bf9e6066ae9dd9264a606e930e327029b22b3e"
+      },
+      "process": {
+        "process": {
+          "command": [
+            "scripts/conformance_parity.sh",
+            "--strict",
+            "--check",
+            "--shard-index",
+            "1116",
+            "--shard-count",
+            "1181",
+            "--report",
+            "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/sample-original-conformance-a9ef3381/024_sample_int_too_large"
+          ],
+          "cwd": "/Users/bernardoferrari/.codex/worktrees/checkpoint-d339e355/rport",
+          "elapsed_seconds": 44.97524874994997,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-06T14:37:34.745124+00:00",
+          "logs": {
+            "stderr.log": "24621fdf8b589d5fc04dc57e2e43fe5f7a7b1df06a9fce9e08ae637c8898859f",
+            "stdout.log": "ab4c9a550c51140cefa5ac917ee755affcc8397cbbeaab3f883f3920c9778d43"
+          },
+          "pid": 39668,
+          "schema_version": 1,
+          "started_at": "2026-10-06T14:36:49.768957+00:00",
+          "state": "finished",
+          "timeout_seconds": 1200.0
+        },
+        "logs": [
+          {
+            "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/024_sample_int_too_large-process/stderr.log",
+            "bytes": 391,
+            "sha256": "24621fdf8b589d5fc04dc57e2e43fe5f7a7b1df06a9fce9e08ae637c8898859f"
+          },
+          {
+            "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/024_sample_int_too_large-process/stdout.log",
+            "bytes": 657,
+            "sha256": "ab4c9a550c51140cefa5ac917ee755affcc8397cbbeaab3f883f3920c9778d43"
+          }
+        ]
+      }
+    },
+    {
+      "case": "026_sample_prob_too_few_positive",
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 1118,
+          "selected_sha256": "172d87bc003341acfbe9aaa95ef527c07fa098a38e78c7fda1a45d45a0a567ce",
+          "selected_total": 1
+        },
+        "source_commit": "a9ef33811aae9460f9497a9f51a1c77d9a641017",
+        "source_sha256": "8021588acd807fc753fdbb8172177287561fdcd99a355028500fd8f2c27b70b9",
+        "strict": true
+      },
+      "passed": 1,
+      "failed": 0,
+      "summary": {
+        "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/026_sample_prob_too_few_positive/summary.json",
+        "bytes": 2974,
+        "sha256": "0e8842ff81b6873223793452c9b33fdda9446a45fc859b4b0bc03442f976500f"
+      },
+      "process": {
+        "process": {
+          "command": [
+            "scripts/conformance_parity.sh",
+            "--strict",
+            "--check",
+            "--shard-index",
+            "1118",
+            "--shard-count",
+            "1181",
+            "--report",
+            "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/sample-original-conformance-a9ef3381/026_sample_prob_too_few_positive"
+          ],
+          "cwd": "/Users/bernardoferrari/.codex/worktrees/checkpoint-d339e355/rport",
+          "elapsed_seconds": 15.707424916909076,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-06T14:37:50.453894+00:00",
+          "logs": {
+            "stderr.log": "87321495a8d238d77eee09bd3164d7081c9d5fe61437d44ff3c0c2a75ad3f87f",
+            "stdout.log": "61a6d56e6d45bfed891a0541f1143cfb57a2202a8364b608b86bbf4eed555869"
+          },
+          "pid": 41714,
+          "schema_version": 1,
+          "started_at": "2026-10-06T14:37:34.745976+00:00",
+          "state": "finished",
+          "timeout_seconds": 1200.0
+        },
+        "logs": [
+          {
+            "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/026_sample_prob_too_few_positive-process/stderr.log",
+            "bytes": 453,
+            "sha256": "87321495a8d238d77eee09bd3164d7081c9d5fe61437d44ff3c0c2a75ad3f87f"
+          },
+          {
+            "path": "target/integration-repair-evidence/sample-original-conformance-a9ef3381/026_sample_prob_too_few_positive-process/stdout.log",
+            "bytes": 697,
+            "sha256": "61a6d56e6d45bfed891a0541f1143cfb57a2202a8364b608b86bbf4eed555869"
+          }
+        ]
+      }
+    }
+  ],
+  "function_workflow": {
+    "namespace": "base",
+    "bindings": [
+      "sample",
+      "sample.int"
+    ],
+    "public_wrappers": "original GNU sample and sample.int closures",
+    "implementation": [
+      "crates/rmath/src/mainutils/names.rs",
+      "crates/rmath/src/mainutils/rng_dispatch.rs"
+    ],
+    "tested_edges": [
+      "exact original condition message and call",
+      "scalar/vector branch",
+      "oversized population and probability admission order",
+      "zero-size probability validation",
+      "missing/NA replacement admission",
+      "RNG state unchanged on invalid requests",
+      "seeded uniform and weighted values"
+    ],
+    "target_profiles": [
+      "native/default",
+      "native/portable",
+      "native conformance/core-default"
+    ],
+    "last_verified_commit": "a9ef33811aae9460f9497a9f51a1c77d9a641017"
+  },
+  "fixture": [
+    {
+      "path": "crates/r-embed/tests/fixtures/sample-condition-contract.R",
+      "bytes": 853,
+      "sha256": "9f98fd6cbda662b1ba48da53599d804bbfa1805f2e696128fec05f6b2eb1344b"
+    },
+    {
+      "path": "crates/r-embed/tests/fixtures/sample-condition-contract.out",
+      "bytes": 703,
+      "sha256": "d06dca5bcdfffe8145691f7fa073dccd3d989209eb9d4cd05b0f6ff9910aab07"
+    }
+  ]
+}

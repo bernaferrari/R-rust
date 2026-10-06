@@ -1,0 +1,602 @@
+{
+  "schema_version": 1,
+  "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+  "scope": "Existing canonical index admission for attached package frames; focused correctness and unchanged complete local browser workflows. Does not establish Linux acceptance or full GNU compatibility.",
+  "profile": {
+    "native": "release core-default index controls; release r-embed/default/renderplot public workflows",
+    "package_policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "wasm": "optimized production nightly-unwind/Binaryen133",
+    "numerical_backend": "faer",
+    "browser_budgets": "All original runtime/client15s, editor20s, FFT/RNG90s and resource limits unchanged"
+  },
+  "checks": {
+    "package-index-native-green": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "rmath",
+          "--release",
+          "--lib",
+          "sexp::env_hash::tests",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 87.51593729201704,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:42:50.112726+00:00",
+        "logs": {
+          "stderr.log": "96a935033c8a112901f7edda2692124c9afb261ff1b8fe866df7143afd53ef5d",
+          "stdout.log": "c46acbb96f4f18725a90fcfeb76e967b7261baa86e491a215cf121017a16e5f3"
+        },
+        "pid": 46513,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:41:22.595425+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-native-green/stderr.log",
+          "bytes": 384,
+          "sha256": "96a935033c8a112901f7edda2692124c9afb261ff1b8fe866df7143afd53ef5d"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-native-green/stdout.log",
+          "bytes": 2052,
+          "sha256": "c46acbb96f4f18725a90fcfeb76e967b7261baa86e491a215cf121017a16e5f3"
+        }
+      ]
+    },
+    "package-index-public-neighbors": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 128.59100783301983,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:44:58.706853+00:00",
+        "logs": {
+          "stderr.log": "ad966cada8ace021663e56d4b744f9de0f86ac8d4b39cb76e4add4a1bf79bf03",
+          "stdout.log": "6d2a32e681610c89f897c71219631ce7a304c1764361fe431aa39e9d9e608fb3"
+        },
+        "pid": 47968,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:42:50.114436+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-public-neighbors/stderr.log",
+          "bytes": 1905,
+          "sha256": "ad966cada8ace021663e56d4b744f9de0f86ac8d4b39cb76e4add4a1bf79bf03"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-public-neighbors/stdout.log",
+          "bytes": 5325,
+          "sha256": "6d2a32e681610c89f897c71219631ce7a304c1764361fe431aa39e9d9e608fb3"
+        }
+      ]
+    },
+    "package-index-clippy": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "clippy",
+          "-p",
+          "rmath",
+          "-p",
+          "r-embed",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 24.955676040961407,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:45:23.664663+00:00",
+        "logs": {
+          "stderr.log": "64ab0df1fb59eca755397c77be67d92df210f6ce56dcef9b5a03dd9ea99b8af7",
+          "stdout.log": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        },
+        "pid": 51419,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:44:58.708300+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-clippy/stderr.log",
+          "bytes": 395,
+          "sha256": "64ab0df1fb59eca755397c77be67d92df210f6ce56dcef9b5a03dd9ea99b8af7"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-clippy/stdout.log",
+          "bytes": 122,
+          "sha256": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        }
+      ]
+    },
+    "package-index-wasm-public": {
+      "process": {
+        "command": [
+          "node",
+          "tests/browser/portable-package-contracts.mjs",
+          "/Users/bernardoferrari/Downloads/rport/target/wasm-package-index-candidate"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 15.395088084042072,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:43:54.098273+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "4b19a8b415680733f6134300f56da03ca1703389aee75becd24e167b12b27a8e"
+        },
+        "pid": 49147,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:43:38.702370+00:00",
+        "state": "finished",
+        "timeout_seconds": 180.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-wasm-public/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-wasm-public/stdout.log",
+          "bytes": 161,
+          "sha256": "4b19a8b415680733f6134300f56da03ca1703389aee75becd24e167b12b27a8e"
+        }
+      ]
+    },
+    "package-index-showcase": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "--workers=1",
+          "--reporter=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 267.99823437503073,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:51:49.236382+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "1059ed65b9b8e1859c869bf48b835d107d8286aee476a42d62634d659f1ab280"
+        },
+        "pid": 53921,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:47:21.235469+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-showcase/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-showcase/stdout.log",
+          "bytes": 67427,
+          "sha256": "1059ed65b9b8e1859c869bf48b835d107d8286aee476a42d62634d659f1ab280"
+        }
+      ],
+      "stats": {
+        "startTime": "2026-10-06T14:47:21.826Z",
+        "duration": 267374.081,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    "package-index-sunflower-repeat": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "--workers=1",
+          "--repeat-each=3",
+          "--grep",
+          "filters the gallery, handles an empty search, and selects a recipe|editor scrolls the final line into view and download feedback resets",
+          "--reporter=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 59.229631458059885,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T14:52:48.468049+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "dd37ebeebd5d7366b75d56b828592fbbcdd256a45849e33f3a31cde855f37a0b"
+        },
+        "pid": 58183,
+        "schema_version": 1,
+        "started_at": "2026-10-06T14:51:49.237496+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": [
+        {
+          "path": "target/integration-repair-evidence/package-index-sunflower-repeat/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "target/integration-repair-evidence/package-index-sunflower-repeat/stdout.log",
+          "bytes": 8758,
+          "sha256": "dd37ebeebd5d7366b75d56b828592fbbcdd256a45849e33f3a31cde855f37a0b"
+        }
+      ],
+      "stats": {
+        "startTime": "2026-10-06T14:51:49.783Z",
+        "duration": 58618.411,
+        "expected": 6,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    }
+  },
+  "passed": {
+    "index_controls": 17,
+    "native_public": 56,
+    "native_suites": 14,
+    "production_wasm_public": {
+      "contracts_per_generation": 15,
+      "fresh_generations": 2
+    },
+    "chromium": {
+      "complete": 60,
+      "original_sunflower_repetitions": 6
+    }
+  },
+  "benchmark": {
+    "baseline": {
+      "metadata": {
+        "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-package-index-baseline",
+        "wasm_sha256": "62464e1d266097cd3247bee42c096ed054deb59977f44bdf22401d5d38a56507",
+        "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+        "node": "v24.21.0",
+        "platform": "darwin",
+        "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+      },
+      "process": {
+        "process": {
+          "command": [
+            "node",
+            "/tmp/rport-sunflower-matched-production.mjs",
+            "/Users/bernardoferrari/Downloads/rport/target/wasm-package-index-baseline"
+          ],
+          "cwd": "/Users/bernardoferrari/Downloads/rport",
+          "elapsed_seconds": 69.73584741703235,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-06T14:41:07.619211+00:00",
+          "logs": {
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "0fc94a3cee1afbe939453dce5c80badcb1d96a0f7dac93a6a08d56c7073ac208"
+          },
+          "pid": 45152,
+          "schema_version": 1,
+          "started_at": "2026-10-06T14:39:57.882221+00:00",
+          "state": "finished",
+          "timeout_seconds": 180.0
+        },
+        "logs": [
+          {
+            "path": "target/integration-repair-evidence/package-index-production-baseline/stderr.log",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "target/integration-repair-evidence/package-index-production-baseline/stdout.log",
+            "bytes": 1510,
+            "sha256": "0fc94a3cee1afbe939453dce5c80badcb1d96a0f7dac93a6a08d56c7073ac208"
+          }
+        ]
+      },
+      "samples": [
+        {
+          "repetition": 0,
+          "phase": "initialize",
+          "ms": 1560.7311249999998
+        },
+        {
+          "repetition": 0,
+          "phase": "cold",
+          "ms": 10937.472957999998,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 0,
+          "phase": "warm",
+          "ms": 11058.850125,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 1,
+          "phase": "initialize",
+          "ms": 1331.1793749999997
+        },
+        {
+          "repetition": 1,
+          "phase": "cold",
+          "ms": 10766.352499999997,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 1,
+          "phase": "warm",
+          "ms": 11142.402290999999,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 2,
+          "phase": "initialize",
+          "ms": 1318.4921669999967
+        },
+        {
+          "repetition": 2,
+          "phase": "cold",
+          "ms": 10550.078207999999,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 2,
+          "phase": "warm",
+          "ms": 10939.943458000009,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        }
+      ],
+      "medians_ms": {
+        "initialize": 1331.1793749999997,
+        "cold": 10766.352499999997,
+        "warm": 11058.850125
+      }
+    },
+    "candidate": {
+      "metadata": {
+        "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-package-index-candidate",
+        "wasm_sha256": "1e0021f0a9038b3807e07f9307acfef4a08b3841da32d67eac802fcd658e400c",
+        "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+        "node": "v24.21.0",
+        "platform": "darwin",
+        "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+      },
+      "process": {
+        "process": {
+          "command": [
+            "node",
+            "/tmp/rport-sunflower-matched-production.mjs",
+            "/Users/bernardoferrari/Downloads/rport/target/wasm-package-index-candidate"
+          ],
+          "cwd": "/Users/bernardoferrari/Downloads/rport",
+          "elapsed_seconds": 43.839101333054714,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-06T14:46:41.334037+00:00",
+          "logs": {
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "6033676d86f7c650fee79be90d1b90a1f36ff5b0aa52bbccdc78b5f5698b3767"
+          },
+          "pid": 52532,
+          "schema_version": 1,
+          "started_at": "2026-10-06T14:45:57.493962+00:00",
+          "state": "finished",
+          "timeout_seconds": 180.0
+        },
+        "logs": [
+          {
+            "path": "target/integration-repair-evidence/package-index-production-candidate/stderr.log",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "target/integration-repair-evidence/package-index-production-candidate/stdout.log",
+            "bytes": 1500,
+            "sha256": "6033676d86f7c650fee79be90d1b90a1f36ff5b0aa52bbccdc78b5f5698b3767"
+          }
+        ]
+      },
+      "samples": [
+        {
+          "repetition": 0,
+          "phase": "initialize",
+          "ms": 1563.562958
+        },
+        {
+          "repetition": 0,
+          "phase": "cold",
+          "ms": 6593.526291,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 0,
+          "phase": "warm",
+          "ms": 6748.0102910000005,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 1,
+          "phase": "initialize",
+          "ms": 1360.4231249999993
+        },
+        {
+          "repetition": 1,
+          "phase": "cold",
+          "ms": 6332.556334000001,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 1,
+          "phase": "warm",
+          "ms": 6675.7199999999975,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 2,
+          "phase": "initialize",
+          "ms": 1315.7972919999993
+        },
+        {
+          "repetition": 2,
+          "phase": "cold",
+          "ms": 6344.821332999996,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        },
+        {
+          "repetition": 2,
+          "phase": "warm",
+          "ms": 6749.108165999998,
+          "png_bytes": 42980,
+          "png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55"
+        }
+      ],
+      "medians_ms": {
+        "initialize": 1360.4231249999993,
+        "cold": 6344.821332999996,
+        "warm": 6748.0102910000005
+      }
+    },
+    "identical_png_sha256": "27636eaeefac0a28a11ed3408da382056ee4b531b814b82791c217713156ff55",
+    "scope": "Sequential production Node timings with no competing local tests/builds; same original source800x600, three fresh sessions and cold/warm executions. Artifact downloading was separate background network activity. No profiler overhead. Not browser or Linux acceptance.",
+    "harness": {
+      "path": "target/integration-repair-evidence/package-index-production-candidate/matched-production.mjs",
+      "bytes": 1575,
+      "sha256": "5bb4e791b9bee684e8fca0ce6b45f2a5fc03b38d89bff2602a9b9a4c814a70d4"
+    }
+  },
+  "runtime_production": {
+    "baseline": {
+      "path": "target/wasm-package-index-baseline/r_wasm_bg.wasm",
+      "bytes": 25863381,
+      "sha256": "62464e1d266097cd3247bee42c096ed054deb59977f44bdf22401d5d38a56507"
+    },
+    "candidate": {
+      "path": "target/wasm-package-index-candidate/r_wasm_bg.wasm",
+      "bytes": 25863386,
+      "sha256": "1e0021f0a9038b3807e07f9307acfef4a08b3841da32d67eac802fcd658e400c"
+    }
+  },
+  "function_workflows": [
+    {
+      "inventory_namespace": "base",
+      "bindings": [
+        "mean",
+        "UseMethod"
+      ],
+      "implementation": [
+        "crates/rmath/src/mainutils/essentials/shared.rs::attach_package_env",
+        "crates/rmath/src/sexp/env_hash.rs"
+      ],
+      "execution_paths": [
+        "Both real native public constructors",
+        "Production portable Wasm",
+        "Original sunflower gallery and editor/download"
+      ],
+      "controls": [
+        "Absent method in actual attached graphics frame",
+        "Canonical current-cell reads",
+        "Active callbacks and frame/tag/name mutation invalidation",
+        "GC and original heap authority",
+        "Unchanged numeric/PNG result"
+      ],
+      "last_verified_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a"
+    },
+    {
+      "inventory_namespace": "base",
+      "bindings": [
+        "sample",
+        "sample.int",
+        "mapply"
+      ],
+      "implementation": [
+        "crates/rmath/src/mainutils/rng_dispatch.rs",
+        "crates/rmath/src/mainutils/mapply.rs"
+      ],
+      "fixtures": [
+        "sample-condition-contract",
+        "mapply-public-contract"
+      ],
+      "target_profiles": [
+        "native/default",
+        "native/portable",
+        "production portable Wasm/Node"
+      ],
+      "last_verified_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+      "limitations": "Selected original public cases and neighboring admission/value/RNG/call contracts; not all sampling or mapply options."
+    }
+  ],
+  "linux_checkpoint": {
+    "id": 37481981284,
+    "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37481981284",
+    "status_when_sealed": "queued; no Linux passing result inferred"
+  }
+}
