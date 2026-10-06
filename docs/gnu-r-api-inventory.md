@@ -303,3 +303,12 @@ replacement. Local reset repetitions pass three times alongside nine repeated
 original gallery/editor/FFT flows. Explicit-empty browser policy and original
 budgets remain intact. This is a partial execution join: complete640 conformance
 and upstream reports and repeated-Linux deadline reliability are separate.
+
+The [complete640 inventory join](ci-checkpoints/conformance-browser-640966a2.json)
+authenticates every producer against a clean frozen source checkout and links
+original print/compiler public wrappers to native, Wasm and actual-reset browser
+execution. It records1090 conformance passes and91 failures,17 whole-driver
+passes/22 failures/31 skips and all15 curated passes. Original388 is the only
+conformance status change versusbfca. All61 Linux browser cases pass. Full
+workspace execution fails at the stale JIT dots fixture; later tests remain
+unexecuted. The later print-driver repair has separate evidence.

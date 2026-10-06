@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-bfca2d4c.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-640966a2.json').read_text())
 latest_linux = latest_completed
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
@@ -145,7 +145,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Linux native package integration | `{view['source_commit'][:8]}` | {view['linux_public_packages']['passed']} | {view['linux_public_packages']['failed']} | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `{view['source_commit'][:8]}` | {view['linux_showcase']['stats']['expected']} | {view['linux_showcase']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['selected']['passed']} | 0 | Explicit release; separate S4 {latest_linux["native_public"]["separate_s4"]["passed"]} pass / {latest_linux["native_public"]["separate_s4"]["failed"]} fail |
-| Linux complete Chromium showcase | `{latest_linux['source_commit'][:8]}` | {latest_linux['browser']['stats']['expected']} | {latest_linux['browser']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
+| Linux complete Chromium showcase | `{latest_linux['source_commit'][:8]}` | {latest_linux['browser']['stats']['expected']} | {latest_linux['browser']['stats']['unexpected']} | All {latest_linux['browser']['stats']['expected'] + latest_linux['browser']['stats']['unexpected']} accounted for; zero skipped or flaky |
 | Public native package/data workflows | `{integration_checks['native_packages_and_data']['source_commit'][:8]}` | {integration_checks['native_packages_and_data']['passed']} | {integration_checks['native_packages_and_data']['failed']} | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `{integration_checks['wasm_datasets']['source_commit'][:8]}` | {integration_checks['wasm_datasets']['passed']} | {integration_checks['wasm_datasets']['failed']} | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -296,6 +296,16 @@ including clearance of a global marker. Local production was built before
 commit with its exact source fingerprint preserved. This is one complete Linux
 browser run; repeated-Linux deadline reliability and the complete640 inventories
 remain separate from these public-package results.
+
+The [complete640 inventory receipt](ci-checkpoints/conformance-browser-640966a2.json)
+independently validates all six conformance and five upstream producers against
+a clean frozen checkout. It reproduces1090/91 conformance,17/22/31 whole drivers,
+15/0 curated slices,69 native public passes, both S4 passes and all61 Linux
+browser passes. Original388 is the only conformance status change versusbfca.
+The full workspace completes with an actual early failure in the JIT fixture
+that assumes dots forwarding remains unsupported; subsequent workspace tests
+and UniFFI checks have not completed. This is separate from the earlier35-minute
+cancellations and from the later local print-driver repair.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
