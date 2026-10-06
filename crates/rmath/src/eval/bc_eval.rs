@@ -1297,6 +1297,14 @@ fn owned_instruction_words(code: &Sexp<'static>) -> Vec<c_int> {
     words
 }
 
+// A single debug frame must not reserve the temporaries of every opcode
+// while an instruction calls another compiled R closure. Each ordinary arm
+// owns its existing locals for one instruction; release builds inline it.
+#[inline]
+fn execute_gnu_instruction(f: impl FnOnce()) {
+    f();
+}
+
 unsafe fn eval_gnu_adapter(
     body: SEXP,
     rho: SEXP,
@@ -1347,7 +1355,7 @@ unsafe fn eval_gnu_adapter(
                 super::bytecode::GNU_OP_RETURN => {
                     return stack_pop_checked(&mut stack, "GNU RETURN");
                 }
-                super::bytecode::GNU_OP_SWITCH => {
+                super::bytecode::GNU_OP_SWITCH => execute_gnu_instruction(|| {
                     let table = switches
                         .get(&(pc - 1))
                         .unwrap_or_else(|| bc_error("missing checked SWITCH table"));
@@ -1355,8 +1363,8 @@ unsafe fn eval_gnu_adapter(
                     pc = table
                         .select(&value_owned, pin)
                         .unwrap_or_else(|error| bc_error(error));
-                }
-                super::bytecode::GNU_OP_BRIFNOT => {
+                }),
+                super::bytecode::GNU_OP_BRIFNOT => execute_gnu_instruction(|| {
                     let _call_index = words[pc];
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -1367,8 +1375,8 @@ unsafe fn eval_gnu_adapter(
                     if !branch {
                         pc = target;
                     }
-                }
-                super::bytecode::GNU_OP_AND1ST => {
+                }),
+                super::bytecode::GNU_OP_AND1ST => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -1384,8 +1392,8 @@ unsafe fn eval_gnu_adapter(
                     if val == FALSE {
                         pc = target;
                     }
-                }
-                super::bytecode::GNU_OP_AND2ND => {
+                }),
+                super::bytecode::GNU_OP_AND2ND => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
@@ -1401,8 +1409,8 @@ unsafe fn eval_gnu_adapter(
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
-                }
-                super::bytecode::GNU_OP_OR1ST => {
+                }),
+                super::bytecode::GNU_OP_OR1ST => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -1418,8 +1426,8 @@ unsafe fn eval_gnu_adapter(
                     if val != NA_LOGICAL && val != FALSE {
                         pc = target;
                     }
-                }
-                super::bytecode::GNU_OP_OR2ND => {
+                }),
+                super::bytecode::GNU_OP_OR2ND => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
@@ -1435,18 +1443,18 @@ unsafe fn eval_gnu_adapter(
                         stack.set(index, result);
                     }
                     super::runtime::set_visible(TRUE);
-                }
-                super::bytecode::GNU_OP_INVISIBLE => {
+                }),
+                super::bytecode::GNU_OP_INVISIBLE => execute_gnu_instruction(|| {
                     super::runtime::set_visible(FALSE);
-                }
-                super::bytecode::GNU_OP_PRINTVALUE => {
+                }),
+                super::bytecode::GNU_OP_PRINTVALUE => execute_gnu_instruction(|| {
                     let value_owned = stack_pop_checked(&mut stack, "GNU PRINTVALUE");
                     let value = value_owned.as_raw();
                     with_stack_rooted(&stack, value, || {
                         crate::mainutils::print::PrintValue(value);
                     });
-                }
-                super::bytecode::GNU_OP_SETLOOPVAL => {
+                }),
+                super::bytecode::GNU_OP_SETLOOPVAL => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU SETLOOPVAL has stack depth < 2");
                     }
@@ -1454,79 +1462,81 @@ unsafe fn eval_gnu_adapter(
                     let _ = __owned.as_raw();
                     let top = stack.depth() - 1;
                     stack.set(top, R_NilValue());
-                }
-                super::bytecode::GNU_OP_DOTSERR => {
+                }),
+                super::bytecode::GNU_OP_DOTSERR => execute_gnu_instruction(|| {
                     bc_error("'...' used in an incorrect context");
-                }
-                super::bytecode::GNU_OP_DUP => {
+                }),
+                super::bytecode::GNU_OP_DUP => execute_gnu_instruction(|| {
                     let value = stack_top_checked(&stack, "GNU DUP");
                     stack.push(value);
-                }
-                super::bytecode::GNU_OP_DUP2ND => {
+                }),
+                super::bytecode::GNU_OP_DUP2ND => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU DUP2ND has an empty stack");
                     }
                     let value = stack_at_checked(&stack, stack.depth() - 2, "GNU DUP2ND");
                     stack.push(value);
-                }
-                super::bytecode::GNU_OP_POP => {
+                }),
+                super::bytecode::GNU_OP_POP => execute_gnu_instruction(|| {
                     stack_pop_checked(&mut stack, "GNU POP");
-                }
-                super::bytecode::GNU_OP_GOTO => {
+                }),
+                super::bytecode::GNU_OP_GOTO => execute_gnu_instruction(|| {
                     let target = words[pc] as usize;
                     pc = target;
-                }
-                super::bytecode::GNU_OP_LDCONST => {
+                }),
+                super::bytecode::GNU_OP_LDCONST => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     super::runtime::set_visible(TRUE);
                     stack.push(owned_constant_at(&constants, index as i64, "GNU opcode"));
-                }
-                super::bytecode::GNU_OP_LDNULL => {
+                }),
+                super::bytecode::GNU_OP_LDNULL => execute_gnu_instruction(|| {
                     super::runtime::set_visible(TRUE);
                     stack.push(R_NilValue());
-                }
-                super::bytecode::GNU_OP_LDTRUE => {
+                }),
+                super::bytecode::GNU_OP_LDTRUE => execute_gnu_instruction(|| {
                     super::runtime::set_visible(TRUE);
                     let value = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(TRUE));
                     stack.push(value);
-                }
-                super::bytecode::GNU_OP_LDFALSE => {
+                }),
+                super::bytecode::GNU_OP_LDFALSE => execute_gnu_instruction(|| {
                     super::runtime::set_visible(TRUE);
                     let value = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(FALSE));
                     stack.push(value);
-                }
+                }),
                 super::bytecode::GNU_OP_GETVAR | super::bytecode::GNU_OP_GETVAR_MISSOK => {
-                    let index = words[pc] as usize;
-                    pc += 1;
-                    let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
-                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-                        bc_error(format!(
-                            "GNU GETVAR constant pool entry {index} is not a symbol"
-                        ));
-                    }
-                    super::runtime::set_visible(TRUE);
-                    let keep_missing = opcode == super::bytecode::GNU_OP_GETVAR_MISSOK;
-                    let value = with_stack_rooted(&stack, symbol, || {
-                        eval_gnu_getvar(symbol, rho, keep_missing, false)
-                    });
-                    stack.push(value);
+                    execute_gnu_instruction(|| {
+                        let index = words[pc] as usize;
+                        pc += 1;
+                        let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
+                        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                            bc_error(format!(
+                                "GNU GETVAR constant pool entry {index} is not a symbol"
+                            ));
+                        }
+                        super::runtime::set_visible(TRUE);
+                        let keep_missing = opcode == super::bytecode::GNU_OP_GETVAR_MISSOK;
+                        let value = with_stack_rooted(&stack, symbol, || {
+                            eval_gnu_getvar(symbol, rho, keep_missing, false)
+                        });
+                        stack.push(value);
+                    })
                 }
-                super::bytecode::GNU_OP_VISIBLE => {
+                super::bytecode::GNU_OP_VISIBLE => execute_gnu_instruction(|| {
                     super::runtime::set_visible(TRUE);
-                }
-                super::bytecode::GNU_OP_INCLNK => {
+                }),
+                super::bytecode::GNU_OP_INCLNK => execute_gnu_instruction(|| {
                     let value = stack_top_checked(&stack, "GNU INCLNK");
                     increment_named_link(value);
-                }
-                super::bytecode::GNU_OP_DECLNK => {
+                }),
+                super::bytecode::GNU_OP_DECLNK => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU DECLNK has fewer than two stack values");
                     }
                     let value = stack.at(stack.depth() - 2);
                     decrement_named_link(value);
-                }
-                super::bytecode::GNU_OP_DECLNK_N => {
+                }),
+                super::bytecode::GNU_OP_DECLNK_N => execute_gnu_instruction(|| {
                     let count = words[pc] as usize;
                     pc += 1;
                     if stack.depth() < count + 2 {
@@ -1536,8 +1546,8 @@ unsafe fn eval_gnu_adapter(
                         let value = stack.at(stack.depth() - 2 - i);
                         decrement_named_link(value);
                     }
-                }
-                super::bytecode::GNU_OP_INCLNKSTK => {
+                }),
+                super::bytecode::GNU_OP_INCLNKSTK => execute_gnu_instruction(|| {
                     // GNU saves the protection-top offset and pushes it.
                     // It does not read a stack value; the stack may be empty.
                     let offset = prot_top;
@@ -1546,8 +1556,8 @@ unsafe fn eval_gnu_adapter(
                         crate::sexp::constructors::Rf_ScalarInteger(offset as c_int)
                     });
                     stack.push(marker);
-                }
-                super::bytecode::GNU_OP_DECLNKSTK => {
+                }),
+                super::bytecode::GNU_OP_DECLNKSTK => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU DECLNKSTK has fewer than two stack values");
                     }
@@ -1563,8 +1573,8 @@ unsafe fn eval_gnu_adapter(
                     let top = stack.at(stack.depth() - 1);
                     stack.set(stack.depth() - 2, top);
                     stack.set_depth(stack.depth() - 1);
-                }
-                super::bytecode::GNU_OP_GETINTLBUILTIN => {
+                }),
+                super::bytecode::GNU_OP_GETINTLBUILTIN => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -1612,24 +1622,26 @@ unsafe fn eval_gnu_adapter(
                         call: own_operand(R_NilValue()),
                     });
                     stack.push(value);
-                }
+                }),
                 super::bytecode::GNU_OP_DDVAL | super::bytecode::GNU_OP_DDVAL_MISSOK => {
-                    let index = words[pc] as usize;
-                    pc += 1;
-                    let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
-                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-                        bc_error(format!(
-                            "GNU DDVAL constant pool entry {index} is not a symbol"
-                        ));
-                    }
-                    super::runtime::set_visible(TRUE);
-                    let keep_missing = opcode == super::bytecode::GNU_OP_DDVAL_MISSOK;
-                    let value = with_stack_rooted(&stack, symbol, || {
-                        eval_gnu_getvar(symbol, rho, keep_missing, true)
-                    });
-                    stack.push(value);
+                    execute_gnu_instruction(|| {
+                        let index = words[pc] as usize;
+                        pc += 1;
+                        let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
+                        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                            bc_error(format!(
+                                "GNU DDVAL constant pool entry {index} is not a symbol"
+                            ));
+                        }
+                        super::runtime::set_visible(TRUE);
+                        let keep_missing = opcode == super::bytecode::GNU_OP_DDVAL_MISSOK;
+                        let value = with_stack_rooted(&stack, symbol, || {
+                            eval_gnu_getvar(symbol, rho, keep_missing, true)
+                        });
+                        stack.push(value);
+                    })
                 }
-                super::bytecode::GNU_OP_MAKECLOSURE => {
+                super::bytecode::GNU_OP_MAKECLOSURE => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let fb = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -1656,8 +1668,8 @@ unsafe fn eval_gnu_adapter(
                     }
                     super::runtime::set_visible(TRUE);
                     stack.push(value);
-                }
-                super::bytecode::GNU_OP_DODOTS => {
+                }),
+                super::bytecode::GNU_OP_DODOTS => execute_gnu_instruction(|| {
                     let Some(marker) = gnu_call_frames.last().map(|frame| frame.marker) else {
                         bc_error("GNU DODOTS has no active call frame");
                     };
@@ -1701,8 +1713,8 @@ unsafe fn eval_gnu_adapter(
                             bc_error("'...' used in an incorrect context");
                         }
                     }
-                }
-                super::bytecode::GNU_OP_CALLSPECIAL => {
+                }),
+                super::bytecode::GNU_OP_CALLSPECIAL => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
@@ -1762,11 +1774,11 @@ unsafe fn eval_gnu_adapter(
                         result.unwrap_or_else(|error| bc_error(error)).as_raw()
                     });
                     stack.push(result);
-                }
+                }),
                 super::bytecode::GNU_OP_GETFUN
                 | super::bytecode::GNU_OP_GETBUILTIN
                 | super::bytecode::GNU_OP_GETGLOBFUN
-                | super::bytecode::GNU_OP_GETSYMFUN => {
+                | super::bytecode::GNU_OP_GETSYMFUN => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -1841,8 +1853,8 @@ unsafe fn eval_gnu_adapter(
                         call: own_operand(R_NilValue()),
                     });
                     stack.push(fun);
-                }
-                super::bytecode::GNU_OP_MAKEPROM => {
+                }),
+                super::bytecode::GNU_OP_MAKEPROM => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let expression = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -1853,11 +1865,11 @@ unsafe fn eval_gnu_adapter(
                         crate::sexp::memory_ext::mkPROMSXP(expression, rho)
                     });
                     stack.push(promise);
-                }
+                }),
                 super::bytecode::GNU_OP_PUSHCONSTARG
                 | super::bytecode::GNU_OP_PUSHNULLARG
                 | super::bytecode::GNU_OP_PUSHTRUEARG
-                | super::bytecode::GNU_OP_PUSHFALSEARG => {
+                | super::bytecode::GNU_OP_PUSHFALSEARG => execute_gnu_instruction(|| {
                     if gnu_call_frames.is_empty() {
                         bc_error("GNU constant argument has no active GETFUN call");
                     }
@@ -1892,8 +1904,8 @@ unsafe fn eval_gnu_adapter(
                         })
                     };
                     stack.push(stored);
-                }
-                super::bytecode::GNU_OP_PUSHARG => {
+                }),
+                super::bytecode::GNU_OP_PUSHARG => execute_gnu_instruction(|| {
                     if gnu_call_frames.is_empty() {
                         bc_error("GNU PUSHARG has no active GETFUN call");
                     }
@@ -1913,8 +1925,8 @@ unsafe fn eval_gnu_adapter(
                         })
                     };
                     stack.push(stored);
-                }
-                super::bytecode::GNU_OP_CHECKFUN => {
+                }),
+                super::bytecode::GNU_OP_CHECKFUN => execute_gnu_instruction(|| {
                     let fun = stack_top_checked(&stack, "GNU CHECKFUN");
                     let kind = TYPEOF(fun);
                     if kind != SEXPTYPE::CLOSXP
@@ -1929,8 +1941,8 @@ unsafe fn eval_gnu_adapter(
                         raw_args: false,
                         call: own_operand(R_NilValue()),
                     });
-                }
-                super::bytecode::GNU_OP_SETTAG => {
+                }),
+                super::bytecode::GNU_OP_SETTAG => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let tag = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -1951,7 +1963,7 @@ unsafe fn eval_gnu_adapter(
                     } else {
                         frame.tags.push((slot, own_operand(tag)));
                     }
-                }
+                }),
                 super::bytecode::GNU_OP_CALL | super::bytecode::GNU_OP_CALLBUILTIN => {
                     let builtin_only = opcode == super::bytecode::GNU_OP_CALLBUILTIN;
                     let call_index = words[pc] as usize;
@@ -2048,7 +2060,7 @@ unsafe fn eval_gnu_adapter(
                     stack.set_depth(marker);
                     stack.push(result);
                 }
-                super::bytecode::GNU_OP_BASEGUARD => {
+                super::bytecode::GNU_OP_BASEGUARD => execute_gnu_instruction(|| {
                     let expression_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -2075,35 +2087,37 @@ unsafe fn eval_gnu_adapter(
                         stack.push(value);
                         pc = target;
                     }
-                }
+                }),
                 super::bytecode::GNU_OP_SETVAR | super::bytecode::GNU_OP_SETVAR2 => {
-                    let index = words[pc] as usize;
-                    pc += 1;
-                    let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
-                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-                        bc_error(format!(
-                            "GNU SETVAR constant pool entry {index} is not a symbol"
-                        ));
-                    }
-                    let value = stack_top_checked(&stack, "GNU SETVAR");
-                    // GNU SETVAR does INCREMENT_NAMED before the bind.
-                    // Chained `varE <- seA <- A <- vector()` is three stores
-                    // of one value: 0→1, then 1→2. The second name must look
-                    // shared so `[[<-` duplicates the list.
-                    let named = crate::sexp::accessors::NAMED(value);
-                    if named < 2 {
-                        crate::sexp::accessors::SET_NAMED(value, named + 1);
-                    }
-                    with_stack_rooted(&stack, value, || {
-                        if opcode == super::bytecode::GNU_OP_SETVAR2 {
-                            setVar(symbol, value, ENCLOS(rho));
-                        } else {
-                            defineVar(symbol, value, rho);
+                    execute_gnu_instruction(|| {
+                        let index = words[pc] as usize;
+                        pc += 1;
+                        let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
+                        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                            bc_error(format!(
+                                "GNU SETVAR constant pool entry {index} is not a symbol"
+                            ));
                         }
-                    });
-                    super::runtime::set_visible(FALSE);
+                        let value = stack_top_checked(&stack, "GNU SETVAR");
+                        // GNU SETVAR does INCREMENT_NAMED before the bind.
+                        // Chained `varE <- seA <- A <- vector()` is three stores
+                        // of one value: 0→1, then 1→2. The second name must look
+                        // shared so `[[<-` duplicates the list.
+                        let named = crate::sexp::accessors::NAMED(value);
+                        if named < 2 {
+                            crate::sexp::accessors::SET_NAMED(value, named + 1);
+                        }
+                        with_stack_rooted(&stack, value, || {
+                            if opcode == super::bytecode::GNU_OP_SETVAR2 {
+                                setVar(symbol, value, ENCLOS(rho));
+                            } else {
+                                defineVar(symbol, value, rho);
+                            }
+                        });
+                        super::runtime::set_visible(FALSE);
+                    })
                 }
-                super::bytecode::GNU_OP_STARTFOR => {
+                super::bytecode::GNU_OP_STARTFOR => execute_gnu_instruction(|| {
                     let _expr_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
                     let end = words[pc + 2] as usize;
@@ -2130,8 +2144,8 @@ unsafe fn eval_gnu_adapter(
                         length,
                     });
                     pc = end;
-                }
-                super::bytecode::GNU_OP_STEPFOR => {
+                }),
+                super::bytecode::GNU_OP_STEPFOR => execute_gnu_instruction(|| {
                     crate::sexp::instance::check_cancellation();
                     let _limit_check = super::limits::check_eval_depth()
                         .unwrap_or_else(|message| bc_error(message));
@@ -2150,8 +2164,8 @@ unsafe fn eval_gnu_adapter(
                         // Fall through to ENDFOR, which removes the loop's
                         // rooted sequence and leaves the loop expression's nil.
                     }
-                }
-                super::bytecode::GNU_OP_ENDFOR => {
+                }),
+                super::bytecode::GNU_OP_ENDFOR => execute_gnu_instruction(|| {
                     let Some(completed) = for_loops.pop() else {
                         bc_error("GNU ENDFOR has no active loop");
                     };
@@ -2161,113 +2175,120 @@ unsafe fn eval_gnu_adapter(
                     stack_pop_checked(&mut stack, "GNU ENDFOR sequence");
                     stack.push(R_NilValue());
                     super::runtime::set_visible(FALSE);
-                }
+                }),
                 super::bytecode::GNU_OP_UMINUS | super::bytecode::GNU_OP_UPLUS => {
-                    let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
-                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                        bc_error("GNU unary operator requires a call in the constant pool");
-                    }
-                    pc += 1;
-                    let value_owned = stack_pop_checked(&mut stack, "GNU unary operator");
-                    let value = value_owned.as_raw();
-                    let symbol = if opcode == super::bytecode::GNU_OP_UMINUS {
-                        c"-"
-                    } else {
-                        c"+"
-                    };
-                    let result = with_stack_rooted(&stack, value, || {
-                        let op = R_findVar(
-                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
-                            super::runtime::base_env(),
-                        );
-                        let args = Rf_cons(value, R_NilValue());
-                        let _args = own_operand(args);
-                        super::arithmetic::do_arith(call, op, args, rho)
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
-                }
-                super::bytecode::GNU_OP_SQRT | super::bytecode::GNU_OP_EXP => {
-                    let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
-                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                        bc_error("GNU math opcode requires a call in the constant pool");
-                    }
-                    pc += 1;
-                    let value_owned = stack_pop_checked(&mut stack, "GNU math opcode");
-                    let value = value_owned.as_raw();
-                    let symbol = if opcode == super::bytecode::GNU_OP_SQRT {
-                        c"sqrt"
-                    } else {
-                        c"exp"
-                    };
-                    let result = with_stack_rooted(&stack, value, || {
-                        let fun = crate::sexp::envir::findFun(
-                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
-                            super::runtime::base_env(),
-                        );
-                        let expression = Rf_lang2(fun, value);
-                        let _expression = own_operand(expression);
-                        crate::eval::eval::Rf_eval(expression, rho)
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
-                }
-                super::bytecode::GNU_OP_LOG | super::bytecode::GNU_OP_LOGBASE => {
-                    let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
-                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                        bc_error("GNU logarithm opcode requires a call in the constant pool");
-                    }
-                    pc += 1;
-                    let result = if opcode == super::bytecode::GNU_OP_LOG {
-                        let value_owned = stack_pop_checked(&mut stack, "GNU LOG");
+                    execute_gnu_instruction(|| {
+                        let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
+                        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                            bc_error("GNU unary operator requires a call in the constant pool");
+                        }
+                        pc += 1;
+                        let value_owned = stack_pop_checked(&mut stack, "GNU unary operator");
                         let value = value_owned.as_raw();
-                        with_stack_rooted(&stack, value, || {
-                            let args = Rf_cons(value, R_NilValue());
-                            let _args = own_operand(args);
-                            let op = crate::sexp::envir::findFun(
-                                crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                        let symbol = if opcode == super::bytecode::GNU_OP_UMINUS {
+                            c"-"
+                        } else {
+                            c"+"
+                        };
+                        let result = with_stack_rooted(&stack, value, || {
+                            let op = R_findVar(
+                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
                                 super::runtime::base_env(),
                             );
-                            let result = crate::eval::arithmetic::do_math1(call, op, args, rho);
-                            if crate::sexp::accessors::OBJECT(value) == 0 {
-                                gnu_math1_real_result(result)
-                            } else {
-                                result
-                            }
-                        })
-                    } else {
-                        let base_owned = stack_pop_checked(&mut stack, "GNU LOGBASE");
-                        let base = base_owned.as_raw();
-                        let value_owned = stack_pop_checked(&mut stack, "GNU LOGBASE");
+                            let args = Rf_cons(value, R_NilValue());
+                            let _args = own_operand(args);
+                            super::arithmetic::do_arith(call, op, args, rho)
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
+                }
+                super::bytecode::GNU_OP_SQRT | super::bytecode::GNU_OP_EXP => {
+                    execute_gnu_instruction(|| {
+                        let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
+                        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                            bc_error("GNU math opcode requires a call in the constant pool");
+                        }
+                        pc += 1;
+                        let value_owned = stack_pop_checked(&mut stack, "GNU math opcode");
                         let value = value_owned.as_raw();
-                        with_stack_rooted(&stack, value, || {
-                            with_stack_rooted(&stack, base, || {
-                                if let Some(empty) = gnu_logbase_empty_result(value, base) {
-                                    return empty;
-                                }
-                                let tail = Rf_cons(base, R_NilValue());
-                                let _tail = own_operand(tail);
-                                let args = Rf_cons(value, tail);
+                        let symbol = if opcode == super::bytecode::GNU_OP_SQRT {
+                            c"sqrt"
+                        } else {
+                            c"exp"
+                        };
+                        let result = with_stack_rooted(&stack, value, || {
+                            let fun = crate::sexp::envir::findFun(
+                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                super::runtime::base_env(),
+                            );
+                            let expression = Rf_lang2(fun, value);
+                            let _expression = own_operand(expression);
+                            crate::eval::eval::Rf_eval(expression, rho)
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
+                }
+                super::bytecode::GNU_OP_LOG | super::bytecode::GNU_OP_LOGBASE => {
+                    execute_gnu_instruction(|| {
+                        let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
+                        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                            bc_error("GNU logarithm opcode requires a call in the constant pool");
+                        }
+                        pc += 1;
+                        let result = if opcode == super::bytecode::GNU_OP_LOG {
+                            let value_owned = stack_pop_checked(&mut stack, "GNU LOG");
+                            let value = value_owned.as_raw();
+                            with_stack_rooted(&stack, value, || {
+                                let args = Rf_cons(value, R_NilValue());
                                 let _args = own_operand(args);
                                 let op = crate::sexp::envir::findFun(
                                     crate::sexp::symbol::Rf_install(c"log".as_ptr()),
                                     super::runtime::base_env(),
                                 );
                                 let result = crate::eval::arithmetic::do_math1(call, op, args, rho);
-                                if crate::sexp::accessors::OBJECT(value) == 0
-                                    && crate::sexp::accessors::OBJECT(base) == 0
-                                {
+                                if crate::sexp::accessors::OBJECT(value) == 0 {
                                     gnu_math1_real_result(result)
                                 } else {
                                     result
                                 }
                             })
-                        })
-                    };
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
+                        } else {
+                            let base_owned = stack_pop_checked(&mut stack, "GNU LOGBASE");
+                            let base = base_owned.as_raw();
+                            let value_owned = stack_pop_checked(&mut stack, "GNU LOGBASE");
+                            let value = value_owned.as_raw();
+                            with_stack_rooted(&stack, value, || {
+                                with_stack_rooted(&stack, base, || {
+                                    if let Some(empty) = gnu_logbase_empty_result(value, base) {
+                                        return empty;
+                                    }
+                                    let tail = Rf_cons(base, R_NilValue());
+                                    let _tail = own_operand(tail);
+                                    let args = Rf_cons(value, tail);
+                                    let _args = own_operand(args);
+                                    let op = crate::sexp::envir::findFun(
+                                        crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                                        super::runtime::base_env(),
+                                    );
+                                    let result =
+                                        crate::eval::arithmetic::do_math1(call, op, args, rho);
+                                    if crate::sexp::accessors::OBJECT(value) == 0
+                                        && crate::sexp::accessors::OBJECT(base) == 0
+                                    {
+                                        gnu_math1_real_result(result)
+                                    } else {
+                                        result
+                                    }
+                                })
+                            })
+                        };
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
                 }
-                super::bytecode::GNU_OP_MATH1 => {
+                super::bytecode::GNU_OP_MATH1 => execute_gnu_instruction(|| {
                     let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
                     let math_index = words[pc + 1];
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
@@ -2319,7 +2340,7 @@ unsafe fn eval_gnu_adapter(
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
+                }),
                 super::bytecode::GNU_OP_ADD
                 | super::bytecode::GNU_OP_SUB
                 | super::bytecode::GNU_OP_MUL
@@ -2330,7 +2351,7 @@ unsafe fn eval_gnu_adapter(
                 | super::bytecode::GNU_OP_LT
                 | super::bytecode::GNU_OP_LE
                 | super::bytecode::GNU_OP_GE
-                | super::bytecode::GNU_OP_GT => {
+                | super::bytecode::GNU_OP_GT => execute_gnu_instruction(|| {
                     let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU binary operator requires a call in the constant pool");
@@ -2378,29 +2399,31 @@ unsafe fn eval_gnu_adapter(
                     });
                     crate::sexp::globals::set_R_Visible(TRUE);
                     stack.push(result);
-                }
+                }),
                 super::bytecode::GNU_OP_AND | super::bytecode::GNU_OP_OR => {
-                    let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
-                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                        bc_error("GNU logic operator requires a call in the constant pool");
-                    }
-                    pc += 1;
-                    let b_owned = stack_pop_checked(&mut stack, "GNU logic operator");
-                    let b = b_owned.as_raw();
-                    let a_owned = stack_pop_checked(&mut stack, "GNU logic operator");
-                    let a = a_owned.as_raw();
-                    let symbol = if opcode == super::bytecode::GNU_OP_AND {
-                        c"&"
-                    } else {
-                        c"|"
-                    };
-                    let result = with_stack_rooted(&stack, a, || {
-                        with_stack_rooted(&stack, b, || {
-                            eval_gnu_logic(call, symbol, a, Some(b), rho)
-                        })
-                    });
-                    crate::sexp::globals::set_R_Visible(TRUE);
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
+                        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                            bc_error("GNU logic operator requires a call in the constant pool");
+                        }
+                        pc += 1;
+                        let b_owned = stack_pop_checked(&mut stack, "GNU logic operator");
+                        let b = b_owned.as_raw();
+                        let a_owned = stack_pop_checked(&mut stack, "GNU logic operator");
+                        let a = a_owned.as_raw();
+                        let symbol = if opcode == super::bytecode::GNU_OP_AND {
+                            c"&"
+                        } else {
+                            c"|"
+                        };
+                        let result = with_stack_rooted(&stack, a, || {
+                            with_stack_rooted(&stack, b, || {
+                                eval_gnu_logic(call, symbol, a, Some(b), rho)
+                            })
+                        });
+                        crate::sexp::globals::set_R_Visible(TRUE);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_ISNULL
                 | super::bytecode::GNU_OP_ISLOGICAL
@@ -2410,16 +2433,16 @@ unsafe fn eval_gnu_adapter(
                 | super::bytecode::GNU_OP_ISCHARACTER
                 | super::bytecode::GNU_OP_ISSYMBOL
                 | super::bytecode::GNU_OP_ISOBJECT
-                | super::bytecode::GNU_OP_ISNUMERIC => {
+                | super::bytecode::GNU_OP_ISNUMERIC => execute_gnu_instruction(|| {
                     let value_owned = stack_pop_checked(&mut stack, "GNU ISTYPE");
                     let value = value_owned.as_raw();
                     let result =
                         with_stack_rooted(&stack, value, || eval_gnu_istype(opcode, value));
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
+                }),
 
-                super::bytecode::GNU_OP_NOT => {
+                super::bytecode::GNU_OP_NOT => execute_gnu_instruction(|| {
                     let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU NOT requires a call in the constant pool");
@@ -2432,8 +2455,8 @@ unsafe fn eval_gnu_adapter(
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
-                super::bytecode::GNU_OP_COLON => {
+                }),
+                super::bytecode::GNU_OP_COLON => execute_gnu_instruction(|| {
                     let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
                         bc_error("GNU COLON requires a call in the constant pool");
@@ -2477,42 +2500,44 @@ unsafe fn eval_gnu_adapter(
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
+                }),
                 super::bytecode::GNU_OP_SEQALONG | super::bytecode::GNU_OP_SEQLEN => {
-                    let name = if opcode == super::bytecode::GNU_OP_SEQALONG {
-                        "GNU SEQALONG"
-                    } else {
-                        "GNU SEQLEN"
-                    };
-                    let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
-                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-                        bc_error(format!("{name} requires a call in the constant pool"));
-                    }
-                    pc += 1;
-                    let value_owned = stack_pop_checked(&mut stack, name);
-                    let value = value_owned.as_raw();
-                    let result = with_stack_rooted(&stack, value, || {
-                        let symbol = if opcode == super::bytecode::GNU_OP_SEQALONG {
-                            c"seq_along"
+                    execute_gnu_instruction(|| {
+                        let name = if opcode == super::bytecode::GNU_OP_SEQALONG {
+                            "GNU SEQALONG"
                         } else {
-                            c"seq_len"
+                            "GNU SEQLEN"
                         };
-                        let op = crate::sexp::envir::findFun(
-                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
-                            super::runtime::base_env(),
-                        );
-                        let args = Rf_cons(value, R_NilValue());
-                        let _args = own_operand(args);
-                        if opcode == super::bytecode::GNU_OP_SEQALONG {
-                            crate::mainutils::seq::do_seq_along(call, op, args, rho)
-                        } else {
-                            crate::mainutils::seq::do_seq_len(call, op, args, rho)
+                        let call = owned_constant_at(&constants, words[pc] as i64, "GNU opcode");
+                        if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                            bc_error(format!("{name} requires a call in the constant pool"));
                         }
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
+                        pc += 1;
+                        let value_owned = stack_pop_checked(&mut stack, name);
+                        let value = value_owned.as_raw();
+                        let result = with_stack_rooted(&stack, value, || {
+                            let symbol = if opcode == super::bytecode::GNU_OP_SEQALONG {
+                                c"seq_along"
+                            } else {
+                                c"seq_len"
+                            };
+                            let op = crate::sexp::envir::findFun(
+                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                super::runtime::base_env(),
+                            );
+                            let args = Rf_cons(value, R_NilValue());
+                            let _args = own_operand(args);
+                            if opcode == super::bytecode::GNU_OP_SEQALONG {
+                                crate::mainutils::seq::do_seq_along(call, op, args, rho)
+                            } else {
+                                crate::mainutils::seq::do_seq_len(call, op, args, rho)
+                            }
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
                 }
-                super::bytecode::GNU_OP_DOLLAR => {
+                super::bytecode::GNU_OP_DOLLAR => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
                     pc += 2;
@@ -2529,8 +2554,8 @@ unsafe fn eval_gnu_adapter(
                         with_stack_rooted(&stack, x, || eval_gnu_dollar(call, symbol, x, rho));
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
-                super::bytecode::GNU_OP_DOLLARGETS => {
+                }),
+                super::bytecode::GNU_OP_DOLLARGETS => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let symbol_index = words[pc + 1] as usize;
                     pc += 2;
@@ -2549,8 +2574,8 @@ unsafe fn eval_gnu_adapter(
                         eval_gnu_dollargets(call, symbol, x, rhs, rho)
                     });
                     stack.push(result);
-                }
-                super::bytecode::GNU_OP_STARTASSIGN => {
+                }),
+                super::bytecode::GNU_OP_STARTASSIGN => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -2589,8 +2614,8 @@ unsafe fn eval_gnu_adapter(
                     stack.push(cell);
                     stack.push(lhs);
                     stack.push(rhs);
-                }
-                super::bytecode::GNU_OP_ENDASSIGN => {
+                }),
+                super::bytecode::GNU_OP_ENDASSIGN => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -2616,8 +2641,8 @@ unsafe fn eval_gnu_adapter(
                         defineVar(symbol, value, rho);
                     });
                     super::runtime::set_visible(FALSE);
-                }
-                super::bytecode::GNU_OP_STARTASSIGN2 => {
+                }),
+                super::bytecode::GNU_OP_STARTASSIGN2 => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -2649,8 +2674,8 @@ unsafe fn eval_gnu_adapter(
                     stack.push(R_NilValue());
                     stack.push(lhs);
                     stack.push(rhs);
-                }
-                super::bytecode::GNU_OP_ENDASSIGN2 => {
+                }),
+                super::bytecode::GNU_OP_ENDASSIGN2 => execute_gnu_instruction(|| {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = owned_constant_at(&constants, index as i64, "GNU opcode");
@@ -2665,94 +2690,98 @@ unsafe fn eval_gnu_adapter(
                     let _cell = _cell_owned.as_raw();
                     with_stack_rooted(&stack, value, || setVar(symbol, value, ENCLOS(rho)));
                     super::runtime::set_visible(FALSE);
-                }
+                }),
                 super::bytecode::GNU_OP_STARTSUBSET | super::bytecode::GNU_OP_STARTSUBSET2 => {
-                    let call_index = words[pc] as usize;
-                    let target = words[pc + 1] as usize;
-                    pc += 2;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let x = stack_top_checked(&stack, "GNU STARTSUBSET");
-                    let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2 {
-                        c"[["
-                    } else {
-                        c"["
-                    };
-                    if let Some(value) = with_stack_rooted(&stack, x, || {
-                        eval_gnu_startsubset_n(generic, call, x, rho)
-                    }) {
-                        let index = stack.depth() - 1;
-                        stack.set(index, value);
-                        pc = target;
-                    } else {
-                        let tag = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
-                            crate::sexp::accessors::TAG(CDR(call))
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        let target = words[pc + 1] as usize;
+                        pc += 2;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let x = stack_top_checked(&stack, "GNU STARTSUBSET");
+                        let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2 {
+                            c"[["
                         } else {
-                            R_NilValue()
+                            c"["
                         };
-                        let mut tags = Vec::new();
-                        if tag != R_NilValue() {
-                            tags.push((stack.depth() - 1, own_operand(tag)));
+                        if let Some(value) = with_stack_rooted(&stack, x, || {
+                            eval_gnu_startsubset_n(generic, call, x, rho)
+                        }) {
+                            let index = stack.depth() - 1;
+                            stack.set(index, value);
+                            pc = target;
+                        } else {
+                            let tag = if !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+                                crate::sexp::accessors::TAG(CDR(call))
+                            } else {
+                                R_NilValue()
+                            };
+                            let mut tags = Vec::new();
+                            if tag != R_NilValue() {
+                                tags.push((stack.depth() - 1, own_operand(tag)));
+                            }
+                            gnu_call_frames.push(GnuCallFrame {
+                                marker: stack.depth() - 1,
+                                tags,
+                                raw_args: true,
+                                call: own_operand(call),
+                            });
                         }
-                        gnu_call_frames.push(GnuCallFrame {
-                            marker: stack.depth() - 1,
-                            tags,
-                            raw_args: true,
-                            call: own_operand(call),
-                        });
-                    }
+                    })
                 }
-                super::bytecode::GNU_OP_DOMISSING => {
+                super::bytecode::GNU_OP_DOMISSING => execute_gnu_instruction(|| {
                     if gnu_call_frames.is_empty() {
                         bc_error("GNU DOMISSING has no active call frame");
                     }
                     stack.push(R_MissingArg());
-                }
+                }),
                 super::bytecode::GNU_OP_DFLTSUBSET | super::bytecode::GNU_OP_DFLTSUBSET2 => {
-                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
-                        bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame")
-                    });
-                    if !frame.raw_args {
-                        bc_error("GNU DFLTSUBSET requires a STARTSUBSET call frame");
-                    }
-                    let depth = stack.depth();
-                    if depth <= frame.marker {
-                        bc_error("GNU DFLTSUBSET has no object");
-                    }
-                    let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBSET object");
-                    let result = with_stack_rooted(&stack, x, || {
-                        let mut args = R_NilValue();
-                        let mut argument_roots = Vec::new();
-                        for index in (frame.marker..depth).rev() {
-                            args = Rf_cons(stack.at(index), args);
-                            argument_roots.push(own_operand(args));
-                            if let Some((_, tag)) =
-                                frame.tags.iter().find(|(slot, _)| *slot == index)
-                            {
-                                crate::sexp::accessors::SETTAG(args, tag.as_raw());
+                    execute_gnu_instruction(|| {
+                        let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                            bc_error("GNU DFLTSUBSET has no active STARTSUBSET frame")
+                        });
+                        if !frame.raw_args {
+                            bc_error("GNU DFLTSUBSET requires a STARTSUBSET call frame");
+                        }
+                        let depth = stack.depth();
+                        if depth <= frame.marker {
+                            bc_error("GNU DFLTSUBSET has no object");
+                        }
+                        let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBSET object");
+                        let result = with_stack_rooted(&stack, x, || {
+                            let mut args = R_NilValue();
+                            let mut argument_roots = Vec::new();
+                            for index in (frame.marker..depth).rev() {
+                                args = Rf_cons(stack.at(index), args);
+                                argument_roots.push(own_operand(args));
+                                if let Some((_, tag)) =
+                                    frame.tags.iter().find(|(slot, _)| *slot == index)
+                                {
+                                    crate::sexp::accessors::SETTAG(args, tag.as_raw());
+                                }
                             }
-                        }
-                        if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
-                            crate::mainutils::subset::do_subset2_dflt(
-                                frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
-                                args,
-                                rho,
-                            )
-                        } else {
-                            crate::mainutils::subset::do_subset_dflt(
-                                frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
-                                args,
-                                rho,
-                            )
-                        }
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.set_depth(frame.marker);
-                    stack.push(result);
+                            if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
+                                crate::mainutils::subset::do_subset2_dflt(
+                                    frame.call.as_raw(),
+                                    crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                                    args,
+                                    rho,
+                                )
+                            } else {
+                                crate::mainutils::subset::do_subset_dflt(
+                                    frame.call.as_raw(),
+                                    crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                                    args,
+                                    rho,
+                                )
+                            }
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.set_depth(frame.marker);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_STARTSUBASSIGN
-                | super::bytecode::GNU_OP_STARTSUBASSIGN2 => {
+                | super::bytecode::GNU_OP_STARTSUBASSIGN2 => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let target = words[pc + 1] as usize;
                     pc += 2;
@@ -2801,85 +2830,90 @@ unsafe fn eval_gnu_adapter(
                             call: own_operand(call),
                         });
                     }
-                }
+                }),
                 super::bytecode::GNU_OP_DFLTSUBASSIGN | super::bytecode::GNU_OP_DFLTSUBASSIGN2 => {
-                    let frame = gnu_call_frames.pop().unwrap_or_else(|| {
-                        bc_error("GNU DFLTSUBASSIGN has no active STARTSUBASSIGN frame")
-                    });
-                    if !frame.raw_args {
-                        bc_error("GNU DFLTSUBASSIGN requires a STARTSUBASSIGN call frame");
-                    }
-                    let depth = stack.depth();
-                    if depth < frame.marker + 2 {
-                        bc_error("GNU DFLTSUBASSIGN requires lhs and rhs");
-                    }
-                    let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBASSIGN object");
-                    let rhs = stack_at_checked(&stack, frame.marker + 1, "GNU DFLTSUBASSIGN rhs");
-                    let result = with_stack_rooted(&stack, x, || {
-                        let mut args = R_NilValue();
-                        let mut argument_roots = Vec::new();
-                        args = Rf_cons(rhs, args);
-                        argument_roots.push(own_operand(args));
-                        crate::sexp::accessors::SETTAG(
-                            args,
-                            crate::sexp::symbol::Rf_install(c"value".as_ptr()),
-                        );
-                        for index in (frame.marker + 2..depth).rev() {
-                            args = Rf_cons(stack.at(index), args);
+                    execute_gnu_instruction(|| {
+                        let frame = gnu_call_frames.pop().unwrap_or_else(|| {
+                            bc_error("GNU DFLTSUBASSIGN has no active STARTSUBASSIGN frame")
+                        });
+                        if !frame.raw_args {
+                            bc_error("GNU DFLTSUBASSIGN requires a STARTSUBASSIGN call frame");
+                        }
+                        let depth = stack.depth();
+                        if depth < frame.marker + 2 {
+                            bc_error("GNU DFLTSUBASSIGN requires lhs and rhs");
+                        }
+                        let x = stack_at_checked(&stack, frame.marker, "GNU DFLTSUBASSIGN object");
+                        let rhs =
+                            stack_at_checked(&stack, frame.marker + 1, "GNU DFLTSUBASSIGN rhs");
+                        let result = with_stack_rooted(&stack, x, || {
+                            let mut args = R_NilValue();
+                            let mut argument_roots = Vec::new();
+                            args = Rf_cons(rhs, args);
+                            argument_roots.push(own_operand(args));
+                            crate::sexp::accessors::SETTAG(
+                                args,
+                                crate::sexp::symbol::Rf_install(c"value".as_ptr()),
+                            );
+                            for index in (frame.marker + 2..depth).rev() {
+                                args = Rf_cons(stack.at(index), args);
+                                argument_roots.push(own_operand(args));
+                                if let Some((_, tag)) =
+                                    frame.tags.iter().find(|(slot, _)| *slot == index)
+                                {
+                                    crate::sexp::accessors::SETTAG(args, tag.as_raw());
+                                }
+                            }
+                            args = Rf_cons(x, args);
                             argument_roots.push(own_operand(args));
                             if let Some((_, tag)) =
-                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                                frame.tags.iter().find(|(slot, _)| *slot == frame.marker)
                             {
                                 crate::sexp::accessors::SETTAG(args, tag.as_raw());
                             }
-                        }
-                        args = Rf_cons(x, args);
-                        argument_roots.push(own_operand(args));
-                        if let Some((_, tag)) =
-                            frame.tags.iter().find(|(slot, _)| *slot == frame.marker)
-                        {
-                            crate::sexp::accessors::SETTAG(args, tag.as_raw());
-                        }
-                        if opcode == super::bytecode::GNU_OP_DFLTSUBASSIGN2 {
-                            crate::mainutils::subassign::do_subassign2_dflt(
-                                frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
-                                args,
-                                rho,
-                            )
-                        } else {
-                            crate::mainutils::subassign::do_subassign_dflt(
-                                frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
-                                args,
-                                rho,
-                            )
-                        }
-                    });
-                    stack.set_depth(frame.marker);
-                    stack.push(result);
+                            if opcode == super::bytecode::GNU_OP_DFLTSUBASSIGN2 {
+                                crate::mainutils::subassign::do_subassign2_dflt(
+                                    frame.call.as_raw(),
+                                    crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                                    args,
+                                    rho,
+                                )
+                            } else {
+                                crate::mainutils::subassign::do_subassign_dflt(
+                                    frame.call.as_raw(),
+                                    crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                                    args,
+                                    rho,
+                                )
+                            }
+                        });
+                        stack.set_depth(frame.marker);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_STARTSUBSET_N | super::bytecode::GNU_OP_STARTSUBSET2_N => {
-                    let call_index = words[pc] as usize;
-                    let target = words[pc + 1] as usize;
-                    pc += 2;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let x = stack_top_checked(&stack, "GNU STARTSUBSET_N");
-                    let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2_N {
-                        c"[["
-                    } else {
-                        c"["
-                    };
-                    if let Some(value) = with_stack_rooted(&stack, x, || {
-                        eval_gnu_startsubset_n(generic, call, x, rho)
-                    }) {
-                        let index = stack.depth() - 1;
-                        stack.set(index, value);
-                        pc = target;
-                    }
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        let target = words[pc + 1] as usize;
+                        pc += 2;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let x = stack_top_checked(&stack, "GNU STARTSUBSET_N");
+                        let generic = if opcode == super::bytecode::GNU_OP_STARTSUBSET2_N {
+                            c"[["
+                        } else {
+                            c"["
+                        };
+                        if let Some(value) = with_stack_rooted(&stack, x, || {
+                            eval_gnu_startsubset_n(generic, call, x, rho)
+                        }) {
+                            let index = stack.depth() - 1;
+                            stack.set(index, value);
+                            pc = target;
+                        }
+                    })
                 }
                 super::bytecode::GNU_OP_STARTSUBASSIGN_N
-                | super::bytecode::GNU_OP_STARTSUBASSIGN2_N => {
+                | super::bytecode::GNU_OP_STARTSUBASSIGN2_N => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU STARTSUBASSIGN_N has an empty stack");
                     }
@@ -2912,142 +2946,154 @@ unsafe fn eval_gnu_adapter(
                         stack.set(index, value);
                         pc = target;
                     }
-                }
+                }),
                 super::bytecode::GNU_OP_VECSUBSET | super::bytecode::GNU_OP_VECSUBSET2 => {
-                    let call_index = words[pc] as usize;
-                    pc += 1;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let index_owned = stack_pop_checked(&mut stack, "GNU VECSUBSET index");
-                    let index = index_owned.as_raw();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU VECSUBSET object");
-                    let x = x_owned.as_raw();
-                    let subset2 = opcode == super::bytecode::GNU_OP_VECSUBSET2;
-                    let result = with_stack_rooted(&stack, index, || {
-                        eval_gnu_vecsubset(call, x, index, rho, subset2)
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        pc += 1;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let index_owned = stack_pop_checked(&mut stack, "GNU VECSUBSET index");
+                        let index = index_owned.as_raw();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU VECSUBSET object");
+                        let x = x_owned.as_raw();
+                        let subset2 = opcode == super::bytecode::GNU_OP_VECSUBSET2;
+                        let result = with_stack_rooted(&stack, index, || {
+                            eval_gnu_vecsubset(call, x, index, rho, subset2)
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_MATSUBSET | super::bytecode::GNU_OP_MATSUBSET2 => {
-                    let call_index = words[pc] as usize;
-                    pc += 1;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let column_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET column");
-                    let column = column_owned.as_raw();
-                    let row_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET row");
-                    let row = row_owned.as_raw();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET object");
-                    let x = x_owned.as_raw();
-                    let result = with_stack_rooted(&stack, column, || {
-                        eval_gnu_subset_indices(
-                            call,
-                            x,
-                            &[row, column],
-                            rho,
-                            opcode == super::bytecode::GNU_OP_MATSUBSET2,
-                        )
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        pc += 1;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let column_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET column");
+                        let column = column_owned.as_raw();
+                        let row_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET row");
+                        let row = row_owned.as_raw();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU MATSUBSET object");
+                        let x = x_owned.as_raw();
+                        let result = with_stack_rooted(&stack, column, || {
+                            eval_gnu_subset_indices(
+                                call,
+                                x,
+                                &[row, column],
+                                rho,
+                                opcode == super::bytecode::GNU_OP_MATSUBSET2,
+                            )
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_SUBSET_N | super::bytecode::GNU_OP_SUBSET2_N => {
-                    let call_index = words[pc] as usize;
-                    let rank = words[pc + 1];
-                    pc += 2;
-                    if rank < 0 {
-                        bc_error("GNU SUBSET_N rank is negative");
-                    }
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let mut indices = Vec::with_capacity(rank as usize);
-                    for _ in 0..rank {
-                        indices.push(stack_pop_checked(&mut stack, "GNU SUBSET_N index"));
-                    }
-                    indices.reverse();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU SUBSET_N object");
-                    let x = x_owned.as_raw();
-                    let result = with_stack_rooted(&stack, x, || {
-                        eval_gnu_subset_indices(
-                            call,
-                            x,
-                            &indices.iter().map(Sexp::as_raw).collect::<Vec<_>>(),
-                            rho,
-                            opcode == super::bytecode::GNU_OP_SUBSET2_N,
-                        )
-                    });
-                    super::runtime::set_visible(TRUE);
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        let rank = words[pc + 1];
+                        pc += 2;
+                        if rank < 0 {
+                            bc_error("GNU SUBSET_N rank is negative");
+                        }
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let mut indices = Vec::with_capacity(rank as usize);
+                        for _ in 0..rank {
+                            indices.push(stack_pop_checked(&mut stack, "GNU SUBSET_N index"));
+                        }
+                        indices.reverse();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU SUBSET_N object");
+                        let x = x_owned.as_raw();
+                        let result = with_stack_rooted(&stack, x, || {
+                            eval_gnu_subset_indices(
+                                call,
+                                x,
+                                &indices.iter().map(Sexp::as_raw).collect::<Vec<_>>(),
+                                rho,
+                                opcode == super::bytecode::GNU_OP_SUBSET2_N,
+                            )
+                        });
+                        super::runtime::set_visible(TRUE);
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_VECSUBASSIGN | super::bytecode::GNU_OP_VECSUBASSIGN2 => {
-                    let call_index = words[pc] as usize;
-                    pc += 1;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let index_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN index");
-                    let index = index_owned.as_raw();
-                    let rhs_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN rhs");
-                    let rhs = rhs_owned.as_raw();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN object");
-                    let x = x_owned.as_raw();
-                    let subset2 = opcode == super::bytecode::GNU_OP_VECSUBASSIGN2;
-                    let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_vecsubassign(call, x, rhs, index, rho, subset2)
-                    });
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        pc += 1;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let index_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN index");
+                        let index = index_owned.as_raw();
+                        let rhs_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN rhs");
+                        let rhs = rhs_owned.as_raw();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU VECSUBASSIGN object");
+                        let x = x_owned.as_raw();
+                        let subset2 = opcode == super::bytecode::GNU_OP_VECSUBASSIGN2;
+                        let result = with_stack_rooted(&stack, rhs, || {
+                            eval_gnu_vecsubassign(call, x, rhs, index, rho, subset2)
+                        });
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_MATSUBASSIGN | super::bytecode::GNU_OP_MATSUBASSIGN2 => {
-                    let call_index = words[pc] as usize;
-                    pc += 1;
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let column_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN column");
-                    let column = column_owned.as_raw();
-                    let row_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN row");
-                    let row = row_owned.as_raw();
-                    let rhs_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN rhs");
-                    let rhs = rhs_owned.as_raw();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN object");
-                    let x = x_owned.as_raw();
-                    let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_matsubassign(
-                            call,
-                            x,
-                            rhs,
-                            row,
-                            column,
-                            rho,
-                            opcode == super::bytecode::GNU_OP_MATSUBASSIGN2,
-                        )
-                    });
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        pc += 1;
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let column_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN column");
+                        let column = column_owned.as_raw();
+                        let row_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN row");
+                        let row = row_owned.as_raw();
+                        let rhs_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN rhs");
+                        let rhs = rhs_owned.as_raw();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU MATSUBASSIGN object");
+                        let x = x_owned.as_raw();
+                        let result = with_stack_rooted(&stack, rhs, || {
+                            eval_gnu_matsubassign(
+                                call,
+                                x,
+                                rhs,
+                                row,
+                                column,
+                                rho,
+                                opcode == super::bytecode::GNU_OP_MATSUBASSIGN2,
+                            )
+                        });
+                        stack.push(result);
+                    })
                 }
                 super::bytecode::GNU_OP_SUBASSIGN_N | super::bytecode::GNU_OP_SUBASSIGN2_N => {
-                    let call_index = words[pc] as usize;
-                    let rank = words[pc + 1];
-                    pc += 2;
-                    if rank < 0 {
-                        bc_error("GNU SUBASSIGN_N rank is negative");
-                    }
-                    let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
-                    let mut indices = Vec::with_capacity(rank as usize);
-                    for _ in 0..rank {
-                        indices.push(stack_pop_checked(&mut stack, "GNU SUBASSIGN_N index"));
-                    }
-                    indices.reverse();
-                    let rhs_owned = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N rhs");
-                    let rhs = rhs_owned.as_raw();
-                    let x_owned = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N object");
-                    let x = x_owned.as_raw();
-                    let result = with_stack_rooted(&stack, rhs, || {
-                        eval_gnu_subassign_indices(
-                            call,
-                            x,
-                            rhs,
-                            &indices.iter().map(Sexp::as_raw).collect::<Vec<_>>(),
-                            rho,
-                            opcode == super::bytecode::GNU_OP_SUBASSIGN2_N,
-                        )
-                    });
-                    stack.push(result);
+                    execute_gnu_instruction(|| {
+                        let call_index = words[pc] as usize;
+                        let rank = words[pc + 1];
+                        pc += 2;
+                        if rank < 0 {
+                            bc_error("GNU SUBASSIGN_N rank is negative");
+                        }
+                        let call = owned_constant_at(&constants, call_index as i64, "GNU opcode");
+                        let mut indices = Vec::with_capacity(rank as usize);
+                        for _ in 0..rank {
+                            indices.push(stack_pop_checked(&mut stack, "GNU SUBASSIGN_N index"));
+                        }
+                        indices.reverse();
+                        let rhs_owned = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N rhs");
+                        let rhs = rhs_owned.as_raw();
+                        let x_owned = stack_pop_checked(&mut stack, "GNU SUBASSIGN_N object");
+                        let x = x_owned.as_raw();
+                        let result = with_stack_rooted(&stack, rhs, || {
+                            eval_gnu_subassign_indices(
+                                call,
+                                x,
+                                rhs,
+                                &indices.iter().map(Sexp::as_raw).collect::<Vec<_>>(),
+                                rho,
+                                opcode == super::bytecode::GNU_OP_SUBASSIGN2_N,
+                            )
+                        });
+                        stack.push(result);
+                    })
                 }
-                super::bytecode::GNU_OP_SETTER_CALL => {
+                super::bytecode::GNU_OP_SETTER_CALL => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let vexpr_index = words[pc + 1] as usize;
                     pc += 2;
@@ -3096,9 +3142,9 @@ unsafe fn eval_gnu_adapter(
                     });
                     stack.set_depth(marker - 2);
                     stack.push(result);
-                }
+                }),
 
-                super::bytecode::GNU_OP_GETTER_CALL => {
+                super::bytecode::GNU_OP_GETTER_CALL => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let frame = gnu_call_frames
@@ -3142,8 +3188,8 @@ unsafe fn eval_gnu_adapter(
                     });
                     stack.set_depth(marker);
                     stack.push(result);
-                }
-                super::bytecode::GNU_OP_SWAP => {
+                }),
+                super::bytecode::GNU_OP_SWAP => execute_gnu_instruction(|| {
                     if stack.depth() < 2 {
                         bc_error("GNU SWAP has an empty stack");
                     }
@@ -3159,8 +3205,8 @@ unsafe fn eval_gnu_adapter(
                     let second = stack.at(second_idx);
                     stack.set(top_idx, second);
                     stack.set(second_idx, top);
-                }
-                super::bytecode::GNU_OP_STARTLOOPCNTXT => {
+                }),
+                super::bytecode::GNU_OP_STARTLOOPCNTXT => execute_gnu_instruction(|| {
                     let _is_for_loop = words[pc];
                     let break_target = words[pc + 1];
                     pc += 2;
@@ -3173,30 +3219,32 @@ unsafe fn eval_gnu_adapter(
                         stack_depth: stack.depth(),
                         for_depth: for_loops.len(),
                     });
-                }
-                super::bytecode::GNU_OP_ENDLOOPCNTXT => {
+                }),
+                super::bytecode::GNU_OP_ENDLOOPCNTXT => execute_gnu_instruction(|| {
                     let _is_for_loop = words[pc];
                     pc += 1;
                     if loop_stack.pop().is_none() {
                         bc_error("GNU ENDLOOPCNTXT has no active loop context");
                     }
-                }
+                }),
                 super::bytecode::GNU_OP_RETURNJMP => {
                     return stack_pop_checked(&mut stack, "GNU RETURNJMP");
                 }
                 super::bytecode::GNU_OP_DOLOOPNEXT | super::bytecode::GNU_OP_DOLOOPBREAK => {
-                    let is_break = opcode == super::bytecode::GNU_OP_DOLOOPBREAK;
-                    let Some(ctx) = loop_stack.last() else {
-                        bc_error(if is_break {
-                            "GNU DOLOOPBREAK has no active loop context"
-                        } else {
-                            "GNU DOLOOPNEXT has no active loop context"
-                        });
-                    };
-                    let jump = loop_jump_from_context(ctx, is_break);
-                    pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
+                    execute_gnu_instruction(|| {
+                        let is_break = opcode == super::bytecode::GNU_OP_DOLOOPBREAK;
+                        let Some(ctx) = loop_stack.last() else {
+                            bc_error(if is_break {
+                                "GNU DOLOOPBREAK has no active loop context"
+                            } else {
+                                "GNU DOLOOPNEXT has no active loop context"
+                            });
+                        };
+                        let jump = loop_jump_from_context(ctx, is_break);
+                        pc = apply_loop_jump(&mut stack, &mut for_loops, jump) as usize;
+                    })
                 }
-                super::bytecode::GNU_OP_DOTCALL => {
+                super::bytecode::GNU_OP_DOTCALL => execute_gnu_instruction(|| {
                     let call_index = words[pc] as usize;
                     let nargs = words[pc + 1];
                     pc += 2;
@@ -3230,7 +3278,7 @@ unsafe fn eval_gnu_adapter(
                     stack.set_depth(fun_idx);
                     super::runtime::set_visible(TRUE);
                     stack.push(result);
-                }
+                }),
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
             }
         }

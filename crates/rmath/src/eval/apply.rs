@@ -175,7 +175,6 @@ pub(crate) fn apply_special_safe<'a>(
     )
 }
 
-#[derive(Clone)]
 struct PrimitiveCall<'a> {
     fun: Sexp<'a>,
     call: Sexp<'a>,
@@ -286,7 +285,7 @@ pub(crate) fn apply_builtin_safe<'a>(
 
     let op_name = primitive_call_name(primitive, frame.fun.clone(), frame.call.clone());
 
-    if let Some((result, restore)) = apply_unevaluated_builtin(frame.clone(), &op_name) {
+    if let Some((result, restore)) = apply_unevaluated_builtin(&frame, &op_name) {
         return finish_application(
             frame
                 .factory
@@ -299,7 +298,7 @@ pub(crate) fn apply_builtin_safe<'a>(
     }
 
     let evaled_args = frame.eval_args();
-    let result = apply_evaluated_builtin(frame.clone(), &op_name, evaled_args.as_raw());
+    let result = apply_evaluated_builtin(&frame, &op_name, evaled_args.as_raw());
     finish_application(
         frame
             .factory
@@ -332,7 +331,7 @@ pub(crate) fn apply_builtin_values_safe<'a>(
 
     let op_name = primitive_call_name(primitive, frame.fun.clone(), frame.call.clone());
     let evaled_args = frame.args.clone();
-    let result = apply_evaluated_builtin(frame.clone(), &op_name, evaled_args.as_raw());
+    let result = apply_evaluated_builtin(&frame, &op_name, evaled_args.as_raw());
     finish_application(
         frame
             .factory
@@ -345,7 +344,7 @@ pub(crate) fn apply_builtin_values_safe<'a>(
 }
 
 fn apply_unevaluated_builtin<'a>(
-    frame: PrimitiveCall<'a>,
+    frame: &PrimitiveCall<'a>,
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
@@ -361,10 +360,10 @@ fn apply_unevaluated_builtin<'a>(
         frame.call.clone().as_raw(),
         || unsafe {
             (builtin.handler)(
-                frame.call.as_raw(),
-                frame.fun.as_raw(),
-                frame.args.as_raw(),
-                frame.rho.as_raw(),
+                frame.call.clone().as_raw(),
+                frame.fun.clone().as_raw(),
+                frame.args.clone().as_raw(),
+                frame.rho.clone().as_raw(),
             )
         },
     );
@@ -376,11 +375,15 @@ fn apply_unevaluated_builtin<'a>(
     Some((result, restore))
 }
 
-fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_args: SEXP) -> SEXP {
-    let fun = frame.fun;
-    let call = frame.call;
-    let args = frame.args;
-    let rho = frame.rho;
+fn apply_evaluated_builtin<'a>(
+    frame: &PrimitiveCall<'a>,
+    op_name: &str,
+    evaled_args: SEXP,
+) -> SEXP {
+    let fun = frame.fun.clone();
+    let call = frame.call.clone();
+    let args = frame.args.clone();
+    let rho = frame.rho.clone();
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
         unsafe {
             check_prototype_first_arg(op_name, evaled_args, call.clone().as_raw());
