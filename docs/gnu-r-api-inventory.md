@@ -215,3 +215,17 @@ The existing generation and join commands reproduce this snapshot using the
 pinned full census and this immutable source revision. Subsequent development
 requires another source-bound export; these counts do not describe every later
 commit or provide a completion percentage.
+
+## Joining selected public workflows to execution
+
+The [public-workflow execution receipt](ci-checkpoints/public-workflows-d339e355.json)
+uses namespace and binding names as inventory keys and resolves methods, structure,
+deparse and dput entries to their public wrappers, implementations, tested options
+and edge cases, target profiles and last verified source. Each execution check
+retains its raw-log hash. The native and portable package suites and production
+Chromium run execute those operations through public constructors.
+
+This is a partial execution join. It does not classify an untested inventory name
+as passing. The enclosing `structure.R` strictly passes; `eval-etc.R` completes but
+still differs from GNU output. Its remaining semantic and printing differences,
+and the separate internal dput routing gap, remain explicit in the receipt.

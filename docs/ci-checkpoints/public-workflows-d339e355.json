@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "runtime_source_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+  "website_source_commit": "3898a0f29e42675c008fd16c2f9ab2f79ea05a31",
+  "evidence_directory": "target/integration-repair-evidence/d339e355",
+  "scope": "Selected public workflow execution joined by package and binding name; not a complete inventory or conformance union. Historical complete receipts remain separate.",
+  "runtime_profile": {
+    "numerical_backend": "faer",
+    "native_features": [
+      "rust-backend",
+      "renderplot-device"
+    ],
+    "package_policies": [
+      "default native host discovery",
+      "explicit empty portable library search"
+    ],
+    "browser_evaluation_seconds": 15
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 26794411,
+      "sha256": "322046d1556bb2771b4c0e43be010398668ea02c985f3096971cb043af2fa482"
+    },
+    "output": {
+      "bytes": 22987717,
+      "sha256": "d5bc3249a3ce7548f7eee952f5f0cfff834cc6b4636a39a5c1b8d18da9d186e6"
+    }
+  },
+  "checks": [
+    {
+      "id": "native_packages",
+      "log": {
+        "file": "rport-filter-native-package-corpus.log",
+        "sha256": "cffde55d02801c90cabdf6d7c7ef06ab3643fbf572fe3143c1d8154ec06bf6ef"
+      },
+      "passed": 39,
+      "failed": 0
+    },
+    {
+      "id": "portable_methods",
+      "log": {
+        "file": "rport-filter-portable-methods.log",
+        "sha256": "e9ae5395653c58313a126872307e25ba8093eaf6e22578a36f112d7454e710bf"
+      },
+      "passed": 8,
+      "failed": 0
+    },
+    {
+      "id": "binding_indices",
+      "log": {
+        "file": "rport-methods-filter-binding-controls.log",
+        "sha256": "744183e90e6bdaabad3752c0ef22ff139b8c7931fc41403a1320df48a9a6ea0d"
+      },
+      "passed": 16,
+      "failed": 0
+    },
+    {
+      "id": "strict_miri_alias_gc",
+      "log": {
+        "file": "rport-methods-filter-strict-miri.log",
+        "sha256": "30c9de020ff39f2b9467b9d0f45513cdddfc697c61a8a31a61422e0b66229b0a"
+      },
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "id": "named_compiled_methods_browser",
+      "log": {
+        "file": "rport-named-gnu-browser-filtered-repeat.log",
+        "sha256": "9b44970ad81135e7195d314a07886a9a0423e6329f11f28c0cb68570582a1c1a"
+      },
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "showcase_before_caret_fix",
+      "log": {
+        "file": "rport-filter-showcase-full.json",
+        "sha256": "6cab56b7496028c420d6ab1931cbbd043d06e02bdc401fb1cae1ca7bdd92c45c"
+      },
+      "passed": 59,
+      "failed": 1,
+      "browser_stats": {
+        "startTime": "2026-10-06T00:09:43.952Z",
+        "duration": 348771.176,
+        "expected": 59,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      }
+    },
+    {
+      "id": "showcase",
+      "log": {
+        "file": "rport-filter-console-fixed-showcase-full.json",
+        "sha256": "9dd036101fe4f63253f19f939897d87bfeea7dff3e9626ecb8a28b0aad861e96"
+      },
+      "passed": 60,
+      "failed": 0,
+      "browser_stats": {
+        "startTime": "2026-10-06T00:16:39.192Z",
+        "duration": 330431.81,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "id": "sunflower",
+      "log": {
+        "file": "rport-filter-console-fixed-sunflower-repeat.log",
+        "sha256": "d84351c2d559c6d0565d986682192a4f1d8ac9fb07e9c8828b5a4027d49caa73"
+      },
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "id": "history_caret",
+      "log": {
+        "file": "rport-console-caret-commit-original-repeat.log",
+        "sha256": "7cda5d5446863f76c00412eb5c780a5d3306df00ea1589f7632db68db3e18a2f"
+      },
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "id": "deparse_neighbors",
+      "log": {
+        "file": "rport-deparse-public-neighbors-final.log",
+        "sha256": "bb4d9f2682059a9147bd86ce4c36ac07ab2b19628c355a6d36b4bfccdbb584fc"
+      },
+      "passed": 22,
+      "failed": 0
+    },
+    {
+      "id": "whole_structure_debug",
+      "source_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "profile": "debug",
+      "runtime": {
+        "cargo_features": [
+          "default",
+          "faer",
+          "rust-backend",
+          "r-graphics-engine",
+          "renderplot-device"
+        ],
+        "device": {
+          "font": "bundled DejaVu Sans",
+          "height": 504,
+          "name": "renderplot-scene",
+          "output": "owned display list",
+          "width": 504
+        },
+        "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+        "name": "graphics",
+        "numerical_backend": "faer",
+        "package_policy": "native"
+      },
+      "status_counts": {
+        "fail": 0,
+        "pass": 1,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "execution_complete": true,
+      "execution_finalized": true,
+      "strict_pass": true,
+      "detail": "",
+      "phases": [
+        {
+          "engine": "gnu",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 0.14202908403240144
+        },
+        {
+          "engine": "rust",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 28.570714500034228
+        }
+      ],
+      "log": {
+        "file": "structure-debug-summary.json",
+        "sha256": "3fdd3b9f1e7b9993d6f7d17ce5bb70437e73babd4971fe66df2b9b3de211a633"
+      }
+    },
+    {
+      "id": "whole_structure_release",
+      "source_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "profile": "release",
+      "runtime": {
+        "cargo_features": [
+          "default",
+          "faer",
+          "rust-backend",
+          "r-graphics-engine",
+          "renderplot-device"
+        ],
+        "device": {
+          "font": "bundled DejaVu Sans",
+          "height": 504,
+          "name": "renderplot-scene",
+          "output": "owned display list",
+          "width": 504
+        },
+        "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+        "name": "graphics",
+        "numerical_backend": "faer",
+        "package_policy": "native"
+      },
+      "status_counts": {
+        "fail": 0,
+        "pass": 1,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "execution_complete": true,
+      "execution_finalized": true,
+      "strict_pass": true,
+      "detail": "",
+      "phases": [
+        {
+          "engine": "gnu",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 0.21052854089066386
+        },
+        {
+          "engine": "rust",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 3.677198625053279
+        }
+      ],
+      "log": {
+        "file": "structure-release-summary.json",
+        "sha256": "9a8d5fd4052873655860e949dfe0ff0a7f5a09ad7bf2343f124124714b728fa9"
+      }
+    },
+    {
+      "id": "whole_eval-etc_debug",
+      "source_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "profile": "debug",
+      "runtime": {
+        "cargo_features": [
+          "default",
+          "faer",
+          "rust-backend",
+          "r-graphics-engine",
+          "renderplot-device"
+        ],
+        "device": {
+          "font": "bundled DejaVu Sans",
+          "height": 504,
+          "name": "renderplot-scene",
+          "output": "owned display list",
+          "width": 504
+        },
+        "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+        "name": "graphics",
+        "numerical_backend": "faer",
+        "package_policy": "native"
+      },
+      "status_counts": {
+        "fail": 1,
+        "pass": 0,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "execution_complete": true,
+      "execution_finalized": true,
+      "strict_pass": false,
+      "detail": "Rust output diverged from stock R",
+      "phases": [
+        {
+          "engine": "gnu",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 0.30263545899651945
+        },
+        {
+          "engine": "rust",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 483.30923604103737
+        }
+      ],
+      "log": {
+        "file": "eval-etc-debug-summary.json",
+        "sha256": "f787df69c1ea52ad585b1d5a823d10dcb8622ad73d8b64811c142a9d1baf8f1a"
+      }
+    },
+    {
+      "id": "whole_eval-etc_release",
+      "source_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "profile": "release",
+      "runtime": {
+        "cargo_features": [
+          "default",
+          "faer",
+          "rust-backend",
+          "r-graphics-engine",
+          "renderplot-device"
+        ],
+        "device": {
+          "font": "bundled DejaVu Sans",
+          "height": 504,
+          "name": "renderplot-scene",
+          "output": "owned display list",
+          "width": 504
+        },
+        "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+        "name": "graphics",
+        "numerical_backend": "faer",
+        "package_policy": "native"
+      },
+      "status_counts": {
+        "fail": 1,
+        "pass": 0,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "execution_complete": true,
+      "execution_finalized": true,
+      "strict_pass": false,
+      "detail": "Rust output diverged from stock R",
+      "phases": [
+        {
+          "engine": "gnu",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 0.26201783306896687
+        },
+        {
+          "engine": "rust",
+          "state": "finished",
+          "exit_code": 0,
+          "seconds": 49.43673812504858
+        }
+      ],
+      "log": {
+        "file": "eval-etc-release-summary.json",
+        "sha256": "be5532e30688adc47e632e786b4668aae7e2f0375d58fb82fea3b6180f50e48d"
+      }
+    }
+  ],
+  "function_workflows": [
+    {
+      "inventory_key": {
+        "namespace": "methods",
+        "bindings": [
+          "is",
+          "setClass",
+          "setMethod",
+          "existsMethod",
+          "hasMethod"
+        ]
+      },
+      "public_wrapper": "original GNU methods closures in canonical methods namespace",
+      "implementation": "crates/rmath/src/library/methods/portable/mod.rs; native primitive first-use registration; sexp/env_hash.rs",
+      "execution_checks": [
+        "native_packages",
+        "portable_methods",
+        "named_compiled_methods_browser"
+      ],
+      "tested_options_and_edges": "qualified and attached lookup, compiled closures, inherited and ANY signatures, lazy bindings, detach/reattach and reset",
+      "target_profiles": [
+        "native/default",
+        "native/portable",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "limitation": "Full reg-S4 driver remains an independent strict requirement."
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "structure"
+        ]
+      },
+      "public_wrapper": "public base closure in sexp/init.rs",
+      "implementation": "crates/rmath/src/sexp/init.rs",
+      "execution_checks": [
+        "whole_structure_debug",
+        "whole_structure_release"
+      ],
+      "tested_options_and_edges": "deprecated .Names/.Dim admission, deprecatedWarning metadata, warn=2 and preserved attributes/copy behavior",
+      "target_profiles": [
+        "native/default",
+        "native/portable"
+      ],
+      "last_verified_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "limitation": "Only tested workflows; not all structure combinations."
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "deparse",
+          "dput"
+        ]
+      },
+      "public_wrapper": "public base deparse/dput",
+      "implementation": "crates/rmath/src/mainutils/deparse/elements.rs; mainutils/essentials/runtime/session.rs",
+      "execution_checks": [
+        "deparse_neighbors",
+        "whole_eval-etc_release"
+      ],
+      "tested_options_and_edges": "NA_character_ vs literal NA names and dimnames, typed all-missing vectors, parse/eval round trips and invisible dput value",
+      "target_profiles": [
+        "native/default",
+        "native/portable"
+      ],
+      "last_verified_commit": "d339e3553ee059c4c52b629972f1e507e25f7bd5",
+      "limitation": "eval-etc completes but strict output differs; missing internal dput alias tracked separately."
+    }
+  ],
+  "additional_logs": {
+    "rport-filter-native-package-corpus.log": {
+      "file": "rport-filter-native-package-corpus.log",
+      "sha256": "cffde55d02801c90cabdf6d7c7ef06ab3643fbf572fe3143c1d8154ec06bf6ef"
+    },
+    "rport-filter-portable-methods.log": {
+      "file": "rport-filter-portable-methods.log",
+      "sha256": "e9ae5395653c58313a126872307e25ba8093eaf6e22578a36f112d7454e710bf"
+    },
+    "rport-methods-filter-binding-controls.log": {
+      "file": "rport-methods-filter-binding-controls.log",
+      "sha256": "744183e90e6bdaabad3752c0ef22ff139b8c7931fc41403a1320df48a9a6ea0d"
+    },
+    "rport-methods-filter-strict-miri.log": {
+      "file": "rport-methods-filter-strict-miri.log",
+      "sha256": "30c9de020ff39f2b9467b9d0f45513cdddfc697c61a8a31a61422e0b66229b0a"
+    },
+    "rport-methods-filter-clippy-final.log": {
+      "file": "rport-methods-filter-clippy-final.log",
+      "sha256": "6ea4c0a0866cfcdc520d6530c1d4463a24b35a8c70695268c682bfa57ae1501b"
+    },
+    "rport-methods-filter-format-final.log": {
+      "file": "rport-methods-filter-format-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rport-named-gnu-browser-filtered-repeat.log": {
+      "file": "rport-named-gnu-browser-filtered-repeat.log",
+      "sha256": "9b44970ad81135e7195d314a07886a9a0423e6329f11f28c0cb68570582a1c1a"
+    },
+    "rport-filter-showcase-full.json": {
+      "file": "rport-filter-showcase-full.json",
+      "sha256": "6cab56b7496028c420d6ab1931cbbd043d06e02bdc401fb1cae1ca7bdd92c45c"
+    },
+    "rport-filter-console-fixed-showcase-full.json": {
+      "file": "rport-filter-console-fixed-showcase-full.json",
+      "sha256": "9dd036101fe4f63253f19f939897d87bfeea7dff3e9626ecb8a28b0aad861e96"
+    },
+    "rport-filter-console-fixed-sunflower-repeat.log": {
+      "file": "rport-filter-console-fixed-sunflower-repeat.log",
+      "sha256": "d84351c2d559c6d0565d986682192a4f1d8ac9fb07e9c8828b5a4027d49caa73"
+    },
+    "rport-console-caret-commit-original-repeat.log": {
+      "file": "rport-console-caret-commit-original-repeat.log",
+      "sha256": "7cda5d5446863f76c00412eb5c780a5d3306df00ea1589f7632db68db3e18a2f"
+    },
+    "rport-console-caret-lint.log": {
+      "file": "rport-console-caret-lint.log",
+      "sha256": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438"
+    },
+    "rport-console-caret-format.log": {
+      "file": "rport-console-caret-format.log",
+      "sha256": "73cdc212d4fe4506d0b1fe2f1a9cd11c312a9a4830bb64a9f6b8c7110399a08d"
+    },
+    "rport-filter-integration-smoke.log": {
+      "file": "rport-filter-integration-smoke.log",
+      "sha256": "e70d18ebb48b81710f202407ddb54f2222e8ec24e148291b6abb02fb51e65f48"
+    },
+    "rport-named-gnu-alternating-artifacts-profile.log": {
+      "file": "rport-named-gnu-alternating-artifacts-profile.log",
+      "sha256": "16a333ac83945e6d29718b0b28be6f5708cef7ee084a05ee87bd92ca855bc8f2"
+    },
+    "rport-deparse-public-neighbors-final.log": {
+      "file": "rport-deparse-public-neighbors-final.log",
+      "sha256": "bb4d9f2682059a9147bd86ce4c36ac07ab2b19628c355a6d36b4bfccdbb584fc"
+    }
+  }
+}

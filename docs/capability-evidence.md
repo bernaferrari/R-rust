@@ -65,6 +65,20 @@ retains explicit feature, device, package and numerical profiles and every
 conformance and upstream outcome. These reports identify their actual source
 commits; later focused repairs are not a new complete union.
 
+A newer [public-workflow receipt](ci-checkpoints/public-workflows-d339e355.json)
+joins selected namespace/binding inventory keys to their public wrappers,
+implementation paths, tested options, execution profiles and source commits.
+Runtime source is `d339e355`; the command-history
+caret repair is `3898a0f2`. The fresh native
+embedding suite passes 39/39, portable methods pass
+8/8, and Chromium passes 60/60
+with zero skipped or flaky cases. Both unchanged sunflower flows pass twice.
+Strict Miri covers shared-frame invalidation, allocation-failure fallback and GC.
+The unchanged whole `structure.R` passes under both debug and the intended
+graphics/native/faer release profile. `eval-etc.R` now completes successfully in
+both profiles, but still fails strict output comparison. These selected results
+do not replace the complete conformance/upstream unions above.
+
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the
 owned public API and bounded unsafe implementation, and
