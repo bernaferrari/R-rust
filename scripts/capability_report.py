@@ -44,7 +44,8 @@ integration_local = integration['batch_last_value']
 view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
-complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-7691b601.json').read_text())
+complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-4d492679.json').read_text())
+latest_linux = json.loads((root / 'docs/ci-checkpoints/linux-browser-package-4d492679.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -142,6 +143,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `{view['source_commit'][:8]}` | {view_checks['chromium_complete']['expected']} | {view_checks['chromium_complete']['unexpected']} | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `{view['source_commit'][:8]}` | {view['linux_public_packages']['passed']} | {view['linux_public_packages']['failed']} | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `{view['source_commit'][:8]}` | {view['linux_showcase']['stats']['expected']} | {view['linux_showcase']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['passed']} | {latest_linux['native_public']['failed']} | All 54 public checks; actual constructors, debug profile |
+| Linux complete Chromium showcase | `{latest_linux['source_commit'][:8]}` | {latest_linux['browser']['stats']['expected']} | {latest_linux['browser']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `{integration_checks['native_packages_and_data']['source_commit'][:8]}` | {integration_checks['native_packages_and_data']['passed']} | {integration_checks['native_packages_and_data']['failed']} | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `{integration_checks['wasm_datasets']['source_commit'][:8]}` | {integration_checks['wasm_datasets']['passed']} | {integration_checks['wasm_datasets']['failed']} | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -149,12 +152,17 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
 The latest independently verified complete inventory is recorded at
-`7691b601` in the [complete inventory receipt](ci-checkpoints/complete-inventory-7691b601.json).
+`4d492679` in the [complete inventory receipt](ci-checkpoints/complete-inventory-4d492679.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
 joins them without errors; semantic failures remain failures.
-The official CI aggregation jobs were still queued at capture; the independently
-executed same-source joins authenticate all producer reports and outcomes.
+The independently executed same-source joins are identical to both completed
+official CI unions and authenticate all producer reports and outcomes.
+The same checkpoint's [Linux browser/package receipt](ci-checkpoints/linux-browser-package-4d492679.json)
+records 54 native passes and 57 browser passes with three failures: both original
+sunflower flows still time out, and the original FFT/RNG aggregate exceeds its
+90-second deadline. Methods cases pass. Earlier local and Linux 60/60 runs are
+separate snapshots and do not establish repeated Linux reliability.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
@@ -162,8 +170,9 @@ executed same-source joins authenticate all producer reports and outcomes.
 | Whole upstream drivers | {complete['upstream_by_kind']['whole']['pass']} | {complete['upstream_by_kind']['whole']['fail']} | 31 skipped; all 70 accounted for |
 | Curated upstream slices | {complete['upstream_by_kind']['curated']['pass']} | 0 | All 15 accounted for |
 
-This complete conformance report has seventeen fewer failures than the reviewed
-checkpoint (five fewer than the preceding `4cd0f941` union). The upstream runtime
+This complete conformance report has thirty-six fewer failures than the reviewed
+checkpoint, with nineteen newly passing cases and no added failures compared
+with the preceding complete `7691b601` union. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits
 successfully; the Rust native graphics operation still fails. Every outcome and

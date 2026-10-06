@@ -93,6 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `4d492679` | 54 | 0 | All 54 public checks; actual constructors, debug profile |
+| Linux complete Chromium showcase | `4d492679` | 57 | 3 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -100,21 +102,27 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
 The latest independently verified complete inventory is recorded at
-`7691b601` in the [complete inventory receipt](ci-checkpoints/complete-inventory-7691b601.json).
+`4d492679` in the [complete inventory receipt](ci-checkpoints/complete-inventory-4d492679.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
 joins them without errors; semantic failures remain failures.
-The official CI aggregation jobs were still queued at capture; the independently
-executed same-source joins authenticate all producer reports and outcomes.
+The independently executed same-source joins are identical to both completed
+official CI unions and authenticate all producer reports and outcomes.
+The same checkpoint's [Linux browser/package receipt](ci-checkpoints/linux-browser-package-4d492679.json)
+records 54 native passes and 57 browser passes with three failures: both original
+sunflower flows still time out, and the original FFT/RNG aggregate exceeds its
+90-second deadline. Methods cases pass. Earlier local and Linux 60/60 runs are
+separate snapshots and do not establish repeated Linux reliability.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance | 1062 | 119 | All 1181 accounted for; zero timeouts |
+| Exact-oracle conformance | 1081 | 100 | All 1181 accounted for; zero timeouts |
 | Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for |
 | Curated upstream slices | 15 | 0 | All 15 accounted for |
 
-This complete conformance report has seventeen fewer failures than the reviewed
-checkpoint (five fewer than the preceding `4cd0f941` union). The upstream runtime
+This complete conformance report has thirty-six fewer failures than the reviewed
+checkpoint, with nineteen newly passing cases and no added failures compared
+with the preceding complete `7691b601` union. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits
 successfully; the Rust native graphics operation still fails. Every outcome and
