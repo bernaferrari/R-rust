@@ -37,18 +37,27 @@ fn loess_errors_recover_and_mutated_models_are_validated() {
 
 #[test]
 fn portable_loess_cached_fitted_values_and_numerical_admission() {
-    let mut s = RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
-        Vec::new(),
-        std::env::temp_dir(),
-    ))
-    .unwrap();
-    assert_eq!(s.eval("x<-seq(0,1,length.out=30);y<-sin(x*5);f<-loess(y~x);p<-predict(f);f$pars$span<-NaN;f$divisor<-numeric(0);identical(p,predict(f))").unwrap(), "[1] TRUE\n");
-    for code in [
-        "f<-loess(y~x);f$pars$span<-NaN;predict(f,newdata=.2)",
-        "f<-loess(y~x);f$divisor<-numeric(0);predict(f,newdata=.2)",
-    ] {
-        assert!(s.eval(code).is_err(), "{code}");
+    // GNU interpolation uses the saved kd surface; span and the one-predictor
+    // divisor are unused here. Direct prediction admits span numerically.
+    for portable in [false, true] {
+        let mut s = if portable {
+            RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
+                Vec::new(),
+                std::env::temp_dir(),
+            ))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            s.eval(include_str!("fixtures/loess-metadata-oracle.R"))
+                .unwrap(),
+            include_str!("fixtures/loess-metadata-oracle.out"),
+            "portable={portable}",
+        );
+        assert!(s.eval("predict(g,newdata=.2)").is_err());
         assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
+        s.close();
     }
 }
 
