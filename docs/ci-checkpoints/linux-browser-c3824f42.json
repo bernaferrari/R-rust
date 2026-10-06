@@ -1,0 +1,1070 @@
+{
+  "source_commit": "c3824f42bb0d41dfd5fa1abbe8d820eefa355ab1",
+  "run_url": "https://github.com/bernaferrari/R-rust/actions/runs/37432106583",
+  "browser": {
+    "job_id": 112165144682,
+    "stats": {
+      "startTime": "2026-10-06T08:02:15.586Z",
+      "duration": 469485.939,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "tests": [
+      {
+        "path": [
+          "console-files.spec.ts"
+        ],
+        "title": "session files work with standard R reads, source and writes",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 7826,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console-files.spec.ts"
+        ],
+        "title": "console imports a file without executing its code",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4608,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console-files.spec.ts"
+        ],
+        "title": "new session clears imported files and allows the same name again",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6993,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "console preserves variables, recovers from errors, renders plots and resets",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 10032,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "console mobile layout and multiline input",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3998,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "interactive errors keep partial console output and plots",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4955,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "stop resets a busy session and remains usable",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 5184,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "example conversation can continue: A week in numbers",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4122,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "example conversation can continue: Find the rhythm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4197,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "example conversation can continue: Let chance speak",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4169,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "virtual history caps at 500 and submitting returns to the bottom",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 28793,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "console.spec.ts"
+        ],
+        "title": "arrow keys recall commands and restore the unfinished draft",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3778,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "runs real R code and reports an evaluation error",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6219,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "keeps seeded random numbers and samples repeatable across sessions",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6003,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "autoruns the initial LOESS example",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4758,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "stops a running R worker and clears its session",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4039,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "filters the gallery, handles an empty search, and selects a recipe",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 20763,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "drafts through a mocked Ollama endpoint and hands code to the playground",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4817,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "e2e.spec.ts"
+        ],
+        "title": "stays usable on mobile and has no axe violations",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 2163,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "pages.spec.ts"
+        ],
+        "title": "focused editor runs R and gallery opens its chosen recipe",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 8868,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "pages.spec.ts"
+        ],
+        "title": "focused pages have footer navigation and accessible mobile layouts",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 5695,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "pages.spec.ts"
+        ],
+        "title": "production pages contain unique metadata and content before JavaScript",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 9,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "playground-output.spec.ts"
+        ],
+        "title": "output tabs inspect one execution and an empty console stays disabled",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6596,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "playground-output.spec.ts"
+        ],
+        "title": "automatic execution keeps quick runs quiet but exposes Stop for a loop",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 7366,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "runif.spec.ts"
+        ],
+        "title": "browser Wasm runif matches GNU R defaults, recycling, and RNG consumption",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3686,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "runif.spec.ts"
+        ],
+        "title": "browser Wasm bounds returned console output and keeps the session usable",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 5343,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "runif.spec.ts"
+        ],
+        "title": "browser memory and result budgets reject large requests and recover",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4089,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "theme-and-mode.spec.ts"
+        ],
+        "title": "manual mode waits for Run and survives recipe changes",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 11921,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "theme-and-mode.spec.ts"
+        ],
+        "title": "theme follows system until an explicit choice, persists, and has accessible contrast",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 8411,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "theme-and-mode.spec.ts"
+        ],
+        "title": "copy uses the reference icon animation and one-second feedback",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 2236,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "theme-and-mode.spec.ts"
+        ],
+        "title": "editor scrolls the final line into view and download feedback resets",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 20814,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU persistence hooks restore records and survive callback GC",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3510,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU SWITCH executes modified branches and rejects malformed constants",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3277,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU DUP executes its stream in the browser",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3275,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "match.call preserves S3 source expressions and matches formal arguments",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3298,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "namespace bytecode, automatic file opening and sink routing match GNU",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3289,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU computed calls and deferred capture connections work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3249,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU primitive calls and streaming file capture work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3295,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "literal GNU call arguments, QR transforms and selective capture work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3329,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU superassignment, evalq, Q factors and output capture work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3338,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "named GNU calls, real QR and method existence work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 11962,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "compiled lazy calls and inherited method specificity work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 23840,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU math bytecode, method continuation and abort discovery work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 9451,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "unary GNU bytecode, primitive methods and restart unwinding work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3420,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU arithmetic bytecode and Ops conflict hooks run in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3346,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU branches and edited grid geometry work in the Wasm runtime",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6000,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "interactive plots retain layers across commands in the actual Wasm worker",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6132,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "named S4 signatures dispatch and reject invalid argument names recoverably",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 9159,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "S4 generic method tables are independent",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 9883,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "nested grob edits preserve the original in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 6091,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU compiled closures and ANY signatures work in the browser runtime",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 16167,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "long vector density and deparsing remain within string buffer allocation",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3372,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "simulation drawing is silent while explicit NULL and custom method results remain visible",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 5617,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU literal-return bytecode keeps exact values through browser round trips",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3301,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "GNU bytecode instructions take precedence over retained source in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3305,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "interpreted active bindings and caller-scoped grid methods work in Wasm",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 5644,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "S3 group methods and serialized call tails work in the Wasm worker",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3448,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-runtime-contracts.spec.ts"
+        ],
+        "title": "named virtual file constructors avoid host process assumptions",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 3268,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-stats.spec.ts"
+        ],
+        "title": "portable FFT and all formerly gated RNGs match the pinned GNU R oracle",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 77025,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      },
+      {
+        "path": [
+          "wasm-stats.spec.ts"
+        ],
+        "title": "FFT errors are recoverable and text-only calculations need no plot mode",
+        "project": "chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration_ms": 4112,
+            "retry": 0,
+            "errors": []
+          }
+        ]
+      }
+    ],
+    "playwright_sha256": "adc9ecafb2f7b4164cea86d3411a0aad6782bd1c9c80ae38585b1fff55cbbad7",
+    "scope": "Complete unchanged original59+reset regression. Original sunflower source/budgets unchanged. Names-only profiling runs after Chromium acceptance, not inside it."
+  },
+  "native_public": {
+    "profile": {
+      "source_commit": "c3824f42bb0d41dfd5fa1abbe8d820eefa355ab1",
+      "build_profile": "debug",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 1200,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--test",
+        "embed",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "portable_grdevices_namespace",
+        "--test",
+        "portable_stats_namespace",
+        "--test",
+        "complex_print_contract",
+        "--test",
+        "get_lazy_mode",
+        "--test",
+        "correlation_public_contract",
+        "--test",
+        "palette_public_contract"
+      ],
+      "cwd": "/home/runner/work/R-rust/R-rust",
+      "elapsed_seconds": 1200.252310569,
+      "execution_complete": false,
+      "exit_code": 124,
+      "finished_at": "2026-10-06T08:10:13.758204+00:00",
+      "logs": {
+        "stderr.log": "1e4819c1ba1ba28ab45ad8ae80760c368c87d8f60ffe66119e2a4168d66b5c8e",
+        "stdout.log": "8abdeca9b1ac37c10311ca81e60d25eade63c771f0b6c6d8bf6dee1deda7893a"
+      },
+      "pid": 2465,
+      "schema_version": 1,
+      "started_at": "2026-10-06T07:50:13.500845+00:00",
+      "state": "timeout",
+      "timeout_seconds": 1200.0
+    },
+    "completed_passes": 41,
+    "completed_suite_counts": [
+      1,
+      1,
+      39
+    ],
+    "stdout_sha256": "8abdeca9b1ac37c10311ca81e60d25eade63c771f0b6c6d8bf6dee1deda7893a",
+    "stderr_sha256": "1e4819c1ba1ba28ab45ad8ae80760c368c87d8f60ffe66119e2a4168d66b5c8e",
+    "scope": "Incomplete1200-second expanded51-test batch. Compilation41.12s, all39embeddingtestsPASS966.73s. Deadline expires during get_lazy_mode after complex1/correlation1/embed39 completed, before other suites. No semantic failure recorded; not complete native acceptance."
+  },
+  "later_local_public": {
+    "source_commit": "2920368cebbeca91fd528fd16ea7f78cce25393d",
+    "scope": "Separate source: complete expanded52 public native checks including new palette/binning contracts; not added to Linux c382 counts.",
+    "passed": 52,
+    "failed": 0,
+    "raw_log_sha256": "6ce4bae8766cbbb664fa21882dd7e1c111cdb81d0b6d7bd29a01c85d9496baaf"
+  },
+  "later_original_sunflower_repetitions": {
+    "source_commit": "2920368cebbeca91fd528fd16ea7f78cce25393d",
+    "production_wasm_sha256": "c8ed1d7ad3baaf5ffbad077e96a99806b87fd03db2df09ab422f934512f8f4e5",
+    "stats": {
+      "startTime": "2026-10-06T08:20:26.351Z",
+      "duration": 86586.176,
+      "expected": 6,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "scope": "Both unchanged original gallery and editor/download flows\u00d73fresh local Chromium contexts, one worker, task native/Cargo/Miri/Node validation stopped. Original budgets/source retained. Separate source, not added to Linux60 count.",
+    "raw_log_sha256": "abf9c75c6922bb1c374fac4d17ced0c46ec4c5e13a56ba30caa5bb95a1a7ec77"
+  }
+}

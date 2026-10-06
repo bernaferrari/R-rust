@@ -327,6 +327,15 @@ The sampled distribution kernels and duplication consume little time; environmen
 lookup and character/header/link bookkeeping are the useful next targets.
 These diagnostics preserve the original 15-second evaluation budget.
 
+The later immutable [Linux browser checkpoint](ci-checkpoints/linux-browser-c3824f42.json)
+at `c3824f42` passes all 60 unchanged Chromium cases with zero skipped or flaky
+results, including both original sunflower flows. The separate expanded native
+batch times out after 41 completed passes; its remaining suites are unexecuted.
+The native batch deadline is corrected separately, while browser budgets stay
+unchanged. A later complete local `2920368c` package run passes all 52 checks;
+both original sunflower flows also pass three fresh local browser repetitions.
+These separate-source results are preserved distinctly in the receipt.
+
 The focused [canonical character-read repair](ci-checkpoints/character-read-9f2f28a6.json)
 at `9f2f28a6` passes the existing native projection controls, strict Miri and
 nine Wasm public contracts in two fresh sessions. Three sequential production
