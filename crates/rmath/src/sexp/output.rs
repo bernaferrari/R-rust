@@ -1173,14 +1173,17 @@ where
         widths.push(width);
     }
 
-    let page_width = unsafe { crate::mainutils::options::GetOptionWidth().max(10) as usize };
+    let (page_width, gap, _) = vector_print_settings();
+    let page_width = page_width.max(10) as usize;
+    let gap = gap.max(0) as usize;
+    let separator = " ".repeat(gap);
     let mut blocks = Vec::new();
     let mut start = 0;
     while start < c_pr {
         let mut used = row_width;
         let mut end = start;
         while end < c_pr {
-            let extra = widths[end] + 1;
+            let extra = widths[end] + gap;
             if end > start && used + extra > page_width {
                 break;
             }
@@ -1202,7 +1205,7 @@ where
         let mut header = "     ".to_string();
         for c in 0..c_pr {
             if c > 0 {
-                header.push(' ');
+                header.push_str(&separator);
             }
             header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
         }
@@ -1218,12 +1221,12 @@ where
                 " ".repeat(row_width)
             };
             if row_width > 0 && cs < ce {
-                header.push(' ');
+                header.push_str(&separator);
             }
             for c in cs..ce {
                 header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
                 if c + 1 < ce {
-                    header.push(' ');
+                    header.push_str(&separator);
                 }
             }
             lines.push(header);
@@ -1231,7 +1234,7 @@ where
                 let label = format!("{:lbloff$}{}", "", row_labels[r]);
                 let mut line = format!("{label:<row_width$}");
                 for c in cs..ce {
-                    line.push(' ');
+                    line.push_str(&separator);
                     line.push_str(&format!("{:>width$}", values[r][c], width = widths[c]));
                 }
                 lines.push(line);
@@ -1290,7 +1293,10 @@ where
         widths.push(width);
     }
 
-    let page_width = unsafe { crate::mainutils::options::GetOptionWidth().max(10) as usize };
+    let (page_width, gap, _) = vector_print_settings();
+    let page_width = page_width.max(10) as usize;
+    let gap = gap.max(0) as usize;
+    let separator = " ".repeat(gap);
     let mut blocks = Vec::new();
     let mut start = 0;
     while start < ncol {
@@ -1299,7 +1305,7 @@ where
         while end < ncol {
             let extra = widths[end]
                 + if row_width > 0 || end > start || empty_row_labs {
-                    1
+                    gap
                 } else {
                     0
                 };
@@ -1328,7 +1334,7 @@ where
             " ".repeat(row_width)
         };
         if row_width > 0 {
-            header.push(' ');
+            header.push_str(&separator);
         }
         for c in cs..ce {
             if c > cs || (row_width == 0 && empty_row_labs) {
@@ -1337,10 +1343,10 @@ where
             }
             if c > cs || row_width > 0 {
                 if c > cs {
-                    header.push(' ');
+                    header.push_str(&separator);
                 }
             } else if empty_row_labs {
-                header.push(' ');
+                header.push_str(&separator);
             }
             // Gap sits outside the field; `right` chooses the side of the pad.
             header.push_str(&align(&col_labels[c], widths[c]));
@@ -1351,7 +1357,7 @@ where
             let label = format!("{:lbloff$}{}", "", row_labels[r]);
             let mut line = format!("{label:<row_width$}");
             for c in cs..ce {
-                line.push(' ');
+                line.push_str(&separator);
                 line.push_str(&align(&values[r][c], widths[c]));
             }
             lines.push(line);
@@ -2859,7 +2865,7 @@ fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
     unsafe {
         let width = crate::mainutils::print::get_R_print_data().width;
         let max = crate::mainutils::options::GetOptionMaxPrint();
-        let gap = crate::mainutils::printutils::get_R_print().gap;
+        let gap = crate::mainutils::print::get_R_print_data().gap;
         (width, gap, max as i64)
     }
 }

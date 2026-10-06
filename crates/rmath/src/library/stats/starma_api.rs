@@ -312,13 +312,17 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
     sncond: SEXP,
 ) -> SEXP {
     unsafe {
-        if na.is_null() || TYPEOF(na) != SEXPTYPE::INTSXP || XLENGTH(na) != 5 {
-            starma_error("starma orders must be five nonnegative integers");
+        if na.is_null() || TYPEOF(na) != SEXPTYPE::INTSXP || XLENGTH(na) < 5 {
+            starma_error("starma orders must begin with five nonnegative integers");
         }
+        // GNU arima0 supplies seven entries: the five native model orders
+        // followed by the two differencing orders already applied by its R
+        // wrapper. This kernel consumes the first five; retain minimum-length
+        // admission without rejecting that original public metadata tail.
         let orders = INTEGER(na);
         let [mp, mq, msp, msq, ns] = std::array::from_fn(|index| *orders.add(index));
         if [mp, mq, msp, msq, ns].iter().any(|order| *order < 0) {
-            starma_error("starma orders must be five nonnegative integers");
+            starma_error("starma orders must begin with five nonnegative integers");
         }
         let n = dimension(pn, "observation count");
         let m = dimension(pm, "regression count");
@@ -1667,7 +1671,9 @@ mod tests {
         let session = RSession::new_for_gc_tests();
         session.with_active(|| {
             let mut values = inputs(&session);
-            values[0] = integer_values(&session, &[1, 1, 1, 1, 2]);
+            // Original arima0 model metadata includes the already-applied d/D
+            // tail. The native seasonal/regression kernel consumes five orders.
+            values[0] = integer_values(&session, &[1, 1, 1, 1, 2, 0, 1]);
             values[1] = real_values(&session, &[3.0, 4.0, 6.0, 10.0, 18.0]);
             values[2] = integer_values(&session, &[5]);
             values[3] = real_values(&session, &[1.0; 5]);

@@ -1,0 +1,226 @@
+gap 0 
+[1]1234
+    [,1][,2]
+[1,]   1   3
+[2,]   2   4
+    shortlonger
+        1     3
+s.e.    2     4
+    shortlonger
+        1     3
+s.e.    2     4
+[1] 1.25-2.50   NA  Inf
+     [,1][,2]
+[1,] 1.25  NA
+[2,]-2.50 Inf
+    shortlonger
+     1.25    NA
+s.e.-2.50   Inf
+    shortlonger
+     1.25    NA
+s.e.-2.50   Inf
+[1] TRUEFALSE   NA TRUE
+     [,1][,2]
+[1,] TRUE  NA
+[2,]FALSETRUE
+    shortlonger
+     TRUE    NA
+s.e.FALSE  TRUE
+    shortlonger
+     TRUE    NA
+s.e.FALSE  TRUE
+[1] 1+2i-3+4i   NA 0+0i
+     [,1][,2]
+[1,] 1+2i  NA
+[2,]-3+4i0+0i
+    shortlonger
+     1+2i    NA
+s.e.-3+4i  0+0i
+    shortlonger
+     1+2i    NA
+s.e.-3+4i  0+0i
+[1]"a"  "bbb""c"  NA   
+    [,1] [,2]
+[1,]"a"  "c" 
+[2,]"bbb"NA  
+    shortlonger
+    "a"  "c"   
+s.e."bbb"NA    
+    shortlonger
+    "a"  "c"   
+s.e."bbb"NA    
+gap 1 
+[1] 1 2 3 4
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+     short longer
+         1      3
+s.e.     2      4
+     short longer
+         1      3
+s.e.     2      4
+[1]  1.25 -2.50    NA   Inf
+      [,1] [,2]
+[1,]  1.25   NA
+[2,] -2.50  Inf
+     short longer
+      1.25     NA
+s.e. -2.50    Inf
+     short longer
+      1.25     NA
+s.e. -2.50    Inf
+[1]  TRUE FALSE    NA  TRUE
+      [,1] [,2]
+[1,]  TRUE   NA
+[2,] FALSE TRUE
+     short longer
+      TRUE     NA
+s.e. FALSE   TRUE
+     short longer
+      TRUE     NA
+s.e. FALSE   TRUE
+[1]  1+2i -3+4i    NA  0+0i
+      [,1] [,2]
+[1,]  1+2i   NA
+[2,] -3+4i 0+0i
+     short longer
+      1+2i     NA
+s.e. -3+4i   0+0i
+     short longer
+      1+2i     NA
+s.e. -3+4i   0+0i
+[1] "a"   "bbb" "c"   NA   
+     [,1]  [,2]
+[1,] "a"   "c" 
+[2,] "bbb" NA  
+     short longer
+     "a"   "c"   
+s.e. "bbb" NA    
+     short longer
+     "a"   "c"   
+s.e. "bbb" NA    
+gap 2 
+[1]  1  2  3  4
+      [,1]  [,2]
+[1,]     1     3
+[2,]     2     4
+      short  longer
+          1       3
+s.e.      2       4
+      short  longer
+          1       3
+s.e.      2       4
+[1]   1.25  -2.50     NA    Inf
+       [,1]  [,2]
+[1,]   1.25    NA
+[2,]  -2.50   Inf
+      short  longer
+       1.25      NA
+s.e.  -2.50     Inf
+      short  longer
+       1.25      NA
+s.e.  -2.50     Inf
+[1]   TRUE  FALSE     NA   TRUE
+       [,1]  [,2]
+[1,]   TRUE    NA
+[2,]  FALSE  TRUE
+      short  longer
+       TRUE      NA
+s.e.  FALSE    TRUE
+      short  longer
+       TRUE      NA
+s.e.  FALSE    TRUE
+[1]   1+2i  -3+4i     NA   0+0i
+       [,1]  [,2]
+[1,]   1+2i    NA
+[2,]  -3+4i  0+0i
+      short  longer
+       1+2i      NA
+s.e.  -3+4i    0+0i
+      short  longer
+       1+2i      NA
+s.e.  -3+4i    0+0i
+[1]  "a"    "bbb"  "c"    NA   
+      [,1]   [,2]
+[1,]  "a"    "c" 
+[2,]  "bbb"  NA  
+      short  longer
+      "a"    "c"   
+s.e.  "bbb"  NA    
+      short  longer
+      "a"    "c"   
+s.e.  "bbb"  NA    
+gap 4 
+[1]    1    2    3    4
+        [,1]    [,2]
+[1,]       1       3
+[2,]       2       4
+        short    longer
+            1         3
+s.e.        2         4
+        short    longer
+            1         3
+s.e.        2         4
+[1]     1.25    -2.50       NA      Inf
+         [,1]    [,2]
+[1,]     1.25      NA
+[2,]    -2.50     Inf
+        short    longer
+         1.25        NA
+s.e.    -2.50       Inf
+        short    longer
+         1.25        NA
+s.e.    -2.50       Inf
+[1]     TRUE    FALSE       NA     TRUE
+         [,1]    [,2]
+[1,]     TRUE      NA
+[2,]    FALSE    TRUE
+        short    longer
+         TRUE        NA
+s.e.    FALSE      TRUE
+        short    longer
+         TRUE        NA
+s.e.    FALSE      TRUE
+[1]     1+2i    -3+4i       NA     0+0i
+         [,1]    [,2]
+[1,]     1+2i      NA
+[2,]    -3+4i    0+0i
+        short    longer
+         1+2i        NA
+s.e.    -3+4i      0+0i
+        short    longer
+         1+2i        NA
+s.e.    -3+4i      0+0i
+[1]    "a"      "bbb"    "c"      NA   
+        [,1]     [,2]
+[1,]    "a"      "c" 
+[2,]    "bbb"    NA  
+        short    longer
+        "a"      "c"   
+s.e.    "bbb"    NA    
+        short    longer
+        "a"      "c"   
+s.e.    "bbb"    NA    
+[1] "'gap' must be non-negative integer"
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+[1] "'gap' must be non-negative integer"
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+[1] "'print.gap' must be less than 1024"
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+[1] "'gap' must be non-negative integer"
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+     [,1] [,2]
+[1,]    1    3
+[2,]    2    4
+      [,1]  [,2]
+[1,]     1     3
+[2,]     2     4

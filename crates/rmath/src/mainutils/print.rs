@@ -21,7 +21,7 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::constructors::{Rf_cons, Rf_mkChar};
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -390,29 +390,14 @@ unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
     unsafe { crate::mainutils::array::allocArray(mode, dims) }
 }
 
-/// asInteger -- local implementation.
+/// Use the shared GNU scalar coercion, including string and complex admission.
 unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return NA_INTEGER;
+        if x.is_null() {
+            NA_INTEGER
+        } else {
+            crate::mainutils::coerce::asInteger(x)
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            if LENGTH(x) >= 1 {
-                return *INTEGER(x);
-            }
-        } else if t == SEXPTYPE::REALSXP {
-            if LENGTH(x) >= 1 {
-                let v = *REAL(x);
-                if ISNAN(v) {
-                    return NA_INTEGER;
-                }
-                return v as c_int;
-            }
-        } else if t == SEXPTYPE::LGLSXP && LENGTH(x) >= 1 {
-            return *LOGICAL(x);
-        }
-        NA_INTEGER
     }
 }
 
@@ -1979,10 +1964,10 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
             if Rf_isNull(gap) == 0 {
                 data.gap = asInteger(gap);
                 if data.gap == NA_INTEGER || data.gap < 0 {
-                    data.gap = 1;
+                    crate::sexp::context::r_error("'gap' must be non-negative integer");
                 }
                 if data.gap > 1024 {
-                    data.gap = 1;
+                    crate::sexp::context::r_error("'print.gap' must be less than 1024");
                 }
             }
             advancePrintArgs(
