@@ -38,9 +38,10 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
         // GNU getCurrentCall: if the top frame is CTXT_BUILTIN, walk past it
         // once. Ops (`>`, `+`) are builtins, so warning() from DispatchGroup
         // stores R_NilValue and PrintWarnings omits the `In x > y :` prefix.
-        if (c.callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0
-            && !c.nextcontext.is_null()
-        {
+        if (c.callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0 {
+            if c.nextcontext.is_null() {
+                return globals::R_NilValue();
+            }
             c = &*c.nextcontext;
         }
         // Skip promise-evaluation contexts (bare CTXT_RETURN, null call)

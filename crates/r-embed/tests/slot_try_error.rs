@@ -77,3 +77,36 @@ fn explicit_error_call_survives_try_and_handler_callbacks() {
         );
     }
 }
+
+#[test]
+fn uncaught_top_level_stop_matches_original_gnu_error_cases() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            rmath::android::RSession::new_with_path_policy(rmath::android::RuntimePathPolicy::new(
+                Vec::new(),
+                std::env::temp_dir(),
+            ))
+        } else {
+            rmath::android::RSession::new()
+        };
+        for (source, expected) in [
+            (
+                include_str!("../../../tests/conformance/error_cases/023_stop_simple.R"),
+                include_str!("../../../tests/conformance/error_golden/023_stop_simple.out"),
+            ),
+            (
+                include_str!(
+                    "../../../tests/conformance/error_cases/088_stop_no_location_by_default.R"
+                ),
+                include_str!(
+                    "../../../tests/conformance/error_golden/088_stop_no_location_by_default.out"
+                ),
+            ),
+        ] {
+            let result = session.eval_script(source);
+            assert!(matches!(result.typed, rmath::android::RValue::Error(_)));
+            assert_eq!(result.output, expected, "portable={portable}");
+        }
+        assert_eq!(session.eval_script("1 + 1").output, "[1] 2\n");
+    }
+}

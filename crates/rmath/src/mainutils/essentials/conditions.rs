@@ -43,6 +43,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // GNU try() is a closure chain. Keep that chain on tracemem
             // output while this builtin evaluates its expression.
             let _builtin_try = crate::mainutils::debug::BuiltinTryTrace::enter();
+            let _context = try_catch_evaluation_context(rho);
             crate::eval::eval::Rf_eval(expr, rho)
         }));
 
@@ -1822,6 +1823,36 @@ impl Drop for TryCatchNframeGuard {
     }
 }
 
+/// The native try/tryCatch evaluator replaces GNU's doTryCatch closure.
+/// Keep its call on the context stack while forcing the protected expression,
+/// so an inferred error call has a real caller even at top level.
+unsafe fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
+    unsafe {
+        let inner = crate::sexp::constructors::Rf_lang2(
+            Rf_install(c"return".as_ptr()),
+            Rf_install(c"expr".as_ptr()),
+        );
+        let _inner_guard = protect(inner);
+        let call = crate::sexp::constructors::Rf_lang5(
+            Rf_install(c"doTryCatch".as_ptr()),
+            inner,
+            Rf_install(c"name".as_ptr()),
+            Rf_install(c"parentenv".as_ptr()),
+            Rf_install(c"handler".as_ptr()),
+        );
+        let _call_guard = protect(call);
+        crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_RETURN,
+            call,
+            rho,
+            rho,
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        )
+    }
+}
+
 /// GNU `errorcall(call)` stores the applied language object; `stop()` uses
 /// `getCurrentCall()`. tryCatch fabricates `doTryCatch(...)` only when the
 /// raise is in the tryCatch frame itself (`stop("boom")`).
@@ -2102,6 +2133,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _context = try_catch_evaluation_context(rho_owner.as_raw());
             crate::eval::eval::Rf_eval(expr, rho_owner.as_raw())
         }));
         let caught_call = if result.is_err() {
