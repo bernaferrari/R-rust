@@ -123,17 +123,17 @@ fn test_do_deparse_simple_expr() {
 }
 
 #[test]
-fn test_do_dput_returns_nil() {
-    let _session = RSession::new();
-    unsafe {
-        let result = do_dput(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        );
-        assert!(result.is_null() || result == R_NilValue());
-    }
+fn dput_returns_its_input_invisibly() {
+    let mut session = RSession::new();
+    let (value, _, _) = session.eval_script_with_output_capture(
+        r"
+        x <- list(a=1L)
+        result <- withVisible(dput(x))
+        stopifnot(identical(result,list(value=x,visible=FALSE)))
+        TRUE
+        ",
+    );
+    assert_eq!(value.unwrap().logical_elt(0), Some(crate::sexp::ffi::TRUE));
 }
 
 #[test]
