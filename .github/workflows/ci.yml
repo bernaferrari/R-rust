@@ -126,6 +126,15 @@ jobs:
           --test mapply_public_contract --test sample_condition_contract
           --test rep_len_admission_contract --test unserialize_connection_contract
           --test calling_error_handlers --test calling_warning_handlers
+          --test try_condition_calls --test slot_try_error
+
+      - name: Verify original S4 subset calls through both public policies
+        run: >-
+          python3 scripts/upstream_execution.py process
+          --directory "${{ runner.temp }}/public-package-checkpoint/s4-subset-call"
+          --cwd "$PWD" --timeout 2400 --separate-streams --
+          scripts/cargo_dev.sh test -p r-embed --test s4_next_method
+          s4_next_method_preserves_original_subset_call_and_named_drop -- --exact
 
       - name: Upload durable public package evidence
         if: always()

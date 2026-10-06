@@ -699,8 +699,14 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
         // sys.call() in the method is `BAR[1L, , flag=TRUE]`, not a
         // 1-form call whose CAR is the MethodDefinition.
         let mut cptr = crate::sexp::context::R_GlobalContext();
-        if !cptr.is_null()
-            && ((*cptr).callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0
+        // Profiling and bytecode expression contexts do not replace the
+        // generic's function context. Method sys.call() and callNextMethod()
+        // need its original subset call, including named drop arguments.
+        while !cptr.is_null()
+            && ((*cptr).callflag
+                & (crate::sexp::context::ctxt_flags::CTXT_BUILTIN
+                    | crate::sexp::context::ctxt_flags::CTXT_CCODE))
+                != 0
         {
             cptr = (*cptr).nextcontext;
         }

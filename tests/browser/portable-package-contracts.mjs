@@ -45,6 +45,9 @@ const contracts = [
     'rep-len-admission-contract',
     'calling-error-handler-public-contract',
     'calling-warning-handler-public-contract',
+    's4-next-method-public-contract',
+    'try-condition-caller-context-contract',
+    'try-condition-call-public-contract',
     'unserialize-connection-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];

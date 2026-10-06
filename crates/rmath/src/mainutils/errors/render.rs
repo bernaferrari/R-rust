@@ -15,6 +15,17 @@ use super::*;
 /// Get the current call from the context stack.
 /// In C this walks R_GlobalContext; here we use the thread-local context.
 pub(super) unsafe fn getCurrentCall() -> SEXP {
+    unsafe { current_call(false) }
+}
+
+/// Public stop/warning stand in for GNU closures. Their caller excludes the
+/// bytecode expression marker, but includes native tryCatch's synthetic call.
+/// Implicit errors retain that marker through getCurrentCall().
+pub(crate) unsafe fn condition_caller_call() -> SEXP {
+    unsafe { current_call(true) }
+}
+
+unsafe fn current_call(skip_expression_contexts: bool) -> SEXP {
     unsafe {
         // A context counts as carrying a call only when it holds a real
         fn usable_call(call: SEXP) -> SEXP {
@@ -49,7 +60,12 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
         // of the enclosing R call.
         while (c.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) == 0
             && !c.nextcontext.is_null()
-            && usable_call(c.call.as_raw()) == globals::R_NilValue()
+            && (usable_call(c.call.as_raw()) == globals::R_NilValue()
+                || (skip_expression_contexts
+                    && (c.callflag
+                        & (crate::sexp::context::ctxt_flags::CTXT_CCODE
+                            | crate::sexp::context::ctxt_flags::CTXT_BUILTIN))
+                        != 0))
         {
             c = &*c.nextcontext;
         }

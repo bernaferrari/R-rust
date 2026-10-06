@@ -20,3 +20,24 @@ fn calling_error_handlers_receive_original_conditions_before_unwind() {
         );
     }
 }
+
+#[test]
+fn try_conditions_preserve_synthetic_and_nested_caller_calls() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            session
+                .eval(include_str!(
+                    "fixtures/try-condition-caller-context-contract.R"
+                ))
+                .unwrap(),
+            include_str!("fixtures/try-condition-caller-context-contract.out"),
+            "portable={portable}"
+        );
+    }
+}

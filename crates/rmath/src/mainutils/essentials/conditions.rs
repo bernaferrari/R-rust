@@ -1558,7 +1558,7 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // This public shim stands in for GNU's stop closure. The call
             // belongs to its caller, including when bytecode records the
             // inlined stop expression for other implicit errors.
-            crate::mainutils::errors::findCall()
+            crate::mainutils::errors::condition_caller_call()
         } else {
             R_NilValue()
         };
@@ -1601,7 +1601,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             crate::mainutils::essentials::tables::list_element_by_name(passed, "call")
                 .unwrap_or(R_NilValue())
         } else if named_call_dot(args) {
-            crate::mainutils::errors::findCall()
+            crate::mainutils::errors::condition_caller_call()
         } else {
             R_NilValue()
         };

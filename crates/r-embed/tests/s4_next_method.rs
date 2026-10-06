@@ -1,4 +1,4 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 fn eval(code: &str) -> String {
     RSession::new()
@@ -87,4 +87,23 @@ fn next_method_return_runs_its_cleanup_before_resuming_caller() {
         ),
         "[1] TRUE"
     );
+}
+
+#[test]
+fn s4_next_method_preserves_original_subset_call_and_named_drop() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            session
+                .eval(include_str!("fixtures/s4-next-method-public-contract.R"))
+                .unwrap(),
+            include_str!("fixtures/s4-next-method-public-contract.out"),
+            "portable={portable}"
+        );
+    }
 }
