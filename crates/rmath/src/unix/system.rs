@@ -684,6 +684,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn utils_flushconsole_dispatches_session_callback_and_checks_arity() {
+        std::thread_local! {
+            static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        }
+        unsafe extern "C" fn flush() {
+            FLUSHES.set(FLUSHES.get() + 1);
+            crate::sexp::gengc::full_gc();
+        }
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            FLUSHES.set(0);
+            with_system_state(|state| state.callbacks.flush_console = Some(flush));
+            let routine = crate::library::utils::lookup("C_flushconsole").unwrap();
+            unsafe {
+                assert_eq!(
+                    routine.invoke_call(&[]).unwrap(),
+                    crate::sexp::globals::R_NilValue()
+                );
+                assert_eq!(FLUSHES.get(), 1);
+                assert!(
+                    routine
+                        .invoke_call(&[crate::sexp::globals::R_NilValue()])
+                        .is_err()
+                );
+                assert_eq!(FLUSHES.get(), 1);
+            }
+            with_system_state(|state| state.callbacks.flush_console = None);
+        });
+    }
+
+    #[test]
     fn test_system_dispatch_nulls() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {

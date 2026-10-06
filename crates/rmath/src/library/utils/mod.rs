@@ -9,6 +9,11 @@ mod stubs;
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     match name {
+        "flushconsole" | "C_flushconsole" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args0(c_flushconsole),
+            ))
+        }
         "countfields" | "C_countfields" => {
             Some(crate::mainutils::native_routines::NativeRoutine::External1(
                 c_countfields,
@@ -58,6 +63,10 @@ unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate
     unsafe { io::countfields(args) }
 }
 
+unsafe extern "C-unwind" fn c_flushconsole() -> crate::sexp::ffi::SEXP {
+    unsafe { stubs::flushconsole() }
+}
+
 unsafe extern "C-unwind" fn c_tzcode_type() -> crate::sexp::ffi::SEXP {
     unsafe { stubs::tzcode_type() }
 }
@@ -101,6 +110,12 @@ unsafe extern "C-unwind" fn c_edit(
 
 pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
+        let flush = c"C_flushconsole";
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(flush.as_ptr()),
+            crate::sexp::constructors::Rf_mkString(flush.as_ptr()),
+            env,
+        );
         let cname = std::ffi::CString::new("C_countfields").unwrap_or_default();
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(cname.as_ptr()),

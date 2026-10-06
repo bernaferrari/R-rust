@@ -34,6 +34,7 @@ const contracts = [
     'bincode-public-contract',
     'print-gap-public-contract',
     'arima0-public-contract',
+    'utils-console-public-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

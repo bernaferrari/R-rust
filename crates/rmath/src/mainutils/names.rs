@@ -4236,6 +4236,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"close\0",
+        None,
+        0,
+        111,
+        2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"summary.connection\0",
         None,
         0,
@@ -5406,6 +5414,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "sort" => Some(crate::mainutils::essentials::do_sort),
         "mean" => Some(crate::mainutils::summary::do_mean),
         "bincode" => Some(crate::mainutils::bincode::do_bincode),
+        "close" => Some(crate::mainutils::connections::do_close),
         "grepRaw" => Some(crate::mainutils::grep::do_grepraw),
 
         "save" => Some(crate::mainutils::saveload::do_save),

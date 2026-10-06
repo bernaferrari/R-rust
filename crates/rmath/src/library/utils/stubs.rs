@@ -64,8 +64,6 @@ fn Runzip(_args: SEXP) -> SEXP {
     nil_value()
 }
 
-fn R_FlushConsole() {}
-
 fn R_ProcessEvents() {}
 
 pub unsafe fn Rprof(args: SEXP) -> SEXP {
@@ -398,7 +396,7 @@ pub unsafe fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 pub unsafe fn flushconsole() -> SEXP {
     unsafe {
-        R_FlushConsole();
+        crate::unix::system::R_FlushConsole();
         R_NilValue()
     }
 }
