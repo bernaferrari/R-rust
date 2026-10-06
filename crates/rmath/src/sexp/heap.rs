@@ -237,6 +237,25 @@ impl HeapIdentity {
     /// Neither an address nor a copied link can grant element access.
     pub(crate) fn payload_lease(&self, node: &CheckedNode) -> Option<super::payload::PayloadLease> {
         let header = self.node_snapshot(node)?;
+        self.payload_lease_for_header(node, &header)
+    }
+
+    /// Snapshot this allocation and retain its payload without rereading its
+    /// header. No interpreter callback runs between these two operations.
+    pub(crate) fn snapshot_with_payload(
+        &self,
+        node: &CheckedNode,
+    ) -> Option<(SexprecCore, Option<super::payload::PayloadLease>)> {
+        let header = self.node_snapshot(node)?;
+        let payload = self.payload_lease_for_header(node, &header);
+        Some((header, payload))
+    }
+
+    fn payload_lease_for_header(
+        &self,
+        node: &CheckedNode,
+        header: &SexprecCore,
+    ) -> Option<super::payload::PayloadLease> {
         if !header.has_valid_shape() || header.payload.is_empty() {
             return None;
         }
@@ -253,7 +272,7 @@ impl HeapIdentity {
                 PhysicalBacking::Arena(store) => store.node_payload(node.id()),
                 PhysicalBacking::Persistent(store) => store.node_payload(node.id()),
             })?;
-        lease.matches_header(&header).then_some(lease)
+        lease.matches_header(header).then_some(lease)
     }
 
     /// Reserve against the original live parent's physical store and budget.

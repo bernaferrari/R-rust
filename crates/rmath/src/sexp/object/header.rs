@@ -96,11 +96,9 @@ impl<'a> Sexp<'a> {
             .expect("SEXP allocation has been reclaimed");
         if let Some(node) = &self.node {
             let heap = node.heap_identity();
-            return HeaderSnap::new(
-                heap.node_snapshot(node).expect("live header"),
-                heap.payload_lease(node),
-            )
-            .expect("canonical header and payload must agree");
+            let (header, payload) = heap.snapshot_with_payload(node).expect("live header");
+            return HeaderSnap::new(header, payload)
+                .expect("canonical header and payload must agree");
         }
         if let Some(singleton) = self
             .singleton
@@ -119,11 +117,8 @@ impl<'a> Sexp<'a> {
         // turn foreign bytes into safe header or payload authority.
         let (_, node) = crate::sexp::memory::checked_projection(self.ptr).expect("unowned header");
         let heap = node.heap_identity();
-        HeaderSnap::new(
-            heap.node_snapshot(&node).expect("live header"),
-            heap.payload_lease(&node),
-        )
-        .expect("canonical header and payload must agree")
+        let (header, payload) = heap.snapshot_with_payload(&node).expect("live header");
+        HeaderSnap::new(header, payload).expect("canonical header and payload must agree")
     }
 
     pub(crate) fn copied_header_link(&self, link: NodeLink) -> Option<HeaderSnap> {
@@ -135,10 +130,10 @@ impl<'a> Sexp<'a> {
             ResolvedLink::Singleton(lease) => {
                 HeaderSnap::new(lease.snapshot(), lease.payload_lease())
             }
-            ResolvedLink::Node { allocation, .. } => HeaderSnap::new(
-                heap.node_snapshot(&allocation)?,
-                heap.payload_lease(&allocation),
-            ),
+            ResolvedLink::Node { allocation, .. } => {
+                let (header, payload) = heap.snapshot_with_payload(&allocation)?;
+                HeaderSnap::new(header, payload)
+            }
         }
     }
 }
