@@ -1037,12 +1037,12 @@ fn print_max_cells() -> usize {
                 if !value.is_null() && value != R_NilValue() {
                     if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
                         let n = *crate::sexp::accessors::INTEGER(value);
-                        if n > 0 {
+                        if n >= 0 {
                             return n as usize;
                         }
                     } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
                         let n = *crate::sexp::accessors::REAL(value);
-                        if n.is_finite() && n > 0.0 {
+                        if n.is_finite() && n >= 0.0 {
                             return n as usize;
                         }
                     }
@@ -1071,6 +1071,20 @@ fn print_quote_flag() -> bool {
                 return true;
             }
             cur = CDR(cur);
+        }
+        true
+    }
+}
+
+fn print_use_source_flag() -> bool {
+    unsafe {
+        let mut cell = print_dispatch_extras();
+        while !cell.is_null() && cell != R_NilValue() {
+            if printable_attribute_name(cell).as_deref() == Some("useSource") {
+                let value = crate::mainutils::coerce::asLogical(CAR(cell));
+                return value != 0;
+            }
+            cell = CDR(cell);
         }
         true
     }
@@ -1203,7 +1217,7 @@ where
 
     let mut lines = Vec::new();
     if r_pr == 0 {
-        let mut header = "     ".to_string();
+        let mut header = if c_pr == 0 { "    " } else { "     " }.to_string();
         for c in 0..c_pr {
             if c > 0 {
                 header.push_str(&separator);
@@ -1253,8 +1267,12 @@ fn format_character_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_
 where
     F: Fn(usize, usize) -> String,
 {
+    let (r_pr, c_pr) = matrix_print_window(nrow, ncol, print_max_cells());
+    // GNU's zero-column character printer still emits every row label;
+    // its omission message uses the separately computed print window.
+    let displayed_rows = if c_pr == 0 { nrow } else { r_pr };
     let dn = matrix_dimnames(x, nrow, ncol);
-    let row_labels: Vec<String> = (0..nrow)
+    let row_labels: Vec<String> = (0..displayed_rows)
         .map(|r| {
             dn.rows
                 .as_ref()
@@ -1263,7 +1281,7 @@ where
                 .unwrap_or_else(|| format!("[{},]", r + 1))
         })
         .collect();
-    let col_labels: Vec<String> = (0..ncol)
+    let col_labels: Vec<String> = (0..c_pr)
         .map(|c| {
             dn.cols
                 .as_ref()
@@ -1282,14 +1300,17 @@ where
         }
     };
     let empty_row_labs = row_labels.iter().all(|s| s.is_empty());
-    let mut values = vec![vec![String::new(); ncol]; nrow];
-    let mut widths = Vec::with_capacity(ncol);
-    for c in 0..ncol {
+    let mut values = vec![vec![String::new(); c_pr]; r_pr];
+    let mut widths = Vec::with_capacity(c_pr);
+    for c in 0..c_pr {
         let mut width = col_labels[c].len().max(1);
+        // Field width includes omitted rows, as GNU printStringMatrix does.
         for r in 0..nrow {
             let value = value_at(r, c);
             width = width.max(value.len());
-            values[r][c] = value;
+            if r < r_pr {
+                values[r][c] = value;
+            }
         }
         widths.push(width);
     }
@@ -1300,10 +1321,10 @@ where
     let separator = " ".repeat(gap);
     let mut blocks = Vec::new();
     let mut start = 0;
-    while start < ncol {
+    while start < c_pr {
         let mut used = row_width;
         let mut end = start;
-        while end < ncol {
+        while end < c_pr {
             let extra = widths[end]
                 + if row_width > 0 || end > start || empty_row_labs {
                     gap
@@ -1323,8 +1344,20 @@ where
         start = end;
     }
 
+    if blocks.is_empty() {
+        blocks.push((0, 0));
+    }
+
     let mut lines = Vec::new();
-    for &(cs, ce) in &blocks {
+    if r_pr == 0 {
+        let mut header = "    ".to_string();
+        for c in 0..c_pr {
+            header.push_str(&separator);
+            header.push_str(&align(&col_labels[c], widths[c]));
+        }
+        lines.push(header);
+    }
+    for &(cs, ce) in blocks.iter().filter(|_| r_pr > 0) {
         if let Some(cn) = dn.col_title.as_deref() {
             lines.push(format!("{:row_width$}{cn}", ""));
         }
@@ -1334,7 +1367,7 @@ where
         } else {
             " ".repeat(row_width)
         };
-        if row_width > 0 {
+        if row_width > 0 && cs < ce {
             header.push_str(&separator);
         }
         for c in cs..ce {
@@ -1354,7 +1387,7 @@ where
         }
         lines.push(header);
 
-        for r in 0..nrow {
+        for r in 0..displayed_rows {
             let label = format!("{:lbloff$}{}", "", row_labels[r]);
             let mut line = format!("{label:<row_width$}");
             for c in cs..ce {
@@ -1363,6 +1396,9 @@ where
             }
             lines.push(line);
         }
+    }
+    if let Some(omitted) = matrix_omitted_message(nrow, ncol, r_pr, c_pr) {
+        lines.push(omitted);
     }
     lines.join("\n")
 }
@@ -1746,7 +1782,7 @@ fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> 
     match string_element_text(x, i) {
         Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(&value)),
         Some(Some(value)) => value.to_string(),
-        Some(None) | None => "NA".to_string(),
+        Some(None) | None => if quote { "NA" } else { "<NA>" }.to_string(),
     }
 }
 
@@ -3473,7 +3509,7 @@ pub fn print_value(x: Sexp<'_>) {
 
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
-            if x.clone().typeof_() == SEXPTYPE::CLOSXP {
+            if x.clone().typeof_() == SEXPTYPE::CLOSXP && print_use_source_flag() {
                 if let Some(source) =
                     crate::mainutils::essentials::print::function_srcref_text(x.clone().as_raw())
                 {

@@ -20,12 +20,14 @@ const contracts = [
     '260_length_replacement',
     '492_rep_int_len_helpers',
     '288_with_calling_handlers',
+    '388_no_print_summary_method_aliases',
     '1094_cat_complex_fft',
     '544_complex_constructor_format_str_parity',
     '551_round_signif_complex_parity',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
-    ['260_length_replacement', '492_rep_int_len_helpers', '288_with_calling_handlers'].includes(name)
+    ['260_length_replacement', '492_rep_int_len_helpers', '288_with_calling_handlers',
+      '388_no_print_summary_method_aliases'].includes(name)
       ? resolve(root, 'tests/conformance/golden', name + '.out')
       : resolve(fixtures, 'complex-original-' + name + '.out'),
   ]),
@@ -47,6 +49,8 @@ const contracts = [
     'calling-warning-handler-public-contract',
     's3-methods-public-contract',
     'namespace-s3-startup-contract',
+    'base-print-methods-public-contract',
+    'compiled-dots-public-contract',
     's4-next-method-public-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',

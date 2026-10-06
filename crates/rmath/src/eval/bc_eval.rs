@@ -204,7 +204,9 @@ pub mod opcodes {
     pub const OP_REPLACEMENT_CHAIN: i32 = 65;
     /// Call with cached arguments and a separate original syntax constant.
     pub const OP_CALL_WITH_SOURCE: i32 = 66;
-    pub const OP_LAST: i32 = 66;
+    /// Apply original expressions, including dots, with the original call.
+    pub const OP_CALL_SYNTAX_WITH_SOURCE: i32 = 67;
+    pub const OP_LAST: i32 = 67;
 }
 
 #[derive(Clone)]
@@ -4365,9 +4367,13 @@ unsafe fn bc_eval_private(
                 opcodes::OP_CALL
                 | opcodes::OP_CALLBUILTIN
                 | opcodes::OP_CALLSPECIAL
-                | opcodes::OP_CALL_WITH_SOURCE => {
+                | opcodes::OP_CALL_WITH_SOURCE
+                | opcodes::OP_CALL_SYNTAX_WITH_SOURCE => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
-                    let source = if op == opcodes::OP_CALL_WITH_SOURCE {
+                    let source = if matches!(
+                        op,
+                        opcodes::OP_CALL_WITH_SOURCE | opcodes::OP_CALL_SYNTAX_WITH_SOURCE
+                    ) {
                         let index = read_operand(code_ptr, &mut pc, code_len, "CALL source");
                         Some(own_operand(owned_constant_at(
                             &constants,
@@ -4397,7 +4403,10 @@ unsafe fn bc_eval_private(
                         &arguments,
                         &tags,
                         &rho_owned,
-                        op == opcodes::OP_CALLSPECIAL,
+                        matches!(
+                            op,
+                            opcodes::OP_CALLSPECIAL | opcodes::OP_CALL_SYNTAX_WITH_SOURCE
+                        ),
                         source.as_ref(),
                     );
                     let src = owned_constant_at(&constants, 0, "CALL source");

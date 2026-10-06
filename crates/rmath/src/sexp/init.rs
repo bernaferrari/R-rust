@@ -699,6 +699,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "data.frame", include_str!("gnu_data_frame.R"));
         eval_base_binding(
             base_env,
+            "print.data.frame",
+            include_str!("gnu_print_data_frame.R"),
+        );
+        eval_base_binding(
+            base_env,
             "summary.data.frame",
             include_str!("gnu_summary_data_frame.R"),
         );
@@ -2478,6 +2483,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              .Internal(print.default(x, args, missings))\n\
              }",
         );
+        eval_base_binding(
+            base_env,
+            "print.function",
+            include_str!("gnu_print_function.R"),
+        );
         // GNU New-Internal.R: cbind/rbind are closures around .Internal
         // so the first argument is always deparse.level. cbind2 defaults
         // pass -1L to disable S4 redispatch (bind.c tryS4).
@@ -2746,7 +2756,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             ".register_print_data_frame",
-            "{ registerS3method(\"print\", \"data.frame\", function(x, ...) print.data.frame(x, ...)); TRUE }",
+            "{ registerS3method(\"print\", \"data.frame\", print.data.frame); TRUE }",
         );
         eval_base_binding(
             base_env,

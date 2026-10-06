@@ -246,11 +246,14 @@ impl BytecodeCompiler {
                     arg_cells.push(own_operand(cur));
                     cur = CDR(cur);
                 }
-                for cell in &arg_cells {
-                    if CAR(cell.as_raw()) == R_DotsSymbol() {
-                        return false;
-                    }
-                }
+                // Dots are syntax, not a GETVAR operand or an eager value.
+                // Forward the whole call's expressions through the existing
+                // promiseArgs/evalList path so tags, missingness and laziness
+                // survive expansion in the original caller frame.
+                let forwards_dots = arg_cells
+                    .iter()
+                    .any(|cell| CAR(cell.as_raw()) == R_DotsSymbol());
+                let syntax_call = syntax_call || forwards_dots;
                 // Closure calls receive lazy promises like GNU MAKEPROM.
                 // An unsupplied argument is the R_MissingArg sentinel, not a
                 // promise (a promise makes missing() false). .Internal must
@@ -294,14 +297,16 @@ impl BytecodeCompiler {
                 let fun_idx = self.add_const(fun);
                 self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
                 self.emit_operand(
-                    if syntax_call {
+                    if forwards_dots {
+                        opcodes::OP_CALL_SYNTAX_WITH_SOURCE
+                    } else if syntax_call {
                         opcodes::OP_CALLSPECIAL
                     } else {
                         opcodes::OP_CALL_WITH_SOURCE
                     },
                     arg_cells.len() as c_int,
                 );
-                if !syntax_call {
+                if forwards_dots || !syntax_call {
                     let source = self.add_const(expr);
                     self.emit(source);
                 }

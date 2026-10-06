@@ -5202,6 +5202,7 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         // 0=left, 1=right, 2=centre, 3=none.
         let mut justify: c_int = 0;
         let mut width: c_int = 0;
+        let mut na_encode = true;
         let mut positional = 0;
         let mut cell = crate::sexp::accessors::CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -5227,10 +5228,16 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     "nsmall" => Some(2),
                     "justify" => Some(3),
                     "width" => Some(4),
+                    "na.encode" => Some(5),
+                    "scientific" => Some(6),
+                    "decimal.mark" => Some(7),
                     _ => None,
                 })
                 .unwrap_or_else(|| {
-                    let order = [0, 1, 2, 4, 3];
+                    if label.is_some() {
+                        return 99;
+                    }
+                    let order = [0, 1, 2, 4, 3, 5, 6, 7];
                     let slot = order.get(positional).copied().unwrap_or(99);
                     positional += 1;
                     slot
@@ -5259,6 +5266,7 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                         width = v;
                     }
                 }
+                5 => na_encode = crate::main::coerce::asLogical(value) != FALSE,
                 _ => {}
             }
             cell = CDR(cell);
@@ -5267,9 +5275,13 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut strings = Vec::with_capacity(n as usize);
         let mut max_w = 0usize;
         for i in 0..n {
+            if !na_encode && STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
+                strings.push(None);
+                continue;
+            }
             let s = elt_to_string(x, i);
             max_w = max_w.max(s.chars().count());
-            strings.push(s);
+            strings.push(Some(s));
         }
         let field = if width > 0 {
             (width as usize).max(max_w)
@@ -5282,6 +5294,14 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         for (i, s) in strings.iter().enumerate() {
+            let Some(s) = s else {
+                crate::sexp::accessors::SET_STRING_ELT(
+                    result,
+                    i as R_xlen_t,
+                    crate::sexp::globals::R_NaString(),
+                );
+                continue;
+            };
             let out = if justify == 3 {
                 s.clone()
             } else {

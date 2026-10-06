@@ -4846,6 +4846,10 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
             let v = *REAL(x).add(idx as usize);
             if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 "NA".to_string()
+            } else if v.is_nan() {
+                "NaN".to_string()
+            } else if v.is_infinite() {
+                if v.is_sign_negative() { "-Inf" } else { "Inf" }.to_string()
             } else {
                 format!("{}", v)
             }

@@ -1,0 +1,3 @@
+# GNU R base closure; pinned source bac583951b728e97b9786804d3b4081f0fe18df5.
+function (x, useSource = TRUE, ...)
+print.default(x, useSource = useSource, ...)

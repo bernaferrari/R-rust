@@ -1371,7 +1371,9 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _n = protect(dimnames);
-        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+        let row_names = data_matrix_row_names(frame, R_NilValue());
+        let _row_names = protect(row_names);
+        SET_VECTOR_ELT(dimnames, 0, row_names);
         SET_VECTOR_ELT(
             dimnames,
             1,
