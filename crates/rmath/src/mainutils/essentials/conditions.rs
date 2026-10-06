@@ -79,25 +79,40 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .as_ref()
                     .map_or(std::ptr::null_mut(), |value| value.as_raw());
                 set_signalled_condition(std::ptr::null_mut());
+                let caught_call = caught_error_call();
+                let condition = if !slot_cond.is_null()
+                    && condition_message_of(slot_cond).as_deref() == Some(message.as_str())
+                {
+                    slot_cond
+                } else {
+                    simple_error_condition_at(
+                        &message,
+                        if call_less {
+                            Some(R_NilValue())
+                        } else {
+                            caught_call.as_ref().map(|value| value.as_raw())
+                        },
+                    )
+                };
+                let _cond_guard = protect(condition);
 
                 let silent = as_bool_arg(silent_arg, rho);
 
                 // GNU try.default (New-Internal.R): if conditionCall(e)
                 // is empty, prefix is "Error : "; otherwise deparse the
-                // call (doTryCatch remapped to the tried expression).
-                let (prefix, condition) = if call_less {
-                    (
-                        "Error : ".to_string(),
-                        simple_error_condition_at(&message, Some(R_NilValue())),
-                    )
+                // condition's call. Its synthetic doTryCatch frame maps to
+                // the try() call, while nested and explicit calls stay intact.
+                let condition_call =
+                    super::tables::list_element_by_name(condition, "call").unwrap_or(R_NilValue());
+                let prefix = if condition_call.is_null() || condition_call == R_NilValue() {
+                    "Error : ".to_string()
                 } else {
-                    let display_call = if !expr.is_null()
-                        && expr != R_NilValue()
-                        && TYPEOF(expr) == SEXPTYPE::LANGSXP
+                    let display_call = if TYPEOF(condition_call) == SEXPTYPE::LANGSXP
+                        && CAR(condition_call) == Rf_install(c"doTryCatch".as_ptr())
                     {
-                        expr
-                    } else {
                         _call
+                    } else {
+                        condition_call
                     };
                     let dcall_sexp = crate::mainutils::deparse::deparse1s(display_call);
                     let dcall: String = if !dcall_sexp.is_null() && dcall_sexp != R_NilValue() {
@@ -129,27 +144,13 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if width > 75 {
                         prefix.push_str("\n  ");
                     }
-                    let caught_call = caught_error_call();
-                    let built = simple_error_condition_at(
-                        &message,
-                        caught_call.as_ref().map(|value| value.as_raw()),
-                    );
-                    let condition = if !slot_cond.is_null()
-                        && condition_message_of(slot_cond).as_deref() == Some(message.as_str())
-                    {
-                        slot_cond
-                    } else {
-                        built
-                    };
-                    (prefix, condition)
+                    prefix
                 };
                 let out_text = format!("{prefix}{message}\n");
 
                 if !silent {
                     crate::sexp::output::capture_stderr(&out_text);
                 }
-
-                let _cond_guard = protect(condition);
 
                 // structure(class = "try-error", condition = e, msg):
                 // a character vector of the composed message.
