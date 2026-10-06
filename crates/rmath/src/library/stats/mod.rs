@@ -8,6 +8,7 @@ pub(crate) mod bspline;
 pub(crate) mod burg;
 mod chisqsim;
 pub(crate) mod complete_cases;
+mod correlation;
 mod d2x2xk;
 pub(crate) mod dblcen;
 pub(crate) mod deriv;

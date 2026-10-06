@@ -1,0 +1,2095 @@
+numeric_integer  numeric_double  numeric_factor numeric_ordered  integer_factor 
+           TRUE            TRUE           FALSE           FALSE           FALSE 
+integer_ordered numeric_complex numeric_logical 
+          FALSE           FALSE           FALSE 
+$case
+[1] "self pearson everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA NA  1 NA NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross pearson everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] NA NA NA NA NA -1
+
+$result$is.NA
+[1]  TRUE  TRUE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self pearson all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross pearson all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "self pearson complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross pearson complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self pearson na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross pearson na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self pearson pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross pearson pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self spearman everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA NA  1 NA NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross spearman everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] NA NA NA NA NA -1
+
+$result$is.NA
+[1]  TRUE  TRUE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self spearman all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross spearman all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "self spearman complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross spearman complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self spearman na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross spearman na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self spearman pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross spearman pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self kendall everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA NA  1 NA NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE  TRUE FALSE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross kendall everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] NA NA NA NA NA -1
+
+$result$is.NA
+[1]  TRUE  TRUE  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self kendall all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross kendall all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "self kendall complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross kendall complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self kendall na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross kendall na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "self kendall pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 3
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "a" "b" "c"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1  1 -1  1  1 -1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "cross kendall pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 3 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b" "c"
+
+$result$dimnames[[2]]
+[1] "u" "v"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1 -1  1  1  1 -1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "single-column self"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 1 1
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] 1
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "single-column cross"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 1 1
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] -1
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "vector matrix"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 1 1
+
+$result$dimnames
+$result$dimnames[[1]]
+NULL
+
+$result$dimnames[[2]]
+[1] "a"
+
+
+$result$names
+NULL
+
+$result$values
+[1] -1
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "logical vectors"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] -0.5
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "unequal vectors"
+
+$result
+$result$error
+[1] "incompatible dimensions"
+
+
+$warnings
+character(0)
+
+$case
+[1] "unequal matrix rows"
+
+$result
+$result$error
+[1] "incompatible dimensions"
+
+
+$warnings
+character(0)
+
+$case
+[1] "nonnumeric x"
+
+$result
+$result$error
+[1] "'x' must be numeric"
+
+
+$warnings
+character(0)
+
+$case
+[1] "nonnumeric y"
+
+$result
+$result$error
+[1] "'y' must be numeric"
+
+
+$warnings
+character(0)
+
+$case
+[1] "factor"
+
+$result
+$result$error
+[1] "'x' must be numeric"
+
+
+$warnings
+character(0)
+
+$case
+[1] "missing y"
+
+$result
+$result$error
+[1] "supply both 'x' and 'y' or a matrix-like 'x'"
+
+
+$warnings
+character(0)
+
+$case
+[1] "invalid mode"
+
+$result
+$result$error
+[1] "invalid 'use' argument"
+
+
+$warnings
+character(0)
+
+$case
+[1] "invalid method"
+
+$result
+$result$error
+[1] "'arg' should be one of \"pearson\", \"kendall\", \"spearman\""
+
+
+$warnings
+character(0)
+
+$case
+[1] "empty everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "no complete everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "one complete everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "constant self everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "empty all.obs"
+
+$result
+$result$error
+[1] "'x' is empty"
+
+
+$warnings
+character(0)
+
+$case
+[1] "no complete all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "one complete all.obs"
+
+$result
+$result$error
+[1] "missing observations in cov/cor"
+
+
+$warnings
+character(0)
+
+$case
+[1] "constant self all.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "empty complete.obs"
+
+$result
+$result$error
+[1] "no complete element pairs"
+
+
+$warnings
+character(0)
+
+$case
+[1] "no complete complete.obs"
+
+$result
+$result$error
+[1] "no complete element pairs"
+
+
+$warnings
+character(0)
+
+$case
+[1] "one complete complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "constant self complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "empty na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "no complete na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "one complete na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "constant self na.or.complete"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 NA NA  1
+
+$result$is.NA
+[1] FALSE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "empty pairwise.complete.obs"
+
+$result
+$result$error
+[1] "'x' is empty"
+
+
+$warnings
+character(0)
+
+$case
+[1] "no complete pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "one complete pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "constant self pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1] NA NA NA  1
+
+$result$is.NA
+[1]  TRUE  TRUE  TRUE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector pearson everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector pearson complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector pearson pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector spearman everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector spearman complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector spearman pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector kendall everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector kendall complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "constant vector kendall pairwise.complete.obs"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NA
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+[1] "the standard deviation is zero"
+
+$case
+[1] "native invalid method"
+
+$result
+$result$error
+[1] "invalid 'use' (computational method)"
+
+
+$warnings
+character(0)
+
+$case
+[1] "native null x"
+
+$result
+$result$error
+[1] "'x' is NULL"
+
+
+$warnings
+character(0)
+
+$case
+[1] "infinite Pearson"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] NaN
+
+$result$is.NA
+[1] TRUE
+
+$result$is.NaN
+[1] TRUE
+
+
+$warnings
+character(0)
+
+$case
+[1] "infinite Spearman"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] 0.5
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+[1] TRUE
+$case
+[1] "tied Spearman"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] 0.5
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "tied Kendall"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] 0.5
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "large offset"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+NULL
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+[1] 0.04170288
+
+$result$is.NA
+[1] FALSE
+
+$result$is.NaN
+[1] FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "dataframe wrapper"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 2 2
+
+$result$dimnames
+$result$dimnames[[1]]
+[1] "a" "b"
+
+$result$dimnames[[2]]
+[1] "a" "b"
+
+
+$result$names
+NULL
+
+$result$values
+[1]  1 -1 -1  1
+
+$result$is.NA
+[1] FALSE FALSE FALSE FALSE
+
+$result$is.NaN
+[1] FALSE FALSE FALSE FALSE
+
+
+$warnings
+character(0)
+
+$case
+[1] "no columns everything"
+
+$result
+$result$type
+[1] "double"
+
+$result$dim
+[1] 0 0
+
+$result$dimnames
+NULL
+
+$result$names
+NULL
+
+$result$values
+numeric(0)
+
+$result$is.NA
+logical(0)
+
+$result$is.NaN
+logical(0)
+
+
+$warnings
+character(0)
+
+$case
+[1] "no columns pairwise"
+
+$result
+$result$error
+[1] "'x' is empty"
+
+
+$warnings
+character(0)
+

@@ -28,6 +28,7 @@ const contracts = [
     'complex-print-public-contract',
     'stats-namespace-public-contract',
     'get-lazy-mode-public-contract',
+    'correlation-public-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

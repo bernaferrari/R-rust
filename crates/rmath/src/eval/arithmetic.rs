@@ -3373,8 +3373,8 @@ pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let t = x.typeof_();
         let result = match op_name {
-            "is.numeric" => t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP,
-            "is.integer" => t == SEXPTYPE::INTSXP,
+            "is.numeric" => crate::mainutils::coerce::is_numeric_safe(x.clone()) != 0,
+            "is.integer" => crate::mainutils::coerce::is_type_safe(x.clone(), 13).unwrap_or(0) != 0,
             "is.double" => t == SEXPTYPE::REALSXP,
             "is.complex" => t == SEXPTYPE::CPLXSXP,
             "is.logical" => t == SEXPTYPE::LGLSXP,

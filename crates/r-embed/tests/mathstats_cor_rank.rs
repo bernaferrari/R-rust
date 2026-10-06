@@ -30,7 +30,7 @@ fn vector_spearman_matches_gnu_ties_and_missing_modes() {
 }
 
 #[test]
-fn vector_spearman_matches_gnu_edge_cases_and_rejections() {
+fn vector_rank_correlations_match_gnu_edge_cases_and_admission() {
     let mut session = RSession::new().unwrap();
     assert_eq!(
         session
@@ -44,15 +44,15 @@ fn vector_spearman_matches_gnu_edge_cases_and_rejections() {
             .unwrap(),
         "[1] 0.5\n"
     );
-    assert!(
+    assert_eq!(
         session
-            .eval("cor(matrix(1:4, nrow=2), method='spearman')")
-            .is_err()
+            .eval("identical(cor(matrix(1:4,nrow=2),method='spearman'),matrix(c(1,1-.Machine$double.eps,1-.Machine$double.eps,1),2,2))")
+            .unwrap(),
+        "[1] TRUE\n"
     );
-    assert!(
-        session
-            .eval("cor(c(1,2), c(1,2), method='kendall')")
-            .is_err()
+    assert_eq!(
+        session.eval("cor(c(1,2),c(1,2),method='kendall')").unwrap(),
+        "[1] 1\n"
     );
     assert!(
         session

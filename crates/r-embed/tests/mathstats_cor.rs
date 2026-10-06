@@ -42,18 +42,22 @@ fn cor_matrix_vector_keeps_r_matrix_shape_and_paired_vector_path() {
 }
 
 #[test]
-fn cor_matrix_rejects_nonfinite_until_use_modes_are_supported() {
+fn cor_matrix_missing_values_follow_gnu_default_and_complete_modes() {
     let mut session = RSession::new().expect("session");
-    assert!(session.eval("cor(matrix(c(1, NA, 3, 2), nrow=2))").is_err());
+    assert_eq!(
+        session.eval("x <- matrix(c(1,NA,3,2),nrow=2); z <- cor(x); identical(dim(z),c(2L,2L)) && identical(diag(z),c(1,1)) && all(is.na(z[c(2,3)])) && all(is.na(cor(x,use='complete.obs')))").unwrap(),
+        "[1] TRUE\n"
+    );
 }
 
 #[test]
-fn cor_does_not_silently_ignore_requested_method() {
+fn cor_matrix_spearman_follows_original_gnu_ranking() {
     let mut session = RSession::new().unwrap();
-    assert!(
+    assert_eq!(
         session
-            .eval("x <- matrix(1:8, nrow=4); cor(x, x, method='spearman')")
-            .is_err()
+            .eval("x <- matrix(1:8,nrow=4); identical(cor(x,x,method='spearman'),matrix(1,2,2))")
+            .unwrap(),
+        "[1] TRUE\n"
     );
     session
         .eval("cor(x, x, method='pearson')")

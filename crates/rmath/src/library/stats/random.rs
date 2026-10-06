@@ -123,7 +123,7 @@ unsafe extern "C-unwind" fn c_cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SE
     unsafe { stats_call_cov(x, y, na_method, kendall) }
 }
 unsafe extern "C-unwind" fn c_cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe { stats_call_cor(x, y, na_method, kendall) }
+    unsafe { super::correlation::cor(x, y, na_method, kendall) }
 }
 unsafe extern "C-unwind" fn c_chisq_sim(sr: SEXP, sc: SEXP, b: SEXP, e: SEXP) -> SEXP {
     unsafe { super::chisqsim::chisq_sim(sr, sc, b, e) }
@@ -177,7 +177,7 @@ unsafe extern "C-unwind" fn c_do_fmin(call: SEXP, op: SEXP, args: SEXP, env: SEX
     unsafe { super::zeroin::do_fmin(call, op, args, env) }
 }
 
-fn reject_var_on_factor(x: SEXP) {
+pub(super) fn reject_var_on_factor(x: SEXP) {
     unsafe {
         if !x.is_null()
             && x != R_NilValue()
@@ -296,199 +296,6 @@ unsafe fn stats_call_cov(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> S
             }
         }
         ans
-    }
-}
-
-/// GNU stats `C_cor`. Each entry comes from one pass over the rows both
-/// variables share, so a variable correlated with itself is exactly 1.
-unsafe fn stats_call_cor(x: SEXP, y: SEXP, _na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe {
-        reject_var_on_factor(x);
-        reject_var_on_factor(y);
-        let kendall =
-            TYPEOF(kendall) == SEXPTYPE::LGLSXP && XLENGTH(kendall) > 0 && *LOGICAL(kendall) != 0;
-        let x_names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        let y_names = if y.is_null() || y == R_NilValue() {
-            x_names
-        } else {
-            crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimNamesSymbol())
-        };
-        let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
-            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into())
-        } else {
-            x
-        };
-        let _x = protect(x);
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (n, ncx) = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
-        } else {
-            (XLENGTH(x) as usize, 1usize)
-        };
-        let y_null = y.is_null() || y == R_NilValue();
-        let (y, ny, ncy) = if y_null {
-            (x, n, ncx)
-        } else {
-            let y = if TYPEOF(y) != SEXPTYPE::REALSXP {
-                crate::mainutils::coerce::coerceVector(y, SEXPTYPE::REALSXP.into())
-            } else {
-                y
-            };
-            let _y = protect(y);
-            let ydim =
-                crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_DimSymbol());
-            let (ny, ncy) = if TYPEOF(ydim) == SEXPTYPE::INTSXP && XLENGTH(ydim) == 2 {
-                (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
-            } else {
-                (XLENGTH(y) as usize, 1usize)
-            };
-            (y, ny, ncy)
-        };
-        let nobs = n.min(ny);
-        let ans = if ncx == 1 && ncy == 1 {
-            Rf_allocVector3(SEXPTYPE::REALSXP, 1)
-        } else {
-            let m = Rf_allocVector3(SEXPTYPE::REALSXP, (ncx * ncy) as i64);
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            *INTEGER(dims) = ncx as i32;
-            *INTEGER(dims).add(1) = ncy as i32;
-            crate::sexp::attrib_core::setAttrib(m, crate::sexp::attrib_core::R_DimSymbol(), dims);
-            m
-        };
-        let _a = protect(ans);
-        let xr = REAL(x);
-        let yr = REAL(y);
-        let ar = REAL(ans);
-        for j in 0..ncy {
-            for i in 0..ncx {
-                *ar.add(i + j * ncx) = if kendall {
-                    kendall_complete_pair(xr, nobs, n, i, yr, nobs, ny, j)
-                } else {
-                    cor_complete_pair(xr, nobs, n, i, yr, nobs, ny, j)
-                };
-            }
-        }
-        if ncx != 1 || ncy != 1 {
-            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            let col = |src: SEXP| {
-                if TYPEOF(src) == SEXPTYPE::VECSXP && XLENGTH(src) >= 2 {
-                    VECTOR_ELT(src, 1)
-                } else {
-                    R_NilValue()
-                }
-            };
-            SET_VECTOR_ELT(dn, 0, col(x_names));
-            SET_VECTOR_ELT(dn, 1, col(y_names));
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                dn,
-            );
-        }
-        ans
-    }
-}
-
-unsafe fn cor_complete_pair(
-    x: *const f64,
-    n: usize,
-    ldx: usize,
-    colx: usize,
-    y: *const f64,
-    _ny: usize,
-    ldy: usize,
-    coly: usize,
-) -> f64 {
-    unsafe {
-        let mut sx = 0.0;
-        let mut sy = 0.0;
-        let mut count = 0usize;
-        for k in 0..n {
-            let xv = *x.add(k + colx * ldx);
-            let yv = *y.add(k + coly * ldy);
-            if xv.is_nan() || yv.is_nan() {
-                continue;
-            }
-            sx += xv;
-            sy += yv;
-            count += 1;
-        }
-        if count < 2 {
-            return crate::sexp::ffi::NA_REAL;
-        }
-        let mx = sx / count as f64;
-        let my = sy / count as f64;
-        let mut sxy = 0.0;
-        let mut sxx = 0.0;
-        let mut syy = 0.0;
-        for k in 0..n {
-            let xv = *x.add(k + colx * ldx);
-            let yv = *y.add(k + coly * ldy);
-            if xv.is_nan() || yv.is_nan() {
-                continue;
-            }
-            let dx = xv - mx;
-            let dy = yv - my;
-            sxy += dx * dy;
-            sxx += dx * dx;
-            syy += dy * dy;
-        }
-        if sxx == 0.0 || syy == 0.0 {
-            return crate::sexp::ffi::NA_REAL;
-        }
-        sxy / (sxx * syy).sqrt()
-    }
-}
-
-/// GNU Kendall tau-b: sign products over complete pairs, divided by the
-/// two self-pair counts, then clamped to [-1, 1].
-unsafe fn kendall_complete_pair(
-    x: *const f64,
-    n: usize,
-    ldx: usize,
-    colx: usize,
-    y: *const f64,
-    _ny: usize,
-    ldy: usize,
-    coly: usize,
-) -> f64 {
-    unsafe {
-        let sign = |d: f64| -> f64 {
-            if d > 0.0 {
-                1.0
-            } else if d < 0.0 {
-                -1.0
-            } else {
-                0.0
-            }
-        };
-        let mut sum = 0.0;
-        let mut xsd = 0.0;
-        let mut ysd = 0.0;
-        for k in 0..n {
-            let xk = *x.add(k + colx * ldx);
-            let yk = *y.add(k + coly * ldy);
-            if xk.is_nan() || yk.is_nan() {
-                continue;
-            }
-            for n1 in 0..k {
-                let x1 = *x.add(n1 + colx * ldx);
-                let y1 = *y.add(n1 + coly * ldy);
-                if x1.is_nan() || y1.is_nan() {
-                    continue;
-                }
-                let xm = sign(xk - x1);
-                let ym = sign(yk - y1);
-                sum += xm * ym;
-                xsd += xm * xm;
-                ysd += ym * ym;
-            }
-        }
-        if xsd == 0.0 || ysd == 0.0 {
-            return crate::sexp::ffi::NA_REAL;
-        }
-        (sum / (xsd * ysd).sqrt()).clamp(-1.0, 1.0)
     }
 }
 

@@ -388,7 +388,10 @@ pub fn is_null_safe(x: Sexp) -> c_int {
 
 pub fn is_numeric_safe(x: Sexp) -> c_int {
     let t = x.clone().typeof_();
-    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && x.is_vector() {
+    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP)
+        && x.is_vector()
+        && unsafe { crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0 }
+    {
         1
     } else {
         0
