@@ -195,13 +195,13 @@ fn shared_base_frame_bootstrap_reuses_the_original_canonical_index() {
 
 #[test]
 fn shared_base_frame_alias_writes_removals_and_closure_changes_stay_coherent() {
-    let session = RSession::new_without_default_packages();
+    let session = RSession::new_for_gc_tests();
     session.with_active(|| {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
-        let base = factory
-            .wrap(unsafe { crate::sexp::globals::R_BaseEnv() })
-            .unwrap();
-        let namespace = factory.wrap(unsafe { R_BaseNamespace() }).unwrap();
+        // This fixture mutates shared frame topology. Real initialized base
+        // namespaces are locked; preserve that public contract and construct
+        // the original unlocked aliases before bootstrap instead.
+        let (base, namespace) = original_base_aliases(&session, &factory);
         let name = symbol(&factory, "shared_index_alias_probe");
         let fun = factory
             .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::CLOSXP)))
