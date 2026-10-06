@@ -1,0 +1,181 @@
+{
+  "status": "rejected_performance_candidate",
+  "baseline_runtime_source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+  "candidate_patch_sha256": "7a67c31a6bc28a9db9d852bb05c9604fdce3f0ce9acf1046b9aa7547d8dff985",
+  "description": "Bounded8 original canonical page metadata leases with weak projections. No slot, generation or owner admission changes. Native and strictMiri controls pass but matched original sunflower timings give no useful gain; runtime cache discarded. Existing page-directory fixture retains address-only strict-provenance inputs and multi-page/drop assertions.",
+  "validation": {
+    "native_memory_passed": 90,
+    "native_public_passed": 54,
+    "strict_miri": {
+      "actual_multi_page_directory": {
+        "passed": 1,
+        "seconds": 50.95
+      },
+      "original_address_only_projection": {
+        "passed": 1,
+        "seconds": 50.69
+      },
+      "tls_shutdown": {
+        "passed": 1,
+        "seconds": 61.88
+      }
+    },
+    "workspace_warnings_denied_clippy": true,
+    "fmt": true
+  },
+  "matched_original_sunflower": {
+    "scope": "Sequential quiet production Node, three fresh sessions each cold/warm, original800x600 source and all budgets unchanged. No task CPU validation active. Our only active artifact download was suspended during both runs and resumed in finally. Not Linux browser acceptance.",
+    "samples": {
+      "before": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-utils-console-5483fec6",
+            "wasm_sha256": "0210a0a5c83c204fcd5c7f98ee9788f26ecd2e8a2ac694ff47437803840c8c1b",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1628.125333
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11255.751209,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11344.515792,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1446.9752079999998
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 11214.692083999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11641.6555,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1368.5234169999967
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 10928.159208999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11370.387084000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "sha256": "fcc159601213e60e3b8b68ebe974e8a4ec68a8201879bee5aed28d2a9e70785f",
+        "medians_ms": {
+          "initialize": 1446.9752079999998,
+          "cold": 11214.692083999998,
+          "warm": 11370.387084000002
+        }
+      },
+      "after": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-page-directory-cache8",
+            "wasm_sha256": "c980e97112ec30ffbf0621308dd7cde9fdd324382568482d9c2a89ea05033293",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1709.536208
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11503.056417,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11699.4935,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1442.5583750000005
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 11229.438834,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11901.388416000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1461.9800410000025
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 11257.410708000003,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11881.230292,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "sha256": "e75a9b9cd4a7623539ce57ec0fb2d2470d15a73ef39d7d80f8201a48831836fb",
+        "medians_ms": {
+          "initialize": 1461.9800410000025,
+          "cold": 11257.410708000003,
+          "warm": 11881.230292
+        }
+      }
+    }
+  }
+}

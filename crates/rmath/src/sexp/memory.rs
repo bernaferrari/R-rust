@@ -4123,16 +4123,48 @@ mod tests {
         let last = page.raw_slot(2).unwrap();
         assert!(super::checked_node(base).is_some());
         assert!(super::checked_node(last).is_some());
-        let interior = (base as usize + 1) as super::SEXP;
-        let past_end = (base as usize + 3 * super::NODE_BYTES) as super::SEXP;
+        let interior = std::ptr::without_provenance_mut(base.addr() + 1);
+        let past_end = std::ptr::without_provenance_mut(base.addr() + 3 * super::NODE_BYTES);
         assert!(super::checked_node(interior).is_none());
         assert!(super::checked_node(past_end).is_none());
+        // Alternate between actual registered pages, exceeding the cache's
+        // working set. Every projection must still resolve the original Cell.
+        let mut neighbors = Vec::new();
+        for index in 1..12 {
+            let neighbor = super::NodePage::try_new(super::HeapIdentity::new(), index, 2, || {
+                super::SexprecCore::new(super::SEXPTYPE::NILSXP)
+            })
+            .unwrap();
+            let registration = super::register_node_page(&neighbor);
+            neighbor.metadata().activate(1, false).unwrap();
+            neighbors.push((neighbor, registration));
+        }
+        for _ in 0..2 {
+            for (neighbor, _) in &neighbors {
+                let pointer = neighbor.raw_slot(1).unwrap();
+                assert_eq!(
+                    super::checked_projection(pointer).map(|(raw, _)| raw),
+                    Some(pointer)
+                );
+                assert_eq!(
+                    super::checked_projection(last).map(|(raw, _)| raw),
+                    Some(last)
+                );
+            }
+        }
         let token = super::checked_node(last).unwrap();
         drop(page);
         assert!(!token.is_live());
         assert!(super::checked_node(last).is_none());
         drop(registration);
         assert!(super::find_slab_slot(base).is_none());
+        for (neighbor, _) in &neighbors {
+            let pointer = neighbor.raw_slot(1).unwrap();
+            assert_eq!(
+                super::checked_projection(pointer).map(|(raw, _)| raw),
+                Some(pointer)
+            );
+        }
     }
 
     #[test]
