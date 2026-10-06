@@ -10,7 +10,8 @@ active owned scene and the faer numerical backend.
 | --- | --- | --- |
 | `C_raster` | `graphics::rasterImage`; shared portable raster decoder and scene image drawing | Connected. GNU positional payload, recycled placements, interpolation flag, transforms and actual RGBA pixels are exercised. Invalid dimensions/colors fail and the session recovers. |
 | `C_text` | `graphics::text.default`; portable text and plotmath drawing | Connected. GNU `xy.coords` list is expanded through owned arguments; expression labels, superscripts and colors reach scene commands. |
-| `C_arrows`, `C_segments`, `C_rect`, `C_box`, `C_abline` | Existing portable drawing routes | Connected previously; original public geometry tests remain the execution evidence. This milestone does not establish every native option. |
+| `C_arrows`, `C_segments`, `C_rect`, `C_box` | Existing portable drawing routes | Connected previously; original public geometry tests remain the execution evidence. This milestone does not establish every native option. |
+| `C_abline` | `graphics::abline`; owned positional adapter to portable drawing | All eight unnamed GNU native fields are routed. Original log-space endpoint, untransformed-curve, and condition/recovery tests pass. Horizontal/vertical color, width and line-type drawing matches public segments under both constructor policies. |
 | `C_title`, `C_polygon`, `C_plotXY` | Positional adapters to portable drawing | Connected previously. Native text/raster integration preserves these routes. |
 | `C_mtext` | `graphics::mtext`; owned margin arguments, shared fonts/plotmath and scene drawing | Connected. Both public constructor policies pass 61 GNU argument/style/error probes, 32 independently captured PDF coordinate combinations, and three base-character-expansion placements. Missing text emits no glyph; errors recover. Production Wasm repeats all 61 probes in two fresh sessions with real PNGs. |
 | `C_filledcontour`, `C_persp` | Legacy routines in `library/graphics/plot3d.rs` | Partial legacy implementation; not admitted through this bridge. Device drawing and buffer contracts still need validation. Requests now raise a named unsupported-operation error. |
@@ -59,9 +60,25 @@ The final native margin batch records 75 passes across 17 suites, including the
 existing 54 package/namespace checks. The original title and new margin inputs
 survive collection with their argument graph as the only label root. Core build,
 warnings-denied Clippy and formatting pass. This selected evidence does not
-replace a complete workspace result; barplot, log-abline and LOESS still expose
-failures in the broader run. Raw evidence is retained under
+replace a complete workspace result; the broader run exposed barplot,
+log-abline and LOESS failures. Raw evidence is retained under
 `target/integration-repair-evidence/mtext-public`.
+
+The subsequent [abline/barplot receipt](ci-checkpoints/native-abline-barplot-358c80f6.json)
+records 20 passing selected tests across five suites. The native abline bridge
+now preserves the unnamed `h`, `v`, `untf`, `col`, `lty` and `lwd` fields.
+Independently executed GNU R returns a 3-by-1 matrix for the vector-height
+barplot example; the stale vector expectation was corrected without dropping
+dimensions. Real red bars are checked in the original rendering workflow.
+Warnings-denied Clippy and formatting pass. LOESS and full workspace completion
+remain separate work.
+
+The unchanged whole `reg-tests-1a.R` driver completed at `e312f1b7` under the
+explicit graphics/native/faer release profile. GNU exited successfully; the
+Rust runner passed margin text and stopped at the named unsupported `C_persp`
+operation. The full driver remains failing. Its authenticated producer is
+retained under `target/integration-repair-evidence/upstream-reg1a-e312f1b7`;
+the perspective bridge is tracked by `rport-t5xt7`.
 
 Validation at the milestone: all 11 existing plotmath tests, all 3 existing
 raster tests, and all 3 native bridge contracts pass, also with `vello-gpu`

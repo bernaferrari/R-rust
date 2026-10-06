@@ -446,8 +446,8 @@ mod tests {
 
     #[test]
     fn test_do_mapply_null_args_returns_empty() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let empty_list = Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(3);
             crate::sexp::accessors::SETCAR(args, R_NilValue());
@@ -456,14 +456,14 @@ mod tests {
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(XLENGTH(result), 0);
-        }
+        });
     }
 
     #[test]
     fn test_named_fun_one_varying_recycles() {
         // mapply(c(1,2), FUN=function(a) a+10) -> c(11, 12)
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let fun = eval_r("function(a) a + 10");
             let _fun_guard = protect(fun);
             let vec = eval_r("c(1,2)");
@@ -482,14 +482,14 @@ mod tests {
             let _result_guard = protect(result);
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(real_elements(result), vec![11.0, 12.0]);
-        }
+        });
     }
 
     #[test]
     fn test_named_fun_two_varyings() {
         // whisker's shape: mapply(values, renders, FUN=function(value, render) ...)
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let fun = eval_r("function(value, render) render(value)");
             let _fun_guard = protect(fun);
             let values = eval_r("list(\"World\", \"!\")");
@@ -517,14 +517,14 @@ mod tests {
             };
             assert_eq!(std::ffi::CStr::from_ptr(s(0)).to_bytes(), b"World?");
             assert_eq!(std::ffi::CStr::from_ptr(s(1)).to_bytes(), b"!!");
-        }
+        });
     }
 
     #[test]
     fn test_positional_fun_two_varyings() {
         // mapply(function(a,b) a+b, c(1,2), c(3,4)) -> c(4, 6)
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let fun = eval_r("function(a, b) a + b");
             let _fun_guard = protect(fun);
             let x = eval_r("c(1,2)");
@@ -544,14 +544,14 @@ mod tests {
             let _result_guard = protect(result);
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(real_elements(result), vec![4.0, 6.0]);
-        }
+        });
     }
 
     #[test]
     fn test_named_fun_with_moreargs() {
         // mapply(c(1,2), FUN=function(a, b) a+b, MoreArgs=list(100)) -> c(101, 102)
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let fun = eval_r("function(a, b) a + b");
             let _fun_guard = protect(fun);
             let vec = eval_r("c(1,2)");
@@ -576,13 +576,13 @@ mod tests {
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
             assert_eq!(real_elements(result), vec![101.0, 102.0]);
-        }
+        });
     }
 
     #[test]
     fn test_zero_length_varying_returns_empty_list() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let fun = eval_r("function(a) a");
             let _fun_guard = protect(fun);
             let vec = eval_r("numeric(0)");
@@ -600,6 +600,6 @@ mod tests {
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
             assert_eq!(XLENGTH(result), 0);
-        }
+        });
     }
 }

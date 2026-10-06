@@ -1,0 +1,107 @@
+{
+  "source_commit": "358c80f66b14ac11e7b1fc409781d36ff2c25b26",
+  "scope": "Native C_abline unnamed argument routing and correction of a stale barplot oracle; selected execution, not a full workspace or complete conformance result.",
+  "native": {
+    "passed": 20,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 5,
+    "profile": "release, r-embed/default, renderplot-device, faer",
+    "constructors": "Original native constructor tests; added h/v/style PNG equivalence under both native/default and portable/explicit-empty policies.",
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "graphics_highlevel",
+        "--test",
+        "graphics_log_abline",
+        "--test",
+        "native_graphics_contract",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 27.6968369159149,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T13:58:28.596700+00:00",
+      "logs": {
+        "stderr.log": "81c0c35bdf44f180348e84c3cc6b4d0835c913af48628a08f36a65f07bf9428e",
+        "stdout.log": "a203d8493acd67b39e8a0282a7302cb3f7fb28079664d9bc6e2d2cfed3d224b1"
+      },
+      "pid": 99332,
+      "schema_version": 1,
+      "started_at": "2026-10-06T13:58:00.898866+00:00",
+      "state": "finished",
+      "timeout_seconds": 600.0
+    }
+  },
+  "repair": {
+    "entry": "C_abline / graphics::abline",
+    "implementation": "Existing owned positional adapter passes a,b,h,v,untf,col,lty,lwd to portable drawing.",
+    "verified": "Original log transformed endpoints, untf curve difference, nonfinite errors and recovery; h/v styled PNG equivalence to public segments under both policies.",
+    "barplot": "Pinned GNU returns a3x1 matrix; original vector comparison is FALSE. Expected matrix retains dimensions. Original high-level suite plus real red-bar pixel admission passes."
+  },
+  "gnu": {
+    "oracle_manifest": {
+      "path": "oracle/r-oracle.json",
+      "bytes": 762,
+      "sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679"
+    },
+    "files": [
+      {
+        "path": "crates/r-embed/tests/fixtures/abline-native-oracle.R",
+        "bytes": 604,
+        "sha256": "c4e907c5c57eec057198aeb82d1171cad5405b2d60176cd8f97873a50a9e9206"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/abline-native-oracle.out",
+        "bytes": 230,
+        "sha256": "61806907aafeedb50d6b646c58dfdd599e929611c7e2c82bba76ebc03c211850"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/barplot-shape-oracle.R",
+        "bytes": 240,
+        "sha256": "d8485ed8615fd2526ea140531a9089c49ccbed8b01694ff123d297a1490df59d"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/barplot-shape-oracle.out",
+        "bytes": 64,
+        "sha256": "2b609906ad3542ea0799dcaa5da8694ce0217a580d0cf513253ec836d047d349"
+      }
+    ],
+    "actual_device_capture": {
+      "path": "target/integration-repair-evidence/abline-barplot-gnu/abline.pdf",
+      "bytes": 13514,
+      "sha256": "013d36d7e99ce4bb80295280730f59c9063cbcf8c340122b02f1119b785baf43"
+    }
+  },
+  "source_files": [
+    {
+      "path": "crates/rmath/src/library/graphics/mod.rs",
+      "bytes": 25524,
+      "sha256": "39dbd398b22879b6e3ddad53ffe2233d49ce881e973d6d1e67efb5437df8e110"
+    },
+    {
+      "path": "crates/r-embed/tests/graphics_highlevel.rs",
+      "bytes": 10243,
+      "sha256": "986229cd32036c94429c3de244e94a4dbd7df53ed43f4b855f04821b29d9e973"
+    },
+    {
+      "path": "crates/r-embed/tests/graphics_log_abline.rs",
+      "bytes": 2411,
+      "sha256": "00534f1e54377705545fe52b6a03f5f43cfd9497df0df4d62c2a4a1db2052295"
+    }
+  ],
+  "quality_gates": [
+    "Warnings-denied Clippy rmath+r-embed all-targets PASS",
+    "Workspace formatting PASS"
+  ],
+  "remaining": "Frozen e312 full reg-tests-1a.R completed with GNU exit0/Rust exit1; new stopping point is explicitly unsupported C_persp. Full workspace, Linux repeated browser acceptance, and complete inventory reduction remain separate open work."
+}
