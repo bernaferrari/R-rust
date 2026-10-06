@@ -188,13 +188,26 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     if TYPEOF(dots) != SEXPTYPE::DOTSXP {
                         base_error("'...' used in an incorrect context");
                     }
+                    let mut index = 1;
                     while dots != R_NilValue() && !dots.is_null() {
                         let mut expr = CAR(dots);
                         while TYPEOF(expr) == SEXPTYPE::PROMSXP {
                             expr = crate::sexp::accessors::PRCODE(expr);
                         }
+                        // GNU subDots keeps promise expressions in their
+                        // original dots frame; copying symbols/calls here
+                        // changes missingness and where their names resolve.
+                        let expr_type = TYPEOF(expr);
+                        if expr_type == SEXPTYPE::SYMSXP
+                            || expr_type == SEXPTYPE::LANGSXP
+                            || expr_type == SEXPTYPE::NILSXP
+                        {
+                            let name = CString::new(format!("..{index}")).unwrap();
+                            expr = Rf_install(name.as_ptr());
+                        }
                         append(&mut actuals, &mut tail, expr, TAG(dots));
                         dots = CDR(dots);
+                        index += 1;
                     }
                 }
             } else {
