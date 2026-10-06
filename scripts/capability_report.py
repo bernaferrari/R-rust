@@ -336,6 +336,14 @@ unchanged. A later complete local `2920368c` package run passes all 52 checks;
 both original sunflower flows also pass three fresh local browser repetitions.
 These separate-source results are preserved distinctly in the receipt.
 
+The later immutable [Linux f1dc3091 checkpoint](ci-checkpoints/linux-browser-package-f1dc3091.json)
+completes all 53 selected native public checks in debug, with a process exit of
+zero inside the explicit 2400-second batch bound. Chromium completes all 60 cases
+with 57 passing and three failing: both original sunflower timeout flows recur,
+and the combined FFT/RNG case exceeds its unchanged 90-second test limit.
+The older Linux 60/60 pass and current local 60/60 pass remain distinct receipts;
+repeated Linux budget stability is still an open requirement.
+
 The focused [canonical character-read repair](ci-checkpoints/character-read-9f2f28a6.json)
 at `9f2f28a6` passes the existing native projection controls, strict Miri and
 nine Wasm public contracts in two fresh sessions. Three sequential production
