@@ -85,10 +85,10 @@ records actual public workflow repairs and preserves their separate source commi
 | Executed set | Commit | Pass | Fail | Other |
 | --- | --- | ---: | ---: | --- |
 | Complete exact-oracle conformance | `9b500c00` | 1053 | 128 | All 1181 accounted for; 0 timeouts |
-| Complete whole upstream drivers | `e3e26dea` | 14 | 25 | 31 skipped; all 70 accounted for |
-| Complete curated upstream slices | `e3e26dea` | 14 | 1 | All 15 accounted for |
+| Complete whole upstream drivers | `9b500c00` | 14 | 25 | 31 skipped; all 70 accounted for |
+| Complete curated upstream slices | `9b500c00` | 14 | 1 | All 15 accounted for |
 | Local complete Chromium showcase | `f16592b7` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
-| Linux complete Chromium showcase | `9b500c00` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
+| Linux complete Chromium showcase | `52586600` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -131,8 +131,18 @@ stack abort through the explicit portable constructor, despite passing native-ho
 checks. The later `52586600` checked-metadata storage repair passes all four grid
 workflows under both policies at the unchanged stack budget, plus all 57 public
 controls, 25 private VM controls, strict Miri, formatting and Clippy. Its immutable
-Linux verification is pending. The older exhaustive workspace run
+Linux checkpoint also passes the original grid workflows under both policies and
+all 60 browser tests. The Linux workspace advances to 38/39 embedding tests,
+where the device-lifecycle workflow still depends on a missing host R
+configuration file; this is tracked separately. The older exhaustive workspace run
 is incomplete; it is not current-HEAD passing evidence.
+The table printing repair at `06773bdc` uses the original GNU closure and shared
+output paths. Both public constructor policies match independently captured GNU
+output for formatting options, dimensions, missing names and capture chronology.
+The unchanged original conformance case 1091 and curated slice 008 also pass
+strict comparison in the explicit release profile. These selected results do
+not change the complete union counts above.
+
 The receipt joins each selected inventory key to actual wrappers, implementation
 paths, options, edge cases, profiles, source commits and raw-report hashes.
 

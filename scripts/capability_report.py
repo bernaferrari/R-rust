@@ -38,7 +38,7 @@ integration_path = root / 'docs/ci-checkpoints/integration-stabilization-e3e26de
 integration = json.loads(integration_path.read_text())
 integration_checks = {check['id']: check for check in integration['checks']}
 integration_conformance = integration['complete_conformance']
-integration_linux = integration['linux_showcase_9b']
+integration_linux = integration['linux_showcase_525']
 integration_upstream = integration['complete_upstream']
 integration_local = integration['calling_error_helper']
 report = f'''# Compatibility evidence inventory
@@ -174,8 +174,18 @@ stack abort through the explicit portable constructor, despite passing native-ho
 checks. The later `52586600` checked-metadata storage repair passes all four grid
 workflows under both policies at the unchanged stack budget, plus all 57 public
 controls, 25 private VM controls, strict Miri, formatting and Clippy. Its immutable
-Linux verification is pending. The older exhaustive workspace run
+Linux checkpoint also passes the original grid workflows under both policies and
+all 60 browser tests. The Linux workspace advances to 38/39 embedding tests,
+where the device-lifecycle workflow still depends on a missing host R
+configuration file; this is tracked separately. The older exhaustive workspace run
 is incomplete; it is not current-HEAD passing evidence.
+The table printing repair at `06773bdc` uses the original GNU closure and shared
+output paths. Both public constructor policies match independently captured GNU
+output for formatting options, dimensions, missing names and capture chronology.
+The unchanged original conformance case 1091 and curated slice 008 also pass
+strict comparison in the explicit release profile. These selected results do
+not change the complete union counts above.
+
 The receipt joins each selected inventory key to actual wrappers, implementation
 paths, options, edge cases, profiles, source commits and raw-report hashes.
 
