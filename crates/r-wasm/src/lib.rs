@@ -533,7 +533,9 @@ mod tests {
                 ),
                 (
                     include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.R"),
-                    include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.out"),
+                    include_str!(
+                        "../../r-embed/tests/fixtures/unserialize-connection-contract.out"
+                    ),
                 ),
             ] {
                 assert_eq!(session.eval_checked(source).unwrap(), expected);
