@@ -1,0 +1,279 @@
+{
+  "source_commit": "7691b6015238eceffd6450b3461a8df99c66d208",
+  "description": "Only two private generated-integer maps, canonical page-cookie index and per-page payload index, use the existing hashbrown implementation. Original storage, slots, owner/generation checks, graph tracing and authority unchanged.",
+  "source": {
+    "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/sexp/memory.rs",
+    "bytes": 199806,
+    "sha256": "672cbe81df06a0005af7765e9873144f01e2665657f3dce02638b0b54a39e737"
+  },
+  "validation": {
+    "native_memory": {
+      "passed": 90,
+      "failed": 0,
+      "log": {
+        "path": "/private/tmp/rport-private-map-native-memory.log",
+        "bytes": 8283,
+        "sha256": "dca70f9d92ca80f09d90fd7358e3c8c7a86695527a5af6e9c7fcde3e668b4b96"
+      }
+    },
+    "native_public": {
+      "build_profile": "release",
+      "passed": 54,
+      "failed": 0,
+      "ignored": 0,
+      "suites": 12,
+      "constructor_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "log": {
+        "path": "/private/tmp/rport-private-map-public-native-release.log",
+        "bytes": 6627,
+        "sha256": "f150db2e291e9b8e6dc71dd4e57adecd282534c1aac076c8c3a24523ab8dec9f"
+      }
+    },
+    "strict_miri": {
+      "exact_slot_directory": {
+        "passed": 1,
+        "seconds": 50.84,
+        "log": {
+          "path": "/private/tmp/rport-private-map-strict-miri-directory.log",
+          "bytes": 4220,
+          "sha256": "ad3d5338e1b0bb23c2dd4ceb960ec803c16ca42cfa2df293298953f307b03ba0"
+        }
+      },
+      "typed_payload_owner_moves_and_reference_cycle": {
+        "passed": 1,
+        "seconds": 79.02,
+        "log": {
+          "path": "/private/tmp/rport-private-map-strict-miri-payload.log",
+          "bytes": 4221,
+          "sha256": "203d3927c4bdb06c828a0db5e048c9fc35c17f7695d3b70d9f59ebe6df82ad38"
+        }
+      }
+    },
+    "production_wasm": {
+      "binary": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/wasm-private-page-payload-map/r_wasm_bg.wasm",
+        "bytes": 25965210,
+        "sha256": "cdc0ecfc418f2794fa929ab9c2860e198fada012eac5e008c870915ad0298a7c"
+      },
+      "contracts_per_fresh_session": 13,
+      "fresh_sessions": 2,
+      "passed": true,
+      "runner": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/private-page-payload-map/check-public-contracts.mjs",
+        "bytes": 1794,
+        "sha256": "07dc14b18e81719e8c0aedc6e67a6eb23e04a5bae524c2734af2c9639ec3365a"
+      },
+      "log": {
+        "path": "/private/tmp/rport-private-map-public-node.log",
+        "bytes": 2779,
+        "sha256": "4f6cdf987ca93e88083b69ee6f14950e2f31b831c7b97c5708e777d2628d1b09"
+      },
+      "admission": "Final optimized module hash matches read buffer and file after execution; unchanged25MiB bound."
+    },
+    "original_local_chromium": {
+      "stats": {
+        "startTime": "2026-10-06T09:58:15.783Z",
+        "duration": 277189.834,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "/private/tmp/rport-private-map-full-browser.json",
+        "bytes": 67428,
+        "sha256": "40324100dcc61064ddc82d4b40c6fa89c499a4b8f107257f0396be75e96b710c"
+      },
+      "scope": "All60 original tests, workers1, production module above. No other taskCargo/native/Miri/Node CPU validation active; examples and15s runtime/client,20s editor,90s aggregateFFT/RNG limits unchanged. Local outcome, not Linux stability."
+    },
+    "workspace_warnings_denied_clippy": {
+      "passed": true,
+      "log": {
+        "path": "/private/tmp/rport-private-map-clippy-final.log",
+        "bytes": 962,
+        "sha256": "6bb6aab4ac339d4b6078f74701d201ab9d78b5c1b554f4c0171cd77b4beada0b"
+      }
+    },
+    "fmt": {
+      "passed": true,
+      "log": {
+        "path": "/private/tmp/rport-private-map-fmt-final.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "quiet_matched_original_sunflower": {
+    "scope": "Sequential production Node, three fresh sessions each cold/warm. No taskCPU validation or artifact downloads active. Same800x600 source and all existing budgets. Diagnostic, not Linux browser acceptance.",
+    "samples": {
+      "before": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-utils-console-5483fec6",
+            "wasm_sha256": "0210a0a5c83c204fcd5c7f98ee9788f26ecd2e8a2ac694ff47437803840c8c1b",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1658.410583
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 11416.136208,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11433.563167,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1377.2341250000027
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 10991.495334,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11450.569084000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1378.3888750000042
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 10999.209541999997,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11438.526875000003,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "log": {
+          "path": "/private/tmp/rport-private-map-matched-before.jsonl",
+          "bytes": 1491,
+          "sha256": "a00b9c3276c2257e1357fc9581b7fcb47e04519bbae424fe56e42ce4e694d164"
+        },
+        "medians_ms": {
+          "initialize": 1378.3888750000042,
+          "cold": 10999.209541999997,
+          "warm": 11438.526875000003
+        }
+      },
+      "after": {
+        "records": [
+          {
+            "package": "/Users/bernardoferrari/Downloads/rport/target/wasm-private-page-payload-map",
+            "wasm_sha256": "cdc0ecfc418f2794fa929ab9c2860e198fada012eac5e008c870915ad0298a7c",
+            "source_sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+            "node": "v24.21.0",
+            "platform": "darwin",
+            "scope": "Quiet production Node wall times; original sunflower800x600 and budgets unchanged, not browser acceptance"
+          },
+          {
+            "repetition": 0,
+            "phase": "initialize",
+            "ms": 1525.719917
+          },
+          {
+            "repetition": 0,
+            "phase": "cold",
+            "ms": 10878.063042000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 0,
+            "phase": "warm",
+            "ms": 11192.908082999998,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "initialize",
+            "ms": 1382.356667
+          },
+          {
+            "repetition": 1,
+            "phase": "cold",
+            "ms": 10664.998750000002,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 1,
+            "phase": "warm",
+            "ms": 11015.473042000005,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "initialize",
+            "ms": 1327.523125000007
+          },
+          {
+            "repetition": 2,
+            "phase": "cold",
+            "ms": 10684.957875,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          },
+          {
+            "repetition": 2,
+            "phase": "warm",
+            "ms": 11014.03758399999,
+            "png_bytes": 43864,
+            "png_sha256": "13297c13ea93dece4631abce91027ed928f8b252a4ee753263a98b02b64cde14"
+          }
+        ],
+        "log": {
+          "path": "/private/tmp/rport-private-map-matched-after.jsonl",
+          "bytes": 1496,
+          "sha256": "f5b17a7cc7521a057bbd510c490ce3709d0c0f5fb6a91d43c0c4412daebfdefa"
+        },
+        "medians_ms": {
+          "initialize": 1382.356667,
+          "cold": 10684.957875,
+          "warm": 11015.473042000005
+        }
+      }
+    }
+  },
+  "remaining": "Latest admitted immutable Linux5483fec6 native54passes/browser56of60; repeated Linux budget reliability remains open. Complete conformance/upstream counts remain tied to5483fec6; selected later passes are not added.",
+  "immutable_ci": {
+    "run": 37447349549,
+    "source_commit": "7691b6015238eceffd6450b3461a8df99c66d208",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37447349549",
+    "status": "dispatched; no results admitted yet"
+  }
+}

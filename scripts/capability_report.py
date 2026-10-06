@@ -364,6 +364,16 @@ Node runs of the unchanged sunflower example reduce median cold execution from
 are diagnostic; the later Linux `c3824f42` receipt records all 60 browser tests
 passing, including both unchanged sunflower flows.
 
+The later [private page and payload index repair](ci-checkpoints/private-page-payload-map-7691b601.json)
+at `7691b601` uses the existing hash-map implementation for two private integer
+indexes. Original identities and ownership checks remain intact. It passes 90
+native memory checks, all 54 selected native public checks, two strict Miri
+controls, 13 GNU contracts in two fresh production Wasm sessions, and all 60
+unchanged local Chromium tests. Matched production sunflower medians fall from
+11.00 to 10.68 seconds cold and 11.44 to 11.02 seconds warm, retaining identical
+PNG bytes. The ineffective bounded page-cache candidate was discarded; neither
+local result establishes repeated Linux budget reliability.
+
 The [public binning workflow repair](ci-checkpoints/bincode-2920368c.json)
 at `2920368c` connects the original `.bincode` closure through canonical base
 initialization and typed internal dispatch to the existing kernel. Its endpoint,
