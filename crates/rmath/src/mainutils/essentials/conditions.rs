@@ -2423,30 +2423,6 @@ unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: 
     }
 }
 
-fn value_matches_mode(value: SEXP, mode: &str) -> bool {
-    unsafe {
-        if value.is_null() || value == R_UnboundValue() {
-            return false;
-        }
-        let ty = TYPEOF(value);
-        let s4 = crate::mainutils::coerce::IS_S4_OBJECT(value) != 0;
-        match mode {
-            "S4" => s4,
-            "object" => ty == SEXPTYPE::OBJSXP && !s4,
-            "integer" => ty == SEXPTYPE::INTSXP,
-            "numeric" | "double" => ty == SEXPTYPE::REALSXP,
-            "logical" => ty == SEXPTYPE::LGLSXP,
-            "character" => ty == SEXPTYPE::STRSXP,
-            "list" => ty == SEXPTYPE::VECSXP,
-            "environment" => ty == SEXPTYPE::ENVSXP,
-            "function" => {
-                ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP
-            }
-            _ => true,
-        }
-    }
-}
-
 /// R's `get(x, envir)` — get value.
 pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -2462,18 +2438,16 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             "any".to_string()
         };
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        if mode == "function" {
-            return crate::sexp::envir::findFun(sym, env);
-        }
-        let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
-        let mut value = if inherits {
-            crate::sexp::envir::R_findVar(sym, env)
-        } else {
-            crate::sexp::envir::R_findVarInFrame(env, sym)
+        let inherits = logical_arg_by_name_or_position(args, "inherits", 4).unwrap_or(true);
+        let selected = mget::lookup_one(sym, env, &mode, inherits)
+            .unwrap_or_else(|error| base_error(error.to_string()));
+        let Some(selected) = selected else {
+            if mode == "any" {
+                base_error(format!("object '{name}' not found"));
+            }
+            base_error(format!("object '{name}' of mode '{mode}' was not found"));
         };
-        if value.is_null() || value == R_UnboundValue() {
-            base_error(format!("object '{name}' not found"));
-        }
+        let value = selected.as_raw();
         if value == crate::sexp::globals::R_MissingArg() {
             let c_name = CString::new(name.as_str()).unwrap_or_default();
             crate::mainutils::errors::R_MissingArgError_c(
@@ -2482,13 +2456,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 c"getMissingError".as_ptr(),
             );
         }
-        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            let _promise = protect(value);
-            value = crate::sexp::envir::forcePromise(value);
-        }
-        if mode != "any" && !value_matches_mode(value, &mode) {
-            base_error(format!("object '{name}' of mode '{mode}' was not found"));
-        }
+
         value
     }
 }
@@ -2502,7 +2470,13 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
         let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
-        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+        let mode_arg = arg_by_name_or_position(args, &["mode"], 2);
+        let mode = if mode_arg == R_NilValue() {
+            "any".into()
+        } else {
+            elt_to_string(mode_arg, 0)
+        };
+        let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
         let ifnotfound = arg_by_name_or_position(args, &["ifnotfound"], 4);
         let fallback = if ifnotfound.is_null() {
             R_NilValue()
@@ -2510,20 +2484,11 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             ifnotfound
         };
         let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-        let value = if inherits {
-            crate::sexp::envir::R_findVar(sym, env)
-        } else {
-            crate::sexp::envir::R_findVarInFrame(env, sym)
-        };
-        if value.is_null() || value == R_UnboundValue() {
-            fallback
-        } else {
-            if TYPEOF(value) == SEXPTYPE::PROMSXP {
-                let _promise = protect(value);
-                crate::sexp::envir::forcePromise(value)
-            } else {
-                value
-            }
+        match mget::lookup_one(sym, env, &mode, inherits)
+            .unwrap_or_else(|error| base_error(error.to_string()))
+        {
+            Some(value) => value.as_raw(),
+            None => fallback,
         }
     }
 }

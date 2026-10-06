@@ -239,6 +239,25 @@ fn lookup(
             if mode.matches(&value, access)? {
                 return Ok(Some(value));
             }
+        } else if mode.kind == SEXPTYPE::CLOSXP
+            && access.with_native(|_| unsafe {
+                Ok(environment.as_raw() == crate::sexp::globals::R_BaseEnv()
+                    || environment.as_raw() == crate::sexp::envir::R_BaseNamespace())
+            })?
+        {
+            // Existing primitive descriptors are visible only when the real
+            // base frame is admitted by this lookup's inheritance policy.
+            let primitive = callback(access, || {
+                access.with_native(|owner| unsafe {
+                    crate::sexp::envir::find_fun_result(symbol.clone(), environment.clone())
+                        .map_err(failure)?
+                        .map(|value| owner.sexp(value.as_raw())?.into_owned())
+                        .transpose()
+                })
+            })?;
+            if primitive.is_some() {
+                return Ok(primitive);
+            }
         }
         if !inherits {
             break;
@@ -412,6 +431,26 @@ fn execute(
     })?;
     access.require_active()?;
     Ok(result)
+}
+
+/// # Safety
+/// The selected symbol and environment belong to the live current runtime.
+pub(super) unsafe fn lookup_one(
+    symbol: SEXP,
+    environment: SEXP,
+    mode: &str,
+    inherits: bool,
+) -> SexpResult<Option<Sexp<'static>>> {
+    let token = unsafe { OwnerToken::current()? };
+    let owner = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
+    with_runtime(&owner, |access| {
+        let symbol = access.domain().wrap(symbol)?.into_owned()?;
+        let environment = access.domain().wrap(environment)?.into_owned()?;
+        let mode = Mode::parse(mode)?;
+        callback(access, || {
+            lookup(&symbol, environment, mode, inherits, access)
+        })
+    })?
 }
 
 /// # Safety

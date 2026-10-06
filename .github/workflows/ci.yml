@@ -122,6 +122,7 @@ jobs:
           --test embed --test namespace_initialization
           --test portable_namespace_integration --test portable_grdevices_namespace
           --test portable_stats_namespace --test complex_print_contract
+          --test get_lazy_mode
 
       - name: Upload durable public package evidence
         if: always()
@@ -405,6 +406,11 @@ jobs:
       - name: Build and budget the production bundle
         working-directory: apps/workbench
         run: ./gradlew --no-daemon :webApp:checkWasmProductionBundleSize
+
+      - name: Verify original portable package contracts in production Wasm
+        run: |
+          mkdir -p "$RUNNER_TEMP/showcase-evidence"
+          node tests/browser/portable-package-contracts.mjs "$RPORT_WASM_PKG" | tee "$RUNNER_TEMP/showcase-evidence/portable-package-contracts.log"
 
       - name: Install browser test dependencies
         run: |

@@ -3847,6 +3847,21 @@ pub(crate) unsafe fn register_namespace_s3_methods(
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
             record_s3_method_row(package_env, local_generic, &method.class, &method_name);
 
+            // GNU registerS3method admits group generics directly in the base
+            // namespace; there need not be a callable function named "Ops".
+            if matches!(
+                local_generic,
+                "Math" | "Ops" | "matrixOps" | "Summary" | "Complex"
+            ) {
+                define_s3_method(
+                    crate::sexp::envir::R_BaseNamespace(),
+                    local_generic,
+                    &method.class,
+                    method_value,
+                )?;
+                continue;
+            }
+
             // GNU registerS3method: methods for a closure generic live in
             // environment(fdef); primitives use .BaseNamespaceEnv.
             if let Ok(generic_cstr) = CString::new(local_generic) {
