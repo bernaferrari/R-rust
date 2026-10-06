@@ -452,7 +452,7 @@
       "sha256": "42040a866e4201772fc0f18f74b1b84cd5820e04a396ae6379409f1fc9752495"
     }
   },
-  "remaining": "Linux all49publicpackagesPASS, browser56PASS4FAIL (originalmethods andtwo sunflowertimeouts, aggregateFFT/RNG90secondtestlimit). Local60PASS remains separatelysourced. Samecommitcompleteconformance/upstream union pending; independentlyverified4cd1057pass124fail remains latest accepted complete inventory.",
+  "remaining": "Linux all49publicpackagesPASS, browser56PASS4FAIL (originalmethods andtwo sunflowertimeouts, aggregateFFT/RNG90secondtestlimit). Local60PASS remains separatelysourced. Samecommit complete conformance independently verified1062pass119fail and upstream17wholepass22fail31skip plus15curatedpass; complete-inventory-6ccae790.json retains every outcome and producer hash.",
   "linux_public_packages": {
     "passed": 49,
     "failed": 0,
