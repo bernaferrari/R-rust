@@ -39680,6 +39680,49 @@
       "remaining_binaries_not_executed": true,
       "source_commit": "2b89a9eb229f6b1a7b1d055183921aa8dfd85840",
       "reason": "Originalportable namespace fixturediff(ts) outputzeros; repairedGNUgroupregistration, unchangedfixturePASS in focused88followup."
+    },
+    "promise_strict_miri": {
+      "source_commit": "88e1f39b8963a4f1273281394c0328c6918b57a4",
+      "passed": 1,
+      "failed": 0,
+      "seconds": 638.58,
+      "log": {
+        "file": "rport-get-owned-lookup-strict-miri-88e1f39b.log",
+        "bytes": 4268,
+        "sha256": "b0087977deb3cab519b28944e9e6ec631c801cf6565465bbb4fad23aa95406eb"
+      },
+      "scope": "Original self-binding-removal/collecting get/get0 selected promise obligation through shared owned lookup; strict provenance and symbolic alignment."
+    },
+    "original_ts_workflow": {
+      "source_commit": "88e1f39b8963a4f1273281394c0328c6918b57a4",
+      "passed": 1,
+      "failed": 0,
+      "case": "668_as_ts_window_lag",
+      "execution": {
+        "build_rustflags": "-Awarnings",
+        "case_timeout_seconds": 300.0,
+        "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+        "engine_major_minor": "4.7",
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "schema_version": 1,
+        "shard": {
+          "count": 1181,
+          "global_inventory_total": 1181,
+          "index": 781,
+          "selected_sha256": "7f2d6a3b706ed70364db8a523946b554fbf1cd0b350a01bf3802fe1eab09cdc2",
+          "selected_total": 1
+        },
+        "source_commit": "88e1f39b8963a4f1273281394c0328c6918b57a4",
+        "source_sha256": "ea5e284b9df8031cde9f952fbedc5d857566c1f7629ad2c1e7bfb2a28ab110bb",
+        "strict": true
+      },
+      "log": {
+        "file": "rport-stats-ts-88e1f39b-781-strict.log",
+        "bytes": 866,
+        "sha256": "7ad9561faa9dda9a13e52acec984e68d1e8011545a6c11202727b627131372ba"
+      }
     }
   },
   "linux_showcase_04c": {

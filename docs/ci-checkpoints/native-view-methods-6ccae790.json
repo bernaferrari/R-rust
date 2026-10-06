@@ -1,0 +1,436 @@
+{
+  "source_commit": "6ccae790b67afbed7591992890670a242a7e5cf5",
+  "baseline_commit": "88e1f39b8963a4f1273281394c0328c6918b57a4",
+  "description": "Capture the original checked allocation identity once in an existing unsafe borrowed native view. Unknown ownership, caller rooting, shape/payload validation, and denied owning conversion remain. This avoids recovering a generation from its address on every read. No cache, new graph root, runtime authority or user budget changes.",
+  "method_workflow": {
+    "file": "website/tests/wasm-runtime-contracts.spec.ts",
+    "test": "compiled lazy calls and inherited method specificity work in Wasm",
+    "scope": "Exact original six programs, including GNU compiled identity-promise opcode adjustment. Node measurements are diagnostics; original Chromium and Linux results are recorded separately.",
+    "measurement_policy": "Three fresh sessions before then three after, separate processes, builds/native/Miri tests stopped for the entire matched measurement.",
+    "profiles": {
+      "before": {
+        "fresh_generations": 3,
+        "results": [
+          {
+            "generation": 0,
+            "phase": "init",
+            "ms": 1788.4957499999998
+          },
+          {
+            "generation": 0,
+            "phase": 0,
+            "ms": 15.309541999999965,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 1,
+            "ms": 3.364166999999952,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 2,
+            "ms": 13.84637500000008,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 3,
+            "ms": 6678.367082999999,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 4,
+            "ms": 10300.950792000001,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 0,
+            "phase": 5,
+            "ms": 3.1010000000023865,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": "init",
+            "ms": 1566.0190409999996
+          },
+          {
+            "generation": 1,
+            "phase": 0,
+            "ms": 6.287791999999172,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 1,
+            "ms": 2.1477080000004207,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 2,
+            "ms": 9.605416000002151,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 3,
+            "ms": 6611.572416999999,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 4,
+            "ms": 10117.853083999995,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 1,
+            "phase": 5,
+            "ms": 2.365834000003815,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": "init",
+            "ms": 1528.8957910000026
+          },
+          {
+            "generation": 2,
+            "phase": 0,
+            "ms": 6.3006250000034925,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 1,
+            "ms": 2.1845830000020214,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 2,
+            "ms": 9.549999999995634,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 3,
+            "ms": 6437.171833,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 4,
+            "ms": 10222.537459,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 2,
+            "phase": 5,
+            "ms": 2.3178749999933643,
+            "output": "[1] TRUE\n"
+          }
+        ],
+        "median_ms": {
+          "init": 1566.0190409999996,
+          "0": 6.3006250000034925,
+          "1": 2.1845830000020214,
+          "2": 9.605416000002151,
+          "3": 6611.572416999999,
+          "4": 10222.537459,
+          "5": 2.365834000003815
+        }
+      },
+      "after": {
+        "fresh_generations": 3,
+        "results": [
+          {
+            "generation": 0,
+            "phase": "init",
+            "ms": 1726.114208
+          },
+          {
+            "generation": 0,
+            "phase": 0,
+            "ms": 14.545666999999867,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 1,
+            "ms": 3.1832500000000437,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 2,
+            "ms": 12.50104199999987,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 3,
+            "ms": 5857.644833,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 0,
+            "phase": 4,
+            "ms": 7908.308625000001,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 0,
+            "phase": 5,
+            "ms": 2.5112910000007105,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": "init",
+            "ms": 1487.7618329999987
+          },
+          {
+            "generation": 1,
+            "phase": 0,
+            "ms": 6.254790999999386,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 1,
+            "ms": 2.1351250000006985,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 2,
+            "ms": 9.560582999998587,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 3,
+            "ms": 5927.429292000001,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 1,
+            "phase": 4,
+            "ms": 8053.830167,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 1,
+            "phase": 5,
+            "ms": 2.075708999997005,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": "init",
+            "ms": 1499.7008749999986
+          },
+          {
+            "generation": 2,
+            "phase": 0,
+            "ms": 6.188916999999492,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 1,
+            "ms": 2.1306670000012673,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 2,
+            "ms": 9.364083000000392,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 3,
+            "ms": 5764.056333999997,
+            "output": "[1] TRUE\n"
+          },
+          {
+            "generation": 2,
+            "phase": 4,
+            "ms": 7839.486083000003,
+            "output": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n"
+          },
+          {
+            "generation": 2,
+            "phase": 5,
+            "ms": 1.9772500000035507,
+            "output": "[1] TRUE\n"
+          }
+        ],
+        "median_ms": {
+          "init": 1499.7008749999986,
+          "0": 6.254790999999386,
+          "1": 2.1351250000006985,
+          "2": 9.560582999998587,
+          "3": 5857.644833,
+          "4": 7908.308625000001,
+          "5": 2.075708999997005
+        }
+      }
+    }
+  },
+  "validation": {
+    "object": {
+      "passed": 96,
+      "failed": 0
+    },
+    "memory": {
+      "passed": 97,
+      "failed": 0,
+      "includes": "64 MiB discarded graph, backing release, slot reuse and payload admission"
+    },
+    "strict_miri": {
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 95.05,
+      "test": "native_view_keeps_original_generation_without_manufacturing_a_root",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-symbolic-alignment-check"
+      ]
+    },
+    "warnings_denied_workspace_clippy": "pass",
+    "format": "pass",
+    "wasm_public": {
+      "fresh_generations": 2,
+      "contracts_per_generation": 6
+    },
+    "wasm_datasets": {
+      "checks_passed": 205,
+      "objects": 108,
+      "topics": 91,
+      "serialized_bytes": 592931
+    },
+    "wasm_plots": {
+      "fresh_generations": 2,
+      "original_examples_per_generation": 6
+    },
+    "public_packages": {
+      "passed": 49,
+      "failed": 0,
+      "scope": "Original embedding39 plus namespace initialization3, portable namespace3, grDevices1, stats1, get1 and complex1. Actual public constructors under both native/default and explicit empty library policy."
+    },
+    "chromium_original_methods_repeated": {
+      "startTime": "2026-10-06T06:05:48.773Z",
+      "duration": 47457.217000000004,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "chromium_complete": {
+      "startTime": "2026-10-06T06:06:54.009Z",
+      "duration": 299069.054,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "wasm": {
+    "sha256": "0a35afa92c12afb1ba541ecb7c08a00f36d0d4b75da0a1d494252390d2d087c3",
+    "bytes": 25912865,
+    "production_source": "Built from final production Rust source identical to6ccae790; the new cfg(test) regression was subsequently formatted and compiled separately.",
+    "evaluation_limit_ms": 15000,
+    "package_budget_bytes": 26214400
+  },
+  "immutable_linux_checkpoint": {
+    "run_id": 37421283129,
+    "source_commit": "6ccae790b67afbed7591992890670a242a7e5cf5",
+    "status": "pending",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37421283129"
+  },
+  "logs": {
+    "rport-native-view-metadata-matched-before.jsonl": {
+      "file": "rport-native-view-metadata-matched-before.jsonl",
+      "bytes": 1911,
+      "sha256": "3386ca32ef348947cabbaa9c398b6d8bef38b88da2ec4e4235f22d4a432a040b"
+    },
+    "rport-native-view-metadata-matched-after.jsonl": {
+      "file": "rport-native-view-metadata-matched-after.jsonl",
+      "bytes": 1901,
+      "sha256": "3eceebc2b111c99d2b1749d1047aa65949eea9806f383de7195c27328a701740"
+    },
+    "rport-native-view-final-object-controls.log": {
+      "file": "rport-native-view-final-object-controls.log",
+      "bytes": 9235,
+      "sha256": "df634d972af995aee4cc6fe0a6445f3ce6fd457abddaf9ebecf7fbf75614b912"
+    },
+    "rport-native-view-final-memory-controls.log": {
+      "file": "rport-native-view-final-memory-controls.log",
+      "bytes": 8981,
+      "sha256": "f51f74925b15daeabb3b77e73ae97fcb5a2e186b68c53be3a5ef400ed442b0ba"
+    },
+    "rport-native-view-original-generation-strict-miri.log": {
+      "file": "rport-native-view-original-generation-strict-miri.log",
+      "bytes": 4230,
+      "sha256": "dcfd2cd419a6df2fd7d63148f1e9b1d27eef7be4bdca8542d2713bbee04c2dc9"
+    },
+    "rport-native-view-final-clippy.log": {
+      "file": "rport-native-view-final-clippy.log",
+      "bytes": 858,
+      "sha256": "1f3e38d4d8c98ea2d8113b50afaa70018b72ea40ae7fb57f40c78073118f7306"
+    },
+    "rport-native-view-final-fmt.log": {
+      "file": "rport-native-view-final-fmt.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rport-native-view-final-wasm-public.log": {
+      "file": "rport-native-view-final-wasm-public.log",
+      "bytes": 159,
+      "sha256": "175590aaa031165ca070a89edf80632255c445cf7b5bbe67b29ba4d95cbf3011"
+    },
+    "rport-native-view-final-wasm-datasets.log": {
+      "file": "rport-native-view-final-wasm-datasets.log",
+      "bytes": 110,
+      "sha256": "f1e5dcc235e35289ac90b82717f6027b99324e556e79d82eca571bcaac16b92b"
+    },
+    "rport-native-view-final-wasm-plots.log": {
+      "file": "rport-native-view-final-wasm-plots.log",
+      "bytes": 278,
+      "sha256": "ab175852b8715029a324f2987b2ebe158de892f6f020e26f9be51cdabf79a511"
+    },
+    "rport-native-view-final-public-package-controls.log": {
+      "file": "rport-native-view-final-public-package-controls.log",
+      "bytes": 6226,
+      "sha256": "ecb53aeff3335cfbf936e89326ed5e15bc9dd21456dee3d088f088b3cf03ae2e"
+    },
+    "rport-native-view-methods-chromium-repeat.json": {
+      "file": "rport-native-view-methods-chromium-repeat.json",
+      "bytes": 5412,
+      "sha256": "5f341fbd80d5f8ff12c0bce332706d84a40ee7eae42c9d99500420ae36abb88a"
+    },
+    "rport-native-view-methods-chromium-repeat.stderr": {
+      "file": "rport-native-view-methods-chromium-repeat.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rport-native-view-final-chromium.json": {
+      "file": "rport-native-view-final-chromium.json",
+      "bytes": 67429,
+      "sha256": "fa84052066928d69859eecee5a1a1b9f991beb5c0df66478ef15718d6e907421"
+    },
+    "rport-native-view-final-chromium.stderr": {
+      "file": "rport-native-view-final-chromium.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "remaining": "Linux browser/package results and complete same-commit conformance/upstream union pending. Complete prior4cd conformance1057pass124fail remains the latest independently verified complete inventory."
+}
