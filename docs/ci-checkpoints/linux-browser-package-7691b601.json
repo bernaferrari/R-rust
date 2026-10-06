@@ -1,0 +1,116 @@
+{
+  "source_commit": "7691b6015238eceffd6450b3461a8df99c66d208",
+  "immutable_run": 37447349549,
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37447349549",
+  "scope": "Completed selected public native54 and all60 original Chromium cases; separate from full workspace and complete conformance/upstream inventories.",
+  "native_public": {
+    "job": 112215277498,
+    "profile": {
+      "source_commit": "7691b6015238eceffd6450b3461a8df99c66d208",
+      "build_profile": "debug",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 2400,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--test",
+        "embed",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "portable_grdevices_namespace",
+        "--test",
+        "portable_stats_namespace",
+        "--test",
+        "complex_print_contract",
+        "--test",
+        "get_lazy_mode",
+        "--test",
+        "correlation_public_contract",
+        "--test",
+        "palette_public_contract",
+        "--test",
+        "bincode_public_contract",
+        "--test",
+        "arima0_public_contract",
+        "--test",
+        "utils_console_public_contract"
+      ],
+      "cwd": "/home/runner/work/R-rust/R-rust",
+      "elapsed_seconds": 2138.1056387119997,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T10:40:49.647593+00:00",
+      "logs": {
+        "stderr.log": "3c7ee1f2030280501069ab75da50ad61966d98b2468ad4152f92aebc19bf6562",
+        "stdout.log": "bc12c5b24886399730100a23f724f22690acd10c34c9fcf52df750ea24dfe835"
+      },
+      "pid": 2467,
+      "schema_version": 1,
+      "started_at": "2026-10-06T10:05:11.277339+00:00",
+      "state": "finished",
+      "timeout_seconds": 2400.0
+    },
+    "passed": 54,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 12,
+    "stdout": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-7691b601/public-package/execute/stdout.log",
+      "bytes": 8363,
+      "sha256": "bc12c5b24886399730100a23f724f22690acd10c34c9fcf52df750ea24dfe835"
+    }
+  },
+  "browser": {
+    "job": 112215277590,
+    "stats": {
+      "startTime": "2026-10-06T10:13:28.953Z",
+      "duration": 476472.765,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "failures": [],
+    "report": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-7691b601/showcase/_temp/showcase-evidence/playwright.json",
+      "bytes": 69291,
+      "sha256": "4979d561f0f12293bbf2a72b0d8638c56be7c9a8a9a539496d210a2256b6622a"
+    },
+    "production": {
+      "bytes": 25961221,
+      "sha256": "734f93b742cbafb1e28f897b55d30bb35a1c28853c4bda415389002a4afe628f"
+    },
+    "workflow_profile": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-7691b601/showcase/_temp/showcase-evidence/workflow-profile.jsonl",
+      "bytes": 35179,
+      "sha256": "df1917caac2523fa4a843351b2e345b5abcf192dcc5c14e3df270097bc88d026"
+    },
+    "budgets": "Original15s runtime/client limit, existing20s editor limit and90s aggregateFFT/RNG test; workloads/assertions unchanged.",
+    "interpretation": "All60 complete and pass with no skips or flaky results, including both original sunflower flows, compiled methods and aggregateFFT/RNG. One immutable passing checkpoint; repeated Linux budget stability remains open."
+  },
+  "workspace": {
+    "job": 112215277482,
+    "conclusion": "cancelled",
+    "interpretation": "Full workspace job cancelled; no complete workspace pass claimed."
+  }
+}

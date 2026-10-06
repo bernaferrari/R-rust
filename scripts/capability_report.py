@@ -347,7 +347,7 @@ and the combined FFT/RNG case exceeds its unchanged 90-second test limit.
 The older Linux 60/60 pass and current local 60/60 pass remain distinct receipts;
 repeated Linux budget stability is still an open requirement.
 
-The latest immutable [Linux 5483fec6 checkpoint](ci-checkpoints/linux-browser-package-5483fec6.json)
+The earlier immutable [Linux 5483fec6 checkpoint](ci-checkpoints/linux-browser-package-5483fec6.json)
 completes all 54 selected native public checks in debug with zero failures.
 Chromium completes all 60 cases with 56 passing and four failing: both original
 sunflower flows time out, the compiled-lazy/inherited-method case reports a
@@ -355,6 +355,13 @@ runtime timeout and reset, and the combined FFT/RNG test exceeds its unchanged
 90-second limit. This methods failure is a timeout; the native package and
 complete upstream S4 contracts pass. The current local 60/60 result remains
 separate from Linux acceptance, and full workspace execution is still incomplete.
+
+The latest immutable [Linux 7691b601 checkpoint](ci-checkpoints/linux-browser-package-7691b601.json)
+completes all 54 selected native public checks and all 60 original Chromium
+tests, with zero failures, skips or flaky results. Both sunflower flows,
+compiled method cases and aggregate FFT/RNG pass under their unchanged budgets.
+This is a complete passing package/browser checkpoint; repeated Linux budget
+reliability remains open, and full workspace execution is still incomplete.
 
 The focused [canonical character-read repair](ci-checkpoints/character-read-9f2f28a6.json)
 at `9f2f28a6` passes the existing native projection controls, strict Miri and
