@@ -1,0 +1,16 @@
+w <- structure(list(quote(f(1)), quote(f(1)), NULL),
+               names = c("repeated", "repeated", "other"), class = "warnings")
+before <- serialize(w, NULL)
+s <- summary(w)
+stopifnot(identical(class(s), "summary.warnings"))
+stopifnot(identical(attr(s, "counts"), c(2L, 1L)))
+stopifnot(identical(names(s), c("repeated", "other")))
+stopifnot(identical(unclass(s)[[1L]], quote(f(1))), is.null(s[[2L]]))
+stopifnot(identical(serialize(w, NULL), before))
+stopifnot(identical(s, base::summary.warnings(w)))
+single <- summary(w[1:2])
+printed <- capture.output(print(single))
+if (!identical(printed, c("2 identical warnings:", "In f(1) : repeated")))
+    stop(paste("unexpected summary print:", paste(deparse(printed), collapse = " ")))
+stopifnot(identical(capture.output(print(summary(w[FALSE]))), "No warnings"))
+TRUE

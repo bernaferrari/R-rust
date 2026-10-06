@@ -1815,6 +1815,26 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "summary.warnings",
+            include_str!("gnu_summary_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "[.warnings",
+            include_str!("gnu_subset_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "print.warnings",
+            include_str!("gnu_print_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "print.summary.warnings",
+            include_str!("gnu_print_summary_warnings.R"),
+        );
+        eval_base_binding(
+            base_env,
             "isS3stdGeneric",
             include_str!("gnu_isS3stdGeneric.R"),
         );

@@ -2780,9 +2780,8 @@ fn deparse_expression_one(expr: SEXP) -> String {
         // GNU print.c DEFAULTDEPARSE is keepNA | keepInteger | niceNames.
         // `deparse()` adds showAttributes, so a class string with a package
         // attribute prints as `"foo"` and deparses as structure(...).
-        let opts = (crate::mainutils::deparse::DEFAULTDEPARSE
-            & !crate::mainutils::deparse::SHOWATTRIBUTES)
-            | crate::mainutils::deparse::DIGITS17;
+        let opts =
+            crate::mainutils::deparse::DEFAULTDEPARSE & !crate::mainutils::deparse::SHOWATTRIBUTES;
         let text = crate::mainutils::deparse::deparse1WithCutoff(
             expr,
             false,

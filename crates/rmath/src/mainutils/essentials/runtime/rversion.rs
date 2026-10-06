@@ -166,32 +166,8 @@ pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
         }
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let primitive_name = crate::eval::primitive::PRIMNAME(fn_arg);
-            let primitive_symbol =
-                Rf_install(CString::new(primitive_name).unwrap_or_default().as_ptr());
-            for registry in [".ArgsEnv", ".GenericArgsEnv"] {
-                let registry_symbol =
-                    Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
-                let registry_env = crate::sexp::envir::R_findVarInFrame(
-                    crate::sexp::globals::R_BaseEnv(),
-                    registry_symbol,
-                );
-                if registry_env == crate::sexp::globals::R_UnboundValue() {
-                    continue;
-                }
-                let prototype =
-                    crate::sexp::envir::R_findVarInFrame(registry_env, primitive_symbol);
-                if prototype != crate::sexp::globals::R_UnboundValue()
-                    && TYPEOF(prototype) == SEXPTYPE::CLOSXP
-                {
-                    let formals = FORMALS(prototype);
-                    return if formals.is_null() {
-                        R_NilValue()
-                    } else {
-                        formals
-                    };
-                }
-            }
+            // args() exposes a primitive's prototype; formals() describes
+            // closures only, even when that prototype is available.
             return R_NilValue();
         }
         crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
