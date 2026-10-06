@@ -1,0 +1,371 @@
+{
+  "source_commit": "f148143ce17c08abd7a36905ed76df67e481415a",
+  "description": "Original private C_palette symbol and typed Call Args1 descriptor reach the existing palette implementation. Shared invalid-colour diagnostic preserves offending name. Tempfile shares the already-existing stable Wasm virtual process identity1 and keeps native OS identity and checked process-wide serial allocation. No global helpers, no host library discovery, no runtime budget or faer changes. Active PDF fixture checks palette routing/visibility/state only; PDF drawing is not implemented by this bridge.",
+  "oracle": {
+    "revision": 90451,
+    "manifest": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "locale": "C",
+    "fixtures": [
+      "palette-public-contract.R",
+      "tempfile-public-contract.R"
+    ]
+  },
+  "validation": {
+    "public_native": {
+      "passed": 1,
+      "failed": 0,
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "fresh_sessions_per_policy": 2
+    },
+    "namespace_controls": {
+      "passed": 4,
+      "failed": 0
+    },
+    "palette_session_state": {
+      "passed": 1,
+      "failed": 0
+    },
+    "capture_file_controls": {
+      "passed": 9,
+      "failed": 0
+    },
+    "wasm": {
+      "contracts_per_generation": 9,
+      "fresh_generations": 2,
+      "bytes": 26042742,
+      "sha256": "9de73fb87cc2146d3fdb1589de420a2b8e348b621e589e01c6e29e75e476b398",
+      "datasets": 205,
+      "original_workbench_plots_per_generation": 6
+    },
+    "clippy": "pass",
+    "format": "pass"
+  },
+  "enclosing_driver_reports": [
+    {
+      "summary_sha256": "7b676efed578ed5d4291dbd29aeeb2d99ee10501c89adb00156b81728ccd443c",
+      "execution": {
+        "case_locale_policy": {
+          "default": "C",
+          "overrides": {
+            "whole/reg-plot-latin1.R": "en_US.ISO8859-1"
+          }
+        },
+        "case_timeout_seconds": 1800.0,
+        "inventory_sha256": "80bd9e7cf2a1f583900aad16fe8509cb404b785032c6adc2161c8aa2ca4b0e88",
+        "normalization": "core-v1:original-tr-sed-awk-pipeline",
+        "normalizer_policy": {
+          "locale": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LC_CTYPE": "C"
+          },
+          "platform": {
+            "machine": "arm64",
+            "system": "Darwin"
+          },
+          "tools": {
+            "awk": {
+              "path": "/usr/bin/awk",
+              "sha256": "3dc6dc8f94de3d1597645e1da608a0b097bbfd186a793ab5c4a63ef417a2f072"
+            },
+            "bash": {
+              "path": "/bin/bash",
+              "sha256": "d59c6f2312e551e9c46497329d435b6ec74fbc46e9155b84170f377127ed004e"
+            },
+            "sed": {
+              "path": "/usr/bin/sed",
+              "sha256": "bb1cb46089269d91ba83ef291364e6e7121e7b27f12037629fe8daaf5238a559"
+            },
+            "tr": {
+              "path": "/usr/bin/tr",
+              "sha256": "188d384d918a49fab8263deaa423e33068c99e9a4a5cb23fb971d2ed5b6e4d16"
+            }
+          }
+        },
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "debug",
+        "runtime": {
+          "cargo_features": [
+            "default",
+            "faer",
+            "rust-backend",
+            "r-graphics-engine",
+            "renderplot-device"
+          ],
+          "device": {
+            "font": "bundled DejaVu Sans",
+            "height": 504,
+            "name": "renderplot-scene",
+            "output": "owned display list",
+            "width": 504
+          },
+          "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+          "name": "graphics",
+          "numerical_backend": "faer",
+          "package_policy": "native",
+          "top_level_evaluation_mode": "Script"
+        },
+        "rustflags": "-Awarnings",
+        "schema_version": 1,
+        "shard": {
+          "count": 70,
+          "index": 54,
+          "selected_sha256": "f303dfb4891bb6f58fd4be5a52087c67a203048fe14a6290f2df495db515cff6",
+          "selected_total": 1,
+          "suite": "whole"
+        },
+        "source_commit": "f148143ce17c08abd7a36905ed76df67e481415a",
+        "source_sha256": "43af87a2ad898b8e2715a4ac42e95aa90f113c276ddb79257ab0dc98c9366be6",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "reg-tests-1a.R",
+          "detail": "Rust runner exited non-zero",
+          "disposition": "pass",
+          "kind": "whole",
+          "normalizations": [],
+          "owner": "-",
+          "path": "tests/upstream-r/vendor/reg-tests-1a.R",
+          "phases": [
+            {
+              "engine": "gnu",
+              "process": {
+                "command": [
+                  "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                  "--vanilla",
+                  "reg-tests-1a.R"
+                ],
+                "cwd": "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a/cases/whole-reg-tests-1a.R/gnu-workspace",
+                "elapsed_seconds": 0.9099608750548214,
+                "execution_complete": true,
+                "exit_code": 0,
+                "finished_at": "2026-10-06T07:05:13.651320+00:00",
+                "logs": {
+                  "combined.log": "343bb20b591b1db77bafc94a3e707aba3bc2a21a5d426ac2637cf1e0aee1019c"
+                },
+                "pid": 84215,
+                "schema_version": 1,
+                "started_at": "2026-10-06T07:05:12.740898+00:00",
+                "state": "finished",
+                "timeout_seconds": 1800.0
+              }
+            },
+            {
+              "engine": "rust",
+              "process": {
+                "command": [
+                  "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a/rust_runner",
+                  "reg-tests-1a.R"
+                ],
+                "cwd": "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a/cases/whole-reg-tests-1a.R/rust-workspace",
+                "elapsed_seconds": 90.56972183298785,
+                "execution_complete": true,
+                "exit_code": 1,
+                "finished_at": "2026-10-06T07:06:44.300659+00:00",
+                "logs": {
+                  "combined.log": "1950238db73e94d83e7d16648a4dc8f6ad99fb7190486547933d3a00d8f8d56e"
+                },
+                "pid": 84236,
+                "schema_version": 1,
+                "started_at": "2026-10-06T07:05:13.733365+00:00",
+                "state": "finished",
+                "timeout_seconds": 1800.0
+              }
+            }
+          ],
+          "reason": "-",
+          "runtime_info_sha256": "a1366d986ef8130379472a7044173988ef291ce3c58f341c33d85449e41efdbe",
+          "status": "fail"
+        }
+      ],
+      "execution_complete": true,
+      "remaining": "Missing original base .bincode wrapper/registration after palette/col2rgb/correlation/glm public sections."
+    },
+    {
+      "summary_sha256": "5ae8e0f7daf5eeb2c30abb279ea23f09953c0b7fd1b1823c3ebd6b7854460f99",
+      "execution": {
+        "case_locale_policy": {
+          "default": "C",
+          "overrides": {
+            "whole/reg-plot-latin1.R": "en_US.ISO8859-1"
+          }
+        },
+        "case_timeout_seconds": 1800.0,
+        "inventory_sha256": "80bd9e7cf2a1f583900aad16fe8509cb404b785032c6adc2161c8aa2ca4b0e88",
+        "normalization": "core-v1:original-tr-sed-awk-pipeline",
+        "normalizer_policy": {
+          "locale": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LC_CTYPE": "C"
+          },
+          "platform": {
+            "machine": "arm64",
+            "system": "Darwin"
+          },
+          "tools": {
+            "awk": {
+              "path": "/usr/bin/awk",
+              "sha256": "3dc6dc8f94de3d1597645e1da608a0b097bbfd186a793ab5c4a63ef417a2f072"
+            },
+            "bash": {
+              "path": "/bin/bash",
+              "sha256": "d59c6f2312e551e9c46497329d435b6ec74fbc46e9155b84170f377127ed004e"
+            },
+            "sed": {
+              "path": "/usr/bin/sed",
+              "sha256": "bb1cb46089269d91ba83ef291364e6e7121e7b27f12037629fe8daaf5238a559"
+            },
+            "tr": {
+              "path": "/usr/bin/tr",
+              "sha256": "188d384d918a49fab8263deaa423e33068c99e9a4a5cb23fb971d2ed5b6e4d16"
+            }
+          }
+        },
+        "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+        "pinned_oracle_required": true,
+        "profile": "release",
+        "runtime": {
+          "cargo_features": [
+            "default",
+            "faer",
+            "rust-backend",
+            "r-graphics-engine",
+            "renderplot-device"
+          ],
+          "device": {
+            "font": "bundled DejaVu Sans",
+            "height": 504,
+            "name": "renderplot-scene",
+            "output": "owned display list",
+            "width": 504
+          },
+          "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+          "name": "graphics",
+          "numerical_backend": "faer",
+          "package_policy": "native",
+          "top_level_evaluation_mode": "Script"
+        },
+        "rustflags": "-Awarnings",
+        "schema_version": 1,
+        "shard": {
+          "count": 70,
+          "index": 54,
+          "selected_sha256": "f303dfb4891bb6f58fd4be5a52087c67a203048fe14a6290f2df495db515cff6",
+          "selected_total": 1,
+          "suite": "whole"
+        },
+        "source_commit": "f148143ce17c08abd7a36905ed76df67e481415a",
+        "source_sha256": "43af87a2ad898b8e2715a4ac42e95aa90f113c276ddb79257ab0dc98c9366be6",
+        "strict": true
+      },
+      "cases": [
+        {
+          "case": "reg-tests-1a.R",
+          "detail": "Rust runner exited non-zero",
+          "disposition": "pass",
+          "kind": "whole",
+          "normalizations": [],
+          "owner": "-",
+          "path": "tests/upstream-r/vendor/reg-tests-1a.R",
+          "phases": [
+            {
+              "engine": "gnu",
+              "process": {
+                "command": [
+                  "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                  "--vanilla",
+                  "reg-tests-1a.R"
+                ],
+                "cwd": "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a-release-frozen/cases/whole-reg-tests-1a.R/gnu-workspace",
+                "elapsed_seconds": 1.2063637090614066,
+                "execution_complete": true,
+                "exit_code": 0,
+                "finished_at": "2026-10-06T07:13:07.670233+00:00",
+                "logs": {
+                  "combined.log": "e9999896bab53f2a7ff25f60a5c5894bd0d238ce0c6c2c73b929f1eba2309a59"
+                },
+                "pid": 91648,
+                "schema_version": 1,
+                "started_at": "2026-10-06T07:13:06.460041+00:00",
+                "state": "finished",
+                "timeout_seconds": 1800.0
+              }
+            },
+            {
+              "engine": "rust",
+              "process": {
+                "command": [
+                  "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a-release-frozen/rust_runner",
+                  "reg-tests-1a.R"
+                ],
+                "cwd": "/Users/bernardoferrari/Downloads/rport/target/palette-f148143c-reg-tests-1a-release-frozen/cases/whole-reg-tests-1a.R/rust-workspace",
+                "elapsed_seconds": 9.81745916698128,
+                "execution_complete": true,
+                "exit_code": 1,
+                "finished_at": "2026-10-06T07:13:17.575372+00:00",
+                "logs": {
+                  "combined.log": "1950238db73e94d83e7d16648a4dc8f6ad99fb7190486547933d3a00d8f8d56e"
+                },
+                "pid": 91677,
+                "schema_version": 1,
+                "started_at": "2026-10-06T07:13:07.757499+00:00",
+                "state": "finished",
+                "timeout_seconds": 1800.0
+              }
+            }
+          ],
+          "reason": "-",
+          "runtime_info_sha256": "a1366d986ef8130379472a7044173988ef291ce3c58f341c33d85449e41efdbe",
+          "status": "fail"
+        }
+      ],
+      "execution_complete": true,
+      "remaining": "Missing original base .bincode wrapper/registration after palette/col2rgb/correlation/glm public sections."
+    }
+  ],
+  "logs": {
+    "rport-palette-final-namespace-controls.log": {
+      "bytes": 1521,
+      "sha256": "a6eaddb11ca0947875894d8888aa85a3024250739c37871bb887cf0dceabd15f"
+    },
+    "rport-palette-tempfile-final-native.log": {
+      "bytes": 680,
+      "sha256": "bee5ac07b0d525295eaadeeab75afba8cc665e1b99ce096053efd1c86843d561"
+    },
+    "rport-tempfile-final-native-controls.log": {
+      "bytes": 1845,
+      "sha256": "67f37b363908fa6988e4fbab9a5dac1dd9c8000a097683ff9ffa1c8c98e4588e"
+    },
+    "rport-palette-final-state-control.log": {
+      "bytes": 562,
+      "sha256": "2e22b615d824c525796523097e7779f56ea0accfa6ebdedd9f89271970389bc3"
+    },
+    "rport-palette-tempfile-final-wasm-public.log": {
+      "bytes": 159,
+      "sha256": "736563d1c9872968dce3040bc862cb82cfe9d44f92e9473e4d477479ee7eb496"
+    },
+    "rport-palette-tempfile-final-wasm-plots.log": {
+      "bytes": 278,
+      "sha256": "ab175852b8715029a324f2987b2ebe158de892f6f020e26f9be51cdabf79a511"
+    },
+    "rport-palette-tempfile-final-wasm-datasets.log": {
+      "bytes": 110,
+      "sha256": "f1e5dcc235e35289ac90b82717f6027b99324e556e79d82eca571bcaac16b92b"
+    },
+    "rport-palette-tempfile-final-clippy.log": {
+      "bytes": 804,
+      "sha256": "daadb12ff5314876808d2c799d1df5048e8106c1bc09d6d31da6e738f516b2e3"
+    },
+    "rport-palette-tempfile-final-fmt.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "rejected_diagnostic": "The first explicit release attempt was rejected before execution because the main report-generator source changed during its build. It is not a completed driver result. Both retained complete reports above used frozen source; their actual debug/release profiles are distinct."
+}

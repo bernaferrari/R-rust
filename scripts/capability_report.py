@@ -45,6 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-6ccae790.json').read_text())
+linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
 
@@ -299,7 +300,7 @@ including admission, warnings, NA/NaN distinctions and matrix structure. All ten
 native family checks and all 50 selected native package integration checks pass; two fresh production Wasm sessions pass the seven
 shared GNU package contracts and all 205 dataset checks still pass. A strict
 Miri regression validates both converted arguments under forced collection.
-The complete enclosing `reg-tests-1a.R` and `reg-tests-1b.R` drivers still exit
+The complete enclosing `reg-tests-1a.R` and `reg-tests-1b.R` debug-profile drivers still exit
 nonzero: the former lacks `C_palette`; the latter reaches its correlation checks
 and later fails at font metrics and `C_PostScript`. These results are recorded
 in [correlation evidence](ci-checkpoints/correlation-b9d1bef7.json) and do not
@@ -312,6 +313,27 @@ production. Original methods and sunflower sources and viewport remain unchanged
 these timings include profiling overhead and do not establish Linux Chromium
 acceptance. The same diagnostic runs after the unchanged browser tests in the
 next immutable Linux checkpoint.
+
+The later immutable [Linux workflow checkpoint](ci-checkpoints/linux-workflow-profile-91babc00.json)
+at `91babc00` passes all 50 selected public package integration checks and
+58 of 60 Chromium cases, with zero skipped or flaky cases. Both original methods
+cases and the aggregate FFT/RNG case pass. Both sunflower user flows still time
+out. Quiet post-browser Node profiles run the exact original example cold and
+warm, directly and after a prior plot; evaluation takes 19.0–19.9 seconds.
+The sampled distribution kernels and duplication consume little time; environment
+lookup and character/header/link bookkeeping are the useful next targets.
+These diagnostics preserve the original 15-second evaluation budget.
+
+At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
+pass under both constructors in two fresh sessions each, with original GNU output.
+Nine production Wasm contracts pass twice; 205 dataset checks and six original
+plot workflows per generation also pass. Namespace privacy/identity, palette
+session state and native file/capture checks pass. The unchanged enclosing
+`reg-tests-1a.R` completes with a Rust error in both debug and explicitly selected
+release profiles: it now gets through palette, colour conversion, correlation
+and Gaussian model examples, then lacks the original base `.bincode` wrapper.
+This is not a whole-driver passing claim. The original PDF fixture tests palette
+state while a device is selected; it does not verify PDF drawing output.
 
 The receipt joins each selected inventory key to actual wrappers, implementation
 paths, options, edge cases, profiles, source commits and raw-report hashes.
