@@ -515,10 +515,34 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
 ///
 /// It does not return — it panics with an RError payload.
 pub fn errorcall(call: SEXP, format: *const c_char) {
+    raise_error(call, format, true);
+}
+
+/// Raise an error whose call was inferred from the current context, as in
+/// GNU error()/stop(). tryCatch may substitute its frame for this call.
+pub(crate) fn implicit_errorcall(call: SEXP, format: *const c_char) {
+    raise_error(call, format, false);
+}
+
+fn raise_error(call: SEXP, format: *const c_char, explicit: bool) {
     unsafe {
+        let _call = protect(if call.is_null() {
+            globals::R_NilValue()
+        } else {
+            call
+        });
         vsignalError(call, format);
+        // A calling handler can raise a replacement error. Record only after
+        // it returns, so the original applied call cannot override that error.
+        record_error_call(call, explicit);
         verrorcall_dflt(call, format, ptr::null_mut());
     }
+}
+
+pub(crate) fn implicit_errorcall_str(call: SEXP, message: &str) -> ! {
+    let c_msg = std::ffi::CString::new(message).unwrap_or_default();
+    implicit_errorcall(call, c_msg.as_ptr());
+    unreachable!("implicit_errorcall never returns");
 }
 
 /// Report an error with a call, from a Rust `&str` message.
@@ -568,7 +592,6 @@ where
             if let Some(err) = payload.downcast_ref::<RError>() {
                 let message = err.message.clone();
                 if !error_was_last_rendered(&message) {
-                    record_error_call(call, true);
                     // Diverges: renders "Error in <call> : <message>" and
                     // panics with the bare-message payload.
                     errorcall_str(call, &message);
@@ -599,13 +622,7 @@ pub fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_char) {
             },
             msg
         );
-        verrorcall_dflt(
-            call,
-            std::ffi::CString::new(formatted)
-                .unwrap_or_default()
-                .as_ptr(),
-            ptr::null_mut(),
-        );
+        errorcall_str(call, &formatted);
     }
 }
 
@@ -614,7 +631,7 @@ pub fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_char) {
 pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
     unsafe {
         if format.is_null() {
-            verrorcall_dflt(call, b"\0".as_ptr() as *const c_char, ptr::null_mut());
+            errorcall(call, b"\0".as_ptr() as *const c_char);
             return;
         }
         let fmt = CStr::from_ptr(format).to_str().unwrap_or("");
@@ -631,7 +648,7 @@ pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
             }
         }
         let c_result = std::ffi::CString::new(result).unwrap_or_default();
-        verrorcall_dflt(call, c_result.as_ptr(), ptr::null_mut());
+        errorcall(call, c_result.as_ptr());
     }
 }
 
@@ -661,7 +678,7 @@ pub unsafe fn Rf_error(format: *const c_char) {
         let call = getCurrentCall();
         // Rf_error in C is variadic: void error(const char *format, ...)
         // In Rust, callers should pass pre-formatted strings.
-        errorcall(call, format);
+        implicit_errorcall(call, format);
     }
 }
 
@@ -670,7 +687,17 @@ pub unsafe fn Rf_error(format: *const c_char) {
 pub unsafe fn Rf_error1(format: *const c_char, arg: *const c_char) {
     unsafe {
         let call = getCurrentCall();
-        Rf_errorcall1(call, format, arg);
+        let fmt = if format.is_null() {
+            ""
+        } else {
+            CStr::from_ptr(format).to_str().unwrap_or("")
+        };
+        let arg = if arg.is_null() {
+            ""
+        } else {
+            CStr::from_ptr(arg).to_str().unwrap_or("")
+        };
+        implicit_errorcall_str(call, &format!("{fmt}{arg}"));
     }
 }
 
@@ -693,7 +720,7 @@ pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
         let msg = format!("unimplemented feature in {}", name);
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         let call = getCurrentCall();
-        errorcall(call, c_msg.as_ptr());
+        implicit_errorcall(call, c_msg.as_ptr());
     }
 }
 
@@ -709,7 +736,7 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
         let msg = format!("incorrect number of arguments to \"{}\"", name);
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         let call = getCurrentCall();
-        errorcall(call, c_msg.as_ptr());
+        implicit_errorcall(call, c_msg.as_ptr());
     }
 }
 

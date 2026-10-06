@@ -1,4 +1,4 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 /// GNU R 4.6.1 `method-dispatch.R`: `try(letters@foo)` is a try-error whose
 /// message is the no-applicable-`@` condition, and evaluation continues.
@@ -46,4 +46,34 @@ fn try_catches_no_applicable_at_method() {
         top_msg.contains("no applicable method for `@`"),
         "top-level letters@foo should stay an error: {top_msg}"
     );
+}
+
+#[test]
+fn explicit_error_call_survives_try_and_handler_callbacks() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            session
+                .eval(include_str!(
+                    "fixtures/explicit-error-call-public-contract.R"
+                ))
+                .unwrap(),
+            "[1] TRUE\n",
+            "portable={portable}"
+        );
+        assert_eq!(
+            session
+                .eval(include_str!(
+                    "fixtures/try-condition-call-public-contract.R"
+                ))
+                .unwrap(),
+            "[1] TRUE\n",
+            "implicit stop attribution portable={portable}"
+        );
+    }
 }

@@ -29,18 +29,18 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
                 let c_msg = c" [invalid string in stop(.)]";
-                errorcall(c_call, c_msg.as_ptr());
+                implicit_errorcall(c_call, c_msg.as_ptr());
             }
             // Pre-format: in C this is errorcall(c_call, "%s", translateChar(...))
             // In Rust, we pre-format the string
             let msg = translateChar(STRING_ELT(CAR(args), 0));
             let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
             let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
-            errorcall(c_call, c_msg.as_ptr());
+            implicit_errorcall(c_call, c_msg.as_ptr());
             // errorcall doesn't return, but we need a return type
             ptr::null_mut()
         } else {
-            errorcall(c_call, b"\0".as_ptr() as *const c_char);
+            implicit_errorcall(c_call, b"\0".as_ptr() as *const c_char);
             ptr::null_mut()
         }
     }
@@ -53,12 +53,12 @@ pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 
         let args = CDR(args);
         if isNull(CAR(args)) != 0 {
-            errorcall_str(globals::R_NilValue(), "");
+            implicit_errorcall_str(globals::R_NilValue(), "");
         }
 
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
         if isValidString(CAR(args)) == 0 {
-            errorcall_str(globals::R_NilValue(), " [invalid string in stop(.)]");
+            implicit_errorcall_str(globals::R_NilValue(), " [invalid string in stop(.)]");
         }
 
         let msg = translateChar(STRING_ELT(CAR(args), 0));
@@ -66,7 +66,7 @@ pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
         // Like upstream do_stop, the call comes from the context stack, not
         // the .Internal expression; render explicitly (bare at top level) so
         // the .Internal-dispatch attribution wrapper does not add a call.
-        errorcall_str(R_getCurrentCall(), &message)
+        implicit_errorcall_str(R_getCurrentCall(), &message)
     }
 }
 

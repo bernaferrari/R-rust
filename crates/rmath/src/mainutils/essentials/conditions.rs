@@ -1559,7 +1559,7 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             R_NilValue()
         };
         crate::mainutils::errors::save_error_traceback();
-        crate::mainutils::errors::errorcall_str(call, &s);
+        crate::mainutils::errors::implicit_errorcall_str(call, &s);
     }
 }
 
