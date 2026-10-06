@@ -38,7 +38,7 @@ integration_path = root / 'docs/ci-checkpoints/integration-stabilization-e3e26de
 integration = json.loads(integration_path.read_text())
 integration_checks = {check['id']: check for check in integration['checks']}
 integration_conformance = integration['complete_conformance']
-integration_linux = integration['linux_showcase_4cd']
+integration_linux = integration['linux_showcase_04c']
 integration_upstream = integration['complete_upstream']
 integration_local = integration['batch_last_value']
 report = f'''# Compatibility evidence inventory
@@ -233,6 +233,21 @@ output for formatting options, dimensions, missing names and capture chronology.
 The unchanged original conformance case 1091 and curated slice 008 also pass
 strict comparison in the explicit release profile. These selected results do
 not change the complete union counts above.
+
+At `2b89a9eb`, all three original complex cases and the unchanged whole
+`complex.R` driver pass strict GNU comparison. Public output preserves NA versus
+NaN, signed zero, attributes and custom missing-value text. Original portable
+stats and graphics images expose their captured namespaces and imports without
+host discovery. The broader native run passes all 39 embedding cases but then
+fails the original portable time-series namespace fixture; it is incomplete.
+The `88e1f39b` follow-up repairs GNU group-generic registration in the base
+namespace and shared lazy `get`/`get0` mode and inheritance admission. The
+unchanged namespace fixture, ten focused public controls and eighteen owned
+lookup controls pass. Production Wasm passes the same six GNU contracts in two
+fresh sessions, and the whole `method-dispatch.R` driver passes strict comparison.
+These selected results leave the complete union totals above unchanged. The
+later completed Linux `04c35a37` browser report still has 59 passes and the same
+one methods timeout; its older local 60-pass result remains separately sourced.
 
 The receipt joins each selected inventory key to actual wrappers, implementation
 paths, options, edge cases, profiles, source commits and raw-report hashes.
