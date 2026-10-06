@@ -1,0 +1,56 @@
+$value
+[1] 99
+
+$trace
+[1] "first"
+
+$value
+[1] 99
+
+$trace
+[1] "first"  "second"
+
+$value
+[1] 101
+
+$trace
+[1] "first"  "second"
+
+$value
+[1] 99
+
+$visible
+[1] FALSE
+
+$value
+[1] 99
+
+$visible
+[1] TRUE
+
+$value
+[1] "from-onexit"
+
+$trace
+[1] "first"  "second"
+
+[1] 99
+[1] 99
+$value
+$value$value
+[1] 99
+
+$value$tag
+[1] "owned"
+
+
+$trace
+[1] "collected"
+
+[1] "exit-error"
+[1] 2
+[1] 99
+[1] "first-error"
+[1] "second"
+[1] 99
+[1] "third"

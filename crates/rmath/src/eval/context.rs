@@ -563,18 +563,22 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
         let rho = environment
             .as_ref()
             .map_or(ptr::null_mut(), |value| value.as_raw());
-        let mut current = conexit;
-        while !isNull(current) {
-            let expr = CAR(current);
-            (*cptr).conexit.replace_from_raw(CDR(current));
-            if !isNull(expr) {
-                let _ = super::eval::Rf_eval(expr, rho);
-                crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut current = conexit;
+            while !isNull(current) {
+                let expr = CAR(current);
+                (*cptr).conexit.replace_from_raw(CDR(current));
+                if !isNull(expr) {
+                    let _ = super::eval::Rf_eval(expr, rho);
+                    crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+                }
+                current = (*cptr).conexit.as_raw();
             }
-            current = (*cptr).conexit.as_raw();
-        }
+        }));
         (*cptr).onexit_active = 0;
-        drop(chain);
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
     }
 }
 

@@ -215,7 +215,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             }
             BodyOutcome::Signal(payload)
         }
-        let outcome = match result {
+        let mut outcome = match result {
             Ok(val) => BodyOutcome::Value(crate::sexp::context::own_control_value(val)),
             Err(payload) => transferred_outcome(ctx, payload),
         };
@@ -225,15 +225,43 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
 
         // Preserve visibility and keep both the original context and the outcome
         // alive while on.exit expressions allocate, collect, or replace fields.
-        let saved_visible = super::runtime::visible();
-        let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::eval::context::R_run_onexits_for_context(ctx);
-        }));
+        let mut saved_visible = super::runtime::visible();
+        loop {
+            let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::eval::context::R_run_onexits_for_context(ctx);
+            }));
+            match onexit {
+                Ok(()) => break,
+                Err(payload) => {
+                    outcome = transferred_outcome(ctx, payload);
+                    let continue_handlers = match &outcome {
+                        BodyOutcome::Returned(_) => {
+                            // A return stops this handler, replaces the pending
+                            // outcome and its visibility, then runs the remaining
+                            // handlers saved in conexit (GNU endcontext).
+                            saved_visible = super::runtime::visible();
+                            true
+                        }
+                        BodyOutcome::Signal(payload) => {
+                            payload.is::<crate::sexp::context::RError>()
+                                || payload.is::<crate::sexp::context::RSignal>()
+                        }
+                        BodyOutcome::Value(_) => unreachable!("exit handler transferred control"),
+                    };
+                    if !continue_handlers || (*ctx).conexit.as_raw() == R_NilValue() {
+                        break;
+                    }
+                    crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+                    // Collection callbacks can detach the stack. Retaining
+                    // the original outcome does not authorize more handlers
+                    // after its context has left that stack.
+                    if crate::sexp::context::retain_context_in(instance, ctx).is_none() {
+                        break;
+                    }
+                }
+            }
+        }
         super::runtime::set_visible(saved_visible);
-        let outcome = match onexit {
-            Ok(()) => outcome,
-            Err(payload) => transferred_outcome(ctx, payload),
-        };
         let value = match &outcome {
             BodyOutcome::Value(value) => value.clone(),
             BodyOutcome::Returned(lease) => {
@@ -982,14 +1010,22 @@ mod owned_matcher_tests {
     #[test]
     fn owned_closure_outcomes_survive_collecting_onexit_context_teardown() {
         use std::cell::RefCell;
-        for final_expression in ["313L + 1L", "return(313L + 1L)"] {
+        for source in [
+            "(function() { on.exit(1L + 2L); 313L + 1L })()",
+            "(function() { on.exit(1L + 2L); return(313L + 1L) })()",
+            "(function() {
+                on.exit(stop('replaced-exit-error'), add=TRUE, after=TRUE)
+                on.exit(return(313L + 1L), add=TRUE, after=TRUE)
+                on.exit(1L + 2L, add=TRUE, after=TRUE)
+                1L
+            })()",
+        ] {
             let session = RSession::new_for_gc_tests();
             let owner = session.owner_token().unwrap();
             let factory = SessionNodeFactory::new(owner);
             let global = session.global_env().unwrap();
-            let source = format!("(function() {{ on.exit(1L + 2L); {final_expression} }})()");
             let expression = owner
-                .with_arena(|arena| crate::eval::parser::parse(&source, arena, factory.clone()))
+                .with_arena(|arena| crate::eval::parser::parse(source, arena, factory.clone()))
                 .unwrap()
                 .unwrap();
             let changed = Rc::new(Cell::new(false));

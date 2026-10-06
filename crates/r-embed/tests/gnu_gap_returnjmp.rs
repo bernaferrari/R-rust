@@ -4,7 +4,32 @@
 //! (`R Under development (unstable) (2026-08-27 r90451)` / 4.6.1).
 //! Beads: rport-dl8y (first_jump_target / endcontext continuation).
 
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
+
+#[test]
+fn on_exit_replacement_handlers_and_visibility_match_gnu_from_fresh_sessions() {
+    for portable in [false, true] {
+        for fresh in 0..2 {
+            let mut session = if portable {
+                RSession::new_with_path_policy(RuntimePathPolicy::new(
+                    Vec::new(),
+                    std::env::temp_dir(),
+                ))
+            } else {
+                RSession::new()
+            }
+            .unwrap();
+            assert_eq!(
+                session
+                    .eval(include_str!("fixtures/on-exit-return-public-contract.R"))
+                    .unwrap(),
+                include_str!("fixtures/on-exit-return-public-contract.out"),
+                "portable={portable}, fresh={fresh}"
+            );
+            session.close();
+        }
+    }
+}
 
 fn raw_expression(bytes: &[u8]) -> String {
     format!(
