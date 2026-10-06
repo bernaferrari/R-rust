@@ -1,0 +1,21 @@
+methods 
+[1] 0 4
+[1] TRUE
+utils 
+[1] 133   4
+[1] TRUE
+stats 
+[1] 451   4
+[1] TRUE
+graphics 
+[1] 45  4
+[1] TRUE
+grDevices 
+[1] 29  4
+[1] TRUE
+tools 
+[1] 123   4
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE

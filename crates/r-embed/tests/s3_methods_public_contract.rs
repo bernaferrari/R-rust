@@ -20,6 +20,11 @@ fn public_s3_reflection_and_summary_match_gnu_under_both_package_policies() {
                 include_str!("fixtures/s3-methods-public-contract.R"),
                 include_str!("fixtures/s3-methods-public-contract.out"),
             ),
+            (
+                "original namespace metadata and registered lazy methods",
+                include_str!("fixtures/namespace-s3-startup-contract.R"),
+                include_str!("fixtures/namespace-s3-startup-contract.out"),
+            ),
         ] {
             assert_eq!(
                 session

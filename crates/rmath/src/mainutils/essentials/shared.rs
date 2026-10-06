@@ -2392,7 +2392,7 @@ unsafe fn ensure_s3methods_slot(info: SEXP) {
     }
 }
 
-unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, method: &str) {
+unsafe fn record_namespace_s3_metadata(package_env: SEXP, directives: &NamespaceDirectives) {
     unsafe {
         let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
         let info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
@@ -2402,49 +2402,49 @@ unsafe fn record_s3_method_row(package_env: SEXP, generic: &str, class: &str, me
         {
             return;
         }
-        ensure_s3methods_slot(info);
+        let _info = protect(info);
         let sym = Rf_install(c"S3methods".as_ptr());
-        let old = crate::sexp::envir::R_findVarInFrame(info, sym);
-        let old_n = if old.is_null() || TYPEOF(old) != SEXPTYPE::STRSXP {
-            0
-        } else {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_DimSymbol());
-            if dim.is_null() || XLENGTH(dim) < 1 {
-                0
-            } else {
-                INTEGER_ELT(dim, 0).max(0) as i64
-            }
-        };
-        let new_n = old_n + 1;
-        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, new_n * 4);
+        let rows: Vec<_> = directives
+            .s3_methods
+            .iter()
+            .filter(|method| !method.generic.rsplit("::").next().unwrap_or("").is_empty())
+            .collect();
+        let n = i32::try_from(rows.len())
+            .unwrap_or_else(|_| package_error("too many S3 method declarations".to_owned()));
+        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, i64::from(n) * 4);
+        let _methods = protect(methods);
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = new_n as i32;
+        let _dim = protect(dim);
+        *INTEGER(dim) = n;
         *INTEGER(dim).add(1) = 4;
         crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        if old_n > 0 {
-            for col in 0..4 {
-                for row in 0..old_n {
-                    SET_STRING_ELT(
-                        methods,
-                        row + col * new_n,
-                        STRING_ELT(old, row + col * old_n),
-                    );
-                }
+        // GNU metadata describes all declarations, including unavailable
+        // platform-specific methods. Binding registration skips those later.
+        for (row, method) in rows.iter().enumerate() {
+            let (package, generic) = match method.generic.rsplit_once("::") {
+                Some((package, generic)) => (Some(package), generic),
+                None => (None, method.generic.as_str()),
+            };
+            let name = method
+                .method
+                .clone()
+                .unwrap_or_else(|| format!("{generic}.{}", method.class));
+            for (col, text) in [
+                Some(generic),
+                Some(method.class.as_str()),
+                Some(name.as_str()),
+                package,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let value = match text {
+                    Some(text) => Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr()),
+                    None => crate::sexp::globals::R_NaString(),
+                };
+                SET_STRING_ELT(methods, row as i64 + col as i64 * i64::from(n), value);
             }
         }
-        let put = |col: i64, text: &str| {
-            let c = CString::new(text).unwrap_or_default();
-            SET_STRING_ELT(methods, old_n + col * new_n, Rf_mkChar(c.as_ptr()));
-        };
-        put(0, generic);
-        put(1, class);
-        put(2, method);
-        SET_STRING_ELT(
-            methods,
-            old_n + 3 * new_n,
-            crate::sexp::globals::R_NaString(),
-        );
         crate::sexp::envir::defineVar(sym, methods, info);
     }
 }
@@ -3268,7 +3268,15 @@ pub(crate) unsafe fn populate_package_namespace(
         let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
         define_lazy_data_names(package_env, &lazy_data_names);
         if let Some(directives) = namespace.as_ref() {
-            register_namespace_s3_methods(package, package_env, directives)?;
+            // The namespace metadata must exist before registration records
+            // its declarations; the final refresh also publishes later exports.
+            ensure_namespace_info(package, package_dir, package_env, Some(directives));
+            register_namespace_s3_methods(
+                package,
+                package_env,
+                directives,
+                S3MethodMetadata::Record,
+            )?;
         }
         Ok(namespace)
     }
@@ -3812,12 +3820,21 @@ pub(crate) fn reject_native_namespace_directives(
     }
 }
 
+pub(crate) enum S3MethodMetadata {
+    Record,
+    PreserveOriginal,
+}
+
 pub(crate) unsafe fn register_namespace_s3_methods(
     package: &str,
     package_env: SEXP,
     directives: &NamespaceDirectives,
+    metadata: S3MethodMetadata,
 ) -> Result<(), String> {
     unsafe {
+        if matches!(metadata, S3MethodMetadata::Record) {
+            record_namespace_s3_metadata(package_env, directives);
+        }
         for method in &directives.s3_methods {
             // Upstream loadNamespace strips a "pkg::" qualifier from the
             // generic when deriving the default method function name:
@@ -3851,7 +3868,6 @@ pub(crate) unsafe fn register_namespace_s3_methods(
             // GNU registers namespace methods lazily. Dispatch forces the
             // promise; initialization must not deserialize every method body.
             define_s3_method(package_env, local_generic, &method.class, method_value)?;
-            record_s3_method_row(package_env, local_generic, &method.class, &method_name);
 
             // GNU registerS3method admits group generics directly in the base
             // namespace; there need not be a callable function named "Ops".

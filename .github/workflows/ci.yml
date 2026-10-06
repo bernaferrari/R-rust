@@ -135,7 +135,7 @@ jobs:
           --directory "${{ runner.temp }}/public-package-checkpoint/s4-subset-call"
           --cwd "$PWD" --timeout 2400 --separate-streams --
           scripts/cargo_dev.sh test -p r-embed --release --test s4_next_method
-          s4_next_method_ -- --test-threads=1
+          s4_next_method_ -- --test-threads=1 --nocapture
 
       - name: Upload durable public package evidence
         if: always()

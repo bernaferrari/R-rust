@@ -46,6 +46,7 @@ const contracts = [
     'calling-error-handler-public-contract',
     'calling-warning-handler-public-contract',
     's3-methods-public-contract',
+    'namespace-s3-startup-contract',
     's4-next-method-public-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',

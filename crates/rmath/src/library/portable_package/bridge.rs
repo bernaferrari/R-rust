@@ -278,8 +278,6 @@ pub(super) fn finalize(
             Ok(())
         });
     }
-    let info = lookup(access, namespace, ".__NAMESPACE__.")?;
-    let metadata = lookup(access, &info, "S3methods")?;
     let directives =
         crate::mainutils::essentials::parse_namespace_directives(image.namespace_source);
     access.with_native(|_| unsafe {
@@ -287,12 +285,12 @@ pub(super) fn finalize(
             image.name,
             namespace.as_raw(),
             &directives,
+            crate::mainutils::essentials::S3MethodMetadata::PreserveOriginal,
         )
         .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })
     })?;
-    // Registration updates dispatch tables, while the original image already
-    // carries the complete metadata. Do not append those captured rows twice.
-    bind(access, &info, "S3methods", &metadata)?;
+    // The image already contains the complete metadata. Register bindings
+    // without building and then discarding a growing copy of that matrix.
     let source = if image.name == "utils" {
         include_str!("utils_onload.R").to_owned()
     } else {
