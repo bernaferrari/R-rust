@@ -2269,7 +2269,14 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
 pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::Rf_ScalarInteger;
-        Rf_ScalarInteger(process::id() as c_int)
+        // A browser Wasm module has one virtual process and no OS process ID.
+        // Keep its identity stable across sessions (recordPlot uses it as
+        // metadata); std::process::id() panics on wasm32-unknown-unknown.
+        #[cfg(target_arch = "wasm32")]
+        let pid = 1;
+        #[cfg(not(target_arch = "wasm32"))]
+        let pid = process::id() as c_int;
+        Rf_ScalarInteger(pid)
     }
 }
 

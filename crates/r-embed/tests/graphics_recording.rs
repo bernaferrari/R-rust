@@ -67,6 +67,33 @@ fn serialized_recording_survives_unserialize_before_replay() {
 }
 
 #[test]
+fn workbench_plot_sequence_replays_serialized_recording_under_both_policies() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        for code in [
+            "hist(c(0.1,0.2,0.8,1.2,1.9),col='skyblue')",
+            "hist(c(0.1,0.2,0.8,1.2,1.9),breaks=c(0,1,2),col='skyblue')",
+            "barplot(c(2,4,3),col='gold')",
+            "boxplot(c(1,2,3,4,100),col='skyblue')",
+            "plot(0:1,0:1,type='n'); rasterImage(matrix(c('red','blue','green','white'),2),0,0,1,1,interpolate=FALSE)",
+            "plot(1:3,3:1,pch=21,bg='gold'); savedPlot<-serialize(recordPlot(),NULL); replayPlot(unserialize(savedPlot))",
+        ] {
+            let png = session
+                .render_with_dimensions(code, 800, 600)
+                .unwrap_or_else(|error| panic!("portable={portable}, code={code}: {error}"));
+            assert!(png.starts_with(&[0x89, 0x50, 0x4e, 0x47]));
+            assert!(png.len() > 256);
+        }
+        assert_eq!(session.eval("1 + 1").unwrap(), "[1] 2\n");
+    }
+}
+
+#[test]
 fn replay_of_a_recording_scales_to_a_resized_device() {
     let mut session = RSession::new().expect("session");
     session
