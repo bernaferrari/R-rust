@@ -21933,7 +21933,22 @@
         "sha256": "325a51abc6ff73e147ebf11967b2dabb67a9cbda74af86b1cff01ec3748a4b46"
       }
     },
-    "strict_miri_status": "in_progress (not included in passing totals)"
+    "strict_miri_status": "complete",
+    "strict_miri": {
+      "passed": 1,
+      "failed": 0,
+      "source_scope": "New tryCatch context guard source compiled before later batch/complex edits; original nested custom-condition/collecting-finally regression",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-symbolic-alignment-check"
+      ],
+      "test_seconds": 1129.02,
+      "log": {
+        "file": "rport-top-builtin-strict-miri.log",
+        "bytes": 4283,
+        "sha256": "ae6badecd9ac5ab548d18b7f7127360dc90f0c4beb920497419e3cac509f274d"
+      }
+    }
   },
   "wasm_process_identity": {
     "source_commit": "7a4f731419567b4119e99fd906ce34b8b6a3a40e",

@@ -23,6 +23,8 @@ class RunnerEmissionTests(unittest.TestCase):
         # about evaluating R; this test checks the real standalone runner's I/O.
         stub.write_text('''
 pub mod android {
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub enum TopLevelEvaluationMode { Console, Script }
     pub enum RValue { Error(String), Value }
     pub struct Result { pub typed: RValue, pub output: String }
     pub struct RuntimePathPolicy;
@@ -32,13 +34,15 @@ pub mod android {
             Self
         }
     }
-    pub struct RSession { policy: &'static str }
+    pub struct RSession { policy: &'static str, mode: TopLevelEvaluationMode }
     impl RSession {
-        pub fn new() -> Self { Self { policy: "native" } }
-        pub fn new_with_path_policy(_policy: RuntimePathPolicy) -> Self { Self { policy: "portable" } }
+        pub fn new() -> Self { Self { policy: "native", mode: TopLevelEvaluationMode::Console } }
+        pub fn new_with_path_policy(_policy: RuntimePathPolicy) -> Self { Self { policy: "portable", mode: TopLevelEvaluationMode::Console } }
+        pub fn set_top_level_evaluation_mode(&mut self, mode: TopLevelEvaluationMode) { self.mode = mode; }
         pub fn runtime_info(&self) -> &'static str { self.policy }
         pub fn enable_host_process_capabilities(&mut self) {}
         pub fn eval(&mut self, code: &str) -> Result {
+            assert_eq!(self.mode, TopLevelEvaluationMode::Script);
             match code.strip_prefix("ERROR:") {
                 Some(output) => Result { typed: RValue::Error(String::new()), output: output.into() },
                 None => Result { typed: RValue::Value, output: code.into() },
@@ -89,7 +93,7 @@ pub mod android {
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, b"portable output")
         self.assertEqual(result.stderr, b"")
-        self.assertEqual(receipt.read_text(), '\"portable\"\n')
+        self.assertEqual(receipt.read_text(), 'top_level_evaluation_mode: Script\n\"portable\"\n')
 
     def test_invalid_package_policy_is_rejected_before_evaluation(self):
         result = self.invoke(b"unexpected output", RPORT_RUNTIME_PACKAGE_POLICY="invalid")
