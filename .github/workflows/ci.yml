@@ -219,7 +219,8 @@ jobs:
           - {suite: whole, shard: 2, count: 4}
           - {suite: whole, shard: 3, count: 4}
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # A shard can contain multiple 1800s workloads; allow their receipts to finish.
+    timeout-minutes: 90
     env:
       RPORT_CONFORMANCE_PROFILE: release
     steps:
