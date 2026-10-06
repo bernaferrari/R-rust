@@ -79,6 +79,63 @@ graphics/native/faer release profile. `eval-etc.R` now completes successfully in
 both profiles, but still fails strict output comparison. These selected results
 do not replace the complete conformance/upstream unions above.
 
+The later [integration stabilization receipt](ci-checkpoints/integration-stabilization-e3e26dea.json)
+records actual public workflow repairs and preserves their separate source commits.
+
+| Executed set | Commit | Pass | Fail | Other |
+| --- | --- | ---: | ---: | --- |
+| Complete exact-oracle conformance | `9b500c00` | 1053 | 128 | All 1181 accounted for; 0 timeouts |
+| Complete whole upstream drivers | `e3e26dea` | 14 | 25 | 31 skipped; all 70 accounted for |
+| Complete curated upstream slices | `e3e26dea` | 14 | 1 | All 15 accounted for |
+| Local complete Chromium showcase | `f16592b7` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
+| Linux complete Chromium showcase | `9b500c00` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
+| Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
+| Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
+| Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
+| Unchanged whole `structure.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
+| Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
+
+The complete conformance reduction is eight failures relative to the reviewed
+checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
+case 540 still differs in warning call attribution. Selected checks do not alter
+the complete union totals. The original `utils::data` closure now reaches its
+portable package-shaped path and original serialized assets through the real
+file/namespace routes. No helpers are injected into the global environment.
+Public `require` emits real startup conditions and respects quiet and repeated
+attachment; public `try` preserves nested and explicit condition calls. At
+`f16592b7`, calling error handlers receive real conditions before unwind: the
+original pinned GNU `.handleSimpleError` is installed in canonical base and called
+with the handler, message and quoted originating call. Both constructor policies,
+call-free and custom conditions, help-call attribution and callback collection
+pass, together with 21 existing owned condition/restart controls and the same
+public contract in two fresh production Wasm sessions.
+The complete upstream union accounts for all 85 workloads under the explicit
+graphics/native/faer release profile. UTF-8 completes (Rust 1024.246 seconds)
+with a strict output difference. GNU Latin-1 setup succeeds; Rust explicitly
+rejects the unfinished native `C_mtext` operation. Earlier incomplete or
+shorter diagnostic reports retain their classifications.
+
+Local methods profiling improves from 14.7/16.2 seconds to 10.528 seconds after
+checked package-byte initialization. A later controlled comparison measures
+9.920 seconds before amortized collection headroom and 6.058 seconds after it,
+with cold initialization measured separately. The original 15-second evaluation,
+64 MiB heap and 500000-node budgets remain unchanged. Immutable Linux `9b500c00`
+passes all 60 showcase cases with zero skips or flaky results, including all
+previous methods timeouts and both sunflower flows. Existing forced-GC and
+64 MiB retention checks also pass. The earlier Linux failures remain in the receipt.
+
+GNU instruction storage reduces the debug dispatcher frame from 27584 to 4416
+bytes; existing private VM controls and strict Miri pass. Local production
+`196e62eb` passes all 60 showcase cases. This source still reproduces the native
+stack abort through the explicit portable constructor, despite passing native-host
+checks. The later `52586600` checked-metadata storage repair passes all four grid
+workflows under both policies at the unchanged stack budget, plus all 57 public
+controls, 25 private VM controls, strict Miri, formatting and Clippy. Its immutable
+Linux verification is pending. The older exhaustive workspace run
+is incomplete; it is not current-HEAD passing evidence.
+The receipt joins each selected inventory key to actual wrappers, implementation
+paths, options, edge cases, profiles, source commits and raw-report hashes.
+
 Run strict three-way parity with the pinned oracle, workspace tests, Miri and
 platform checks for executable evidence. See `docs/safe-api-audit.md` for the
 owned public API and bounded unsafe implementation, and
