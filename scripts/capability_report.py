@@ -205,8 +205,17 @@ production sessions pass the original six workbench plots, serialized replay,
 all condition fixtures and all 205 dataset checks; the unchanged browser
 workbench test and full 60-case showcase also pass locally.
 The `c608eefa` CI repair keeps strict producer reports outside restored Cargo
-caches. Its immutable checkpoint is pending; the earlier upstream jobs that
-failed receipt admission do not supply current driver results.
+caches. Its `4cd0f941` follow-up passes all 46 public package checks on Linux,
+Wasm execution, Clippy, formatting and whole-script differential tests. Broader
+reports are still running; the earlier jobs that failed receipt admission do
+not supply driver results.
+
+The `04c35a37` batch evaluation policy preserves user `.Last.value` bindings and
+avoids automatic writes during scripts, while retaining console publication by
+default. Both public constructor policies pass active-binding, collection,
+error recovery and drawing controls. The four original `ls` cases and complete
+`method-dispatch.R` driver pass strict comparison. Production Wasm passes the
+original workbench test, 205 dataset checks and all 60 showcase cases locally.
 
 The explicit native error-call repair at `1d06a03c` preserves the supplied
 `letters@foo` call while retaining GNU inferred `stop` calls and callback
