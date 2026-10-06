@@ -1,0 +1,1676 @@
+{
+  "schema_version": 1,
+  "source_commit": "e64082fc9d94b13aeb6d444757f3698090bdbf88",
+  "immutable_run": 37525166594,
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37525166594",
+  "scope": "Complete authenticated conformance/upstream; Linux native 68 public tests and two separate S4 tests pass. Linux Chromium50 pass/10 fail; full workspace cancelled. Portable namespace repair exposed redundant S3 metadata startup work. Later bfca repair is independently attributed, not borrowed as proof for this source.",
+  "conformance": {
+    "status_counts": {
+      "fail": 92,
+      "pass": 1089,
+      "skip": 0,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "inventory_total": 1181,
+    "total": 1181,
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "errors": [],
+    "timed_out": 0
+  },
+  "conformance_failures": [
+    {
+      "case": "1000_plclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1003_plot_stepfun",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1005_heatmap",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1006_rect_hclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1007_qqline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1009_cpgram",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1010_plot_ts",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1012_monthplot_scatter",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1013_interaction_lag_eff",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1015_struct_ts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1016_struct_ts_bsm",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1046_arima_ma2_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1047_arima_ar1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1048_arima_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1049_arima_ma1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1050_arima_ar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1051_arima_ma1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1052_arima_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1053_arima_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1054_arima_ar3_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1056_arima_arma11_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1060_arima_arma12_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1063_arima_arma11_sar1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1064_arima_arma11_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1067_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1068_structts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1069_structts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1070_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1102_str_atomic_preview",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "293_read_write_char_connections",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "328_date_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "329_posixct_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "331_datetime_c_rep",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "333_difftime_ops",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "381_no_random_seed_loadrds_functions",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "385_no_string_reshape_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "387_no_runtime_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "388_no_print_summary_method_aliases",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "389_no_reflection_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "393_summary_default_vectors",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "432_prop_table_margins",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "523_signif_fprec_edge_matrix",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "537_strptime_posixlt_parity",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "570_loess_contracts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "599_density",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "602_supsmu",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "604_isoreg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "612_smooth_spline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "614_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "617_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "621_ks_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "623_ccf",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "637_diffinv",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "646_D_hyp",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "650_D_atan",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "651_D_gamma",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "652_holtwinters_alpha",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "653_deriv3",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "654_holtwinters_sse",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "656_nlminb",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "657_holtwinters_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "660_armaacf",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "666_holtwinters_x",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "671_is_ts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "689_adist",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "697_bindtextdomain",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "705_localeToCharset",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "710_ISOdate",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "720_as_POSIXct_lt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "724_mean_Date",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "726_trunc_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "727_round_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "731_as_list_Date",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "739_xtfrm_julian_POSIXt",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "757_ansari_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "769_pp_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "774_aregexec",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "793_covratio",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "809_lm_influence",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "820_dummy_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "858_dfbetas",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "863_struct_ts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "864_factanal",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "888_ts_smooth",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "901_ar_burg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "927_loglin",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "929_psmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "930_qsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "961_density_default",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "988_ppr",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "995_rsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "999_arima0_diag",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    }
+  ],
+  "complete_upstream": {
+    "status_counts": {
+      "fail": 22,
+      "pass": 32,
+      "skip": 31,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "total": 85,
+    "full_inventory_complete": true,
+    "execution_complete": true,
+    "errors": [],
+    "whole": {
+      "pass": 17,
+      "fail": 22,
+      "skip": 31
+    },
+    "curated": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "runtime": {
+      "cargo_features": [
+        "default",
+        "faer",
+        "rust-backend",
+        "r-graphics-engine",
+        "renderplot-device"
+      ],
+      "device": {
+        "font": "bundled DejaVu Sans",
+        "height": 504,
+        "name": "renderplot-scene",
+        "output": "owned display list",
+        "width": 504
+      },
+      "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+      "name": "graphics",
+      "numerical_backend": "faer",
+      "package_policy": "native",
+      "top_level_evaluation_mode": "Script"
+    },
+    "failed_cases": [
+      {
+        "case": "classes-methods.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "conditions.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "d-p-q-r-tests.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "d-p-q-r-tst-2.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "datasets.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "datetime2.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "datetime3.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "datetime4.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "datetime5.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "demos.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "demos2.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "iconv.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "lm-tests.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "p-qbeta-strict-tst.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "print-tests.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "r-strict-tst.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "reg-plot-latin1.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1a.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1b.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1c.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "reg-tests-1d.R",
+        "detail": "Rust runner exited non-zero",
+        "kind": "whole",
+        "status": "fail"
+      },
+      {
+        "case": "utf8.R",
+        "detail": "Rust output diverged from stock R",
+        "kind": "whole",
+        "status": "fail"
+      }
+    ]
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-06T20:27:55.850Z",
+      "duration": 779109.021,
+      "expected": 50,
+      "skipped": 0,
+      "unexpected": 10,
+      "flaky": 0
+    },
+    "report": {
+      "path": "target/ci-checkpoint-e64082fc/showcase-validation/_temp/showcase-evidence/playwright.json",
+      "bytes": 132636,
+      "sha256": "6336f386772a744ec6a12f305d416cc2bc9fc79efa0f66377cc7da3562e96616"
+    },
+    "budgets": "Original runtime/client 15s, editor 20s, FFT/RNG 90s; unchanged examples/selectors/assertions; workers=1.",
+    "failures": [
+      {
+        "title": "console imports a file without executing its code",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.r-chat-files-panel')\nExpected substring: \u001b[32m\"hello.R\"\u001b[39m\nReceived string:    \u001b[31m\"Import a file, then use its name in R\u2014for example, read.csv(\\\"data.csv\\\") or source(\\\"script.R\\\"). Files stay here until the session ends. Import file\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" locator('.r-chat-files-panel') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.r-chat-files-panel')\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <div class=\"r-chat-files-panel\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"Import a file, then use its name in R\u2014for example, read.csv(\"data.csv\") or source(\"script.R\"). Files stay here until the session ends. Import file\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "new session clears imported files and allows the same name again",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('log')\nExpected substring: \u001b[32m\"[1] 1\"\u001b[39m\nReceived string:    \u001b[31m\"You \u00b7 R command1ReuseR responseRunning\u2026\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" getByRole('log') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('log')\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <div role=\"log\" aria-busy=\"true\" aria-relevant=\"additions\" data-slot=\"message-scroller-content\" class=\"flex h-max min-h-full flex-col gap-6 r-chat-virtual-content\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"You \u00b7 R command1ReuseR responseRunning\u2026\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "console mobile layout and multiline input",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveValue\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('textbox', { name: 'R command', exact: true })\nExpected pattern: \u001b[32m/temperatures/\u001b[39m\nReceived string:  \u001b[31m\"\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('textbox', { name: 'R command', exact: true })\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "interactive errors keep partial console output and plots",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('img', { name: 'Plot from command 1' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" getByRole('img', { name: 'Plot from command 1' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('img', { name: 'Plot from command 1' })\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "example conversation can continue: A week in numbers",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoHaveValue\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \u001b[32m\"\"\u001b[39m\nReceived: \u001b[31m\"\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('textbox', { name: 'R command', exact: true })\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "example conversation can continue: Find the rhythm",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoHaveValue\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \u001b[32m\"\"\u001b[39m\nReceived: \u001b[31m\"\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('textbox', { name: 'R command', exact: true })\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "example conversation can continue: Let chance speak",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoHaveValue\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('textbox', { name: 'R command', exact: true })\nExpected: not \u001b[32m\"\"\u001b[39m\nReceived: \u001b[31m\"\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"not toHaveValue\" getByRole('textbox', { name: 'R command', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('textbox', { name: 'R command', exact: true })\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <textarea id=\"r-command\" maxlength=\"65536\" data-slot=\"textarea\" placeholder=\"Try mean(c(2, 4, 8))\" class=\"flex field-sizing-content min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20\u2026></textarea>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "arrow keys recall commands and restore the unfinished draft",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: 'Run command', exact: true })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" getByRole('button', { name: 'Run command', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Run command', exact: true })\u001b[22m\n"
+          }
+        ]
+      },
+      {
+        "title": "portable FFT and all formerly gated RNGs match the pinned GNU R oracle",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "timedOut",
+            "error": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+          }
+        ]
+      },
+      {
+        "title": "FFT errors are recoverable and text-only calculations need no plot mode",
+        "status": "unexpected",
+        "results": [
+          {
+            "status": "failed",
+            "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('log')\nExpected substring: \u001b[32m\"series required\"\u001b[39m\nReceived string:    \u001b[31m\"You \u00b7 R commandmvfft(1:4)ReuseR responseRunning\u2026\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" getByRole('log') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('log')\u001b[22m\n\u001b[2m    14 \u00d7 locator resolved to <div role=\"log\" aria-busy=\"true\" aria-relevant=\"additions\" data-slot=\"message-scroller-content\" class=\"flex h-max min-h-full flex-col gap-6 r-chat-virtual-content\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"You \u00b7 R commandmvfft(1:4)ReuseR responseRunning\u2026\"\u001b[22m\n"
+          }
+        ]
+      }
+    ]
+  },
+  "native_public": {
+    "profile": {
+      "source_commit": "e64082fc9d94b13aeb6d444757f3698090bdbf88",
+      "build_profile": "release",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 2400,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "selected": {
+      "passed": 68,
+      "suites": 22,
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "calling_error_handlers",
+          "--test",
+          "calling_warning_handlers",
+          "--test",
+          "try_condition_calls",
+          "--test",
+          "slot_try_error",
+          "--test",
+          "gnu_bytecode_source_marker",
+          "--test",
+          "s3_methods_public_contract"
+        ],
+        "cwd": "/home/runner/work/R-rust/R-rust",
+        "elapsed_seconds": 551.26190689,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T20:25:58.228371+00:00",
+        "logs": {
+          "stderr.log": "2c7bfc4386d380f50dbc80071681f9a0a9ecaeb154af6628d99bcaff820ff64a",
+          "stdout.log": "330eac66c90e0759b165b408c395fceecca75be1c292ede8d43f38fa0e3aeb40"
+        },
+        "pid": 2284,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:16:46.615340+00:00",
+        "state": "finished",
+        "timeout_seconds": 2400.0
+      },
+      "stdout": {
+        "path": "target/ci-checkpoint-e64082fc/public-package-checkpoint/execute/stdout.log",
+        "bytes": 7094,
+        "sha256": "330eac66c90e0759b165b408c395fceecca75be1c292ede8d43f38fa0e3aeb40"
+      }
+    },
+    "separate_s4": {
+      "passed": 2,
+      "failed": 0,
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "s4_next_method",
+          "s4_next_method_",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/home/runner/work/R-rust/R-rust",
+        "elapsed_seconds": 81.73147088300004,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T20:27:20.029364+00:00",
+        "logs": {
+          "stderr.log": "6a00eb18900a5dd937646ca41759d96f4094689f98f5d53922d8a7da417da713",
+          "stdout.log": "d617bc90fd6bd7fdeff2e4fab10fabedeb1f8a4909829896b03fc2dece844f6e"
+        },
+        "pid": 5979,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:25:58.296286+00:00",
+        "state": "finished",
+        "timeout_seconds": 2400.0
+      },
+      "stdout": {
+        "path": "target/ci-checkpoint-e64082fc/public-package-checkpoint/s4-subset-call/stdout.log",
+        "bytes": 380,
+        "sha256": "d617bc90fd6bd7fdeff2e4fab10fabedeb1f8a4909829896b03fc2dece844f6e"
+      },
+      "scope": "Actual configured15s native warm workload passes in this run; prior same-runtime timing was intermittent. No repeated reliability claim."
+    }
+  },
+  "production_wasm": {
+    "contracts_per_session": 27,
+    "fresh_sessions": 2,
+    "contract_rows": [
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/260_length_replacement.R",
+        "elapsed_ms": 252.1817629999996,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/492_rep_int_len_helpers.R",
+        "elapsed_ms": 48.89975400000003,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/288_with_calling_handlers.R",
+        "elapsed_ms": 31.798312999999325,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/1094_cat_complex_fft.R",
+        "elapsed_ms": 17.617387000000235,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/544_complex_constructor_format_str_parity.R",
+        "elapsed_ms": 1149.8961800000016,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/551_round_signif_complex_parity.R",
+        "elapsed_ms": 63.3951679999991,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/complex-print-public-contract.R",
+        "elapsed_ms": 72.07789599999887,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/stats-namespace-public-contract.R",
+        "elapsed_ms": 1220.1727140000003,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R",
+        "elapsed_ms": 600.491156,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/correlation-public-contract.R",
+        "elapsed_ms": 2953.6091109999998,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/palette-public-contract.R",
+        "elapsed_ms": 1825.4447179999988,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/tempfile-public-contract.R",
+        "elapsed_ms": 37.14532700000018,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/bincode-public-contract.R",
+        "elapsed_ms": 851.197666,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-gap-public-contract.R",
+        "elapsed_ms": 373.25436700000137,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/arima0-public-contract.R",
+        "elapsed_ms": 1838.641928000001,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+        "elapsed_ms": 150.43073100000038,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/mapply-public-contract.R",
+        "elapsed_ms": 94.93804799999998,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/sample-condition-contract.R",
+        "elapsed_ms": 169.31894300000204,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/rep-len-admission-contract.R",
+        "elapsed_ms": 751.5970860000016,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R",
+        "elapsed_ms": 1484.3903890000001,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R",
+        "elapsed_ms": 1891.3686119999984,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+        "elapsed_ms": 19178.30702,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+        "elapsed_ms": 14077.878327999999,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/gnu-compiled-source-edit-contract.R",
+        "elapsed_ms": 779.2346770000004,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-caller-context-contract.R",
+        "elapsed_ms": 819.4529439999969,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-call-public-contract.R",
+        "elapsed_ms": 53.357035000000906,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/unserialize-connection-contract.R",
+        "elapsed_ms": 1164.2865819999934,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/260_length_replacement.R",
+        "elapsed_ms": 214.0807230000064,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/492_rep_int_len_helpers.R",
+        "elapsed_ms": 45.609981000001426,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/288_with_calling_handlers.R",
+        "elapsed_ms": 26.735794000007445,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/1094_cat_complex_fft.R",
+        "elapsed_ms": 12.430956000011065,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/544_complex_constructor_format_str_parity.R",
+        "elapsed_ms": 1150.2463080000016,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/551_round_signif_complex_parity.R",
+        "elapsed_ms": 61.33112699999765,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/complex-print-public-contract.R",
+        "elapsed_ms": 69.47959500001161,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/stats-namespace-public-contract.R",
+        "elapsed_ms": 1209.46940300001,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R",
+        "elapsed_ms": 599.1125160000083,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/correlation-public-contract.R",
+        "elapsed_ms": 2929.552322000003,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/palette-public-contract.R",
+        "elapsed_ms": 1800.877210999999,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/tempfile-public-contract.R",
+        "elapsed_ms": 33.71329400000104,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/bincode-public-contract.R",
+        "elapsed_ms": 832.5609669999976,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-gap-public-contract.R",
+        "elapsed_ms": 371.0736220000108,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/arima0-public-contract.R",
+        "elapsed_ms": 1796.6027560000075,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+        "elapsed_ms": 144.15962899998704,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/mapply-public-contract.R",
+        "elapsed_ms": 92.35040500000468,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/sample-condition-contract.R",
+        "elapsed_ms": 165.46264800000063,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/rep-len-admission-contract.R",
+        "elapsed_ms": 757.0517560000008,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R",
+        "elapsed_ms": 1490.500933999996,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R",
+        "elapsed_ms": 1878.7273959999875,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+        "elapsed_ms": 18965.525370999996,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+        "elapsed_ms": 13929.432012999998,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/gnu-compiled-source-edit-contract.R",
+        "elapsed_ms": 764.1446649999998,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-caller-context-contract.R",
+        "elapsed_ms": 804.3328860000038,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-call-public-contract.R",
+        "elapsed_ms": 51.34352999999828,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/unserialize-connection-contract.R",
+        "elapsed_ms": 1147.3418700000038,
+        "status": "pass"
+      }
+    ],
+    "job_log": {
+      "path": "target/ci-checkpoint-e64082fc/browser-release-job.log",
+      "bytes": 204708,
+      "sha256": "b90a092c089bffc9d669c9b3d5a293f0d4332c7356ad14e7ef7ce2502717ed19"
+    },
+    "scope": "Actual production Wasm27x2 contracts pass. Linux warmS4 elapsed14.08s/13.93s. Wasm configured clock does not independently establish end-to-end15s enforcement; Chromium worker owns actual timer."
+  },
+  "workspace": {
+    "conclusion": "cancelled",
+    "job_log": {
+      "path": "target/ci-checkpoint-e64082fc/workspace-job.log",
+      "bytes": 129939,
+      "sha256": "9e37b118a81e837754549979d86ab662afef86ccbdf6e224ac025a793a192794"
+    },
+    "scope": "Full workspace result incomplete; no passing claim."
+  },
+  "authentication": {
+    "independent_join": "All six conformance and all five upstream producer contracts independently revalidated against clean detached e640 checkout; independent joins equal downloaded official unions as JSON values. Only status change against authenticated820 conformance is284_methods_runtime_registry fail to pass.",
+    "reports": [
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-0/summary.json",
+        "bytes": 41589,
+        "sha256": "e49181e32aef3ee9a3aa8fd30403943754b3a25f5e872b8d6ef63d770591d8e7"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-1/summary.json",
+        "bytes": 41491,
+        "sha256": "905c3c8c8abc1cf53437c7a48d144c8c3ea1786b0932f82088956ef85aaebda5"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-2/summary.json",
+        "bytes": 41662,
+        "sha256": "7b34a966d3125f3a43d4286ca5846d0ab36779ed5aab66a92b803b9aa4427856"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-3/summary.json",
+        "bytes": 41788,
+        "sha256": "99c7063143675ab0c29c86dddd09688798cb950e30cd69ceed335a4ae5537f88"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-4/summary.json",
+        "bytes": 41656,
+        "sha256": "baeb0618af399bc887afbe4b17ee79664573ef64b5fa6d36fc63aace48a68d7e"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-shard-5/summary.json",
+        "bytes": 41663,
+        "sha256": "1a7468792d1361cbf8e88af04d3e9f1706ec2fb8504bdddce81cdaeda86ce320"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-shard-curated-0/summary.json",
+        "bytes": 396469,
+        "sha256": "3928680823eb45c35d5814ea9c8885722123882b2c2943136519e103191c324c"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-shard-whole-0/summary.json",
+        "bytes": 364855,
+        "sha256": "dd82bd610f0dd58e09a5cd70129664eac6a23f0e41a7cb66675214092dfafb0c"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-shard-whole-1/summary.json",
+        "bytes": 372095,
+        "sha256": "167f0f4ab987ca374213940d521d0ffbbacee10bbd81335d4e2d699451141062"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-shard-whole-2/summary.json",
+        "bytes": 355361,
+        "sha256": "76b761a9d92a1a1d20c496e2fbf248f265eb460548d9b5872996d6071c6c4d9b"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-shard-whole-3/summary.json",
+        "bytes": 366827,
+        "sha256": "8fee34c3c82a3c5544b1390ab97a5b638af0f92c76699b0af23e9c4962a1e820"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/exact-oracle-conformance-union/summary.json",
+        "bytes": 200727,
+        "sha256": "6f7b9c265093f60948f26d9980db2f88f0fd8ffdbb1b94fd9090551bc015cd08"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/upstream-r-exact-union/summary.json",
+        "bytes": 572289,
+        "sha256": "affe44ed584361a6529695d30bc4109a5e0c3908d2beb98363dfc2f5574503e0"
+      }
+    ],
+    "independent_reports": [
+      {
+        "path": "target/ci-checkpoint-e64082fc/independent-conformance.json",
+        "bytes": 200727,
+        "sha256": "6f7b9c265093f60948f26d9980db2f88f0fd8ffdbb1b94fd9090551bc015cd08"
+      },
+      {
+        "path": "target/ci-checkpoint-e64082fc/independent-upstream.json",
+        "bytes": 572289,
+        "sha256": "affe44ed584361a6529695d30bc4109a5e0c3908d2beb98363dfc2f5574503e0"
+      }
+    ]
+  },
+  "execution_join": [
+    {
+      "inventory_keys": [
+        "utils::methods",
+        "utils::getS3method",
+        "methods::.S4methods"
+      ],
+      "public_wrapper": [
+        "crates/rmath/src/library/portable_package/assets/utils/manifest.json",
+        "crates/rmath/src/library/methods/portable/assets/manifest.json"
+      ],
+      "implementation": [
+        "crates/rmath/src/library/portable_package/bridge.rs",
+        "crates/rmath/src/mainutils/essentials/shared.rs"
+      ],
+      "tested_options_and_edges": [
+        "methods(generic), methods(class), partial generic warning, private method visibility, qualified S4 queries, namespace identity, lazy method promises, full GC",
+        "crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+        "tests/conformance/cases/284_methods_runtime_registry.R"
+      ],
+      "execution_path": "Real RSession::new and RSession::new_with_path_policy(explicit-empty before initialization); original public closures and native descriptors; production Wasm worker.",
+      "target_profiles": [
+        "native release/faer/renderplot, native and portable package policies",
+        "production Wasm portable policy",
+        "complete strict GNU conformance",
+        "whole-driver release/faer/graphics/native policy"
+      ],
+      "last_verified_commit": "e64082fc9d94b13aeb6d444757f3698090bdbf88",
+      "execution_evidence": "Linux native68 selected tests/two S4 tests; production Wasm27 contracts in two fresh sessions; exact conformance284 passes; whole reg-S4/eval-etc/structure strict passes.",
+      "remaining_limits": [
+        "Complete classes-methods.R still diverges; namespace presence does not prove every public methods workflow."
+      ]
+    },
+    {
+      "inventory_keys": [
+        "base::getExportedValue",
+        "base::getNamespaceExports",
+        "base::::"
+      ],
+      "public_wrapper": [
+        "crates/rmath/src/sexp/init.rs"
+      ],
+      "implementation": [
+        "crates/rmath/src/mainutils/essentials/matrix/attrs.rs:do_get_namespace_value",
+        "crates/rmath/src/mainutils/essentials/matrix/attrs.rs:do_namespace_get"
+      ],
+      "tested_options_and_edges": [
+        "namespace string and environment inputs, invalid name admission, live export alias points to original method, exported/private visibility, identity and GC",
+        "crates/r-embed/tests/fixtures/s3-methods-public-contract.R"
+      ],
+      "execution_path": "Real RSession::new and RSession::new_with_path_policy(explicit-empty before initialization); original public closures and native descriptors; production Wasm worker.",
+      "target_profiles": [
+        "native release/faer/renderplot, native and portable package policies",
+        "production Wasm portable policy",
+        "complete strict GNU conformance",
+        "whole-driver release/faer/graphics/native policy"
+      ],
+      "last_verified_commit": "e64082fc9d94b13aeb6d444757f3698090bdbf88",
+      "execution_evidence": "Linux native68 selected tests/two S4 tests; production Wasm27 contracts in two fresh sessions; exact conformance284 passes; whole reg-S4/eval-etc/structure strict passes.",
+      "remaining_limits": [
+        "Forged environment admission is not fully GNU-conformant; no all-inputs claim."
+      ]
+    },
+    {
+      "inventory_keys": [
+        "base::summary.data.frame",
+        "base::summary.matrix",
+        "base::format.default"
+      ],
+      "public_wrapper": [
+        "crates/rmath/src/sexp/gnu_summary_data_frame.R",
+        "crates/rmath/src/sexp/gnu_summary_matrix.R",
+        "crates/rmath/src/sexp/gnu_format_default.R"
+      ],
+      "implementation": [
+        "crates/rmath/src/mainutils/essentials/strings.rs:do_format",
+        "crates/rmath/src/sexp/output.rs"
+      ],
+      "tested_options_and_edges": [
+        "Complete numeric/logical/character data-frame and matrix summaries, zero rows/columns, names/dimensions/dimnames preserved in formatting",
+        "crates/r-embed/tests/fixtures/s3-methods-public-contract.R"
+      ],
+      "execution_path": "Real RSession::new and RSession::new_with_path_policy(explicit-empty before initialization); original public closures and native descriptors; production Wasm worker.",
+      "target_profiles": [
+        "native release/faer/renderplot, native and portable package policies",
+        "production Wasm portable policy",
+        "complete strict GNU conformance",
+        "whole-driver release/faer/graphics/native policy"
+      ],
+      "last_verified_commit": "e64082fc9d94b13aeb6d444757f3698090bdbf88",
+      "execution_evidence": "Linux native68 selected tests/two S4 tests; production Wasm27 contracts in two fresh sessions; exact conformance284 passes; whole reg-S4/eval-etc/structure strict passes.",
+      "remaining_limits": [
+        "Whole print-tests.R remains red; arbitrary custom column methods and all formatting options are not certified."
+      ]
+    }
+  ]
+}

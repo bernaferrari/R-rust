@@ -1,0 +1,452 @@
+{
+  "schema_version": 1,
+  "source_commit": "bfca2d4c5c95417b2475c49aefb86333d7a02e68",
+  "scope": "Verified local metadata/startup milestone. Production candidate was built before commit and a subsequent formatting-only line wrap; immutable same-source Linux run37531625229 is pending and independently attributed. No complete-runtime or Linux deadline reliability claim.",
+  "problem": "Live portable namespace repair at e640 exposed per-row growth/copy of original S3 metadata, whose result was discarded after registration. Native source loading registered before namespace info existed, leaving its public metadata0x4.",
+  "change": "Portable registration retains original captured metadata. Native namespace info exists before registration and metadata is built once for every parsed directive, including unavailable platform bindings; registered method binding/lazy promise behavior unchanged.",
+  "public_metadata": {
+    "fixture": "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R",
+    "packages_rows": {
+      "methods": 0,
+      "utils": 133,
+      "stats": 451,
+      "graphics": 45,
+      "grDevices": 29,
+      "tools": 123
+    },
+    "columns": 4,
+    "tested": [
+      "Real native/default and portable/explicit-empty constructors",
+      "string/environment getNamespaceInfo identity",
+      "registered lazy methods and full GC",
+      "Original four-column dimensions; qualified generic origin independently checked against pinned GNU parseNamespaceFile; no all-row value comparison claim."
+    ]
+  },
+  "performance": {
+    "constructor_ms": {
+      "e640": [
+        4306.068375,
+        4070.0788329999996,
+        4012.5723340000004
+      ],
+      "candidate": [
+        1546.958334,
+        1346.6135830000003,
+        1345.740249999999
+      ]
+    },
+    "median_ms": {
+      "e640": 4070.0788329999996,
+      "candidate": 1346.6135830000003
+    },
+    "receipt": {
+      "process": {
+        "command": [
+          "node",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/s3-methods-repro/constructor-metadata-comparison.mjs"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 17.13592362497002,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T20:53:52.891252+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "ca9b6c922869941a6434d4bdf0ad18f3700cbf777610f4a4434204f9aee1817a"
+        },
+        "pid": 9410,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:53:35.754603+00:00",
+        "state": "finished",
+        "timeout_seconds": 180.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/constructor-metadata-comparison/stdout.log",
+        "bytes": 1150,
+        "sha256": "ca9b6c922869941a6434d4bdf0ad18f3700cbf777610f4a4434204f9aee1817a"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/constructor-metadata-comparison/stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "profile_evidence": "target/integration-repair-evidence/s3-methods-startup-e64082fc-profile",
+    "attribution": "register_namespace_s3_methods inclusive2845.8ms in e6404673.19ms constructor; unnecessary metadata allocation/copy, not a collector redesign."
+  },
+  "production_candidate": {
+    "module": {
+      "path": "target/integration-repair-evidence/s3-metadata-candidate-pkg/r_wasm_bg.wasm",
+      "bytes": 25790298,
+      "sha256": "9b6d0d1127d23a5b315d6878ba92e74f5637c6b7a49745282d1e87a2748c9f39"
+    },
+    "build": {
+      "process": {
+        "command": [
+          "scripts/build_wasm_runtime.sh",
+          "--target",
+          "web",
+          "--release",
+          "--out-dir",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/s3-metadata-candidate-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 95.052928415942,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T20:51:32.574331+00:00",
+        "logs": {
+          "stderr.log": "19f72858b5de8635449133d8442765297d6b6255a803e023941411f8ccd8bdc5",
+          "stdout.log": "bb1966ee29a5e387b04a3fe8b6ef4110cf38a7ce9d763730cdd246d48e3af1f7"
+        },
+        "pid": 6018,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:49:57.520142+00:00",
+        "state": "finished",
+        "timeout_seconds": 1500.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-metadata-candidate-build/stdout.log",
+        "bytes": 67,
+        "sha256": "bb1966ee29a5e387b04a3fe8b6ef4110cf38a7ce9d763730cdd246d48e3af1f7"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-metadata-candidate-build/stderr.log",
+        "bytes": 4388,
+        "sha256": "19f72858b5de8635449133d8442765297d6b6255a803e023941411f8ccd8bdc5"
+      }
+    },
+    "public_contracts": {
+      "process": {
+        "command": [
+          "node",
+          "tests/browser/portable-package-contracts.mjs",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/s3-metadata-candidate-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 58.00996470800601,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T20:54:50.903927+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "38d8d0810afc781e450aae7447bf3c9567bdde46ac8f27782bc0e31e1a557c2f"
+        },
+        "pid": 9634,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:53:52.892788+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-metadata-candidate-contracts/stdout.log",
+        "bytes": 11374,
+        "sha256": "38d8d0810afc781e450aae7447bf3c9567bdde46ac8f27782bc0e31e1a557c2f"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-metadata-candidate-contracts/stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "contracts_per_session": 28,
+    "fresh_sessions": 2,
+    "scope": "Actual Wasm module and unchanged browser budgets. Warm Node S4 elapsed does not independently establish client15s timer behavior."
+  },
+  "browser": {
+    "complete": {
+      "stats": {
+        "startTime": "2026-10-06T21:07:48.182Z",
+        "duration": 264992.91,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "target/integration-repair-evidence/s3-metadata-chromium-bfca2d4c/playwright.json",
+        "bytes": 76646,
+        "sha256": "99b0c5a08c0a955f221d4f10c67bff696bb8f8c94ffedc1d87edd47b7956b7e1"
+      }
+    },
+    "gallery_and_fft_repeated": {
+      "stats": {
+        "startTime": "2026-10-06T21:12:13.791Z",
+        "duration": 162136.808,
+        "expected": 6,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "target/integration-repair-evidence/s3-metadata-browser-repeats-bfca2d4c/playwright.json",
+        "bytes": 36338,
+        "sha256": "26a032c6bbc99220bf4ab72efd1a5baa078e0259134d3e049aed3109cf4f13ff"
+      }
+    },
+    "editor_download_repeated": {
+      "stats": {
+        "startTime": "2026-10-06T21:15:23.772Z",
+        "duration": 32891.494999999995,
+        "expected": 3,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "target/integration-repair-evidence/s3-metadata-editor-repeats-bfca2d4c/playwright.json",
+        "bytes": 5447,
+        "sha256": "d96861a69a428ab279b1a620ebebf60ba373a92fbd7da1fa209a4e44739444bd"
+      }
+    },
+    "budgets": "Original runtime/client15s, editor20s, FFT/RNG90s, examples/selectors/assertions unchanged, worker1. Three repeats each gallery, editor/download and FFT/RNG: nine actual completed tests."
+  },
+  "native": {
+    "public_packages": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "--release",
+          "-p",
+          "r-embed",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "calling_error_handlers",
+          "--test",
+          "calling_warning_handlers",
+          "--test",
+          "try_condition_calls",
+          "--test",
+          "slot_try_error",
+          "--test",
+          "gnu_bytecode_source_marker",
+          "--test",
+          "s3_methods_public_contract",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 242.61139008402824,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T21:00:57.881636+00:00",
+        "logs": {
+          "stderr.log": "7fe0d6c2455241604b73640a05ee466ea364ee5e362e0ab8431c32e3d6ced52b",
+          "stdout.log": "5bde5909368194889e50ecb7fbb21d5fff8d0431d3c17f89770be027da17e206"
+        },
+        "pid": 12429,
+        "schema_version": 1,
+        "started_at": "2026-10-06T20:56:55.267511+00:00",
+        "state": "finished",
+        "timeout_seconds": 1200.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-public-packages/stdout.log",
+        "bytes": 7084,
+        "sha256": "5bde5909368194889e50ecb7fbb21d5fff8d0431d3c17f89770be027da17e206"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-public-packages/stderr.log",
+        "bytes": 2704,
+        "sha256": "7fe0d6c2455241604b73640a05ee466ea364ee5e362e0ab8431c32e3d6ced52b"
+      }
+    },
+    "s4": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "--release",
+          "-p",
+          "r-embed",
+          "--test",
+          "s4_next_method",
+          "s4_next_method_",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 45.11434691690374,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T21:01:42.998475+00:00",
+        "logs": {
+          "stderr.log": "b4b79c5d28d73b463892d906d49588fa377b87c4c47473de8498c3b0ff01191a",
+          "stdout.log": "4db5b3e8df240704c5821c736e4e9faf69ebf08bb78ffff71e911ebaf5c03fca"
+        },
+        "pid": 18577,
+        "schema_version": 1,
+        "started_at": "2026-10-06T21:00:57.883353+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-warm-s4/stdout.log",
+        "bytes": 995,
+        "sha256": "4db5b3e8df240704c5821c736e4e9faf69ebf08bb78ffff71e911ebaf5c03fca"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-warm-s4/stderr.log",
+        "bytes": 399,
+        "sha256": "b4b79c5d28d73b463892d906d49588fa377b87c4c47473de8498c3b0ff01191a"
+      }
+    },
+    "namespace": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "--release",
+          "-p",
+          "rmath",
+          "--lib",
+          "namespace",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 88.92249679204542,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T21:03:11.923633+00:00",
+        "logs": {
+          "stderr.log": "ce5313b0ce19894562895b45384ab529e38d09df7bd30995c251ae1d889da3b1",
+          "stdout.log": "760851d0e3248ee7e762f4b9befd3e0c34e424af1e4ebec717bf4235cfe3e2bc"
+        },
+        "pid": 19542,
+        "schema_version": 1,
+        "started_at": "2026-10-06T21:01:42.999944+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-namespace/stdout.log",
+        "bytes": 2565,
+        "sha256": "760851d0e3248ee7e762f4b9befd3e0c34e424af1e4ebec717bf4235cfe3e2bc"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-namespace/stderr.log",
+        "bytes": 384,
+        "sha256": "ce5313b0ce19894562895b45384ab529e38d09df7bd30995c251ae1d889da3b1"
+      }
+    },
+    "clippy": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "clippy",
+          "-p",
+          "r-embed",
+          "-p",
+          "r-wasm",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 19.664894749992527,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T21:03:31.591327+00:00",
+        "logs": {
+          "stderr.log": "cd6601be67d50654dca07cc151e0023c14e10ba7e2c38e7dfd2e2eaee27e0cde",
+          "stdout.log": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        },
+        "pid": 20972,
+        "schema_version": 1,
+        "started_at": "2026-10-06T21:03:11.925639+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-clippy/stdout.log",
+        "bytes": 122,
+        "sha256": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-clippy/stderr.log",
+        "bytes": 319,
+        "sha256": "cd6601be67d50654dca07cc151e0023c14e10ba7e2c38e7dfd2e2eaee27e0cde"
+      }
+    },
+    "format": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "fmt",
+          "--all",
+          "--check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 4.022691915975884,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T21:04:43.869442+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 22485,
+        "schema_version": 1,
+        "started_at": "2026-10-06T21:04:39.846129+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "stdout": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-fmt-corrected/stdout.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "target/integration-repair-evidence/s3-methods-repro/metadata-final-fmt-corrected/stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "immutable_linux": {
+    "run": 37531625229,
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37531625229",
+    "status": "in_progress"
+  },
+  "remaining": [
+    "92 conformance failures and22 whole-driver failures in authenticated e640 inventory",
+    "Linux startup/deadline stability pending source-bound bfca run",
+    "print.function and print.data.frame original base public bindings remain tracked separately",
+    "Full workspace cancelled35min; no passing claim"
+  ]
+}

@@ -256,3 +256,22 @@ connects the original base condition wrappers and methods queries to the complet
 `reg-S4.R` driver. Each entry records its implementation, tested calls, source,
 profile, and remaining limits. The warm Wasm S4 allocation failure and incomplete
 GC-torture run are explicit; native success does not establish those contracts.
+
+The [e640 namespace and summary execution join](ci-checkpoints/conformance-browser-e64082fc.json)
+resolves `utils::methods`, `utils::getS3method`, `methods::.S4methods`, namespace
+export lookup, and the original data-frame/matrix summary and formatting closures
+to real public constructors, implementation paths, options, and source-bound
+execution reports. Original methods-registry case284 now passes in the complete
+1181-case run. All 68 selected native public tests and 27 production Wasm
+contracts in two sessions pass. Whole `reg-S4.R`, `eval-etc.R`, and `structure.R`
+pass strict GNU comparison. This remains a partial execution join: Linux browser
+50/10 failures, local59/1, incomplete workspace, and the 92 conformance failures
+are preserved. The subsequent startup repair is attributed to its own source.
+
+The [bfca startup receipt](ci-checkpoints/namespace-startup-bfca2d4c.json) links
+`getNamespaceInfo(package, "S3methods")` to captured portable metadata and one
+native construction per namespace. Both public policies exercise the original
+six-package dimensions, registered lazy methods and full GC. It retains measured
+before/after module hashes, native gates, all60 local browser tests and nine
+unchanged repeated gallery/editor/FFT flows. The immutable Linux run is pending;
+the e640 complete-inventory results remain the current authenticated census.
