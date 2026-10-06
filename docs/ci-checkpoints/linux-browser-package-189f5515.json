@@ -1,0 +1,2249 @@
+{
+  "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+  "immutable_run": 37481981284,
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37481981284",
+  "scope": "Completed same-source Linux public56 and original60 Chromium execution; full original1181-case conformance independently authenticated. Whole upstream is separately authenticated at711; full workspace acceptance remains open.",
+  "native_public": {
+    "profile": {
+      "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+      "build_profile": "debug",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 2400,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--test",
+        "embed",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "portable_grdevices_namespace",
+        "--test",
+        "portable_stats_namespace",
+        "--test",
+        "complex_print_contract",
+        "--test",
+        "get_lazy_mode",
+        "--test",
+        "correlation_public_contract",
+        "--test",
+        "palette_public_contract",
+        "--test",
+        "bincode_public_contract",
+        "--test",
+        "arima0_public_contract",
+        "--test",
+        "utils_console_public_contract",
+        "--test",
+        "mapply_public_contract",
+        "--test",
+        "sample_condition_contract"
+      ],
+      "cwd": "/home/runner/work/R-rust/R-rust",
+      "elapsed_seconds": 1348.5170306060002,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T15:10:48.595789+00:00",
+      "logs": {
+        "stderr.log": "0f2878044003dcfde355fd071c2b49d0bb6ce367c880428bf6b8f4b2b04b7e6b",
+        "stdout.log": "305d8902c384f0772c3a670651eb918e5efcf8306da7a5c41b785a5640cce27a"
+      },
+      "pid": 2270,
+      "schema_version": 1,
+      "started_at": "2026-10-06T14:48:19.697859+00:00",
+      "state": "finished",
+      "timeout_seconds": 2400.0
+    },
+    "passed": 56,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 14,
+    "stdout": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/public-package/execute/stdout.log",
+      "bytes": 7250,
+      "sha256": "305d8902c384f0772c3a670651eb918e5efcf8306da7a5c41b785a5640cce27a"
+    },
+    "stderr": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/public-package/execute/stderr.log",
+      "bytes": 2303,
+      "sha256": "0f2878044003dcfde355fd071c2b49d0bb6ce367c880428bf6b8f4b2b04b7e6b"
+    }
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-06T14:56:49.968Z",
+      "duration": 461431.304,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "failures": [],
+    "report": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/showcase/_temp/showcase-evidence/playwright.json",
+      "bytes": 69290,
+      "sha256": "9fa172460bdbdafd4dd95b68e547928c77c97077588d83d5bbd06cdcd32248ae"
+    },
+    "runtime_production": {
+      "bytes": 25859075,
+      "sha256": "aa0f086fd7f19a2e9f85cfcfd5e06e887077ecf21edb33263a6a1276733fc9ea"
+    },
+    "diagnostic_profile": {
+      "metadata": {
+        "phase": "profile",
+        "production": {
+          "bytes": 25859075,
+          "sha256": "aa0f086fd7f19a2e9f85cfcfd5e06e887077ecf21edb33263a6a1276733fc9ea"
+        },
+        "diagnostic_module_sha256": "f29bfca111cf80204f3e4d33b7394de1563a3c84ea9346d449c3c71fb2170360",
+        "names": {
+          "file": "/home/runner/work/_temp/showcase-evidence/runtime-profile.wasm",
+          "bytes": 27067480,
+          "sha256": "f29bfca111cf80204f3e4d33b7394de1563a3c84ea9346d449c3c71fb2170360",
+          "execution_sections_sha256": "baf111699985254bc194e5bb38e0e51f5f54e5904a29ab21d06db159fb66bf30",
+          "arguments": [
+            "-Oz",
+            "-g"
+          ],
+          "scope": "Diagnostic names only; all standard execution sections byte-identical to production"
+        },
+        "node": "v24.21.0",
+        "platform": "linux"
+      },
+      "artifact": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/showcase/_temp/showcase-evidence/workflow-profile.jsonl",
+        "bytes": 35272,
+        "sha256": "7cdc82e54333bf17f9914eef194e8edcec76e35f2c51423002846623094e2fdb"
+      },
+      "phases": [
+        {
+          "phase": "instantiate",
+          "ms": 32.64486400000001,
+          "cpu_us": {
+            "user": 105612,
+            "system": 996
+          },
+          "state": "finished",
+          "result": true,
+          "profile": "00-instantiate.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 45.726
+            },
+            "top_self_sample_ms": [
+              [
+                "Module",
+                29.323000000000008
+              ],
+              [
+                "post",
+                13.218
+              ],
+              [
+                "Instance",
+                3.185
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-initialize",
+          "ms": 2696.729083,
+          "cpu_us": {
+            "user": 4393651,
+            "system": 215903
+          },
+          "state": "finished",
+          "result": true,
+          "profile": "01-methods-initialize.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 2076.2460000000056,
+              "allocation": 95.94000000000001,
+              "collection": 534.5510000000002
+            },
+            "top_self_sample_ms": [
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                126.72599999999994
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                115.44799999999992
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                108.1599999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                101.60599999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                100.63599999999997
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                76.79899999999996
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                61.72800000000001
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                61.59900000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                59.579
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                56.70500000000002
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#2}, ()>",
+                52.912000000000006
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                52.614000000000004
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                48.13500000000001
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                46.466
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                46.34100000000001
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-0",
+          "ms": 15.83666200000016,
+          "cpu_us": {
+            "user": 17874,
+            "system": 0
+          },
+          "state": "finished",
+          "result": "[1] TRUE\n",
+          "profile": "02-methods-0.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 31.539000000000005,
+              "collection": 1.068
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                17.635
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::output::print_value",
+                4.257
+              ],
+              [
+                "<r_embed[f29a429109d629cb]::session::RSession>::eval",
+                1.187
+              ],
+              [
+                "core[ff045eadf811fb26]::ptr::drop_glue::<rmath[7d1bc92fafd7fecc]::sexp::owner::WeakOwner>[2]",
+                1.069
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                1.068
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                1.067
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::accessors::graph_edge_from_read",
+                1.066
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::eval::closure::applyClosureWithFrameVars",
+                1.065
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::android::RSession>::eval_script_export::{closure#1}",
+                1.065
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                1.061
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::root_lease",
+                1.06
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::android::RSession>::eval_script_export",
+                1.007
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-1",
+          "ms": 3.0611539999999877,
+          "cpu_us": {
+            "user": 3117,
+            "system": 0
+          },
+          "state": "finished",
+          "result": "[1] TRUE\n",
+          "profile": "03-methods-1.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 20.750999999999998
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                17.464
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::mainutils::serialize::api::R_serialize_with_xdr",
+                1.163
+              ],
+              [
+                "dispatch",
+                1.063
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::object::factory::root_allocation::<<rmath[7d1bc92fafd7fecc]::sexp::object::factory::SessionNodeFactory as rmath[7d1bc92fafd7fecc]::sexp::object::factory::NodeProducer>::initialized_promise::{closure#0}>",
+                1.061
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-2",
+          "ms": 13.271568000000116,
+          "cpu_us": {
+            "user": 16762,
+            "system": 0
+          },
+          "state": "finished",
+          "result": "[1] TRUE\n",
+          "profile": "04-methods-2.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 28.837000000000003,
+              "collection": 1.171
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                16.44
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                1.171
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::eval::apply::apply_builtin_safe",
+                1.078
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::replace_node",
+                1.074
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::eval::apply::apply_evaluated_builtin",
+                1.07
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                1.069
+              ],
+              [
+                "core[ff045eadf811fb26]::ptr::drop_glue::<rmath[7d1bc92fafd7fecc]::sexp::accessors::ReferenceValue>",
+                1.066
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                1.066
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::eval::primitive::portable_primitive_name",
+                1.064
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                1.064
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::mainutils::errors::render::attribute_handler_errors::<rmath[7d1bc92fafd7fecc]::mainutils::names::do_internal::{closure#9}>",
+                1.064
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::accessors::CHAR",
+                1.062
+              ],
+              [
+                "core[ff045eadf811fb26]::ptr::drop_glue::<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>[4]",
+                1.062
+              ],
+              [
+                "dispatch",
+                0.658
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-3",
+          "ms": 9126.452989000001,
+          "cpu_us": {
+            "user": 9670755,
+            "system": 154078
+          },
+          "state": "finished",
+          "result": "[1] TRUE\n",
+          "profile": "05-methods-3.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 5160.8530000000355,
+              "allocation": 286.30799999999994,
+              "collection": 3696.8050000000153
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                483.82200000000006
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                482.4319999999997
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                466.2849999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                457.47499999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                443.99199999999956
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                387.95099999999996
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                327.9980000000002
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                315.48299999999955
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                283.1399999999999
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                262.32299999999987
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                246.18799999999982
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                225.48099999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                204.07999999999973
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                191.05999999999977
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                142.99899999999997
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-4",
+          "ms": 12506.891827000001,
+          "cpu_us": {
+            "user": 12720679,
+            "system": 179094
+          },
+          "state": "finished",
+          "result": "[1] TRUE\nWarning message:\nunable to find a consistent ordering of superclasses for class \"D\": order chosen is inconsistent with the superclasses of \"C\" \n",
+          "profile": "06-methods-4.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 5488.851000000054,
+              "allocation": 151.12899999999985,
+              "collection": 6889.643000000087
+            },
+            "top_self_sample_ms": [
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                1031.5869999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                965.6919999999982
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                739.9610000000007
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                726.666
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                676.4869999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                675.0110000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                632.3580000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                458.61099999999976
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                405.9959999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                366.13399999999996
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                301.50099999999986
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                276.3689999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                253.57299999999978
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                250.6509999999997
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::clear_swept_references_in",
+                221.79699999999985
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-5",
+          "ms": 3.1280020000012883,
+          "cpu_us": {
+            "user": 3220,
+            "system": 5
+          },
+          "state": "finished",
+          "result": "[1] TRUE\n",
+          "profile": "07-methods-5.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 20.442
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                17.118
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                1.196
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::library::stats::fourier::transform",
+                1.065
+              ],
+              [
+                "dispatch",
+                1.063
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "methods-final-gc-output",
+          "ms": 355.91304599999785,
+          "cpu_us": {
+            "user": 356947,
+            "system": 3003
+          },
+          "state": "finished",
+          "result": "           used (Mb) gc trigger  (Mb) limit (Mb) max used  (Mb)\nNcells   480288 55.0     980018 112.2         NA   921986 105.6\nVcells 16293352 62.2   32586704 124.4         NA 16293352  62.2\n",
+          "profile": "08-methods-final-gc-output.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 19.735999999999997,
+              "collection": 349.9899999999997
+            },
+            "top_self_sample_ms": [
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                43.607000000000006
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                41.575
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                41.468
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                38.29600000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                29.762999999999995
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                18.083
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                18.078
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::gengc::gc_trace::TraceWorklist>::admit",
+                14.9
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                14.892000000000001
+              ],
+              [
+                "post",
+                14.424
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_projection",
+                8.521
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                8.512
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::clear_swept_references_in",
+                8.509
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                7.449
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::resolve_link",
+                7.445
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-source",
+          "sha256": "fc164b9851c7403db5978dc26b8ced910b8b81e1405f912243b5a2aa49f47ec0",
+          "bytes": 880,
+          "width": 800,
+          "height": 600,
+          "source": "website/src/data/examples.ts"
+        },
+        {
+          "phase": "sunflower-direct-initialize",
+          "ms": 2148.2538600000007,
+          "cpu_us": {
+            "user": 2212722,
+            "system": 29107
+          },
+          "state": "finished",
+          "result": true,
+          "profile": "09-sunflower-direct-initialize.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 1645.0770000000134,
+              "collection": 451.1950000000002,
+              "allocation": 68.30300000000003
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                102.21200000000002
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                99.144
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                99.021
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                98.176
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                91.648
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                77.77000000000002
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                68.20200000000001
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                59.680000000000014
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                54.320000000000014
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                54.27499999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                51.202999999999996
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                43.708999999999996
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                42.573
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&i64>",
+                39.407000000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                39.38800000000001
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-direct-cold",
+          "ms": 10639.181907000002,
+          "cpu_us": {
+            "user": 11183283,
+            "system": 161430
+          },
+          "state": "finished",
+          "result": {
+            "output": "",
+            "png_bytes": 42980
+          },
+          "profile": "10-sunflower-direct-cold.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 8980.390000000043,
+              "allocation": 170.9399999999999,
+              "collection": 1507.9960000000021
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                825.649
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                521.1789999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                450.87699999999995
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                427.9839999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                420.7809999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                396.05299999999977
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                370.2869999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::header::HeaderSnap>::new",
+                242.6119999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                239.13299999999978
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                224.44299999999993
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                217.83600000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                214.44199999999978
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::payload::PayloadLease>::matches_header",
+                186.78300000000002
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                177.09299999999988
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                168.74799999999988
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-direct-warm",
+          "ms": 11060.349916,
+          "cpu_us": {
+            "user": 11136467,
+            "system": 152411
+          },
+          "state": "finished",
+          "result": {
+            "output": "",
+            "png_bytes": 42980
+          },
+          "profile": "11-sunflower-direct-warm.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 9281.951000000028,
+              "allocation": 204.3969999999998,
+              "collection": 1587.3489999999986,
+              "PNG encoding": 1.064
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                772.325
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                581.3089999999995
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                511.8609999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                482.1050000000002
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                478.9889999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                430.7979999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                400.2889999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                277.564
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                255.45599999999976
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                240.4279999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                234.18099999999984
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                223.58699999999996
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::payload::PayloadLease>::matches_header",
+                220.17699999999994
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                219.03000000000003
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                204.4709999999999
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-direct-final-gc-output",
+          "ms": 139.53873600000225,
+          "cpu_us": {
+            "user": 144794,
+            "system": 6
+          },
+          "state": "finished",
+          "result": "          used (Mb) gc trigger (Mb) limit (Mb) max used (Mb)\nNcells  122743 14.1     320092 36.7         NA   785786   90\nVcells 4977271 19.0    9954542 38.0         NA  4977271   19\n",
+          "profile": "12-sunflower-direct-final-gc-output.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 14.42,
+              "collection": 136.79399999999998
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                12.29
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                11.709
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                11.138
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::full_gc_in",
+                10.638
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                10.636000000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                10.626000000000001
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                9.57
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                8.514
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                8.498000000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::resolve_link",
+                5.318
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                5.317000000000001
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::clear_swept_references_in",
+                4.261
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::gc_trace_bridge::remap_fields",
+                4.255
+              ],
+              [
+                "<core[ff045eadf811fb26]::hash::sip::Hasher<core[ff045eadf811fb26]::hash::sip::Sip13Rounds> as core[ff045eadf811fb26]::hash::Hasher>::write",
+                4.254
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&rmath[7d1bc92fafd7fecc]::sexp::heap::NodeLink>",
+                4.25
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-after-previous-plot-initialize",
+          "ms": 2261.1834720000043,
+          "cpu_us": {
+            "user": 2299070,
+            "system": 31095
+          },
+          "state": "finished",
+          "result": true,
+          "profile": "13-sunflower-after-previous-plot-initialize.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 1685.788000000015,
+              "allocation": 66.308,
+              "collection": 520.6080000000005
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                129.17599999999996
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                112.12699999999995
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                109.06299999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                89.83499999999995
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                88.619
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                83.20600000000003
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                67.31499999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                60.86300000000003
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                55.49099999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                51.21000000000002
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::replace_node",
+                50.31600000000002
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                50.150000000000006
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                50.12100000000003
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                42.76100000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                40.65200000000001
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-after-previous-plot-previous",
+          "ms": 98.13992200000212,
+          "cpu_us": {
+            "user": 101184,
+            "system": 1001
+          },
+          "state": "finished",
+          "result": {
+            "output": "",
+            "png_bytes": 7019
+          },
+          "profile": "14-sunflower-after-previous-plot-previous.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 111.957,
+              "collection": 1.065,
+              "allocation": 2.129
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                17.041
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                8.701
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                8.491999999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::header::HeaderSnap>::new",
+                4.264
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                4.253
+              ],
+              [
+                "png[b81d1aea7a09f0a6]::filter::filter",
+                3.2270000000000003
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                3.205
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::globals::singletons::lease",
+                3.1919999999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                3.19
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::accessors::graph_edge",
+                3.1879999999999997
+              ],
+              [
+                "miniz_oxide[e42cac06caef0e3a]::deflate::core::compress_inner",
+                3.1879999999999997
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::payload::PayloadLease>::matches_header",
+                2.1390000000000002
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                2.1310000000000002
+              ],
+              [
+                "core[ff045eadf811fb26]::ptr::drop_glue::<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>[4]",
+                2.127
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::instance::persistent::PersistentBacking>::node_snapshot",
+                2.1239999999999997
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-after-previous-plot-cold",
+          "ms": 10638.737699000005,
+          "cpu_us": {
+            "user": 10730209,
+            "system": 152472
+          },
+          "state": "finished",
+          "result": {
+            "output": "",
+            "png_bytes": 42980
+          },
+          "profile": "15-sunflower-after-previous-plot-cold.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 8810.217000000062,
+              "allocation": 148.336,
+              "collection": 1697.3980000000038
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                802.0589999999995
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                500.9969999999998
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                494.371
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                437.75700000000006
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                409.0279999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                388.64
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                369.16900000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                256.9429999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                255.2649999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::header::HeaderSnap>::new",
+                253.26500000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                233.9119999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                212.55599999999984
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                211.51899999999986
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::payload::PayloadLease>::matches_header",
+                183.59199999999987
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                179.31499999999983
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-after-previous-plot-warm",
+          "ms": 11074.930119000004,
+          "cpu_us": {
+            "user": 11118070,
+            "system": 169295
+          },
+          "state": "finished",
+          "result": {
+            "output": "",
+            "png_bytes": 42980
+          },
+          "profile": "16-sunflower-after-previous-plot-warm.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 9310.467000000159,
+              "collection": 1629.9270000000113,
+              "allocation": 169.45699999999982
+            },
+            "top_self_sample_ms": [
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::Sexp>::header",
+                768.8220000000007
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_header",
+                555.2209999999993
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                535.6489999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                479.3630000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                427.0890000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::copy_live",
+                394.8769999999998
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                355.6650000000001
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::is_live",
+                265.03900000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::payload_lease_for_header",
+                246.04099999999985
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodeProjection<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_slot",
+                238.68199999999985
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::object::header::HeaderSnap>::new",
+                232.0729999999999
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                227.87099999999978
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                222.49099999999999
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::payload::PayloadLease>::matches_header",
+                206.68799999999993
+              ],
+              [
+                "<std[4de27a056a77570]::hash::random::RandomState as core[ff045eadf811fb26]::hash::BuildHasher>::hash_one::<&usize>",
+                193.74999999999986
+              ]
+            ]
+          }
+        },
+        {
+          "phase": "sunflower-after-previous-plot-final-gc-output",
+          "ms": 127.96547899999132,
+          "cpu_us": {
+            "user": 132464,
+            "system": 987
+          },
+          "state": "finished",
+          "result": "          used (Mb) gc trigger (Mb) limit (Mb) max used (Mb)\nNcells  122743 14.1     319872 36.7         NA   788297 90.3\nVcells 4973971 19.0    9947942 38.0         NA  4973971 19.0\n",
+          "profile": "17-sunflower-after-previous-plot-final-gc-output.cpuprofile",
+          "sampling": {
+            "scope": "Sampled CPU milliseconds, classified by stack names; not phase wall-clock durations. Raw profiles retained.",
+            "categories": {
+              "evaluation/other": 22.506,
+              "collection": 127.12400000000002
+            },
+            "top_self_sample_ms": [
+              [
+                "post",
+                22.506
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::drain_trace_worklist",
+                12.748
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::SlotIter as core[ff045eadf811fb26]::iter::traits::iterator::Iterator>::next",
+                11.695
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::memory::checked_snapshot",
+                11.109
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::CheckedNode>::new",
+                10.628
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::resolve_link",
+                8.651
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::NodePage<rmath[7d1bc92fafd7fecc]::sexp::ffi::SexprecCore>>::resolve_link",
+                8.505999999999998
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::clear_swept_references_in",
+                7.437
+              ],
+              [
+                "<std[4de27a056a77570]::thread::local::LocalKey<core[ff045eadf811fb26]::cell::RefCell<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>>>::try_with::<rmath[7d1bc92fafd7fecc]::sexp::memory::find_slab_entry::{closure#1}, core[ff045eadf811fb26]::option::Option<rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>",
+                5.319
+              ],
+              [
+                "<alloc[e53b5308c922cba6]::collections::btree::map::BTreeMap<usize, rmath[7d1bc92fafd7fecc]::sexp::memory::SlabMetadata>>::range::<usize, core[ff045eadf811fb26]::ops::range::RangeToInclusive<usize>>",
+                5.3100000000000005
+              ],
+              [
+                "rmath[7d1bc92fafd7fecc]::sexp::gengc::sweep_link_remap",
+                3.191
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::node_snapshot",
+                3.1900000000000004
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::resolve_link",
+                3.19
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::heap::HeapIdentity>::replace_node",
+                3.1899999999999995
+              ],
+              [
+                "<rmath[7d1bc92fafd7fecc]::sexp::memory::ArenaBacking>::node_payload",
+                3.189
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "budget_policy": "Original15s runtime/client and90s aggregate FFT/RNG limits retained. Diagnostic profile uses names-only module with byte-identical standard execution sections; profiler phase durations are separate from unprofiled browser acceptance."
+  },
+  "conformance": {
+    "errors": [],
+    "execution": {
+      "build_rustflags": "-Awarnings",
+      "case_timeout_seconds": 300.0,
+      "corpus_sha256": "813d0cc36c241471780873813e0e6f6be81876962e528d07c89e4298086f40df",
+      "engine_major_minor": "4.7",
+      "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+      "pinned_oracle_required": true,
+      "profile": "release",
+      "schema_version": 1,
+      "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
+      "source_sha256": "b58fa9f5b74e99030bf0728ed24e6c9adf131c68309e601e9a18b783affe2a4c",
+      "strict": true
+    },
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "inventory_total": 1181,
+    "received_shards": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "shard_count": 6,
+    "status_counts": {
+      "fail": 98,
+      "pass": 1083,
+      "skip": 0,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "strict_pass": false,
+    "timed_out": 0,
+    "total": 1181,
+    "unattempted_cases": [],
+    "failures": [
+      {
+        "case": "033_read_fwf_empty_widths",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "082_unserialize_non_connection",
+        "detail": "",
+        "domain": "Error semantics",
+        "kind": "error",
+        "status": "fail"
+      },
+      {
+        "case": "1000_plclust",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1003_plot_stepfun",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1005_heatmap",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1006_rect_hclust",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1007_qqline",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1009_cpgram",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1010_plot_ts",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1012_monthplot_scatter",
+        "detail": "",
+        "domain": "Graphics and Android embedding",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1013_interaction_lag_eff",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1015_struct_ts_trend",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1016_struct_ts_bsm",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1046_arima_ma2_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1047_arima_ar1_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1048_arima_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1049_arima_ma1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1050_arima_ar1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1051_arima_ma1_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1052_arima_sar1_sma1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1053_arima_sar1_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1054_arima_ar3_ml",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1056_arima_arma11_sar1_sma1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1060_arima_arma12_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1063_arima_arma11_sar1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1064_arima_arma11_sma1_ml",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1067_holtwinters",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1068_structts_level",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1069_structts_trend",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1070_stl",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "1102_str_atomic_preview",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "260_length_replacement",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "284_methods_runtime_registry",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "288_with_calling_handlers",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "293_read_write_char_connections",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "328_date_arithmetic",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "329_posixct_arithmetic",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "331_datetime_c_rep",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "333_difftime_ops",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "381_no_random_seed_loadrds_functions",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "385_no_string_reshape_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "387_no_runtime_helper_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "388_no_print_summary_method_aliases",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "389_no_reflection_helper_alias_builtins",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "393_summary_default_vectors",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "432_prop_table_margins",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "492_rep_int_len_helpers",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "523_signif_fprec_edge_matrix",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "537_strptime_posixlt_parity",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "570_loess_contracts",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "599_density",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "602_supsmu",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "604_isoreg",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "612_smooth_spline",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "614_stl",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "617_holtwinters",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "621_ks_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "623_ccf",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "637_diffinv",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "646_D_hyp",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "650_D_atan",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "651_D_gamma",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "652_holtwinters_alpha",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "653_deriv3",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "654_holtwinters_sse",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "656_nlminb",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "657_holtwinters_coef",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "660_armaacf",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "666_holtwinters_x",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "671_is_ts",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "689_adist",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "697_bindtextdomain",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "705_localeToCharset",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "710_ISOdate",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "720_as_POSIXct_lt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "724_mean_Date",
+        "detail": "",
+        "domain": "Stats, math, and RNG",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "726_trunc_POSIXt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "727_round_POSIXt",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "731_as_list_Date",
+        "detail": "",
+        "domain": "Vectors, lists, attributes, and objects",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "739_xtfrm_julian_POSIXt",
+        "detail": "",
+        "domain": "Base functions, conditions, and platform helpers",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "757_ansari_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "769_pp_test",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "774_aregexec",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "793_covratio",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "809_lm_influence",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "820_dummy_coef",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "858_dfbetas",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "863_struct_ts_level",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "864_factanal",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "888_ts_smooth",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "901_ar_burg",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "927_loglin",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "929_psmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "930_qsmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "961_density_default",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "988_ppr",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "995_rsmirnov",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      },
+      {
+        "case": "999_arima0_diag",
+        "detail": "",
+        "domain": "Parser and scalar basics",
+        "kind": "normal",
+        "status": "fail"
+      }
+    ],
+    "independent_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/independent-conformance.json",
+      "bytes": 200727,
+      "sha256": "4cce4810c752d976fa6355063dc837f0fdc732859ca2d587341369690e79e97c"
+    },
+    "producer_summaries": [
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-0/summary.json",
+        "bytes": 41589,
+        "sha256": "42de7c21a64d07c29eeebccfc9fabb11cc24a9cecfb37080e3d6152a470438a5"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-1/summary.json",
+        "bytes": 41491,
+        "sha256": "a4061a96b91685586b2d6578e94c879cf80def3e1c7b6d475409e52454f17907"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-2/summary.json",
+        "bytes": 41662,
+        "sha256": "f163917c21dc13fdbc2fea1ce64379945b2075090ea2ce008d2ccc1b30f014a3"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-3/summary.json",
+        "bytes": 41788,
+        "sha256": "92d5bc3843e66bc7710b403fa451b610a98eb4ba29a52b379a7af02c9694d7fe"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-4/summary.json",
+        "bytes": 41656,
+        "sha256": "e6fece0f2ef0ceb38b466b76f5b466f18fe9a78a126ae6b3f7ac3a0a2eef041f"
+      },
+      {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-shard-5/summary.json",
+        "bytes": 41663,
+        "sha256": "9c3af446a5bf34bad316630189d94f4beb6f0e8f641bdfa57e649bd6f07c3f5d"
+      }
+    ],
+    "producer_union_summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/ci-checkpoint-189f5515/conformance/exact-oracle-conformance-union/summary.json",
+      "bytes": 200727,
+      "sha256": "4cce4810c752d976fa6355063dc837f0fdc732859ca2d587341369690e79e97c"
+    }
+  },
+  "newly_passing_conformance_cases": [
+    {
+      "case": "024_sample_int_too_large",
+      "detail": "",
+      "domain": "Error semantics",
+      "kind": "error",
+      "status": "pass"
+    },
+    {
+      "case": "026_sample_prob_too_few_positive",
+      "detail": "",
+      "domain": "Error semantics",
+      "kind": "error",
+      "status": "pass"
+    }
+  ],
+  "regressed_conformance_cases": [],
+  "previous_complete_conformance_commit": "711e08100408f953bd729266edc24fa575f681e0",
+  "remaining": "98 conformance failures remain. Workspace validation and the existing LOESS gctorture program are not complete."
+}

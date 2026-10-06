@@ -597,6 +597,7 @@
     "id": 37481981284,
     "source_commit": "189f55159eac5ff2884cddd59eb16de29086ad7a",
     "url": "https://github.com/bernaferrari/R-rust/actions/runs/37481981284",
-    "status_when_sealed": "queued; no Linux passing result inferred"
+    "status_when_sealed": "public package56/56, originalChromium60/60 and completeconformance1083/1181 verified from downloaded producers; broader runtime remains incomplete",
+    "receipt": "docs/ci-checkpoints/linux-browser-package-189f5515.json"
   }
 }
