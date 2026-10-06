@@ -54,12 +54,20 @@ fn raw(access: &RuntimeAccess, bytes: &[u8]) -> SexpResult<Sexp<'static>> {
         .map_err(|_| SexpError::AllocationFailed {
             object: "portable package serialized record",
         })?;
-    let value = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, length)))?;
-    let mut value = SexpMut::try_from_checked(value)?;
-    for (index, byte) in bytes.iter().copied().enumerate() {
-        value.try_set_raw_elt(index as _, byte)?;
-    }
-    Ok(value.freeze())
+    // Initialize the fresh allocation while the original arena is exclusively
+    // lent. No callback or borrowed payload view crosses these bounded writes;
+    // the allocator roots the complete value before deferred collection runs.
+    allocator.allocate(|arena| {
+        let pointer = arena.alloc_vector(SEXPTYPE::RAWSXP, length);
+        let node = arena.node_token(pointer)?;
+        if !bytes.is_empty() {
+            let payload = node.heap_identity().payload_lease(&node)?;
+            for (index, byte) in bytes.iter().copied().enumerate() {
+                payload.set_byte_elt(index, byte)?;
+            }
+        }
+        Some(pointer)
+    })
 }
 
 fn environment(access: &RuntimeAccess, parent: &Sexp<'static>) -> SexpResult<Sexp<'static>> {
