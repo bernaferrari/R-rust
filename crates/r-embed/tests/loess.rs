@@ -10,13 +10,13 @@ fn loess_runs_through_formula_dispatch_and_predict() {
 #[test]
 fn loess_data_weights_subset_model_and_matrix_predictors() {
     let mut s = RSession::new().unwrap();
-    assert_eq!(s.eval("d<-data.frame(x=seq(0,1,length.out=30)); d$y<-sin(d$x*5); d$w<-1+d$x; f<-loess(y~x,data=d,weights=w,subset=c(30:1,1),model=TRUE); c(f$n,nrow(f$model),length(predict(f,newdata=list(x=c(.2,.5)))))").unwrap(), "[1] 31 31  2\n");
+    assert_eq!(s.eval("d<-data.frame(x=seq(0,1,length.out=30)); d$y<-sin(d$x*5); d$w<-1+d$x; f<-loess(y~x,data=d,weights=w,subset=c(30:1,1),model=TRUE); c(f$n,nrow(f$model),length(predict(f,newdata=data.frame(x=c(.2,.5)))))").unwrap(), "[1] 31 31  2\n");
     assert_eq!(s.eval("class(f$model)").unwrap(), "[1] \"data.frame\"\n");
     assert_eq!(
         s.eval("f$x[1,1] == 1 && f$x[31,1] == 0").unwrap(),
         "[1] TRUE\n"
     );
-    assert_eq!(s.eval("z<-cbind(d$x,cos(d$x*3)); g<-loess(y~z,data=d,span=1); length(predict(g,newdata=list(z=z)))").unwrap(), "[1] 30\n");
+    assert_eq!(s.eval("z<-cbind(d$x,cos(d$x*3)); g<-loess(y~z,data=d,span=1); length(predict(g,newdata=data.frame(z=I(z))))").unwrap(), "[1] 30\n");
 }
 
 #[test]
@@ -24,14 +24,57 @@ fn loess_errors_recover_and_mutated_models_are_validated() {
     let mut s = RSession::new().unwrap();
     s.eval("x<-seq(0,1,length.out=30);y<-sin(x*5);f<-loess(y~x)")
         .unwrap();
+    for code in ["loess(y~x,span=0)", "loess(y~x,parametric=TRUE)"] {
+        assert!(s.eval(code).is_err(), "{code}");
+        assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
+    }
+    assert_eq!(
+        s.eval("p<-predict(f);f$pars$span<-NaN;f$divisor<-numeric(0);identical(p,predict(f))")
+            .unwrap(),
+        "[1] TRUE\n"
+    );
+}
+
+#[test]
+fn portable_loess_cached_fitted_values_and_numerical_admission() {
+    let mut s = RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
+        Vec::new(),
+        std::env::temp_dir(),
+    ))
+    .unwrap();
+    assert_eq!(s.eval("x<-seq(0,1,length.out=30);y<-sin(x*5);f<-loess(y~x);p<-predict(f);f$pars$span<-NaN;f$divisor<-numeric(0);identical(p,predict(f))").unwrap(), "[1] TRUE\n");
     for code in [
-        "loess(y~x,span=0)",
-        "loess(y~x,parametric=NA)",
-        "f$pars$span<-NaN;predict(f)",
-        "f$divisor<-numeric(0);predict(f)",
+        "f<-loess(y~x);f$pars$span<-NaN;predict(f,newdata=.2)",
+        "f<-loess(y~x);f$divisor<-numeric(0);predict(f,newdata=.2)",
     ] {
         assert!(s.eval(code).is_err(), "{code}");
         assert_eq!(s.eval("1+1").unwrap(), "[1] 2\n");
+    }
+}
+
+#[test]
+fn loess_none_statistics_matches_gnu_under_both_policies() {
+    for portable in [false, true] {
+        let mut s = if portable {
+            RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
+                Vec::new(),
+                std::env::temp_dir(),
+            ))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(s.eval(r#"identical(tryCatch(predict.loess(list(fitted=1L)),error=function(e)conditionMessage(e)), 'first argument must be a "loess" object')"#).unwrap(), "[1] TRUE\n");
+        for surface in ["direct", "interpolate"] {
+            let code = format!(
+                "x<-seq(0,1,length.out=15);y<-sin(5*x)+x^2;f<-loess(y~x,control=loess.control(surface='{surface}',statistics='none'));identical(c(f$trace.hat,f$one.delta,f$two.delta,is.infinite(f$s)),c(0,0,0,1)) && identical(predict(f),f$fitted)"
+            );
+            assert_eq!(
+                s.eval(&code).unwrap(),
+                "[1] TRUE\n",
+                "portable={portable},surface={surface}"
+            );
+        }
     }
 }
 

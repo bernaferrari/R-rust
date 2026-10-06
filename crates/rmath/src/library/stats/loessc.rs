@@ -314,18 +314,21 @@ fn engine_loess_raw(
             Err(message) => fail_loess(&message),
         };
         write_fit(surface, &model.fitted);
+        let no_statistics = surf.ends_with("/none");
         if !tr_l.is_null() {
-            *tr_l = model.trace;
+            *tr_l = if no_statistics { 0.0 } else { model.trace };
         }
         if !one_delta.is_null() {
-            *one_delta = if model.delta1 == 0.0 {
+            *one_delta = if no_statistics {
+                0.0
+            } else if model.delta1 == 0.0 {
                 1.0
             } else {
                 model.delta1
             };
         }
         if !two_delta.is_null() {
-            *two_delta = model.delta2;
+            *two_delta = if no_statistics { 0.0 } else { model.delta2 };
         }
         if !parameter.is_null() {
             *parameter = *d;

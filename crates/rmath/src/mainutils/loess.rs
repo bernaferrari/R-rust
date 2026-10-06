@@ -81,7 +81,10 @@ pub(crate) unsafe fn do_predict_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "predict.loess",
-            "function(object,newdata=NULL,se=FALSE,na.action=na.pass,...) .rport_loess_predict(object,newdata,se)",
+            r#"function(object,newdata=NULL,se=FALSE,na.action=na.pass,...) {
+                if (!inherits(object, "loess")) stop('first argument must be a "loess" object')
+                .rport_loess_predict(object,newdata,se)
+            }"#,
             args,
             rho,
             false,
@@ -619,6 +622,18 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
             base_error("invalid LOESS prediction arguments");
         }
         let obj = a[0];
+        // GNU predict.loess returns fitted(object) before admitting numerical
+        // prediction metadata when no new data or uncertainty was requested.
+        if a[1] == R_NilValue() && scalar(a[2]) == 0.0 {
+            let fitted = field(obj, "fitted");
+            let _fitted = protect(fitted);
+            let action = field(obj, "na.action");
+            return if is_exclude_action(action) {
+                restore_excluded_fit(&numeric(fitted), action)
+            } else {
+                fitted
+            };
+        }
         let pars = field(obj, "pars");
         let control = field(obj, "control");
         let y = numeric(field(obj, "y"));
