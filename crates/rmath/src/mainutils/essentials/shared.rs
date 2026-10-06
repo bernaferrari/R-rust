@@ -4286,6 +4286,12 @@ unsafe fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
 
 pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     unsafe {
+        // Every attached package participates in S3 search, including small
+        // export frames below the ordinary automatic-promotion threshold.
+        // Admit the existing canonical frame index so repeated absent method
+        // lookups do not walk those exports. The index still reads current
+        // binding cells and uses the existing mutation/collection invalidation.
+        crate::sexp::env_hash::promote_to_hash_table(package_env);
         let global = crate::sexp::globals::R_GlobalEnv();
         let old_enclos = crate::sexp::accessors::ENCLOS(global);
         crate::sexp::accessors::SET_ENCLOS(global, package_env);

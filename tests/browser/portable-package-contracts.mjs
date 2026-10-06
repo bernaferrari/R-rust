@@ -35,6 +35,8 @@ const contracts = [
     'print-gap-public-contract',
     'arima0-public-contract',
     'utils-console-public-contract',
+    'mapply-public-contract',
+    'sample-condition-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

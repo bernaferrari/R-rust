@@ -658,6 +658,40 @@ mod tests {
     }
 
     #[test]
+    fn attached_small_package_frame_proves_absent_s3_methods() {
+        for portable in [false, true] {
+            let mut session = if portable {
+                RSession::new_with_path_policy(crate::mainutils::paths::RuntimePathPolicy::new(
+                    Vec::new(),
+                    "/tmp",
+                ))
+            } else {
+                RSession::new()
+            };
+            let (result, _, _) =
+                session.eval_script_with_output_capture("as.environment('package:graphics')");
+            let env = result.unwrap().into_owned().unwrap();
+            session.with_active(|| {
+                let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+                let absent = symbol(&factory, "mean.numeric");
+                assert_eq!(
+                    hash_binding_lookup(&env, &absent),
+                    BindingLookup::Absent,
+                    "portable={portable}: attached package frames must prove method absence"
+                );
+                assert_canonical_index(&env);
+                // An index hit remains a canonical binding-cell read, not a
+                // cached value. Package identity survives collection.
+                let plot = symbol(&factory, "plot");
+                let original = lookup(&env, &plot).unwrap();
+                unsafe { crate::sexp::gengc::full_gc() };
+                assert_eq!(lookup(&env, &plot).unwrap(), original);
+                assert_eq!(hash_binding_lookup(&env, &absent), BindingLookup::Absent);
+            });
+        }
+    }
+
+    #[test]
     fn owned_binding_index_definitions_keep_canonical_index_across_prepends_updates_and_gc() {
         let session = RSession::new_for_gc_tests();
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
