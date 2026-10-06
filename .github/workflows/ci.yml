@@ -86,14 +86,14 @@ jobs:
     name: Public package integration
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      RPORT_PACKAGE_REPORT: ${{ runner.temp }}/public-package-checkpoint
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Record immutable package execution profile
+        env:
+          RPORT_PACKAGE_REPORT: ${{ runner.temp }}/public-package-checkpoint
         run: |
           mkdir -p "$RPORT_PACKAGE_REPORT"
           python3 - <<'PY'
@@ -116,7 +116,7 @@ jobs:
       - name: Execute original public package workflows
         run: >-
           python3 scripts/upstream_execution.py process
-          --directory "$RPORT_PACKAGE_REPORT/execute"
+          --directory "${{ runner.temp }}/public-package-checkpoint/execute"
           --cwd "$PWD" --timeout 1200 --separate-streams --
           scripts/cargo_dev.sh test -p r-embed
           --test embed --test namespace_initialization
@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: public-package-checkpoint
-          path: ${{ env.RPORT_PACKAGE_REPORT }}
+          path: ${{ runner.temp }}/public-package-checkpoint
           if-no-files-found: error
 
   conformance:
