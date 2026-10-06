@@ -1523,6 +1523,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            ".handleSimpleError",
+            include_str!("gnu_handle_simple_error.R"),
+        );
+        eval_base_binding(
+            base_env,
             "all.equal.default",
             include_str!("gnu_all_equal_default.R"),
         );

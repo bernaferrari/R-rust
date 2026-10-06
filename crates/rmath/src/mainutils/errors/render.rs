@@ -480,9 +480,12 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                 let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
                 let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
                 let _msg_guard = protect(msg_sexp);
-                let inner = Rf_lang2(handler.as_raw(), msg_sexp);
-                let _inner_guard = protect(inner);
-                let hcall = Rf_lang3(hooksym, inner, call);
+                // GNU .handleSimpleError takes (handler, message, call).
+                // The originating call is condition data, not an expression
+                // to evaluate while invoking the calling handler.
+                let quoted_call = Rf_lang2(Rf_install(c"quote".as_ptr()), call);
+                let _call_guard = protect(quoted_call);
+                let hcall = Rf_lang4(hooksym, handler.as_raw(), msg_sexp, quoted_call);
                 let _hcall_guard = protect(hcall);
                 let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
             } else {
