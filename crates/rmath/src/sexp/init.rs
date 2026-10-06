@@ -741,6 +741,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              character.only = FALSE, mask.ok, exclude, include.only,\n\
              attach.required = missing(include.only)) {\n\
              if (!character.only) package <- as.character(substitute(package))\n\
+             if (!(paste0(\"package:\", package) %in% search()) && !quietly)\n\
+                 packageStartupMessage(gettextf(\"Loading required package: %s\", package), domain = NA)\n\
              invisible(.rport_require(package))\n\
              }",
         );
