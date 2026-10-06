@@ -100,7 +100,7 @@ jobs:
           import json, os, pathlib, shutil, subprocess
           profile = {
               "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-              "build_profile": "debug",
+              "build_profile": "release",
               "features": ["r-embed/default", "rmath/rust-backend", "rmath/renderplot-device"],
               "numerical_backend": "faer",
               "device": "owned renderplot scene",
@@ -118,7 +118,7 @@ jobs:
           python3 scripts/upstream_execution.py process
           --directory "${{ runner.temp }}/public-package-checkpoint/execute"
           --cwd "$PWD" --timeout 2400 --separate-streams --
-          scripts/cargo_dev.sh test -p r-embed
+          scripts/cargo_dev.sh test -p r-embed --release
           --test embed --test namespace_initialization
           --test portable_namespace_integration --test portable_grdevices_namespace
           --test portable_stats_namespace --test complex_print_contract
@@ -126,15 +126,15 @@ jobs:
           --test mapply_public_contract --test sample_condition_contract
           --test rep_len_admission_contract --test unserialize_connection_contract
           --test calling_error_handlers --test calling_warning_handlers
-          --test try_condition_calls --test slot_try_error
+          --test try_condition_calls --test slot_try_error --test gnu_bytecode_source_marker
 
       - name: Verify original S4 subset calls through both public policies
         run: >-
           python3 scripts/upstream_execution.py process
           --directory "${{ runner.temp }}/public-package-checkpoint/s4-subset-call"
           --cwd "$PWD" --timeout 2400 --separate-streams --
-          scripts/cargo_dev.sh test -p r-embed --test s4_next_method
-          s4_next_method_preserves_original_subset_call_and_named_drop -- --exact
+          scripts/cargo_dev.sh test -p r-embed --release --test s4_next_method
+          s4_next_method_ -- --test-threads=1
 
       - name: Upload durable public package evidence
         if: always()

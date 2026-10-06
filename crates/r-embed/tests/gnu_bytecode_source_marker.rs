@@ -1,4 +1,4 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/gnu-bytecode-source-marker/branch.rds");
 const WORDS: [i32; 14] = [12, 17, 4, 20, 2, 3, 3, 11, 16, 4, 1, 16, 5, 1];
@@ -73,4 +73,22 @@ fn source_symbol_cannot_override_gnu_instructions_or_validation() {
             .trim(),
         "[1] 3"
     );
+}
+
+#[test]
+fn imported_source_edits_preserve_compiled_constants_and_closure_aliases() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "tmp"))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            session
+                .eval(include_str!("fixtures/gnu-compiled-source-edit-contract.R"))
+                .unwrap(),
+            include_str!("fixtures/gnu-compiled-source-edit-contract.out")
+        );
+    }
 }

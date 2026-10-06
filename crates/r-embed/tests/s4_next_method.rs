@@ -1,4 +1,4 @@
-use r_embed::{RSession, RuntimePathPolicy};
+use r_embed::{RResourceLimits, RSession, RuntimePathPolicy};
 
 fn eval(code: &str) -> String {
     RSession::new()
@@ -105,5 +105,62 @@ fn s4_next_method_preserves_original_subset_call_and_named_drop() {
             include_str!("fixtures/s4-next-method-public-contract.out"),
             "portable={portable}"
         );
+    }
+}
+
+#[test]
+fn s4_next_method_fits_browser_limits_after_package_workflows() {
+    macro_rules! contract {
+        ($name:literal) => {
+            include_str!(concat!("fixtures/", $name, ".R"))
+        };
+    }
+    let preceding = [
+        contract!("complex-print-public-contract"),
+        contract!("stats-namespace-public-contract"),
+        contract!("get-lazy-mode-public-contract"),
+        contract!("correlation-public-contract"),
+        contract!("palette-public-contract"),
+        contract!("tempfile-public-contract"),
+        contract!("bincode-public-contract"),
+        contract!("print-gap-public-contract"),
+        contract!("arima0-public-contract"),
+        contract!("utils-console-public-contract"),
+        contract!("mapply-public-contract"),
+        contract!("sample-condition-contract"),
+        contract!("rep-len-admission-contract"),
+        contract!("calling-error-handler-public-contract"),
+        contract!("calling-warning-handler-public-contract"),
+    ];
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "tmp"))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        if portable {
+            session.enable_browser_files();
+        }
+        session
+            .set_resource_limits(RResourceLimits {
+                max_eval_depth: 1000,
+                max_execution_time_ms: 15000,
+                max_alloc_bytes: 64 * 1024 * 1024,
+                max_arena_nodes: 500000,
+            })
+            .unwrap();
+        for code in preceding {
+            session.eval(code).unwrap();
+        }
+        assert_eq!(
+            session
+                .eval(include_str!("fixtures/s4-next-method-public-contract.R"))
+                .unwrap(),
+            include_str!("fixtures/s4-next-method-public-contract.out"),
+            "portable={portable}; {:?}",
+            session.arena_stats()
+        );
+        assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
     }
 }

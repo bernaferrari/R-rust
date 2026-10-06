@@ -1606,10 +1606,12 @@ unsafe fn read_bc_source(
             return Ok(VECTOR_ELT(constants, 0));
         }
 
-        // Keep source deparsing independent from the executable constants.
-        // The source is an owned copy because callers may edit it while the
-        // bytecode must continue to read its own constant pool.
-        let source = crate::mainutils::duplicate::Rf_duplicate(VECTOR_ELT(constants, 0));
+        // GNU keeps its source in constant zero. Share that original graph
+        // rather than duplicating every imported closure's syntax tree.
+        // The sticky shared mark makes public body/subset edits copy before
+        // writing, including expressions also referenced by other constants.
+        let source = VECTOR_ELT(constants, 0);
+        SET_NAMED(source, 3);
         let _source = protect(source);
         let marker = Rf_ScalarInteger(crate::eval::bytecode::GNU_BC_DIALECT_MARKER);
         let _marker = protect(marker);

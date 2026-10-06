@@ -46,6 +46,7 @@ const contracts = [
     'calling-error-handler-public-contract',
     'calling-warning-handler-public-contract',
     's4-next-method-public-contract',
+    'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',
     'try-condition-call-public-contract',
     'unserialize-connection-contract',
@@ -57,10 +58,15 @@ for (let generation = 0; generation < 2; generation++) {
   const session = new WasmRSession();
   try {
     for (const [source, expected] of contracts) {
+      const started = performance.now();
       try {
         assert.equal(session.eval_checked(readFileSync(source, 'utf8')),
           readFileSync(expected, 'utf8'), `generation=${generation}, source=${source}`);
+        console.log(JSON.stringify({ phase: 'public-contract', generation, source,
+          elapsed_ms: performance.now() - started, status: 'pass' }));
       } catch (error) {
+        console.log(JSON.stringify({ phase: 'public-contract', generation, source,
+          elapsed_ms: performance.now() - started, status: 'fail' }));
         throw new Error(`generation=${generation}, source=${source}`, { cause: error });
       }
       assert.equal(session.eval_checked('1 + 1'), '[1] 2\n');
