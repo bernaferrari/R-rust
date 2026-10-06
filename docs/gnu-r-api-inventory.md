@@ -249,3 +249,10 @@ Six unchanged original cases pass strict pinned GNU comparison; 19 public Wasm
 contracts pass in two fresh sessions and the original Chromium suite passes60/60.
 The independent complete inventory at1d remains1086 pass/95 fail. This partial
 join does not declare all options or unexecuted inventory entries passing.
+
+The [6a2fd0b1 condition and methods execution join](ci-checkpoints/conformance-browser-6a2fd0b1.json)
+connects the original base condition wrappers and methods queries to the complete
+1181-case conformance report, real public constructor tests, and unchanged whole
+`reg-S4.R` driver. Each entry records its implementation, tested calls, source,
+profile, and remaining limits. The warm Wasm S4 allocation failure and incomplete
+GC-torture run are explicit; native success does not establish those contracts.

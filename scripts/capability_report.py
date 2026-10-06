@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-b5f9f8a5.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-6a2fd0b1.json').read_text())
 latest_linux = latest_completed
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
@@ -144,13 +144,13 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `{view['source_commit'][:8]}` | {view_checks['chromium_complete']['expected']} | {view_checks['chromium_complete']['unexpected']} | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `{view['source_commit'][:8]}` | {view['linux_public_packages']['passed']} | {view['linux_public_packages']['failed']} | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `{view['source_commit'][:8]}` | {view['linux_showcase']['stats']['expected']} | {view['linux_showcase']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['passed']} | {latest_linux['native_public']['failed']} | Original 54 plus sampling/mapply and repetition/connection IO; actual constructors, debug profile |
+| Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['passed']} | {latest_linux['native_public']['failed']} | Actual constructors, debug profile; includes original calling handlers |
 | Linux complete Chromium showcase | `{latest_linux['source_commit'][:8]}` | {latest_linux['browser']['stats']['expected']} | {latest_linux['browser']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `{integration_checks['native_packages_and_data']['source_commit'][:8]}` | {integration_checks['native_packages_and_data']['passed']} | {integration_checks['native_packages_and_data']['failed']} | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `{integration_checks['wasm_datasets']['source_commit'][:8]}` | {integration_checks['wasm_datasets']['passed']} | {integration_checks['wasm_datasets']['failed']} | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 | Unchanged whole `structure.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
-| Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
+| Unchanged whole `reg-S4.R` | `6a2fd0b1` | 1 | 0 | Strict GNU comparison; graphics/native/faer release; original subset calls retained |
 
 The latest independently verified complete inventory is recorded at
 `711e0810` in the [complete inventory receipt](ci-checkpoints/complete-inventory-711e0810.json).
@@ -182,9 +182,9 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`b5f9f8a5`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
-| Whole upstream drivers | {complete['upstream_by_kind']['whole']['pass']} | {complete['upstream_by_kind']['whole']['fail']} | 31 skipped; all 70 accounted for |
-| Curated upstream slices | {complete['upstream_by_kind']['curated']['pass']} | 0 | All 15 accounted for |
+| Exact-oracle conformance (`6a2fd0b1`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
+| Whole upstream drivers | {latest_completed['complete_upstream']['by_kind']['whole']['pass']} | {latest_completed['complete_upstream']['by_kind']['whole']['fail']} | 31 skipped; all 70 accounted for (`6a2fd0b1`) |
+| Curated upstream slices | {latest_completed['complete_upstream']['by_kind']['curated']['pass']} | 0 | All 15 accounted for (`6a2fd0b1`) |
 
 The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
@@ -209,7 +209,7 @@ suite passes60/60. Compiled calls preserve original conditionCall, sys.call and
 substitute expressions while cached arguments execute once. These selected
 results are separate from the completed1181 inventory; sequential serialization
 streams, full workspace and current Miri acceptance remain unverified.
-The [newer completed b5 checkpoint](ci-checkpoints/conformance-browser-b5f9f8a5.json)
+The [completed b5 checkpoint](ci-checkpoints/conformance-browser-b5f9f8a5.json)
 records **1083 pass / 98 fail**, all1181 accounted for with zero timeouts. Original
 repetition492 newly passes, but four public error routes regress: dmultinom028/029,
 relevel079 and constrOptim089 report an inner stop expression instead of the GNU
@@ -218,9 +218,37 @@ original FFT/RNG aggregate timing out. Both methods and sunflower flows pass.
 The full workspace fails at the existing calling-error-handler help assertion;
 it is not accepted. These later failures remain distinct from the earlier1d
 passing browser checkpoint and b5 local selected workflows. Follow-ups retain
-the exact failing programs and original conditions. The latest completed
-conformance report has38 fewer failures than the reviewed checkpoint and2 fewer
-than711, with four added failures versus1d. The 711 union
+the exact failing programs and original conditions. That conformance report
+has38 fewer failures than the reviewed checkpoint and2 fewer than711, with four
+added failures versus1d.
+The [completed 7335 checkpoint](ci-checkpoints/conformance-browser-7335e722.json)
+independently joins all six producers and matches the official union: **1086 pass /
+95 fail**, all1181 accounted for with zero timeouts. Five condition cases newly
+pass versus b5, including all four caller regressions and original288. Original
+538 and540 newly fail; the later clean6a replay fixes both complete programs and
+the enclosing whole `reg-S4.R`. Those selected results do not change the7335
+inventory totals. Linux passes all 60 public package checks in 18 suites and all 60
+Chromium checks, with zero skipped or flaky results and unchanged budgets.
+The original29 fresh-worker FFT/RNG cases complete in62.703 seconds; earlier
+timeouts remain unresolved. The full debug workspace is cancelled and remains
+outside accepted evidence. This completed inventory has41 fewer failures than
+the reviewed checkpoint and 5 fewer than 711.
+The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
+independently joins all six conformance producers: **1088 pass / 93 fail**,
+all 1181 accounted for with zero timeouts. Both original cases 538 and 540
+now pass in the complete run. Linux passes 65 selected public package tests
+in 20 suites and the separate S4 subset fixture through both constructor policies.
+Chromium records **59 pass / 1 fail**: the original FFT/RNG aggregate again
+times out at its unchanged 90-second deadline; both original methods and
+sunflower flows pass. The warm production Wasm S4 fixture separately exposes
+allocation pressure; fresh-session success does not establish warm-session acceptance.
+The full workspace is cancelled. The same 6a checkpoint independently joins all
+five upstream producers: **17 whole-driver passes / 22 failures / 31 skips**,
+and **15 curated passes / 0 failures**, with every workload accounted for.
+The unchanged whole `eval-etc.R`, `structure.R`, and `reg-S4.R` drivers pass;
+UTF-8 completes with an output difference, and GNU Latin-1 setup succeeds.
+The runtime profile is explicitly graphics/native/faer release with an
+1800-second deadline per case. The 711 union
 reproduced `4d492679`, including its nineteen newly passing cases versus `7691b601`. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits
@@ -233,8 +261,8 @@ checkpoint recorded 16 whole-driver passes and 23 failures; `6ccae790` recorded
 17 passes and 22 failures. These changing random outcomes do not prove an RNG
 repair. Later selected checks are not added to these totals.
 The preceding `4cd0f941` complete report had twelve fewer failures
-than the reviewed checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
-case 540 still differs in warning call attribution. Selected checks do not alter
+than the reviewed checkpoint. Later selected cases538 and540 pass at6a after
+repairing condition caller contexts. Selected checks do not alter
 the complete union totals. The original `utils::data` closure now reaches its
 portable package-shaped path and original serialized assets through the real
 file/namespace routes. No helpers are injected into the global environment.
