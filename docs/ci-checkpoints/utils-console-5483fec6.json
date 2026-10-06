@@ -287,5 +287,25 @@
       "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
       "limitation": "Original AR1 CSS conformance891 still differs: GNU0,2 versusRust0.0079,2.0033; rport-ul3f4"
     }
-  ]
+  ],
+  "production_browser": {
+    "runtime_source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+    "wasm_sha256": "0210a0a5c83c204fcd5c7f98ee9788f26ecd2e8a2ac694ff47437803840c8c1b",
+    "stats": {
+      "startTime": "2026-10-06T08:54:08.535Z",
+      "duration": 284326.315,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "workers": 1,
+    "budgets": "Unchanged browser15s runtime/client limit and all original examples/tests; existing editor20s limit unchanged.",
+    "measurement_policy": "All task Cargo/native/Miri/other Node validation completed before preparation and full Chromium run; documentation/evidence IO only during run.",
+    "report": {
+      "path": "/tmp/rport-utils-console-5483fec6-full-browser.json",
+      "bytes": 67428,
+      "sha256": "3223894b4bdbe2bb693e67b15f59d8951dea4c03bbfc592228cd1636b40031a1"
+    }
+  }
 }

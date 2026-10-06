@@ -367,7 +367,8 @@ connect the original utils native registration to the session flush callback and
 restore GNU's base close generic and internal connection route. Original progress
 bars, compiled flush calls, lazy close methods and connection closure match GNU
 under both policies. All 54 selected native public tests pass in release; the
-final optimized Wasm passes 13 contracts in two fresh sessions. The real callback
+final optimized Wasm passes 13 contracts in two fresh sessions and all 60
+original local Chromium tests without changing examples or browser budgets. The real callback
 and collection test passes natively and in a refreshed strict-Miri test image.
 The unchanged whole driver still fails later at explicitly unsupported `C_mtext`.
 

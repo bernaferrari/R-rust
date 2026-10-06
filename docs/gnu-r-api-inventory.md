@@ -235,6 +235,7 @@ links original utils console/progress-bar calls, base close and binning wrappers
 print-gap behavior and the stats seasonal ARIMA0 workflow to implementations,
 options, exact GNU fixtures, native/portable profiles and the verified source.
 Its complete selected native suite passes 54 tests; 13 production Wasm contracts
-pass in two fresh sessions. This remains a partial join. The same receipt records
+pass in two fresh sessions, and all 60 local Chromium tests pass on the same
+production runtime. This remains a partial join. The same receipt records
 the enclosing driver failure at unsupported `C_mtext` and the independent ARIMA0
 AR1 CSS coefficient mismatch, rather than treating namespace presence as passing.
