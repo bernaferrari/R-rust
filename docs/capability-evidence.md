@@ -147,6 +147,17 @@ with the handler, message and quoted originating call. Both constructor policies
 call-free and custom conditions, help-call attribution and callback collection
 pass, together with 21 existing owned condition/restart controls and the same
 public contract in two fresh production Wasm sessions.
+At `e312f1b7`, the [margin-text execution receipt](ci-checkpoints/mtext-physical-margins-e312f1b7.json)
+joins `graphics::mtext` to its typed native descriptor, owned parser, device
+profile, tested options and source hashes. All 61 GNU probes pass through both
+public constructors and fresh production Wasm sessions; 35 unadjusted PDF
+placements use matching independently captured host font metrics. The native
+batch passes 75 checks across 17 suites, including the existing 54 package checks.
+The unchanged local 60-case Chromium suite passes, followed by three repetitions
+of each original sunflower flow in six fresh test contexts. Symbol/Hershey fonts
+and other device-parameter lifecycle gaps remain explicit. This local selected
+milestone does not replace the complete `4d492679` inventories or Linux57/3 report.
+
 The complete upstream union accounts for all 85 workloads under the explicit
 graphics/native/faer release profile. UTF-8 completes
 with a strict output difference. GNU Latin-1 setup succeeds; Rust explicitly

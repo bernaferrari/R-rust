@@ -1,0 +1,269 @@
+{
+  "source_commit": "e312f1b7ff067f6b1d697d750100b2bf3dbc63e9",
+  "base_commit": "f89e5a0a4521b9f121ebbaa6efbce8fbcf2a43d0",
+  "scope": "Typed native margin-text routing, captured physical mar/oma line placement, host glyph metric forwarding and explicit-GC error/on.exit ownership regression. Selected evidence is separate from full workspace and complete conformance/upstream unions.",
+  "source_files": [
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/eval/closure.rs",
+      "bytes": 53810,
+      "sha256": "0887b1afd916c89681a51d798dde635d516d7d8c3cc92008560d34e429c48f79"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/library/graphics/mod.rs",
+      "bytes": 25334,
+      "sha256": "2d3376f9340f55f7dd5927d3e30b59fb53aec1591428b48fc953fa5ae8f6ce30"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/library/graphics/text_metrics.rs",
+      "bytes": 26003,
+      "sha256": "0f8164732a43fc3462c66990413a0f8072797822328a1d501a977a9759b7b46b"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot.rs",
+      "bytes": 73099,
+      "sha256": "9cce0ad00da98477632679856bafae5565a0001b4b8b540dd95f63c80f9b9a79"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext.rs",
+      "bytes": 15408,
+      "sha256": "851935044d3dfbdb4c5ade04be5fdf2c3612e6a8523b826350e1dfaccbc74e1f"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/sexp/init.rs",
+      "bytes": 172519,
+      "sha256": "a4d6e92c3fcd263e4989cc08bca006eac9334adde3f215e067263af7f8558797"
+    },
+    {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/sexp/session.rs",
+      "bytes": 128430,
+      "sha256": "f7b2cd1ea635b85421fcf57719a6ca36119ac69416487c6678d58ec27c07a028"
+    }
+  ],
+  "entry": {
+    "native": "C_mtext",
+    "descriptor": "External1Variadic c_plot_xy",
+    "public": "graphics::mtext and attached mtext",
+    "implementation": "crates/rmath/src/mainutils/portable_plot/mtext.rs",
+    "options": "side1-4/other native side codes,las0-3,inner/outer,line/at/adj/padj,recycled vectors,absolutecex,font1-4,missing/empty text,color fallbacks,expressions,numeric coercion,zero-length arguments,conditions/visibility/session recovery",
+    "remaining": "Symbol/Hershey fonts remain unsupported; coupled physical graphics parameter setters/queries and general inline parameter coverage remain separate gaps. Original whole reg-tests-1a.R rerun remains required."
+  },
+  "oracle": {
+    "manifest": {
+      "path": "/Users/bernardoferrari/Downloads/rport/oracle/r-oracle.json",
+      "bytes": 762,
+      "sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679"
+    },
+    "gnu_version": "4.7 r90451 pinned executable",
+    "device": "Real Helvetica PDF,7in\u00d77in,12pt,72device units/inch. Custom public DrawTarget supplies independently measuredfont metrics for raw coordinate comparison. Portable PNG uses bundled DejaVu, with no universal pixel-equality claim.",
+    "public_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/mtext-public-contract.R",
+      "bytes": 1856,
+      "sha256": "506f0b0c2c142e3f06078ed8bace704f99ee551eb37d9de40b5cac634f62d08b"
+    },
+    "public_expected": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/mtext-public-contract.out",
+      "bytes": 3114,
+      "sha256": "f996e8a901f57395c0e32ac657398cb08ee86ebdb0e106445bd5a0b391f893e2"
+    },
+    "public_capture": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-public-gnu.out",
+      "bytes": 3114,
+      "sha256": "f996e8a901f57395c0e32ac657398cb08ee86ebdb0e106445bd5a0b391f893e2"
+    },
+    "device_trace_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext-oracle.c",
+      "bytes": 3153,
+      "sha256": "94cc64ca91bead04bfaef4bf4100064b0519aef2394609b431284f755850823d"
+    },
+    "device_trace": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext-oracle-trace.tsv",
+      "bytes": 7986,
+      "sha256": "f23184b5511eaf3ef5b446572bec1dc1a2a42c44b1b099a1acd1a5cb3d83f2b1"
+    },
+    "base_cex_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext-margin-units-oracle.R",
+      "bytes": 993,
+      "sha256": "c0cb961836953e20c661ed79cd48b56ddc285fb77e85d44ae509cc20fedc97df"
+    },
+    "base_cex_trace": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext-margin-units-oracle-trace.tsv",
+      "bytes": 494,
+      "sha256": "a40a2783a1f1e4d5e32032e1215f79793651c6d3c924a2e6cc10e8d2d8cc1d23"
+    },
+    "zero_margin_capture": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/rmath/src/mainutils/portable_plot/mtext-margin-units-oracle.out",
+      "bytes": 75,
+      "sha256": "475440c892a7a535b154003072fe25e23be660d6ddcc51e77ae459ffad327735"
+    },
+    "raster_clipping_source": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/raster-margin-oracle.R",
+      "bytes": 404,
+      "sha256": "8b5bf459910a758a056f08b4ecf61213f0bd2425c91192cc8cec1d95c6dc33f5"
+    },
+    "raster_pdf_page_commands": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/raster-margin-oracle-pdf.txt",
+      "bytes": 275,
+      "sha256": "ef7f7b0a8473cc658425c0f74c4a47d176591b1c17d5ec4afb9a24870637781b"
+    }
+  },
+  "native": {
+    "passed": 75,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 17,
+    "build_profile": "release",
+    "constructor_policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "mtext_probes_per_session": 61,
+    "public_probe_sessions": 4,
+    "gnu_geometry_cases": 35,
+    "geometry_policies": 2,
+    "log": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-public75-native-final.log",
+      "bytes": 9090,
+      "sha256": "0c2c58e46d516184a5f0c673bfa22702090c349a73fdefa1d177e6ad7dbd1658"
+    },
+    "ownership_gc": {
+      "passed": 2,
+      "scope": "Originaltitle andmtext label argument graph as sole label root; actual collecting allocation",
+      "log": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-owned-native-exact.log",
+        "bytes": 756,
+        "sha256": "3caefc89e849d677fc7e0c78331f0907b0fd611642d9009d90980b21fddd6864"
+      }
+    }
+  },
+  "on_exit_strict_miri": {
+    "passed": 1,
+    "test_seconds": 703.4,
+    "scope": "Two original every-allocation body/return outcomes and explicitGC after priorhandlererror/laterreturn replacement; samecontrolflowsourcefilesbyte-exact",
+    "process": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "+nightly",
+        "miri",
+        "test",
+        "-p",
+        "rmath",
+        "--lib",
+        "owned_closure_outcomes_survive_collecting_onexit_context_teardown"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 779.0383172499714,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-06T13:08:45.340455+00:00",
+      "logs": {
+        "stderr.log": "27c0c9622fe876ae470e13cc9d6150be47b95fa57c7474853b22082eec6fad78",
+        "stdout.log": "1332508888d17818577b403e8e0654a37a4c1970719599388cbacbfdecb01b12"
+      },
+      "pid": 37548,
+      "schema_version": 1,
+      "started_at": "2026-10-06T12:55:46.293921+00:00",
+      "state": "finished",
+      "timeout_seconds": 900.0
+    },
+    "log": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/on-exit-explicit-gc-miri/stdout.log",
+      "bytes": 231,
+      "sha256": "1332508888d17818577b403e8e0654a37a4c1970719599388cbacbfdecb01b12"
+    },
+    "source_snapshot": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/on-exit-explicit-gc-miri/source-files.json",
+      "bytes": 153884,
+      "sha256": "7389d27af1ab05741270405b5caa0e97bbae881b5b7f456ff0922c7c02b6f389"
+    },
+    "original_heavy_error_gc_attempt": {
+      "accepted_as_passing": false,
+      "receipt": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/on-exit-return/miri-error-every-allocation-interrupted.json",
+        "bytes": 466,
+        "sha256": "0684edf0109f3b8ade9d5e2c8890c787b33ebea460312bb8377f0363095b914b"
+      }
+    }
+  },
+  "gates": {
+    "clippy": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-clippy.log",
+      "bytes": 962,
+      "sha256": "b7316c45d46f4193ed64e6962de6b478a70b5088e503de2657695bdcef2d539e"
+    },
+    "fmt": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-format-final-check.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "core_rust_backend": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-core-check.log",
+      "bytes": 274,
+      "sha256": "760f6aa274ea355a697ee94da30e2e4952d51bd22bc7ae2b08d650d8be2e0122"
+    }
+  },
+  "production_wasm": {
+    "binary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/wasm-mtext-margin/r_wasm_bg.wasm",
+      "bytes": 25778507,
+      "sha256": "8dd069ed957c34534a555de7f1243ce1a8bd880cf49b05607977340ae51af314"
+    },
+    "build_log": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-wasm-build.log",
+      "bytes": 4257,
+      "sha256": "4a2558068e29d436eb6b864f861987e19091b6a81fb9ffbd7f6a57707bccbfa0"
+    },
+    "existing_contracts": 30,
+    "mtext_probe_sessions": 2,
+    "mtext_probes_per_session": 61,
+    "real_png_dimensions": [
+      504,
+      504
+    ],
+    "runner": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/check-public-contracts.mjs",
+      "bytes": 2695,
+      "sha256": "d4ebfac60597addb9a6ca67a3b0c802f09b5776380aca1512e86c9396597378b"
+    },
+    "log": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/rport-mtext-public-node.log",
+      "bytes": 3567,
+      "sha256": "d358d7b394fbff272ffb6a6a1069aedba697dcb5729e3eb1e81e4ee39ccba67c"
+    }
+  },
+  "local_browser": {
+    "stats": {
+      "startTime": "2026-10-06T13:22:08.382Z",
+      "duration": 276652.123,
+      "expected": 60,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "report": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/chromium-complete.json",
+      "bytes": 67428,
+      "sha256": "5b272f4c01005c939fe22ecaee4685742d34c878a83356f4481c18bee9135604"
+    },
+    "scope": "Quiet sequential original60, no budget/example/assertion changes. Separately sourced from Linux4d57/3.",
+    "sunflower_repeats": {
+      "stats": {
+        "startTime": "2026-10-06T13:29:45.757Z",
+        "duration": 83691.13100000001,
+        "expected": 6,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "repetitions_per_original_flow": 3,
+      "fresh_playwright_contexts": 6,
+      "report": {
+        "path": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/mtext-public/sunflower-repeated.json",
+        "bytes": 8771,
+        "sha256": "4f19e0bdc294548e959449e2f9f06f99a52a638ae1a532d650e04c71a18c5f6a"
+      }
+    }
+  },
+  "thumbnail_policy": "Portable embedding default margins adapt at viewports160\u00d7120or smaller; physical504\u00d7504 oracle remains unchanged. Explicit margins keep admission errors.",
+  "remaining": "Complete same-commit workspace remains unverified; originalbarplot/logabline/LOESS failures and isolatedmapply root-admission failure remain tracked. Latestcompleteglobal inventory is4d1081PASS100FAIL; selectedlaterresults are notadded. CurrentLinuxrepeat acceptance andwhole1a rerun remain pending.",
+  "dirty_candidate": false
+}
