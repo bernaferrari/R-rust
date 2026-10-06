@@ -826,20 +826,20 @@ pub unsafe fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let len = CADR(args);
         if LENGTH(len) != 1 {
-            return ptr::null_mut();
+            errorcall_never(call, "invalid 'length.out' value");
         }
 
         let na: R_xlen_t;
         if TYPEOF(len) != INTSXP_VAL {
             let sna = asReal(len);
             if ISNAN(sna) || sna <= -1.0 || sna >= R_XLEN_T_MAX_DBL + 1.0 {
-                return ptr::null_mut();
+                errorcall_never(call, "invalid 'length.out' value");
             }
             na = sna as R_xlen_t;
         } else {
             na = asInteger(len) as R_xlen_t;
             if na as c_int == NA_INTEGER || na < 0 {
-                return ptr::null_mut();
+                errorcall_never(call, "invalid 'length.out' value");
             }
         }
 

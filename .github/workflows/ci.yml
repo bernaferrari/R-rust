@@ -124,6 +124,7 @@ jobs:
           --test portable_stats_namespace --test complex_print_contract
           --test get_lazy_mode --test correlation_public_contract --test palette_public_contract --test bincode_public_contract --test arima0_public_contract --test utils_console_public_contract
           --test mapply_public_contract --test sample_condition_contract
+          --test rep_len_admission_contract --test unserialize_connection_contract
 
       - name: Upload durable public package evidence
         if: always()

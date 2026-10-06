@@ -1,0 +1,19 @@
+invalid 'length.out' value
+rep_len(1L, -1L)
+invalid 'length.out' value
+rep_len(1L, NA_integer_)
+invalid 'length.out' value
+rep_len(1L, Inf)
+invalid 'length.out' value
+rep_len(1L, integer(0))
+invalid 'length.out' value
+rep_len(1L, c(2L, 3L))
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+invalid 'length.out' value
+rep_len(sep, length(first) - 1L)
+[1] TRUE

@@ -1116,7 +1116,11 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
         if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP {
             return R_unserialize(conn, hook);
         }
-        if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::INTSXP {
+        if !conn.is_null()
+            && TYPEOF(conn) == SEXPTYPE::INTSXP
+            && XLENGTH(conn) == 1
+            && crate::mainutils::objects::inherits2(conn, c"connection".as_ptr()) != 0
+        {
             let bytes = crate::mainutils::connections::connection_read_all(*INTEGER(conn));
             let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as i64);
             if !bytes.is_empty() {

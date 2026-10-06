@@ -1,0 +1,11 @@
+'connection' must be a connection
+unserialize(1L)
+'connection' must be a connection
+unserialize(1)
+'connection' must be a connection
+unserialize(c(1L, 2L))
+'connection' must be a connection
+unserialize(structure(1L, class = "other"))
+[1] TRUE
+[1] TRUE
+[1] TRUE

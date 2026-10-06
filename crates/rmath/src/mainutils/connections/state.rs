@@ -666,6 +666,21 @@ pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
     if !conn.canread {
         r_error("cannot read from this connection");
     }
+    if matches!(
+        conn.kind,
+        ConnKind::RawConnection
+            | ConnKind::BrowserFile
+            | ConnKind::GzFile
+            | ConnKind::BzFile
+            | ConnKind::XzFile
+    ) {
+        if conn.raw_pos >= conn.raw_data.len() {
+            return Vec::new();
+        }
+        let bytes = conn.raw_data[conn.raw_pos..].to_vec();
+        conn.raw_pos = conn.raw_data.len();
+        return bytes;
+    }
     let mut bytes = Vec::new();
     if let Some(reader) = conn.reader.as_mut() {
         if reader.read_to_end(&mut bytes).is_err() {

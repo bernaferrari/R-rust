@@ -124,9 +124,11 @@ impl WasmRSession {
         // The browser facade must not discover installed host R libraries on
         // native test hosts. Use the same real portable initialization profile
         // on every target before applying the browser's resource budget.
+        // Temporary files belong to the bounded virtual file store, whose
+        // keys are relative paths on every browser-facade target.
         let mut inner = r_embed::RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
             Vec::new(),
-            "/tmp",
+            "tmp",
         ))
         .map_err(|e| JsError::new(&e.to_string()))?;
         inner.enable_browser_files();
@@ -515,6 +517,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn browser_temporary_files_run_public_io_workflows() {
+        for _ in 0..2 {
+            let mut session = WasmRSession::new().unwrap();
+            assert_eq!(
+                session
+                    .eval_checked("local({p<-tempfile();on.exit(unlink(p));writeLines('temporary',p);identical(readLines(p),'temporary')})")
+                    .unwrap(),
+                "[1] TRUE\n"
+            );
+            for (source, expected) in [
+                (
+                    include_str!("../../r-embed/tests/fixtures/rep-len-admission-contract.R"),
+                    include_str!("../../r-embed/tests/fixtures/rep-len-admission-contract.out"),
+                ),
+                (
+                    include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.R"),
+                    include_str!("../../r-embed/tests/fixtures/unserialize-connection-contract.out"),
+                ),
+            ] {
+                assert_eq!(session.eval_checked(source).unwrap(), expected);
+            }
+            session.close();
+        }
+    }
+
+    #[test]
     fn unexpected_panic_closes_session_before_reuse() {
         let mut session = WasmRSession::new().unwrap();
         session.eval("x <- 41");
@@ -543,7 +571,7 @@ mod tests {
             error.contains("alloc") || error.contains("budget") || error.contains("memory"),
             "{error}"
         );
-        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2");
+        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2\n");
         session.eval_checked("x <- rep('abcdef', 100000)").unwrap();
         assert!(
             session
@@ -552,7 +580,7 @@ mod tests {
                 .to_string()
                 .contains("export budget")
         );
-        assert_eq!(session.eval_checked("length(x)").unwrap(), "[1] 100000");
+        assert_eq!(session.eval_checked("length(x)").unwrap(), "[1] 100000\n");
     }
 
     /// The native oracle the wasm boundary must satisfy (docs/web-architecture.md).

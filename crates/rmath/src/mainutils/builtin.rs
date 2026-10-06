@@ -719,10 +719,19 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
                 for i in 0..copy_len {
                     *pr.add(i) = *px.add(i);
                 }
+                for i in copy_len..len as usize {
+                    *pr.add(i) = crate::sexp::ffi::Rcomplex {
+                        r: NA_REAL,
+                        i: NA_REAL,
+                    };
+                }
             }
             t if t == SEXPTYPE::STRSXP => {
                 for i in 0..copy_len as R_xlen_t {
                     SET_STRING_ELT(r, i, STRING_ELT(x, i));
+                }
+                for i in copy_len as R_xlen_t..len {
+                    SET_STRING_ELT(r, i, crate::sexp::globals::R_NaString());
                 }
             }
             t if t == SEXPTYPE::RAWSXP => {

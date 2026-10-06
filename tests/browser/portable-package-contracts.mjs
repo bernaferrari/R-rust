@@ -37,6 +37,8 @@ const contracts = [
     'utils-console-public-contract',
     'mapply-public-contract',
     'sample-condition-contract',
+    'rep-len-admission-contract',
+    'unserialize-connection-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 
