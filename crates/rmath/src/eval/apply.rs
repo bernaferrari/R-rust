@@ -184,7 +184,12 @@ struct PrimitiveCall<'a> {
 }
 
 impl<'a> PrimitiveCall<'a> {
-    fn new(fun: Sexp<'a>, call: Sexp<'a>, args: Sexp<'a>, rho: Sexp<'a>) -> Result<Self, String> {
+    fn new(
+        fun: Sexp<'a>,
+        call: Sexp<'a>,
+        args: Sexp<'a>,
+        rho: Sexp<'a>,
+    ) -> Result<Box<Self>, String> {
         let checked_factory = rho
             .node_factory()
             .or_else(|_| fun.node_factory())
@@ -204,7 +209,9 @@ impl<'a> PrimitiveCall<'a> {
         factory
             .require_active()
             .map_err(|error| error.to_string())?;
-        Ok(Self {
+        // Retain the same checked values on the heap while R reenters. The
+        // enclosing debug frame need not reserve their aggregate storage.
+        Ok(Box::new(Self {
             fun: factory
                 .wrap(fun.as_raw())
                 .map_err(|error| error.to_string())?,
@@ -218,7 +225,7 @@ impl<'a> PrimitiveCall<'a> {
                 .wrap(rho.as_raw())
                 .map_err(|error| error.to_string())?,
             factory,
-        })
+        }))
     }
 
     fn eval_args(&self) -> Sexp<'a> {
