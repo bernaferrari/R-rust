@@ -249,15 +249,36 @@ fn install_lazy_database(
     )
     .map_err(failure)?;
     super::bridge::evaluate(access, &hook_source, &setup).map_err(failure)?;
-    super::bridge::evaluate(access, r#"
+    super::bridge::evaluate(
+        access,
+        r#"
         expr <- quote(lazyLoadDBfetch(KEY, datafile, compressed, envhook))
         # The loader owns the live namespace metadata. The database's saved
         # namespace descriptor must not replace it with a lazy promise.
         variables <- map$variables[names(map$variables) != ".__NAMESPACE__."]
         .Internal(makeLazy(names(variables), variables, expr, environment(), namespace))
-        for (name in exported) assign(name, name, envir=get("exports", get(".__NAMESPACE__.", namespace)))
-        map <- NULL; exported <- NULL
-    "#, &setup).map_err(failure)?;
+    "#,
+        &setup,
+    )
+    .map_err(failure)?;
+    // These are the loader's original export descriptors, not evaluated
+    // package objects. Resolve their live destination once and use the same
+    // checked binding path as the rest of namespace construction.
+    let info = super::bridge::lookup(access, namespace, ".__NAMESPACE__.")?;
+    let exports = super::bridge::lookup(access, &info, "exports")?;
+    let export_count = exported.len();
+    for index in 0..export_count {
+        let name = exported.try_string_elt(index)?.try_as_string()?;
+        let value = allocator.strings(&[&name])?;
+        super::bridge::bind(access, &exports, &name, &value)?;
+        if index + 1 == export_count {
+            // Preserve the private setup frame retained by the envhook.
+            super::bridge::bind(access, &setup, "name", &value)?;
+        }
+    }
+    let nil = access.domain().nil();
+    super::bridge::bind(access, &setup, "map", &nil)?;
+    super::bridge::bind(access, &setup, "exported", &nil)?;
     Ok(())
 }
 
