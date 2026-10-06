@@ -173,14 +173,14 @@ jobs:
         run: >-
           bash scripts/conformance_parity.sh --check --strict
           --shard-index "${{ matrix.shard }}" --shard-count 6
-          --report target/conformance-report
+          --report "${{ runner.temp }}/conformance-report"
 
       - name: Upload exact-oracle conformance report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: exact-oracle-conformance-shard-${{ matrix.shard }}
-          path: target/conformance-report
+          path: ${{ runner.temp }}/conformance-report
           if-no-files-found: ignore
 
 
@@ -305,13 +305,13 @@ jobs:
           bash scripts/upstream_core_slices.sh --strict --timeout 1800
           --runtime-profile graphics --package-policy native
           --suite "${{ matrix.suite }}" --shard-index "${{ matrix.shard }}"
-          --shard-count "${{ matrix.count }}" --report target/upstream-r
+          --shard-count "${{ matrix.count }}" --report "${{ runner.temp }}/upstream-r"
       - name: Upload durable upstream execution and engine evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: upstream-r-shard-${{ matrix.suite }}-${{ matrix.shard }}
-          path: target/upstream-r
+          path: ${{ runner.temp }}/upstream-r
           if-no-files-found: ignore
 
   upstream-coverage:
