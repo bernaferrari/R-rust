@@ -31,6 +31,7 @@ const contracts = [
     'correlation-public-contract',
     'palette-public-contract',
     'tempfile-public-contract',
+    'bincode-public-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

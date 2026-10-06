@@ -1,0 +1,32 @@
+cat("base wrapper", is.function(base::.bincode),
+    identical(environment(base::.bincode), asNamespace("base")), "\n")
+x <- c(-Inf, -1, 0, .5, 1, 1.5, 2, 3, Inf, NA_real_, NaN)
+for (right in c(FALSE, TRUE)) for (include in c(FALSE, TRUE)) {
+    cat("endpoints", right, include, "\n")
+    print(.bincode(x, c(0, 1, 2), right, include))
+}
+print(.bincode(c(0, 1, 2), c(0, 1, 1, 2)))
+print(.bincode(c(0, 1, 2), c(0, NA_real_, 2)))
+print(.bincode(c(-Inf, 0, Inf, NA_real_), c(-Inf, 0, Inf), FALSE, TRUE))
+print(.bincode(structure(matrix(0:3, 2), dimnames=list(c("a","b"),c("c","d"))), 0:3, TRUE, TRUE))
+for (value in list(NULL, logical(), c(TRUE, FALSE), "1", list(1), factor("1")))
+    print(.bincode(value, c(0, 1, 2)))
+message_only <- function(expr) tryCatch(expr, error=function(e) conditionMessage(e))
+for (breaks in list(NULL, 1, c(2, 0, 1))) print(message_only(.bincode(1, breaks)))
+for (breaks in list(NULL, 1, c(2, 0))) for (flag in list(NA, TRUE))
+    print(message_only(.bincode(1, breaks, right=flag)))
+for (flag in list(NA, logical(), "bad")) print(message_only(.bincode(1, 0:2, right=flag)))
+print(message_only(.bincode(1, 0:2, include.lowest=NA)))
+print(.bincode(1, 0:2, right=c(TRUE, FALSE)))
+print(.bincode(1, 0:2, right=2))
+print(.bincode(1, 0:2, right="TRUE"))
+print(message_only(.Internal(bincode(1, 0:2, TRUE))))
+print(.Internal(bincode(c(.25, 1, 1.75), 0:2, TRUE, TRUE)))
+print(withCallingHandlers(.bincode(c(".25", "1.5", "bad"), c("0", "1", "bad", "2")),
+      warning=function(w) { gc(); invokeRestart("muffleWarning") }))
+compiled <- compiler::cmpfun(function(x) .bincode(x, c(0, 1, 2), FALSE, TRUE))
+print(compiled(c(0, 1, 2, NA_real_)))
+h <- hist(c(0, .25, 1, 1, 1.5, 2), breaks=c(0, 1, 2), plot=FALSE,
+          right=TRUE, include.lowest=TRUE)
+print(h[c("breaks", "counts", "density", "mids", "equidist")])
+print(message_only(hist(c(-1, 1), breaks=c(0, 1, 2), plot=FALSE)))

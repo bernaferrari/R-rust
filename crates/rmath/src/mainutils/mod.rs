@@ -9,6 +9,7 @@ pub mod apply;
 pub mod arithmetic;
 pub mod array;
 pub mod attrib;
+pub(crate) mod bincode;
 pub mod bind;
 pub mod browser_files;
 pub mod builtin;

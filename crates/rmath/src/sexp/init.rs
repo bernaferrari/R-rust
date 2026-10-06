@@ -137,6 +137,12 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             base_env,
         );
 
+        eval_base_binding(
+            base_env,
+            ".bincode",
+            "function(x, breaks, right = TRUE, include.lowest = FALSE) .Internal(bincode(x, breaks, right, include.lowest))",
+        );
+
         // GNU: T and F are ordinary symbols bound to TRUE/FALSE, not parser
         // keywords. `quote(F())` and `substitute(F(), list(F=...))` need
         // the symbol, while bare `F` still evaluates to FALSE.
