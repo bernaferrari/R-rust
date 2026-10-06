@@ -285,6 +285,15 @@ Node runs of the unchanged sunflower example reduce median cold execution from
 12.14 to 11.12 seconds and retain byte-identical PNG output. These local timings
 are diagnostic; Linux browser acceptance remains the two failures recorded above.
 
+The [public binning workflow repair](ci-checkpoints/bincode-2920368c.json)
+at `2920368c` connects the original `.bincode` closure through canonical base
+initialization and typed internal dispatch to the existing kernel. Its endpoint,
+coercion, error-order, compiled-call and histogram workflows pass against pinned
+GNU output under both constructor policies and through the actual Wasm facade.
+Forced collection and strict Miri preserve both original converted inputs and the
+result. The complete unchanged `reg-tests-1a.R` driver is still red under explicit
+graphics/native/faer release, now reaching the ARIMA setup order-admission error.
+
 At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
 pass under both constructors in two fresh sessions each, with original GNU output.
 Nine production Wasm contracts pass twice; 205 dataset checks and six original
