@@ -348,11 +348,16 @@ impl<'a> Sexp<'a> {
     /// The pointer must be non-null and point to a valid `SexprecCore`
     /// that lives at least as long as `'a`.
     #[inline]
-    pub(crate) const unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
+    pub(crate) unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
+        // A native view still borrows its caller's rooting contract. Retain
+        // the original allocation identity once, so repeated property reads
+        // do not recover a fresh generation from its address. This grants
+        // neither a graph root nor runtime authority to an Unknown view.
+        let node = crate::sexp::memory::checked_node(ptr);
         Sexp {
             ptr,
             owner: SexpOwner::Unknown,
-            node: None,
+            node,
             runtime_owner: None,
             session_owner_ptr: None,
             root: None,

@@ -406,6 +406,35 @@ fn integer_copy_checks_extent_and_retains_an_independent_snapshot() {
 }
 
 #[test]
+fn native_view_keeps_original_generation_without_manufacturing_a_root() {
+    let session = RSession::new_for_gc_tests();
+    let ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
+    // The actual header storage remains in this fixture's live arena. Invalidate
+    // it at the allocator seam without reading its reclaimed payload.
+    let view = unsafe { Sexp::from_raw_unchecked(ptr) };
+    assert!(matches!(
+        view.clone().into_owned(),
+        Err(super::SexpError::RootUnavailable)
+    ));
+    assert!(view.is_live());
+    session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.free_node(ptr));
+    });
+    assert!(!view.is_live());
+    let reused = session.with_active_in(|owner| unsafe {
+        crate::sexp::memory::with_arena_in(owner, |arena| arena.alloc_node(SEXPTYPE::REALSXP))
+    });
+    assert_eq!(ptr, reused);
+    assert_eq!(
+        view.try_integer_elt(0),
+        Err(super::SexpError::StaleAllocation)
+    );
+    let fresh = session.sexp(reused).unwrap();
+    assert!(fresh.is_live());
+    assert_eq!(fresh.typeof_(), SEXPTYPE::REALSXP);
+}
+
+#[test]
 fn checked_handle_rejects_reclaimed_and_reused_allocation() {
     let session = RSession::new_for_gc_tests();
     let ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
