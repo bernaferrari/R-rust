@@ -297,10 +297,14 @@ impl BytecodeCompiler {
                     if syntax_call {
                         opcodes::OP_CALLSPECIAL
                     } else {
-                        opcodes::OP_CALL
+                        opcodes::OP_CALL_WITH_SOURCE
                     },
                     arg_cells.len() as c_int,
                 );
+                if !syntax_call {
+                    let source = self.add_const(expr);
+                    self.emit(source);
+                }
                 true
             } else {
                 return false;

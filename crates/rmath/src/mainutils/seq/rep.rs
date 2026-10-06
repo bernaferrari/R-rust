@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use super::helpers::mod_iterate1;
 use super::*;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,7 +40,7 @@ pub unsafe fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
             for i in 0..nc {
                 let v = *REAL(t).add(i as usize);
                 if ISNAN(v) || v <= -1.0 || v >= R_XLEN_T_MAX_DBL + 1.0 {
-                    return ptr::null_mut();
+                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
                 }
                 sna += v as R_xlen_t as c_double;
             }
@@ -48,13 +48,13 @@ pub unsafe fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
             for i in 0..nc {
                 let v = *INTEGER(t).add(i as usize);
                 if v == NA_INTEGER || v < 0 {
-                    return ptr::null_mut();
+                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
                 }
                 sna += v as c_double;
             }
         }
         if sna > R_XLEN_T_MAX_DBL {
-            return ptr::null_mut();
+            crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
         }
         let na = sna as R_xlen_t;
 
@@ -704,11 +704,23 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if isVector(ncopy) == 0 {
-            return ptr::null_mut();
+            let kind = CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(ncopy)));
+            let message = CString::new(format!(
+                "invalid type ({}) for 'times' (must be a vector)",
+                kind.to_string_lossy(),
+            ))
+            .unwrap_or_default();
+            crate::mainutils::errors::Rf_error(message.as_ptr());
         }
 
         if isVector(s) == 0 && s != R_NilValue() {
-            return ptr::null_mut();
+            let kind = CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(s)));
+            let message = CString::new(format!(
+                "attempt to replicate an object of type '{}'",
+                kind.to_string_lossy(),
+            ))
+            .unwrap_or_default();
+            crate::mainutils::errors::Rf_error(message.as_ptr());
         }
 
         let nc = XLENGTH(ncopy);
@@ -716,7 +728,7 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             a = rep2(s, ncopy);
         } else {
             if nc != 1 {
-                return ptr::null_mut();
+                crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
             }
 
             let ns = XLENGTH(s);
@@ -724,17 +736,17 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(ncopy) != INTSXP_VAL {
                 let snc = asReal(ncopy);
                 if !R_FINITE(snc) || snc <= -1.0 || (ns > 0 && snc >= R_XLEN_T_MAX_DBL + 1.0) {
-                    return ptr::null_mut();
+                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
                 }
                 nc_val = if ns == 0 { 1 } else { snc as R_xlen_t };
             } else {
                 nc_val = asInteger(ncopy) as R_xlen_t;
                 if nc_val as c_int == NA_INTEGER || nc_val < 0 {
-                    return ptr::null_mut();
+                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
                 }
             }
             if nc_val as c_double * ns as c_double > R_XLEN_T_MAX_DBL {
-                return ptr::null_mut();
+                crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
             }
             a = rep3(s, ns, nc_val * ns);
         }
@@ -821,30 +833,32 @@ pub unsafe fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if isVector(s) == 0 && s != R_NilValue() {
-            return ptr::null_mut();
+            crate::mainutils::errors::Rf_error(c"attempt to replicate non-vector".as_ptr());
         }
 
         let len = CADR(args);
         if LENGTH(len) != 1 {
-            errorcall_never(call, "invalid 'length.out' value");
+            crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
         }
 
         let na: R_xlen_t;
         if TYPEOF(len) != INTSXP_VAL {
             let sna = asReal(len);
             if ISNAN(sna) || sna <= -1.0 || sna >= R_XLEN_T_MAX_DBL + 1.0 {
-                errorcall_never(call, "invalid 'length.out' value");
+                crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
             }
             na = sna as R_xlen_t;
         } else {
             na = asInteger(len) as R_xlen_t;
             if na as c_int == NA_INTEGER || na < 0 {
-                errorcall_never(call, "invalid 'length.out' value");
+                crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
             }
         }
 
         if TYPEOF(s) == NILSXP_VAL && na > 0 {
-            return ptr::null_mut();
+            crate::mainutils::errors::Rf_error(
+                c"cannot replicate NULL to a non-zero length".as_ptr(),
+            );
         }
 
         let ns = XLENGTH(s);

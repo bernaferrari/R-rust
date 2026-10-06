@@ -19,3 +19,35 @@ rep_len(1L, c(2L, 3L))
 invalid 'length.out' value
 rep_len(sep, length(first) - 1L)
 [1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+cannot replicate NULL to a non-zero length
+rep_len(NULL, 3L)
+attempt to replicate non-vector
+rep_len(new.env(), 3L)
+invalid 'times' value
+rep.int(1:2, -1L)
+invalid 'times' value
+rep.int(1:2, integer(0))
+invalid 'times' value
+rep.int(1:2, c(1L, -1L))
+invalid type (environment) for 'times' (must be a vector)
+rep.int(1:2, new.env())
+attempt to replicate an object of type 'environment'
+rep.int(new.env(), 2L)
+invalid 'length.out' value
+rep_len(1L, -1L)
+[1] TRUE
+[1] 1
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE

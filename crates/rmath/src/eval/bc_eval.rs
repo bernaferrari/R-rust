@@ -202,7 +202,9 @@ pub mod opcodes {
     pub const OP_REPLACEMENT_PATH: i32 = 64;
     /// Validated owning getter/setter levels for general replacement syntax.
     pub const OP_REPLACEMENT_CHAIN: i32 = 65;
-    pub const OP_LAST: i32 = 65;
+    /// Call with cached arguments and a separate original syntax constant.
+    pub const OP_CALL_WITH_SOURCE: i32 = 66;
+    pub const OP_LAST: i32 = 66;
 }
 
 #[derive(Clone)]
@@ -2036,6 +2038,20 @@ unsafe fn eval_gnu_adapter(
                                             )
                                         } else {
                                             force_gnu_builtin_arglist(args);
+                                            // GNU getCurrentCall uses the active bytecode
+                                            // expression for inlined builtin calls. Keep
+                                            // that expression on the existing context stack
+                                            // without adding a function frame.
+                                            let _expression =
+                                                crate::sexp::context::begin_context_guard(
+                                                    crate::sexp::context::ctxt_flags::CTXT_CCODE,
+                                                    call_expr,
+                                                    rho,
+                                                    rho,
+                                                    None,
+                                                    R_NilValue(),
+                                                    R_NilValue(),
+                                                );
                                             super::apply::apply_builtin_values_safe(
                                                 function,
                                                 call,
@@ -3388,6 +3404,7 @@ fn private_call_owned(
     tags: &[Option<Sexp<'static>>],
     environment: &Sexp<'static>,
     syntax: bool,
+    source: Option<&Sexp<'static>>,
 ) -> Sexp<'static> {
     let owner = crate::sexp::owner::StoredOwner::from_value(environment)
         .and_then(|owner| {
@@ -3399,6 +3416,14 @@ fn private_call_owned(
     crate::sexp::owner::with_runtime(&owner, |access| {
         let domain = access.domain();
         let allocator = access.allocator(&domain)?;
+        let mut expressions = Vec::new();
+        if let Some(source) = source {
+            let mut cell = source.try_cdr()?;
+            for _ in arguments {
+                expressions.push(cell.try_car()?);
+                cell = cell.try_cdr()?;
+            }
+        }
         let mut rest = domain.nil();
         for (index, argument) in arguments.iter().enumerate() {
             let value = if syntax {
@@ -3408,7 +3433,10 @@ fn private_call_owned(
             {
                 argument.clone()
             } else {
-                allocator.evaluated_promise(argument, environment)?
+                let expression = expressions
+                    .get(arguments.len() - 1 - index)
+                    .unwrap_or(argument);
+                allocator.evaluated_promise_with_expression(expression, environment, argument)?
             };
             rest = allocator.pairlist_cell(
                 &value,
@@ -3422,6 +3450,50 @@ fn private_call_owned(
     })
     .and_then(|result| result)
     .unwrap_or_else(|error| bc_error(error.to_string()))
+}
+
+/// Execute cached arguments while exposing the original call to the callee.
+unsafe fn eval_source_call(
+    execution: &Sexp<'static>,
+    function: &Sexp<'static>,
+    source: &Sexp<'static>,
+    environment: &Sexp<'static>,
+    stack: &R_bcstack_t,
+    loops: &[LoopContext],
+) -> Result<SEXP, LoopJump> {
+    if source.typeof_() != SEXPTYPE::LANGSXP {
+        bc_error("CALL source constant is not a language object");
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        with_stack_rooted(stack, execution.as_raw(), || {
+            let selected = if function.typeof_() == SEXPTYPE::SYMSXP {
+                own_operand(crate::sexp::envir::findFun(
+                    function.as_raw(),
+                    environment.as_raw(),
+                ))
+            } else {
+                function.clone()
+            };
+            let apply = match selected.typeof_() {
+                SEXPTYPE::CLOSXP => super::apply::apply_closure_safe,
+                SEXPTYPE::SPECIALSXP => super::apply::apply_special_safe,
+                SEXPTYPE::BUILTINSXP => super::apply::apply_builtin_safe,
+                _ => bc_error("attempt to apply non-function"),
+            };
+            apply(
+                selected,
+                source.clone(),
+                own_operand(CDR(execution.as_raw())),
+                environment.clone(),
+            )
+            .unwrap_or_else(|error| bc_error(error))
+            .as_raw()
+        })
+    }));
+    match result {
+        Ok(value) => Ok(value),
+        Err(payload) => Err(recover_loop_jump(payload, loops)),
+    }
 }
 
 /// The setter executes with cached target/RHS promises while its function
@@ -4290,8 +4362,21 @@ unsafe fn bc_eval_private(
                         pending_arg_tags.push((depth_now.saturating_sub(1), own_operand(tag)));
                     }
                 }
-                opcodes::OP_CALL | opcodes::OP_CALLBUILTIN | opcodes::OP_CALLSPECIAL => {
+                opcodes::OP_CALL
+                | opcodes::OP_CALLBUILTIN
+                | opcodes::OP_CALLSPECIAL
+                | opcodes::OP_CALL_WITH_SOURCE => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
+                    let source = if op == opcodes::OP_CALL_WITH_SOURCE {
+                        let index = read_operand(code_ptr, &mut pc, code_len, "CALL source");
+                        Some(own_operand(owned_constant_at(
+                            &constants,
+                            index as i64,
+                            "CALL source",
+                        )))
+                    } else {
+                        None
+                    };
                     let nargs = usize::try_from(nargs)
                         .unwrap_or_else(|_| bc_error("CALL has a negative argument count"));
                     let function = stack_pop_checked(&mut stack, "CALL function");
@@ -4313,6 +4398,7 @@ unsafe fn bc_eval_private(
                         &tags,
                         &rho_owned,
                         op == opcodes::OP_CALLSPECIAL,
+                        source.as_ref(),
                     );
                     let src = owned_constant_at(&constants, 0, "CALL source");
                     if TYPEOF(src) == SEXPTYPE::LANGSXP {
@@ -4326,7 +4412,12 @@ unsafe fn bc_eval_private(
                             );
                         }
                     }
-                    let result = match eval_nested_call(call.as_raw(), rho, &stack, &loop_stack) {
+                    let attempt = if let Some(source) = source {
+                        eval_source_call(&call, &function, &source, &rho_owned, &stack, &loop_stack)
+                    } else {
+                        eval_nested_call(call.as_raw(), rho, &stack, &loop_stack)
+                    };
+                    let result = match attempt {
                         Ok(value) => value,
                         Err(jump) => {
                             pc = apply_loop_jump(&mut stack, &mut for_loops, jump);

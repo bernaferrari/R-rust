@@ -18,12 +18,13 @@ const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
   ...[
     '260_length_replacement',
+    '492_rep_int_len_helpers',
     '1094_cat_complex_fft',
     '544_complex_constructor_format_str_parity',
     '551_round_signif_complex_parity',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
-    name === '260_length_replacement'
+    ['260_length_replacement', '492_rep_int_len_helpers'].includes(name)
       ? resolve(root, 'tests/conformance/golden', name + '.out')
       : resolve(fixtures, 'complex-original-' + name + '.out'),
   ]),

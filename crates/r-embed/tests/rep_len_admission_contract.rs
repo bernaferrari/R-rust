@@ -25,6 +25,15 @@ fn rep_len_admission_contract_matches_gnu_under_both_policies() {
             include_str!("../../../tests/conformance/golden/260_length_replacement.out"),
             "portable={portable}: original complete length-replacement workflow"
         );
+        assert_eq!(
+            session
+                .eval(include_str!(
+                    "../../../tests/conformance/cases/492_rep_int_len_helpers.R"
+                ))
+                .unwrap(),
+            include_str!("../../../tests/conformance/golden/492_rep_int_len_helpers.out"),
+            "portable={portable}: original complete repetition workflow"
+        );
         session.close();
     }
 }
