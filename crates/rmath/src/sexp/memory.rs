@@ -1457,15 +1457,29 @@ impl RArena {
         self.active_addrs.len()
     }
 
-    /// True when enough *new* nodes/bytes have appeared since the last
-    /// collection. A large live set must not re-trigger GC by itself.
+    /// Amortize tracing against the graph retained by the previous collection.
+    /// The byte trigger and admission budgets remain independent of node growth.
     pub(crate) fn growth_warrants_gc(&self) -> bool {
-        self.node_count().saturating_sub(self.nodes_at_last_gc) > GC_TRIGGER_THRESHOLD
+        let node_growth = self.node_count().saturating_sub(self.nodes_at_last_gc);
+        let mut node_threshold = GC_TRIGGER_THRESHOLD.max(self.nodes_at_last_gc / 4);
+        let mut byte_threshold = GC_BYTE_THRESHOLD;
+        // Use stable headroom from the completed collection. Testing current
+        // pressure on every allocation would repeatedly trace an unreclaimable
+        // live graph without allowing useful work between collections.
+        if self.budget.max_nodes != 0 {
+            node_threshold = node_threshold
+                .min((self.budget.max_nodes.saturating_sub(self.nodes_at_last_gc) / 2).max(1));
+        }
+        if self.budget.max_bytes != 0 {
+            byte_threshold = byte_threshold
+                .min((self.budget.max_bytes.saturating_sub(self.bytes_at_last_gc) / 2).max(1));
+        }
+        node_growth > node_threshold
             || self
                 .allocated_bytes
                 .get()
                 .saturating_sub(self.bytes_at_last_gc)
-                > GC_BYTE_THRESHOLD
+                > byte_threshold
     }
 
     /// At an already due safe point, reclaim old garbage before a bounded
@@ -4294,6 +4308,46 @@ mod tests {
             assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
         }
         assert!(arena.growth_warrants_gc());
+    }
+
+    #[test]
+    fn large_retained_graph_amortizes_node_collection_without_weakening_byte_trigger() {
+        let mut arena = RArena::new();
+        for _ in 0..80_000 {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        arena.note_gc_completed();
+        for _ in 0..15_000 {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        assert!(!arena.growth_warrants_gc());
+        for _ in 0..10_000 {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        assert!(arena.growth_warrants_gc());
+        arena.note_gc_completed();
+        assert!(!arena.growth_warrants_gc());
+        assert!(
+            !arena
+                .alloc_vector(SEXPTYPE::RAWSXP, (GC_BYTE_THRESHOLD + 1) as i64)
+                .is_null()
+        );
+        assert!(arena.growth_warrants_gc());
+    }
+
+    #[test]
+    fn near_node_budget_collects_before_the_amortized_growth_trigger() {
+        let mut arena = RArena::with_budget(ArenaBudget::new(0, 100_000));
+        for _ in 0..85_000 {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        arena.note_gc_completed();
+        assert!(!arena.growth_warrants_gc());
+        for _ in 0..8_000 {
+            assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+        }
+        assert!(arena.growth_warrants_gc());
+        assert_eq!(arena.budget.max_nodes, 100_000);
     }
 
     #[test]
