@@ -38,7 +38,7 @@ integration_path = root / 'docs/ci-checkpoints/integration-stabilization-e3e26de
 integration = json.loads(integration_path.read_text())
 integration_checks = {check['id']: check for check in integration['checks']}
 integration_conformance = integration['complete_conformance']
-integration_linux = integration['linux_showcase_525']
+integration_linux = integration['linux_showcase_4cd']
 integration_upstream = integration['complete_upstream']
 integration_local = integration['batch_last_value']
 report = f'''# Compatibility evidence inventory
@@ -138,7 +138,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `structure.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
-The complete conformance reduction is eight failures relative to the reviewed
+The complete conformance reduction is twelve failures relative to the reviewed
 checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
 case 540 still differs in warning call attribution. Selected checks do not alter
 the complete union totals. The original `utils::data` closure now reaches its
@@ -153,7 +153,7 @@ call-free and custom conditions, help-call attribution and callback collection
 pass, together with 21 existing owned condition/restart controls and the same
 public contract in two fresh production Wasm sessions.
 The complete upstream union accounts for all 85 workloads under the explicit
-graphics/native/faer release profile. UTF-8 completes (Rust 1024.246 seconds)
+graphics/native/faer release profile. UTF-8 completes
 with a strict output difference. GNU Latin-1 setup succeeds; Rust explicitly
 rejects the unfinished native `C_mtext` operation. Earlier incomplete or
 shorter diagnostic reports retain their classifications.
@@ -206,9 +206,14 @@ all condition fixtures and all 205 dataset checks; the unchanged browser
 workbench test and full 60-case showcase also pass locally.
 The `c608eefa` CI repair keeps strict producer reports outside restored Cargo
 caches. Its `4cd0f941` follow-up passes all 46 public package checks on Linux,
-Wasm execution, Clippy, formatting and whole-script differential tests. Broader
-reports are still running; the earlier jobs that failed receipt admission do
-not supply driver results.
+Wasm execution, Clippy, formatting and whole-script differential tests. Its
+independently verified complete reports record 1057/1181 conformance passes,
+16 whole-driver passes and all 15 curated slices passing. The complete Linux
+showcase records 59 passes and one methods-workflow runtime timeout at the
+unchanged 15-second budget. The older 60-pass Linux result remains separately
+sourced. The earlier jobs that failed receipt admission do not supply driver
+results. Its workspace job fails a Python runner stub before Cargo; that
+tooling regression is repaired at `10ab9e72`, with all 131 script tests passing.
 
 The `04c35a37` batch evaluation policy preserves user `.Last.value` bindings and
 avoids automatic writes during scripts, while retaining console publication by

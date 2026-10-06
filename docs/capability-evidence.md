@@ -84,18 +84,18 @@ records actual public workflow repairs and preserves their separate source commi
 
 | Executed set | Commit | Pass | Fail | Other |
 | --- | --- | ---: | ---: | --- |
-| Complete exact-oracle conformance | `0105a3ff` | 1054 | 127 | All 1181 accounted for; 0 timeouts |
-| Complete whole upstream drivers | `9b500c00` | 14 | 25 | 31 skipped; all 70 accounted for |
-| Complete curated upstream slices | `9b500c00` | 14 | 1 | All 15 accounted for |
+| Complete exact-oracle conformance | `4cd0f941` | 1057 | 124 | All 1181 accounted for; 0 timeouts |
+| Complete whole upstream drivers | `4cd0f941` | 16 | 23 | 31 skipped; all 70 accounted for |
+| Complete curated upstream slices | `4cd0f941` | 15 | 0 | All 15 accounted for |
 | Local complete Chromium showcase | `04c35a37` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
-| Linux complete Chromium showcase | `52586600` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
+| Linux complete Chromium showcase | `4cd0f941` | 59 | 1 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 | Unchanged whole `structure.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 | Unchanged whole `reg-S4.R` | `4b48f0b0` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 
-The complete conformance reduction is eight failures relative to the reviewed
+The complete conformance reduction is twelve failures relative to the reviewed
 checkpoint. Later selected case 538 passes after shared `try` rendering repairs;
 case 540 still differs in warning call attribution. Selected checks do not alter
 the complete union totals. The original `utils::data` closure now reaches its
@@ -110,7 +110,7 @@ call-free and custom conditions, help-call attribution and callback collection
 pass, together with 21 existing owned condition/restart controls and the same
 public contract in two fresh production Wasm sessions.
 The complete upstream union accounts for all 85 workloads under the explicit
-graphics/native/faer release profile. UTF-8 completes (Rust 1024.246 seconds)
+graphics/native/faer release profile. UTF-8 completes
 with a strict output difference. GNU Latin-1 setup succeeds; Rust explicitly
 rejects the unfinished native `C_mtext` operation. Earlier incomplete or
 shorter diagnostic reports retain their classifications.
@@ -163,9 +163,14 @@ all condition fixtures and all 205 dataset checks; the unchanged browser
 workbench test and full 60-case showcase also pass locally.
 The `c608eefa` CI repair keeps strict producer reports outside restored Cargo
 caches. Its `4cd0f941` follow-up passes all 46 public package checks on Linux,
-Wasm execution, Clippy, formatting and whole-script differential tests. Broader
-reports are still running; the earlier jobs that failed receipt admission do
-not supply driver results.
+Wasm execution, Clippy, formatting and whole-script differential tests. Its
+independently verified complete reports record 1057/1181 conformance passes,
+16 whole-driver passes and all 15 curated slices passing. The complete Linux
+showcase records 59 passes and one methods-workflow runtime timeout at the
+unchanged 15-second budget. The older 60-pass Linux result remains separately
+sourced. The earlier jobs that failed receipt admission do not supply driver
+results. Its workspace job fails a Python runner stub before Cargo; that
+tooling regression is repaired at `10ab9e72`, with all 131 script tests passing.
 
 The `04c35a37` batch evaluation policy preserves user `.Last.value` bindings and
 avoids automatic writes during scripts, while retaining console publication by
