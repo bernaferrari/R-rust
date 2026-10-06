@@ -1581,9 +1581,10 @@
     "detail": "UTF-8 shard canceled by 50-minute outer job deadline; partial join is not a replacement for complete a766 union. Downloaded producer paths are now validated without re-resolving in consumer filesystem."
   },
   "pending_checkpoint": {
-    "source_commit": "e3e26dea5eaeb87293ca6e8f7581cac94d1cc64a",
-    "run_url": "https://github.com/bernaferrari/R-rust/actions/runs/37401343228",
-    "status": "Immutable e3 complete; complete conformance1052/129 and Linux browser57/3 preserved. Later9b browser60/0 separately source-bound; no current-HEAD whole-workspace pass claimed."
+    "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+    "run_id": 37414102417,
+    "status": "queued",
+    "scope": "Complete same-commit reports; no inferred counts from selected tests."
   },
   "function_workflows": [
     {
@@ -1894,6 +1895,31 @@
       ],
       "last_verified_commit": "7a4f731419567b4119e99fd906ce34b8b6a3a40e",
       "limitation": "Browser virtualmoduleprocess identity1; native actualOSPID. Doesnotclaim browserOSprocess/forksupport."
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "eval",
+          "ls",
+          ".Last.value"
+        ]
+      },
+      "public_wrapper": "Shared native/Android constructors and public Script evaluation mode; conformance/upstream batch runners",
+      "implementation": "crates/rmath/src/sexp/session.rs; android/session.rs; scripts/conformance_runner.rs; upstream_execution.py",
+      "execution_checks": [
+        "batch_last_value"
+      ],
+      "tested_options_and_edges": "Console default; Script preserves user bindings and avoids automatic active-binding writes. Original151/152/153/154 strict, active-binding GC/error/recovery, plain/drawing, both package policies, whole method-dispatch driver. Production Wasm plots/conditions/205datasets and 60 showcase controls.",
+      "target_profiles": [
+        "native/default",
+        "native/portable",
+        "release/graphics/native/faer",
+        "production Wasm/Node",
+        "production Wasm/Chromium"
+      ],
+      "last_verified_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+      "limitation": "Selected strict cases do not replace the complete 1181-case report."
     }
   ],
   "linux_showcase_e3": {
@@ -22994,13 +23020,238 @@
       }
     },
     "checkpoint_run_id": 37413290616,
-    "checkpoint_status": "in_progress",
+    "checkpoint_status": "in_progress; package/Wasm/Clippy/format/differential passed",
     "package_followup": "Public package process receipt also restored undertarget; switched profile/process/upload to one runner.temp env. c608packagepreexecutionfailure retained, doesnotcancel prior0105Linux46pass.",
     "package_cached_red": {
       "file": "rport-c608-linux-package-job.log",
       "bytes": 35729,
       "sha256": "eed737b28efae9497bc2400ecd8c553da3d854d5bd4e251be2cc5a6b082a3f72"
     },
-    "followup_source_commit": "4cd0f94119795c4d8ba6d12a4ea20eaf6f84699e"
+    "followup_source_commit": "4cd0f94119795c4d8ba6d12a4ea20eaf6f84699e",
+    "linux_package_followup": {
+      "source_commit": "4cd0f94119795c4d8ba6d12a4ea20eaf6f84699e",
+      "run_id": 37413290616,
+      "job_id": 112106289593,
+      "passed": 46,
+      "failed": 0,
+      "execution_complete": true,
+      "profile": {
+        "file": "4cd-linux-package-profile.json",
+        "bytes": 515,
+        "sha256": "804a2d81cc6c21a3ac1f923953618f5eba49d61f2db9884df5051febf9de569e"
+      },
+      "process": {
+        "file": "4cd-linux-package-process.json",
+        "bytes": 772,
+        "sha256": "990e5beedaba7edfa25044caed29d23f15dc54490e69fbe4a36216678baac581"
+      },
+      "stdout": {
+        "file": "4cd-linux-package-stdout.log",
+        "bytes": 4931,
+        "sha256": "c3566865ef0e3ac627dacc2c73c9404a83a2fc41bd2c88b58a1fd917625d15c8"
+      },
+      "stderr": {
+        "file": "4cd-linux-package-stderr.log",
+        "bytes": 1103,
+        "sha256": "2979fb18e761998be0000f9478a87fe12fbc431e597e1f838449a7d956f4e539"
+      }
+    }
+  },
+  "batch_last_value": {
+    "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+    "description": "Script mode preserves user .Last.value bindings without automatic publication; Console remains default. Both package policies and plain/drawing paths checked.",
+    "strict_selected": [
+      {
+        "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+        "passed": 1,
+        "failed": 0,
+        "report": {
+          "file": "batch-last-value-ls-267-summary.json",
+          "bytes": 2997,
+          "sha256": "3e9dc8a722558b483b17bc19b9f6b007db991cdf4aa8da82bab41fef63c53fd9"
+        },
+        "log": {
+          "file": "rport-batch-last-value-ls-267-strict.log",
+          "bytes": 1050,
+          "sha256": "2e4f18974606a49b78e01a5f1eb755ac114dcc010662c4bba19a8a17e2187270"
+        }
+      },
+      {
+        "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+        "passed": 1,
+        "failed": 0,
+        "report": {
+          "file": "batch-last-value-ls-268-summary.json",
+          "bytes": 2995,
+          "sha256": "0096433f990f77a2114238eeda6ffa68df17c2e0e4fc22bcfe4729084c7046ed"
+        },
+        "log": {
+          "file": "rport-batch-last-value-ls-268-strict.log",
+          "bytes": 981,
+          "sha256": "257ecb021667da03df341572acadf2b0d89544d4b875bbd04f56604d09fb05e3"
+        }
+      },
+      {
+        "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+        "passed": 1,
+        "failed": 0,
+        "report": {
+          "file": "batch-last-value-ls-269-summary.json",
+          "bytes": 2990,
+          "sha256": "b2887d56402201bfbfb9765e64c56ee07a838f8687b6a2bdf39efb71fc8d7c3d"
+        },
+        "log": {
+          "file": "rport-batch-last-value-ls-269-strict.log",
+          "bytes": 1133,
+          "sha256": "cd9b825327df9bd9777266414595f067f216c6fd1a3a39a6bd29037632bb1dc9"
+        }
+      },
+      {
+        "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+        "passed": 1,
+        "failed": 0,
+        "report": {
+          "file": "batch-last-value-ls-270-summary.json",
+          "bytes": 2982,
+          "sha256": "16c877637707a526eb59803d6cf5abe341c413c0366ae29b510ad14243bb93ba"
+        },
+        "log": {
+          "file": "rport-batch-last-value-ls-270-strict.log",
+          "bytes": 970,
+          "sha256": "35147ac813708df6b92fc611c21521058d5c10f1b108940006dc2f7f6f594b41"
+        }
+      }
+    ],
+    "public_tests": {
+      "passed": 1,
+      "failed": 0,
+      "log": {
+        "file": "rport-batch-last-value-public-green.log",
+        "bytes": 788,
+        "sha256": "b7a7d819131d25738aa04caa43a3ff925dd6020661d25346d9ebf16c9416ed37"
+      }
+    },
+    "owned_console_controls": {
+      "passed": 4,
+      "failed": 0,
+      "log": {
+        "file": "rport-batch-last-value-owned-console-controls.log",
+        "bytes": 911,
+        "sha256": "4fc1c104fc82d5d6a76ddd27f76206792c4017bae0ad8197efea2a186e7060a8"
+      }
+    },
+    "public_condition_neighbors": {
+      "passed": 10,
+      "failed": 0,
+      "log": {
+        "file": "rport-batch-last-value-public-neighbors-final.log",
+        "bytes": 1796,
+        "sha256": "4f06bbc35d184e5614fe75740fc80c855f536a56aff886ae41d369c93763ae0d"
+      }
+    },
+    "profile_controls": {
+      "passed": 35,
+      "failed": 0,
+      "log": {
+        "file": "rport-batch-last-value-profile-controls.log",
+        "bytes": 23507,
+        "sha256": "89bc6e3127fd448a0979504c0f41d1ae2817423f41f15157fdb4e98561b583eb"
+      }
+    },
+    "clippy": {
+      "file": "rport-batch-last-value-clippy.log",
+      "bytes": 359,
+      "sha256": "4a4b99e60ed27b3b7cfa9eff7cc34c2be8045669ad2eeacafc4edc2df3b4021a"
+    },
+    "format": {
+      "file": "rport-batch-last-value-format-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "pinned_gnu": {
+      "file": "rport-batch-last-value-pinned-gnu-public.log",
+      "bytes": 40,
+      "sha256": "48b154c602b0fbdb7d7f8149b51131c3fba72a9ca5455395f2430ce58e92093b"
+    },
+    "whole_method_dispatch": {
+      "source_commit": "04c35a372751e296322e4e6aa0c4af88cc3ae73d",
+      "strict_pass": true,
+      "execution_complete": true,
+      "report": {
+        "file": "batch-last-value-whole-method32-summary.json",
+        "bytes": 310988,
+        "sha256": "5c97878ab115998c47222a60c118b514172c056974c412f74c8f60dbbc83140f"
+      },
+      "log": {
+        "file": "rport-batch-last-value-whole-method32-strict.log",
+        "bytes": 657,
+        "sha256": "cd5eb1754eb232d8197b9f4ab2453e7f18cece9691ac7ce27e50e9cc2af4ce5c"
+      }
+    },
+    "production_wasm": {
+      "fresh_generations_passed": 2,
+      "dataset_checks_passed": 205,
+      "optimizer": {
+        "schema_version": 1,
+        "binaryen_version": "133",
+        "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+        "arguments": [
+          "-Oz"
+        ],
+        "feature_policy": "preserve input target_features",
+        "input": {
+          "bytes": 27290010,
+          "sha256": "d0ab59f9f8edb301ac69a41f95aec9ec58157a46d2c2804b9524e930baa387ec"
+        },
+        "output": {
+          "bytes": 23516098,
+          "sha256": "0aa9fd0db529eae0e196cd51a7d7a4d9e27cb05516065176dd3bed2ebe31e5ad"
+        }
+      },
+      "log": {
+        "file": "rport-batch-last-value-wasm-public.log",
+        "bytes": 278,
+        "sha256": "ab175852b8715029a324f2987b2ebe158de892f6f020e26f9be51cdabf79a511"
+      },
+      "datasets_log": {
+        "file": "rport-batch-last-value-wasm-datasets.log",
+        "bytes": 110,
+        "sha256": "f1e5dcc235e35289ac90b82717f6027b99324e556e79d82eca571bcaac16b92b"
+      },
+      "build": {
+        "file": "rport-batch-last-value-wasm-build.log",
+        "bytes": 4268,
+        "sha256": "36e0441574161e623a4918086834d2eea8a14e2ee53c3a3340a6148d595df478"
+      },
+      "warnings_denied": {
+        "file": "rport-batch-last-value-wasm-warnings-denied.log",
+        "bytes": 441,
+        "sha256": "b8f75df6b6ae93b3d5cc02cdba20087a27fe3176a7f089a99f060c6d11b96d21"
+      }
+    },
+    "workbench_browser": {
+      "passed": 1,
+      "failed": 0,
+      "log": {
+        "file": "rport-batch-last-value-workbench-browser.log",
+        "bytes": 184,
+        "sha256": "bcc4c2b5c74cd07ed8a7f2af201a6881755cce9e586ab4a1aeb4fa687f28c54c"
+      }
+    },
+    "showcase": {
+      "stats": {
+        "startTime": "2026-10-06T04:30:24.798Z",
+        "duration": 278581.418,
+        "expected": 60,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "file": "rport-batch-last-value-showcase-full.json",
+        "bytes": 67430,
+        "sha256": "f9cfa79dc2a298205b918abbc264184c98a04b89eb9597a75028737091672a80"
+      }
+    }
   }
 }

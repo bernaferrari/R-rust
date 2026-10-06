@@ -87,7 +87,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Complete exact-oracle conformance | `0105a3ff` | 1054 | 127 | All 1181 accounted for; 0 timeouts |
 | Complete whole upstream drivers | `9b500c00` | 14 | 25 | 31 skipped; all 70 accounted for |
 | Complete curated upstream slices | `9b500c00` | 14 | 1 | All 15 accounted for |
-| Local complete Chromium showcase | `7a4f7314` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
+| Local complete Chromium showcase | `04c35a37` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux complete Chromium showcase | `52586600` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
@@ -162,8 +162,17 @@ production sessions pass the original six workbench plots, serialized replay,
 all condition fixtures and all 205 dataset checks; the unchanged browser
 workbench test and full 60-case showcase also pass locally.
 The `c608eefa` CI repair keeps strict producer reports outside restored Cargo
-caches. Its immutable checkpoint is pending; the earlier upstream jobs that
-failed receipt admission do not supply current driver results.
+caches. Its `4cd0f941` follow-up passes all 46 public package checks on Linux,
+Wasm execution, Clippy, formatting and whole-script differential tests. Broader
+reports are still running; the earlier jobs that failed receipt admission do
+not supply driver results.
+
+The `04c35a37` batch evaluation policy preserves user `.Last.value` bindings and
+avoids automatic writes during scripts, while retaining console publication by
+default. Both public constructor policies pass active-binding, collection,
+error recovery and drawing controls. The four original `ls` cases and complete
+`method-dispatch.R` driver pass strict comparison. Production Wasm passes the
+original workbench test, 205 dataset checks and all 60 showcase cases locally.
 
 The explicit native error-call repair at `1d06a03c` preserves the supplied
 `letters@foo` call while retaining GNU inferred `stop` calls and callback
