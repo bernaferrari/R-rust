@@ -51,7 +51,8 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut n = 0_i32;
             let mut character_query = false;
             while !current.is_null() && current != crate::sexp::globals::R_NilValue() {
-                if !crate::sexp::accessors::TAG(current).is_null() {
+                let tag = crate::sexp::accessors::TAG(current);
+                if !tag.is_null() && tag != crate::sexp::globals::R_NilValue() {
                     character_query = false;
                     break;
                 }

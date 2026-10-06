@@ -1151,8 +1151,17 @@ fn render_reports_actionable_plot_errors() {
 
 #[test]
 fn device_page_questions_follow_gnu_value_visibility_and_device_lifecycle() {
-    let mut session = RSession::new().expect("default session");
-    session.record_scene(r#"
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(
+                Vec::new(),
+                std::env::temp_dir(),
+            ))
+        } else {
+            RSession::new()
+        }
+        .expect("public device session");
+        session.record_scene(r#"
             q <- grDevices::devAskNewPage
             stopifnot(identical(withVisible(q(NULL)), list(value=FALSE, visible=TRUE)))
             stopifnot(identical(withVisible(q(TRUE)), list(value=FALSE, visible=FALSE)))
@@ -1179,7 +1188,8 @@ fn device_page_questions_follow_gnu_value_visibility_and_device_lifecycle() {
                 stopifnot(identical(q(NULL),TRUE))
             }
             q(FALSE); plot(1:3)
-        "#, 320, 240).expect("GNU device page-question workflow");
+        "#, 320, 240).unwrap_or_else(|error| panic!("GNU device page-question workflow portable={portable}: {error}"));
+    }
 }
 
 #[test]

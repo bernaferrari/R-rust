@@ -2536,7 +2536,7 @@ utils	ishashtab_Ext	1";
             covered += 1;
         }
         assert_eq!(
-            covered, 66,
+            covered, 67,
             "static registration coverage, not handler functionality"
         );
         assert_eq!(

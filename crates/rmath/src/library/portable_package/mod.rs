@@ -36,6 +36,7 @@ macro_rules! image {
 }
 
 static METHODS: PackageImage = image!("methods", "../methods/portable/assets", None);
+static GRDEVICES: PackageImage = image!("grDevices", "assets/grDevices", None);
 static UTILS: PackageImage = image!(
     "utils",
     "assets/utils",
@@ -61,6 +62,7 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
         "methods" => Some(&METHODS),
         "utils" => Some(&UTILS),
         "tools" => Some(&TOOLS),
+        "grDevices" => Some(&GRDEVICES),
         _ => None,
     }
 }
@@ -72,7 +74,7 @@ pub(crate) struct LazyDatabase {
 }
 
 fn databases() -> impl Iterator<Item = &'static LazyDatabase> {
-    [&METHODS, &UTILS, &TOOLS]
+    [&METHODS, &UTILS, &TOOLS, &GRDEVICES]
         .into_iter()
         .flat_map(|image| std::iter::once(&image.database).chain(image.sysdata.as_ref()))
 }

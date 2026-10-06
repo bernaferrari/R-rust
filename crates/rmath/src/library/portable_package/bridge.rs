@@ -201,6 +201,10 @@ pub(super) fn install_native(
                 namespace.as_raw(),
             ),
             "utils" => crate::library::utils::install_utils_call_symbols(namespace.as_raw()),
+            "grDevices" => {
+                crate::library::grdevices::install_call_symbols(namespace.as_raw());
+                crate::library::grdevices::colors::initPalette();
+            }
             "tools" => {
                 crate::library::tools::native_calls::install_tools_call_symbols(namespace.as_raw());
                 crate::library::tools::native_calls::install_tools_assert_closures(
@@ -247,6 +251,13 @@ pub(super) fn finalize(
     };
     evaluate(access, &source, namespace)
         .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })?;
+    #[cfg(feature = "renderplot-device")]
+    if image.name == "grDevices" {
+        access.with_native(|_| unsafe {
+            crate::mainutils::graphics_recording::install_namespace_replay(namespace.as_raw());
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 

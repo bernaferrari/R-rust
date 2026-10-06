@@ -30,6 +30,9 @@ mod winbitmap;
 unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devps::PDF(args) }
 }
+unsafe extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { init::cairoProps(which) }
+}
 unsafe extern "C-unwind" fn c_dev_ask_new_page(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
@@ -131,6 +134,9 @@ unsafe extern "C-unwind" fn c_rgb(
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
+        "cairoProps" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_cairo_props),
+        )),
         "devAskNewPage" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
             c_dev_ask_new_page,
             crate::mainutils::native_routines::PayloadArity::Fixed(1),
@@ -222,6 +228,7 @@ pub(crate) fn lookup_external(
 pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
         for name in [
+            "C_cairoProps",
             "C_PDF",
             "C_palette2",
             "C_devholdflush",

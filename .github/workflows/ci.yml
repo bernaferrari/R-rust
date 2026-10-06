@@ -82,6 +82,52 @@ jobs:
       - name: Check generated UniFFI bindings
         run: scripts/generate_uniffi_bindings.sh --check
 
+  package-integration:
+    name: Public package integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Record immutable package execution profile
+        run: |
+          mkdir -p target/public-package-checkpoint
+          python3 - <<'PY'
+          import json, os, pathlib, shutil, subprocess
+          profile = {
+              "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "build_profile": "debug",
+              "features": ["r-embed/default", "rmath/rust-backend", "rmath/renderplot-device"],
+              "numerical_backend": "faer",
+              "device": "owned renderplot scene",
+              "package_policies": ["native/default", "portable/explicit-empty"],
+              "host_rscript": shutil.which("Rscript"),
+              "r_home": os.environ.get("R_HOME"),
+              "timeout_seconds": 1200,
+              "scope": "Selected public package tests; separate from complete workspace and conformance results",
+          }
+          pathlib.Path("target/public-package-checkpoint/profile.json").write_text(json.dumps(profile, indent=2) + "\n")
+          PY
+
+      - name: Execute original public package workflows
+        run: >-
+          python3 scripts/upstream_execution.py process
+          --directory target/public-package-checkpoint/execute
+          --cwd "$PWD" --timeout 1200 --separate-streams --
+          scripts/cargo_dev.sh test -p r-embed
+          --test embed --test namespace_initialization
+          --test portable_namespace_integration --test portable_grdevices_namespace
+
+      - name: Upload durable public package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-package-checkpoint
+          path: target/public-package-checkpoint
+          if-no-files-found: error
+
   conformance:
     name: Exact R conformance shard ${{ matrix.shard }}
     strategy:

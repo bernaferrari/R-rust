@@ -10,7 +10,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[5]
 parser = argparse.ArgumentParser()
 parser.add_argument("--rscript", required=True)
-parser.add_argument("--package", choices=("methods", "utils", "tools"), required=True)
+parser.add_argument("--package", choices=("methods", "utils", "tools", "grDevices"), required=True)
 parser.add_argument("--output", required=True, type=Path)
 args = parser.parse_args()
 spec = importlib.util.spec_from_file_location("validate_r_oracle", ROOT / "scripts/validate_r_oracle.py")

@@ -1,0 +1,53 @@
+{
+  "source": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "runtime": {
+    "version": "4.7.0 Under development (unstable)",
+    "nickname": "Unsuffered Consequences",
+    "svn_revision": 90451,
+    "source_date": "2026-08-27T09:09:57Z"
+  },
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "generator_sha256": {
+    "generate.R": "56119fef81aeb6435cb60cdfe8d409159f488e1006443eb02df5f6c4f8c4b6d6",
+    "generate.py": "ff7df6f340887fa3464396680245175268430deb74633b3cc5471f0ce2ff858a"
+  },
+  "files": {
+    "DESCRIPTION": {
+      "bytes": 503,
+      "sha256": "cf565df8376da1f3ee423aebdd12ab7a0356d6aa835b87c7c7ac277d6fa727b0"
+    },
+    "NAMESPACE": {
+      "bytes": 3180,
+      "sha256": "e3e65e81955797a2585480fa60085ab20afb3091a841ecdaadd9079dccf10c08"
+    },
+    "S3methods.rds": {
+      "bytes": 1886,
+      "sha256": "4e45fb7066d480fbf6d67970be1322080a9b202178b943d58f560006e0ecaa2a"
+    },
+    "envhook.R": {
+      "bytes": 938,
+      "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
+    },
+    "exports.rds": {
+      "bytes": 2453,
+      "sha256": "e8a628922b9a531705e853e7b7505f5d6979ba2603977842eedff57ab1b98d7c"
+    },
+    "generation.log": {
+      "bytes": 89,
+      "sha256": "f46ae0e6a1cfe25a3b1badf1a7cfbeae93b399a00f71a950c780044d9d5cb1e2"
+    },
+    "grDevices.rdb": {
+      "bytes": 268167,
+      "sha256": "639da909b5efa32dcdf21e68179f2892db62d22be6da1547aeb8f75571fbaa67"
+    },
+    "index.rds": {
+      "bytes": 9064,
+      "sha256": "9f5c9ba67782527e96feefb29cb93032ab67c8a0badc2bef84ba93a5f6331ba3"
+    }
+  }
+}
