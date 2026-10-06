@@ -21,9 +21,10 @@
 
 mod characters;
 
+use hashbrown::HashMap;
 use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::ptr::{self};
 use std::rc::Rc;
 
