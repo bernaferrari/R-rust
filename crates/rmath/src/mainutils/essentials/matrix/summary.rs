@@ -279,10 +279,8 @@ pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
             for i in 0..copy_len {
                 SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
             }
-            if kind == SEXPTYPE::EXPRSXP.as_c_int() {
-                for i in copy_len..new_len {
-                    SET_VECTOR_ELT(result, i, R_NilValue());
-                }
+            for i in copy_len..new_len {
+                SET_VECTOR_ELT(result, i, R_NilValue());
             }
         } else {
             std::panic::panic_any(RError {

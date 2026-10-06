@@ -17,12 +17,15 @@ console.log(JSON.stringify({ wasm_sha256: createHash('sha256').update(moduleByte
 const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
   ...[
+    '260_length_replacement',
     '1094_cat_complex_fft',
     '544_complex_constructor_format_str_parity',
     '551_round_signif_complex_parity',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
-    resolve(fixtures, 'complex-original-' + name + '.out'),
+    name === '260_length_replacement'
+      ? resolve(root, 'tests/conformance/golden', name + '.out')
+      : resolve(fixtures, 'complex-original-' + name + '.out'),
   ]),
   ...[
     'complex-print-public-contract',

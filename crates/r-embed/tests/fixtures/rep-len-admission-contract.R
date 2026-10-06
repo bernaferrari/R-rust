@@ -13,6 +13,8 @@ print(identical(rep_len(1L,-0.5),integer(0)))
 print(identical(rep_len(c(a=1L,b=2L),5L),c(1L,2L,1L,2L,1L)))
 print(identical(rep_len(character(0),2L),c(NA_character_,NA_character_)))
 print(identical(rep_len(list(1L,TRUE),3L),list(1L,TRUE,1L)))
+print(identical(rep_len(list(),2L),list(NULL,NULL)))
+print(identical(rep_len(expression(),2L),expression(NULL,NULL)))
 print(identical(rep_len(complex(0),2L),c(NA_complex_,NA_complex_)))
 print(identical(local({x<-character(0);length(x)<-2L;x}),c(NA_character_,NA_character_)))
 local({

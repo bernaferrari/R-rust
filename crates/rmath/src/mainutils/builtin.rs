@@ -745,6 +745,9 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
                 for i in 0..copy_len as R_xlen_t {
                     SET_VECTOR_ELT(r, i, VECTOR_ELT(x, i));
                 }
+                for i in copy_len as R_xlen_t..len {
+                    SET_VECTOR_ELT(r, i, R_NilValue());
+                }
             }
             _ => {
                 error("unsupported type for length assignment");
