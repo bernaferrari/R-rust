@@ -84,10 +84,10 @@ records actual public workflow repairs and preserves their separate source commi
 
 | Executed set | Commit | Pass | Fail | Other |
 | --- | --- | ---: | ---: | --- |
-| Complete exact-oracle conformance | `9b500c00` | 1053 | 128 | All 1181 accounted for; 0 timeouts |
+| Complete exact-oracle conformance | `0105a3ff` | 1054 | 127 | All 1181 accounted for; 0 timeouts |
 | Complete whole upstream drivers | `9b500c00` | 14 | 25 | 31 skipped; all 70 accounted for |
 | Complete curated upstream slices | `9b500c00` | 14 | 1 | All 15 accounted for |
-| Local complete Chromium showcase | `f16592b7` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
+| Local complete Chromium showcase | `7a4f7314` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux complete Chromium showcase | `52586600` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
@@ -136,6 +136,40 @@ all 60 browser tests. The Linux workspace advances to 38/39 embedding tests,
 where the device-lifecycle workflow still depends on a missing host R
 configuration file; this is tracked separately. The older exhaustive workspace run
 is incomplete; it is not current-HEAD passing evidence.
+The original GNU `grDevices` package image at `0105a3ff` provides canonical
+namespace initialization and 137 captured exports under the explicit empty
+portable library policy. The unchanged device-lifecycle workflow passes through
+both real constructors after repairing the shared builtin `par` query path.
+All 39 native embedding tests pass locally, along with seven namespace/window
+controls and the original grid workflows. Two fresh production Wasm sessions
+pass the same namespace/device workflow and encode a real PNG; all 205 original
+dataset checks and the complete 60-case browser suite pass. A focused immutable
+Linux package checkpoint completes all 46 public package checks without host R
+discovery. The separate Linux browser workbench fails at serialized recording
+because `Sys.getpid()` calls an unsupported host API on Wasm; its showcase
+suite is not reached. The earlier local 60-case result remains separately
+sourced. A broader forced-GC recording invocation was manually cancelled and
+is not counted as complete. Captured exports do not imply that every export
+has a completed native implementation.
+
+The later `96742f34` repair gives native `try`/`tryCatch` an owned evaluation
+context and correctly returns no inferred caller for a lone top-level builtin.
+The original top-level stop cases and existing nested, explicit and callback
+condition workflows pass through both public constructors. At `7a4f7314`,
+`Sys.getpid()` uses a stable virtual process identity on browser Wasm, avoiding
+the host API panic in the original GNU `recordPlot()` wrapper. Two fresh
+production sessions pass the original six workbench plots, serialized replay,
+all condition fixtures and all 205 dataset checks; the unchanged browser
+workbench test and full 60-case showcase also pass locally.
+The `c608eefa` CI repair keeps strict producer reports outside restored Cargo
+caches. Its immutable checkpoint is pending; the earlier upstream jobs that
+failed receipt admission do not supply current driver results.
+
+The explicit native error-call repair at `1d06a03c` preserves the supplied
+`letters@foo` call while retaining GNU inferred `stop` calls and callback
+replacement attribution. The unchanged complete `method-dispatch.R` passes
+strict comparison under graphics/native/faer release.
+
 The table printing repair at `06773bdc` uses the original GNU closure and shared
 output paths. Both public constructor policies match independently captured GNU
 output for formatting options, dimensions, missing names and capture chronology.
