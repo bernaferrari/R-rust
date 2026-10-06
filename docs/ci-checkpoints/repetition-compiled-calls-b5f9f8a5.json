@@ -810,9 +810,10 @@
     }
   ],
   "limitations": [
-    "Latest completed full inventory1d has1086 pass/95 fail; selected b5 results are not added to that union.",
+    "Later complete same-source b5 CI authenticates1083 pass/98 fail:492 newly passes, four stop caller regressions appear. See conformance-browser-b5f9f8a5.json. Local six selected results are not a complete1181 union.",
     "Complete workspace and LOESS GC-torture acceptance remain unresolved.",
     "Sequential serialization stream/refhook cursor remains tracked separately.",
-    "Earlier825 FFT/RNG timeout remains a diagnostic gap despite later full60 passing runs."
+    "Earlier825 FFT/RNG timeout remains a diagnostic gap despite later full60 passing runs.",
+    "Same-source Linux Chromium59/60; FFT/RNG aggregate timeout. Same-source workspace fails at calling_error_handlers help conditionCall. Later caller/suppression repairs remain separate."
   ]
 }

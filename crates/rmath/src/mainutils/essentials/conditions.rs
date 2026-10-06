@@ -1555,7 +1555,10 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let s = condition_message_text(args, &["call.", "domain"]);
         let call = if named_call_dot(args) {
-            crate::mainutils::errors::R_getCurrentCall()
+            // This public shim stands in for GNU's stop closure. The call
+            // belongs to its caller, including when bytecode records the
+            // inlined stop expression for other implicit errors.
+            crate::mainutils::errors::findCall()
         } else {
             R_NilValue()
         };
@@ -1583,13 +1586,22 @@ fn condition_object(value: SEXP) -> SEXP {
 /// R's `warning(...)` — issue warning.
 pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let _ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+            _call,
+            rho,
+            rho,
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
         let first = CAR(args);
         let passed = condition_object(first);
         let warning_call = if !passed.is_null() {
             crate::mainutils::essentials::tables::list_element_by_name(passed, "call")
                 .unwrap_or(R_NilValue())
         } else if named_call_dot(args) {
-            crate::mainutils::errors::R_getCurrentCall()
+            crate::mainutils::errors::findCall()
         } else {
             R_NilValue()
         };

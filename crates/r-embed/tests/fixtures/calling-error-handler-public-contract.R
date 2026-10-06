@@ -47,5 +47,22 @@ local({
         gc()
     }), error = identity)
     stopifnot(identical(observed, original), identical(caught, original))
+    # Original GNU-compiled public error routes, with caller expressions intact.
+    f <- function(p) (p[1] - 2)^2 + (p[2] + 1)^2
+    probes <- list(function() dmultinom(c(1, 2), prob = c(0.5)),
+                   function() dmultinom(c(1), prob = c(NA)),
+                   function() relevel(factor(c("a", "b")), "z"),
+                   function() constrOptim(c(2, 0), f, NULL, ui = rbind(c(-1, 0)), ci = -1))
+    expected_calls <- list(quote(dmultinom(c(1, 2), prob = c(0.5))),
+                           quote(dmultinom(c(1), prob = c(NA))),
+                           quote(relevel.factor(factor(c("a", "b")), "z")),
+                           quote(constrOptim(c(2, 0), f, NULL, ui = rbind(c(-1, 0)), ci = -1)))
+    for (i in seq_along(probes)) {
+        observed <- NULL
+        caught <- tryCatch(withCallingHandlers(probes[[i]](), error = function(e) {
+            observed <<- e; gc()
+        }), error = identity)
+        stopifnot(identical(observed, caught), identical(conditionCall(observed), expected_calls[[i]]))
+    }
     TRUE
 })

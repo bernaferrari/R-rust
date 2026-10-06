@@ -19,12 +19,13 @@ const contracts = [
   ...[
     '260_length_replacement',
     '492_rep_int_len_helpers',
+    '288_with_calling_handlers',
     '1094_cat_complex_fft',
     '544_complex_constructor_format_str_parity',
     '551_round_signif_complex_parity',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
-    ['260_length_replacement', '492_rep_int_len_helpers'].includes(name)
+    ['260_length_replacement', '492_rep_int_len_helpers', '288_with_calling_handlers'].includes(name)
       ? resolve(root, 'tests/conformance/golden', name + '.out')
       : resolve(fixtures, 'complex-original-' + name + '.out'),
   ]),
@@ -42,6 +43,8 @@ const contracts = [
     'mapply-public-contract',
     'sample-condition-contract',
     'rep-len-admission-contract',
+    'calling-error-handler-public-contract',
+    'calling-warning-handler-public-contract',
     'unserialize-connection-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];

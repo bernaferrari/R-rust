@@ -7,16 +7,28 @@ test("portable FFT and all formerly gated RNGs match the pinned GNU R oracle", a
   test.setTimeout(90000)
   await page.goto("/console/")
   for (const item of fixture.cases) {
-    const output = await page.evaluate(async (code) => {
-      // Exercise the shipped worker and actual Wasm module, not a host-side substitute.
-      const { RRuntime } = await import("/src/runtime/r-runtime.ts")
-      const runtime = new RRuntime()
-      try {
-        return (await runtime.run(code, "console")).output
-      } finally {
-        runtime.dispose()
-      }
-    }, item.code)
+    const started = Date.now()
+    const result = await test.step(item.name, () =>
+      page.evaluate(async (code) => {
+        // Exercise the shipped worker and actual Wasm module, not a host-side substitute.
+        const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+        const runtime = new RRuntime()
+        try {
+          return await runtime.run(code, "console")
+        } finally {
+          runtime.dispose()
+        }
+      }, item.code)
+    )
+    console.info(
+      JSON.stringify({
+        phase: "fft-rng-case",
+        name: item.name,
+        elapsedMs: Date.now() - started,
+        workerDurationMs: result.durationMs,
+      })
+    )
+    const output = result.output
     const actual = output.trim().split(",").map(Number)
     expect(actual.length, `${item.name}: ${output}`).toBe(item.expected.length)
     actual.forEach((value, index) => {

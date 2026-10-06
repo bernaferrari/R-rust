@@ -1466,6 +1466,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "C_runmed", "\"C_runmed\"");
         eval_base_binding(
             base_env,
+            "suppressWarnings",
+            "function (expr, classes = \"warning\") { withCallingHandlers(expr, warning = function(w) if (inherits(w, classes)) tryInvokeRestart(\"muffleWarning\")) }",
+        );
+        eval_base_binding(
+            base_env,
+            "suppressMessages",
+            "function (expr, classes = \"message\") withCallingHandlers(expr, message = function(c) if (inherits(c, classes)) tryInvokeRestart(\"muffleMessage\"))",
+        );
+        eval_base_binding(
+            base_env,
             "suppressPackageStartupMessages",
             "function (expr) withCallingHandlers(expr, packageStartupMessage = function(c) tryInvokeRestart(\"muffleMessage\"))",
         );

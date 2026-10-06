@@ -66,7 +66,7 @@ pub unsafe fn R_getCurrentCall() -> SEXP {
 }
 
 /// findCall: find the function context's call for error reporting.
-pub(super) unsafe fn findCall() -> SEXP {
+pub(crate) unsafe fn findCall() -> SEXP {
     unsafe {
         let ctx = crate::sexp::context::R_GlobalContext();
         if ctx.is_null() {

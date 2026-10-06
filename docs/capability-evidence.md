@@ -93,8 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `1d3d8184` | 58 | 0 | Original 54 plus sampling/mapply and repetition/connection IO; actual constructors, debug profile |
-| Linux complete Chromium showcase | `1d3d8184` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `b5f9f8a5` | 58 | 0 | Original 54 plus sampling/mapply and repetition/connection IO; actual constructors, debug profile |
+| Linux complete Chromium showcase | `b5f9f8a5` | 59 | 1 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -131,11 +131,11 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`1d3d8184`) | 1086 | 95 | All 1181 accounted for; zero timeouts |
+| Exact-oracle conformance (`b5f9f8a5`) | 1083 | 98 | All 1181 accounted for; zero timeouts |
 | Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for |
 | Curated upstream slices | 15 | 0 | All 15 accounted for |
 
-The [latest conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
+The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
 all 1181 accounted for, zero timeouts, and no added failures versus 825. Original
 list-growth case260 newly passes. Its Linux Chromium report is **60 pass / 0 fail**,
@@ -158,8 +158,18 @@ suite passes60/60. Compiled calls preserve original conditionCall, sys.call and
 substitute expressions while cached arguments execute once. These selected
 results are separate from the completed1181 inventory; sequential serialization
 streams, full workspace and current Miri acceptance remain unverified.
-The latest complete conformance report has forty-one fewer failures than the
-reviewed checkpoint and five fewer than 711, with no added failures. The 711 union
+The [newer completed b5 checkpoint](ci-checkpoints/conformance-browser-b5f9f8a5.json)
+records **1083 pass / 98 fail**, all1181 accounted for with zero timeouts. Original
+repetition492 newly passes, but four public error routes regress: dmultinom028/029,
+relevel079 and constrOptim089 report an inner stop expression instead of the GNU
+caller. Its Linux package producer passes58/58; Chromium records59/60, with the
+original FFT/RNG aggregate timing out. Both methods and sunflower flows pass.
+The full workspace fails at the existing calling-error-handler help assertion;
+it is not accepted. These later failures remain distinct from the earlier1d
+passing browser checkpoint and b5 local selected workflows. Follow-ups retain
+the exact failing programs and original conditions. The latest completed
+conformance report has38 fewer failures than the reviewed checkpoint and2 fewer
+than711, with four added failures versus1d. The 711 union
 reproduced `4d492679`, including its nineteen newly passing cases versus `7691b601`. The upstream runtime
 uses graphics/native/faer release with an 1800-second per-case deadline. UTF-8
 completes with a strict output difference. GNU Latin-1 exits
