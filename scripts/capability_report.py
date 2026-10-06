@@ -362,6 +362,15 @@ Seasonal ML/CSS workflows and exact output pass under both constructor policies;
 Miri pass. The complete unchanged `reg-tests-1a.R` still fails in the explicit
 release profile, now after these sections at missing `utils::C_flushconsole`.
 
+At `5483fec6`, [console and close public workflows](ci-checkpoints/utils-console-5483fec6.json)
+connect the original utils native registration to the session flush callback and
+restore GNU's base close generic and internal connection route. Original progress
+bars, compiled flush calls, lazy close methods and connection closure match GNU
+under both policies. All 54 selected native public tests pass in release; the
+final optimized Wasm passes 13 contracts in two fresh sessions. The real callback
+and collection test passes natively and in a refreshed strict-Miri test image.
+The unchanged whole driver still fails later at explicitly unsupported `C_mtext`.
+
 At `f148143c`, [palette and temporary-name public contracts](ci-checkpoints/palette-tempfile-f148143c.json)
 pass under both constructors in two fresh sessions each, with original GNU output.
 Nine production Wasm contracts pass twice; 205 dataset checks and six original

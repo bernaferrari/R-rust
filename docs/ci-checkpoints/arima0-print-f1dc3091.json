@@ -46,14 +46,25 @@
     },
     "strict_miri_original_seasonal_regression_gc": {
       "passed": 1,
-      "seconds": 80.31,
+      "seconds": 109.65,
       "log": {
-        "path": "/tmp/rport-starma-seven-orders-strict-miri.log",
-        "bytes": 4283,
-        "sha256": "8766f2ca2a3f63770bd98f67ea9b4292ad3751eef0317b7054fa14eb1b25a83b"
-      }
+        "path": "/tmp/rport-starma-seven-orders-strict-miri-fresh.log",
+        "bytes": 4284,
+        "sha256": "14414769135a5d3e3440713916a86c4f183c3a079d915f4d61ea82d255e21647"
+      },
+      "superseded_pre_refresh_candidate": {
+        "seconds": 80.31,
+        "log": {
+          "path": "/tmp/rport-starma-seven-orders-strict-miri.log",
+          "bytes": 4283,
+          "sha256": "8766f2ca2a3f63770bd98f67ea9b4292ad3751eef0317b7054fa14eb1b25a83b"
+        },
+        "note": "Earlier shared-target result is superseded after refreshing the Miri package cache across source checkouts."
+      },
+      "verified_runtime_source": "d355b175e2bc505a2e74ec35cdd6dc7f828904ad",
+      "starma_source_sha256": "077cc9eb0f33eb2e38bfbc6a7c8f08a9fe9aad4220c70359a91b4141ece67d5f"
     },
-    "source_note": "Precommit candidate controls exercise the same final STARMA admission and original seven-entry metadata; shared output repair followed."
+    "source_note": "Fresh strict-Miri test image from the managed checkout; STARMA source is byte-identical to the f1dc3091 repair. The added later console callback test also matched one test after cache refresh; zero-match runs are not evidence."
   },
   "quality": {
     "fmt": true,

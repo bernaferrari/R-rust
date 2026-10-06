@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "source_commit": "5483fec6415c5539030ba765f4225a394436b154",
+  "scope": "Original console flushing and progress-bar/close public lifecycle, plus complete selected54 native public suite. Separate from whole-workspace and complete conformance inventory.",
+  "native_full_public": {
+    "profile": "release",
+    "features": [
+      "r-embed/default",
+      "rmath/rust-backend",
+      "rmath/renderplot-device"
+    ],
+    "policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "suites": 12,
+    "passed": 54,
+    "failed": 0,
+    "ignored": 0,
+    "execution_complete": true,
+    "log": {
+      "path": "/tmp/rport-utils-console-5483fec6-full-public-native-release.log",
+      "bytes": 6627,
+      "sha256": "d5a5edfd072e45bb6993935d419ec5a93df31db734f17f14e75d03408b2c7667"
+    }
+  },
+  "focused_public": {
+    "source": "precommit managed checkout; runtime byte-identical to5483fec6",
+    "fresh_sessions_per_policy": 2,
+    "passed": 1,
+    "log": {
+      "path": "/tmp/rport-utils-console-public-native-final.log",
+      "bytes": 913,
+      "sha256": "080d2c0e1770daa27fa75e830b606d467d6b6a110beec534c101c0a6ffce5b66"
+    }
+  },
+  "callback": {
+    "native": {
+      "passed": 1,
+      "log": {
+        "path": "/tmp/rport-utils-console-native-callback.log",
+        "bytes": 631,
+        "sha256": "046fee3b70965d20e3b5ae754a70e9dffaf761c355810f23455bba2c6ce4eed3"
+      }
+    },
+    "strict_miri": {
+      "passed": 1,
+      "elapsed_seconds": 97.45,
+      "log": {
+        "path": "/tmp/rport-utils-console-strict-miri-fresh.log",
+        "bytes": 4366,
+        "sha256": "62e287048b656140ab084828b64dbfbb9c0b69d9957acc01d965fb78457b8679"
+      }
+    },
+    "contract": "Actual session callback performs collection; wrong arity rejected before invoking it. Miri package cache refreshed across checkouts; prior zero-match run is excluded."
+  },
+  "production_wasm": {
+    "binary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/wasm-utils-console-5483fec6/r_wasm_bg.wasm",
+      "bytes": 25881473,
+      "sha256": "0210a0a5c83c204fcd5c7f98ee9788f26ecd2e8a2ac694ff47437803840c8c1b"
+    },
+    "contracts_per_session": 13,
+    "fresh_sessions": 2,
+    "passed": true,
+    "log": {
+      "path": "/tmp/rport-utils-console-5483fec6-production-public-node.log",
+      "bytes": 161,
+      "sha256": "a26247eb72357529d5cefa5e83a6289b9a76ea4406a79236bfecfa529cd0a50c"
+    },
+    "admission": "Read hash matches final optimized file before/after execution. Earlier run read pre-optimization hashca729fba and is excluded. Correctness contracts only; no workflow timings inferred from this run."
+  },
+  "quality": {
+    "fmt": true,
+    "warnings_denied_workspace_clippy": true,
+    "log": {
+      "path": "/tmp/rport-utils-console-final-clippy.log",
+      "bytes": 1151,
+      "sha256": "17400bc3cf9337f0c611917f9380526b8a74eaaa67d363e2570133bdccce6ec6"
+    }
+  },
+  "fixtures": {
+    "R": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+      "bytes": 1418,
+      "sha256": "7d6cc1b19f6171795e50282a286294c6bf424ae741bd5fe2edc8746223a58685"
+    },
+    "out": {
+      "path": "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/utils-console-public-contract.out",
+      "bytes": 455,
+      "sha256": "63f50289b21f5b554f2c9a8ac25886a31ae2600902bac58f7a4f9cf1f99436d7"
+    }
+  },
+  "enclosing_driver": {
+    "source_commit": "d355b175e2bc505a2e74ec35cdd6dc7f828904ad",
+    "profile": "release",
+    "runtime": {
+      "cargo_features": [
+        "default",
+        "faer",
+        "rust-backend",
+        "r-graphics-engine",
+        "renderplot-device"
+      ],
+      "device": {
+        "font": "bundled DejaVu Sans",
+        "height": 504,
+        "name": "renderplot-scene",
+        "output": "owned display list",
+        "width": 504
+      },
+      "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+      "name": "graphics",
+      "numerical_backend": "faer",
+      "package_policy": "native",
+      "top_level_evaluation_mode": "Script"
+    },
+    "execution_complete": true,
+    "strict_pass": false,
+    "case": {
+      "case": "reg-tests-1a.R",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "kind": "whole",
+      "normalizations": [],
+      "owner": "-",
+      "path": "tests/upstream-r/vendor/reg-tests-1a.R",
+      "phases": [
+        {
+          "engine": "gnu",
+          "generated_artifacts": {},
+          "process": {
+            "command": [
+              "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+              "--vanilla",
+              "reg-tests-1a.R"
+            ],
+            "cwd": "/Users/bernardoferrari/Downloads/rport/target/utils-console-d355b175-reg-tests-1a-release-frozen/cases/whole-reg-tests-1a.R/gnu-workspace",
+            "elapsed_seconds": 1.0490181660279632,
+            "execution_complete": true,
+            "exit_code": 0,
+            "finished_at": "2026-10-06T08:45:46.316538+00:00",
+            "logs": {
+              "combined.log": "1dedc43ff0121f0b3cf280f34b0d718393567fdcb7b8fadd70272d0347622a02"
+            },
+            "pid": 86880,
+            "schema_version": 1,
+            "started_at": "2026-10-06T08:45:45.266883+00:00",
+            "state": "finished",
+            "timeout_seconds": 1800.0
+          }
+        },
+        {
+          "engine": "rust",
+          "generated_artifacts": {},
+          "process": {
+            "command": [
+              "/Users/bernardoferrari/Downloads/rport/target/utils-console-d355b175-reg-tests-1a-release-frozen/rust_runner",
+              "reg-tests-1a.R"
+            ],
+            "cwd": "/Users/bernardoferrari/Downloads/rport/target/utils-console-d355b175-reg-tests-1a-release-frozen/cases/whole-reg-tests-1a.R/rust-workspace",
+            "elapsed_seconds": 18.1178586659953,
+            "execution_complete": true,
+            "exit_code": 1,
+            "finished_at": "2026-10-06T08:46:04.518380+00:00",
+            "logs": {
+              "combined.log": "1f24f2269262553d15c46f563fb5a2485ffebe10c0ed8c54c955278a9977555e"
+            },
+            "pid": 86903,
+            "schema_version": 1,
+            "started_at": "2026-10-06T08:45:46.399908+00:00",
+            "state": "finished",
+            "timeout_seconds": 1800.0
+          }
+        }
+      ],
+      "reason": "-",
+      "runtime_info_sha256": "a1366d986ef8130379472a7044173988ef291ce3c58f341c33d85449e41efdbe",
+      "status": "fail"
+    },
+    "summary": {
+      "path": "/Users/bernardoferrari/Downloads/rport/target/utils-console-d355b175-reg-tests-1a-release-frozen/summary.json",
+      "bytes": 315660,
+      "sha256": "95e59f214782f147c737f6a844eb742dda7e433d0333f9526b638ed0f9ab0cc4"
+    },
+    "next_failure": "native graphics operation 'C_mtext' is not implemented",
+    "next_issue": "rport-0asiy"
+  },
+  "immutable_ci": {
+    "run": 37438638381,
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37438638381",
+    "status_at_receipt": "Dispatched, source verified. Completed results not yet admitted."
+  },
+  "function_workflows": [
+    {
+      "inventory_key": {
+        "namespace": "utils",
+        "bindings": [
+          "flush.console",
+          "txtProgressBar",
+          "setTxtProgressBar",
+          "close.txtProgressBar"
+        ]
+      },
+      "public_wrapper": "Original utils namespace closures and S3 registry",
+      "implementation": "library/utils/mod.rs typed Args0; library/utils/stubs.rs; unix/system.rs session callback",
+      "tested_options_and_edges": "Qualified, attached, compiled lookup; invisible NULL; real progress output and close; fresh policy sessions",
+      "target_profiles": [
+        "native/release/default",
+        "native/release/portable",
+        "production Wasm/Node"
+      ],
+      "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "limitation": "Other utils native registrations remain independent"
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "close",
+          "close.connection"
+        ]
+      },
+      "public_wrapper": "Original GNU base closures, UseMethod and typed Internal close2",
+      "implementation": "sexp/init.rs; mainutils/names.rs; existing mainutils/connections::do_close",
+      "tested_options_and_edges": "Original S3 metadata; lazy unforced error argument; visibility; progress bar and text connection close; invalid-class error",
+      "target_profiles": [
+        "native/release/default",
+        "native/release/portable",
+        "production Wasm/Node"
+      ],
+      "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "limitation": "Not complete connection family verification"
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          ".bincode"
+        ]
+      },
+      "public_wrapper": "Original GNU base closure and typed Internal bincode4",
+      "implementation": "mainutils/bincode.rs; mainutils/util_main.rs owned binning kernel",
+      "tested_options_and_edges": "Endpoint and break admission; repeated/missing values; coerced typed inputs; errors, compiled calls and complete histogram",
+      "target_profiles": [
+        "native/release/default",
+        "native/release/portable",
+        "production Wasm/Node"
+      ],
+      "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "limitation": "Whole reg-tests-1a is still red"
+    },
+    {
+      "inventory_key": {
+        "namespace": "base",
+        "bindings": [
+          "print.default"
+        ]
+      },
+      "public_wrapper": "Original base wrapper, admitted active R_PrintData and owned formatter",
+      "implementation": "mainutils/print.rs; mainutils/coerce; sexp/output.rs",
+      "tested_options_and_edges": "Gap0/1/2/4; matrix/vector types; width; invalid arguments and recovery; fractional and string coercion",
+      "target_profiles": [
+        "native/release/default",
+        "native/release/portable",
+        "production Wasm/Node"
+      ],
+      "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "limitation": "Not all formatting family contracts"
+    },
+    {
+      "inventory_key": {
+        "namespace": "stats",
+        "bindings": [
+          "arima0",
+          "print.arima0"
+        ]
+      },
+      "public_wrapper": "Original stats namespace public closures",
+      "implementation": "library/stats/starma_api.rs; owned STARMA state; shared print formatter",
+      "tested_options_and_edges": "Seven-entry model metadata; original seasonal ML/CSS fits; coefficient/error matrix, variance, likelihood, AIC, residual shape",
+      "target_profiles": [
+        "native/release/default",
+        "native/release/portable",
+        "production Wasm/Node"
+      ],
+      "last_verified_commit": "5483fec6415c5539030ba765f4225a394436b154",
+      "limitation": "Original AR1 CSS conformance891 still differs: GNU0,2 versusRust0.0079,2.0033; rport-ul3f4"
+    }
+  ]
+}

@@ -229,3 +229,12 @@ This is a partial execution join. It does not classify an untested inventory nam
 as passing. The enclosing `structure.R` strictly passes; `eval-etc.R` completes but
 still differs from GNU output. Its remaining semantic and printing differences,
 and the separate internal dput routing gap, remain explicit in the receipt.
+
+The later [5483fec6 execution join](ci-checkpoints/utils-console-5483fec6.json)
+links original utils console/progress-bar calls, base close and binning wrappers,
+print-gap behavior and the stats seasonal ARIMA0 workflow to implementations,
+options, exact GNU fixtures, native/portable profiles and the verified source.
+Its complete selected native suite passes 54 tests; 13 production Wasm contracts
+pass in two fresh sessions. This remains a partial join. The same receipt records
+the enclosing driver failure at unsupported `C_mtext` and the independent ARIMA0
+AR1 CSS coefficient mismatch, rather than treating namespace presence as passing.
