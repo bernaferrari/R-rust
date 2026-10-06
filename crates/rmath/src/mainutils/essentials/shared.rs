@@ -2503,10 +2503,7 @@ unsafe fn ensure_namespace_info(
                     let symbol = Rf_install(name.as_ptr());
                     let value = crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol);
                     if value != crate::sexp::globals::R_UnboundValue() {
-                        let value = factory
-                            .wrap(value)
-                            .unwrap_or_else(|e| package_error(e.to_string()));
-                        crate::sexp::envir::defineVar(symbol, value.as_raw(), exports.as_raw());
+                        crate::sexp::envir::defineVar(symbol, symbol, exports.as_raw());
                     }
                 }
             }
@@ -2537,7 +2534,7 @@ unsafe fn ensure_namespace_info(
             if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }
-            crate::sexp::envir::defineVar(symbol, value, exports);
+            crate::sexp::envir::defineVar(symbol, symbol, exports);
         }
 
         crate::sexp::envir::defineVar(Rf_install(c"exports".as_ptr()), exports, info);
@@ -3678,15 +3675,24 @@ pub(crate) fn cached_namespace_directives(package_dir: &Path) -> Option<Namespac
     read_namespace_directives(package_dir).ok().flatten()
 }
 
-/// Public `::` export check. Directive strings are cached; `exportPattern`
-/// is tested against this name and the live frame, because the first lookup
-/// often happens before the namespace frame is full.
+/// Public `::` checks the live exports table. Legacy namespaces without that
+/// metadata use cached directives and test exportPattern against the live frame.
 pub(crate) unsafe fn namespace_exports_contains(
     package_dir: &Path,
     package_env: SEXP,
     name: &str,
 ) -> bool {
     unsafe {
+        // Portable namespaces have no host NAMESPACE file. Their original
+        // exports environment is also the live authority for namespaceExport
+        // additions; a leading dot does not make an explicit export private.
+        if let Some(exports) = namespace_export_environment(package_env) {
+            let Ok(name) = CString::new(name) else {
+                return false;
+            };
+            let value = crate::sexp::envir::R_findVarInFrame(exports, Rf_install(name.as_ptr()));
+            return !value.is_null() && value != crate::sexp::globals::R_UnboundValue();
+        }
         let Some(directives) = cached_namespace_directives(package_dir) else {
             return frame_binding_names(package_env, false)
                 .iter()
@@ -4100,6 +4106,14 @@ pub(crate) unsafe fn namespace_exports(
 
 unsafe fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
     unsafe {
+        namespace_export_environment(package_env)
+            .map(|exports| frame_binding_names(exports, true))
+            .unwrap_or_default()
+    }
+}
+
+pub(crate) unsafe fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
+    unsafe {
         let mut info = crate::sexp::envir::R_findVarInFrame(
             package_env,
             Rf_install(c".__NAMESPACE__.".as_ptr()),
@@ -4111,14 +4125,8 @@ unsafe fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
             || info == crate::sexp::globals::R_UnboundValue()
             || TYPEOF(info) != SEXPTYPE::ENVSXP
         {
-            return Vec::new();
+            return None;
         }
-        export_env_binding_names(info)
-    }
-}
-
-unsafe fn export_env_binding_names(info: SEXP) -> Vec<String> {
-    unsafe {
         let mut exports =
             crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"exports".as_ptr()));
         if TYPEOF(exports) == SEXPTYPE::PROMSXP {
@@ -4128,9 +4136,9 @@ unsafe fn export_env_binding_names(info: SEXP) -> Vec<String> {
             || exports == crate::sexp::globals::R_UnboundValue()
             || TYPEOF(exports) != SEXPTYPE::ENVSXP
         {
-            return Vec::new();
+            return None;
         }
-        frame_binding_names(exports, true)
+        Some(exports)
     }
 }
 
@@ -5206,8 +5214,18 @@ mod methods_startup_tests {
                 crate::sexp::envir::find_var_in_frame_result(table.clone(), method_symbol.clone())
                     .unwrap()
                     .expect("stats must register predict.lm");
-            assert!(is_function_value(method.as_raw()));
+            // Namespace startup registers GNU lazy promises; forcing is a
+            // dispatch obligation, not a prerequisite for registration.
+            assert!(is_function_value(method.as_raw()) || method.typeof_() == SEXPTYPE::PROMSXP);
+            let callable = factory
+                .wrap(crate::eval::eval::Rf_eval(
+                    method.as_raw(),
+                    namespace.as_raw(),
+                ))
+                .unwrap();
+            assert!(is_function_value(callable.as_raw()));
             session.owner_token().unwrap().full_gc().unwrap();
+            assert!(is_function_value(callable.as_raw()));
             assert_eq!(
                 crate::sexp::envir::find_var_in_frame_result(table, method_symbol)
                     .unwrap()

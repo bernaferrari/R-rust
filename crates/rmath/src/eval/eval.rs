@@ -3258,7 +3258,8 @@ isS4(g) && is(g, "standardGeneric") &&
             r#"
 invisible(require(methods, quietly=TRUE))
 m <- methods:::asMethodDefinition(function(x) x)
-identical(environment(methods:::asMethodDefinition), asNamespace("methods")) &&
+identical(parent.env(environment(methods:::asMethodDefinition)), asNamespace("methods")) &&
+  exists(".anyClassName", environment(methods:::asMethodDefinition), inherits=TRUE) &&
   is(m, "MethodDefinition")
 "#,
         );
@@ -3737,12 +3738,16 @@ exists(".ArgsEnv", envir=baseenv(), inherits=FALSE) &&
   exists(".ArgsEnv", envir=.BaseNamespaceEnv, inherits=FALSE) &&
   exists(".GenericArgsEnv", envir=baseenv(), inherits=FALSE) &&
   exists(".GenericArgsEnv", envir=.BaseNamespaceEnv, inherits=FALSE) &&
-  { assign("rport_base_share", 1, envir=baseenv())
-    exists("rport_base_share", envir=.BaseNamespaceEnv, inherits=FALSE) &&
-      identical(get("rport_base_share", envir=.BaseNamespaceEnv, inherits=FALSE), 1) } &&
-  { rm(rport_base_share, envir=.BaseNamespaceEnv)
-    !exists("rport_base_share", envir=baseenv(), inherits=FALSE) &&
-      inherits(try(get("rport_base_share", envir=baseenv(), inherits=FALSE), silent=TRUE), "try-error") } &&
+  local({
+    original <- get(".ArgsEnv", envir=baseenv(), inherits=FALSE)
+    on.exit({ assign(".ArgsEnv", original, envir=baseenv())
+              lockBinding(".ArgsEnv", baseenv()) })
+    unlockBinding(".ArgsEnv", baseenv())
+    assign(".ArgsEnv", 1, envir=baseenv())
+    shared <- identical(get(".ArgsEnv", envir=.BaseNamespaceEnv, inherits=FALSE), 1)
+    assign(".ArgsEnv", original, envir=.BaseNamespaceEnv)
+    shared && identical(get(".ArgsEnv", envir=baseenv(), inherits=FALSE), original)
+  }) &&
   identical(ls(baseenv()), ls(.BaseNamespaceEnv)) &&
   !identical(.BaseNamespaceEnv, baseenv()) &&
   identical(parent.env(.BaseNamespaceEnv), .GlobalEnv)

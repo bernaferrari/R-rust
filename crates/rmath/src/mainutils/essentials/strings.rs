@@ -4948,23 +4948,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
-        {
-            use crate::sexp::attrib_core::{
-                R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
-            };
-            let names = getAttrib(x, R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                setAttrib(result, R_NamesSymbol(), names);
-            }
-            let dim = getAttrib(x, R_DimSymbol());
-            if !dim.is_null() && dim != R_NilValue() {
-                setAttrib(result, R_DimSymbol(), dim);
-            }
-            let dn = getAttrib(x, R_DimNamesSymbol());
-            if !dn.is_null() && dn != R_NilValue() {
-                setAttrib(result, R_DimNamesSymbol(), dn);
-            }
-        }
+        copy_format_shape(x, result);
 
         crate::mainutils::format::format_set_R_print(pinned_print);
         crate::mainutils::options::SetOptionByName("digits", saved_digits);
@@ -5309,7 +5293,24 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
+        copy_format_shape(x, result);
         result
+    }
+}
+
+/// GNU format retains names and array shape, excluding class and unrelated
+/// attributes. Character formatting follows the same contract as numeric.
+unsafe fn copy_format_shape(x: SEXP, result: SEXP) {
+    unsafe {
+        use crate::sexp::attrib_core::{
+            R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+        };
+        for symbol in [R_NamesSymbol(), R_DimSymbol(), R_DimNamesSymbol()] {
+            let value = getAttrib(x, symbol);
+            if !value.is_null() && value != R_NilValue() {
+                setAttrib(result, symbol, value);
+            }
+        }
     }
 }
 

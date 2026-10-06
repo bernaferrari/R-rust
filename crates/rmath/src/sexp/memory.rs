@@ -4166,6 +4166,19 @@ mod tests {
                 Some(pointer)
             );
         }
+        // A registration can retire while the physical page is still alive.
+        // It must disappear from every cache position, including ranges other
+        // than the most recently touched one.
+        let (retired_page, retired_registration) = neighbors.pop().unwrap();
+        let retired_pointer = retired_page.raw_slot(1).unwrap();
+        assert!(super::checked_node(retired_pointer).is_some());
+        for (neighbor, _) in neighbors.iter().rev().take(3) {
+            assert!(super::checked_node(neighbor.raw_slot(1).unwrap()).is_some());
+        }
+        drop(retired_registration);
+        assert!(retired_page.token(1).unwrap().is_live());
+        assert!(super::checked_node(retired_pointer).is_none());
+        assert!(super::checked_projection(retired_pointer).is_none());
     }
 
     #[test]

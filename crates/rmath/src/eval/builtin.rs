@@ -836,6 +836,10 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: "getNamespaceValue",
+        handler: crate::mainutils::essentials::do_get_namespace_value,
+    },
+    EvaluatedBuiltin {
         name: "returnValue",
         handler: crate::mainutils::builtin::do_returnValue,
     },

@@ -697,6 +697,16 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_as_data_frame_list.R"),
         );
         eval_base_binding(base_env, "data.frame", include_str!("gnu_data_frame.R"));
+        eval_base_binding(
+            base_env,
+            "summary.data.frame",
+            include_str!("gnu_summary_data_frame.R"),
+        );
+        eval_base_binding(
+            base_env,
+            "summary.matrix",
+            include_str!("gnu_summary_matrix.R"),
+        );
         eval_base_binding(base_env, "close", "function(con, ...) UseMethod(\"close\")");
         eval_base_binding(
             base_env,
@@ -2703,6 +2713,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              ns <- asNamespace(ns)\n\
              names(if (isBaseNamespace(ns)) .BaseNamespaceEnv else .getNamespaceInfo(ns, \"exports\"))\n\
              }",
+        );
+        eval_base_binding(
+            base_env,
+            "getExportedValue",
+            "function(ns, name) .Internal(getNamespaceValue(ns, name, TRUE))",
         );
         eval_base_binding(
             base_env,

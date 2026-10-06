@@ -932,6 +932,92 @@ unsafe fn force_namespace_value(value: SEXP) -> SEXP {
     }
 }
 
+unsafe fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
+    unsafe {
+        if TYPEOF(value) == SEXPTYPE::SYMSXP {
+            return value;
+        }
+        if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+            let name = elt_to_string(value, 0);
+            return Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        }
+        package_error(error.to_owned())
+    }
+}
+
+/// GNU's original getExportedValue closure uses the same namespace identity
+/// and export-name mapping as qualified lookup, including dotted exports.
+pub unsafe fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let ns_arg = CAR(args);
+        let base = crate::sexp::envir::R_BaseNamespace();
+        let info_symbol = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let namespace = if ns_arg == base
+            || (TYPEOF(ns_arg) == SEXPTYPE::ENVSXP
+                && TYPEOF(crate::sexp::envir::R_findVarInFrame(ns_arg, info_symbol))
+                    == SEXPTYPE::ENVSXP)
+        {
+            ns_arg
+        } else {
+            let package = namespace_lookup_name(ns_arg, "bad namespace name");
+            let package = symbol_name(package).unwrap_or_default();
+            load_package_namespace_by_name(&package)
+                .unwrap_or_else(|message| package_error(message))
+        };
+        let _namespace = protect(namespace);
+        let name = namespace_lookup_name(CAR(CDR(args)), "bad variable name");
+        let exported = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args)))) != FALSE;
+        namespace_value(namespace, name, exported)
+    }
+}
+
+unsafe fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
+    unsafe {
+        let _namespace = protect(namespace);
+        let base = crate::sexp::envir::R_BaseNamespace();
+        if namespace == base || !exported {
+            let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            if value == R_UnboundValue() {
+                package_error(format!(
+                    "object '{}' not found",
+                    symbol_name(name).unwrap_or_default()
+                ));
+            }
+            return force_namespace_value(value);
+        }
+        if let Some(exports) =
+            crate::mainutils::essentials::shared::namespace_export_environment(namespace)
+        {
+            let _exports = protect(exports);
+            let alias = crate::sexp::envir::R_findVarInFrame(exports, name);
+            if alias != R_UnboundValue() {
+                let _alias = protect(alias);
+                let alias =
+                    namespace_lookup_name(force_namespace_value(alias), "bad variable name");
+                return crate::eval::eval::Rf_eval(alias, namespace);
+            }
+        }
+        let info = crate::sexp::envir::R_findVarInFrame(
+            namespace,
+            Rf_install(c".__NAMESPACE__.".as_ptr()),
+        );
+        let _info = protect(info);
+        let lazy = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"lazydata".as_ptr()));
+        if TYPEOF(lazy) == SEXPTYPE::ENVSXP {
+            let value = crate::sexp::envir::R_findVarInFrame(lazy, name);
+            if value != R_UnboundValue() {
+                return force_namespace_value(value);
+            }
+        }
+        let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+        package_error(format!(
+            "'{}' is not an exported object from 'namespace:{}'",
+            symbol_name(name).unwrap_or_default(),
+            elt_to_string(spec, 0)
+        ))
+    }
+}
+
 pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package = CAR(args);
@@ -1034,6 +1120,12 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             };
             let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
                 || crate::eval::builtin::PRIMNAME(op) == ":::";
+            if !private_lookup
+                && crate::mainutils::essentials::shared::namespace_export_environment(namespace)
+                    .is_some()
+            {
+                return namespace_value(namespace, name, true);
+            }
             let package_path = find_package_path(&package_name);
             if !private_lookup {
                 let exported = unsafe {

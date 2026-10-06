@@ -922,7 +922,8 @@ fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDimnames {
 const R_MIN_LBLOFF: usize = 2;
 
 fn matrix_row_geometry(row_labels: &[String], row_title: Option<&str>) -> (usize, usize) {
-    let mut row_width = row_labels.iter().map(String::len).max().unwrap_or(0);
+    // GNU reserves the minimum index-label width even for zero-row matrices.
+    let mut row_width = row_labels.iter().map(String::len).max().unwrap_or(4);
     let mut lbloff = 0;
     if let Some(title) = row_title {
         let rnw = title.len();

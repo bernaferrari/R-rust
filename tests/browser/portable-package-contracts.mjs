@@ -45,6 +45,7 @@ const contracts = [
     'rep-len-admission-contract',
     'calling-error-handler-public-contract',
     'calling-warning-handler-public-contract',
+    's3-methods-public-contract',
     's4-next-method-public-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',

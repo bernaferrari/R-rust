@@ -93,8 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `6a2fd0b1` | 65 | 0 | Actual constructors, debug profile; includes original calling handlers |
-| Linux complete Chromium showcase | `6a2fd0b1` | 59 | 1 | All 60 accounted for; zero skipped or flaky |
+| Linux native package integration | `820a5981` | 67 | 0 | Explicit release; separate warm S4 remains 1 pass / 1 fail |
+| Linux complete Chromium showcase | `820a5981` | 60 | 0 | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -131,9 +131,9 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`6a2fd0b1`) | 1088 | 93 | All 1181 accounted for; zero timeouts |
-| Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for (`6a2fd0b1`) |
-| Curated upstream slices | 15 | 0 | All 15 accounted for (`6a2fd0b1`) |
+| Exact-oracle conformance (`820a5981`) | 1088 | 93 | All 1181 accounted for; zero timeouts |
+| Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for (`820a5981`) |
+| Curated upstream slices | 15 | 0 | All 15 accounted for (`820a5981`) |
 
 The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
@@ -182,6 +182,24 @@ The original29 fresh-worker FFT/RNG cases complete in62.703 seconds; earlier
 timeouts remain unresolved. The full debug workspace is cancelled and remains
 outside accepted evidence. This completed inventory has41 fewer failures than
 the reviewed checkpoint and 5 fewer than 711.
+The later [completed 820 checkpoint](ci-checkpoints/conformance-browser-820a5981.json)
+independently authenticates the complete inventories: **1088 conformance passes /
+93 failures**, **17 whole-driver passes / 22 failures / 31 skips**, and all
+**15 curated slices passing**. All 60 original Chromium tests pass with zero
+skips or flaky results. All 67 selected native public tests pass under an explicit
+release profile in 21 suites. The separate warm S4 regression still fails the
+configured 15-second deadline, while the original subset-call regression passes.
+All 26 production Wasm contracts pass in each of two sessions, but the Linux
+warm S4 phase records 17.79 and 17.51 seconds; those passes do not establish a
+strict end-to-end 15-second guarantee. Full workspace execution is cancelled.
+The bytecode source-sharing repair preserves GNU copy-on-write behavior; native
+warm S4 admits the graph under unchanged heap/node limits locally. Linux deadline
+reliability remains open, and no rejected cache/inlining experiment is retained.
+The documentation-only `237a4554` repeat passes the native warm S4 test but
+records **59 Chromium passes / 1 failure**, again the original FFT/RNG 90-second
+deadline. Identical runtime code producing alternating deadline results remains
+an unresolved performance contract, rather than evidence of a semantic repair.
+
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
 all 1181 accounted for with zero timeouts. Both original cases 538 and 540

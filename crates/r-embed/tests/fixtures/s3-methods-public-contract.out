@@ -1,0 +1,135 @@
+[1] TRUE TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] "closure" "closure"
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] TRUE
+[1] "bad variable name"
+[1] "bad namespace name"
+[1] "bad namespace name"
+[1] "'.getMethodsTable' is not an exported object from 'namespace:methods'"
+   x    y 
+"a " "bb" 
+list(names = c("x", "y"))
+  u    v   
+r "a " "NA"
+s "bb" "NA"
+list(dim = c(2L, 2L), dimnames = list(c("r", "s"), c("u", "v"
+)))
+, , 1
+
+     [,1] [,2]
+
+, , 2
+
+     [,1] [,2]
+
+list(dim = c(0L, 2L, 2L))
+< table of extent 0 x 0 >
+$dim
+[1] 0 0
+
+$dimnames
+NULL
+
+$class
+[1] "table"
+
+[1] TRUE
+       a      
+ Min.   : NA  
+ 1st Qu.: NA  
+ Median : NA  
+ Mean   :NaN  
+ 3rd Qu.: NA  
+ Max.   : NA  
+$dim
+[1] 6 1
+
+$dimnames
+$dimnames[[1]]
+[1] "" "" "" "" "" ""
+
+$dimnames[[2]]
+[1] "      a"
+
+
+$class
+[1] "table"
+
+[1] TRUE
+       a       b    
+ Min.   :1.0   u:2  
+ 1st Qu.:1.5   v:1  
+ Median :2.0        
+ Mean   :2.0        
+ 3rd Qu.:2.5        
+ Max.   :3.0        
+ NAs    :1          
+$dim
+[1] 7 2
+
+$dimnames
+$dimnames[[1]]
+[1] "" "" "" "" "" "" ""
+
+$dimnames[[2]]
+[1] "      a" "b"      
+
+
+$class
+[1] "table"
+
+[1] TRUE
+     a                   b    
+ Mode :logical   Length   :3  
+ FALSE:1         N.unique :3  
+ TRUE :1         N.blank  :0  
+ NAs  :1         Min.nchar:3  
+                 Max.nchar:5  
+$dim
+[1] 5 2
+
+$dimnames
+$dimnames[[1]]
+[1] "" "" "" "" ""
+
+$dimnames[[2]]
+[1] "    a"     "        b"
+
+
+$class
+[1] "table"
+
+[1] TRUE
+     a.V1           a.V2     
+ Min.   :1.0    Min.   :4.0  
+ 1st Qu.:1.5    1st Qu.:4.5  
+ Median :2.0    Median :5.0  
+ Mean   :2.0    Mean   :5.0  
+ 3rd Qu.:2.5    3rd Qu.:5.5  
+ Max.   :3.0    Max.   :6.0  
+$dim
+[1] 6 1
+
+$dimnames
+$dimnames[[1]]
+[1] "" "" "" "" "" ""
+
+$dimnames[[2]]
+[1] "    a.V1           a.V2     "
+
+
+$class
+[1] "table"
+
+[1] TRUE
+[1] TRUE

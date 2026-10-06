@@ -251,8 +251,11 @@ fn install_lazy_database(
     super::bridge::evaluate(access, &hook_source, &setup).map_err(failure)?;
     super::bridge::evaluate(access, r#"
         expr <- quote(lazyLoadDBfetch(KEY, datafile, compressed, envhook))
-        .Internal(makeLazy(names(map$variables), map$variables, expr, environment(), namespace))
-        for (name in exported) assign(name, TRUE, envir=get("exports", get(".__NAMESPACE__.", namespace)))
+        # The loader owns the live namespace metadata. The database's saved
+        # namespace descriptor must not replace it with a lazy promise.
+        variables <- map$variables[names(map$variables) != ".__NAMESPACE__."]
+        .Internal(makeLazy(names(variables), variables, expr, environment(), namespace))
+        for (name in exported) assign(name, name, envir=get("exports", get(".__NAMESPACE__.", namespace)))
         map <- NULL; exported <- NULL
     "#, &setup).map_err(failure)?;
     Ok(())

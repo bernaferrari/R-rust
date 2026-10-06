@@ -150,13 +150,29 @@ fn s4_next_method_fits_browser_limits_after_package_workflows() {
                 max_arena_nodes: 500000,
             })
             .unwrap();
-        for code in preceding {
-            session.eval(code).unwrap();
-        }
-        assert_eq!(
+        for (phase, code) in preceding.into_iter().enumerate() {
             session
-                .eval(include_str!("fixtures/s4-next-method-public-contract.R"))
-                .unwrap(),
+                .eval(code)
+                .unwrap_or_else(|error| panic!("portable={portable}; prefix={phase}; {error}"));
+        }
+        let before = session.arena_stats();
+        let started = std::time::Instant::now();
+        let result = session
+            .eval(include_str!("fixtures/s4-next-method-public-contract.R"))
+            .unwrap_or_else(|error| {
+                panic!(
+                    "portable={portable}; elapsed={:?}; before={before:?}; after={:?}; {error}",
+                    started.elapsed(),
+                    session.arena_stats()
+                )
+            });
+        println!(
+            "warm S4 portable={portable}; elapsed={:?}; before={before:?}; after={:?}",
+            started.elapsed(),
+            session.arena_stats()
+        );
+        assert_eq!(
+            result,
             include_str!("fixtures/s4-next-method-public-contract.out"),
             "portable={portable}; {:?}",
             session.arena_stats()

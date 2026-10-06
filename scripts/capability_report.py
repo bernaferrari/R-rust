@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-6a2fd0b1.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-820a5981.json').read_text())
 latest_linux = latest_completed
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
@@ -144,7 +144,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `{view['source_commit'][:8]}` | {view_checks['chromium_complete']['expected']} | {view_checks['chromium_complete']['unexpected']} | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `{view['source_commit'][:8]}` | {view['linux_public_packages']['passed']} | {view['linux_public_packages']['failed']} | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `{view['source_commit'][:8]}` | {view['linux_showcase']['stats']['expected']} | {view['linux_showcase']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['passed']} | {latest_linux['native_public']['failed']} | Actual constructors, debug profile; includes original calling handlers |
+| Linux native package integration | `{latest_linux['source_commit'][:8]}` | {latest_linux['native_public']['selected']['passed']} | 0 | Explicit release; separate warm S4 remains 1 pass / 1 fail |
 | Linux complete Chromium showcase | `{latest_linux['source_commit'][:8]}` | {latest_linux['browser']['stats']['expected']} | {latest_linux['browser']['stats']['unexpected']} | All 60 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `{integration_checks['native_packages_and_data']['source_commit'][:8]}` | {integration_checks['native_packages_and_data']['passed']} | {integration_checks['native_packages_and_data']['failed']} | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `{integration_checks['wasm_datasets']['source_commit'][:8]}` | {integration_checks['wasm_datasets']['passed']} | {integration_checks['wasm_datasets']['failed']} | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
@@ -182,9 +182,9 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`6a2fd0b1`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
-| Whole upstream drivers | {latest_completed['complete_upstream']['by_kind']['whole']['pass']} | {latest_completed['complete_upstream']['by_kind']['whole']['fail']} | 31 skipped; all 70 accounted for (`6a2fd0b1`) |
-| Curated upstream slices | {latest_completed['complete_upstream']['by_kind']['curated']['pass']} | 0 | All 15 accounted for (`6a2fd0b1`) |
+| Exact-oracle conformance (`820a5981`) | {latest_completed['conformance']['status_counts']['pass']} | {latest_completed['conformance']['status_counts']['fail']} | All 1181 accounted for; zero timeouts |
+| Whole upstream drivers | {latest_completed['complete_upstream']['whole']['pass']} | {latest_completed['complete_upstream']['whole']['fail']} | 31 skipped; all 70 accounted for (`820a5981`) |
+| Curated upstream slices | {latest_completed['complete_upstream']['curated']['pass']} | 0 | All 15 accounted for (`820a5981`) |
 
 The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
@@ -233,6 +233,24 @@ The original29 fresh-worker FFT/RNG cases complete in62.703 seconds; earlier
 timeouts remain unresolved. The full debug workspace is cancelled and remains
 outside accepted evidence. This completed inventory has41 fewer failures than
 the reviewed checkpoint and 5 fewer than 711.
+The later [completed 820 checkpoint](ci-checkpoints/conformance-browser-820a5981.json)
+independently authenticates the complete inventories: **1088 conformance passes /
+93 failures**, **17 whole-driver passes / 22 failures / 31 skips**, and all
+**15 curated slices passing**. All 60 original Chromium tests pass with zero
+skips or flaky results. All 67 selected native public tests pass under an explicit
+release profile in 21 suites. The separate warm S4 regression still fails the
+configured 15-second deadline, while the original subset-call regression passes.
+All 26 production Wasm contracts pass in each of two sessions, but the Linux
+warm S4 phase records 17.79 and 17.51 seconds; those passes do not establish a
+strict end-to-end 15-second guarantee. Full workspace execution is cancelled.
+The bytecode source-sharing repair preserves GNU copy-on-write behavior; native
+warm S4 admits the graph under unchanged heap/node limits locally. Linux deadline
+reliability remains open, and no rejected cache/inlining experiment is retained.
+The documentation-only `237a4554` repeat passes the native warm S4 test but
+records **59 Chromium passes / 1 failure**, again the original FFT/RNG 90-second
+deadline. Identical runtime code producing alternating deadline results remains
+an unresolved performance contract, rather than evidence of a semantic repair.
+
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
 all 1181 accounted for with zero timeouts. Both original cases 538 and 540
