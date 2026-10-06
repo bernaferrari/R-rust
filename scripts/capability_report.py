@@ -305,6 +305,14 @@ and later fails at font metrics and `C_PostScript`. These results are recorded
 in [correlation evidence](ci-checkpoints/correlation-b9d1bef7.json) and do not
 change the complete inventory totals above.
 
+[Cold and warm workflow diagnostics](ci-checkpoints/wasm-workflow-profile-b9d1bef7.json)
+retain raw-profile hashes and sampled CPU stacks from quiet sequential Node runs.
+The named diagnostic module has byte-identical standard execution sections to
+production. Original methods and sunflower sources and viewport remain unchanged;
+these timings include profiling overhead and do not establish Linux Chromium
+acceptance. The same diagnostic runs after the unchanged browser tests in the
+next immutable Linux checkpoint.
+
 The receipt joins each selected inventory key to actual wrappers, implementation
 paths, options, edge cases, profiles, source commits and raw-report hashes.
 
