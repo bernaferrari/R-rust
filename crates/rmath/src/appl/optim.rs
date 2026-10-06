@@ -8,6 +8,7 @@
 // Based on Pascal code in J.C. Nash, 'Compact Numerical Methods for
 // Computers', 2nd edition, converted by p2c then re-crafted by B.D. Ripley.
 
+use crate::main::errors::Rf_error;
 use libm::*;
 
 // =====================================================================
@@ -76,6 +77,9 @@ pub unsafe fn vmmin(
             *grcount = 0;
             return;
         }
+        if nreport <= 0 {
+            Rf_error(c"REPORT must be > 0 (method = \"BFGS\")".as_ptr());
+        }
 
         // Count active parameters (where mask[i] != 0)
         let mut l: Vec<usize> = Vec::with_capacity(n0 as usize);
@@ -100,9 +104,7 @@ pub unsafe fn vmmin(
 
         let mut f = fminfn(n0 as std::os::raw::c_int, b, ex);
         if !f.is_finite() {
-            eprintln!("initial value in 'vmmin' is not finite");
-            *fmin = f;
-            return;
+            Rf_error(c"initial value in 'vmmin' is not finite".as_ptr());
         }
         if trace {
             eprintln!("initial  value {} ", f);
@@ -128,16 +130,19 @@ pub unsafe fn vmmin(
                 c[i] = g[l[i]];
             }
             let mut gradproj = 0.0_f64;
+            // Keep GNU's fused scalar BFGS arithmetic explicit so native and
+            // Wasm searches take the same rounding path, independent of the
+            // compiler's implicit floating-point contraction policy.
             for i in 0..n_usize {
                 let mut s = 0.0_f64;
                 for j in 0..=i {
-                    s -= bmat[i][j] * g[l[j]];
+                    s = (-bmat[i][j]).mul_add(g[l[j]], s);
                 }
                 for j in (i + 1)..n_usize {
-                    s -= bmat[j][i] * g[l[j]];
+                    s = (-bmat[j][i]).mul_add(g[l[j]], s);
                 }
                 t[i] = s;
-                gradproj += s * g[l[i]];
+                gradproj = s.mul_add(g[l[i]], gradproj);
             }
 
             let mut count: i32 = 0;
@@ -148,7 +153,7 @@ pub unsafe fn vmmin(
                 loop {
                     count = 0;
                     for i in 0..n_usize {
-                        *b.add(l[i]) = x[i] + steplength * t[i];
+                        *b.add(l[i]) = steplength.mul_add(t[i], x[i]);
                         if RELTEST + x[i] == RELTEST + *b.add(l[i]) {
                             count += 1;
                         }
@@ -156,7 +161,8 @@ pub unsafe fn vmmin(
                     if count < n {
                         f = fminfn(n0 as std::os::raw::c_int, b, ex);
                         funcount += 1;
-                        accpoint = f.is_finite() && f <= *fmin + gradproj * steplength * ACCTOL;
+                        accpoint =
+                            f.is_finite() && f <= (gradproj * steplength).mul_add(ACCTOL, *fmin);
                         if !accpoint {
                             steplength *= STEPREDN;
                         }
@@ -181,25 +187,26 @@ pub unsafe fn vmmin(
                     for i in 0..n_usize {
                         t[i] *= steplength;
                         c[i] = g[l[i]] - c[i];
-                        d1 += t[i] * c[i];
+                        d1 = t[i].mul_add(c[i], d1);
                     }
                     if d1 > 0.0 {
                         let mut d2 = 0.0_f64;
                         for i in 0..n_usize {
                             let mut s = 0.0_f64;
                             for j in 0..=i {
-                                s += bmat[i][j] * c[j];
+                                s = bmat[i][j].mul_add(c[j], s);
                             }
                             for j in (i + 1)..n_usize {
-                                s += bmat[j][i] * c[j];
+                                s = bmat[j][i].mul_add(c[j], s);
                             }
                             x[i] = s;
-                            d2 += s * c[i];
+                            d2 = s.mul_add(c[i], d2);
                         }
                         let d2 = 1.0 + d2 / d1;
                         for i in 0..n_usize {
                             for j in 0..=i {
-                                bmat[i][j] += (d2 * t[i] * t[j] - x[i] * t[j] - t[i] * x[j]) / d1;
+                                let update = (d2 * t[i]).mul_add(t[j], -(x[i] * t[j]));
+                                bmat[i][j] += (-t[i]).mul_add(x[j], update) / d1;
                             }
                         }
                     } else {
@@ -232,17 +239,10 @@ pub unsafe fn vmmin(
                 ilast = gradcount;
             }
 
-            // Check termination: count == n && ilast == gradcount
-            let done = {
-                let mut cc = 0;
-                for i in 0..n_usize {
-                    if RELTEST + *b.add(l[i]) == RELTEST + *b.add(l[i]) {
-                        cc += 1;
-                    }
-                }
-                cc == n && ilast == gradcount
-            };
-            if done {
+            // A curvature restart can happen while the search still makes
+            // progress. GNU stops only when the actual no-progress count
+            // reaches every active parameter and the gradient is unchanged.
+            if count == n && ilast == gradcount {
                 break;
             }
         }
@@ -725,5 +725,78 @@ pub unsafe fn cgmin(
         }
         *fncount = funcount;
         *grcount = gradcount;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    unsafe extern "C-unwind" fn rosenbrock(
+        n: std::os::raw::c_int,
+        point: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) -> f64 {
+        assert_eq!(n, 2);
+        // SAFETY: vmmin supplies both initialized coordinates for n=2.
+        let (x, y) = unsafe { (*point, *point.add(1)) };
+        let residual = y - x * x;
+        let distance = 1.0 - x;
+        100.0 * (residual * residual) + distance * distance
+    }
+
+    unsafe extern "C-unwind" fn rosenbrock_gradient(
+        n: std::os::raw::c_int,
+        point: *mut f64,
+        gradient: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        assert_eq!(n, 2);
+        // SAFETY: vmmin supplies two coordinates and two writable gradient
+        // slots. The callback holds no coordinate borrow while returning.
+        unsafe {
+            let x = *point;
+            let y = *point.add(1);
+            *gradient = -400.0 * x * (y - x * x) - 2.0 * (1.0 - x);
+            *gradient.add(1) = 200.0 * (y - x * x);
+        }
+    }
+
+    #[test]
+    fn bfgs_restarts_preserve_progress_to_the_public_rosenbrock_minimum() {
+        let mut point = [-1.2, 1.0];
+        let mask = [1, 1];
+        let mut minimum = f64::NAN;
+        let (mut function_count, mut gradient_count, mut failure) = (0, 0, -1);
+        // SAFETY: all buffers retain their original storage throughout vmmin
+        // and its callbacks, and each has exactly the declared dimension.
+        unsafe {
+            vmmin(
+                2,
+                point.as_mut_ptr(),
+                &mut minimum,
+                rosenbrock,
+                rosenbrock_gradient,
+                100,
+                0,
+                mask.as_ptr(),
+                f64::NEG_INFINITY,
+                1e-8,
+                10,
+                std::ptr::null_mut(),
+                &mut function_count,
+                &mut gradient_count,
+                &mut failure,
+            );
+        }
+        // Independently captured GNU vmmin with these exact C callbacks and
+        // explicit reltol=1e-8 uses 99 objective and 44 gradient evaluations.
+        assert_eq!((function_count, gradient_count, failure), (99, 44, 0));
+        assert!(
+            point
+                .iter()
+                .all(|coordinate| (coordinate - 1.0).abs() < 1e-7)
+        );
+        assert!(minimum < 1e-14);
     }
 }
