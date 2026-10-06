@@ -1,0 +1,176 @@
+side1-las0-outer0 
+   null visible 
+   TRUE   FALSE 
+side1-las1-outer0 
+   null visible 
+   TRUE   FALSE 
+side1-las2-outer0 
+   null visible 
+   TRUE   FALSE 
+side1-las3-outer0 
+   null visible 
+   TRUE   FALSE 
+side2-las0-outer0 
+   null visible 
+   TRUE   FALSE 
+side2-las1-outer0 
+   null visible 
+   TRUE   FALSE 
+side2-las2-outer0 
+   null visible 
+   TRUE   FALSE 
+side2-las3-outer0 
+   null visible 
+   TRUE   FALSE 
+side3-las0-outer0 
+   null visible 
+   TRUE   FALSE 
+side3-las1-outer0 
+   null visible 
+   TRUE   FALSE 
+side3-las2-outer0 
+   null visible 
+   TRUE   FALSE 
+side3-las3-outer0 
+   null visible 
+   TRUE   FALSE 
+side4-las0-outer0 
+   null visible 
+   TRUE   FALSE 
+side4-las1-outer0 
+   null visible 
+   TRUE   FALSE 
+side4-las2-outer0 
+   null visible 
+   TRUE   FALSE 
+side4-las3-outer0 
+   null visible 
+   TRUE   FALSE 
+side1-las0-outer1 
+   null visible 
+   TRUE   FALSE 
+side1-las1-outer1 
+   null visible 
+   TRUE   FALSE 
+side1-las2-outer1 
+   null visible 
+   TRUE   FALSE 
+side1-las3-outer1 
+   null visible 
+   TRUE   FALSE 
+side2-las0-outer1 
+   null visible 
+   TRUE   FALSE 
+side2-las1-outer1 
+   null visible 
+   TRUE   FALSE 
+side2-las2-outer1 
+   null visible 
+   TRUE   FALSE 
+side2-las3-outer1 
+   null visible 
+   TRUE   FALSE 
+side3-las0-outer1 
+   null visible 
+   TRUE   FALSE 
+side3-las1-outer1 
+   null visible 
+   TRUE   FALSE 
+side3-las2-outer1 
+   null visible 
+   TRUE   FALSE 
+side3-las3-outer1 
+   null visible 
+   TRUE   FALSE 
+side4-las0-outer1 
+   null visible 
+   TRUE   FALSE 
+side4-las1-outer1 
+   null visible 
+   TRUE   FALSE 
+side4-las2-outer1 
+   null visible 
+   TRUE   FALSE 
+side4-las3-outer1 
+   null visible 
+   TRUE   FALSE 
+recycle 
+   null visible 
+   TRUE   FALSE 
+cex-missing 
+   null visible 
+   TRUE   FALSE 
+cex-replace 
+   null visible 
+   TRUE   FALSE 
+colors-missing 
+   null visible 
+   TRUE   FALSE 
+missing-text 
+   null visible 
+   TRUE   FALSE 
+empty-string 
+   null visible 
+   TRUE   FALSE 
+math 
+   null visible 
+   TRUE   FALSE 
+empty-text 
+[1] "zero-length 'text' specified"
+empty-side 
+[1] "zero-length 'side' specified"
+empty-line 
+[1] "zero-length 'line' specified"
+empty-outer 
+[1] "zero-length 'outer' specified"
+empty-at 
+[1] "zero-length 'at' specified"
+empty-adj 
+[1] "zero-length 'adj' specified"
+empty-padj 
+[1] "zero-length 'padj' specified"
+empty-cex 
+   null visible 
+   TRUE   FALSE 
+empty-col 
+   null visible 
+   TRUE   FALSE 
+empty-font 
+   null visible 
+   TRUE   FALSE 
+invalid-side-0 
+   null visible 
+   TRUE   FALSE 
+invalid-side-5 
+   null visible 
+   TRUE   FALSE 
+invalid-side-NA 
+   null visible 
+   TRUE   FALSE 
+cex--1 
+   null visible 
+   TRUE   FALSE 
+cex-0 
+   null visible 
+   TRUE   FALSE 
+cex-Inf 
+   null visible 
+   TRUE   FALSE 
+character-side 
+   null visible 
+   TRUE   FALSE 
+warning: NAs introduced by coercion 
+bad-side-coercion 
+   null visible 
+   TRUE   FALSE 
+invalid-las 
+[1] "invalid value specified for graphical parameter \"las\""
+invalid-line 
+   null visible 
+   TRUE   FALSE 
+invalid-at 
+   null visible 
+   TRUE   FALSE 
+after-errors 
+   null visible 
+   TRUE   FALSE 

@@ -1010,15 +1010,21 @@ mod owned_matcher_tests {
     #[test]
     fn owned_closure_outcomes_survive_collecting_onexit_context_teardown() {
         use std::cell::RefCell;
-        for source in [
-            "(function() { on.exit(1L + 2L); 313L + 1L })()",
-            "(function() { on.exit(1L + 2L); return(313L + 1L) })()",
-            "(function() {
+        for (force_allocations, source) in [
+            (true, "(function() { on.exit(1L + 2L); 313L + 1L })()"),
+            (
+                true,
+                "(function() { on.exit(1L + 2L); return(313L + 1L) })()",
+            ),
+            (
+                false,
+                "(function() {
                 on.exit(stop('replaced-exit-error'), add=TRUE, after=TRUE)
                 on.exit(return(313L + 1L), add=TRUE, after=TRUE)
-                on.exit(1L + 2L, add=TRUE, after=TRUE)
+                on.exit(.Internal(gc(FALSE, FALSE, TRUE)), add=TRUE, after=TRUE)
                 1L
             })()",
+            ),
         ] {
             let session = RSession::new_for_gc_tests();
             let owner = session.owner_token().unwrap();
@@ -1034,7 +1040,7 @@ mod owned_matcher_tests {
             let node_observed = retained_node.clone();
             session.with_active_in(|instance| unsafe {
                 (*instance).eval_state.jit_enabled = 0;
-                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_gap = if force_allocations { 1 } else { 0 };
                 (*instance).memory_state.gc_force_wait = 1;
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     if observed.get() {

@@ -202,7 +202,9 @@ fn tall_math_main_fits_above_plot_without_canvas_clipping() {
                 "title glyph '{text}' crosses canvas top"
             );
             assert!(
-                position.y + metrics.descent <= 40.1,
+                // GNU's default upper margin is 4.1 * .2 inches at 72 units/inch.
+                // Preserve the existing eight-unit gap below the title.
+                position.y + metrics.descent <= 4.1 * 0.2 * 72. - 8. + 0.1,
                 "title glyph '{text}' touches plot rectangle"
             );
         }

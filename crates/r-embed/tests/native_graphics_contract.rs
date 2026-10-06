@@ -82,7 +82,6 @@ fn incomplete_native_graphics_operations_cannot_report_silent_success() {
         ("C_xspline", ""),
         ("C_locator", ""),
         ("C_identify", ""),
-        ("C_mtext", ""),
     ] {
         let comma = if payload.is_empty() { "" } else { "," };
         let code = format!(".External.graphics('{name}'{comma}{payload})");

@@ -62,10 +62,34 @@ pub(crate) unsafe fn drawing_parameters(
     use crate::mainutils::essentials::arg_by_name_or_position;
     unsafe {
         let cex = arg_by_name_or_position(args, &["cex"], usize::MAX);
-        let scales = numeric_prefix(cex, "cex", count);
         let font = arg_by_name_or_position(args, &["font"], usize::MAX);
-        let fonts = font_codes(font, count);
         let base_scale = positive_par_number("cex");
+        drawing_parameters_with_scale(cex, font, args, count, base_scale)
+    }
+}
+
+/// Margin text uses absolute magnification, independently of par("cex").
+#[cfg(feature = "renderplot-device")]
+pub(crate) unsafe fn margin_parameters(
+    cex: SEXP,
+    font: SEXP,
+    extras: SEXP,
+    count: usize,
+) -> Vec<r_graphics_engine::PlotParameters> {
+    unsafe { drawing_parameters_with_scale(cex, font, extras, count, 1.) }
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn drawing_parameters_with_scale(
+    cex: SEXP,
+    font: SEXP,
+    args: SEXP,
+    count: usize,
+    base_scale: f64,
+) -> Vec<r_graphics_engine::PlotParameters> {
+    unsafe {
+        let scales = numeric_prefix(cex, "cex", count);
+        let fonts = font_codes(font, count);
         let mut parameters = Vec::new();
         parameters
             .try_reserve_exact(count)

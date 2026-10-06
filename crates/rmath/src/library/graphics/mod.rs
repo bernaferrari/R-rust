@@ -242,6 +242,13 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
                 "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
                 "title" => draw_portable_title(args),
                 "text" => draw_portable_text(args),
+                "mtext" => draw_portable_positional(
+                    "mtext",
+                    args,
+                    &[
+                        "text", "side", "line", "outer", "at", "adj", "padj", "cex", "col", "font",
+                    ],
+                ),
                 "polygon" => {
                     draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
                 }
@@ -487,6 +494,87 @@ pub unsafe fn install_call_symbols(env: SEXP) {
 #[cfg(all(test, feature = "renderplot-device"))]
 mod portable_title_tests {
     use crate::sexp::{ffi::SEXPTYPE, object::SessionNodeFactory, session::RSession};
+
+    #[test]
+    fn positional_margin_labels_survive_collecting_allocation() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let mut input = factory.nil().into_owned().unwrap();
+        // Reversed native fields: font, col, cex, padj, adj, at, outer,
+        // line, side, text, routine. No independent label or tail root remains.
+        for index in (0..11).rev() {
+            let value = match index {
+                0 => factory.strings(&["C_mtext"]).unwrap(),
+                1 => factory.strings(&["first label", "second label"]).unwrap(),
+                9 | 10 => factory.nil(),
+                _ => {
+                    let number = match index {
+                        2 | 8 => 1.,
+                        3 | 4 => 0.,
+                        _ => f64::NAN,
+                    };
+                    // SAFETY: the active test owner is retained and no callback
+                    // occurs between publication and the owning wrap.
+                    factory
+                        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarReal(number) })
+                        .unwrap()
+                }
+            };
+            input = factory
+                .pairlist_cell(&value, &input, &factory.nil())
+                .unwrap()
+                .into_owned()
+                .unwrap();
+        }
+        let fired = std::rc::Rc::new(std::cell::Cell::new(false));
+        let observed = fired.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(true);
+            crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+                (*instance).memory_state.gc_force_gap = 0;
+            });
+            crate::sexp::gengc::full_gc();
+        }));
+        let mut scene = r_graphics_engine::Scene::new(320, 240);
+        session.with_active_in(|instance| unsafe {
+            (*instance).current_renderplot_backend = Some(&mut scene);
+            (*instance).portable_graphics.current =
+                Some(crate::mainutils::portable_plot::Coordinates {
+                    limits: [0., 1., 0., 1.],
+                    rect: [50., 50., 270., 170.],
+                    figure: [0., 0., 320., 240.],
+                    device: [0., 0., 320., 240.],
+                    log: [false; 2],
+                });
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::draw_portable_positional(
+                "mtext",
+                input.as_raw(),
+                &[
+                    "text", "side", "line", "outer", "at", "adj", "padj", "cex", "col", "font",
+                ],
+            )
+        }));
+        session.with_active_in(|instance| unsafe { (*instance).current_renderplot_backend = None });
+        assert_eq!(
+            owner.sexp(result.unwrap()).unwrap().typeof_(),
+            SEXPTYPE::NILSXP
+        );
+        assert!(fired.get());
+        let text: Vec<_> = scene
+            .operations()
+            .iter()
+            .filter_map(|operation| match operation {
+                r_graphics_engine::DrawOperation::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, ["first label", "second label"]);
+    }
 
     #[test]
     fn positional_title_labels_survive_collecting_allocation() {

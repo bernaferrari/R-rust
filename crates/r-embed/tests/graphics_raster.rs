@@ -192,9 +192,12 @@ fn raster_image_numeric_and_native_raster_inputs_render() {
 #[test]
 fn raster_image_xpd_clips_outside_plot_and_session_recovers() {
     let mut session = RSession::new().expect("session");
+    // With mar=0 the plot and figure coincide, so xpd cannot expose more ink.
+    let clipping_setup =
+        "par(mar=rep(1,4),xaxs='i',yaxs='i');plot.new();plot.window(c(0,1),c(0,1))";
     let clipped_code = format!(
-        "{}; par(xpd=FALSE); rasterImage(matrix(c('red','green','blue','black'), nrow=2), -.25, 0, .75, 1, angle=90, interpolate=FALSE)",
-        plot_setup()
+        "{}; par(xpd=FALSE); rasterImage(matrix(c('red','green','blue','black'), nrow=2), .25, 0, 1.25, 1, angle=90, interpolate=FALSE)",
+        clipping_setup
     );
     let clipped = decode_png(
         &session
@@ -202,8 +205,8 @@ fn raster_image_xpd_clips_outside_plot_and_session_recovers() {
             .expect("clipped raster render"),
     );
     let visible_code = format!(
-        "{}; par(xpd=TRUE); rasterImage(matrix(c('red','green','blue','black'), nrow=2), -.25, 0, .75, 1, angle=90, interpolate=FALSE)",
-        plot_setup()
+        "{}; par(xpd=TRUE); rasterImage(matrix(c('red','green','blue','black'), nrow=2), .25, 0, 1.25, 1, angle=90, interpolate=FALSE)",
+        clipping_setup
     );
     let visible = decode_png(
         &session
@@ -211,7 +214,12 @@ fn raster_image_xpd_clips_outside_plot_and_session_recovers() {
             .expect("xpd raster render"),
     );
     let colored = |pixel| is_red(pixel) || is_green(pixel) || is_blue(pixel) || is_black(pixel);
-    assert!(visible.matching(colored) > clipped.matching(colored));
+    assert!(
+        visible.matching(colored) > clipped.matching(colored),
+        "xpd=TRUE ink={} xpd=FALSE ink={}",
+        visible.matching(colored),
+        clipped.matching(colored)
+    );
 
     let error = session.render_with_dimensions(
         &format!(

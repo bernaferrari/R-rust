@@ -16,6 +16,8 @@ use r_graphics_engine::{
 use std::ffi::CString;
 use std::os::raw::c_int;
 
+mod mtext;
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Coordinates {
     pub limits: [f64; 4],
@@ -676,19 +678,50 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
             };
             index
         });
-        let pw = w as f32 / layout[1] as f32;
-        let ph = h as f32 / layout[0] as f32;
-        let ox = (index % layout[1]) as f32 * pw;
-        let oy = (index / layout[1]) as f32 * ph;
-        let left = ox + 58.;
-        let right = (ox + pw - 24.).max(left + 1.);
-        let top = oy
-            + if label(args, "main").is_some() {
-                48.
-            } else {
-                34.
-            };
-        let bottom = (oy + ph - 62.).max(top + 1.);
+        // A portable device uses 72 device units per inch. GNU captures the
+        // base character expansion at plot.new; changing cex while annotating
+        // that plot does not change its physical margin unit.
+        let cex = par_numbers("cex").first().copied().unwrap_or(1.);
+        let mut csi = 0.2 * cex;
+        let margins = |name: &str| {
+            let values = par_numbers(name);
+            if values.len() != 4 || values.iter().any(|v| !v.is_finite() || *v < 0.) {
+                base_error(format!(
+                    "invalid value specified for graphical parameter \"{name}\""
+                ));
+            }
+            values
+        };
+        let oma = margins("oma");
+        let mar = margins("mar");
+        // The embedding device also admits thumbnail viewports. Its default
+        // margins adapt only when the normal physical margins would consume
+        // that viewport; explicit margins retain their admission/error rules.
+        if mar == [5.1, 4.1, 4.1, 2.1] && oma == [0.; 4] && w <= 160 && h <= 120 {
+            csi *= (f64::from(w) / 240.).min(f64::from(h) / 180.).min(1.);
+        }
+        set_plot_parameter("csi", ParValue::Real(vec![csi]));
+        let line = csi * 72. * par_numbers("mex").first().copied().unwrap_or(1.);
+        let inner = [
+            (oma[1] * line) as f32,
+            (oma[2] * line) as f32,
+            w as f32 - (oma[3] * line) as f32,
+            h as f32 - (oma[0] * line) as f32,
+        ];
+        if inner[0] >= inner[2] || inner[1] >= inner[3] {
+            base_error("outer margins too large (figure region too small)");
+        }
+        let pw = (inner[2] - inner[0]) / layout[1] as f32;
+        let ph = (inner[3] - inner[1]) / layout[0] as f32;
+        let ox = inner[0] + (index % layout[1]) as f32 * pw;
+        let oy = inner[1] + (index / layout[1]) as f32 * ph;
+        let left = ox + (mar[1] * line) as f32;
+        let right = ox + pw - (mar[3] * line) as f32;
+        let top = oy + (mar[2] * line) as f32;
+        let bottom = oy + ph - (mar[0] * line) as f32;
+        if left >= right || top >= bottom {
+            base_error("figure margins too large");
+        }
         (
             Coordinates {
                 limits,
@@ -1785,6 +1818,9 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             return invisible();
         }
         let c = current();
+        if name == "mtext" {
+            return mtext::draw(c, args);
+        }
         // Text has GNU's own cex normalization and does not use point radii.
         let size = if matches!(name, "text" | "text.default") {
             3.

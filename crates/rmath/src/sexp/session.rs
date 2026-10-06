@@ -405,6 +405,13 @@ impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
     ) -> r_graphics_engine::TextMetrics {
         self.target.measure_text(text, params)
     }
+    fn measure_math_text(
+        &self,
+        text: &str,
+        params: &r_graphics_engine::PlotParameters,
+    ) -> r_graphics_engine::TextMetrics {
+        self.target.measure_math_text(text, params)
+    }
     fn clear(&mut self, color: r_graphics_engine::Color) {
         self.recording.borrow_mut().clear(color);
         self.target.clear(color);
