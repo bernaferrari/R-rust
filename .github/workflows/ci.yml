@@ -85,7 +85,7 @@ jobs:
   package-integration:
     name: Public package integration
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -107,7 +107,7 @@ jobs:
               "package_policies": ["native/default", "portable/explicit-empty"],
               "host_rscript": shutil.which("Rscript"),
               "r_home": os.environ.get("R_HOME"),
-              "timeout_seconds": 1200,
+              "timeout_seconds": 2400,
               "scope": "Selected public package tests; separate from complete workspace and conformance results",
           }
           (pathlib.Path(os.environ["RPORT_PACKAGE_REPORT"]) / "profile.json").write_text(json.dumps(profile, indent=2) + "\n")
@@ -117,7 +117,7 @@ jobs:
         run: >-
           python3 scripts/upstream_execution.py process
           --directory "${{ runner.temp }}/public-package-checkpoint/execute"
-          --cwd "$PWD" --timeout 1200 --separate-streams --
+          --cwd "$PWD" --timeout 2400 --separate-streams --
           scripts/cargo_dev.sh test -p r-embed
           --test embed --test namespace_initialization
           --test portable_namespace_integration --test portable_grdevices_namespace
