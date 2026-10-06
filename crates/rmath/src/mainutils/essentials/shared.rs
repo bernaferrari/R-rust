@@ -2458,13 +2458,60 @@ unsafe fn ensure_namespace_info(
     directives: Option<&NamespaceDirectives>,
 ) {
     unsafe {
+        // GNU namespaceExport creates a local binding for an inherited
+        // re-export such as graphics::plot (the base generic).
+        let factory = crate::sexp::object::SessionNodeFactory::new(
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|e| package_error(e.to_string())),
+        );
+        let namespace = factory
+            .wrap(package_env)
+            .unwrap_or_else(|e| package_error(e.to_string()));
+        for name in namespace_exports(directives, package_env) {
+            let Ok(name) = CString::new(name) else {
+                continue;
+            };
+            let symbol = Rf_install(name.as_ptr());
+            if crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol)
+                == crate::sexp::globals::R_UnboundValue()
+            {
+                let value = crate::sexp::envir::R_findVar(symbol, namespace.as_raw());
+                if value != crate::sexp::globals::R_UnboundValue() {
+                    let value = factory
+                        .wrap(value)
+                        .unwrap_or_else(|e| package_error(e.to_string()));
+                    crate::sexp::envir::defineVar(symbol, value.as_raw(), namespace.as_raw());
+                }
+            }
+        }
         let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
         let existing = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
         if !existing.is_null()
             && existing != crate::sexp::globals::R_UnboundValue()
             && TYPEOF(existing) == SEXPTYPE::ENVSXP
         {
+            let exports =
+                crate::sexp::envir::R_findVarInFrame(existing, Rf_install(c"exports".as_ptr()));
+            if TYPEOF(exports) == SEXPTYPE::ENVSXP {
+                let exports = factory
+                    .wrap(exports)
+                    .unwrap_or_else(|e| package_error(e.to_string()));
+                for name in namespace_exports(directives, namespace.as_raw()) {
+                    let Ok(name) = CString::new(name) else {
+                        continue;
+                    };
+                    let symbol = Rf_install(name.as_ptr());
+                    let value = crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol);
+                    if value != crate::sexp::globals::R_UnboundValue() {
+                        let value = factory
+                            .wrap(value)
+                            .unwrap_or_else(|e| package_error(e.to_string()));
+                        crate::sexp::envir::defineVar(symbol, value.as_raw(), exports.as_raw());
+                    }
+                }
+            }
             ensure_s3methods_slot(existing);
+            ensure_imports_slot(existing, directives);
             return;
         }
 
@@ -2536,6 +2583,84 @@ unsafe fn ensure_namespace_info(
         );
         crate::sexp::envir::defineVar(Rf_install(c"path".as_ptr()), path, info);
         crate::sexp::envir::defineVar(info_sym, info, package_env);
+        ensure_imports_slot(info, directives);
+    }
+}
+
+unsafe fn ensure_imports_slot(info: SEXP, directives: Option<&NamespaceDirectives>) {
+    unsafe {
+        let symbol = Rf_install(c"imports".as_ptr());
+        if crate::sexp::envir::R_findVarInFrame(info, symbol)
+            != crate::sexp::globals::R_UnboundValue()
+        {
+            return;
+        }
+        let result = (|| {
+            use crate::sexp::object::{SessionNodeFactory, SexpMut};
+            let factory = SessionNodeFactory::new(crate::sexp::owner::OwnerToken::current()?);
+            let info = factory.wrap(info)?;
+            let mut entries: Vec<(String, Option<Vec<String>>)> = vec![("base".into(), None)];
+            for import in directives.into_iter().flat_map(|d| &d.imports) {
+                let (package, names) = match import {
+                    NamespaceImport::All { package } => (
+                        package,
+                        Some(
+                            cached_namespace_by_name(package)
+                                .map(|ns| namespace_info_export_names(ns))
+                                .unwrap_or_default(),
+                        ),
+                    ),
+                    NamespaceImport::From { package, names } => (package, Some(names.clone())),
+                };
+                if let Some((_, previous)) = entries.iter_mut().find(|(p, _)| p == package) {
+                    match (previous.as_mut(), names) {
+                        (Some(previous), Some(names)) => {
+                            for name in &names {
+                                push_unique(previous, name.clone());
+                            }
+                        }
+                        (_, None) => *previous = None,
+                        (None, Some(_)) => {}
+                    }
+                } else {
+                    entries.push((package.clone(), names));
+                }
+            }
+            let mut values = Vec::new();
+            for (_, names) in &entries {
+                values.push(if let Some(names) = names {
+                    let names: Vec<_> = names.iter().map(String::as_str).collect();
+                    let value = factory.strings(&names)?;
+                    let labels = factory.strings(&names)?;
+                    crate::sexp::attrib_core::setAttrib(
+                        value.as_raw(),
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        labels.as_raw(),
+                    );
+                    value
+                } else {
+                    factory.domain().logical(true)
+                });
+            }
+            let imports = factory.allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::VECSXP, values.len() as R_xlen_t))
+            })?;
+            let mut imports = SexpMut::try_from_checked(imports)?;
+            for (index, value) in values.into_iter().enumerate() {
+                imports.try_set_vector_elt(index as R_xlen_t, value)?;
+            }
+            let imports = imports.freeze();
+            let names: Vec<_> = entries.iter().map(|(name, _)| name.as_str()).collect();
+            let names = factory.strings(&names)?;
+            crate::sexp::attrib_core::setAttrib(
+                imports.as_raw(),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names.as_raw(),
+            );
+            crate::sexp::envir::defineVar(symbol, imports.as_raw(), info.as_raw());
+            Ok::<_, crate::sexp::SexpError>(())
+        })();
+        result.unwrap_or_else(|error| package_error(error.to_string()));
     }
 }
 

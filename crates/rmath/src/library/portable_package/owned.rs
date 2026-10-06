@@ -272,6 +272,12 @@ fn namespace_in(
     let imports_environment = environment(access, &base_namespace)?;
     let imports_name = allocator.strings(&[&format!("imports:{}", image.name)])?;
     super::bridge::set_attribute(access, &imports_environment, "name", &imports_name)?;
+    super::bridge::bind(
+        access,
+        &imports_environment,
+        ".__imports__.",
+        &domain.logical(true),
+    )?;
     let namespace = environment(access, &imports_environment)?;
     let info = environment(access, base)?;
     let exports = environment(access, base)?;
@@ -288,13 +294,18 @@ fn namespace_in(
     super::bridge::bind(access, &info, "exports", &exports)?;
     super::bridge::bind(access, &info, "lazydata", &empty_lazy)?;
     super::bridge::bind(access, &info, "S3methods", &s3methods)?;
-    // GNU's pinned NAMESPACE has no import directives; its actual imports is base=TRUE.
-    let imports = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))?;
-    let mut imports = SexpMut::try_from_checked(imports)?;
-    imports.try_set_vector_elt(0, domain.logical(true))?;
-    let imports = imports.freeze();
-    let import_names = allocator.strings(&["base"])?;
-    super::bridge::set_attribute(access, &imports, "names", &import_names)?;
+    let imports = if let Some(bytes) = image.imports {
+        original_object(access, bytes)?
+    } else {
+        // Earlier captured images have only the intrinsic base import.
+        let imports = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))?;
+        let mut imports = SexpMut::try_from_checked(imports)?;
+        imports.try_set_vector_elt(0, domain.logical(true))?;
+        let imports = imports.freeze();
+        let import_names = allocator.strings(&["base"])?;
+        super::bridge::set_attribute(access, &imports, "names", &import_names)?;
+        imports
+    };
     super::bridge::bind(access, &info, "imports", &imports)?;
     super::bridge::bind(access, &namespace, ".__NAMESPACE__.", &info)?;
     super::bridge::bind(access, &namespace, ".__S3MethodsTable__.", &s3)?;
@@ -318,11 +329,26 @@ fn namespace_in(
             &domain.nil(),
         )?;
     }
-    super::bridge::lock(access, &imports_environment)?;
     // The complete original lazy bindings and metadata exist before publication.
     // Namespace references/onLoad legitimately resolve the in-flight identity.
     let publication = super::bridge::Publication::begin(access, image, &namespace)?;
     super::bridge::install_native(access, image, &namespace)?;
+    super::bridge::install_imports(access, image, &namespace)?;
+    for index in 0..exported.len() {
+        let name = exported.try_string_elt(index)?.try_as_string()?;
+        let value = super::bridge::lookup(access, &namespace, &name)?;
+        if value == domain.unbound() {
+            let inherited = super::bridge::lookup_inherited(access, &namespace, &name)?;
+            if inherited == domain.unbound() {
+                return Err(failure(format!(
+                    "undefined export '{name}' in '{}'",
+                    image.name
+                )));
+            }
+            super::bridge::bind(access, &namespace, &name, &inherited)?;
+        }
+    }
+    super::bridge::lock(access, &imports_environment)?;
     super::bridge::finalize(access, image, &namespace)?;
     access.require_active()?;
     super::bridge::lock(access, &namespace)?;

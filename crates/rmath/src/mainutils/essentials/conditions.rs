@@ -2466,7 +2466,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return crate::sexp::envir::findFun(sym, env);
         }
         let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
-        let value = if inherits {
+        let mut value = if inherits {
             crate::sexp::envir::R_findVar(sym, env)
         } else {
             crate::sexp::envir::R_findVarInFrame(env, sym)
@@ -2481,6 +2481,10 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 _call,
                 c"getMissingError".as_ptr(),
             );
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            let _promise = protect(value);
+            value = crate::sexp::envir::forcePromise(value);
         }
         if mode != "any" && !value_matches_mode(value, &mode) {
             base_error(format!("object '{name}' of mode '{mode}' was not found"));
@@ -2514,7 +2518,12 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if value.is_null() || value == R_UnboundValue() {
             fallback
         } else {
-            value
+            if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                let _promise = protect(value);
+                crate::sexp::envir::forcePromise(value)
+            } else {
+                value
+            }
         }
     }
 }

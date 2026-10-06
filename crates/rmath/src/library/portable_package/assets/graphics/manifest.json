@@ -1,0 +1,57 @@
+{
+  "source": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "runtime": {
+    "version": "4.7.0 Under development (unstable)",
+    "nickname": "Unsuffered Consequences",
+    "svn_revision": 90451,
+    "source_date": "2026-08-27T09:09:57Z"
+  },
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "generator_sha256": {
+    "generate.R": "a71dbed2f1382e2e7604d0abe13bb900daf5c9ec90420ea6d1dfb84bb3de7821",
+    "generate.py": "27594643f34c3b112238352c21b2afa4b79689dbfe7f429e1a383e1e5b37b27a"
+  },
+  "files": {
+    "DESCRIPTION": {
+      "bytes": 454,
+      "sha256": "c5513ad32fbff71945571c41a1db7dfd89efc294779b31a011a68865b88bf04c"
+    },
+    "NAMESPACE": {
+      "bytes": 2812,
+      "sha256": "b4639f81f6dc497b3767ce506c65cb30382e95cc52c4abe648006dd25aee83ea"
+    },
+    "S3methods.rds": {
+      "bytes": 2698,
+      "sha256": "059bfeea27d3d11c9146506bebbcd4b6f7a426c76c70ffa64240987241902a74"
+    },
+    "envhook.R": {
+      "bytes": 938,
+      "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
+    },
+    "exports.rds": {
+      "bytes": 1444,
+      "sha256": "3d0e760ff2036219b2433d1dd12440d9d8ac6c88526c56d871fddef66e91ae17"
+    },
+    "generation.log": {
+      "bytes": 86,
+      "sha256": "64873f75970126a7da4426fe21bdb0eeeb8a5aad815b2c84f9a22b817a6c546e"
+    },
+    "graphics.rdb": {
+      "bytes": 336632,
+      "sha256": "20a153b90482434890a1fd980b2775190de5e79a26d3108d5747709f86aac9c4"
+    },
+    "imports.rds": {
+      "bytes": 4986,
+      "sha256": "14250cefe370271b86b001eedf85890dd678ed8aa75596e6abd7effcec1d6b6b"
+    },
+    "index.rds": {
+      "bytes": 4892,
+      "sha256": "a73309224bcd8a16ba64d2eff31c7d67c69d6360d22f2fe77a678166ca18d172"
+    }
+  }
+}

@@ -1221,6 +1221,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "function(n, ...) rep(\"#FF0000\", n)",
         );
         eval_base_binding(base_env, "rainbow", "function(n, ...) rep(\"#FF0000\", n)");
+        eval_base_binding(base_env, "plot", "function(x, y, ...) UseMethod(\"plot\")");
         eval_base_binding(base_env, "plot.formula", include_str!("gnu_plot_formula.R"));
         eval_base_binding(base_env, "sunflowerplot", "function(...) invisible(NULL)");
         eval_base_binding(
@@ -2670,6 +2671,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
              ns <- asNamespace(ns)\n\
              names(if (isBaseNamespace(ns)) .BaseNamespaceEnv else .getNamespaceInfo(ns, \"exports\"))\n\
              }",
+        );
+        eval_base_binding(
+            base_env,
+            "getNamespaceImports",
+            "function(ns) { ns <- asNamespace(ns); if (isBaseNamespace(ns)) NULL else .getNamespaceInfo(ns, 'imports') }",
         );
         eval_base_binding(
             base_env,

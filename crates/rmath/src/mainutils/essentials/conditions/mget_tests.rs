@@ -1,6 +1,46 @@
 //! A real lazy binding remains lazy until public mget requests its value.
 use crate::sexp::{RSession, ffi::SEXPTYPE, object::Sexp};
 
+#[test]
+fn owned_get_and_get0_force_original_promise_when_callback_removes_binding_and_collects() {
+    for operation in ["get", "get0"] {
+        let (mut session, promise) =
+            setup("{rm('x', envir=e); counter<<-counter+1L; gc(); function(value) value+1L}");
+        drop(promise);
+        let value = session
+            .eval_code_with_output_capture(&format!("{operation}('x',e,inherits=FALSE)"))
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        assert_eq!(
+            value.typeof_(),
+            SEXPTYPE::CLOSXP,
+            "{operation} must return the forced value"
+        );
+        assert_eq!(
+            session
+                .eval_code_with_output_capture("counter")
+                .0
+                .unwrap()
+                .try_integer_elt(0)
+                .unwrap(),
+            1
+        );
+        session.with_active(|| session.owner_token().unwrap().full_gc().unwrap());
+        assert_eq!(value.typeof_(), SEXPTYPE::CLOSXP);
+        assert_eq!(
+            session
+                .eval_code_with_output_capture("exists('x',e,inherits=FALSE)")
+                .0
+                .unwrap()
+                .try_logical_elt(0)
+                .unwrap(),
+            0
+        );
+    }
+}
+
 fn setup(expression: &str) -> (RSession, Sexp<'static>) {
     let mut session = RSession::new_for_gc_tests();
     session

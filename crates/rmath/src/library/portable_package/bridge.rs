@@ -80,6 +80,23 @@ pub(super) fn set_attribute(
     })
 }
 
+pub(super) fn lookup_inherited(
+    access: &RuntimeAccess,
+    environment: &Sexp<'static>,
+    name: &str,
+) -> SexpResult<Sexp<'static>> {
+    access.domain().link(environment)?;
+    let symbol = symbol(access, name)?;
+    access.with_native(|owner| unsafe {
+        owner
+            .sexp(crate::sexp::envir::R_findVar(
+                symbol.as_raw(),
+                environment.as_raw(),
+            ))?
+            .into_owned()
+    })
+}
+
 pub(super) fn cached(
     access: &RuntimeAccess,
     image: &PackageImage,
@@ -201,6 +218,10 @@ pub(super) fn install_native(
                 namespace.as_raw(),
             ),
             "utils" => crate::library::utils::install_utils_call_symbols(namespace.as_raw()),
+            "graphics" => crate::library::graphics::install_call_symbols(namespace.as_raw()),
+            "stats" => {
+                crate::library::stats::random::install_stats_call_symbols(namespace.as_raw())
+            }
             "grDevices" => {
                 crate::library::grdevices::install_call_symbols(namespace.as_raw());
                 crate::library::grdevices::colors::initPalette();
@@ -214,6 +235,34 @@ pub(super) fn install_native(
             _ => unreachable!("closed portable package registry"),
         }
         Ok(())
+    })
+}
+
+pub(super) fn install_imports(
+    access: &RuntimeAccess,
+    image: &PackageImage,
+    namespace: &Sexp<'static>,
+) -> SexpResult<()> {
+    access.domain().link(namespace)?;
+    let directives =
+        crate::mainutils::essentials::parse_namespace_directives(image.namespace_source);
+    for import in &directives.imports {
+        let (crate::mainutils::essentials::NamespaceImport::All { package }
+        | crate::mainutils::essentials::NamespaceImport::From { package, .. }) = import;
+        access.with_native(|owner| unsafe {
+            let value = crate::mainutils::essentials::load_package_namespace_by_name(package)
+                .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })?;
+            owner.sexp(value)?.into_owned()
+        })?;
+    }
+    access.with_native(|_| unsafe {
+        crate::mainutils::essentials::apply_namespace_imports(
+            image.name,
+            namespace.as_raw(),
+            &directives,
+            &mut vec![image.name.to_owned()],
+        )
+        .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })
     })
 }
 
@@ -247,7 +296,10 @@ pub(super) fn finalize(
     let source = if image.name == "utils" {
         include_str!("utils_onload.R").to_owned()
     } else {
-        format!(".onLoad('{}', '{}')", image.directory, image.name)
+        format!(
+            "if (exists('.onLoad', inherits = FALSE)) .onLoad('{}', '{}')",
+            image.directory, image.name
+        )
     };
     evaluate(access, &source, namespace)
         .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })?;

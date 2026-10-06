@@ -11,12 +11,16 @@ pub(crate) struct PackageImage {
     sysdata: Option<LazyDatabase>,
     namespace_source: &'static str,
     exports: &'static [u8],
+    imports: Option<&'static [u8]>,
     s3_methods: &'static [u8],
     envhook: &'static str,
 }
 
 macro_rules! image {
     ($name:literal, $assets:literal, $sysdata:expr) => {
+        image!($name, $assets, $sysdata, None)
+    };
+    ($name:literal, $assets:literal, $sysdata:expr, $imports:expr) => {
         PackageImage {
             name: $name,
             version: "4.7.0",
@@ -29,6 +33,7 @@ macro_rules! image {
             sysdata: $sysdata,
             namespace_source: include_str!(concat!($assets, "/NAMESPACE")),
             exports: include_bytes!(concat!($assets, "/exports.rds")),
+            imports: $imports,
             s3_methods: include_bytes!(concat!($assets, "/S3methods.rds")),
             envhook: include_str!(concat!($assets, "/envhook.R")),
         }
@@ -37,6 +42,18 @@ macro_rules! image {
 
 static METHODS: PackageImage = image!("methods", "../methods/portable/assets", None);
 static GRDEVICES: PackageImage = image!("grDevices", "assets/grDevices", None);
+static GRAPHICS: PackageImage = image!(
+    "graphics",
+    "assets/graphics",
+    None,
+    Some(include_bytes!("assets/graphics/imports.rds"))
+);
+static STATS: PackageImage = image!(
+    "stats",
+    "assets/stats",
+    None,
+    Some(include_bytes!("assets/stats/imports.rds"))
+);
 static UTILS: PackageImage = image!(
     "utils",
     "assets/utils",
@@ -63,6 +80,8 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
         "utils" => Some(&UTILS),
         "tools" => Some(&TOOLS),
         "grDevices" => Some(&GRDEVICES),
+        "graphics" => Some(&GRAPHICS),
+        "stats" => Some(&STATS),
         _ => None,
     }
 }
@@ -74,7 +93,7 @@ pub(crate) struct LazyDatabase {
 }
 
 fn databases() -> impl Iterator<Item = &'static LazyDatabase> {
-    [&METHODS, &UTILS, &TOOLS, &GRDEVICES]
+    [&METHODS, &UTILS, &TOOLS, &GRDEVICES, &GRAPHICS, &STATS]
         .into_iter()
         .flat_map(|image| std::iter::once(&image.database).chain(image.sysdata.as_ref()))
 }

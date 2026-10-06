@@ -14,9 +14,7 @@ use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
 use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
-use crate::sexp::ffi::{
-    NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP,
-};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP};
 
 // ---------------------------------------------------------------------------
 // Print parameters (R_print global)
@@ -59,11 +57,18 @@ fn current_R_print() -> RPrint {
             .map(|p| p.digits)
             .filter(|&d| d > 0)
             .unwrap_or_else(|| crate::mainutils::options::GetOptionDigits());
+        let print = crate::mainutils::print::get_R_print_data();
         RPrint {
             digits,
             scipen: crate::mainutils::options::GetOptionScipen(),
-            na_width: 2,
-            na_width_noquote: 2,
+            na_width: if print.na_string.is_null()
+                || print.na_string == crate::sexp::globals::R_NaString()
+            {
+                2
+            } else {
+                print.na_width
+            },
+            na_width_noquote: print.na_width_noquote,
         }
     }
 }
@@ -849,7 +854,7 @@ pub(crate) fn real_field(
         if !xi.is_finite() {
             if xi.is_nan() {
                 // Distinguish NA from NaN: R's NA has a specific bit pattern.
-                if xi.to_bits() == R_NA_BIT_PATTERN {
+                if crate::sexp::ffi::is_na_real(xi) {
                     naflag = true;
                 } else {
                     nanflag = true;
@@ -1282,9 +1287,9 @@ pub unsafe fn formatComplex(
 
         for i in 0..n_usize {
             let cx = *x.add(i);
-            let r_bits = cx.r.to_bits();
-            let i_bits = cx.i.to_bits();
-            let is_na = r_bits == R_NA_BIT_PATTERN || i_bits == R_NA_BIT_PATTERN;
+            // Arithmetic may quiet the NA NaN while preserving its payload.
+            // GNU ISNA admits both forms; ordinary NaN remains non-missing.
+            let is_na = crate::sexp::ffi::is_na_real(cx.r) || crate::sexp::ffi::is_na_real(cx.i);
             if is_na {
                 naflag = true;
             } else {
@@ -1372,6 +1377,7 @@ pub unsafe fn formatComplexS(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::ffi::R_NA_BIT_PATTERN;
     use crate::sexp::session::RSession;
     use std::os::raw::c_int;
 
@@ -1573,6 +1579,26 @@ mod tests {
             let arr = [1.0f64, na_val, 3.0];
             formatReal(arr.as_ptr(), 3, &mut w, &mut d, &mut e, 0);
             assert!(w >= 2); // at least na_width=2
+        }
+    }
+
+    #[test]
+    fn test_format_quiet_na_width_preserves_nan_distinction() {
+        unsafe {
+            let _g = RPrintGuard::new(7);
+            let na = f64::from_bits(R_NA_BIT_PATTERN | (1 << 51));
+            let (mut w, mut d, mut e) = (0, 0, 0);
+            formatReal(&na, 1, &mut w, &mut d, &mut e, 0);
+            assert_eq!((w, d, e), (2, 0, 0));
+            formatReal(&f64::NAN, 1, &mut w, &mut d, &mut e, 0);
+            assert_eq!((w, d, e), (3, 0, 0));
+            for value in [Rcomplex { r: na, i: 1.0 }, Rcomplex { r: 1.0, i: na }] {
+                let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
+                formatComplex(
+                    &value, 1, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
+                );
+                assert_eq!((wr, dr, er, wi, di, ei), (0, 0, 0, 0, 0, 0));
+            }
         }
     }
 

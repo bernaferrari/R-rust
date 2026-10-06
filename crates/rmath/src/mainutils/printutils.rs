@@ -124,7 +124,27 @@ impl Default for PrintUtilsState {
 
 fn current_R_print() -> RPrint {
     crate::sexp::instance::with_current_instance(|inst| unsafe {
-        (*inst).eval_state.printutils.print
+        let mut print = (*inst).eval_state.printutils.print;
+        // Public print.default owns the active NA strings in R_PrintData.
+        // Explicit low-level encoder overrides still take precedence.
+        let data = &(*inst).eval_state.print.data;
+        if print.na_string.is_null() {
+            print.na_string = data.na_string.cast();
+            // PrintInit measures NA_STRING through Rstrlen; its intrinsic
+            // width must not depend on the partially initialized data.
+            print.na_width = if data.na_string.is_null()
+                || data.na_string == crate::sexp::globals::R_NaString()
+            {
+                2
+            } else {
+                data.na_width
+            };
+        }
+        if print.na_string_noquote.is_null() {
+            print.na_string_noquote = data.na_string_noquote.cast();
+            print.na_width_noquote = data.na_width_noquote;
+        }
+        print
     })
     .unwrap_or_default()
 }

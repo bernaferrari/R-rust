@@ -643,8 +643,8 @@ pub(crate) fn format_complex_value(v: super::ffi::Rcomplex) -> String {
     }
     // EncodeReal0: x == 0.0 becomes +0, so cat/print of -0i is "+0i".
     let imag = if v.i == 0.0 { 0.0 } else { v.i };
-    let real = format_real_value(v.r);
-    let imaginary = format_real_value(imag.abs());
+    let real = format_cat_real(v.r);
+    let imaginary = format_cat_real(imag.abs());
     if imag.is_sign_negative() {
         format!("{real}-{imaginary}i")
     } else {
