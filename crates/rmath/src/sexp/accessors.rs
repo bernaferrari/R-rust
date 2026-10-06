@@ -778,33 +778,36 @@ pub unsafe fn RAW(x: SEXP) -> *mut super::ffi::Rbyte {
     }
 }
 
-/// Get the character data of a CHARSXP.
+/// Get the sealed character bytes without executing R or creating an owning value.
+/// # Safety
+/// Retain the original character parent for the entire use of this const projection.
 pub unsafe fn CHAR(x: SEXP) -> *const c_char {
-    if !is_valid_sexp_ptr(x) {
+    let Some(read) = header_read(x, "unowned header read") else {
         return ptr::null();
-    }
-    if header_snapshot(x)
-        .expect("character parent")
-        .sxpinfo
-        .type_of()
-        != SEXPTYPE::CHARSXP
-    {
+    };
+    if read.snapshot.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
         super::context::r_error("CHAR requires a character scalar");
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let header = value.header();
-    let Some(lease) = header.payload_lease() else {
-        // Admission above retains the exact canonical missing-string identity.
-        // GNU exposes its immutable "NA" bytes even though typed string reads
-        // continue to represent this sentinel as a missing value.
-        if value.is_na_string() {
-            return c"NA".as_ptr();
-        }
-        super::context::r_error("character scalar has no committed byte allocation");
-    };
-    let length = usize::try_from(header.body.vector().length)
+    if !read.snapshot.has_valid_shape() {
+        super::context::r_error("invalid character shape");
+    }
+    // The canonical missing-string lease supplies immutable GNU "NA" bytes.
+    // Its identity, rather than a caller address or a replacement runtime,
+    // authorizes this special read.
+    let lease = match &read.origin {
+        HeaderOrigin::Singleton(singleton) if singleton.is_na_string() => return c"NA".as_ptr(),
+        HeaderOrigin::Singleton(singleton) => singleton.payload_lease(),
+        HeaderOrigin::Managed { node, .. } => node.heap_identity().payload_lease(node),
+    }
+    .unwrap_or_else(|| {
+        super::context::r_error("character scalar has no committed byte allocation")
+    });
+    let length = usize::try_from(read.snapshot.data.vector().length)
         .unwrap_or_else(|_| super::context::r_error("invalid character length"));
-    if !lease.is_immutable() || lease.byte_elt(length) != Some(0) {
+    if !lease.matches_header(&read.snapshot)
+        || !lease.is_immutable()
+        || lease.byte_elt(length) != Some(0)
+    {
         super::context::r_error("character payload must be sealed with a trailing NUL");
     }
     lease.native_projection().cast::<c_char>().cast_const()
