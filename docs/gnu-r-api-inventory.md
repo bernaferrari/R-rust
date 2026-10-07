@@ -322,7 +322,29 @@ Chromium cases and three extra actual-reset repetitions pass. The complete
 unchanged GNU `print-tests.R` driver matches strictly under both constructor
 policies. Explicit limits/digits, missing values, nested S3 callbacks, collecting
 callbacks, caught errors, sink order and original-owner cleanup have independent
-GNU fixtures. The immutable Linux checkpoint is pending, so complete inventory
-counts remain attached to640. A separately executed public `prmatrix` probe fails
-under both policies even though its translated helper unit passes; it is retained
-as an open gap and excluded from verified public bindings.
+GNU fixtures. The [complete d684 Linux join](ci-checkpoints/conformance-browser-d6844517.json)
+authenticates all six conformance and five upstream producers:1090pass/91fail,
+18pass/21fail/31skip whole drivers,15curated passes,73selected native passes,
+33production contracts in eachof two fresh sessions, and61Chromium passes.
+The unchanged whole `print-tests.R` newly passes versus640. Debug workspace
+execution progresses past JIT but hits35-minute budget during a later bytecode
+target; later targets and UniFFI remain unverified. At this exact source a
+separate public `prmatrix` probe fails despite its translated helper unit passing.
+
+The [a43 public matrix execution join](ci-checkpoints/prmatrix-workflow-a43a20e9.json)
+resolves that public gap through original GNU `base::prmatrix` and
+`base::as.matrix.default` closures and the actual internal handler. It joins
+`base::as.matrix`, `base::data.matrix`, `base::array` and `base::format.data.frame`
+to their shared implementations,75independently captured GNU cases, tested
+options and edges, profiles, exact16-file source fingerprint and verified commit.
+Labels, missing values, coercion warnings/calls, errors, compiled calls, visibility,
+vector names, matrix/array dimensions, automatic and explicit rownames, formatting
+with collecting callbacks, connection output and error recovery are exercised.
+An enclosing-driver failure exposed formatted rownames retaining the automatic
+flag; the repaired whole `print-tests.R` now matches strictly under both policies.
+All76selected native tests,25print units,34production contracts in eachof two
+fresh sessions,61Chromium cases and three extra real-reset repetitions pass.
+Actual browser reset includes six original GNU fixtures. This is a partial join
+of demonstrated behavior, with original budgets and constructor policies retained;
+it does not promote presence hints or unresolved registrations to passing behavior,
+or replace the latest complete d684 inventories.

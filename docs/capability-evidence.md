@@ -281,6 +281,25 @@ the35-minute deadline cancels `gnu_bytecode_dollar`. Later workspace targets
 and UniFFI remain unverified. A separate public probe atd684 finds `prmatrix` missing under both policies despite the translated helper
 unit passing. That gap remains open and is excluded from passing public evidence.
 
+The [public matrix workflow receipt](ci-checkpoints/prmatrix-workflow-a43a20e9.json)
+records actual runtime source `a43a20e9`: 76
+selected native tests in 27 suites,25print unit tests,
+and 34 production contracts in each
+of two fresh Wasm sessions pass. All61local Chromium tests and three additional
+actual-reset repetitions pass; reset now executes six original GNU fixtures.
+The75-case matrix fixture checks original base closure identity, compiled calls,
+labels/coercion warnings/NA/error calls, raw matrix and array shape, vector names,
+raw/complex/higher-dimensional conversion, explicit and automatic frame rownames,
+formatted frame rownames, a collecting format method, connection output and recovery.
+The unchanged enclosing `print-tests.R` passes strictly under both constructor
+policies. An initial whole-driver regression exposed the distinction between
+automatic input rownames and explicit formatted rownames; that failure and repair
+are preserved. New goldens come only from the independently executed pinnedGNU
+program, with warning messages and calls captured and stderr empty. Original
+browser budgets, examples, selectors and assertions remain intact. This resolves
+the public `prmatrix` gap atd684; it does not change the latest completed Linux
+inventories or establish full workspace acceptance.
+
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
 all 1181 accounted for with zero timeouts. Both original cases 538 and 540

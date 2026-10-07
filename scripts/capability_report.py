@@ -48,6 +48,7 @@ complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.j
 latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-d6844517.json').read_text())
 latest_linux = latest_completed
 print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
+prmatrix_workflow = json.loads((root / 'docs/ci-checkpoints/prmatrix-workflow-a43a20e9.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -332,6 +333,25 @@ in6m28s and completes48suites/187tests, including all3repaired JIT tests, before
 the35-minute deadline cancels `gnu_bytecode_dollar`. Later workspace targets
 and UniFFI remain unverified. A separate public probe atd684 finds `prmatrix` missing under both policies despite the translated helper
 unit passing. That gap remains open and is excluded from passing public evidence.
+
+The [public matrix workflow receipt](ci-checkpoints/prmatrix-workflow-a43a20e9.json)
+records actual runtime source `a43a20e9`: {prmatrix_workflow['acceptance']['native_public_tests']}
+selected native tests in {prmatrix_workflow['acceptance']['native_public_suites']} suites,25print unit tests,
+and {prmatrix_workflow['acceptance']['production_contracts_per_fresh_session']} production contracts in each
+of two fresh Wasm sessions pass. All61local Chromium tests and three additional
+actual-reset repetitions pass; reset now executes six original GNU fixtures.
+The75-case matrix fixture checks original base closure identity, compiled calls,
+labels/coercion warnings/NA/error calls, raw matrix and array shape, vector names,
+raw/complex/higher-dimensional conversion, explicit and automatic frame rownames,
+formatted frame rownames, a collecting format method, connection output and recovery.
+The unchanged enclosing `print-tests.R` passes strictly under both constructor
+policies. An initial whole-driver regression exposed the distinction between
+automatic input rownames and explicit formatted rownames; that failure and repair
+are preserved. New goldens come only from the independently executed pinnedGNU
+program, with warning messages and calls captured and stderr empty. Original
+browser budgets, examples, selectors and assertions remain intact. This resolves
+the public `prmatrix` gap atd684; it does not change the latest completed Linux
+inventories or establish full workspace acceptance.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
