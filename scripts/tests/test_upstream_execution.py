@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
 from unittest.mock import patch
@@ -80,6 +81,66 @@ class ProcessTests(unittest.TestCase):
         self.assertFalse(receipt["execution_complete"])
         with self.assertRaises(ProcessLookupError):
             os.kill(receipt["pid"], 0)
+
+    def test_term_at_subprocess_wait_lock_boundary_does_not_strand_cleanup(self):
+        # Inject TERM immediately after Popen acquires its wait lock, before
+        # its try/finally can release it. A signal handler that raises here
+        # strands the lock and makes owned-child cleanup block indefinitely.
+        phase = self.root / "phase"
+        script = textwrap.dedent('''
+            import os, signal, subprocess, sys
+            from pathlib import Path
+            from scripts import upstream_execution as execution
+            class SignalAtAcquire:
+                def __init__(self, lock):
+                    self.lock, self.sent = lock, False
+                def acquire(self, *args, **kwargs):
+                    acquired = self.lock.acquire(*args, **kwargs)
+                    if acquired and not self.sent:
+                        self.sent = True
+                        os.kill(os.getpid(), signal.SIGTERM)
+                    return acquired
+                def release(self):
+                    self.lock.release()
+                def __enter__(self):
+                    self.acquire()
+                    return self
+                def __exit__(self, *args):
+                    self.release()
+            class InjectedPopen(subprocess.Popen):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self._waitpid_lock = SignalAtAcquire(self._waitpid_lock)
+            execution.subprocess.Popen = InjectedPopen
+            result = execution.run_process([sys.executable, '-c', 'import time; time.sleep(10)'],
+                cwd=Path(sys.argv[1]).parent, timeout=10, directory=Path(sys.argv[1]))
+            raise SystemExit(result['exit_code'])
+        ''')
+        process = subprocess.Popen([sys.executable, "-c", script, str(phase)],
+                                   cwd=execution.ROOT, stdout=subprocess.DEVNULL)
+        try:
+            try:
+                code = process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.fail("TERM at Popen's wait-lock boundary stranded process cleanup")
+            self.assertEqual(code, 143)
+            receipt = execution.checked_process(phase)
+            self.assertEqual(receipt["state"], "cancelled")
+            with self.assertRaises(ProcessLookupError):
+                os.kill(receipt["pid"], 0)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+    def test_child_inherits_original_signal_mask(self):
+        original = sorted(int(number) for number in signal.pthread_sigmask(signal.SIG_BLOCK, []))
+        phase = self.root / "phase"
+        script = "import json,signal;print(json.dumps(sorted(int(n) for n in signal.pthread_sigmask(signal.SIG_BLOCK, []))))"
+        receipt = execution.run_process([sys.executable, "-c", script], cwd=self.root,
+                                       timeout=2, directory=phase)
+        self.assertEqual(receipt["exit_code"], 0)
+        self.assertEqual(json.loads((phase / "combined.log").read_text()), original)
 
     def test_invalid_deadlines_rejected_before_process_or_output(self):
         for value in (0, -1, math.inf, math.nan, "bad"):

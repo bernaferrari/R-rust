@@ -8,6 +8,7 @@ OUT_DIR="$TARGET_DIR/bindings"
 CHECK_ONLY=0
 LANGUAGE="kotlin"
 CHECKED_IN_DIR="$ROOT_DIR/apps/workbench/app/generated"
+BUILD_RECEIPT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,11 +33,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 cleanup() {
+    rm -f "$BUILD_RECEIPT"
     if [[ "$CHECK_ONLY" -eq 1 && -d "$OUT_DIR" ]]; then
         rm -rf "$OUT_DIR"
     fi
 }
 trap cleanup EXIT
+BUILD_RECEIPT="$(mktemp)"
 
 echo "Generating UniFFI bindings..."
 
@@ -61,36 +64,13 @@ if command -v uniffi-bindgen >/dev/null 2>&1; then
 fi
 if [[ "$INSTALLED_UNIFFI_VERSION" != "$UNIFFI_VERSION" ]]; then
     echo "Installing uniffi-bindgen $UNIFFI_VERSION..."
-    cargo install --locked --force --version "$UNIFFI_VERSION" uniffi --features cli
+    "$SCRIPT_DIR/cargo_dev.sh" install --locked --force --version "$UNIFFI_VERSION" uniffi --features cli
 fi
 
 cd "$ROOT_DIR"
-cargo build -p r-uniffi --lib
-
-LIB_PATH=""
-shopt -s nullglob
-HOST_LIB_CANDIDATES=(
-    "$TARGET_DIR"/debug/libr_uniffi*.so
-    "$TARGET_DIR"/debug/libr_uniffi*.dylib
-    "$TARGET_DIR"/debug/libr_uniffi*.dll
-    "$TARGET_DIR"/debug/r_uniffi*.dll
-    "$TARGET_DIR"/debug/deps/libr_uniffi*.so
-    "$TARGET_DIR"/debug/deps/libr_uniffi*.dylib
-    "$TARGET_DIR"/debug/deps/libr_uniffi*.dll
-    "$TARGET_DIR"/debug/deps/r_uniffi*.dll
-)
-shopt -u nullglob
-if (( ${#HOST_LIB_CANDIDATES[@]} > 0 )); then
-    LIB_PATH="$(ls -t "${HOST_LIB_CANDIDATES[@]}" 2>/dev/null | head -n 1)"
-fi
-
-if [[ -z "$LIB_PATH" ]]; then
-    LIB_PATH="$(find "$TARGET_DIR" -path '*/debug/*' -type f \( -name 'libr_uniffi*.so' -o -name 'libr_uniffi*.dylib' -o -name 'libr_uniffi*.dll' -o -name 'r_uniffi*.dll' \) | sort | head -n 1)"
-fi
-if [[ -z "$LIB_PATH" ]]; then
-    echo "Error: Could not find the built r-uniffi library" >&2
-    exit 1
-fi
+RPORT_CARGO_ARTIFACTS_JSON="$BUILD_RECEIPT" \
+    "$SCRIPT_DIR/cargo_dev.sh" build -p r-uniffi --lib --message-format=json > "$BUILD_RECEIPT"
+LIB_PATH="$(python3 "$SCRIPT_DIR/conformance_cargo_artifact.py" "$BUILD_RECEIPT" r_uniffi --shared)"
 
 mkdir -p "$OUT_DIR"
 

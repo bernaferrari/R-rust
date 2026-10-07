@@ -17,8 +17,12 @@ cargo "$@"
 result=$?
 case "${1:-}" in
     build|check|test|clippy)
+        prune_options=(--target-dir "$PRUNE_TARGET_DIR" --apply)
+        if [[ -n "${RPORT_CARGO_ARTIFACTS_JSON:-}" ]]; then
+            prune_options+=(--artifacts-json "$RPORT_CARGO_ARTIFACTS_JSON")
+        fi
         python3 "$ROOT_DIR/scripts/prune_build_binaries.py" \
-            --target-dir "$PRUNE_TARGET_DIR" --apply || \
+            "${prune_options[@]}" || \
             echo "Build-cache pruning skipped; Cargo's exit status is unchanged." >&2
         ;;
 esac

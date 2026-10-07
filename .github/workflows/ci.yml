@@ -60,7 +60,12 @@ jobs:
         run: cargo check -p r-embed --no-default-features --features fortran-backend
 
   test:
-    name: Test
+    name: Workspace debug shard ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -74,13 +79,49 @@ jobs:
       - name: Test parity deadlines and log capture
         run: |
           bash scripts/conformance_artifacts_test.sh
-          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py scripts/tests/test_upstream_execution.py scripts/tests/test_optimize_wasm_runtime.py
+          python3 -m unittest scripts/tests/test_run_parity_case.py scripts/tests/test_conformance_deadline_report.py scripts/tests/test_conformance_runner_output.py scripts/tests/test_conformance_shards.py scripts/tests/test_upstream_execution.py scripts/tests/test_optimize_wasm_runtime.py scripts/tests/test_workspace_execution.py
 
-      - name: Test (workspace)
-        run: cargo test --workspace
+      - name: Execute admitted debug workspace partition
+        run: >-
+          python3 scripts/workspace_execution.py produce
+          --shard-index ${{ matrix.shard }} --shard-count 9
+          --directory "${{ runner.temp }}/workspace-debug-${{ matrix.shard }}"
 
-      - name: Check generated UniFFI bindings
-        run: scripts/generate_uniffi_bindings.sh --check
+      - name: Upload workspace process evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-debug-${{ matrix.shard }}
+          path: ${{ runner.temp }}/workspace-debug-${{ matrix.shard }}
+          if-no-files-found: error
+
+  workspace-coverage:
+    name: Complete debug workspace coverage
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download every workspace producer
+        uses: actions/download-artifact@v4
+        with:
+          pattern: workspace-debug-*
+          path: target/workspace-debug-union
+      - name: Require all original workspace targets and phases
+        if: always()
+        run: >-
+          python3 scripts/workspace_execution.py merge --shard-count 9
+          --source-commit "${{ github.sha }}"
+          --directory target/workspace-debug-union
+      - name: Upload complete workspace result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-debug-union
+          path: target/workspace-debug-union/summary.json
+          if-no-files-found: error
 
   package-integration:
     name: Public package integration

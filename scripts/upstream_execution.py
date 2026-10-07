@@ -110,8 +110,12 @@ def run_process(command, *, cwd, timeout, directory, combined=True, env=None):
     print(f"START {directory.name}: {Path(command[0]).name}", flush=True)
     started, process = time.monotonic(), None
     handlers = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
+    cancelled_signal = None
     def cancel(number, _frame):
-        raise Cancelled(number)
+        # Raising asynchronously inside Popen.wait/poll can interrupt a lock
+        # acquisition before its finally block and strand process cleanup.
+        nonlocal cancelled_signal
+        cancelled_signal = number
     for number in handlers:
         signal.signal(number, cancel)
     output_paths = [directory / "combined.log"] if combined else [directory / "stdout.log", directory / "stderr.log"]
@@ -120,17 +124,24 @@ def run_process(command, *, cwd, timeout, directory, combined=True, env=None):
             stdout = streams.enter_context(output_paths[0].open("xb"))
             stderr = subprocess.STDOUT if combined else streams.enter_context(output_paths[1].open("xb"))
             try:
-                # Block cancellation through fork/assignment so cleanup always
-                # has the actual owned child, even if TERM arrives at launch.
-                mask = signal.pthread_sigmask(signal.SIG_BLOCK, set(handlers))
-                try:
-                    process = subprocess.Popen(command, cwd=cwd, env=env, stdout=stdout, stderr=stderr,
-                                               start_new_session=True)
-                finally:
-                    signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+                # The flag-only handler cannot interrupt fork/assignment with
+                # an exception. Keep the inherited signal mask unchanged so
+                # nested runners and actual workloads can receive TERM/INT.
+                process = subprocess.Popen(command, cwd=cwd, env=env, stdout=stdout, stderr=stderr,
+                                           start_new_session=True)
                 receipt["pid"] = process.pid
                 atomic_json(directory / "process.json", receipt)
-                code = process.wait(timeout=timeout)
+                expires = time.monotonic() + timeout
+                while True:
+                    code = process.poll()
+                    if cancelled_signal is not None:
+                        raise Cancelled(cancelled_signal)
+                    if code is not None:
+                        break
+                    remaining = expires - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    time.sleep(min(0.05, remaining))
                 # Do not permit an orphan to continue writing after FINISH.
                 stop_group(process)
                 receipt.update(state="finished", exit_code=code, execution_complete=True)
