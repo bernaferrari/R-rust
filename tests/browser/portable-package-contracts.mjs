@@ -55,6 +55,7 @@ const contracts = [
     'print-digits-public-contract',
     'prmatrix-public-contract',
     'condition-handler-stack-public-contract',
+    'attribute-print-public-contract',
     's4-next-method-public-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',

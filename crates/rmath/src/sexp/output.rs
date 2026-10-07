@@ -4,9 +4,7 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use super::accessors::{
-    ATTRIB, CAR, CDR, CHAR, PRINTNAME, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
+use super::accessors::{CAR, CDR, CHAR, PRINTNAME, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH};
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::instance::RInstance;
@@ -720,7 +718,7 @@ fn is_hidden_noquote_class(name: &str, x: Sexp<'_>) -> bool {
 }
 
 enum ClassForPrint {
-    Keep(SEXP),
+    Keep,
     Omit,
     Filtered(SEXP, crate::sexp::protect::ProtectGuard<'static>),
 }
@@ -728,7 +726,7 @@ enum ClassForPrint {
 fn class_for_print(class: SEXP) -> ClassForPrint {
     unsafe {
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return ClassForPrint::Keep(class);
+            return ClassForPrint::Keep;
         }
         let n = XLENGTH(class);
         let na = crate::sexp::globals::R_NaString();
@@ -747,7 +745,7 @@ fn class_for_print(class: SEXP) -> ClassForPrint {
             }
         }
         if !dropped {
-            return ClassForPrint::Keep(class);
+            return ClassForPrint::Keep;
         }
         // GNU print.AsIs drops every "AsIs" element and prints only what remains.
         if keep.is_empty() {
@@ -763,53 +761,57 @@ fn class_for_print(class: SEXP) -> ClassForPrint {
     }
 }
 
-fn format_printable_attributes(x: Sexp<'_>) -> String {
+fn for_each_printable_attribute(
+    x: Sexp<'_>,
+    mut print: impl for<'attribute> FnMut(&str, Sexp<'attribute>),
+) {
+    // GNU retains the original chain through callbacks, but reads each next
+    // edge after printing the current value. A callback can replace the whole
+    // attribute chain, remove the next entry, or replace its value and collect.
+    let original = x
+        .try_attrib()
+        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    let mut attrs = original.clone();
     unsafe {
-        let mut attrs = ATTRIB(x.clone().as_raw());
-
-        let mut visible = Vec::new();
-        let mut filtered_classes = Vec::new();
-        while !attrs.is_null() && attrs != R_NilValue() {
-            if let Some(name) = printable_attribute_name(attrs)
+        while !attrs.is_nil() {
+            if let Some(name) = printable_attribute_name(attrs.as_raw())
                 && !is_structural_print_attribute(&name)
                 && !is_hidden_noquote_class(&name, x.clone())
             {
-                let value = CAR(attrs);
-                if !value.is_null() && value != R_NilValue() {
+                let value = attrs
+                    .try_car()
+                    .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+                if !value.is_nil() {
                     if name == "class" {
-                        match class_for_print(value) {
+                        match class_for_print(value.as_raw()) {
                             ClassForPrint::Omit => {}
-                            ClassForPrint::Keep(value) => visible.push((name, value)),
-                            ClassForPrint::Filtered(value, guard) => {
-                                filtered_classes.push(guard);
-                                visible.push((name, value));
+                            ClassForPrint::Keep => print(&name, value),
+                            ClassForPrint::Filtered(filtered, _guard) => {
+                                let filtered = Sexp::from_raw(filtered)
+                                    .expect("protected filtered class vector");
+                                print(&name, filtered);
                             }
                         }
                     } else {
-                        visible.push((name, value));
+                        print(&name, value);
                     }
                 }
             }
-            attrs = CDR(attrs);
+            attrs = attrs
+                .try_cdr()
+                .unwrap_or_else(|error| super::context::r_error(error.to_string()));
         }
-
-        let mut out = String::new();
-        for (name, value) in visible {
-            out.push('\n');
-            out.push_str(&format!("attr(,\"{name}\")\n"));
-            if let Some(value) = Sexp::from_raw(value) {
-                if let Some(dispatched) = format_dispatched_print(value.clone()) {
-                    out.push_str(&dispatched);
-                } else {
-                    out.push_str(&format_sexp_direct(value));
-                }
-            } else {
-                out.push_str("NULL");
-            }
-        }
-        let _filtered_classes = filtered_classes;
-        out
     }
+}
+
+fn format_printable_attributes(x: Sexp<'_>) -> String {
+    let mut out = String::new();
+    for_each_printable_attribute(x, |name, value| {
+        let header = format!("attr(,\"{name}\")");
+        out.push_str(&format!("\n{header}\n"));
+        out.push_str(&format_list_child(value, &header));
+    });
+    out
 }
 
 fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
@@ -823,6 +825,12 @@ fn format_list_body_with_attributes(body: String, x: Sexp<'_>) -> String {
 
 fn format_with_printable_attributes(base: String, x: Sexp<'_>) -> String {
     format!("{base}{}", format_printable_attributes(x))
+}
+
+fn print_with_printable_attributes(base: &str, x: Sexp<'_>) {
+    emit(base);
+    emit("\n");
+    print_list_attributes(x);
 }
 
 fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
@@ -1460,8 +1468,12 @@ fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
 }
 
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
+    format_matrix_body(x.clone()).map(|body| format_with_printable_attributes(body, x))
+}
+
+fn format_matrix_body(x: Sexp<'_>) -> Option<String> {
     let Some((nrow, ncol)) = matrix_dims(x.clone()) else {
-        return format_array(x.clone()).map(|body| format_with_printable_attributes(body, x));
+        return format_array(x);
     };
     let body = match x.clone().typeof_() {
         SEXPTYPE::INTSXP => format_matrix_with(x.clone(), nrow, ncol, |r, c| {
@@ -1486,7 +1498,7 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
 
         _ => return None,
     };
-    Some(format_with_printable_attributes(body, x))
+    Some(body)
 }
 
 fn array_dims(x: Sexp<'_>) -> Option<Vec<usize>> {
@@ -2518,18 +2530,7 @@ fn format_list(x: Sexp<'_>) -> String {
 
 fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
     if x.clone().len() == 0 {
-        let names = unsafe {
-            crate::sexp::attrib_core::getAttrib(
-                x.clone().as_raw(),
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            )
-        };
-        let body = if !names.is_null() && names != unsafe { crate::sexp::globals::R_NilValue() } {
-            "named list()"
-        } else {
-            "list()"
-        };
-        return format_with_printable_attributes(body.to_string(), x);
+        return format_with_printable_attributes(empty_list_body(x.clone()).to_string(), x);
     }
     let names = list_names(x.clone());
     let mut sections = Vec::with_capacity(x.clone().len() as usize);
@@ -2539,6 +2540,14 @@ fn format_list_with_path(x: Sexp<'_>, path: &str) -> String {
         sections.push(format!("{header}\n{body}"));
     }
     format_list_body_with_attributes(sections.join("\n\n"), x)
+}
+
+fn empty_list_body(x: Sexp<'_>) -> &'static str {
+    if has_names_attribute(x) {
+        "named list()"
+    } else {
+        "list()"
+    }
 }
 
 fn format_pairlist(x: Sexp<'_>) -> String {
@@ -2767,17 +2776,16 @@ fn print_list_child(elem: Sexp<'_>, path: &str) {
 }
 
 fn print_list_attributes(x: Sexp<'_>) {
-    let attributes = format_printable_attributes(x);
-    if !attributes.is_empty() {
-        // The last child already emitted the separator before attributes.
-        emit(attributes.strip_prefix('\n').unwrap_or(&attributes));
-        emit("\n");
-    }
+    for_each_printable_attribute(x, |name, value| {
+        let header = format!("attr(,\"{name}\")");
+        emit(&format!("{header}\n"));
+        print_list_child(value, &header);
+    });
 }
 
 fn print_list_with_path(x: Sexp<'_>, path: &str) {
     if x.len() == 0 {
-        emit(&format!("{}\n", format_list_with_path(x, path)));
+        print_with_printable_attributes(empty_list_body(x.clone()), x);
         return;
     }
     let names = list_names(x.clone());
@@ -3597,13 +3605,10 @@ pub fn print_value(x: Sexp<'_>) {
                 }
             }
             let base = deparse_expression_one(x.clone().as_raw());
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
-            emit(&format!(
-                "{}\n",
-                format_with_printable_attributes(format_primitive(x.clone()), x)
-            ));
+            print_with_printable_attributes(&format_primitive(x.clone()), x);
         }
 
         SEXPTYPE::LISTSXP => {
@@ -3614,8 +3619,8 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if x.clone().len() == 0 {
@@ -3624,10 +3629,7 @@ pub fn print_value(x: Sexp<'_>) {
                 } else {
                     "integer(0)"
                 };
-                emit(&format!(
-                    "{}\n",
-                    format_with_printable_attributes(empty.to_string(), x)
-                ));
+                print_with_printable_attributes(empty, x);
                 return;
             }
 
@@ -3644,11 +3646,11 @@ pub fn print_value(x: Sexp<'_>) {
                 return;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::REALSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if x.clone().len() == 0
@@ -3656,10 +3658,7 @@ pub fn print_value(x: Sexp<'_>) {
                 && !has_class(x.clone(), "POSIXct")
                 && !has_class(x.clone(), "Date")
             {
-                emit(&format!(
-                    "{}\n",
-                    format_with_printable_attributes("numeric(0)".to_string(), x)
-                ));
+                print_with_printable_attributes("numeric(0)", x);
                 return;
             }
 
@@ -3684,43 +3683,37 @@ pub fn print_value(x: Sexp<'_>) {
                 return;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::LGLSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if x.clone().len() == 0 {
-                emit(&format!(
-                    "{}\n",
-                    format_with_printable_attributes("logical(0)".to_string(), x)
-                ));
+                print_with_printable_attributes("logical(0)", x);
                 return;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
 
         SEXPTYPE::CPLXSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if x.clone().len() == 0 {
-                emit(&format!(
-                    "{}\n",
-                    format_with_printable_attributes("complex(0)".to_string(), x)
-                ));
+                print_with_printable_attributes("complex(0)", x);
                 return;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
 
         SEXPTYPE::STRSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if let Some(output) = format_summary_default(x.clone()) {
@@ -3731,22 +3724,19 @@ pub fn print_value(x: Sexp<'_>) {
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
             let base = unsafe { format_vector_stock(x.clone(), quote) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::RAWSXP => {
-            if let Some(output) = format_matrix(x.clone()) {
-                emit(&format!("{output}\n"));
+            if let Some(output) = format_matrix_body(x.clone()) {
+                print_with_printable_attributes(&output, x);
                 return;
             }
             if x.clone().len() == 0 {
-                emit(&format!(
-                    "{}\n",
-                    format_with_printable_attributes("raw(0)".to_string(), x)
-                ));
+                print_with_printable_attributes("raw(0)", x);
                 return;
             }
             let base = unsafe { format_vector_stock(x.clone(), true) };
-            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
+            print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::VECSXP => {
             if has_class(x.clone(), "summary.warnings") {
@@ -3784,10 +3774,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
 
         SEXPTYPE::EXPRSXP => {
-            emit(&format!("{}\n", format_expression_vector(x)));
+            print_with_printable_attributes(&format_expression_vector(x.clone()), x);
         }
         SEXPTYPE::ENVSXP => {
-            emit(&format!("{}\n", format_environment(x)));
+            print_with_printable_attributes(&format_environment(x.clone()), x);
         }
         tp => {
             let type_name = match tp {
