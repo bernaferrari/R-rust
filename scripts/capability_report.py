@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-54f01c81.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-014f15f2.json').read_text())
 latest_linux = latest_completed
 print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
 prmatrix_workflow = json.loads((root / 'docs/ci-checkpoints/prmatrix-workflow-a43a20e9.json').read_text())
@@ -154,7 +154,7 @@ records actual public workflow repairs and preserves their separate source commi
 | Unchanged whole `structure.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
 | Unchanged whole `reg-S4.R` | `6a2fd0b1` | 1 | 0 | Strict GNU comparison; graphics/native/faer release; original subset calls retained |
 
-The latest independently verified complete inventory is recorded at
+The earlier independently verified complete inventory is recorded at
 `711e0810` in the [complete inventory receipt](ci-checkpoints/complete-inventory-711e0810.json).
 All six conformance producers and all five upstream producers agree on source,
 corpus, pinned oracle and execution profile. The clean source tree independently
@@ -380,8 +380,14 @@ tests, two separate S4 checks, 35 production contracts per fresh session, and al
 61 Chromium tests. Its complete upstream inventory records 19 whole drivers
 passing, 20 failing and 31 skipped, with all 15 curated slices passing. All six
 conformance producers still record 1090 pass / 91 fail, with no timeouts or
-changed case statuses. The full debug workspace checkpoint remains pending;
-these panels do not declare a passing workspace.
+changed case statuses. Its now-completed full Linux workflow independently
+matches all official unions, including the debug workspace rejection: 151 of
+212 executable targets finish, nine fail, seven time out and 54 are unreached.
+Completed libtest summaries report 545 pass / 8 fail / 1 ignored; grid's separate
+stack abort has no summary. The union rejects 186 unverified targets. These are
+complete failure-accounting results, not a passing workspace. The [complete014f
+receipt](ci-checkpoints/conformance-browser-014f15f2.json) now supplies the latest
+verified aggregate counts.
 
 The [public attribute printing milestone](ci-checkpoints/attribute-print-workflow-ceeb9571.json)
 at `ceeb9571` preserves completed output and stdout/stderr chronology when an S3
@@ -393,8 +399,25 @@ match raw output under both public constructors. All 78 native tests in 29 suite
 49 printing/output units, 36 contracts in each of two fresh production Wasm
 sessions, and all 61 Chromium tests pass. Eight fixtures survive actual reset in
 three repeated runs. Original budgets, examples, selectors and meaningful output
-remain intact. Its immutable Linux checkpoint is pending; these focused results
-do not reduce the complete conformance failure count by declaration.
+remain intact. Its Linux production artifacts independently verify all 61
+Chromium tests and 36 contracts per fresh Wasm session, with byte-identical
+production/profile execution sections. All 78 selected Linux package tests pass.
+The separate warm S4 batch reports one pass and one failure: native/default
+exceeds the unchanged 15-second limit at 15.15 seconds. The warm S4 timing gap
+remains tracked; no full-workspace or conformance reduction is declared here.
+
+The [typed native condition milestone](ci-checkpoints/typed-condition-workflow-0e3a3b60.json)
+at `0e3a3b60` preserves original error classes, fields and calls through calling
+and exiting handlers, including compiled variable loads and `get()`. The
+expanded existing fixture contains 32 independently captured GNU cases. The
+unchanged GNU-bytecode and missing-subscript regressions pass in release and
+the exact full-workspace debug feature union. All 69 native error units and
+81 selected public tests in 31 suites pass, alongside complete raw `conditions.R`
+parity under both constructors, 36 production Wasm contracts per fresh session,
+61 Chromium tests and reset with eight fixtures repeated three times. The warm
+S4 workflow passes locally under its original budgets; repeatable Linux timing
+acceptance remains open. Its immutable Linux checkpoint is queued, so these
+focused results do not declare that the remaining aggregate failures are fixed.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

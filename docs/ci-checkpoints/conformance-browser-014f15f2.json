@@ -1,0 +1,960 @@
+{
+  "schema_version": 1,
+  "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
+  "immutable_run": "37563648799",
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37563648799",
+  "scope": "Complete immutable Linux workflow: all conformance/upstream inventories authenticated against clean frozen014f source and equal to official unions. Wholeconditions.R changes from fail to pass. Public package/browser panels pass. All nine full-debug producers authenticated; workspace remains incomplete with actual failures. Later attribute/typed-condition repairs are excluded.",
+  "conformance": {
+    "status_counts": {
+      "fail": 91,
+      "pass": 1090,
+      "skip": 0,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "inventory_total": 1181,
+    "timed_out": 0,
+    "validation": "Six producer source/profile contracts authenticated and independently joined against frozen014f; full1181inventory, no missing cases. Same91failure set as54. Official CI union not yet available.",
+    "independent_union": {
+      "path": "target/ci-checkpoint-014f15f2/independent-conformance.json",
+      "sha256": "d8210d40f29c109444bae364ce870ce1fc3b3e27a28aa5c6df25680e74b9d8fb",
+      "bytes": 200727
+    }
+  },
+  "conformance_failures": [
+    {
+      "case": "1000_plclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1003_plot_stepfun",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1005_heatmap",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1006_rect_hclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1007_qqline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1009_cpgram",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1010_plot_ts",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1012_monthplot_scatter",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1013_interaction_lag_eff",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1015_struct_ts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1016_struct_ts_bsm",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1046_arima_ma2_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1047_arima_ar1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1048_arima_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1049_arima_ma1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1050_arima_ar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1051_arima_ma1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1052_arima_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1053_arima_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1054_arima_ar3_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1056_arima_arma11_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1060_arima_arma12_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1063_arima_arma11_sar1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1064_arima_arma11_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1067_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1068_structts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1069_structts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1070_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1102_str_atomic_preview",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "293_read_write_char_connections",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "328_date_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "329_posixct_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "331_datetime_c_rep",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "333_difftime_ops",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "381_no_random_seed_loadrds_functions",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "385_no_string_reshape_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "387_no_runtime_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "389_no_reflection_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "393_summary_default_vectors",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "432_prop_table_margins",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "523_signif_fprec_edge_matrix",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "537_strptime_posixlt_parity",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "570_loess_contracts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "599_density",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "602_supsmu",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "604_isoreg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "612_smooth_spline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "614_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "617_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "621_ks_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "623_ccf",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "637_diffinv",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "646_D_hyp",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "650_D_atan",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "651_D_gamma",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "652_holtwinters_alpha",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "653_deriv3",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "654_holtwinters_sse",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "656_nlminb",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "657_holtwinters_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "660_armaacf",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "666_holtwinters_x",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "671_is_ts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "689_adist",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "697_bindtextdomain",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "705_localeToCharset",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "710_ISOdate",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "720_as_POSIXct_lt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "724_mean_Date",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "726_trunc_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "727_round_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "731_as_list_Date",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "739_xtfrm_julian_POSIXt",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "757_ansari_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "769_pp_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "774_aregexec",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "793_covratio",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "809_lm_influence",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "820_dummy_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "858_dfbetas",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "863_struct_ts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "864_factanal",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "888_ts_smooth",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "901_ar_burg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "927_loglin",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "929_psmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "930_qsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "961_density_default",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "988_ppr",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "995_rsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "999_arima0_diag",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    }
+  ],
+  "changes_against_54": {
+    "conformance": [],
+    "upstream": [
+      {
+        "kind": "whole",
+        "case": "conditions.R",
+        "old_status": "fail",
+        "new_status": "pass"
+      }
+    ]
+  },
+  "complete_upstream": {
+    "whole": {
+      "pass": 19,
+      "fail": 20,
+      "skip": 31
+    },
+    "curated": {
+      "pass": 15,
+      "fail": 0
+    },
+    "validation": "Five producers authenticated against clean frozen014f and independently joined; byte-identical to official union. Only changed54 status is conditions.R fail to pass.",
+    "independent_union": {
+      "path": "target/ci-checkpoint-014f15f2/independent-upstream.json",
+      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
+      "bytes": 578033
+    },
+    "official_union": {
+      "path": "target/ci-checkpoint-014f15f2/upstream-r-exact-union/summary.json",
+      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
+      "bytes": 578033
+    }
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-07T03:12:12.676Z",
+      "duration": 523132.337,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "report": {
+      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/playwright.json",
+      "sha256": "2e67fc39af4a9ad54106f3d4917e7e6a907b01d9951a9f7238e7b15de2ee8175",
+      "bytes": 79715
+    },
+    "wasm": {
+      "bytes": 25763643,
+      "sha256": "6f0667a160d38656b099eb29d39501459fbaf7ee3fd9122415ff4d5bef0f5f05"
+    },
+    "node_contracts_per_fresh_session": 35,
+    "fresh_sessions": 2,
+    "node_report": {
+      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
+      "sha256": "46eb6e41d80ab0c5df8427dfca93e7984d79818e1193e5b95917711c2a02b8d9",
+      "bytes": 13740
+    },
+    "workflow_profile": {
+      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/workflow-profile.jsonl",
+      "sha256": "b37049b4aa210653def331ebb4490c7f837b4649f60cd6ad82bb9239ad0cad3d",
+      "bytes": 35761
+    }
+  },
+  "native_public": {
+    "selected": {
+      "passed": 77,
+      "failed": 0,
+      "suites": 28,
+      "profile": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/profile.json",
+        "sha256": "acc32cbe409b58c2a9f67218679d19b8f8c8009e2be6cf54961013f7f944581f",
+        "bytes": 517
+      },
+      "execute": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/execute/process.json",
+        "sha256": "6c812646c7ca8c7d54825a74d88d0dd3b9d3ba20b61b8b2564af3e9618feea58",
+        "bytes": 1864
+      }
+    },
+    "separate_s4": {
+      "passed": 2,
+      "failed": 0,
+      "warm_s4_seconds": {
+        "native": 14.924863461,
+        "portable": 14.907897534
+      },
+      "timing_risk": "Passes original15s limit; headroom remains narrow and repeatability is tracked separately.",
+      "process": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/s4-subset-call/process.json",
+        "sha256": "d48098aaeddac83e0fd27e2a92856ad1528a2b1e6287a6963d373f6eb63350c2",
+        "bytes": 731
+      }
+    }
+  },
+  "production_wasm": {
+    "production": {
+      "bytes": 25763643,
+      "sha256": "6f0667a160d38656b099eb29d39501459fbaf7ee3fd9122415ff4d5bef0f5f05"
+    },
+    "contracts_per_fresh_session": 35,
+    "fresh_sessions": 2
+  },
+  "workspace": {
+    "independent_counts": {
+      "admitted_executables": 212,
+      "completed_executable_targets": 151,
+      "completed_libtest_summaries": {
+        "fail": 8,
+        "ignored": 1,
+        "pass": 545
+      },
+      "doctests_and_uniffi_pass": true,
+      "failed_executable_targets": [
+        {
+          "exit_code": 101,
+          "name": "fft_resource_limits",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "fisher_hash_key",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "is_s3method",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "portable_grid_viewports",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": -6,
+          "name": "grid_engine_parity",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "portable_datasets_mutation",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "resource_export",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "gnu_bytecode_trycatch",
+          "package": "r-embed"
+        },
+        {
+          "exit_code": 101,
+          "name": "packages_visible",
+          "package": "r-embed"
+        }
+      ],
+      "full_workspace_pass": false,
+      "source": {
+        "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
+        "source_sha256": "00244061221d3b944b5c24ffd01eff2fd2fa4833439249960d05efd27fde6c61"
+      },
+      "unfinished_executable_targets": [
+        "s4_method_existence",
+        "sequence_session",
+        "try_condition_calls",
+        "r_uniffi",
+        "serialize_torture",
+        "s4_next_method",
+        "serialize_roundtrip",
+        "unit_length",
+        "r_wasm",
+        "rmath_nmath",
+        "graphics_recording",
+        "loess",
+        "mathstats_cor_rank",
+        "native_graphics_contract",
+        "portable_data_public_contracts",
+        "portable_namespace_integration",
+        "qr_public_api",
+        "recall",
+        "s3_group_generics",
+        "s4_select_method_contract",
+        "slot_try_error",
+        "unserialize_connection_contract",
+        "compile_fail",
+        "rmath-test",
+        "loess_na",
+        "methods_empty_symbols",
+        "nchar_unicode",
+        "portable_datasets",
+        "portable_stats_namespace",
+        "qr_q",
+        "rep_len_admission_contract",
+        "s3_methods_public_contract",
+        "s4_show",
+        "structure_copy_semantics",
+        "utils_console_public_contract",
+        "distribution_tests",
+        "rport-script-diff",
+        "s4_signatures",
+        "sys_call_alist",
+        "vector_print_limits",
+        "graphics_recording_torture",
+        "portable_grid",
+        "qr_apply",
+        "real_package_fortunes",
+        "restart_visibility",
+        "s4_dput_data",
+        "sample_condition_contract",
+        "table_print_contract",
+        "r_graphics_engine",
+        "graphics_visibility",
+        "named_list_c_any",
+        "palette_public_contract",
+        "portable_grid_clipping",
+        "qr_coef",
+        "real_package_r6",
+        "restarts_gnu",
+        "s4_initialize_superclass",
+        "script_last_value",
+        "timezone_parsing",
+        "r-host-cli",
+        "rmath"
+      ]
+    },
+    "official_union": {
+      "path": "target/ci-checkpoint-014f15f2/workspace-debug-union/summary.json",
+      "sha256": "652f9d480f52274e6aadf827976be8677076084bae0b15677f753e3ffad7107b",
+      "bytes": 128510
+    },
+    "independent_union": {
+      "path": "target/ci-checkpoint-014f15f2/independent-workspace-union.json",
+      "sha256": "652f9d480f52274e6aadf827976be8677076084bae0b15677f753e3ffad7107b",
+      "bytes": 128510
+    },
+    "inventory_total": 220,
+    "unverified_targets_rejected_by_union": 186,
+    "full_workspace_pass": false,
+    "unfinished_executable_targets": 61,
+    "timed_out_executable_targets": 7,
+    "unreached_executable_targets": 54
+  },
+  "authentication": {
+    "frozen_source": {
+      "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
+      "source_sha256": "00244061221d3b944b5c24ffd01eff2fd2fa4833439249960d05efd27fde6c61"
+    },
+    "source_tree_clean": true,
+    "producer_validation": "All six conformance and five upstream producer seals, source/corpus/oracle identities, actual subprocess receipts/journals/logs and original normalizers independently authenticated. All nine debug producers validate metadata, successful Cargo JSON builds, complete feature/profile unions and each attempted executable; partial results remain incomplete. Independent unions equal the official conformance/upstream results and workspace rejection.",
+    "conformance": {
+      "path": "target/ci-checkpoint-014f15f2/independent-conformance.json",
+      "sha256": "d8210d40f29c109444bae364ce870ce1fc3b3e27a28aa5c6df25680e74b9d8fb",
+      "bytes": 200727
+    },
+    "upstream": {
+      "path": "target/ci-checkpoint-014f15f2/independent-upstream.json",
+      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
+      "bytes": 578033
+    },
+    "workspace": {
+      "path": "target/ci-checkpoint-014f15f2/independent-workspace.json",
+      "sha256": "423c263e52945816a238c818132a14f902aeb1bedd6ceb5fc2ef26ee634530c8",
+      "bytes": 2888
+    }
+  },
+  "execution_join": [
+    {
+      "wrappers": [
+        "base::try",
+        "base::tryCatch",
+        "base::withCallingHandlers",
+        "base::globalCallingHandlers",
+        "base::signalCondition",
+        "base::stop",
+        "base::warning",
+        "base::message"
+      ],
+      "implementation_paths": [
+        "crates/rmath/src/mainutils/essentials/conditions.rs",
+        "crates/rmath/src/mainutils/errors/conditions.rs",
+        "crates/rmath/src/mainutils/errors/native.rs",
+        "crates/rmath/src/mainutils/errors/render.rs"
+      ],
+      "tested": "21 GNU cases: global shielding, nested and handler/finally failures, visible/invisible results, error buffer, stack priority, reentry, compiled handlers, collection and cleanup. Full original conditions.R passes raw comparison, both package policies;35production contracts/session and61Chromium plus reset7fixtures\u00d73.",
+      "last_verified_commit": "014f15f261d84a9fd80781411260633bb284c540",
+      "target_profiles": [
+        "native/default/release/faer/renderplot",
+        "portable/explicit-empty/release/faer/renderplot",
+        "wasm-production-cpu",
+        "chromium/original-budgets"
+      ]
+    }
+  ]
+}

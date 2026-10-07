@@ -695,5 +695,570 @@
     "source_commit": "ceeb95712628f29743b4f0b27796ac5c975a372d",
     "state": "pending; not Linux passing evidence",
     "url": "https://github.com/bernaferrari/R-rust/actions/runs/37567491331"
+  },
+  "immutable_linux_panels": {
+    "run_id": 37567491331,
+    "source_commit": "ceeb95712628f29743b4f0b27796ac5c975a372d",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37567491331",
+    "production_browser": {
+      "source_commit": "ceeb95712628f29743b4f0b27796ac5c975a372d",
+      "run_id": 37567491331,
+      "browser": {
+        "startTime": "2026-10-07T03:56:23.496Z",
+        "duration": 481403.913,
+        "expected": 61,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "browser_report": {
+        "path": "target/ci-checkpoint-ceeb9571/showcase-validation/_temp/showcase-evidence/playwright.json",
+        "sha256": "8c24c4240a79d0864162e2a234ddaf63eaa695f687fc95027e5d9f52f028e247",
+        "bytes": 79768
+      },
+      "node": [
+        {
+          "wasm_sha256": "4bdf2ca44c4ce44e5004410b3744f2e6b53cbe2dce49821293aeaf2830b964f4"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/260_length_replacement.R",
+          "elapsed_ms": 81.36486999999988,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/492_rep_int_len_helpers.R",
+          "elapsed_ms": 48.132730999999694,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/288_with_calling_handlers.R",
+          "elapsed_ms": 30.205007000000023,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/388_no_print_summary_method_aliases.R",
+          "elapsed_ms": 143.3484739999999,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/1094_cat_complex_fft.R",
+          "elapsed_ms": 18.79814899999974,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/544_complex_constructor_format_str_parity.R",
+          "elapsed_ms": 1137.21369,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/551_round_signif_complex_parity.R",
+          "elapsed_ms": 62.598515000000134,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/complex-print-public-contract.R",
+          "elapsed_ms": 73.89760699999988,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/stats-namespace-public-contract.R",
+          "elapsed_ms": 1186.5546730000005,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R",
+          "elapsed_ms": 590.2781800000002,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/correlation-public-contract.R",
+          "elapsed_ms": 2842.3430850000004,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/palette-public-contract.R",
+          "elapsed_ms": 1754.509395000001,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/tempfile-public-contract.R",
+          "elapsed_ms": 35.66565099999934,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/bincode-public-contract.R",
+          "elapsed_ms": 837.1720509999996,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-gap-public-contract.R",
+          "elapsed_ms": 369.2351699999999,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/arima0-public-contract.R",
+          "elapsed_ms": 1769.1903409999995,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+          "elapsed_ms": 140.89863700000024,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/mapply-public-contract.R",
+          "elapsed_ms": 91.33979200000067,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/sample-condition-contract.R",
+          "elapsed_ms": 164.20204899999953,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/rep-len-admission-contract.R",
+          "elapsed_ms": 725.393739000001,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R",
+          "elapsed_ms": 1464.7008069999993,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R",
+          "elapsed_ms": 1843.0305160000007,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+          "elapsed_ms": 18154.98683,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R",
+          "elapsed_ms": 555.2485069999966,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/base-print-methods-public-contract.R",
+          "elapsed_ms": 944.917641,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/compiled-dots-public-contract.R",
+          "elapsed_ms": 769.6028920000026,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R",
+          "elapsed_ms": 973.5050110000011,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-digits-public-contract.R",
+          "elapsed_ms": 2116.503456999999,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/prmatrix-public-contract.R",
+          "elapsed_ms": 1059.781277999995,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R",
+          "elapsed_ms": 1316.1420320000034,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/attribute-print-public-contract.R",
+          "elapsed_ms": 2963.626845999999,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+          "elapsed_ms": 12321.015768999998,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/gnu-compiled-source-edit-contract.R",
+          "elapsed_ms": 778.4777889999968,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-caller-context-contract.R",
+          "elapsed_ms": 791.1512240000011,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-call-public-contract.R",
+          "elapsed_ms": 32.95814600000449,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 0,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/unserialize-connection-contract.R",
+          "elapsed_ms": 1131.4413029999996,
+          "status": "pass"
+        },
+        {
+          "generation": 0,
+          "contracts_passed": 36
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/260_length_replacement.R",
+          "elapsed_ms": 56.72082999999839,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/492_rep_int_len_helpers.R",
+          "elapsed_ms": 44.736712000005355,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/288_with_calling_handlers.R",
+          "elapsed_ms": 25.860174999994342,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/388_no_print_summary_method_aliases.R",
+          "elapsed_ms": 134.8453720000034,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/1094_cat_complex_fft.R",
+          "elapsed_ms": 13.4214340000035,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/544_complex_constructor_format_str_parity.R",
+          "elapsed_ms": 1103.054591,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/tests/conformance/cases/551_round_signif_complex_parity.R",
+          "elapsed_ms": 59.44586600000184,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/complex-print-public-contract.R",
+          "elapsed_ms": 68.11019499999384,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/stats-namespace-public-contract.R",
+          "elapsed_ms": 1127.719793999997,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R",
+          "elapsed_ms": 566.1813289999991,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/correlation-public-contract.R",
+          "elapsed_ms": 2742.3715590000065,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/palette-public-contract.R",
+          "elapsed_ms": 1713.6078010000056,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/tempfile-public-contract.R",
+          "elapsed_ms": 32.274428999997326,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/bincode-public-contract.R",
+          "elapsed_ms": 810.1265859999985,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-gap-public-contract.R",
+          "elapsed_ms": 364.32720100000734,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/arima0-public-contract.R",
+          "elapsed_ms": 1713.7155689999927,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+          "elapsed_ms": 136.93015699999523,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/mapply-public-contract.R",
+          "elapsed_ms": 88.97234300000127,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/sample-condition-contract.R",
+          "elapsed_ms": 159.3694969999924,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/rep-len-admission-contract.R",
+          "elapsed_ms": 718.5307679999969,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R",
+          "elapsed_ms": 1439.720438999997,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R",
+          "elapsed_ms": 1811.4380910000036,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+          "elapsed_ms": 17950.927412000005,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R",
+          "elapsed_ms": 551.9125390000117,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/base-print-methods-public-contract.R",
+          "elapsed_ms": 939.9323540000041,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/compiled-dots-public-contract.R",
+          "elapsed_ms": 780.1510299999936,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R",
+          "elapsed_ms": 978.3020419999957,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/print-digits-public-contract.R",
+          "elapsed_ms": 2120.213015000001,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/prmatrix-public-contract.R",
+          "elapsed_ms": 1056.2390790000063,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R",
+          "elapsed_ms": 1324.2673189999914,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/attribute-print-public-contract.R",
+          "elapsed_ms": 2983.009890000001,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+          "elapsed_ms": 12333.962402000005,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/gnu-compiled-source-edit-contract.R",
+          "elapsed_ms": 778.8583840000065,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-caller-context-contract.R",
+          "elapsed_ms": 793.2924520000088,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/try-condition-call-public-contract.R",
+          "elapsed_ms": 32.95689200000197,
+          "status": "pass"
+        },
+        {
+          "phase": "public-contract",
+          "generation": 1,
+          "source": "/home/runner/work/R-rust/R-rust/crates/r-embed/tests/fixtures/unserialize-connection-contract.R",
+          "elapsed_ms": 1134.8273419999896,
+          "status": "pass"
+        },
+        {
+          "generation": 1,
+          "contracts_passed": 36
+        }
+      ],
+      "node_log": {
+        "path": "target/ci-checkpoint-ceeb9571/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
+        "sha256": "11fb2acf18555215adb194b6e3dcc4b92babd168addfe5051bb67388c4d9a863",
+        "bytes": 14124
+      },
+      "production": {
+        "path": "target/ci-checkpoint-ceeb9571/rove-website/assets/r_wasm_bg-DzC7XkU-.wasm",
+        "sha256": "4bdf2ca44c4ce44e5004410b3744f2e6b53cbe2dce49821293aeaf2830b964f4",
+        "bytes": 25768702
+      },
+      "diagnostic": {
+        "path": "target/ci-checkpoint-ceeb9571/showcase-validation/_temp/showcase-evidence/runtime-profile.wasm",
+        "sha256": "3abae08312e639cdd84f57314d357f131698bda0ca8ff2a5067e8a61b0bb555b",
+        "bytes": 26971730
+      },
+      "standard_execution_sections_identical": true
+    },
+    "public_package_integration": {
+      "passed": 78,
+      "failed": 0,
+      "suites": 29,
+      "separate_s4_passed": 1,
+      "separate_s4_failed": 1,
+      "failure": "native/default warm S4 exceeds original15s limit at15.151284732s; original public assertion unchanged",
+      "validation": "checked_process authenticates both process receipts, journals and log hashes; profile and run bind exact cee source"
+    },
+    "aggregate_state": "Complete CI run failed; aggregate conformance/upstream/workspace authentication is pending and not claimed by these panels"
   }
 }

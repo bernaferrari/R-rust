@@ -1,0 +1,849 @@
+{
+  "schema_version": 1,
+  "source_commit": "0e3a3b600207308eec66507be20806fe98e142f9",
+  "scope": "Local same-source release/faer/renderplot, actual native/default and portable/explicit-empty constructors, production CPU Wasm, full Chromium and repeated public reset under original budgets. Full conditions.R passes raw and unchanged core-v1 comparisons under both policies; no claim all remaining conformance or workspace failures are fixed.",
+  "source_files": {
+    ".github/workflows/ci.yml": "9327c208510689972ebe462e2dd994978fd8d12458833f0b9261424d377bb9e6",
+    "crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R": "de3d0c22ccc8a38082ba926750b9f85cc8da002692abefc2560bcf847fd127b1",
+    "crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.out": "427a2ed9a083dade0f34e97d92c75df63853f9aa70711584937e5661c30a4e1d",
+    "crates/r-embed/tests/gnu_bytecode_trycatch.rs": "a61d6bb2a6db9542696081e14b6304120b5b1a3e559620bafaac10dccac645d9",
+    "crates/rmath/src/eval/bc_eval.rs": "8a7b2085942d7c2010931cec11c47ba4f8a7876109aa68924815efa57e992984",
+    "crates/rmath/src/mainutils/errors/conditions.rs": "01b72dea010bbbc8868855d881150442ae553629338351fd387ec300562ab730",
+    "crates/rmath/src/mainutils/errors/native.rs": "4943de91897eb969975a77e912aa8ab89c7e97af58764cd94061b57b166fcec9",
+    "crates/rmath/src/mainutils/errors/tests.rs": "f152e89f7e1e924278eaf9098afeaba8802cc6962e1464ac8d71c407e933b67d",
+    "crates/rmath/src/mainutils/essentials/conditions.rs": "0990c148260c642f6342cd9c4febaa8e228128cb7a24f9511d31e75b468fd992"
+  },
+  "phases": {
+    "browser-prepare": {
+      "process": {
+        "command": [
+          "node",
+          "scripts/prepare-runtime.mjs"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 0.11332074995152652,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:20:47.737420+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "3fe06ad8b9fd32374563e550084d3d86b6e9b444c18377f36b74c27db8ef6124"
+        },
+        "pid": 73239,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:20:47.623658+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/browser-prepare/events.jsonl",
+        "sha256": "794953bd251fb70d405e84356f61f2dbe2b5287a7e001764dd2b7de040fc92c7",
+        "bytes": 844
+      }
+    },
+    "chromium-complete": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "--project=chromium",
+          "--workers=1",
+          "--reporter=line,json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 312.38983308302704,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:26:06.218250+00:00",
+        "logs": {
+          "stderr.log": "270847b96718f69a41bf733a2dd69a71496583d31b9181282dc7b6bd13ba4faa",
+          "stdout.log": "ddfb24ad211a782edece362bacfb3d1db7794c80de7e4fd0356ca27ecdba7761"
+        },
+        "pid": 73642,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:20:53.825063+00:00",
+        "state": "finished",
+        "timeout_seconds": 1500.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/chromium-complete/events.jsonl",
+        "sha256": "d532f63a91754fbab4fbf0a7c8eaac009ac403505f91c7bdadd7c12d0ad4c908",
+        "bytes": 965
+      }
+    },
+    "chromium-reset-repeated": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "tests/package-reset-contract.spec.ts",
+          "--repeat-each=3",
+          "--project=chromium",
+          "--workers=1",
+          "--reporter=line,json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 53.62815550004598,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:26:59.851142+00:00",
+        "logs": {
+          "stderr.log": "4f3d87bfdb93a8a8ecd9779fd8a8d954fa38344db7e01b66882a274d9c6f71b9",
+          "stdout.log": "d7eb81ca8d8bce77c9886c088c84225ef7f96d7cfb3a582417c22a7faef22349"
+        },
+        "pid": 87016,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:26:06.221424+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/chromium-reset-repeated/events.jsonl",
+        "sha256": "22ffce95f46a863bf89202e82bbcd18d42634ee41835a4345556947676f37806",
+        "bytes": 1080
+      }
+    },
+    "final-clippy": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 35.5707425000146,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:11:15.815126+00:00",
+        "logs": {
+          "stderr.log": "c165e433ef81b581c5d7d6fb704843df2fa3bc6ca20c1189843989afe1cafad4",
+          "stdout.log": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        },
+        "pid": 44243,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:10:40.243606+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-clippy/events.jsonl",
+        "sha256": "e6999b4810de62f6c7d4e7e15cf7724c41f66a39cbd33efafd734eb6eccf8cc1",
+        "bytes": 927
+      }
+    },
+    "final-format-admitted": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 4.136088624945842,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:06:42.303876+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 34117,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:06:38.155115+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-format-admitted/events.jsonl",
+        "sha256": "33f9bd26771bfb6bdfdcb5e9f3a43e32fa815a5503bef8c19058bff0593cbb66",
+        "bytes": 862
+      }
+    },
+    "final-production-build": {
+      "process": {
+        "command": [
+          "scripts/build_wasm_runtime.sh",
+          "--target",
+          "web",
+          "--release",
+          "--out-dir",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/compiled-condition-class/final-v2/final-production-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 90.91474962502252,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:19:21.221127+00:00",
+        "logs": {
+          "stderr.log": "2c25622b480bdc856367b0f0ea50420e797554a2622a164d24cc026cafb78fef",
+          "stdout.log": "ec788d0d29c6e89349622309c3ee9f902a20ea067acfd9995b177a28f12ec722"
+        },
+        "pid": 66100,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:17:50.305086+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-production-build/events.jsonl",
+        "sha256": "1f5969239a5f9427b7de380c6d76b4cfc92ab9bff9d917e9d89cf5edb412d3e9",
+        "bytes": 1170
+      }
+    },
+    "final-production-contracts": {
+      "process": {
+        "command": [
+          "node",
+          "tests/browser/portable-package-contracts.mjs",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/compiled-condition-class/final-v2/final-production-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 86.39205891708843,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:20:47.616309+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "56cdc99d2f5e104128cd6232b15bf0ec9035b1ef1382f2a10f20a97e387174b0"
+        },
+        "pid": 69690,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:19:21.223052+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-production-contracts/events.jsonl",
+        "sha256": "dd0bef0341c1f48cb0ef7536cf5c6cfc45a72be858238e7b39286040211ed67e",
+        "bytes": 1124
+      }
+    },
+    "final-public-gates": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "calling_error_handlers",
+          "--test",
+          "calling_warning_handlers",
+          "--test",
+          "try_condition_calls",
+          "--test",
+          "slot_try_error",
+          "--test",
+          "gnu_bytecode_source_marker",
+          "--test",
+          "gnu_bytecode_trycatch",
+          "--test",
+          "fisher_hash_key",
+          "--test",
+          "s3_methods_public_contract",
+          "--test",
+          "base_print_methods",
+          "--test",
+          "vector_print_limits",
+          "--test",
+          "enable_jit",
+          "--test",
+          "prmatrix_public_contract",
+          "--test",
+          "array_attributes_gnu",
+          "--test",
+          "condition_handler_stack_contract",
+          "--test",
+          "attribute_print_contract",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 331.8306762500433,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:16:47.651556+00:00",
+        "logs": {
+          "stderr.log": "40da1489fe25067c710e8fd854c6738740bb59bd97fda0e3bd8667d985fe5017",
+          "stdout.log": "4c940f9664c17a85fbe6945db002add5580d16a3637b94aa4084d50ed13a9f0d"
+        },
+        "pid": 46488,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:11:15.817358+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-public-gates/events.jsonl",
+        "sha256": "c39b4ee1ef895c97bb5c7191263c0628012600b52e6e965ed3f56d3ff8f96dc5",
+        "bytes": 3170
+      }
+    },
+    "native-condition-gates": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "rmath",
+          "--release",
+          "--features",
+          "renderplot-device",
+          "--lib",
+          "mainutils::errors",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 237.93023304198869,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:10:40.238130+00:00",
+        "logs": {
+          "stderr.log": "aa97da6df0e74699c5d702a5aa2e02f1bc687b22bc02cdb2040ba93fbe0b8d05",
+          "stdout.log": "ff55d673335c8bb8a7fb5d40c763126f07619cce620a9a841fec49e916acb06e"
+        },
+        "pid": 34277,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:06:42.305318+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/native-condition-gates/events.jsonl",
+        "sha256": "8b71cf2f55262280e952a48c35722b7ad07520cdc93d2ea53237d23fcfc3a919",
+        "bytes": 1051
+      }
+    },
+    "runner-build": {
+      "process": {
+        "command": [
+          "rustc",
+          "--edition=2024",
+          "/Users/bernardoferrari/Downloads/rport/tests/conformance/src/main.rs",
+          "-L",
+          "/Users/bernardoferrari/Downloads/rport/target/release/deps",
+          "--extern",
+          "rmath=/Users/bernardoferrari/Downloads/rport/target/release/librmath.rlib",
+          "--cfg",
+          "rport_renderplot",
+          "--extern",
+          "r_graphics_engine=/Users/bernardoferrari/Downloads/rport/target/release/deps/libr_graphics_engine-738d5245ec3ec8db.rlib",
+          "-o",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/compiled-condition-class/final-v2/whole-final-runner"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.928112042020075,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:17:45.514432+00:00",
+        "logs": {
+          "combined.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 65686,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:17:44.584987+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/runner-build/events.jsonl",
+        "sha256": "c52340052c651eb3f08407cee5d0fe3802ee11ee88f68d5bdde553ebcf320a80",
+        "bytes": 1780
+      }
+    },
+    "runner-library-final": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "build",
+          "-p",
+          "rmath",
+          "--release",
+          "--features",
+          "renderplot-device",
+          "--message-format=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 56.81083420792129,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:17:44.466348+00:00",
+        "logs": {
+          "stderr.log": "2e4fca276774a66eecc643798a4b4d1af4fa2eff3fd5eac6c5b1f9d489320a3e",
+          "stdout.log": "51c0f9968cc8180a2bcd472a529d782112ac12911ddb0a8223cfd86ebb78aa20"
+        },
+        "pid": 63186,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:16:47.654585+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/runner-library-final/events.jsonl",
+        "sha256": "160d9b3721ed93b82387a891e5be52e028b322c78b0e93bd2f09af408c8d6c55",
+        "bytes": 992
+      }
+    },
+    "warm-s4": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "s4_next_method",
+          "s4_next_method_",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 122.53827116708271,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:29:29.377369+00:00",
+        "logs": {
+          "stderr.log": "dcb9d3a5793bd69b819c33ecde76efa43a85c9d33bceb6c3417f138cee6961a5",
+          "stdout.log": "fef9e03fac9137fbecf5fedd82d0a324650800202c750d5f0928737c94126762"
+        },
+        "pid": 89445,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:27:26.833491+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/warm-s4/events.jsonl",
+        "sha256": "506cc479672d4df8c210b3031368211c03d5f646badc5b0ff489ddb038806065",
+        "bytes": 1049
+      }
+    },
+    "website-format-check": {
+      "process": {
+        "command": [
+          "pnpm",
+          "run",
+          "format:check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 1.3904389590024948,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:20:53.823628+00:00",
+        "logs": {
+          "stderr.log": "44438e1341343f30e1cc563ff17ec04b246a025e63cd728a392aed6b34787034",
+          "stdout.log": "c9bb159a5ffe0d11686538ab2397a5e6d1e64dd1b3fcbb4c85ccc6e1abd6a4db"
+        },
+        "pid": 73558,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:20:52.432793+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/website-format-check/events.jsonl",
+        "sha256": "31ac18c7dea08e44c22c03fcac72cbef7a734402899b8acdc4c4d6b7f8597ccc",
+        "bytes": 827
+      }
+    },
+    "website-lint": {
+      "process": {
+        "command": [
+          "pnpm",
+          "run",
+          "lint"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 1.0244713330175728,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:20:52.431826+00:00",
+        "logs": {
+          "stderr.log": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 73520,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:20:51.406874+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/website-lint/events.jsonl",
+        "sha256": "c36a8547d7cf0890342e285ca462b2e6b84021c3be8c5c5a0fdc719f2c455d47",
+        "bytes": 811
+      }
+    },
+    "website-typecheck": {
+      "process": {
+        "command": [
+          "pnpm",
+          "typecheck"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 3.66596087499056,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:20:51.404874+00:00",
+        "logs": {
+          "stderr.log": "444df410b837bd8d2d627389fb1f20b70cbee0564e20e98e64bae8aab1e8fe9e",
+          "stdout.log": "3fe06ad8b9fd32374563e550084d3d86b6e9b444c18377f36b74c27db8ef6124"
+        },
+        "pid": 73240,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:20:47.738400+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/website-typecheck/events.jsonl",
+        "sha256": "b2a29fbca25242d104185b550bd32cb282d047514f61ec1fa194fb6d3625116f",
+        "bytes": 805
+      }
+    },
+    "whole-final-execution": {
+      "process": {
+        "command": [
+          "python3",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/compiled-condition-class/final-v2/run-whole-final.py"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 5.828805583063513,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T04:17:50.303258+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "65aadd6de9ae825868a4c1a57cc7bbb241eb7932f4a1fe5d7feb3b44b1c5f316"
+        },
+        "pid": 65684,
+        "schema_version": 1,
+        "started_at": "2026-10-07T04:17:44.473574+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/whole-final-execution/events.jsonl",
+        "sha256": "7a1394bb3b69aa9d958789815ee2c682e43d093cdd649ec5ea01c307e59919f7",
+        "bytes": 1032
+      }
+    }
+  },
+  "gnu_fixture": {
+    "process": {
+      "command": [
+        "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+        "--vanilla",
+        "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 0.2221045410260558,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T03:59:38.698993+00:00",
+      "logs": {
+        "combined.log": "427a2ed9a083dade0f34e97d92c75df63853f9aa70711584937e5661c30a4e1d"
+      },
+      "pid": 14551,
+      "schema_version": 1,
+      "started_at": "2026-10-07T03:59:38.476343+00:00",
+      "state": "finished",
+      "timeout_seconds": 120.0
+    },
+    "journal": {
+      "path": "target/integration-repair-evidence/compiled-condition-class/expanded-oracle-32/gnu/events.jsonl",
+      "sha256": "7941d12af1f984493729e10f1adf9ed8dd24919201cc4ccd178f53be3902e66b",
+      "bytes": 1125
+    },
+    "cases": 32,
+    "contract": {
+      "path": "crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R",
+      "sha256": "de3d0c22ccc8a38082ba926750b9f85cc8da002692abefc2560bcf847fd127b1",
+      "bytes": 9959
+    },
+    "expected": {
+      "path": "crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.out",
+      "sha256": "427a2ed9a083dade0f34e97d92c75df63853f9aa70711584937e5661c30a4e1d",
+      "bytes": 951
+    }
+  },
+  "native_public": {
+    "passed": 81,
+    "failed": 0,
+    "suites": 31,
+    "condition_units": 69
+  },
+  "whole_program": {
+    "driver": "tests/upstream-r/vendor/conditions.R",
+    "profile": {
+      "driver_sha256": "5f4f08357b34096a8003764363467a2610ec59a8a0dc955b111813958851be6f",
+      "oracle_sha256": "32c5e4c23f02e9dcf245693b3e732b0c61cd17a86c1ae31b9cf6a4502c18194c",
+      "artifacts": {
+        "/Users/bernardoferrari/Downloads/rport/target/release/librmath.rlib": "9ba5c9706928313dbe7e646b41f7cf7ee049f4fd39fb40843cc0ace8d1e812b1",
+        "/Users/bernardoferrari/Downloads/rport/target/release/deps/libr_graphics_engine-738d5245ec3ec8db.rlib": "5ff60984a244ed3f1bca2b41fa8f014a6e4319941eac1f3c4d85e22057940588",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/compiled-condition-class/final-v2/whole-final-runner": "fd82547bd0b8be0630492c348445c93d2fcaca6d7e02974b6dce1f1da121ccb5"
+      },
+      "normalizer": "unchanged core-v1; raw comparison also recorded"
+    },
+    "comparison": "Raw bytes and unchanged core-v1 both agree; no expectation or normalizer changes."
+  },
+  "wasm": {
+    "artifact": {
+      "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/final-production-pkg/r_wasm_bg.wasm",
+      "sha256": "6523350fa7d3526851faa1d1973032cc1d1c1f69ef5b59404a5b1306ec2be2b0",
+      "bytes": 25750276
+    },
+    "contracts_per_fresh_session": 36,
+    "fresh_sessions": 2
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-07T04:20:54.585Z",
+      "duration": 311554.913,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "report": {
+      "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/chromium-complete.json",
+      "sha256": "4565710180d050fdff9ba323664f9a2b734680ec01fd31beb220f0802300d5b6",
+      "bytes": 77903
+    },
+    "reset_stats": {
+      "startTime": "2026-10-07T04:26:07.073Z",
+      "duration": 52720.46,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "reset_fixture_count": 8,
+    "reset_repetitions": 3
+  },
+  "generated_pdfs": {
+    "path": "target/integration-repair-evidence/compiled-condition-class/final-v2/generated-pdf/manifest.json",
+    "sha256": "3be6cedd5f33c343e0629db682a9c409aec1f85b7ff8a8357e363ca45b559db1",
+    "bytes": 15882
+  },
+  "repair": "Signal the original typed error through the owning canonical handler walker; preserve fields, calls, class-specific selection, calling order, error buffers and collecting finalizers. Respect native exitOnly and restart markers before default rendering. Route get() and direct bytecode unbound loads through canonical typed constructors. Correct invalid raw-null handler fixture and replace stale ignored C-boundary test with a collecting typed missing-argument catcher.",
+  "execution_join": [
+    {
+      "wrappers": [
+        "base::get",
+        "base::tryCatch",
+        "base::withCallingHandlers",
+        "compiler::cmpfun",
+        "GNU bytecode GETVAR/GETVAR_MISSOK",
+        "R_signalErrorCondition/Ex"
+      ],
+      "implementation_paths": [
+        "crates/rmath/src/mainutils/errors/conditions.rs",
+        "crates/rmath/src/mainutils/errors/native.rs",
+        "crates/rmath/src/mainutils/essentials/conditions.rs",
+        "crates/rmath/src/eval/bc_eval.rs"
+      ],
+      "tested": "32 independently captured GNU cases plus original GNU-bytecode and missing-subscript tests;69 native error/ownership units, entire unchanged conditions.R and existing package/namespace/print contracts.",
+      "last_verified_commit": "0e3a3b600207308eec66507be20806fe98e142f9",
+      "target_profiles": [
+        "native/default/release/faer/renderplot",
+        "portable/explicit-empty/release/faer/renderplot",
+        "wasm-production-cpu",
+        "chromium/original-budgets",
+        "full-workspace-debug-feature-union"
+      ]
+    }
+  ],
+  "debug_neighbors": {
+    "metadata": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "metadata",
+        "--format-version=1"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 0.32336308399681,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T04:29:30.866463+00:00",
+      "logs": {
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout.log": "882b505c8814f03e68d11b822c01a6d6dcd7d76352d46117d7c76131a3727ce4"
+      },
+      "pid": 94605,
+      "schema_version": 1,
+      "started_at": "2026-10-07T04:29:30.542209+00:00",
+      "state": "finished",
+      "timeout_seconds": 300.0
+    },
+    "build": {
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "--workspace",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "elapsed_seconds": 90.43446974991821,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T04:31:01.312025+00:00",
+      "logs": {
+        "stderr.log": "597383581c9863a7b19190b6c93ee9a19a0c7578d2433e59bbd9a6603c1bd7af",
+        "stdout.log": "5d9a99dc33ad5714ccbf3a18076c603c35b8ec13082fc66b205bf76cee01d80b"
+      },
+      "pid": 94613,
+      "schema_version": 1,
+      "started_at": "2026-10-07T04:29:30.876378+00:00",
+      "state": "finished",
+      "timeout_seconds": 1200.0
+    },
+    "gnu_bytecode_trycatch": {
+      "command": [
+        "/Users/bernardoferrari/Downloads/rport/target/debug/deps/gnu_bytecode_trycatch-b9cd573c07e3df67"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport/crates/r-embed",
+      "elapsed_seconds": 20.11421920801513,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T04:32:23.417371+00:00",
+      "logs": {
+        "combined.log": "3f75f7ff4f5611484eed611665eaca41f3fa621822e40373a39185fcc034a344"
+      },
+      "pid": 2357,
+      "schema_version": 1,
+      "started_at": "2026-10-07T04:32:03.302577+00:00",
+      "state": "finished",
+      "timeout_seconds": 300.0
+    },
+    "fisher_hash_key": {
+      "command": [
+        "/Users/bernardoferrari/Downloads/rport/target/debug/deps/fisher_hash_key-fbe25b59bd5eadbd"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport/crates/r-embed",
+      "elapsed_seconds": 20.551755791995674,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T04:32:03.301476+00:00",
+      "logs": {
+        "combined.log": "88ea244c92f8497c469e49672b133f88300f0d327a2795bb4731d4a22db204d9"
+      },
+      "pid": 1988,
+      "schema_version": 1,
+      "started_at": "2026-10-07T04:31:42.749138+00:00",
+      "state": "finished",
+      "timeout_seconds": 300.0
+    },
+    "condition_handler_stack_contract": {
+      "command": [
+        "/Users/bernardoferrari/Downloads/rport/target/debug/deps/condition_handler_stack_contract-236979f3e17fc0d1"
+      ],
+      "cwd": "/Users/bernardoferrari/Downloads/rport/crates/r-embed",
+      "elapsed_seconds": 41.256399250007235,
+      "execution_complete": true,
+      "exit_code": 0,
+      "finished_at": "2026-10-07T04:31:42.747421+00:00",
+      "logs": {
+        "combined.log": "a8704a0d6ea35631525b5e214117fb5307f891ab9f082e93253c7224485d8428"
+      },
+      "pid": 1119,
+      "schema_version": 1,
+      "started_at": "2026-10-07T04:31:01.490052+00:00",
+      "state": "finished",
+      "timeout_seconds": 300.0
+    }
+  },
+  "debug_source_identity": {
+    "validated_commit": "0e3a3b600207308eec66507be20806fe98e142f9",
+    "full_tracked_source_sha256": "6b3654fdaeb03fdee11d04da903c46d0f81eb7b3596e48e04a40faa296fef00c",
+    "note": "Build/test candidate used the prior Git HEAD label; all tracked source bytes equal the committed milestone."
+  },
+  "debug_profile_artifact": {
+    "path": "target/integration-repair-evidence/compiled-condition-class/full-debug/features.json",
+    "sha256": "0eab6db8c6c98021efcbca1875d43d797e90fb5b2c8817c499003ca96d86d798",
+    "bytes": 191324
+  },
+  "warm_s4": {
+    "command": [
+      "scripts/cargo_dev.sh",
+      "test",
+      "-p",
+      "r-embed",
+      "--release",
+      "--test",
+      "s4_next_method",
+      "s4_next_method_",
+      "--",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/Users/bernardoferrari/Downloads/rport",
+    "elapsed_seconds": 122.53827116708271,
+    "execution_complete": true,
+    "exit_code": 0,
+    "finished_at": "2026-10-07T04:29:29.377369+00:00",
+    "logs": {
+      "stderr.log": "dcb9d3a5793bd69b819c33ecde76efa43a85c9d33bceb6c3417f138cee6961a5",
+      "stdout.log": "fef9e03fac9137fbecf5fedd82d0a324650800202c750d5f0928737c94126762"
+    },
+    "pid": 89445,
+    "schema_version": 1,
+    "started_at": "2026-10-07T04:27:26.833491+00:00",
+    "state": "finished",
+    "timeout_seconds": 300.0
+  },
+  "warm_s4_scope": "Retain the original15s/64MiB/500k limits and exact preceding15fixtures. Linuxcee native warm run exceeded15s; no repeatable Linux timing repair is claimed here.",
+  "immutable_ci_checkpoint": {
+    "run_id": 37572116876,
+    "source_commit": "0e3a3b600207308eec66507be20806fe98e142f9",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37572116876",
+    "state": "queued; local focused gates are complete, no Linux whole-workspace/conformance claim"
+  }
+}
