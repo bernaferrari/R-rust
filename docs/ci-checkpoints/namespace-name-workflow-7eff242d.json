@@ -1,0 +1,554 @@
+{
+  "schema_version": 1,
+  "source_commit": "7eff242da0be01f6185293b115cca3cf3f4ce8ff",
+  "scope": "Local native/default and portable/explicit-empty real public constructors, production Wasm, full unchanged Chromium and repeated actual reset. Whole programs are individually classified below; no complete aggregate or Linux-debug acceptance claim.",
+  "repair": "Recognize namespaces from a nonempty character spec and name them from that metadata. Keep GNU attached-package priority, arbitrary name attributes, NULL/non-environment behavior, S4 environment data, and active-binding lookup effects. Native namespaces no longer receive attachment-only name/path attributes. Metadata operands stay rooted through collecting callbacks. No stop-list helper injection or ownership redesign.",
+  "source_files": {
+    ".github/workflows/ci.yml": "40efba4c7661d300d07ccf3c0e7d19ca76e4c62afb9b489e08923a6bbcd02e56",
+    "crates/r-embed/tests/is_s3method.rs": "2218af742783c6bf409a03163f236a78637a64e5e58341f64e31a19eb30455ae",
+    "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R": "45b7b440ae72b3b2362d68b1ffed10b78429fb5125bb7fa4a14501316c979b71",
+    "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.out": "70328bcd1afe80cc026e7573771e1e1971d88ad367ba1b3486565d7d920a569a",
+    "crates/rmath/src/mainutils/essentials/runtime/environment.rs": "1032223cc45d85eaa383cdeaa703c07c6a3ab559e7f6e77424f4ef3a231afddb",
+    "crates/rmath/src/mainutils/essentials/s4.rs": "84231687eb4bbff465d3d16447bd406afe4a34f7749d6d327c2060c180d9389e",
+    "crates/rmath/src/mainutils/essentials/shared.rs": "6a270ed07e12ce9db7c9b5459c47c0b6c438171194335203230cad8b4e707bfc"
+  },
+  "phases": {
+    "focused-native": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/focused-native/process.json",
+        "bytes": 958,
+        "sha256": "d64ce91787226fa073d230d385c3bebeb85258e4565093aa9a6cf10482eb6d6c"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/focused-native/events.jsonl",
+        "bytes": 1407,
+        "sha256": "62d1a8343be89f345b52bca8f68a555ab9a3b3f2e3ecbe25e491caececf6878a"
+      },
+      "elapsed_seconds": 108.73297524999361,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "packages_visible",
+        "--test",
+        "is_s3method",
+        "--test",
+        "s3_methods_public_contract",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "namespace_exports",
+        "--test",
+        "compiler_namespace",
+        "--",
+        "--test-threads=1"
+      ]
+    },
+    "native-package-corpus": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/native-package-corpus/process.json",
+        "bytes": 689,
+        "sha256": "75826f9d9f19e33578ebb0d670e3a6bea5ef84eb37f18179ae165d6f0b105582"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/native-package-corpus/events.jsonl",
+        "bytes": 965,
+        "sha256": "06e331305258f4828378f432eee18e95d78e12946bb5c8b9c25c2c49de14e184"
+      },
+      "elapsed_seconds": 116.81386091699824,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "embed",
+        "--",
+        "--test-threads=1"
+      ]
+    },
+    "format": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/format/process.json",
+        "bytes": 622,
+        "sha256": "f01060cf7b081defa76f1c56edab9062aa9217a75ac5f28dff1ebaa188087afc"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/format/events.jsonl",
+        "bytes": 864,
+        "sha256": "e13033a218fd7a58f309f9be8da49de22e7d0e719c75608ea0ddbc27913b94c5"
+      },
+      "elapsed_seconds": 4.471286000101827,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ]
+    },
+    "clippy": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/clippy/process.json",
+        "bytes": 663,
+        "sha256": "995372526a6bc8fa5b4efab2147594718d8e459189e61a56e852d55774d26911"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/clippy/events.jsonl",
+        "bytes": 930,
+        "sha256": "e08fd1954caa2243d683f3b8be40eb3eeb1eff083789429a77328b96716c9cf8"
+      },
+      "elapsed_seconds": 33.92878541594837,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ]
+    },
+    "runner-library": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/runner-library/process.json",
+        "bytes": 699,
+        "sha256": "cb71717e50d1fefc0d6aec76a5c56cc71df36fa133166778b9b9af6121000c16"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/runner-library/events.jsonl",
+        "bytes": 993,
+        "sha256": "029b86b3476208da126e7d82a2d83a6b7fd6979e1c7f955f0c4f7c21c858b18c"
+      },
+      "elapsed_seconds": 63.354868249967694,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "build",
+        "-p",
+        "rmath",
+        "--release",
+        "--features",
+        "renderplot-device",
+        "--message-format=json"
+      ]
+    },
+    "runner-build": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/runner-build/process.json",
+        "bytes": 1148,
+        "sha256": "82555688f95509f4f4e530ea8e2e404fda7f9bd52e2351d898eabd82ee6a90d7"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/runner-build/events.jsonl",
+        "bytes": 1852,
+        "sha256": "7f5ea997ab13340dbdc64f56e2fedacbade918a753fc2d16833d966e69e69276"
+      },
+      "elapsed_seconds": 0.902517166105099,
+      "command": [
+        "rustc",
+        "--edition=2024",
+        "/Users/bernardoferrari/Downloads/rport/tests/conformance/src/main.rs",
+        "-L",
+        "/Users/bernardoferrari/Downloads/rport/target/release/deps",
+        "--extern",
+        "rmath=/Users/bernardoferrari/Downloads/rport/target/release/librmath.rlib",
+        "--cfg",
+        "rport_renderplot",
+        "--extern",
+        "r_graphics_engine=/Users/bernardoferrari/Downloads/rport/target/release/deps/libr_graphics_engine-738d5245ec3ec8db.rlib",
+        "-o",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/namespace-name-integration/final-v2/whole-runner"
+      ]
+    },
+    "wasm-build": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/wasm-build/process.json",
+        "bytes": 776,
+        "sha256": "aab1fa148fb17311bbaeffdbde5e034907c626214bd4e96121d7015b3899a298"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/wasm-build/events.jsonl",
+        "bytes": 1163,
+        "sha256": "f638463597ab02c7a52eddd216de3f9804053afb282c3eb8f9e82f508fd7eb24"
+      },
+      "elapsed_seconds": 107.23211758292746,
+      "command": [
+        "scripts/build_wasm_runtime.sh",
+        "--target",
+        "web",
+        "--release",
+        "--out-dir",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/namespace-name-integration/final-v2/production-pkg"
+      ]
+    },
+    "wasm-contracts": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/wasm-contracts/process.json",
+        "bytes": 741,
+        "sha256": "e1a33b197b2b227c6a0e479effb02629af022272d6cd748192c9370b7444c09f"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/wasm-contracts/events.jsonl",
+        "bytes": 1118,
+        "sha256": "12f425ed504be4ebbe2c7bc273f400dcef17e1edd3cbbd5ff27b55c9e7c3bd92"
+      },
+      "elapsed_seconds": 81.03128220804501,
+      "command": [
+        "node",
+        "tests/browser/portable-package-contracts.mjs",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/namespace-name-integration/final-v2/production-pkg"
+      ]
+    },
+    "browser-prepare": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-prepare/process.json",
+        "bytes": 601,
+        "sha256": "849f0265ad8040a405155b39e19c8c3dfdde06ea9240ca58776154386d70ca06"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-prepare/events.jsonl",
+        "bytes": 844,
+        "sha256": "1abe0787342ebfb4c757041826fa6c0ab10cb171810bff627f183ce6909b675b"
+      },
+      "elapsed_seconds": 0.11374816694296896,
+      "command": [
+        "node",
+        "scripts/prepare-runtime.mjs"
+      ]
+    },
+    "browser-all": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-all/process.json",
+        "bytes": 681,
+        "sha256": "5865a65f3f4bc99a2be3c42501ac201282361f18ea7bf85f306b42b3cef49172"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-all/events.jsonl",
+        "bytes": 965,
+        "sha256": "74eccb329048b82067cad865347e92e806d3eabca89d1de5ef9d9dff63cf0ce5"
+      },
+      "elapsed_seconds": 277.78668258409016,
+      "command": [
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "--project=chromium",
+        "--workers=1",
+        "--reporter=line,json"
+      ]
+    },
+    "browser-reset": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-reset/process.json",
+        "bytes": 746,
+        "sha256": "99a8b7bb946e759cdbeac5456099a3566fd1733807e280d94b770c6d1b107f8e"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/browser-reset/events.jsonl",
+        "bytes": 1080,
+        "sha256": "ef1f64f5da5011383f284f4ca70038b89d05d90cf9c6fe1324e4ed1d08475c3e"
+      },
+      "elapsed_seconds": 54.33618383388966,
+      "command": [
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "tests/package-reset-contract.spec.ts",
+        "--repeat-each=3",
+        "--project=chromium",
+        "--workers=1",
+        "--reporter=line,json"
+      ]
+    }
+  },
+  "gnu_oracle": {
+    "path": "target/integration-repair-evidence/namespace-name-integration/gnu-oracle/process.json",
+    "bytes": 774,
+    "sha256": "c5ff6abedabbec320c82a315eb419cf2f1177fed3314de1323e0524fa6f2fc64"
+  },
+  "expanded_existing_fixture": {
+    "new_checks": 29,
+    "prior_checks_preserved": true,
+    "collector_callback_spec_reads": 2
+  },
+  "native_public": {
+    "suites": 8,
+    "passed": 53,
+    "failed": 0,
+    "original_is_s3method": "Original result computed unchanged under both policies; optional diagnostics occur only after a failure."
+  },
+  "wasm": {
+    "artifact": {
+      "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/production-pkg/r_wasm_bg.wasm",
+      "bytes": 25702526,
+      "sha256": "fe773756eda79f15dfac09b399bd0dad301d646788c13fe3bceb91b6c3086fd1"
+    },
+    "contracts_per_fresh_session": 36,
+    "fresh_sessions": 2
+  },
+  "browser": {
+    "browser-all": {
+      "startTime": "2026-10-07T05:16:29.727Z",
+      "duration": 277073.588,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "browser-reset": {
+      "startTime": "2026-10-07T05:21:07.485Z",
+      "duration": 53668.974,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "reset": {
+    "fixture_count": 8,
+    "generations": 2,
+    "repetitions": 3
+  },
+  "whole_programs": {
+    "reg-S4.R": {
+      "driver_sha256": "9392f5c17c3d08599eea7cf5e0463f4d37794b96e7c7772a091d6da3d12b2b55",
+      "engines": {
+        "gnu": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.6668904160615057
+        },
+        "rust-native": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 106.21335800003726,
+          "raw_equal": false,
+          "core_v1_equal": true
+        },
+        "rust-portable": {
+          "exit_code": 1,
+          "execution_complete": true,
+          "elapsed_seconds": 8.43531858397182,
+          "raw_equal": false,
+          "core_v1_equal": false
+        }
+      }
+    },
+    "eval-etc.R": {
+      "driver_sha256": "09007055a14387cdf17a65f855f3741733c95148302c19d2109231df50170f00",
+      "engines": {
+        "gnu": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.2979445420205593
+        },
+        "rust-native": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 13.4468511659652,
+          "raw_equal": false,
+          "core_v1_equal": true
+        },
+        "rust-portable": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 12.375743040931411,
+          "raw_equal": false,
+          "core_v1_equal": false
+        }
+      }
+    },
+    "structure.R": {
+      "driver_sha256": "cf9c86620db36f8ebe0212c695959651a243f936cfa785da73adf3569389af03",
+      "engines": {
+        "gnu": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.1714525829302147
+        },
+        "rust-native": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 1.7571207500295714,
+          "raw_equal": true,
+          "core_v1_equal": true
+        },
+        "rust-portable": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 1.0178152919979766,
+          "raw_equal": true,
+          "core_v1_equal": true
+        }
+      }
+    },
+    "conditions.R": {
+      "driver_sha256": "5f4f08357b34096a8003764363467a2610ec59a8a0dc955b111813958851be6f",
+      "engines": {
+        "gnu": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.16549825004767627
+        },
+        "rust-native": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 1.7706497500184923,
+          "raw_equal": true,
+          "core_v1_equal": true
+        },
+        "rust-portable": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.9788622499909252,
+          "raw_equal": true,
+          "core_v1_equal": true
+        }
+      }
+    },
+    "print-tests.R": {
+      "driver_sha256": "f0afbf3684778a2a930263dd9ea6894f4c645800f344327a2fb20d58ae1339e3",
+      "engines": {
+        "gnu": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 0.2248693750007078
+        },
+        "rust-native": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 5.19772570906207,
+          "raw_equal": true,
+          "core_v1_equal": true
+        },
+        "rust-portable": {
+          "exit_code": 0,
+          "execution_complete": true,
+          "elapsed_seconds": 5.141658124979585,
+          "raw_equal": true,
+          "core_v1_equal": true
+        }
+      }
+    }
+  },
+  "whole_profile": {
+    "oracle_sha256": "32c5e4c23f02e9dcf245693b3e732b0c61cd17a86c1ae31b9cf6a4502c18194c",
+    "artifacts": {
+      "/Users/bernardoferrari/Downloads/rport/target/release/librmath.rlib": "3493af10a388bca6baa1e8ab3bae4fb458e91324dbdfa0fbc729da4a2a0d4840",
+      "/Users/bernardoferrari/Downloads/rport/target/release/deps/libr_graphics_engine-738d5245ec3ec8db.rlib": "5ff60984a244ed3f1bca2b41fa8f014a6e4319941eac1f3c4d85e22057940588",
+      "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/namespace-name-integration/final-v2/whole-runner": "c0925741ab8bac8ca5c6685713becf4da1c9f72395e23c45355ca6e999850e22"
+    },
+    "normalizer": "unchanged core-v1; raw differences retained",
+    "package_policies": [
+      "native/default",
+      "portable/explicit-empty"
+    ],
+    "device": "real renderplot Scene504x504 at72dpi",
+    "backend": "faer",
+    "profile": "release"
+  },
+  "remaining_portable_driver_gaps": {
+    "reg-S4.R": "hasMethods(coef) after require(stats4); rport-25y4p",
+    "eval-etc.R": "Missing original example(new) and its workspace side effects; rport-i9jtb"
+  },
+  "execution_join": [
+    {
+      "public_wrappers": [
+        "base::environmentName",
+        "base::isNamespace",
+        "utils::isS3method",
+        "base::loadNamespace",
+        "base::library"
+      ],
+      "implementations": [
+        "crates/rmath/src/mainutils/essentials/runtime/environment.rs",
+        "crates/rmath/src/mainutils/essentials/s4.rs",
+        "crates/rmath/src/mainutils/essentials/shared.rs"
+      ],
+      "tested": "Original S3 stop-list/registry program with no preforcing;29 independently captured metadata checks; native and portable corpus/namespace/compiled methods, full drivers individually classified, production Wasm and public reset.",
+      "target_profiles": [
+        "native/default/release/faer/renderplot",
+        "portable/explicit-empty/release/faer/renderplot",
+        "production-cpu-wasm",
+        "chromium/original-budgets"
+      ],
+      "last_verified_commit": "7eff242da0be01f6185293b115cca3cf3f4ce8ff"
+    }
+  ],
+  "immutable_checkpoint": {
+    "run_id": "37576199837",
+    "source_commit": "7eff242da0be01f6185293b115cca3cf3f4ce8ff",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37576199837",
+    "state": "queued; no Linux results admitted yet"
+  },
+  "gnu_primary_contract": "https://raw.githubusercontent.com/wch/r-source/bac583951b728e97b9786804d3b4081f0fe18df5/src/main/builtin.c",
+  "full_debug_neighbors": {
+    "scope": "Exact BUILD_ARGS entire workspace compilation and actual Cargo feature union; five selected executable targets only, default libtest threading. No complete workspace passing claim.",
+    "source": {
+      "source_commit": "7eff242da0be01f6185293b115cca3cf3f4ce8ff",
+      "source_sha256": "5a671bc5b132ec78d72b33c4402332c3ebe32fe45369d5fe62bd009665a9ac5c"
+    },
+    "build": {
+      "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/build/process.json",
+      "bytes": 688,
+      "sha256": "3363ecb4d2765a7278af3f23c0803cb48e3f6fe9c5c3261279bbcb5fea2204d2"
+    },
+    "features": {
+      "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/features.json",
+      "bytes": 191324,
+      "sha256": "0434bda3eb6142911ad904298cfdfd23d8ded4a235e4d7ffb924ed2ce7819982"
+    },
+    "inventory": {
+      "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/inventory.json",
+      "bytes": 64174,
+      "sha256": "306d6b43472d4c73cb919be6f792addd3b51acd3d5af38d1554e531d19439dbf"
+    },
+    "targets": {
+      "is_s3method": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/is_s3method/process.json",
+        "bytes": 652,
+        "sha256": "a28d4544de2b209079fcf8b6f7a1c44b4476a216d42eed9abf2e9057ac597b4d"
+      },
+      "packages_visible": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/packages_visible/process.json",
+        "bytes": 657,
+        "sha256": "629b1db0c9538d16eab57f781eb51aafd2a38949404c00d74382c1bf58c35db5"
+      },
+      "s3_methods_public_contract": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/s3_methods_public_contract/process.json",
+        "bytes": 668,
+        "sha256": "cd361850234743ab743b91eb78b28fe07c168b27104957486a8a91315367bcb4"
+      },
+      "namespace_initialization": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/namespace_initialization/process.json",
+        "bytes": 665,
+        "sha256": "c0736137296e5c775e7aa2d1ced1560cd3914a6bf505a2753c0bcf2db56a95a3"
+      },
+      "portable_namespace_integration": {
+        "path": "target/integration-repair-evidence/namespace-name-integration/full-debug/portable_namespace_integration/process.json",
+        "bytes": 672,
+        "sha256": "4fb7140555ba7948aaa17c70d82afc50397c46180c9c29787c9ff032769f591b"
+      }
+    },
+    "passed": 9,
+    "failed": 0
+  },
+  "preserved_pdfs": {
+    "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/preserved-pdfs.json",
+    "bytes": 6557,
+    "sha256": "2812e887ad9ca404887c49bec0ff0cf1e5b75362aa3dabd58f29ec0df7be60d2"
+  },
+  "generated_pdfs": {
+    "path": "target/integration-repair-evidence/namespace-name-integration/final-v2/generated-pdf/manifest.json",
+    "bytes": 4920,
+    "sha256": "e4d94c87af70623619e00b5eaf10db33d791091be9c5b72de7999f0943f3a28c"
+  }
+}
