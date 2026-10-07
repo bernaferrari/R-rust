@@ -414,6 +414,10 @@ pub(super) fn attach(image: &'static PackageImage, base: Sexp<'static>) -> Resul
             .allocator(&access.domain())?
             .strings(&[&format!("package:{}", image.name)])?;
         super::bridge::set_attribute(access, &attached, "name", &package_name)?;
+        let path = access
+            .allocator(&access.domain())?
+            .strings(&[image.directory])?;
+        super::bridge::set_attribute(access, &attached, "path", &path)?;
         let name = access.allocator(&access.domain())?.strings(&[image.name])?;
         super::bridge::bind(access, &attached, ".packageName", &name)?;
         super::bridge::bind(access, &attached, ".namespaceEnv", &namespace)?;

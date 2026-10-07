@@ -5,7 +5,7 @@
 //! `methods`, and `base` (search order is not pinned). `path.package("stats")`
 //! is one non-empty string. `path.package("notapackage", quiet=TRUE)` is `NULL`.
 
-use r_embed::{RSession, RValue};
+use r_embed::{RSession, RValue, RuntimePathPolicy};
 
 fn character_vector(value: &RValue) -> Vec<Option<String>> {
     match value {
@@ -26,8 +26,18 @@ fn assert_contains(label: &str, names: &[Option<String>], required: &[&str]) {
 
 #[test]
 fn packages_visible_matches_gnu_membership() {
-    let mut session = RSession::new().expect("session");
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .expect("session");
+        check_packages_visible(&mut session, portable);
+    }
+}
 
+fn check_packages_visible(session: &mut RSession, portable: bool) {
     let attached = session
         .eval_result(".packages()")
         .unwrap_or_else(|err| panic!(".packages() failed: {err}"));
@@ -51,21 +61,40 @@ fn packages_visible_matches_gnu_membership() {
     let available = session
         .eval_result(".packages(all.available = TRUE)")
         .unwrap_or_else(|err| panic!(".packages(all.available=TRUE) failed: {err}"));
-    let _available_names = character_vector(&available.value);
+    let available_names = character_vector(&available.value);
 
-    let stats_path = session
-        .eval_result("path.package(\"stats\")")
-        .unwrap_or_else(|err| panic!("path.package(\"stats\") failed: {err}"));
-    let stats_paths = character_vector(&stats_path.value);
-    assert_eq!(
-        stats_paths.len(),
-        1,
-        "path.package(\"stats\") length, got {stats_paths:?}"
-    );
-    let path = stats_paths[0]
-        .as_deref()
-        .expect("path.package(\"stats\") was NA");
-    assert!(!path.is_empty(), "path.package(\"stats\") was empty");
+    for package in [
+        "stats",
+        "graphics",
+        "grDevices",
+        "utils",
+        "datasets",
+        "methods",
+    ] {
+        let paths = session
+            .eval_result(&format!("path.package('{package}')"))
+            .unwrap_or_else(|err| panic!("path.package('{package}'); portable={portable}: {err}"));
+        let paths = character_vector(&paths.value);
+        assert_eq!(paths.len(), 1, "{package}; portable={portable}: {paths:?}");
+        let path = paths[0].as_deref().expect("package path was NA");
+        assert!(
+            !path.is_empty(),
+            "{package}; portable={portable}: empty path"
+        );
+        if portable {
+            assert_eq!(path, format!("<builtin:{package}>"));
+        }
+        assert_eq!(
+            session.eval(&format!("identical(path.package('{package}'), attr(as.environment('package:{package}'), 'path')) && identical(path.package('{package}'), getNamespaceInfo('{package}', 'path'))")).unwrap(),
+            "[1] TRUE\n",
+            "{package}; portable={portable}: attachment and namespace paths disagree"
+        );
+    }
+
+    if portable {
+        assert!(character_vector(&session.eval_result(".libPaths()").unwrap().value).is_empty());
+        assert!(available_names.is_empty());
+    }
 
     session
         .eval_result("path.package(\"notapackage\", quiet = TRUE)")
