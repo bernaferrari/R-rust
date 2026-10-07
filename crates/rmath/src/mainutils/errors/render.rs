@@ -516,6 +516,10 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                         &localbuf,
                         "error",
                     ));
+                // GNU records the unformatted message when an exiting error
+                // handler takes over. Calling handlers still see the prior
+                // buffer; signaling a supplied condition does not replace it.
+                R_SetErrmessage(&localbuf);
                 gotoExitingHandler(condition.as_raw(), call, entry.as_raw());
             }
             list = findSimpleErrorHandler();

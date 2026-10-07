@@ -223,20 +223,28 @@ unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
 pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let cond = CAR(args);
-        let msg = CADR(args);
-        let ecall = CADDR(args);
+        signal_condition_object(CAR(args), CADR(args), CADDR(args));
+        globals::R_NilValue()
+    }
+}
 
-        let oldstack = handler_stack();
-        let _oldstack_guard = protect(oldstack);
-
-        let mut list = findConditionHandler(cond);
+/// Shared public/native dispatch: stack order chooses the first matching entry,
+/// and that entry plus newer handlers are removed before invoking its callback.
+/// Restore the original owner's stack on normal return and every unwind path.
+pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
+    let condition = unsafe { crate::sexp::context::own_control_value(cond) };
+    let message = unsafe { crate::sexp::context::own_control_value(msg) };
+    let call = unsafe { crate::sexp::context::own_control_value(ecall) };
+    super::native::with_preserved_handler_stack(|| unsafe {
+        let mut called = false;
+        let mut list = findConditionHandler(condition.as_raw());
         while !list.is_null() && list != globals::R_NilValue() {
-            let entry = CAR(list);
+            let entry = crate::sexp::context::own_control_value(CAR(list));
             set_handler_stack(CDR(list));
-            if IS_CALLING_ENTRY(entry) != 0 {
-                let h = ENTRY_HANDLER(entry);
+            if IS_CALLING_ENTRY(entry.as_raw()) != 0 {
+                let h = ENTRY_HANDLER(entry.as_raw());
                 if h == globals::R_RestartToken() {
+                    let msg = message.as_raw();
                     let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP && LENGTH(msg) > 0 {
                         let c = translateChar(STRING_ELT(msg, 0));
                         CStr::from_ptr(c).to_str().unwrap_or("error")
@@ -244,21 +252,20 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                         "error message not a string"
                     };
                     let cmsg = std::ffi::CString::new(msgstr).unwrap_or_default();
-                    verrorcall_dflt(ecall, cmsg.as_ptr(), ptr::null_mut());
-                } else if !super::native::dispatch_calling_handler(h, cond) {
-                    let hcall = Rf_lang2(h, cond);
+                    verrorcall_dflt(call.as_raw(), cmsg.as_ptr(), ptr::null_mut());
+                } else if !super::native::dispatch_calling_handler(h, condition.as_raw()) {
+                    let hcall = Rf_lang2(h, condition.as_raw());
                     let _hcall_guard = protect(hcall);
                     let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
                 }
+                called = true;
             } else {
-                gotoExitingHandler(cond, ecall, entry);
+                gotoExitingHandler(condition.as_raw(), call.as_raw(), entry.as_raw());
             }
-            list = findConditionHandler(cond);
+            list = findConditionHandler(condition.as_raw());
         }
-
-        set_handler_stack(oldstack);
-        globals::R_NilValue()
-    }
+        called
+    })
 }
 
 /// do_dfltWarn — default warning handler.

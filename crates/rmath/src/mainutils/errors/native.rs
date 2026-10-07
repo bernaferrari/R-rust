@@ -61,6 +61,14 @@ impl Drop for HandlerStackScope {
     }
 }
 
+pub(super) fn with_preserved_handler_stack<T>(body: impl FnOnce() -> T) -> T {
+    let (factory, pin) = factory_and_pin();
+    let _stack = HandlerStackScope::capture(pin);
+    let result = body();
+    checked(factory.require_active());
+    result
+}
+
 fn handler_entry(
     factory: &SessionNodeFactory<'_>,
     class: &Sexp<'_>,
@@ -141,6 +149,13 @@ pub fn try_catch_owned(
     finally: impl FnOnce(),
 ) -> Sexp<'static> {
     let (factory, pin) = factory_and_pin();
+    // Raw managed evaluation may enter without RSession's activation guard.
+    // This catcher publishes exiting transfers, so retain their original
+    // scope through handler/finally execution. Nested activations reuse it.
+    let owner = checked(unsafe { OwnerToken::current() })
+        .weak_owner()
+        .expect("pinned managed condition owner");
+    let _transfers = checked(crate::sexp::transfer::TransferScopeGuard::enter(owner));
     checked(factory.link(classes));
     if classes.typeof_() != SEXPTYPE::STRSXP {
         context::r_error("condition classes must be a character vector");

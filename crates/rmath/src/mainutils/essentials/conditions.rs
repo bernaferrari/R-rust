@@ -38,13 +38,28 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         crate::mainutils::errors::set_error_call_less(false);
         let _try_nframe = TryCatchNframeGuard::push();
+        let classes = crate::sexp::context::own_control_value(Rf_mkString(c"error".as_ptr()));
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            // GNU try() is a closure chain. Keep that chain on tracemem
-            // output while this builtin evaluates its expression.
-            let _builtin_try = crate::mainutils::debug::BuiltinTryTrace::enter();
-            let _context = try_catch_evaluation_context(rho);
-            crate::eval::eval::Rf_eval(expr, rho)
+            crate::mainutils::errors::try_catch_owned(
+                || {
+                    // Preserve GNU's synthetic closure chain for calls and
+                    // tracemem while the real exiting entry shields globals.
+                    let _builtin_try = crate::mainutils::debug::BuiltinTryTrace::enter();
+                    let _context = try_catch_evaluation_context(rho);
+                    crate::sexp::context::own_control_value(crate::eval::eval::Rf_eval(expr, rho))
+                },
+                &classes,
+                |condition| {
+                    let message = condition_message_of(condition.as_raw()).unwrap_or_default();
+                    set_signalled_condition(condition.as_raw());
+                    // The existing renderer consumes this original condition
+                    // after the owned scope has removed its exiting entry.
+                    std::panic::panic_any(crate::sexp::context::RError { message })
+                },
+                || {},
+            )
+            .as_raw()
         }));
 
         match result {
@@ -678,6 +693,9 @@ pub unsafe fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
         }
         let _cond = protect(cond);
         signal_calling_handlers(cond, rho);
+        // GNU's .signalCondition primitive returns a visible NULL regardless
+        // of a returning calling handler's own visibility.
+        crate::sexp::globals::set_R_Visible(TRUE);
         R_NilValue()
     }
 }
@@ -864,28 +882,15 @@ pub(crate) fn warning_handler_invoked() -> bool {
     WARNING_HANDLER_RAN.with(|c| c.get())
 }
 
-unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
+unsafe fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
     unsafe {
         WARNING_HANDLER_RAN.with(|c| c.set(false));
-        let classes = crate::sexp::attrib_core::getAttrib(condition, Rf_install(c"class".as_ptr()));
-        if classes.is_null() || classes == R_NilValue() || TYPEOF(classes) != SEXPTYPE::STRSXP {
-            return;
-        }
-
-        let stack = condition_handler_stack();
-        for class_idx in 0..XLENGTH(classes) {
-            let class_name = elt_to_string(classes, class_idx);
-            let mut current = stack;
-            while !current.is_null() && current != R_NilValue() {
-                let entry = CAR(current);
-                if calling_handler_entry_class(entry).as_deref() == Some(class_name.as_str()) {
-                    let handler = crate::mainutils::errors::ENTRY_HANDLER(entry);
-                    call_condition_handler(handler, condition, rho);
-                    WARNING_HANDLER_RAN.with(|c| c.set(true));
-                }
-                current = CDR(current);
-            }
-        }
+        let _condition = protect(condition);
+        let message =
+            super::tables::list_element_by_name(condition, "message").unwrap_or(R_NilValue());
+        let call = super::tables::list_element_by_name(condition, "call").unwrap_or(R_NilValue());
+        let called = crate::mainutils::errors::signal_condition_object(condition, message, call);
+        WARNING_HANDLER_RAN.with(|c| c.set(called));
     }
 }
 
@@ -925,39 +930,6 @@ pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP
                 },
                 Err(payload) => std::panic::resume_unwind(payload),
             },
-        }
-    }
-}
-
-unsafe fn calling_handler_entry_class(entry: SEXP) -> Option<String> {
-    unsafe {
-        if entry.is_null()
-            || entry == R_NilValue()
-            || TYPEOF(entry) != SEXPTYPE::VECSXP
-            || XLENGTH(entry) != 5
-            || crate::mainutils::errors::IS_CALLING_ENTRY(entry) == 0
-        {
-            return None;
-        }
-        let class = crate::mainutils::errors::ENTRY_CLASS(entry);
-        crate::sexp::object::Sexp::from_raw(class)?
-            .try_as_string()
-            .ok()
-    }
-}
-
-unsafe fn call_condition_handler(handler: SEXP, condition: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(handler) == SEXPTYPE::CLOSXP {
-            let args = Rf_cons(condition, R_NilValue());
-            let call = Rf_cons(handler, args);
-            if !call.is_null() {
-                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-            }
-            crate::eval::closure::applyClosure(call, handler, args, rho, R_NilValue(), TRUE)
-        } else {
-            let call = crate::sexp::constructors::Rf_lang2(handler, condition);
-            crate::eval::eval::Rf_eval(call, rho)
         }
     }
 }
@@ -2099,6 +2071,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         // The result is not bound until tryCatch returns. `finally` may
         // allocate and collect, so the value stays rooted across that eval.
         let return_after_finally = |value: SEXP| {
+            let visible = crate::sexp::globals::R_Visible();
             let value = factory
                 .wrap(value)
                 .and_then(|value| value.into_owned())
@@ -2107,6 +2080,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             owner
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            crate::sexp::globals::set_R_Visible(visible);
             value.as_raw()
         };
 
@@ -2144,9 +2118,29 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             }
         };
 
+        let classes = factory
+            .strings(
+                &handlers
+                    .iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _context = try_catch_evaluation_context(rho_owner.as_raw());
-            crate::eval::eval::Rf_eval(expr, rho_owner.as_raw())
+            crate::mainutils::errors::try_catch_owned(
+                || {
+                    let _context = try_catch_evaluation_context(rho_owner.as_raw());
+                    own_condition(crate::eval::eval::Rf_eval(expr, rho_owner.as_raw()))
+                },
+                &classes,
+                |condition| {
+                    let message = condition_message_of(condition.as_raw()).unwrap_or_default();
+                    set_signalled_condition(condition.as_raw());
+                    std::panic::panic_any(crate::sexp::context::RError { message })
+                },
+                || {},
+            )
+            .as_raw()
         }));
         let caught_call = if result.is_err() {
             caught_error_call()

@@ -48,6 +48,7 @@ use crate::mainutils::inlined::PRINTNAME;
 
 mod conditions;
 mod native;
+pub(crate) use native::try_catch_owned;
 pub use native::{NativeBody, NativeFinally, NativeHandler};
 mod deferred;
 mod do_fns;
