@@ -56,18 +56,11 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if ns == base_ns && ns != crate::sexp::globals::R_BaseEnv() {
             return Rf_ScalarLogical(TRUE);
         }
-        let info =
-            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".__NAMESPACE__.".as_ptr()));
-        Rf_ScalarLogical(
-            if !info.is_null()
-                && info != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(info) == SEXPTYPE::ENVSXP
-            {
-                TRUE
-            } else {
-                FALSE
-            },
-        )
+        Rf_ScalarLogical(if namespace_spec(ns).is_some() {
+            TRUE
+        } else {
+            FALSE
+        })
     }
 }
 

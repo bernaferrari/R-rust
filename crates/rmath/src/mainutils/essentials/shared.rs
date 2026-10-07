@@ -2094,7 +2094,7 @@ pub(crate) unsafe fn load_package_namespace(
         }
         let _package_env_guard = crate::sexp::protect::protect(package_env);
 
-        define_package_metadata(package, package_env);
+        define_package_name(package, package_env);
         if !is_builtin_package_dependency(package) {
             reject_unsupported_internal_data(package, package_dir)?;
             reject_unsupported_lazyload_code(package, package_dir)?;
@@ -2350,13 +2350,18 @@ pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<()
     }
 }
 
-pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
+unsafe fn define_package_name(package: &str, package_env: SEXP) {
     unsafe {
         let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
         if !package_string.is_null() {
             crate::sexp::envir::defineVar(package_name_symbol(), package_string, package_env);
         }
+    }
+}
 
+pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
+    unsafe {
+        define_package_name(package, package_env);
         let search_name = format!("package:{package}");
         let search_string = Rf_mkString(CString::new(search_name).unwrap_or_default().as_ptr());
         if !search_string.is_null() {

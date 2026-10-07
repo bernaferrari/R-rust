@@ -168,7 +168,7 @@ jobs:
           --test rep_len_admission_contract --test unserialize_connection_contract
           --test calling_error_handlers --test calling_warning_handlers
           --test try_condition_calls --test slot_try_error --test gnu_bytecode_source_marker --test gnu_bytecode_trycatch --test fisher_hash_key
-          --test s3_methods_public_contract
+          --test s3_methods_public_contract --test is_s3method
           --test base_print_methods
           --test vector_print_limits --test enable_jit --test prmatrix_public_contract
           --test array_attributes_gnu --test condition_handler_stack_contract --test attribute_print_contract

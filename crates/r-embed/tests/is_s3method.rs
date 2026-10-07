@@ -1,12 +1,23 @@
-use r_embed::RSession;
+use r_embed::{RSession, RuntimePathPolicy};
 
 #[test]
 fn is_s3method_follows_gnu_stop_list_and_registry() {
+    for portable in [false, true] {
+        let session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        check_stop_list_and_registry(session, portable);
+    }
+}
+
+fn check_stop_list_and_registry(mut session: RSession, portable: bool) {
     // Stock checks run before registerS3method. t.test is a visible non-method
     // on the search path; the registered method is visible only from an
     // environment that cannot see that function. The user generic is defined
     // in .GlobalEnv so registration and topenv() share one environment.
-    let mut session = RSession::new().unwrap();
     let result = session
         .eval(
             r#"
@@ -59,8 +70,17 @@ fn is_s3method_follows_gnu_stop_list_and_registry() {
     "#,
         )
         .unwrap();
+    let expected = "FALSE FALSE TRUE TRUE FALSE FALSE FALSE TRUE TRUE TRUE TRUE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE TRUE TRUE TRUE TRUE OK\nFALSE FALSE TRUE TRUE FALSE FALSE FALSE";
+    // Diagnose only after the unchanged public program has computed its result.
+    // Preforcing t.test here would hide fresh-session lookup failures.
+    let diagnostic = if result.trim() != expected {
+        session.eval("local({f<-get('isS3method',mode='function');m<-get('t.test',mode='function');print(c(reflection=environmentName(environment(f)),visible=environmentName(environment(m))));print(tools::nonS3methods('stats'));print(c(isNamespace(environment(m)),isS3method('t.test')))})")
+    } else {
+        Ok(String::new())
+    };
     assert_eq!(
         result.trim(),
-        "FALSE FALSE TRUE TRUE FALSE FALSE FALSE TRUE TRUE TRUE TRUE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE TRUE TRUE TRUE TRUE OK\nFALSE FALSE TRUE TRUE FALSE FALSE FALSE"
+        expected,
+        "portable={portable}; post-result diagnostic={diagnostic:?}"
     );
 }

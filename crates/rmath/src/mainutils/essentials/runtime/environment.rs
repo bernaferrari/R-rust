@@ -149,14 +149,18 @@ mod parent_env;
 /// R's `env_name(env)` — returns the name of an environment.
 pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let env = CAR(args);
+        let mut env = CAR(args);
         if env.is_null() || env == R_NilValue() {
-            return Rf_mkString(c"NULL".as_ptr());
-        }
-        let t = TYPEOF(env);
-        if t != SEXPTYPE::ENVSXP {
             return Rf_mkString(c"".as_ptr());
         }
+        let _argument = protect(env);
+        if TYPEOF(env) == SEXPTYPE::OBJSXP && crate::mainutils::objects::isS4(env) != FALSE {
+            env = crate::mainutils::subassign::R_getS4DataSlot(env, SEXPTYPE::ENVSXP.as_c_int());
+        }
+        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+            return Rf_mkString(c"".as_ptr());
+        }
+        let _environment = protect(env);
         // Check if it's a special environment
         if env == crate::sexp::globals::R_GlobalEnv() {
             return Rf_mkString(c"R_GlobalEnv".as_ptr());
@@ -169,30 +173,46 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return Rf_mkString(c"base".as_ptr());
         }
         let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
+        let _name = protect(name);
         if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
             let value = STRING_ELT(name, 0);
-            if !value.is_null() && value != R_NilValue() {
-                let text = std::ffi::CStr::from_ptr(CHAR(value)).to_string_lossy();
-                // Namespace spec is `stats`; the search-path name is `package:stats`.
-                let shown = {
-                    let info = crate::sexp::envir::R_findVarInFrame(
-                        env,
-                        Rf_install(c".__NAMESPACE__.".as_ptr()),
-                    );
-                    let is_ns = !info.is_null()
-                        && info != crate::sexp::globals::R_UnboundValue()
-                        && TYPEOF(info) == SEXPTYPE::ENVSXP;
-                    if is_ns && let Some(spec) = text.strip_prefix("package:") {
-                        spec.to_string()
-                    } else {
-                        text.into_owned()
-                    }
-                };
-                let c = std::ffi::CString::new(shown).unwrap_or_default();
-                return Rf_mkString(c.as_ptr());
+            if std::ffi::CStr::from_ptr(CHAR(value))
+                .to_bytes()
+                .starts_with(b"package:")
+            {
+                return crate::sexp::constructors::Rf_ScalarString(value);
             }
         }
+        // GNU first recognizes the namespace, then obtains its spec again.
+        // Keep both lookups: metadata may use active bindings.
+        if namespace_spec(env).is_some()
+            && let Some(spec) = namespace_spec(env)
+        {
+            let _spec = protect(spec);
+            return crate::sexp::constructors::Rf_ScalarString(STRING_ELT(spec, 0));
+        }
+        if name != R_NilValue() {
+            return name;
+        }
         Rf_mkString(c"".as_ptr())
+    }
+}
+
+/// The non-base namespace spec shared by recognition and naming.
+pub(crate) unsafe fn namespace_spec(env: SEXP) -> Option<SEXP> {
+    unsafe {
+        if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let _environment = protect(env);
+        let info =
+            crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".__NAMESPACE__.".as_ptr()));
+        if TYPEOF(info) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let _info = protect(info);
+        let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+        (TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0).then_some(spec)
     }
 }
 
