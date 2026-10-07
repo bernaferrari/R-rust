@@ -1,0 +1,307 @@
+{
+  "actual_runtime_tests": {
+    "enable_jit": {
+      "passed": 3
+    },
+    "prmatrix_public_contract": {
+      "gnu_cases": 75,
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "passed": 1
+    }
+  },
+  "cancellation_repair": "Flag-only signal handler; observe cancellation outside Popen locks. Preserve inherited child signal mask rather than leaking blocked TERM/INT through exec.",
+  "cargo_profile_repair": "Retain all emitted host/runtime dependency variants; use only executable artifacts from a successful full-workspace no-run build and protect them during cache pruning.",
+  "framework_tests": {
+    "failed": 0,
+    "fixture_scope": "Small independently compiled Cargo workspace; no GNU runtime coverage claimed for harness fixtures",
+    "passed": 88,
+    "process_tests": 9,
+    "workspace_framework_tests": 14
+  },
+  "immutable_ci_checkpoint": {
+    "event": "workflow_dispatch",
+    "run_id": 37558193721,
+    "source_commit": "54f01c81d8d55a13c236545bdac60d119d89f371",
+    "state": "pending; not passing evidence",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37558193721"
+  },
+  "negative_evidence": {
+    "cancellation-lock-red.log": "abacb4340b8031578c0e84620af5b07a19cd1ceca0f96b67ef14a1e42bf2a6b2",
+    "cancellation-mask-red.log": "1fbc6b58aaaebf731e099b29020a603921242b3757b506db4c80eed564927691"
+  },
+  "phases": {
+    "actual-enable_jit": {
+      "journal_sha256": "62970ad92b6518b19fca94c4f25354a45b5ae6317d68734f487905c595d1e817",
+      "receipt": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/debug/deps/enable_jit-b2eb3ff5884a74ae"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/crates/r-embed",
+        "elapsed_seconds": 43.59917933307588,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:38:17.676724+00:00",
+        "logs": {
+          "combined.log": "afe32e26a6d307815b5c9df5d3e0466659b768429716654cfb496747f6c3d0fd"
+        },
+        "pid": 1428,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:37:34.076671+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      }
+    },
+    "actual-prmatrix_public_contract": {
+      "journal_sha256": "7ecbe4baec7058b0ee6aca94f277e5ce90962f1058aa7e098318f46ad473e491",
+      "receipt": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/debug/deps/prmatrix_public_contract-51a63eeeb3b3e939"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/crates/r-embed",
+        "elapsed_seconds": 40.403726708027534,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:37:34.074771+00:00",
+        "logs": {
+          "combined.log": "b7e248ba34d09a7d0b8f36043f8e292cf5bd7facf98ac4360ca624bfa7c63fee"
+        },
+        "pid": 308,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:36:53.670055+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      }
+    },
+    "format": {
+      "journal_sha256": "c4880e0c4d7ddfe5ee9d4c79964033a05c1a1fb88499fb25d524e21b896f0ba4",
+      "receipt": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "fmt",
+          "--check",
+          "--all"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 4.18658741703257,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:35:27.133751+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 93250,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:35:22.946748+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    },
+    "framework": {
+      "journal_sha256": "ffec68381777a292df954c344b750f8ef485bd59e5f377256c5ff597f44d688d",
+      "receipt": {
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "scripts/tests/test_run_parity_case.py",
+          "scripts/tests/test_conformance_deadline_report.py",
+          "scripts/tests/test_conformance_runner_output.py",
+          "scripts/tests/test_conformance_shards.py",
+          "scripts/tests/test_upstream_execution.py",
+          "scripts/tests/test_optimize_wasm_runtime.py",
+          "scripts/tests/test_workspace_execution.py"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 62.19667712494265,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:35:22.246702+00:00",
+        "logs": {
+          "stderr.log": "e3929a6408350144e7b782d51f5319be3d673f7aa360f230a1cba18107154520",
+          "stdout.log": "bc615e6cf1804eebe0064bcb96799e07dd10e7943aaa416a687ef5b1df49aadb"
+        },
+        "pid": 88879,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:34:20.048921+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    },
+    "metadata": {
+      "journal_sha256": "f16798765c344b8d2f77f1bdcd41c27fd82adb840522df85a65f9eb79068583b",
+      "receipt": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "metadata",
+          "--format-version=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.17535637505352497,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:35:50.337641+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "0bb20e296ac78151dc4d29ae736f19710bc97e6ee25d96d0e844ff30a1f13f11"
+        },
+        "pid": 94423,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:35:50.161912+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    },
+    "shell-artifacts": {
+      "journal_sha256": "3337c87ca0724f66c939dfa85412aed75dfd35fd312d6b026b6048fe38535cf1",
+      "receipt": {
+        "command": [
+          "bash",
+          "scripts/conformance_artifacts_test.sh"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.6972852080361918,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:35:22.945939+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "d8bb83350089bdc4250baf495f3d2b5ea67f75d62840e9e3dcbef89597938994"
+        },
+        "pid": 93108,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:35:22.248254+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    },
+    "uniffi": {
+      "journal_sha256": "a7d5edccb227615efaa05fb28561e8907513d5fd7f13b073ca3c8b9c08d24257",
+      "receipt": {
+        "command": [
+          "scripts/generate_uniffi_bindings.sh",
+          "--check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 23.025157083990052,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:35:50.160682+00:00",
+        "logs": {
+          "stderr.log": "482090fcf25abbf909a9320118508b3ede4f8e37c8cc0c0cc6590a665c4ed17c",
+          "stdout.log": "53699a86ffbe9c4c8eac053b09b21df935cf9425bdab803abfa97d051166eaec"
+        },
+        "pid": 93373,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:35:27.134908+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    },
+    "workspace-build": {
+      "journal_sha256": "3ff7c23fa00b73971de1281e6cab1774739886bdb15dbf945cc54c43999a63de",
+      "receipt": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "--workspace",
+          "--no-run",
+          "--message-format=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 63.1993795420276,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T01:36:53.539651+00:00",
+        "logs": {
+          "stderr.log": "efe34fc2f9e89ddd854051ededf4a32b1b4df4860a93a95af20ed4dae5f0f3ba",
+          "stdout.log": "9796638f401c90c5068ce5778e10cd421ad214c8cbb487096bf221e4ddbb1276"
+        },
+        "pid": 94429,
+        "schema_version": 1,
+        "started_at": "2026-10-07T01:35:50.339311+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      }
+    }
+  },
+  "raw_evidence_directory": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/workspace-partitions",
+  "schema_version": 1,
+  "scope": "Local runner framework, complete debug build admission, and selected actual binary execution. This is not a completed full-workspace execution claim.",
+  "source_commit": "54f01c81d8d55a13c236545bdac60d119d89f371",
+  "source_files_sha256": {
+    ".github/workflows/ci.yml": "8eb0685190e2783fbee990b5950a7c8c86a6e548804bcf64cffc116e0d6055a5",
+    "scripts/cargo_dev.sh": "0d03fd0036cd39081bfd3acef653b906d15284ec5f7cc6692d54934bf73a4ffc",
+    "scripts/conformance_cargo_artifact.py": "eebdb9c6b5b4e5b739d04c4f5c0485954275c5c3e9ef032c8fa3a37c9913bb0c",
+    "scripts/generate_uniffi_bindings.sh": "3a331827b666912d0d1da53e25953a48ec4cff0c3638eb50b6d9eedadc3ff2dd",
+    "scripts/tests/test_upstream_execution.py": "6e689c550627b39e89882bcd40aa6f359faa0b35b0934685a2e81bae9572e548",
+    "scripts/tests/test_workspace_execution.py": "ae513edad9af4bc49e1e3698c1755710f6921f125b59f22583962fb62885a37b",
+    "scripts/upstream_execution.py": "75bab4501ed9c24914173a809d4d545ebcf2dd3006d0eef30e841d971a736990",
+    "scripts/workspace_execution.py": "d0c9add4edba00e6d13eb9ffab3e2b3ea28e80eb35fe41ef5f7d56edf5674199"
+  },
+  "tracked_source_identity": {
+    "source_commit": "54f01c81d8d55a13c236545bdac60d119d89f371",
+    "source_sha256": "de12aad7c44b974e2a9d26d94bbe01b9d97a49f5b29b06b2ee46520b960a17b0"
+  },
+  "workspace": {
+    "actual_cargo_admission_sha256": "4348fe215febe670c72e39ba5608f885606cf484a193909f7a6c06e8b43a014c",
+    "actual_dependency_profile_variants": 457,
+    "build_profile": "debug/unoptimized",
+    "complete_local_workspace_execution": false,
+    "doctest_targets": 8,
+    "execution_environment": "Original package cwd, inherited signal mask, default libtest threads, Cargo library paths and target tmp directory",
+    "group_budget_seconds": 1800,
+    "job_budget_minutes": 35,
+    "partitions": [
+      {
+        "index": 0,
+        "phase": "test",
+        "targets": 27
+      },
+      {
+        "index": 1,
+        "phase": "test",
+        "targets": 27
+      },
+      {
+        "index": 2,
+        "phase": "test",
+        "targets": 27
+      },
+      {
+        "index": 3,
+        "phase": "test",
+        "targets": 26
+      },
+      {
+        "index": 4,
+        "phase": "test",
+        "targets": 26
+      },
+      {
+        "index": 5,
+        "phase": "test",
+        "targets": 26
+      },
+      {
+        "index": 6,
+        "phase": "test",
+        "targets": 26
+      },
+      {
+        "index": 7,
+        "phase": "test",
+        "targets": 26
+      },
+      {
+        "index": 8,
+        "phase": "doc+uniffi",
+        "targets": 8
+      }
+    ],
+    "test_executable_targets": 211
+  }
+}
