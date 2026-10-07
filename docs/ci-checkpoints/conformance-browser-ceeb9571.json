@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
-  "immutable_run": "37563648799",
-  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37563648799",
-  "scope": "Complete immutable Linux workflow: all conformance/upstream inventories authenticated against clean frozen014f source and equal to official unions. Wholeconditions.R changes from fail to pass. Public package/browser panels pass. All nine full-debug producers authenticated; workspace remains incomplete with actual failures. Later attribute/typed-condition repairs are excluded.",
+  "source_commit": "ceeb95712628f29743b4f0b27796ac5c975a372d",
+  "immutable_run": "37567491331",
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37567491331",
+  "scope": "Complete immutable Linux failure accounting. All six conformance, five upstream and nine debug workspace producers authenticated against a clean frozen ceeb9571 checkout; independently reproduced official unions. Browser/public package panels independently authenticated. Later typed-condition and package-metadata repairs excluded.",
   "conformance": {
     "status_counts": {
       "fail": 91,
@@ -14,11 +14,15 @@
     },
     "inventory_total": 1181,
     "timed_out": 0,
-    "validation": "Six producer source/profile contracts authenticated and independently joined against frozen014f; full1181inventory, no missing cases. Same91failure set as54. Independently joined result equals the completed official CI union.",
     "independent_union": {
-      "path": "target/ci-checkpoint-014f15f2/independent-conformance.json",
-      "sha256": "d8210d40f29c109444bae364ce870ce1fc3b3e27a28aa5c6df25680e74b9d8fb",
-      "bytes": 200727
+      "path": "target/ci-checkpoint-ceeb9571/independent-conformance.json",
+      "bytes": 200727,
+      "sha256": "bd48272c23d9769da28b334142fe04ec844003e030cc1e40a7d339ee0a38e504"
+    },
+    "official_union": {
+      "path": "target/ci-checkpoint-ceeb9571/exact-oracle-conformance-union/summary.json",
+      "bytes": 200727,
+      "sha256": "bd48272c23d9769da28b334142fe04ec844003e030cc1e40a7d339ee0a38e504"
     }
   },
   "conformance_failures": [
@@ -660,301 +664,201 @@
       "status": "fail"
     }
   ],
-  "changes_against_54": {
-    "conformance": [],
-    "upstream": [
-      {
-        "kind": "whole",
-        "case": "conditions.R",
-        "old_status": "fail",
-        "new_status": "pass"
-      }
-    ]
-  },
   "complete_upstream": {
-    "whole": {
-      "pass": 19,
-      "fail": 20,
-      "skip": 31
-    },
     "curated": {
-      "pass": 15,
-      "fail": 0
+      "pass": 15
     },
-    "validation": "Five producers authenticated against clean frozen014f and independently joined; byte-identical to official union. Only changed54 status is conditions.R fail to pass.",
+    "whole": {
+      "skip": 31,
+      "pass": 19,
+      "fail": 20
+    },
+    "inventory_total": 85,
     "independent_union": {
-      "path": "target/ci-checkpoint-014f15f2/independent-upstream.json",
-      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
-      "bytes": 578033
+      "path": "target/ci-checkpoint-ceeb9571/independent-upstream.json",
+      "bytes": 578439,
+      "sha256": "e59e33c2ad9f315fb4043f80ac7beeecd7cece75de7cb5cf9b6bb749ef090509"
     },
     "official_union": {
-      "path": "target/ci-checkpoint-014f15f2/upstream-r-exact-union/summary.json",
-      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
-      "bytes": 578033
-    }
+      "path": "target/ci-checkpoint-ceeb9571/upstream-r-exact-union/summary.json",
+      "bytes": 578439,
+      "sha256": "e59e33c2ad9f315fb4043f80ac7beeecd7cece75de7cb5cf9b6bb749ef090509"
+    },
+    "changes_against_014f": []
   },
   "browser": {
     "stats": {
-      "startTime": "2026-10-07T03:12:12.676Z",
-      "duration": 523132.337,
+      "startTime": "2026-10-07T03:56:23.496Z",
+      "duration": 481403.913,
       "expected": 61,
       "skipped": 0,
       "unexpected": 0,
       "flaky": 0
     },
     "report": {
-      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/playwright.json",
-      "sha256": "2e67fc39af4a9ad54106f3d4917e7e6a907b01d9951a9f7238e7b15de2ee8175",
-      "bytes": 79715
+      "path": "target/ci-checkpoint-ceeb9571/showcase-validation/_temp/showcase-evidence/playwright.json",
+      "sha256": "8c24c4240a79d0864162e2a234ddaf63eaa695f687fc95027e5d9f52f028e247",
+      "bytes": 79768
     },
     "wasm": {
-      "bytes": 25763643,
-      "sha256": "6f0667a160d38656b099eb29d39501459fbaf7ee3fd9122415ff4d5bef0f5f05"
+      "path": "target/ci-checkpoint-ceeb9571/rove-website/assets/r_wasm_bg-DzC7XkU-.wasm",
+      "sha256": "4bdf2ca44c4ce44e5004410b3744f2e6b53cbe2dce49821293aeaf2830b964f4",
+      "bytes": 25768702
     },
-    "node_contracts_per_fresh_session": 35,
+    "node_contracts_per_fresh_session": 36,
     "fresh_sessions": 2,
     "node_report": {
-      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
-      "sha256": "46eb6e41d80ab0c5df8427dfca93e7984d79818e1193e5b95917711c2a02b8d9",
-      "bytes": 13740
+      "path": "target/ci-checkpoint-ceeb9571/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
+      "sha256": "11fb2acf18555215adb194b6e3dcc4b92babd168addfe5051bb67388c4d9a863",
+      "bytes": 14124
     },
-    "workflow_profile": {
-      "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/workflow-profile.jsonl",
-      "sha256": "b37049b4aa210653def331ebb4490c7f837b4649f60cd6ad82bb9239ad0cad3d",
-      "bytes": 35761
-    }
+    "standard_execution_sections_identical": true
   },
   "native_public": {
     "selected": {
-      "passed": 77,
+      "passed": 78,
       "failed": 0,
-      "suites": 28,
-      "profile": {
-        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/profile.json",
-        "sha256": "acc32cbe409b58c2a9f67218679d19b8f8c8009e2be6cf54961013f7f944581f",
-        "bytes": 517
-      },
+      "suites": 29,
       "execute": {
-        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/execute/process.json",
-        "sha256": "6c812646c7ca8c7d54825a74d88d0dd3b9d3ba20b61b8b2564af3e9618feea58",
-        "bytes": 1864
+        "path": "target/ci-checkpoint-ceeb9571/public-package-checkpoint/execute/process.json",
+        "bytes": 1905,
+        "sha256": "637cc7075f0fa749276fe3214dbbf861cd23b1641cd304c1ada8a0ec1a979a4d"
+      },
+      "profile": {
+        "path": "target/ci-checkpoint-ceeb9571/public-package-checkpoint/profile.json",
+        "bytes": 517,
+        "sha256": "c1449ff85f9a229e9358fe4355919f6d9bee560e5c939948e456fc7ffef0a603"
       }
     },
     "separate_s4": {
-      "passed": 2,
-      "failed": 0,
-      "warm_s4_seconds": {
-        "native": 14.924863461,
-        "portable": 14.907897534
-      },
-      "timing_risk": "Passes original15s limit; headroom remains narrow and repeatability is tracked separately.",
+      "passed": 1,
+      "failed": 1,
+      "native_warm_elapsed_seconds": 15.151284732,
+      "portable_warm": "unreached after native failure",
+      "budget_seconds": 15,
       "process": {
-        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/s4-subset-call/process.json",
-        "sha256": "d48098aaeddac83e0fd27e2a92856ad1528a2b1e6287a6963d373f6eb63350c2",
-        "bytes": 731
-      }
+        "path": "target/ci-checkpoint-ceeb9571/public-package-checkpoint/s4-subset-call/process.json",
+        "bytes": 732,
+        "sha256": "6c8cdb58ebe0273a7172fe23c53c49e87c629d4cd3a6c3c81eb453dad92e3c54"
+      },
+      "note": "Local passes and prior narrow Linux passes do not establish repeatable Linux timing acceptance."
     }
-  },
-  "production_wasm": {
-    "production": {
-      "bytes": 25763643,
-      "sha256": "6f0667a160d38656b099eb29d39501459fbaf7ee3fd9122415ff4d5bef0f5f05"
-    },
-    "contracts_per_fresh_session": 35,
-    "fresh_sessions": 2
   },
   "workspace": {
-    "independent_counts": {
-      "admitted_executables": 212,
-      "completed_executable_targets": 151,
-      "completed_libtest_summaries": {
-        "fail": 8,
-        "ignored": 1,
-        "pass": 545
+    "inventory_total": 221,
+    "admitted_executables": 213,
+    "completed_executables": 155,
+    "completed_doc_or_generation_targets": 8,
+    "unfinished_executables": 58,
+    "timeouts": 7,
+    "unreached_executables": 51,
+    "failed_executables": [
+      {
+        "exit_code": 101,
+        "name": "fft_resource_limits",
+        "package": "r-embed"
       },
-      "doctests_and_uniffi_pass": true,
-      "failed_executable_targets": [
-        {
-          "exit_code": 101,
-          "name": "fft_resource_limits",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "fisher_hash_key",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "is_s3method",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "portable_grid_viewports",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": -6,
-          "name": "grid_engine_parity",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "portable_datasets_mutation",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "resource_export",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "gnu_bytecode_trycatch",
-          "package": "r-embed"
-        },
-        {
-          "exit_code": 101,
-          "name": "packages_visible",
-          "package": "r-embed"
-        }
-      ],
-      "full_workspace_pass": false,
-      "source": {
-        "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
-        "source_sha256": "00244061221d3b944b5c24ffd01eff2fd2fa4833439249960d05efd27fde6c61"
+      {
+        "exit_code": 101,
+        "name": "s4_method_existence",
+        "package": "r-embed"
       },
-      "unfinished_executable_targets": [
-        "s4_method_existence",
-        "sequence_session",
-        "try_condition_calls",
-        "r_uniffi",
-        "serialize_torture",
-        "s4_next_method",
-        "serialize_roundtrip",
-        "unit_length",
-        "r_wasm",
-        "rmath_nmath",
-        "graphics_recording",
-        "loess",
-        "mathstats_cor_rank",
-        "native_graphics_contract",
-        "portable_data_public_contracts",
-        "portable_namespace_integration",
-        "qr_public_api",
-        "recall",
-        "s3_group_generics",
-        "s4_select_method_contract",
-        "slot_try_error",
-        "unserialize_connection_contract",
-        "compile_fail",
-        "rmath-test",
-        "loess_na",
-        "methods_empty_symbols",
-        "nchar_unicode",
-        "portable_datasets",
-        "portable_stats_namespace",
-        "qr_q",
-        "rep_len_admission_contract",
-        "s3_methods_public_contract",
-        "s4_show",
-        "structure_copy_semantics",
-        "utils_console_public_contract",
-        "distribution_tests",
-        "rport-script-diff",
-        "s4_signatures",
-        "sys_call_alist",
-        "vector_print_limits",
-        "graphics_recording_torture",
-        "portable_grid",
-        "qr_apply",
-        "real_package_fortunes",
-        "restart_visibility",
-        "s4_dput_data",
-        "sample_condition_contract",
-        "table_print_contract",
-        "r_graphics_engine",
-        "graphics_visibility",
-        "named_list_c_any",
-        "palette_public_contract",
-        "portable_grid_clipping",
-        "qr_coef",
-        "real_package_r6",
-        "restarts_gnu",
-        "s4_initialize_superclass",
-        "script_last_value",
-        "timezone_parsing",
-        "r-host-cli",
-        "rmath"
-      ]
+      {
+        "exit_code": 101,
+        "name": "sequence_session",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "fisher_hash_key",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "is_s3method",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "portable_grid_viewports",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": -6,
+        "name": "grid_engine_parity",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "portable_datasets_mutation",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "resource_export",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "gnu_bytecode_trycatch",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "packages_visible",
+        "package": "r-embed"
+      }
+    ],
+    "completed_libtest_summaries": {
+      "fail": 10,
+      "ignored": 1,
+      "pass": 549
     },
-    "official_union": {
-      "path": "target/ci-checkpoint-014f15f2/workspace-debug-union/summary.json",
-      "sha256": "652f9d480f52274e6aadf827976be8677076084bae0b15677f753e3ffad7107b",
-      "bytes": 128510
+    "doctests_and_uniffi_pass": true,
+    "union_unverified_targets": 187,
+    "execution_complete": false,
+    "strict_pass": false,
+    "independent_producers": {
+      "path": "target/ci-checkpoint-ceeb9571/independent-workspace.json",
+      "bytes": 3010,
+      "sha256": "0c934f7f82b3a41d33866391ae963042baf402e872f9f3de25eea3bf3e0bc34c"
     },
     "independent_union": {
-      "path": "target/ci-checkpoint-014f15f2/independent-workspace-union.json",
-      "sha256": "652f9d480f52274e6aadf827976be8677076084bae0b15677f753e3ffad7107b",
-      "bytes": 128510
+      "path": "target/ci-checkpoint-ceeb9571/independent-workspace-union.json",
+      "bytes": 129150,
+      "sha256": "ddec28c5ac025356381a7ade28f507ebd8a42004d49e1c34da03b2c40c33b060"
     },
-    "inventory_total": 220,
-    "unverified_targets_rejected_by_union": 186,
-    "full_workspace_pass": false,
-    "unfinished_executable_targets": 61,
-    "timed_out_executable_targets": 7,
-    "unreached_executable_targets": 54
+    "official_union": {
+      "path": "target/ci-checkpoint-ceeb9571/workspace-debug-union/summary.json",
+      "bytes": 129150,
+      "sha256": "ddec28c5ac025356381a7ade28f507ebd8a42004d49e1c34da03b2c40c33b060"
+    }
   },
   "authentication": {
-    "frozen_source": {
-      "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
-      "source_sha256": "00244061221d3b944b5c24ffd01eff2fd2fa4833439249960d05efd27fde6c61"
+    "source": {
+      "source_commit": "ceeb95712628f29743b4f0b27796ac5c975a372d",
+      "source_sha256": "311a940c7fedcc6b14a7bda3e334540b2c47f6aaea6d7d6882e9ba33f21d710c"
     },
-    "source_tree_clean": true,
-    "producer_validation": "All six conformance and five upstream producer seals, source/corpus/oracle identities, actual subprocess receipts/journals/logs and original normalizers independently authenticated. All nine debug producers validate metadata, successful Cargo JSON builds, complete feature/profile unions and each attempted executable; partial results remain incomplete. Independent unions equal the official conformance/upstream results and workspace rejection.",
-    "conformance": {
-      "path": "target/ci-checkpoint-014f15f2/independent-conformance.json",
-      "sha256": "d8210d40f29c109444bae364ce870ce1fc3b3e27a28aa5c6df25680e74b9d8fb",
-      "bytes": 200727
-    },
-    "upstream": {
-      "path": "target/ci-checkpoint-014f15f2/independent-upstream.json",
-      "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
-      "bytes": 578033
+    "aggregates": {
+      "path": "target/ci-checkpoint-ceeb9571/authenticate-verified/process.json",
+      "bytes": 652,
+      "sha256": "1911e6fd80ca04f9200c606d8e22cb360ac4cc3912bd514d8652a1defcb4e6bc"
     },
     "workspace": {
-      "path": "target/ci-checkpoint-014f15f2/independent-workspace.json",
-      "sha256": "423c263e52945816a238c818132a14f902aeb1bedd6ceb5fc2ef26ee634530c8",
-      "bytes": 2888
-    }
-  },
-  "execution_join": [
-    {
-      "wrappers": [
-        "base::try",
-        "base::tryCatch",
-        "base::withCallingHandlers",
-        "base::globalCallingHandlers",
-        "base::signalCondition",
-        "base::stop",
-        "base::warning",
-        "base::message"
-      ],
-      "implementation_paths": [
-        "crates/rmath/src/mainutils/essentials/conditions.rs",
-        "crates/rmath/src/mainutils/errors/conditions.rs",
-        "crates/rmath/src/mainutils/errors/native.rs",
-        "crates/rmath/src/mainutils/errors/render.rs"
-      ],
-      "tested": "21 GNU cases: global shielding, nested and handler/finally failures, visible/invisible results, error buffer, stack priority, reentry, compiled handlers, collection and cleanup. Full original conditions.R passes raw comparison, both package policies;35production contracts/session and61Chromium plus reset7fixtures\u00d73.",
-      "last_verified_commit": "014f15f261d84a9fd80781411260633bb284c540",
-      "target_profiles": [
-        "native/default/release/faer/renderplot",
-        "portable/explicit-empty/release/faer/renderplot",
-        "wasm-production-cpu",
-        "chromium/original-budgets"
-      ]
-    }
-  ]
+      "path": "target/ci-checkpoint-ceeb9571/authenticate-workspace-union-verified/process.json",
+      "bytes": 667,
+      "sha256": "9bed76af4d58737e61f7bcf978c6f57235663bae1957c594086932c63eedeee9"
+    },
+    "download_first_attempt": {
+      "path": "target/ci-checkpoint-ceeb9571/download-full-producers/process.json",
+      "bytes": 1737,
+      "sha256": "1a98be72e58c8b5d93b8eaa0fb4d27b4011ac7209c5e20503a1309a4c358a4ae"
+    },
+    "download_missing_retry": {
+      "path": "target/ci-checkpoint-ceeb9571/download-missing-producers/process.json",
+      "bytes": 775,
+      "sha256": "84136554740605fdb743540032c5e91004a48c5849622f2988085d2e536703dc"
+    },
+    "result": "All official unions equal independently executed joins; initial download timed out, missing artifacts recovered on a separately recorded successful retry. Incomplete workspace producers remain rejected."
+  }
 }

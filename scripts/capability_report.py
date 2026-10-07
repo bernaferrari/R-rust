@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-014f15f2.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-ceeb9571.json').read_text())
 latest_linux = latest_completed
 print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
 prmatrix_workflow = json.loads((root / 'docs/ci-checkpoints/prmatrix-workflow-a43a20e9.json').read_text())
@@ -386,7 +386,7 @@ matches all official unions, including the debug workspace rejection: 151 of
 Completed libtest summaries report 545 pass / 8 fail / 1 ignored; grid's separate
 stack abort has no summary. The union rejects 186 unverified targets. These are
 complete failure-accounting results, not a passing workspace. The [complete014f
-receipt](ci-checkpoints/conformance-browser-014f15f2.json) now supplies the latest
+receipt](ci-checkpoints/conformance-browser-014f15f2.json) preserves those
 verified aggregate counts.
 
 The [public attribute printing milestone](ci-checkpoints/attribute-print-workflow-ceeb9571.json)
@@ -404,7 +404,17 @@ Chromium tests and 36 contracts per fresh Wasm session, with byte-identical
 production/profile execution sections. All 78 selected Linux package tests pass.
 The separate warm S4 batch reports one pass and one failure: native/default
 exceeds the unchanged 15-second limit at 15.15 seconds. The warm S4 timing gap
-remains tracked; no full-workspace or conformance reduction is declared here.
+remains tracked. Its [completed Linux receipt](ci-checkpoints/conformance-browser-ceeb9571.json)
+now independently authenticates all official unions against frozen source:
+1090/91 conformance, 19/20/31 whole drivers, and 15/0 curated slices. Case
+statuses are unchanged versus014f. The complete debug inventory admits213
+executable targets and eight documentation/generation targets;155executables
+finish with11failed targets. Seven time out and51remain unreached. Completed
+libtest summaries record549pass /10fail /1ignored; a separate grid stack abort
+has no summary. The union rejects187unverified targets. The newly reached S4
+method and sequence failures are additional observed evidence, not established
+new regressions. This completed failure accounting supplies the latest verified
+aggregate counts; the full workspace still fails.
 
 The [typed native condition milestone](ci-checkpoints/typed-condition-workflow-0e3a3b60.json)
 at `0e3a3b60` preserves original error classes, fields and calls through calling
@@ -418,6 +428,16 @@ parity under both constructors, 36 production Wasm contracts per fresh session,
 S4 workflow passes locally under its original budgets; repeatable Linux timing
 acceptance remains open. Its immutable Linux checkpoint is queued, so these
 focused results do not declare that the remaining aggregate failures are fixed.
+
+The [portable package-path milestone](ci-checkpoints/package-path-attachment-f9512cbe.json)
+at `f9512cbe` publishes the existing virtual package directory on the owned attached
+environment before locking and attachment. The expanded original package test
+reproduces a `NULL` path before the repair and verifies six scalar nonempty paths,
+namespace/attachment agreement, and the unchanged empty portable library policy
+afterward. All52selected native tests in seven suites,36contracts per fresh Wasm
+session,61unchanged Chromium tests and three reset repetitions pass. The reset
+covers eight fixtures across both runtime generations. These focused results
+remain separate from the completed aggregate above.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,
