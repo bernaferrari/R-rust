@@ -1,0 +1,1241 @@
+{
+  "schema_version": 1,
+  "source_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+  "source_fingerprint": {
+    "base_commit": "439c1eec519b4c075d815aa8c19f64e09a557771",
+    "source_dirty": true,
+    "files": {
+      ".github/workflows/ci.yml": "4736a4f0862e07a434a4a0de3a2e1486a8485c6aebf62a1d1931ec100fb9844e",
+      "crates/r-embed/tests/enable_jit.rs": "2b85fd0c74b914cb869aa62e3ecf66dcd11d85a129c50c70a2c59baddb08b157",
+      "crates/rmath/src/mainutils/print.rs": "0aaba6b4b82f664fa02de1200ddfbef45e16741ba79bb60dc30bafee090f2160",
+      "crates/rmath/src/mainutils/printutils.rs": "8b174b0f9eadd2305bd50a326c48dbd6b16c75bf10c89f622e475c3f7688ad51",
+      "crates/rmath/src/sexp/output.rs": "ab9a299ba7020196c72d7b5aa35a95e22dd29df2acc14d69cb5c236f253042a9",
+      "tests/browser/portable-package-contracts.mjs": "72a3613fc9465e3dd4f8ba84bd422507535b51138fb60d9770c9231361a51c8b",
+      "website/tests/package-reset-contract.spec.ts": "a195ec7c4e1b9dd27c0caf207d3d47cdff30a167d83160545d1a149b881fb4c5",
+      "crates/r-embed/tests/vector_print_limits.rs": "e95f1794df2ed4dba033e5bd9a8586c0413eca18c1f58ad15ee1563384901e8e",
+      "crates/r-embed/tests/fixtures/print-digits-public-contract.R": "0e181212dbbdcbc55094eba3b70105f75c05f81da03748ffcf60489b36fb775b",
+      "crates/r-embed/tests/fixtures/print-digits-public-contract.out": "4c95fa914cb62f6929493e8df4036ceabded2a164c2e297b35755f6a620c68b1",
+      "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R": "9593aacfc40df5dc131c67bc2cca1088c5bc32c57d699898db5e297d2d5580b6",
+      "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.out": "739787cefd450de9393a729fbf01571b3907347f945e65ea886453c02880c8e0"
+    }
+  },
+  "scope": "Local complete print-family workflow on an exact precommit source candidate; broader whole-driver and conformance totals remain in separate immutable CI receipts.",
+  "profiles": [
+    "release/faer/renderplot",
+    "native/default",
+    "portable/explicit-empty before initialization",
+    "optimized production Wasm",
+    "Chromium workers=1 with original budgets"
+  ],
+  "changes": [
+    "Explicit vector max routed to admitted print-default parameters, GNU zero-window index padding retained",
+    "Scoped explicit digits restored on original pinned allocation after callbacks/errors/revocation",
+    "Public list/pairlist method output streamed before caught errors, preserving nested paths and sink order",
+    "JIT test exercises supported lazy dots and genuine computed-head fallback"
+  ],
+  "oracle": {
+    "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "executable": {
+      "path": "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+      "bytes": 52840,
+      "sha256": "32c5e4c23f02e9dcf245693b3e732b0c61cd17a86c1ae31b9cf6a4502c18194c"
+    },
+    "goldens": [
+      {
+        "path": "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R",
+        "bytes": 1332,
+        "sha256": "9593aacfc40df5dc131c67bc2cca1088c5bc32c57d699898db5e297d2d5580b6"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.out",
+        "bytes": 5206,
+        "sha256": "739787cefd450de9393a729fbf01571b3907347f945e65ea886453c02880c8e0"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/print-digits-public-contract.R",
+        "bytes": 3562,
+        "sha256": "0e181212dbbdcbc55094eba3b70105f75c05f81da03748ffcf60489b36fb775b"
+      },
+      {
+        "path": "crates/r-embed/tests/fixtures/print-digits-public-contract.out",
+        "bytes": 1792,
+        "sha256": "4c95fa914cb62f6929493e8df4036ceabded2a164c2e297b35755f6a620c68b1"
+      }
+    ],
+    "whole_driver": {
+      "path": "tests/upstream-r/vendor/print-tests.R",
+      "bytes": 11831,
+      "sha256": "f0afbf3684778a2a930263dd9ea6894f4c645800f344327a2fb20d58ae1339e3"
+    },
+    "normalization": "Unchanged core-v1; no extra output stripping"
+  },
+  "acceptance": {
+    "print_unit_tests": 25,
+    "native_public_tests": 73,
+    "native_public_suites": 25,
+    "whole_print_driver": [
+      "GNU exit0",
+      "native exit0 strict match",
+      "portable exit0 strict match"
+    ],
+    "production_contracts_per_fresh_session": 33,
+    "fresh_wasm_sessions": 2,
+    "chromium": {
+      "startTime": "2026-10-06T23:52:52.978Z",
+      "duration": 288322.933,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "actual_reset_repeated": {
+      "startTime": "2026-10-06T23:57:42.016Z",
+      "duration": 24340.704,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "validation": {
+    "final-format-admitted": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 4.668578124954365,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:40:06.169131+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 93901,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:40:01.499209+00:00",
+        "state": "finished",
+        "timeout_seconds": 300.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-format-admitted/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-format-admitted/stdout.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/final-format-admitted/events.jsonl",
+        "bytes": 862,
+        "sha256": "973b7da0351b1f4f56d0fcac1a496f47fe7a1d3dce2e5e86a3a564d58ebd2d83"
+      }
+    },
+    "guard-green-admitted": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "rmath",
+          "--release",
+          "--lib",
+          "mainutils::print::tests",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 137.9367711249506,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:42:24.108540+00:00",
+        "logs": {
+          "stderr.log": "c6a96f18bfb084277bb749d7af90043bdbba4f739ba51c1372a012462f04d894",
+          "stdout.log": "219f6eebb57fbd1a4253033eec17ed9736efb2f6d5cfe4b36d6225a930ae872f"
+        },
+        "pid": 94404,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:40:06.170109+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/guard-green-admitted/stderr.log",
+          "bytes": 384,
+          "sha256": "c6a96f18bfb084277bb749d7af90043bdbba4f739ba51c1372a012462f04d894"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/guard-green-admitted/stdout.log",
+          "bytes": 1934,
+          "sha256": "219f6eebb57fbd1a4253033eec17ed9736efb2f6d5cfe4b36d6225a930ae872f"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/guard-green-admitted/events.jsonl",
+        "bytes": 992,
+        "sha256": "88a8820c3d35e58f77217caf0856607322ba1ee2e95387e7ab8bf7ea29893cee"
+      }
+    },
+    "final-clippy": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 35.56953112501651,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:42:59.681967+00:00",
+        "logs": {
+          "stderr.log": "18e352a58528829aaa0485d648e6461a5e5355339a5097ce714426dcc9276a1b",
+          "stdout.log": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        },
+        "pid": 10803,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:42:24.111239+00:00",
+        "state": "finished",
+        "timeout_seconds": 900.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-clippy/stderr.log",
+          "bytes": 840,
+          "sha256": "18e352a58528829aaa0485d648e6461a5e5355339a5097ce714426dcc9276a1b"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-clippy/stdout.log",
+          "bytes": 122,
+          "sha256": "c2db90eeda452d6dbcb5aeb05e3576ffd6bbd2aae744be59467ff6d26b306b6b"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/final-clippy/events.jsonl",
+        "bytes": 928,
+        "sha256": "412963a5ce2a87152c2ae5e70c83885cdcdb9bae7ebde8456f4f1f0731eb1863"
+      }
+    },
+    "final-public-gates": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "calling_error_handlers",
+          "--test",
+          "calling_warning_handlers",
+          "--test",
+          "try_condition_calls",
+          "--test",
+          "slot_try_error",
+          "--test",
+          "gnu_bytecode_source_marker",
+          "--test",
+          "s3_methods_public_contract",
+          "--test",
+          "base_print_methods",
+          "--test",
+          "vector_print_limits",
+          "--test",
+          "enable_jit",
+          "--",
+          "--test-threads=1"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 348.88370841694996,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:48:48.571302+00:00",
+        "logs": {
+          "stderr.log": "c674758cdf3ed32b59d116c213dabe964d2757ba88642638a901b1c2eae32f02",
+          "stdout.log": "074228ac29b64711ecdb0719fc0fcf5ed7d9ea0555a41bc1f5f1366643c4421c"
+        },
+        "pid": 16045,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:42:59.683781+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-public-gates/stderr.log",
+          "bytes": 3068,
+          "sha256": "c674758cdf3ed32b59d116c213dabe964d2757ba88642638a901b1c2eae32f02"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-public-gates/stdout.log",
+          "bytes": 7764,
+          "sha256": "074228ac29b64711ecdb0719fc0fcf5ed7d9ea0555a41bc1f5f1366643c4421c"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/final-public-gates/events.jsonl",
+        "bytes": 2731,
+        "sha256": "b27c722a13b2b495058da7dae365ca38eb94121ea7503e13ca3327260dd49852"
+      }
+    },
+    "runner-library-final": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "build",
+          "-p",
+          "rmath",
+          "--release",
+          "--features",
+          "renderplot-device",
+          "--message-format=json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 53.81294979096856,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:42.388881+00:00",
+        "logs": {
+          "stderr.log": "96447b250eceea4cb79586ddf2993a046debf9e87e7de311dc9aca73f158a997",
+          "stdout.log": "066035422c7926d3f076568352bef897938acb596f7489f9d197e3e99635e880"
+        },
+        "pid": 50176,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:48:48.574879+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/runner-library-final/stderr.log",
+          "bytes": 305,
+          "sha256": "96447b250eceea4cb79586ddf2993a046debf9e87e7de311dc9aca73f158a997"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/runner-library-final/stdout.log",
+          "bytes": 104117,
+          "sha256": "066035422c7926d3f076568352bef897938acb596f7489f9d197e3e99635e880"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/runner-library-final/events.jsonl",
+        "bytes": 992,
+        "sha256": "9a4c5bfd91040a6435a4ec0478e38c765ea67ad988c949b781687e15000ebfe9"
+      }
+    },
+    "whole-final-execution": {
+      "process": {
+        "command": [
+          "python3",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/run-whole-final.py"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 13.246843458968215,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:55.638128+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "02016c9753b366f0008bb088a876c46e19162c3938768a7e49e6ec17bc7370c0"
+        },
+        "pid": 52932,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:42.390728+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final-execution/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final-execution/stdout.log",
+          "bytes": 640,
+          "sha256": "02016c9753b366f0008bb088a876c46e19162c3938768a7e49e6ec17bc7370c0"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final-execution/events.jsonl",
+        "bytes": 1005,
+        "sha256": "54420b57a820776765137b44031917a03612bfee58a5652615b142f4bdaedc4f"
+      }
+    },
+    "final-production-build": {
+      "process": {
+        "command": [
+          "scripts/build_wasm_runtime.sh",
+          "--target",
+          "web",
+          "--release",
+          "--out-dir",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/final-production-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 88.38730595901143,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:51:24.028793+00:00",
+        "logs": {
+          "stderr.log": "e8100a9080d30bfbd01074c06121ec6108f8ad88db6a479d892aa00bf900ef44",
+          "stdout.log": "e9647d75bc3b18de4335851e05241884058a1f849d5dad51ccad2c1e9c690880"
+        },
+        "pid": 53823,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:55.639997+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-production-build/stderr.log",
+          "bytes": 4241,
+          "sha256": "e8100a9080d30bfbd01074c06121ec6108f8ad88db6a479d892aa00bf900ef44"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-production-build/stdout.log",
+          "bytes": 67,
+          "sha256": "e9647d75bc3b18de4335851e05241884058a1f849d5dad51ccad2c1e9c690880"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/final-production-build/events.jsonl",
+        "bytes": 1142,
+        "sha256": "58a3c6ddcfa027b5dc72ccb2323d2021a312f1f38626b9fc25734962c5fcb004"
+      }
+    },
+    "final-production-contracts": {
+      "process": {
+        "command": [
+          "node",
+          "tests/browser/portable-package-contracts.mjs",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/final-production-pkg"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 84.14535183296539,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:52:48.177786+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "ec494c6007960e64aa9d3f82a7652a5833cf67a73576d3ad10d13c818b581a92"
+        },
+        "pid": 58231,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:51:24.030852+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-production-contracts/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/final-production-contracts/stdout.log",
+          "bytes": 13415,
+          "sha256": "ec494c6007960e64aa9d3f82a7652a5833cf67a73576d3ad10d13c818b581a92"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/final-production-contracts/events.jsonl",
+        "bytes": 1096,
+        "sha256": "35955fc34387e5cd6113886a036df3f718f91a4f6f4b2849e232ac018f1c2dbc"
+      }
+    },
+    "browser-prepare": {
+      "process": {
+        "command": [
+          "node",
+          "scripts/prepare-runtime.mjs"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 0.13834429206326604,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:52:48.320526+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "5daa9254304c7e6636b1e6cc8a4a30afa605c566e2c93ee851eda285eb7bffce"
+        },
+        "pid": 62637,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:52:48.181693+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/browser-prepare/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/browser-prepare/stdout.log",
+          "bytes": 144,
+          "sha256": "5daa9254304c7e6636b1e6cc8a4a30afa605c566e2c93ee851eda285eb7bffce"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/browser-prepare/events.jsonl",
+        "bytes": 844,
+        "sha256": "ada5f1369f5388c84a0ef1a072d1f720b94176f56df5b9e2471547b3f2865488"
+      }
+    },
+    "website-typecheck": {
+      "process": {
+        "command": [
+          "pnpm",
+          "typecheck"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 2.6663948750356212,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:52:50.988533+00:00",
+        "logs": {
+          "stderr.log": "444df410b837bd8d2d627389fb1f20b70cbee0564e20e98e64bae8aab1e8fe9e",
+          "stdout.log": "5daa9254304c7e6636b1e6cc8a4a30afa605c566e2c93ee851eda285eb7bffce"
+        },
+        "pid": 62645,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:52:48.321565+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-typecheck/stderr.log",
+          "bytes": 44,
+          "sha256": "444df410b837bd8d2d627389fb1f20b70cbee0564e20e98e64bae8aab1e8fe9e"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-typecheck/stdout.log",
+          "bytes": 144,
+          "sha256": "5daa9254304c7e6636b1e6cc8a4a30afa605c566e2c93ee851eda285eb7bffce"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/website-typecheck/events.jsonl",
+        "bytes": 807,
+        "sha256": "90bea4fa02c79fd3dcdebd83ef5a8f7eee5861ae8a55ed42e982fa6a6546ea09"
+      }
+    },
+    "website-lint": {
+      "process": {
+        "command": [
+          "pnpm",
+          "run",
+          "lint"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 0.6584295840002596,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:52:51.648710+00:00",
+        "logs": {
+          "stderr.log": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438",
+          "stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "pid": 62717,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:52:50.989875+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-lint/stderr.log",
+          "bytes": 11,
+          "sha256": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-lint/stdout.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/website-lint/events.jsonl",
+        "bytes": 811,
+        "sha256": "dd8c72e20fd8723ce3b6193f406907b4fe6eef17843b0f7f81180f000f8c0453"
+      }
+    },
+    "website-format-check": {
+      "process": {
+        "command": [
+          "pnpm",
+          "run",
+          "format:check"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 0.7217966670868918,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:52:52.371768+00:00",
+        "logs": {
+          "stderr.log": "44438e1341343f30e1cc563ff17ec04b246a025e63cd728a392aed6b34787034",
+          "stdout.log": "e8fc6884b727ba078443bf10a6646deddfd0a86dcd47ca5f8dea5c81fcc10a78"
+        },
+        "pid": 62746,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:52:51.649582+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-format-check/stderr.log",
+          "bytes": 32,
+          "sha256": "44438e1341343f30e1cc563ff17ec04b246a025e63cd728a392aed6b34787034"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/website-format-check/stdout.log",
+          "bytes": 114,
+          "sha256": "e8fc6884b727ba078443bf10a6646deddfd0a86dcd47ca5f8dea5c81fcc10a78"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/website-format-check/events.jsonl",
+        "bytes": 827,
+        "sha256": "96050cafb1ac7439a2113c9db10ea33eb2b9a360a54ef3e187ff331da80bd0fb"
+      }
+    },
+    "chromium-complete": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "--project=chromium",
+          "--workers=1",
+          "--reporter=line,json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 289.004312791978,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:57:41.380259+00:00",
+        "logs": {
+          "stderr.log": "0ced83e654925fe8478946c11387d879c0dee2755690182ef15ab585cd962750",
+          "stdout.log": "f36e88b79e3843916123feb7233292539741e7a97db5da237b1c410c95fc3f11"
+        },
+        "pid": 62786,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:52:52.372756+00:00",
+        "state": "finished",
+        "timeout_seconds": 1500.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/chromium-complete/stderr.log",
+          "bytes": 844,
+          "sha256": "0ced83e654925fe8478946c11387d879c0dee2755690182ef15ab585cd962750"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/chromium-complete/stdout.log",
+          "bytes": 10662,
+          "sha256": "f36e88b79e3843916123feb7233292539741e7a97db5da237b1c410c95fc3f11"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/chromium-complete/events.jsonl",
+        "bytes": 963,
+        "sha256": "e6c9e7be18bd0e8f513d503c82b296534bdcb18106edc21f26786192806265a1"
+      }
+    },
+    "chromium-reset-repeated": {
+      "process": {
+        "command": [
+          "pnpm",
+          "exec",
+          "playwright",
+          "test",
+          "tests/package-reset-contract.spec.ts",
+          "--repeat-each=3",
+          "--project=chromium",
+          "--workers=1",
+          "--reporter=line,json"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/website",
+        "elapsed_seconds": 25.019667207961902,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:58:06.403755+00:00",
+        "logs": {
+          "stderr.log": "cf685c30eee1a6bdc30acc63abcc974fb21f11b000bdfc7d9c6c6d59b0ced987",
+          "stdout.log": "56cb5716ae3e5633528243902edd94e52cb41be27c76f3f1d9b7aead135f1e40"
+        },
+        "pid": 80204,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:57:41.383257+00:00",
+        "state": "finished",
+        "timeout_seconds": 600.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/chromium-reset-repeated/stderr.log",
+          "bytes": 951,
+          "sha256": "cf685c30eee1a6bdc30acc63abcc974fb21f11b000bdfc7d9c6c6d59b0ced987"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/chromium-reset-repeated/stdout.log",
+          "bytes": 494,
+          "sha256": "56cb5716ae3e5633528243902edd94e52cb41be27c76f3f1d9b7aead135f1e40"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/chromium-reset-repeated/events.jsonl",
+        "bytes": 1081,
+        "sha256": "f3c848fbfce1452bbaa154bed9fdf46e78f6ca0ad6a3bea6e9813afc349e24a3"
+      }
+    },
+    "gnu-all-atomic-types": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 1.1420989169273525,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T22:56:41.487854+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "739787cefd450de9393a729fbf01571b3907347f945e65ea886453c02880c8e0"
+        },
+        "pid": 70901,
+        "schema_version": 1,
+        "started_at": "2026-10-06T22:56:40.281606+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-all-atomic-types/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-all-atomic-types/stdout.log",
+          "bytes": 5206,
+          "sha256": "739787cefd450de9393a729fbf01571b3907347f945e65ea886453c02880c8e0"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/gnu-all-atomic-types/events.jsonl",
+        "bytes": 1119,
+        "sha256": "146400c0783539f0e34cc6f2cab767dedc872cbcf750746516605691576e6ac4"
+      }
+    },
+    "gnu-digits-expanded": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "/Users/bernardoferrari/Downloads/rport/crates/r-embed/tests/fixtures/print-digits-public-contract.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.28726537502370775,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:11:34.901198+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "4c95fa914cb62f6929493e8df4036ceabded2a164c2e297b35755f6a620c68b1"
+        },
+        "pid": 31295,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:11:34.613224+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-digits-expanded/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-digits-expanded/stdout.log",
+          "bytes": 1792,
+          "sha256": "4c95fa914cb62f6929493e8df4036ceabded2a164c2e297b35755f6a620c68b1"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/gnu-digits-expanded/events.jsonl",
+        "bytes": 1184,
+        "sha256": "59ab33701c86d1f4bb06f53f7ba85d9e9160f769a3022642abaa21b133777ba5"
+      }
+    },
+    "gnu-jit-public-values": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/jit-public-values.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.18491575005464256,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:11:35.088820+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "a8b7ebeced51362c05410736cd802970296cd642f65f72df4d34f10a508776ec"
+        },
+        "pid": 31308,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:11:34.903479+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-jit-public-values/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-jit-public-values/stdout.log",
+          "bytes": 9,
+          "sha256": "a8b7ebeced51362c05410736cd802970296cd642f65f72df4d34f10a508776ec"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/gnu-jit-public-values/events.jsonl",
+        "bytes": 1212,
+        "sha256": "88d84de303f64900741b3ff33c69705fe859eec0cdd274766d9d8b0026a97223"
+      }
+    },
+    "gnu-admitted-helpers": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/admitted-print-helpers.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.29484541702549905,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:38:45.321278+00:00",
+        "logs": {
+          "combined.log": "8ae6d7253c59545dd478ae60b496ae856d2d0605355418c4b4d7e9b896caac19"
+        },
+        "pid": 86974,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:38:45.025460+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "combined.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/gnu-admitted-helpers/combined.log",
+          "bytes": 85,
+          "sha256": "8ae6d7253c59545dd478ae60b496ae856d2d0605355418c4b4d7e9b896caac19"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/gnu-admitted-helpers/events.jsonl",
+        "bytes": 1142,
+        "sha256": "138086228728bc614ecbfe0cabf0b23fb11db8e18ff862b9ed4aaef0ed959592"
+      }
+    }
+  },
+  "new_public_gap": {
+    "wrapper": "base::prmatrix",
+    "status": "missing under both constructor policies",
+    "native_helper_unit": "Admitted translated helper passed; public binding does not exist",
+    "processes": {
+      "rust-admitted-helpers-native": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final-runner",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/admitted-print-helpers.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 1.9971088750753552,
+        "execution_complete": true,
+        "exit_code": 1,
+        "finished_at": "2026-10-07T00:00:32.442661+00:00",
+        "logs": {
+          "combined.log": "b51dff2f5a561a5c7c43857fbe80a5c974f54c3a70059fbaad41ffd39b5901bb"
+        },
+        "pid": 98742,
+        "schema_version": 1,
+        "started_at": "2026-10-07T00:00:30.444797+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "rust-admitted-helpers-portable": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final-runner",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/admitted-print-helpers.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport",
+        "elapsed_seconds": 0.9914255000185221,
+        "execution_complete": true,
+        "exit_code": 1,
+        "finished_at": "2026-10-07T00:00:33.435866+00:00",
+        "logs": {
+          "combined.log": "b51dff2f5a561a5c7c43857fbe80a5c974f54c3a70059fbaad41ffd39b5901bb"
+        },
+        "pid": 99149,
+        "schema_version": 1,
+        "started_at": "2026-10-07T00:00:32.444005+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      }
+    }
+  },
+  "whole_driver_processes": {
+    "gnu": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+          "--vanilla",
+          "print-tests.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/gnu-workspace",
+        "elapsed_seconds": 0.31275499996263534,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:43.543836+00:00",
+        "logs": {
+          "combined.log": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        },
+        "pid": 52962,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:43.230589+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "combined.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/gnu/combined.log",
+          "bytes": 23364,
+          "sha256": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/gnu/events.jsonl",
+        "bytes": 1096,
+        "sha256": "659ae2721aea775992b10263292aab913819fd9ad966f9db6fba4183d9425eae"
+      }
+    },
+    "rust-native": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final-runner",
+          "print-tests.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/rust-native-workspace",
+        "elapsed_seconds": 6.206547750043683,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:49.890631+00:00",
+        "logs": {
+          "combined.log": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        },
+        "pid": 52979,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:43.683468+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "combined.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-native/combined.log",
+          "bytes": 23364,
+          "sha256": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-native/events.jsonl",
+        "bytes": 1114,
+        "sha256": "1692fc441903b3679d21cee130a263795a2a544c111f3e89ebea055612ff0fd6"
+      }
+    },
+    "rust-portable": {
+      "process": {
+        "command": [
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final-runner",
+          "print-tests.R"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable-workspace",
+        "elapsed_seconds": 5.583758665947244,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:55.573745+00:00",
+        "logs": {
+          "combined.log": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        },
+        "pid": 53544,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:49.989556+00:00",
+        "state": "finished",
+        "timeout_seconds": 1800.0
+      },
+      "logs": {
+        "combined.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable/combined.log",
+          "bytes": 23364,
+          "sha256": "0df1e818150e828f6346170d52b3573ec7b944653ebbd3d3536b0b19537e91f1"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable/events.jsonl",
+        "bytes": 1118,
+        "sha256": "1c8af497e23c45651d448a483c89aebedbde9ed003e71241417466c64988103c"
+      }
+    },
+    "gnu-normalize": {
+      "process": {
+        "command": [
+          "/bin/bash",
+          "-o",
+          "pipefail",
+          "-c",
+          "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/awk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+          "_",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/gnu/combined.log"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final",
+        "elapsed_seconds": 0.012772541958838701,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:43.566958+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        },
+        "pid": 52975,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:43.553798+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/gnu-normalize/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/gnu-normalize/stdout.log",
+          "bytes": 22519,
+          "sha256": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/gnu-normalize/events.jsonl",
+        "bytes": 1655,
+        "sha256": "1a08cbd4abb5c5ee0cd174b158c3e8e1dc9d1276ce0855a3ee49e24b14a53153"
+      }
+    },
+    "rust-native-normalize": {
+      "process": {
+        "command": [
+          "/bin/bash",
+          "-o",
+          "pipefail",
+          "-c",
+          "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/awk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+          "_",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/rust-native/combined.log"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final",
+        "elapsed_seconds": 0.012999624945223331,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:49.908341+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        },
+        "pid": 53540,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:49.894591+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-native-normalize/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-native-normalize/stdout.log",
+          "bytes": 22519,
+          "sha256": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-native-normalize/events.jsonl",
+        "bytes": 1671,
+        "sha256": "2e35db0d0bbc1670c43d716138900ab630c0bb151772853d729bd96e1d543912"
+      }
+    },
+    "rust-portable-normalize": {
+      "process": {
+        "command": [
+          "/bin/bash",
+          "-o",
+          "pipefail",
+          "-c",
+          "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/awk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+          "_",
+          "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable/combined.log"
+        ],
+        "cwd": "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final",
+        "elapsed_seconds": 0.01324758306145668,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-06T23:49:55.590867+00:00",
+        "logs": {
+          "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout.log": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        },
+        "pid": 53819,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:49:55.577017+00:00",
+        "state": "finished",
+        "timeout_seconds": 120.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable-normalize/stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable-normalize/stdout.log",
+          "bytes": 22519,
+          "sha256": "d50ea624570ecf7db2f1eb59eafdd88e52b01cd8a5934079177b929860e3a510"
+        }
+      },
+      "events": {
+        "path": "target/integration-repair-evidence/vector-print-limits/whole-final/rust-portable-normalize/events.jsonl",
+        "bytes": 1674,
+        "sha256": "7bc43268d4f177194ac906650caae228e4e90d8da6faf3b0711b8fa379ecca7e"
+      }
+    }
+  },
+  "production_module": {
+    "path": "target/integration-repair-evidence/vector-print-limits/final-production-pkg/r_wasm_bg.wasm",
+    "bytes": 25732513,
+    "sha256": "829d0a295845d16e16fafd76a48aa17f4e636f25d5c52a4380f357d3ff12daf8"
+  },
+  "generated_pdf_manifest": {
+    "path": "target/integration-repair-evidence/vector-print-limits/generated-pdf/manifest.json",
+    "bytes": 24324,
+    "sha256": "297e48cfaa65be3287e92c04a0c7cd5692b0d4325d048916b2b41539ab3bb9db"
+  },
+  "whole_driver_profile": {
+    "source_commit": "439c1eec519b4c075d815aa8c19f64e09a557771",
+    "source_dirty": true,
+    "driver_sha256": "f0afbf3684778a2a930263dd9ea6894f4c645800f344327a2fb20d58ae1339e3",
+    "runtime": "graphics/native+portable/faer/release",
+    "driver": "Unchanged complete pinned GNU print-tests.R",
+    "normalizer": "Original core-v1 pipeline; no added output stripping",
+    "compiled_artifacts": {
+      "/Users/bernardoferrari/Downloads/rport/target/release/librmath.rlib": "4b423a7b5ff0b33e22605563b0a9da45b0da81ef9efb68b6c5129993bb92b48f",
+      "/Users/bernardoferrari/Downloads/rport/target/release/deps/libr_graphics_engine-738d5245ec3ec8db.rlib": "5ff60984a244ed3f1bca2b41fa8f014a6e4319941eac1f3c4d85e22057940588",
+      "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/vector-print-limits/whole-final-runner": "f3c3f868a4be940188567d336022dc1a9b94cb462503b768c37f9c54a05cf669"
+    },
+    "source_files": {
+      "crates/rmath/src/mainutils/print.rs": "0aaba6b4b82f664fa02de1200ddfbef45e16741ba79bb60dc30bafee090f2160",
+      "crates/rmath/src/sexp/output.rs": "ab9a299ba7020196c72d7b5aa35a95e22dd29df2acc14d69cb5c236f253042a9",
+      "crates/rmath/src/mainutils/printutils.rs": "8b174b0f9eadd2305bd50a326c48dbd6b16c75bf10c89f622e475c3f7688ad51"
+    }
+  },
+  "execution_join": [
+    {
+      "wrappers": [
+        "base::print",
+        "base::print.default",
+        "base::print.Date",
+        "base::unclass",
+        "compiler::enableJIT"
+      ],
+      "implementation_paths": [
+        "crates/rmath/src/mainutils/print.rs",
+        "crates/rmath/src/mainutils/printutils.rs",
+        "crates/rmath/src/sexp/output.rs",
+        "crates/rmath/src/eval/bc_compile.rs",
+        "crates/rmath/src/mainutils/essentials_basic.rs",
+        "crates/rmath/src/sexp/gnu_print_Date.R"
+      ],
+      "tested": "Vector types/max/NA/names/visibility, explicit digits/coercion/matrices, nested S3 callbacks, GC, caught errors and output/message sinks, original whole GNU print driver, real reset on five original GNU fixtures, compiled lazydots unused promises and computed-head source fallback",
+      "profile": "Both native package policies, optimized portable Wasm and Chromium original budgets",
+      "last_verified_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+      "scope": "Specific demonstrated public options; not a claim of all GNU print or compiler behavior",
+      "implementation_source_sha256": {
+        "crates/rmath/src/mainutils/print.rs": "0aaba6b4b82f664fa02de1200ddfbef45e16741ba79bb60dc30bafee090f2160",
+        "crates/rmath/src/mainutils/printutils.rs": "8b174b0f9eadd2305bd50a326c48dbd6b16c75bf10c89f622e475c3f7688ad51",
+        "crates/rmath/src/sexp/output.rs": "ab9a299ba7020196c72d7b5aa35a95e22dd29df2acc14d69cb5c236f253042a9",
+        "crates/rmath/src/eval/bc_compile.rs": "1361689cb35f5ee001d0c0b9f220766eacf1aa6ee893859b0bac561e079926de",
+        "crates/rmath/src/mainutils/essentials_basic.rs": "097e80d373894f732a5327b991bb63d64e8082397b3d83ab7500668c6dd472c1",
+        "crates/rmath/src/sexp/gnu_print_Date.R": "3de59205e821feef480ee6544c382c2c59d6875df5e0eb9675e9d311af06d1e9"
+      }
+    }
+  ],
+  "immutable_ci_checkpoint": {
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37549513677",
+    "source_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+    "status_when_recorded": "in_progress",
+    "results": "Pending; local acceptance and completed640 inventory are separate."
+  }
+}

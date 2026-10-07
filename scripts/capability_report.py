@@ -47,6 +47,7 @@ view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
 latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-640966a2.json').read_text())
 latest_linux = latest_completed
+print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
 correlation = json.loads((root / 'docs/ci-checkpoints/correlation-b9d1bef7.json').read_text())
 report = f'''# Compatibility evidence inventory
@@ -306,6 +307,23 @@ The full workspace completes with an actual early failure in the JIT fixture
 that assumes dots forwarding remains unsupported; subsequent workspace tests
 and UniFFI checks have not completed. This is separate from the earlier35-minute
 cancellations and from the later local print-driver repair.
+
+The [d684 print-workflow receipt](ci-checkpoints/vector-print-workflow-d6844517.json)
+records {print_workflow['acceptance']['native_public_tests']} selected native passes,
+{print_workflow['acceptance']['print_unit_tests']} print unit passes, and
+{print_workflow['acceptance']['production_contracts_per_fresh_session']} production Wasm contracts
+in each of two fresh sessions. All {print_workflow['acceptance']['chromium']['expected']} local
+Chromium tests and three extra actual-reset repetitions pass under the original
+budgets. The unchanged complete GNU `print-tests.R` driver exits successfully
+and matches strictly under both constructor policies, using the existing
+normalization. Explicit vector limits, recursive digits, caught method output,
+sink ordering and original-owner cleanup are exercised by independent GNU
+fixtures. The JIT gate now checks compiled lazy dots and a real computed-head
+source fallback. Local artifacts were built before commit with their exact
+source fingerprints preserved. Complete same-source Linux inventories are
+pending; the latest completed totals above remain at640. A separate public
+probe finds `prmatrix` missing under both policies despite the translated helper
+unit passing. That gap remains open and is excluded from passing public evidence.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

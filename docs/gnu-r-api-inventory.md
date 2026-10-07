@@ -312,3 +312,17 @@ passes/22 failures/31 skips and all15 curated passes. Original388 is the only
 conformance status change versusbfca. All61 Linux browser cases pass. Full
 workspace execution fails at the stale JIT dots fixture; later tests remain
 unexecuted. The later print-driver repair has separate evidence.
+
+
+The [d684 print workflow join](ci-checkpoints/vector-print-workflow-d6844517.json)
+links public print/default/Date and compiler workflows to their implementation
+paths, tested options and exact source fingerprint. All73 selected native tests,
+25 print unit tests,33 production Wasm contracts in two fresh sessions,61 local
+Chromium cases and three extra actual-reset repetitions pass. The complete
+unchanged GNU `print-tests.R` driver matches strictly under both constructor
+policies. Explicit limits/digits, missing values, nested S3 callbacks, collecting
+callbacks, caught errors, sink order and original-owner cleanup have independent
+GNU fixtures. The immutable Linux checkpoint is pending, so complete inventory
+counts remain attached to640. A separately executed public `prmatrix` probe fails
+under both policies even though its translated helper unit passes; it is retained
+as an open gap and excluded from verified public bindings.
