@@ -93,8 +93,8 @@ records actual public workflow repairs and preserves their separate source commi
 | Local complete Chromium showcase | `6ccae790` | 60 | 0 | Original 59 plus reset regression; zero skipped or flaky |
 | Linux native package integration | `6ccae790` | 49 | 0 | Explicit empty and native policy; no host Rscript or R_HOME |
 | Linux complete Chromium showcase | `6ccae790` | 56 | 4 | All 60 accounted for; zero skipped or flaky |
-| Linux native package integration | `640966a2` | 69 | 0 | Explicit release; separate S4 2 pass / 0 fail |
-| Linux complete Chromium showcase | `640966a2` | 61 | 0 | All 61 accounted for; zero skipped or flaky |
+| Linux native package integration | `d6844517` | 73 | 0 | Explicit release; separate S4 2 pass / 0 fail |
+| Linux complete Chromium showcase | `d6844517` | 61 | 0 | All 61 accounted for; zero skipped or flaky |
 | Public native package/data workflows | `e3e26dea` | 43 | 0 | Includes all 39 embedding tests and both actual constructor policies |
 | Original Wasm dataset contracts | `e3e26dea` | 205 | 0 | 108 original objects; 91 topics; 592931 exact serialized graph bytes |
 | Unchanged whole `eval-etc.R` | `c4de20b5` | 1 | 0 | Strict GNU comparison; graphics/native/faer release |
@@ -131,9 +131,9 @@ selected passes do not change the completed 711 inventory totals above.
 
 | Complete executed set | Pass | Fail | Other |
 | --- | ---: | ---: | --- |
-| Exact-oracle conformance (`640966a2`) | 1090 | 91 | All 1181 accounted for; zero timeouts |
-| Whole upstream drivers | 17 | 22 | 31 skipped; all 70 accounted for (`640966a2`) |
-| Curated upstream slices | 15 | 0 | All 15 accounted for (`640966a2`) |
+| Exact-oracle conformance (`d6844517`) | 1090 | 91 | All 1181 accounted for; zero timeouts |
+| Whole upstream drivers | 18 | 21 | 31 skipped; all 70 accounted for (`d6844517`) |
+| Curated upstream slices | 15 | 0 | All 15 accounted for (`d6844517`) |
 
 The [earlier conformance/browser receipt](ci-checkpoints/conformance-browser-1d3d8184.json)
 independently authenticates all six producers at `1d3d8184`: **1086 pass / 95 fail**,
@@ -268,9 +268,17 @@ normalization. Explicit vector limits, recursive digits, caught method output,
 sink ordering and original-owner cleanup are exercised by independent GNU
 fixtures. The JIT gate now checks compiled lazy dots and a real computed-head
 source fallback. Local artifacts were built before commit with their exact
-source fingerprints preserved. Complete same-source Linux inventories are
-pending; the latest completed totals above remain at640. A separate public
-probe finds `prmatrix` missing under both policies despite the translated helper
+source fingerprints preserved. The authenticated
+[complete same-source Linux receipt](ci-checkpoints/conformance-browser-d6844517.json)
+reproduces1090/91 conformance,18/21/31 whole drivers,15/0 curated slices,
+73native public passes, two separate S4 passes,33production contracts in each
+of two fresh sessions, and61Chromium passes. All six conformance and five
+upstream producers match independently reconstructed unions from the clean
+frozen source. The unchanged whole `print-tests.R` newly passes versus640;
+the conformance failure set is unchanged. Debug workspace execution compiles
+in6m28s and completes48suites/187tests, including all3repaired JIT tests, before
+the35-minute deadline cancels `gnu_bytecode_dollar`. Later workspace targets
+and UniFFI remain unverified. A separate public probe atd684 finds `prmatrix` missing under both policies despite the translated helper
 unit passing. That gap remains open and is excluded from passing public evidence.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)

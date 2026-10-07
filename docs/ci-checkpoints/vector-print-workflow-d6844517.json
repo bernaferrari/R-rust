@@ -1235,7 +1235,8 @@
   "immutable_ci_checkpoint": {
     "url": "https://github.com/bernaferrari/R-rust/actions/runs/37549513677",
     "source_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
-    "status_when_recorded": "in_progress",
-    "results": "Pending; local acceptance and completed640 inventory are separate."
+    "status_when_recorded": "completed",
+    "results": "Authenticated complete Linux receipt conformance-browser-d6844517.json:1090pass/91fail conformance;18pass/21fail/31skip whole;15pass curated;73native public tests;61Chromium pass. Full debug workspace cancelled at35-minute budget after48completed suites187passes; later targets unverified.",
+    "receipt": "docs/ci-checkpoints/conformance-browser-d6844517.json"
   }
 }

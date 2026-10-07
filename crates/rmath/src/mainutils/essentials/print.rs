@@ -2765,6 +2765,9 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             }
             return result;
         }
+        if XLENGTH(x) == 0 {
+            return x;
+        }
         let frame_names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         let mut leaves: Vec<SEXP> = Vec::new();
@@ -2897,6 +2900,7 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         let rest = format_data_frame_rest_args(args);
         let _rest_guard = protect(rest);
         let out = crate::mainutils::duplicate::shallow_duplicate(base);
+        let _out_guard = protect(out);
         let ncol = XLENGTH(out);
         for i in 0..ncol {
             let col = VECTOR_ELT(out, i);
@@ -2915,6 +2919,16 @@ pub unsafe fn do_format_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             }
             SET_VECTOR_ELT(out, i, formatted);
         }
+        // GNU format.data.frame assigns row.names(x), a character vector,
+        // after constructing its formatted columns. These labels are explicit
+        // even when x originally had automatic compact row names.
+        let rows = string_vector(&data_frame_row_names(x));
+        let _rows_guard = protect(rows);
+        crate::sexp::attrib_core::setAttrib(
+            out,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+            rows,
+        );
         out
     }
 }

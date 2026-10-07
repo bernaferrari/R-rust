@@ -129,7 +129,8 @@ jobs:
           --test try_condition_calls --test slot_try_error --test gnu_bytecode_source_marker
           --test s3_methods_public_contract
           --test base_print_methods
-          --test vector_print_limits --test enable_jit
+          --test vector_print_limits --test enable_jit --test prmatrix_public_contract
+          --test array_attributes_gnu
 
       - name: Verify original S4 subset calls through both public policies
         run: >-

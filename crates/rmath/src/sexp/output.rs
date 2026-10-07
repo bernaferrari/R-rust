@@ -656,6 +656,12 @@ fn format_access_error(err: impl std::fmt::Display) -> String {
     format!("<{err}>")
 }
 
+fn format_raw_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_raw_elt(i)
+        .map(format_raw_value)
+        .unwrap_or_else(format_access_error)
+}
+
 fn format_integer_element(x: Sexp<'_>, i: R_xlen_t) -> String {
     x.try_integer_elt(i)
         .map(format_integer_value)
@@ -1466,6 +1472,9 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
             format_logical_element(x.clone(), (r + c * nrow) as i64)
         }),
         SEXPTYPE::CPLXSXP => format_complex_matrix_gnu(x.clone(), nrow, ncol),
+        SEXPTYPE::RAWSXP => format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_raw_element(x.clone(), (r + c * nrow) as i64)
+        }),
         SEXPTYPE::STRSXP => {
             let quote = print_quote_flag()
                 && !has_class(x.clone(), "noquote")
@@ -1606,6 +1615,7 @@ fn format_array_slice_body(
             SEXPTYPE::INTSXP => format_integer_element(x.clone(), index),
             SEXPTYPE::REALSXP => format_real_element(x.clone(), index),
             SEXPTYPE::CPLXSXP => format_complex_element(x.clone(), index),
+            SEXPTYPE::RAWSXP => format_raw_element(x.clone(), index),
             _ => "NA".to_string(),
         }
     })
@@ -3724,6 +3734,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
@@ -3849,7 +3863,7 @@ pub(crate) fn capture_printed_value(x: Sexp<'_>) -> Result<RCapturedOutput, Prin
     }
 }
 
-fn emit(msg: &str) {
+pub(crate) fn emit(msg: &str) {
     if is_capturing() {
         capture_stdout(msg);
     } else {
@@ -3984,6 +3998,9 @@ fn format_sexp_body(x: Sexp<'_>) -> String {
         }
 
         SEXPTYPE::RAWSXP => {
+            if let Some(output) = format_matrix(x.clone()) {
+                return output;
+            }
             if x.clone().len() == 0 {
                 return format_with_printable_attributes("raw(0)".to_string(), x);
             }

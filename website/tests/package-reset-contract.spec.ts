@@ -10,6 +10,7 @@ test("original package and compiled method contracts survive a public runtime re
     "compiled-dots-public-contract",
     "vector-print-limits-public-contract",
     "print-digits-public-contract",
+    "prmatrix-public-contract",
   ]
   const contracts = names.map((name) => ({
     name,

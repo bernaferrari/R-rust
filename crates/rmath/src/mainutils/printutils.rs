@@ -41,7 +41,7 @@ use crate::mainutils::format::{
 //
 // `eprint!` during `cargo test` is taken by the harness before it reaches
 // fd 2. Printers call [`console_emit`] so a test can keep those bytes.
-// With no sink installed this is `eprint!`.
+// Production printers use the runtime's stdout capture and connection sinks.
 // ---------------------------------------------------------------------------
 
 thread_local! {
@@ -57,7 +57,7 @@ pub(crate) fn console_emit(args: std::fmt::Arguments<'_>) {
     if let Some(buf) = sink {
         let _ = std::fmt::Write::write_fmt(&mut *buf.borrow_mut(), args);
     } else {
-        std::eprint!("{args}");
+        crate::sexp::output::emit(&args.to_string());
     }
 }
 

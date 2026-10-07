@@ -1,0 +1,1267 @@
+{
+  "schema_version": 1,
+  "source_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+  "immutable_run": "37549513677",
+  "url": "https://github.com/bernaferrari/R-rust/actions/runs/37549513677",
+  "scope": "Complete immutable Linux conformance/upstream joins authenticated against clean detached d684 source. Package and browser checks pass independently; full debug workspace reaches later targets but exceeds35-minute budget. Public prmatrix repairs on a later local candidate are excluded.",
+  "conformance": {
+    "status_counts": {
+      "fail": 91,
+      "pass": 1090,
+      "skip": 0,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "inventory_total": 1181,
+    "total": 1181,
+    "execution_complete": true,
+    "full_inventory_complete": true,
+    "errors": [],
+    "timed_out": 0
+  },
+  "conformance_failures": [
+    {
+      "case": "1000_plclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1003_plot_stepfun",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1005_heatmap",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1006_rect_hclust",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1007_qqline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1009_cpgram",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1010_plot_ts",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1012_monthplot_scatter",
+      "detail": "",
+      "domain": "Graphics and Android embedding",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1013_interaction_lag_eff",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1015_struct_ts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1016_struct_ts_bsm",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1046_arima_ma2_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1047_arima_ar1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1048_arima_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1049_arima_ma1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1050_arima_ar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1051_arima_ma1_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1052_arima_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1053_arima_sar1_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1054_arima_ar3_ml",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1056_arima_arma11_sar1_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1060_arima_arma12_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1063_arima_arma11_sar1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1064_arima_arma11_sma1_ml",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1067_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1068_structts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1069_structts_trend",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1070_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "1102_str_atomic_preview",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "293_read_write_char_connections",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "328_date_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "329_posixct_arithmetic",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "331_datetime_c_rep",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "333_difftime_ops",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "381_no_random_seed_loadrds_functions",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "385_no_string_reshape_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "387_no_runtime_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "389_no_reflection_helper_alias_builtins",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "393_summary_default_vectors",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "432_prop_table_margins",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "523_signif_fprec_edge_matrix",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "537_strptime_posixlt_parity",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "570_loess_contracts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "599_density",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "602_supsmu",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "604_isoreg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "612_smooth_spline",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "614_stl",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "617_holtwinters",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "621_ks_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "623_ccf",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "637_diffinv",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "646_D_hyp",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "650_D_atan",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "651_D_gamma",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "652_holtwinters_alpha",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "653_deriv3",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "654_holtwinters_sse",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "656_nlminb",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "657_holtwinters_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "660_armaacf",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "666_holtwinters_x",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "671_is_ts",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "689_adist",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "697_bindtextdomain",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "705_localeToCharset",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "710_ISOdate",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "720_as_POSIXct_lt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "724_mean_Date",
+      "detail": "",
+      "domain": "Stats, math, and RNG",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "726_trunc_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "727_round_POSIXt",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "731_as_list_Date",
+      "detail": "",
+      "domain": "Vectors, lists, attributes, and objects",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "739_xtfrm_julian_POSIXt",
+      "detail": "",
+      "domain": "Base functions, conditions, and platform helpers",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "757_ansari_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "769_pp_test",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "774_aregexec",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "793_covratio",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "809_lm_influence",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "820_dummy_coef",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "858_dfbetas",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "863_struct_ts_level",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "864_factanal",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "888_ts_smooth",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "901_ar_burg",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "927_loglin",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "929_psmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "930_qsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "961_density_default",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "988_ppr",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "995_rsmirnov",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    },
+    {
+      "case": "999_arima0_diag",
+      "detail": "",
+      "domain": "Parser and scalar basics",
+      "kind": "normal",
+      "status": "fail"
+    }
+  ],
+  "changes_against_640": {
+    "conformance": [],
+    "whole": [
+      {
+        "case": "print-tests.R",
+        "before": "fail",
+        "after": "pass"
+      }
+    ]
+  },
+  "complete_upstream": {
+    "status_counts": {
+      "fail": 21,
+      "pass": 33,
+      "skip": 31,
+      "xfail": 0,
+      "xpass": 0
+    },
+    "total": 85,
+    "inventory_total": 85,
+    "full_inventory_complete": true,
+    "execution_complete": true,
+    "errors": [],
+    "runtime": {
+      "cargo_features": [
+        "default",
+        "faer",
+        "rust-backend",
+        "r-graphics-engine",
+        "renderplot-device"
+      ],
+      "device": {
+        "font": "bundled DejaVu Sans",
+        "height": 504,
+        "name": "renderplot-scene",
+        "output": "owned display list",
+        "width": 504
+      },
+      "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+      "name": "graphics",
+      "numerical_backend": "faer",
+      "package_policy": "native",
+      "top_level_evaluation_mode": "Script"
+    },
+    "whole": {
+      "skip": 31,
+      "pass": 18,
+      "fail": 21
+    },
+    "curated": {
+      "pass": 15
+    },
+    "failed_cases": [
+      {
+        "case": "classes-methods.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "conditions.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "d-p-q-r-tests.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "d-p-q-r-tst-2.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "datasets.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "datetime2.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "datetime3.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "datetime4.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "datetime5.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "demos.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "demos2.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "iconv.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "lm-tests.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "p-qbeta-strict-tst.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "r-strict-tst.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "reg-plot-latin1.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      },
+      {
+        "case": "reg-tests-1a.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "reg-tests-1b.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "reg-tests-1c.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "reg-tests-1d.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust runner exited non-zero",
+        "reason": "-"
+      },
+      {
+        "case": "utf8.R",
+        "kind": "whole",
+        "status": "fail",
+        "detail": "Rust output diverged from stock R",
+        "reason": "-"
+      }
+    ]
+  },
+  "browser": {
+    "stats": {
+      "startTime": "2026-10-07T00:10:46.880Z",
+      "duration": 509761.52599999995,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "report": {
+      "path": "target/ci-checkpoint-d6844517/showcase-validation/_temp/showcase-evidence/playwright.json",
+      "bytes": 79698,
+      "sha256": "c6fc545204c89489f94bc8846a5f7a8de113207fdb913b6f2011294ec907a24e"
+    },
+    "budgets": "Original examples, assertions and selectors; runtime15s/editor20s/FFT90s/heap64MiB/nodes500k/Wasm25MiB; workers1. All61 pass with zero skips/flakes. Separate repeated Linux timing reliability is not established.",
+    "failures": []
+  },
+  "native_public": {
+    "run_url": "https://github.com/bernaferrari/R-rust/actions/runs/37549513677",
+    "profile": {
+      "source_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+      "build_profile": "release",
+      "features": [
+        "r-embed/default",
+        "rmath/rust-backend",
+        "rmath/renderplot-device"
+      ],
+      "numerical_backend": "faer",
+      "device": "owned renderplot scene",
+      "package_policies": [
+        "native/default",
+        "portable/explicit-empty"
+      ],
+      "host_rscript": null,
+      "r_home": null,
+      "timeout_seconds": 2400,
+      "scope": "Selected public package tests; separate from complete workspace and conformance results"
+    },
+    "profile_receipt": {
+      "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/profile.json",
+      "bytes": 517,
+      "sha256": "96378ea977ee1b20c661f38152fe58a9006be6ec1b325f3a4edd32bb0d1b9862"
+    },
+    "execute": {
+      "process": {
+        "command": [
+          "scripts/cargo_dev.sh",
+          "test",
+          "-p",
+          "r-embed",
+          "--release",
+          "--test",
+          "embed",
+          "--test",
+          "namespace_initialization",
+          "--test",
+          "portable_namespace_integration",
+          "--test",
+          "portable_grdevices_namespace",
+          "--test",
+          "portable_stats_namespace",
+          "--test",
+          "complex_print_contract",
+          "--test",
+          "get_lazy_mode",
+          "--test",
+          "correlation_public_contract",
+          "--test",
+          "palette_public_contract",
+          "--test",
+          "bincode_public_contract",
+          "--test",
+          "arima0_public_contract",
+          "--test",
+          "utils_console_public_contract",
+          "--test",
+          "mapply_public_contract",
+          "--test",
+          "sample_condition_contract",
+          "--test",
+          "rep_len_admission_contract",
+          "--test",
+          "unserialize_connection_contract",
+          "--test",
+          "calling_error_handlers",
+          "--test",
+          "calling_warning_handlers",
+          "--test",
+          "try_condition_calls",
+          "--test",
+          "slot_try_error",
+          "--test",
+          "gnu_bytecode_source_marker",
+          "--test",
+          "s3_methods_public_contract",
+          "--test",
+          "base_print_methods",
+          "--test",
+          "vector_print_limits",
+          "--test",
+          "enable_jit"
+        ],
+        "cwd": "/home/runner/work/R-rust/R-rust",
+        "elapsed_seconds": 414.111672249,
+        "execution_complete": true,
+        "exit_code": 0,
+        "finished_at": "2026-10-07T00:06:40.507837+00:00",
+        "logs": {
+          "stderr.log": "74a273b0ce88be2080810902884837198ed8992b6f7656c499435d4695f6580e",
+          "stdout.log": "8842d1a07bd51ee5790ed25f94c493453de498a82708cbba09b5ca305c1402fd"
+        },
+        "pid": 2495,
+        "schema_version": 1,
+        "started_at": "2026-10-06T23:59:46.379492+00:00",
+        "state": "finished",
+        "timeout_seconds": 2400.0
+      },
+      "logs": {
+        "stderr.log": {
+          "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/execute/stderr.log",
+          "bytes": 9027,
+          "sha256": "74a273b0ce88be2080810902884837198ed8992b6f7656c499435d4695f6580e"
+        },
+        "stdout.log": {
+          "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/execute/stdout.log",
+          "bytes": 7762,
+          "sha256": "8842d1a07bd51ee5790ed25f94c493453de498a82708cbba09b5ca305c1402fd"
+        }
+      }
+    },
+    "selected": {
+      "passed": 73,
+      "failed": 0,
+      "suites": 25,
+      "receipt": {
+        "process": {
+          "command": [
+            "scripts/cargo_dev.sh",
+            "test",
+            "-p",
+            "r-embed",
+            "--release",
+            "--test",
+            "embed",
+            "--test",
+            "namespace_initialization",
+            "--test",
+            "portable_namespace_integration",
+            "--test",
+            "portable_grdevices_namespace",
+            "--test",
+            "portable_stats_namespace",
+            "--test",
+            "complex_print_contract",
+            "--test",
+            "get_lazy_mode",
+            "--test",
+            "correlation_public_contract",
+            "--test",
+            "palette_public_contract",
+            "--test",
+            "bincode_public_contract",
+            "--test",
+            "arima0_public_contract",
+            "--test",
+            "utils_console_public_contract",
+            "--test",
+            "mapply_public_contract",
+            "--test",
+            "sample_condition_contract",
+            "--test",
+            "rep_len_admission_contract",
+            "--test",
+            "unserialize_connection_contract",
+            "--test",
+            "calling_error_handlers",
+            "--test",
+            "calling_warning_handlers",
+            "--test",
+            "try_condition_calls",
+            "--test",
+            "slot_try_error",
+            "--test",
+            "gnu_bytecode_source_marker",
+            "--test",
+            "s3_methods_public_contract",
+            "--test",
+            "base_print_methods",
+            "--test",
+            "vector_print_limits",
+            "--test",
+            "enable_jit"
+          ],
+          "cwd": "/home/runner/work/R-rust/R-rust",
+          "elapsed_seconds": 414.111672249,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-07T00:06:40.507837+00:00",
+          "logs": {
+            "stderr.log": "74a273b0ce88be2080810902884837198ed8992b6f7656c499435d4695f6580e",
+            "stdout.log": "8842d1a07bd51ee5790ed25f94c493453de498a82708cbba09b5ca305c1402fd"
+          },
+          "pid": 2495,
+          "schema_version": 1,
+          "started_at": "2026-10-06T23:59:46.379492+00:00",
+          "state": "finished",
+          "timeout_seconds": 2400.0
+        },
+        "logs": {
+          "stderr.log": {
+            "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/execute/stderr.log",
+            "bytes": 9027,
+            "sha256": "74a273b0ce88be2080810902884837198ed8992b6f7656c499435d4695f6580e"
+          },
+          "stdout.log": {
+            "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/execute/stdout.log",
+            "bytes": 7762,
+            "sha256": "8842d1a07bd51ee5790ed25f94c493453de498a82708cbba09b5ca305c1402fd"
+          }
+        }
+      }
+    },
+    "separate_s4": {
+      "passed": 2,
+      "failed": 0,
+      "warm_s4_seconds": [
+        14.858519596,
+        14.726770851
+      ],
+      "receipt": {
+        "process": {
+          "command": [
+            "scripts/cargo_dev.sh",
+            "test",
+            "-p",
+            "r-embed",
+            "--release",
+            "--test",
+            "s4_next_method",
+            "s4_next_method_",
+            "--",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "cwd": "/home/runner/work/R-rust/R-rust",
+          "elapsed_seconds": 83.12409756700004,
+          "execution_complete": true,
+          "exit_code": 0,
+          "finished_at": "2026-10-07T00:08:03.711638+00:00",
+          "logs": {
+            "stderr.log": "00fba83cc50e29ee617438c41beea3a2dd954acb779fa80831037edeb6884425",
+            "stdout.log": "680e9540d5c5af24f432ae929e81a549beada9025616d72fb21f7b522796a42d"
+          },
+          "pid": 6262,
+          "schema_version": 1,
+          "started_at": "2026-10-07T00:06:40.586267+00:00",
+          "state": "finished",
+          "timeout_seconds": 2400.0
+        },
+        "logs": {
+          "stderr.log": {
+            "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/s4-subset-call/stderr.log",
+            "bytes": 741,
+            "sha256": "00fba83cc50e29ee617438c41beea3a2dd954acb779fa80831037edeb6884425"
+          },
+          "stdout.log": {
+            "path": "target/ci-checkpoint-d6844517/public-package-checkpoint/s4-subset-call/stdout.log",
+            "bytes": 997,
+            "sha256": "680e9540d5c5af24f432ae929e81a549beada9025616d72fb21f7b522796a42d"
+          }
+        }
+      }
+    }
+  },
+  "production_wasm": {
+    "contracts_per_session": 33,
+    "fresh_sessions": 2,
+    "report": {
+      "path": "target/ci-checkpoint-d6844517/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
+      "bytes": 12936,
+      "sha256": "65c7f96c7bdac2fb77d829bc8e37922af6d533b22a3bc19274ea42a3f5c69093"
+    },
+    "module_sha256": "a9082a76e193a28a68cc4555df9fd6042af1bc7d69c7b80967c06a2b690bb74c",
+    "scope": "Two fresh WasmRSession instances; actual RRuntime.reset separately exercised by Chromium on five public fixtures."
+  },
+  "workspace": {
+    "conclusion": "cancelled",
+    "job_url": "https://github.com/bernaferrari/R-rust/actions/runs/37549513677/job/112561406117",
+    "scope": "Debug compilation6m28s;48completed suites187passes and repaired JIT3passes.35-minute budget cancels during gnu_bytecode_dollar after four tests pass. Later targets, remaining workspace suites, and UniFFI have no completed acceptance.",
+    "report": {
+      "path": "target/ci-checkpoint-d6844517/workspace-job.log",
+      "bytes": 222182,
+      "sha256": "3268793b6567bca3012aa313781b99247c2083ad5a359faece9d999cebdcad1b"
+    }
+  },
+  "authentication": {
+    "source_checkout": "/Users/bernardoferrari/.codex/worktrees/checkpoint-d339e355/rport",
+    "source_clean": true,
+    "producer_contracts_validated": {
+      "conformance": 6,
+      "upstream": 5
+    },
+    "independent_joins_equal_official": true,
+    "reports": {
+      "exact-oracle-conformance-shard-0/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-0/summary.json",
+        "bytes": 41589,
+        "sha256": "07894ccc9f961a1b77ddeb1ae6ed70b83a42bab1ec698bd3c8f4a1dc788e4573"
+      },
+      "exact-oracle-conformance-shard-1/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-1/summary.json",
+        "bytes": 41491,
+        "sha256": "595125e31e7baa47ffa70212a61436569bdd99e6606e05d00ac940a27c9d708d"
+      },
+      "exact-oracle-conformance-shard-2/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-2/summary.json",
+        "bytes": 41662,
+        "sha256": "648dfd501972e95755d751ae26221bc0caa8b92d14795b2746fe8da74710cb1e"
+      },
+      "exact-oracle-conformance-shard-3/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-3/summary.json",
+        "bytes": 41788,
+        "sha256": "28b5fee5cd5b5e32dbdf4fdc25a322f5e13d7878d1501f9efba551afc5ddeadd"
+      },
+      "exact-oracle-conformance-shard-4/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-4/summary.json",
+        "bytes": 41656,
+        "sha256": "c1eccc4b8dd340ed26e542ad06aeb34b331b8389b8b233da3846f31d9043f7c1"
+      },
+      "exact-oracle-conformance-shard-5/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-shard-5/summary.json",
+        "bytes": 41663,
+        "sha256": "7ac5fb857df0f1ae7df18bbf276fe7347c7340a44d1d5370d525d38751fd8b45"
+      },
+      "exact-oracle-conformance-union/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/exact-oracle-conformance-union/summary.json",
+        "bytes": 200727,
+        "sha256": "f1fa4596b3897991f3658973d617b7960d5783573d9197b9d66e417dedf58db9"
+      },
+      "upstream-r-exact-union/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-exact-union/summary.json",
+        "bytes": 576871,
+        "sha256": "b812a0155bb209db93df061aaf3110cebea7e8b10419e9e5c94037ed419c5e7f"
+      },
+      "upstream-r-shard-curated-0/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-shard-curated-0/summary.json",
+        "bytes": 398371,
+        "sha256": "2c43ce3934b7170020c686bc445be83a0821296a54671e1842bced7b3f97f30a"
+      },
+      "upstream-r-shard-whole-0/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-shard-whole-0/summary.json",
+        "bytes": 366754,
+        "sha256": "66d92b2e11e583f51ae8be6d078c1650c91010b3221f749b1085597049027bd7"
+      },
+      "upstream-r-shard-whole-1/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-shard-whole-1/summary.json",
+        "bytes": 374001,
+        "sha256": "ca75c3eb6037fe1996876accf533bcd633c652f0dccdc988e2b4a8ddc8df7a89"
+      },
+      "upstream-r-shard-whole-2/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-shard-whole-2/summary.json",
+        "bytes": 357262,
+        "sha256": "f7598bb7fe47dfcc2e064cf89cf64180b9382d5900f70ef04106c0e9a687e4ff"
+      },
+      "upstream-r-shard-whole-3/summary.json": {
+        "path": "target/ci-checkpoint-d6844517/upstream-r-shard-whole-3/summary.json",
+        "bytes": 371413,
+        "sha256": "0b77307492591622c540a83de0bac81661df4c846e5d4775e9cb8817513cebd8"
+      }
+    },
+    "independent_conformance": {
+      "path": "target/ci-checkpoint-d6844517/independent-conformance.json",
+      "bytes": 200727,
+      "sha256": "f1fa4596b3897991f3658973d617b7960d5783573d9197b9d66e417dedf58db9"
+    },
+    "independent_upstream": {
+      "path": "target/ci-checkpoint-d6844517/independent-upstream.json",
+      "bytes": 576871,
+      "sha256": "b812a0155bb209db93df061aaf3110cebea7e8b10419e9e5c94037ed419c5e7f"
+    }
+  },
+  "execution_join": [
+    {
+      "wrappers": [
+        "base::print",
+        "base::print.default",
+        "base::print.Date",
+        "base::unclass",
+        "compiler::enableJIT"
+      ],
+      "implementation_paths": [
+        "crates/rmath/src/mainutils/print.rs",
+        "crates/rmath/src/mainutils/printutils.rs",
+        "crates/rmath/src/sexp/output.rs",
+        "crates/rmath/src/eval/bc_compile.rs",
+        "crates/rmath/src/mainutils/essentials_basic.rs",
+        "crates/rmath/src/sexp/gnu_print_Date.R"
+      ],
+      "tested": "Vector max, zero-window padding, recursive explicit digits, original-owner cleanup, S3/S4/list/pairlist output before caught method errors, sink order, compiled lazydots and computed-head source fallback; unchanged enclosing print-tests.R passes strictly. Native73/25suites,33productioncontracts in each of2freshsessions,61LinuxChromium including actualreset.",
+      "profile": "release/faer/renderplot, native/default+portable/explicit-empty, original browser budgets",
+      "last_verified_commit": "d6844517f2b40dbdad4126860339deafad2190bb",
+      "scope": "Demonstrated print-family workflows. Public prmatrix remains missing at this checkpoint;91conformance failures and21whole-driver failures remain."
+    }
+  ]
+}

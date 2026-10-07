@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-640966a2.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-d6844517.json').read_text())
 latest_linux = latest_completed
 print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
 linux_profile = json.loads((root / 'docs/ci-checkpoints/linux-workflow-profile-91babc00.json').read_text())
@@ -320,9 +320,17 @@ normalization. Explicit vector limits, recursive digits, caught method output,
 sink ordering and original-owner cleanup are exercised by independent GNU
 fixtures. The JIT gate now checks compiled lazy dots and a real computed-head
 source fallback. Local artifacts were built before commit with their exact
-source fingerprints preserved. Complete same-source Linux inventories are
-pending; the latest completed totals above remain at640. A separate public
-probe finds `prmatrix` missing under both policies despite the translated helper
+source fingerprints preserved. The authenticated
+[complete same-source Linux receipt](ci-checkpoints/conformance-browser-d6844517.json)
+reproduces1090/91 conformance,18/21/31 whole drivers,15/0 curated slices,
+73native public passes, two separate S4 passes,33production contracts in each
+of two fresh sessions, and61Chromium passes. All six conformance and five
+upstream producers match independently reconstructed unions from the clean
+frozen source. The unchanged whole `print-tests.R` newly passes versus640;
+the conformance failure set is unchanged. Debug workspace execution compiles
+in6m28s and completes48suites/187tests, including all3repaired JIT tests, before
+the35-minute deadline cancels `gnu_bytecode_dollar`. Later workspace targets
+and UniFFI remain unverified. A separate public probe atd684 finds `prmatrix` missing under both policies despite the translated helper
 unit passing. That gap remains open and is excluded from passing public evidence.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)

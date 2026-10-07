@@ -446,6 +446,18 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dimnames = arg_by_name_or_position(args, &["dimnames"], 2);
 
         let data_missing = data.is_null() || data == R_NilValue();
+        if data_missing {
+            let mut cell = args;
+            while !cell.is_null() && cell != R_NilValue() {
+                if tag_name(cell).is_none() || tag_name(cell).as_deref() == Some("data") {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::condition_caller_call(),
+                        "'data' must be of a vector type, was 'NULL'",
+                    );
+                }
+                cell = CDR(cell);
+            }
+        }
         let data_type = if data_missing {
             SEXPTYPE::LGLSXP.as_c_int()
         } else {
@@ -835,9 +847,6 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
         let class =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
@@ -898,72 +907,24 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !existing_dim.is_null()
             && existing_dim != R_NilValue()
             && TYPEOF(existing_dim) == SEXPTYPE::INTSXP
-            && XLENGTH(existing_dim) >= 2
+            && XLENGTH(existing_dim) == 2
         {
             return x;
         }
         if is_data_frame_object(x) {
             return data_frame_as_matrix(x);
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            // Simple vector — copy and set dim attribute
-            let n = XLENGTH(x);
-            let result = Rf_allocVector3(t, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            if t == SEXPTYPE::REALSXP {
-                let src = REAL(x);
-                let dst = REAL(result);
-                for i in 0..n {
-                    *dst.add(i as usize) = *src.add(i as usize);
-                }
-            } else {
-                let src = INTEGER(x);
-                let dst = INTEGER(result);
-                for i in 0..n {
-                    *dst.add(i as usize) = *src.add(i as usize);
-                }
-            }
-            // Set dim = c(n, 1)
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            if !dim.is_null() {
-                let _p2 = protect(dim);
-                let d = INTEGER(dim);
-                *d.add(0) = n as i32;
-                *d.add(1) = 1;
-                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
-            }
-            result
-        } else if t == SEXPTYPE::STRSXP {
-            let n = XLENGTH(x);
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            // Copy string elements
-            for i in 0..n {
-                let charsxp = STRING_ELT(x, i);
-                if !charsxp.is_null() {
-                    SET_STRING_ELT(result, i, charsxp);
-                }
-            }
-            // Set dim = c(n, 1)
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            if !dim.is_null() {
-                let _p2 = protect(dim);
-                let d = INTEGER(dim);
-                *d.add(0) = n as i32;
-                *d.add(1) = 1;
-                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
-            }
-            result
-        } else {
-            // For other types, return as-is
-            x
-        }
+        // Run the original default workflow so all vector kinds, names and
+        // higher-dimensional arrays share array()'s admission and allocation.
+        let default = crate::sexp::envir::R_findVarInFrame(
+            crate::sexp::globals::R_BaseEnv(),
+            Rf_install(c"as.matrix.default".as_ptr()),
+        );
+        let quoted = crate::sexp::constructors::Rf_lang2(Rf_install(c"quote".as_ptr()), x);
+        let _quoted = protect(quoted);
+        let call = crate::sexp::constructors::Rf_lang2(default, quoted);
+        let _call = protect(call);
+        crate::eval::eval::Rf_eval(call, _rho)
     }
 }
 
@@ -1025,10 +986,18 @@ unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let row_names = crate::sexp::attrib_core::getAttrib(
-            frame,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
-        );
+        // getAttrib expands compact row names and loses their automatic flag.
+        // Inspect the stored attribute before choosing matrix row labels.
+        let row_names_symbol = crate::sexp::attrib_core::R_RowNamesSymbol();
+        let mut row_names = R_NilValue();
+        let mut attribute = ATTRIB(frame);
+        while !attribute.is_null() && attribute != R_NilValue() {
+            if TAG(attribute) == row_names_symbol {
+                row_names = CAR(attribute);
+                break;
+            }
+            attribute = CDR(attribute);
+        }
         let automatic = !row_names.is_null()
             && TYPEOF(row_names) == SEXPTYPE::INTSXP
             && XLENGTH(row_names) == 2

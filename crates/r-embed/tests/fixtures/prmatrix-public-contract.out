@@ -1,0 +1,538 @@
+case: default integer 
+      c1 c two
+r1     1    30
+r two NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: explicit labels 
+       left right
+first     1    30
+second   NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: no labels 
+     [,1] [,2]
+[1,]    1   30
+[2,]   NA    4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: custom NA 
+           c1 c two
+r1          1    30
+r two missing     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: input logical 2x2 
+     [,1]  [,2]
+[1,] TRUE FALSE
+[2,]   NA  TRUE
+visible: FALSE type: logical 
+     [,1]  [,2]
+[1,] TRUE FALSE
+[2,]   NA  TRUE
+case: input double 2x2 
+         [,1] [,2]
+[1,] 3.141593  Inf
+[2,]       NA -Inf
+visible: FALSE type: double 
+         [,1] [,2]
+[1,] 3.141593  Inf
+[2,]       NA -Inf
+case: input character 2x2 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: input complex 2x2 
+     [,1] [,2]
+[1,] 1+2i 3-4i
+[2,]   NA 0+0i
+visible: FALSE type: complex 
+     [,1] [,2]
+[1,] 1+2i 3-4i
+[2,]   NA 0+0i
+case: input raw 2x2 
+     [,1] [,2]
+[1,]   01   03
+[2,]   02   04
+visible: FALSE type: raw 
+     [,1] [,2]
+[1,]   01   03
+[2,]   02   04
+case: input integer 0x2 
+     [,1] [,2]
+visible: FALSE type: integer 
+     [,1] [,2]
+case: input character 2x0 
+    
+[1,]
+[2,]
+visible: FALSE type: character 
+    
+[1,]
+[2,]
+case: input integer  
+     [,1]
+[1,]    1
+[2,]    2
+[3,]    3
+visible: FALSE type: integer 
+     [,1]
+[1,]    1
+[2,]    2
+[3,]    3
+case: input list 2x2 
+     a   b     
+[1,] "1" "a"   
+[2,] "2" "long"
+visible: FALSE type: character 
+     a   b     
+[1,] "1" "a"   
+[2,] "2" "long"
+case: quote TRUE 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote FALSE 
+     [,1] [,2]
+[1,] a    long
+[2,] <NA> b   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote 1 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote 0 
+     [,1] [,2]
+[1,] a    long
+[2,] <NA> b   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote TRUE 
+warning: NAs introduced by coercion 
+warning call: prmatrix(chars, quote = q) 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote FALSE 
+warning: NAs introduced by coercion 
+warning call: prmatrix(chars, quote = q) 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote NA 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote  
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: quote TRUE,FALSE 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: right TRUE 
+     [,1]   [,2]
+[1,]  "a" "long"
+[2,]   NA    "b"
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: right FALSE 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: right TRUE 
+warning: NAs introduced by coercion 
+warning call: prmatrix(chars, right = r) 
+     [,1]   [,2]
+[1,]  "a" "long"
+[2,]   NA    "b"
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: right NA 
+     [,1]   [,2]
+[1,]  "a" "long"
+[2,]   NA    "b"
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: right  
+     [,1]   [,2]
+[1,]  "a" "long"
+[2,]   NA    "b"
+visible: FALSE type: character 
+     [,1] [,2]  
+[1,] "a"  "long"
+[2,] NA   "b"   
+case: na.print NULL  
+      c1 c two
+r1     1    30
+r two NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: na.print character ? 
+      c1 c two
+r1     1    30
+r two  ?     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: na.print character  
+      c1 c two
+r1     1    30
+r two        4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: na.print character NA 
+      c1 c two
+r1     1    30
+r two NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: na.print character ?,! 
+      c1 c two
+r1     1    30
+r two  ?     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: na.print integer 1 
+error: invalid 'na.print' specification 
+call: prmatrix(x, na.print = n) 
+case: na.print logical TRUE 
+error: invalid 'na.print' specification 
+call: prmatrix(x, na.print = n) 
+case: na.print character  
+error: invalid 'na.print' specification 
+call: prmatrix(x, na.print = n) 
+case: rowlab character one,two 
+    c1 c two
+one  1    30
+two NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: collab character one,two 
+      one two
+r1      1  30
+r two  NA   4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: rowlab character one 
+error: too few row labels 
+call: prmatrix(x, rowlab = l) 
+case: collab character one 
+error: too few column labels 
+call: prmatrix(x, collab = l) 
+case: rowlab character  
+     c1 c two
+[1,]  1    30
+[2,] NA     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: collab character  
+      [,1] [,2]
+r1       1   30
+r two   NA    4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: rowlab double 1,2 
+error: invalid row labels 
+call: prmatrix(x, rowlab = l) 
+case: collab double 1,2 
+error: invalid column labels 
+call: prmatrix(x, collab = l) 
+case: rowlab logical TRUE,FALSE 
+error: invalid row labels 
+call: prmatrix(x, rowlab = l) 
+case: collab logical TRUE,FALSE 
+error: invalid column labels 
+call: prmatrix(x, collab = l) 
+case: compiled explicit 
+       left right
+first     1    30
+second    ?     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: complex custom NA 
+        [,1]
+[1,]    1+2i
+[2,] missing
+visible: FALSE type: complex 
+     [,1]
+[1,] 1+2i
+[2,]   NA
+case: matrix connection output 
+      c1 c two
+r1     1    30
+r two  ?     4
+visible: FALSE type: integer 
+      c1 c two
+r1     1    30
+r two NA     4
+case: array admission 
+visible: TRUE type: logical 
+[1] NA
+case: array admission 
+visible: TRUE type: logical 
+     [,1]
+[1,]   NA
+case: array admission 
+error: 'data' must be of a vector type, was 'NULL' 
+call: array(NULL) 
+case: array admission 
+error: 'data' must be of a vector type, was 'NULL' 
+call: array(data = NULL, dim = c(0, 1)) 
+case: raw array print 
+, , 1
+
+     [,1] [,2]
+[1,]   01   03
+[2,]   02   04
+
+, , 2
+
+     [,1] [,2]
+[1,]   05   07
+[2,]   06   08
+
+visible: FALSE type: raw 
+, , 1
+
+     [,1] [,2]
+[1,]   01   03
+[2,]   02   04
+
+, , 2
+
+     [,1] [,2]
+[1,]   05   07
+[2,]   06   08
+
+case: vector input NULL 0 
+error: 'data' must be of a vector type, was 'NULL' 
+call: array(x, c(length(x), 1L), if (!is.null(names(x))) list(names(x),      NULL) else NULL) 
+case: vector input complex 0 
+     [,1]
+visible: FALSE type: complex 
+     [,1]
+case: vector input complex 2 
+     [,1]
+[1,] 1+2i
+[2,]   NA
+visible: FALSE type: complex 
+     [,1]
+[1,] 1+2i
+[2,]   NA
+case: vector input raw 3 
+     [,1]
+[1,]   01
+[2,]   02
+[3,]   03
+visible: FALSE type: raw 
+     [,1]
+[1,]   01
+[2,]   02
+[3,]   03
+case: vector input integer 3 
+      [,1]
+one      1
+two      2
+three    3
+visible: FALSE type: integer 
+      [,1]
+one      1
+two      2
+three    3
+case: vector input integer 8 
+     [,1]
+[1,]    1
+[2,]    2
+[3,]    3
+[4,]    4
+[5,]    5
+[6,]    6
+[7,]    7
+[8,]    8
+visible: FALSE type: integer 
+     [,1]
+[1,]    1
+[2,]    2
+[3,]    3
+[4,]    4
+[5,]    5
+[6,]    6
+[7,]    7
+[8,]    8
+case: frame rows  
+     a   b     
+[1,] "1" "a"   
+[2,] "2" "long"
+visible: FALSE type: character 
+     a   b     
+[1,] "1" "a"   
+[2,] "2" "long"
+case: formatted frame rows  
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+visible: FALSE type: character 
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+case: data.matrix rows  NA 
+visible: TRUE type: integer 
+     a b
+[1,] 1 1
+[2,] 2 2
+case: data.matrix rows  TRUE 
+visible: TRUE type: integer 
+  a b
+1 1 1
+2 2 2
+case: data.matrix rows  FALSE 
+visible: TRUE type: integer 
+     a b
+[1,] 1 1
+[2,] 2 2
+case: frame rows first,second 
+       a   b     
+first  "1" "a"   
+second "2" "long"
+visible: FALSE type: character 
+       a   b     
+first  "1" "a"   
+second "2" "long"
+case: formatted frame rows first,second 
+       a   b     
+first  "1" "a"   
+second "2" "long"
+visible: FALSE type: character 
+       a   b     
+first  "1" "a"   
+second "2" "long"
+case: data.matrix rows first,second NA 
+visible: TRUE type: integer 
+       a b
+first  1 1
+second 2 2
+case: data.matrix rows first,second TRUE 
+visible: TRUE type: integer 
+       a b
+first  1 1
+second 2 2
+case: data.matrix rows first,second FALSE 
+visible: TRUE type: integer 
+     a b
+[1,] 1 1
+[2,] 2 2
+case: frame rows 1,2 
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+visible: FALSE type: character 
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+case: formatted frame rows 1,2 
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+visible: FALSE type: character 
+  a   b     
+1 "1" "a"   
+2 "2" "long"
+case: data.matrix rows 1,2 NA 
+visible: TRUE type: integer 
+  a b
+1 1 1
+2 2 2
+case: data.matrix rows 1,2 TRUE 
+visible: TRUE type: integer 
+  a b
+1 1 1
+2 2 2
+case: data.matrix rows 1,2 FALSE 
+visible: TRUE type: integer 
+     a b
+[1,] 1 1
+[2,] 2 2
+case: formatted collecting columns 
+  a   b  
+1 "1" "3"
+2 "2" "4"
+visible: FALSE type: character 
+  a   b  
+1 "1" "3"
+2 "2" "4"

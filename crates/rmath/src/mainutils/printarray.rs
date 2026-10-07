@@ -959,7 +959,7 @@ unsafe fn print_complex_matrix(
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
                             let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                                EncodeReal0(f64::NAN, w[j], 0, 0, dec_ptr)
+                                EncodeReal0(NA_REAL, w[j], 0, 0, dec_ptr)
                             } else {
                                 EncodeComplex(
                                     cx,

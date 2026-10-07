@@ -53,6 +53,7 @@ const contracts = [
     'compiled-dots-public-contract',
     'vector-print-limits-public-contract',
     'print-digits-public-contract',
+    'prmatrix-public-contract',
     's4-next-method-public-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',

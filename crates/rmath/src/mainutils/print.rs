@@ -2103,6 +2103,13 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let count = LENGTH(args);
+        if count != 6 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::condition_caller_call(),
+                &format!("{count} arguments passed to .Internal(prmatrix) which requires 6"),
+            );
+        }
         let mut a = args;
         let x = CAR(a);
         a = CDR(a);
@@ -2113,9 +2120,36 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let quote = asInteger(CAR(a));
         a = CDR(a);
-        with_current_print_data_mut(|data| data.right = asInteger(CAR(a)));
+        let right = asInteger(CAR(a));
         a = CDR(a);
         let naprint = CAR(a);
+
+        let caller = crate::mainutils::errors::condition_caller_call();
+        let dim = getAttrib(x, R_DimSymbol());
+        if dim.is_null()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || LENGTH(dim) != 2
+            || INTEGER_ELT(dim, 0) < 0
+            || INTEGER_ELT(dim, 1) < 0
+        {
+            crate::mainutils::errors::errorcall_str(caller, "invalid matrix argument");
+        }
+        if Rf_isNull(naprint) == 0 && (isString(naprint) == 0 || LENGTH(naprint) < 1) {
+            crate::mainutils::errors::errorcall_str(caller, "invalid 'na.print' specification");
+        }
+        for (labels, extent, axis) in [
+            (rowlab, INTEGER_ELT(dim, 0), "row"),
+            (collab, INTEGER_ELT(dim, 1), "column"),
+        ] {
+            if Rf_isNull(labels) == 0 && isString(labels) == 0 {
+                crate::mainutils::errors::errorcall_str(caller, &format!("invalid {axis} labels"));
+            }
+            if LENGTH(labels) != 0 && LENGTH(labels) < extent {
+                crate::mainutils::errors::errorcall_str(caller, &format!("too few {axis} labels"));
+            }
+        }
+
+        with_current_print_data_mut(|data| data.right = right);
 
         if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
             let na_str = STRING_ELT(naprint, 0);
@@ -2136,7 +2170,6 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             collab_use = R_NilValue();
         }
 
-        let dim = getAttrib(x, R_DimSymbol());
         let right_val = with_current_print_data_mut(|data| data.right);
         crate::mainutils::printarray::printMatrix(
             x,
@@ -2150,6 +2183,7 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             ptr::null(),
         );
         PrintDefaults();
+        crate::sexp::globals::set_R_Visible(0);
         x
     }
 }
