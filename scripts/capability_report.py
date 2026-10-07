@@ -45,7 +45,7 @@ view_path = root / 'docs/ci-checkpoints/native-view-methods-6ccae790.json'
 view = json.loads(view_path.read_text())
 view_checks = view['validation']
 complete = json.loads((root / 'docs/ci-checkpoints/complete-inventory-711e0810.json').read_text())
-latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-d6844517.json').read_text())
+latest_completed = json.loads((root / 'docs/ci-checkpoints/conformance-browser-54f01c81.json').read_text())
 latest_linux = latest_completed
 print_workflow = json.loads((root / 'docs/ci-checkpoints/vector-print-workflow-d6844517.json').read_text())
 prmatrix_workflow = json.loads((root / 'docs/ci-checkpoints/prmatrix-workflow-a43a20e9.json').read_text())
@@ -352,6 +352,31 @@ program, with warning messages and calls captured and stderr empty. Original
 browser budgets, examples, selectors and assertions remain intact. This resolves
 the public `prmatrix` gap atd684; it does not change the latest completed Linux
 inventories or establish full workspace acceptance.
+
+The [completed54 Linux checkpoint](ci-checkpoints/conformance-browser-54f01c81.json)
+reproduces the same1090/91 conformance and18/21/31 whole-driver inventory,
+with15/0 curated slices. All76selected package tests in27suites, the separate
+S4 checks,34production contracts in each of two fresh sessions, and61Chromium
+tests pass. The matrix contract now executes on Linux and through actual reset.
+All nine debug workspace producers have authenticated receipts:153 of211
+executable targets finish, with nine failing targets;58targets time out or are
+unreached. Completed libtest summaries report549passes/8failures/1ignored;
+the separate grid stack abort has no completed libtest summary. Doctests and
+UniFFI pass. The union rejects partial producers and does not declare a passing
+workspace. These newly exposed failures are separate from the already completed
+package/showcase checks and do not establish new regressions.
+
+The [014f condition milestone](ci-checkpoints/condition-stack-workflow-014f15f2.json)
+integrates public catchers with the canonical owning handler stack. The unchanged
+complete GNU `conditions.R` now matches raw output under both constructor policies.
+The21-case independent GNU fixture checks global shielding, stack priority,
+compiled handlers, visible/invisible results, error buffers, collection and
+handler/finally failures. All77selected native tests in28suites,33condition/GC
+units, seven native scope tests,35production contracts per fresh session,
+61local Chromium tests and three reset repetitions pass. Reset exercises seven
+fixtures. Original budgets and meaningful output are retained. Its immutable
+Linux checkpoint is pending; these local results do not replace the completed54
+inventory or imply the remaining whole-driver/conformance failures are repaired.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

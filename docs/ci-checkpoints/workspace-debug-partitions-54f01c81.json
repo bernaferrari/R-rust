@@ -25,7 +25,7 @@
     "event": "workflow_dispatch",
     "run_id": 37558193721,
     "source_commit": "54f01c81d8d55a13c236545bdac60d119d89f371",
-    "state": "pending; not passing evidence",
+    "state": "completed; full debug workspace incomplete and failing",
     "url": "https://github.com/bernaferrari/R-rust/actions/runs/37558193721"
   },
   "negative_evidence": {
@@ -303,5 +303,140 @@
       }
     ],
     "test_executable_targets": 211
+  },
+  "linux_execution": {
+    "execution_complete": false,
+    "strict_pass": false,
+    "admitted_executables": 211,
+    "completed_executable_targets": 153,
+    "completed_libtest_summaries": {
+      "fail": 8,
+      "ignored": 1,
+      "pass": 549
+    },
+    "doctests_and_uniffi_pass": true,
+    "failed_executable_targets": [
+      {
+        "exit_code": 101,
+        "name": "is_s3method",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "portable_grid_viewports",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": -6,
+        "name": "grid_engine_parity",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "portable_datasets_mutation",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "resource_export",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "packages_visible",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "fft_resource_limits",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "s4_method_existence",
+        "package": "r-embed"
+      },
+      {
+        "exit_code": 101,
+        "name": "sequence_session",
+        "package": "r-embed"
+      }
+    ],
+    "full_workspace_pass": false,
+    "source": {
+      "source_commit": "54f01c81d8d55a13c236545bdac60d119d89f371",
+      "source_sha256": "cb52c7ca5486a7b340f868bac9e74bad8db5f3a23877c0d1e9cf0186fb185932"
+    },
+    "unfinished_executable_targets": [
+      "s4_next_method",
+      "serialize_roundtrip",
+      "unit_length",
+      "r_wasm",
+      "rmath_nmath",
+      "graphics_recording",
+      "loess",
+      "mathstats_cor_rank",
+      "native_graphics_contract",
+      "portable_data_public_contracts",
+      "portable_namespace_integration",
+      "qr_public_api",
+      "recall",
+      "s3_group_generics",
+      "s4_select_method_contract",
+      "slot_try_error",
+      "unserialize_connection_contract",
+      "compile_fail",
+      "rmath-test",
+      "loess_na",
+      "methods_empty_symbols",
+      "nchar_unicode",
+      "portable_datasets",
+      "portable_stats_namespace",
+      "qr_q",
+      "rep_len_admission_contract",
+      "s3_methods_public_contract",
+      "s4_show",
+      "structure_copy_semantics",
+      "utils_console_public_contract",
+      "distribution_tests",
+      "rport-script-diff",
+      "s4_signatures",
+      "sys_call_alist",
+      "vector_print_limits",
+      "graphics_recording_torture",
+      "portable_grid",
+      "qr_apply",
+      "real_package_fortunes",
+      "restart_visibility",
+      "s4_dput_data",
+      "sample_condition_contract",
+      "table_print_contract",
+      "r_graphics_engine",
+      "graphics_visibility",
+      "named_list_c_any",
+      "palette_public_contract",
+      "portable_grid_clipping",
+      "qr_coef",
+      "real_package_r6",
+      "restarts_gnu",
+      "s4_initialize_superclass",
+      "script_last_value",
+      "timezone_parsing",
+      "r-host-cli",
+      "rmath",
+      "r_uniffi",
+      "serialize_torture"
+    ],
+    "official_union": {
+      "path": "target/ci-checkpoint-54f01c81/workspace-debug-union/summary.json",
+      "bytes": 127838,
+      "sha256": "b491ce18b34060ce8521454babba51c46e76fdf689d95ad7068d41e0567c34f6"
+    },
+    "authentication": {
+      "path": "target/ci-checkpoint-54f01c81/independent-workspace.json",
+      "bytes": 2809,
+      "sha256": "996d88d942e50ff87d9ad65eda1782af8cf935b64d7df2d43cbfc562719202c7"
+    },
+    "scope": "211admitted executables:153finished,9failedtargets (8reported assertions plus1stack abort);58unfinished (7timed-out and51unreached). Complete libtest summaries549pass8fail1ignored; these are not a whole-workspace pass. All8doctest targets and UniFFI succeed. Seven producers exceed aggregate1800s; official union rejects185targets as unverified rather than admit partial producers."
   }
 }
