@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "source_commit": "f9512cbe9a65ae891c5b5ae03523fd7b4c17f70d",
+  "scope": "Local frozen-source native/default and portable/explicit-empty public constructors; production Wasm and unchanged Chromium/original budgets. This is focused package-path acceptance, not complete workspace or conformance acceptance.",
+  "repair": "Publish canonical image.directory as the owned attached environment path before locking and attachment. Namespace and attachment share the same virtual package identity; host discovery remains disabled under portable policy.",
+  "source_files": {
+    "crates/rmath/src/library/portable_package/owned.rs": "777d2f44e006113e448d87097c4e1c294dea8c2175e100e49b0d78264b9268be",
+    "crates/r-embed/tests/packages_visible.rs": "dce0629941765f98d4ba9c9ffb79d9eaa213c4d672f2a9749eec577cae19a2d4",
+    "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R": "7c4ce05d272c6258e403ca5aaec64a6feb795ca54f19e370a286e8f02c945599",
+    "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.out": "892887ee8414c2a4ed9853c56b66a58b135a1cc81c86b19aaac9d9062fba9065",
+    ".github/workflows/ci.yml": "24b36c8a2d6f0223686e54daf2c30a04c4f15cb8414bdc9a31a1d15ea73e6433"
+  },
+  "phases": {
+    "native-public": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/native-public/process.json",
+        "bytes": 952,
+        "sha256": "0751db4ff6beb1ce5e0668805cade92746a95f392a77143fe0ca4b6b292d5267"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/native-public/events.jsonl",
+        "bytes": 1395,
+        "sha256": "af20d786863854fd532ee9ddf424776816d2a3143d4efb5617413c84b6148359"
+      },
+      "elapsed_seconds": 221.67267512506805,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "test",
+        "-p",
+        "r-embed",
+        "--release",
+        "--test",
+        "packages_visible",
+        "--test",
+        "s3_methods_public_contract",
+        "--test",
+        "namespace_initialization",
+        "--test",
+        "portable_namespace_integration",
+        "--test",
+        "namespace_exports",
+        "--test",
+        "compiler_namespace",
+        "--test",
+        "embed",
+        "--",
+        "--test-threads=1"
+      ]
+    },
+    "format": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/format/process.json",
+        "bytes": 622,
+        "sha256": "d077bee3a913c58a4166f8e99da3f9e5db7e3768ae2bad7ff0853129322b321b"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/format/events.jsonl",
+        "bytes": 864,
+        "sha256": "97fe7e9f1602e5f1509628e6435063c3a939379b3539bdf55691667419724e3b"
+      },
+      "elapsed_seconds": 4.655859958962537,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ]
+    },
+    "clippy": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/clippy/process.json",
+        "bytes": 663,
+        "sha256": "72e506b87585a948d6894f0f29cabbe39900e046f0e8e2d77cac5fc64edb5c0a"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/clippy/events.jsonl",
+        "bytes": 930,
+        "sha256": "7ea6679a81ed06cfc928e066d4ccfed3cba2dee8094458a78c95c7c2d301f59a"
+      },
+      "elapsed_seconds": 34.11326720798388,
+      "command": [
+        "scripts/cargo_dev.sh",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ]
+    },
+    "wasm-build": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/wasm-build/process.json",
+        "bytes": 763,
+        "sha256": "c6db5a06e4f29ed448e2871edda1f67ea041ea6a9da10290238e05df0a7a4e01"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/wasm-build/events.jsonl",
+        "bytes": 1138,
+        "sha256": "2d99d2c128eeaec8d3e7734ab1ed2a5f9fdfd96438ce29a156b37aa3ff278ecf"
+      },
+      "elapsed_seconds": 90.71477683295961,
+      "command": [
+        "scripts/build_wasm_runtime.sh",
+        "--target",
+        "web",
+        "--release",
+        "--out-dir",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/package-path-attachment/production-pkg"
+      ]
+    },
+    "wasm-contracts": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/wasm-contracts/process.json",
+        "bytes": 729,
+        "sha256": "363c68c9f542c0fc43bc158ceccc8bf62cc269e9a8aff3038d327ebb3ccceec3"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/wasm-contracts/events.jsonl",
+        "bytes": 1094,
+        "sha256": "ac50b3ca4e448541cdf2785aad8e234cdb9f749a6f6b4065f2d3af3a8daf8111"
+      },
+      "elapsed_seconds": 88.49135137500707,
+      "command": [
+        "node",
+        "tests/browser/portable-package-contracts.mjs",
+        "/Users/bernardoferrari/Downloads/rport/target/integration-repair-evidence/package-path-attachment/production-pkg"
+      ]
+    },
+    "browser-prepare": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-prepare/process.json",
+        "bytes": 601,
+        "sha256": "130b78f03befe4ffe13a59aa02cfad9883e8b1d9fc07f4e1d2ab2352fbabce98"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-prepare/events.jsonl",
+        "bytes": 844,
+        "sha256": "ad76e60d40e198ff3d2db68972fab7c56093ce3edda93b5dff29a640b8af22b5"
+      },
+      "elapsed_seconds": 0.11431837501004338,
+      "command": [
+        "node",
+        "scripts/prepare-runtime.mjs"
+      ]
+    },
+    "browser-all": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-all/process.json",
+        "bytes": 680,
+        "sha256": "257d0627da869bf81c2fa96f6de640876efcb8545c991fa798d18f298affc281"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-all/events.jsonl",
+        "bytes": 964,
+        "sha256": "35db7e2a692bcaca3d81ef1fa7d3dc7fd414d6fad5ee6b15b44cc35bb13ac109"
+      },
+      "elapsed_seconds": 287.9176777499961,
+      "command": [
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "--project=chromium",
+        "--workers=1",
+        "--reporter=line,json"
+      ]
+    },
+    "browser-reset": {
+      "receipt": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-reset/process.json",
+        "bytes": 747,
+        "sha256": "352c7d27847aa7224ee1b5e0484d6cde20bed302055ff4e0f7069eb653fa5027"
+      },
+      "journal": {
+        "path": "target/integration-repair-evidence/package-path-attachment/browser-reset/events.jsonl",
+        "bytes": 1081,
+        "sha256": "a95d1a892f9a79312739a8ebf8a83818ea6e4acda9e938979337509c2cbcd3cd"
+      },
+      "elapsed_seconds": 53.584959666011855,
+      "command": [
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "tests/package-reset-contract.spec.ts",
+        "--repeat-each=3",
+        "--project=chromium",
+        "--workers=1",
+        "--reporter=line,json"
+      ]
+    }
+  },
+  "red": {
+    "path": "target/integration-repair-evidence/package-visibility-diagnosis/native-public-red/process.json",
+    "bytes": 616,
+    "sha256": "f9959b3396bd83a4430e311112925017ecb4efd893cee33f5559c0367d86c308"
+  },
+  "gnu_oracle": {
+    "path": "target/integration-repair-evidence/package-visibility-diagnosis/expanded-oracle/process.json",
+    "bytes": 775,
+    "sha256": "53998968ce64f2e275cc4ac1ee1fef2d80f15be60546e7335e423d2370437cb3"
+  },
+  "native_public": {
+    "suites": 7,
+    "passed": 52,
+    "failed": 0
+  },
+  "wasm": {
+    "artifact": {
+      "path": "target/integration-repair-evidence/package-path-attachment/production-pkg/r_wasm_bg.wasm",
+      "bytes": 25707253,
+      "sha256": "be200eea8167023f14bcb9e1bbe40e0580c26cdc334021d1658723fa2d2661e9"
+    },
+    "contracts_per_fresh_session": 36,
+    "fresh_sessions": 2
+  },
+  "browser": {
+    "browser-all": {
+      "startTime": "2026-10-07T04:51:24.841Z",
+      "duration": 287211.955,
+      "expected": 61,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "browser-reset": {
+      "startTime": "2026-10-07T04:56:12.696Z",
+      "duration": 52911.103,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "reset": {
+    "fixture_count": 8,
+    "generations": 2,
+    "repetitions": 3
+  },
+  "preserved_pdfs": {
+    "path": "target/integration-repair-evidence/package-path-attachment/preserved-pdfs.json",
+    "bytes": 6557,
+    "sha256": "2812e887ad9ca404887c49bec0ff0cf1e5b75362aa3dabd58f29ec0df7be60d2"
+  },
+  "generated_pdfs": {
+    "path": "target/integration-repair-evidence/package-path-attachment/generated-pdf/manifest.json",
+    "bytes": 4920,
+    "sha256": "e4d94c87af70623619e00b5eaf10db33d791091be9c5b72de7999f0943f3a28c"
+  },
+  "execution_join": [
+    {
+      "public_wrappers": [
+        "base::.packages",
+        "base::path.package",
+        "base::library",
+        "base::getNamespaceInfo"
+      ],
+      "implementation": "crates/rmath/src/library/portable_package/owned.rs",
+      "tested": "Fresh sessions: six attached packages, scalar nonempty paths, namespace/attachment agreement, portable empty library search and available inventory, empty/missing package queries. Existing namespace/S3/compiled method/corpus workflows; actual public runtime reset repeated3times.",
+      "target_profiles": [
+        "native/default/release/faer/renderplot",
+        "portable/explicit-empty/release/faer/renderplot",
+        "production-cpu-wasm",
+        "chromium/original-budgets"
+      ],
+      "last_verified_commit": "f9512cbe9a65ae891c5b5ae03523fd7b4c17f70d"
+    }
+  ]
+}
