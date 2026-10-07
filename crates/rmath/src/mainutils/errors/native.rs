@@ -566,6 +566,141 @@ mod tests {
             session.owner_token().unwrap().full_gc().unwrap();
         });
     }
+    struct TypedTrace {
+        trace: Trace,
+        exit_only: i32,
+    }
+    unsafe extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
+        unsafe {
+            let factory = OwnerToken::current().unwrap().node_factory();
+            let condition = context::own_control_value(super::super::R_makeErrorCondition(
+                factory.nil().as_raw(),
+                c"objectNotFoundError".as_ptr(),
+                std::ptr::null(),
+                2,
+                c"typed native error".as_ptr(),
+            ));
+            let name = factory.strings(&["original name"]).unwrap();
+            let mode = factory.strings(&["function"]).unwrap();
+            super::super::R_setConditionField(
+                condition.as_raw(),
+                2,
+                c"name".as_ptr(),
+                name.as_raw(),
+            );
+            super::super::R_setConditionField(
+                condition.as_raw(),
+                3,
+                c"mode".as_ptr(),
+                mode.as_raw(),
+            );
+            super::super::R_signalErrorConditionEx(
+                condition.as_raw(),
+                factory.nil().as_raw(),
+                (&*data.cast::<TypedTrace>()).exit_only,
+            );
+        }
+        unreachable!("typed native error must exit")
+    }
+    unsafe fn check_typed_condition(
+        condition: SEXP,
+        data: *mut c_void,
+        event: &'static str,
+    ) -> SEXP {
+        let condition = unsafe { context::own_control_value(condition) };
+        unsafe { &*data.cast::<TypedTrace>() }.trace.collect(event);
+        for (index, expected) in [
+            (0, "typed native error"),
+            (2, "original name"),
+            (3, "function"),
+        ] {
+            assert_eq!(
+                condition
+                    .try_vector_elt(index)
+                    .unwrap()
+                    .try_string_value_elt(0)
+                    .unwrap()
+                    .as_deref(),
+                Some(expected)
+            );
+        }
+        let classes = unsafe {
+            context::own_control_value(crate::sexp::attrib_core::getAttrib(
+                condition.as_raw(),
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            ))
+        };
+        assert_eq!(
+            classes.try_string_value_elt(0).unwrap().as_deref(),
+            Some("objectNotFoundError")
+        );
+        condition.as_raw()
+    }
+    unsafe extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
+        unsafe { check_typed_condition(condition, data, "calling") }
+    }
+    unsafe extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
+        unsafe { check_typed_condition(condition, data, "exiting") }
+    }
+    unsafe extern "C-unwind" fn typed_finally(data: *mut c_void) {
+        unsafe { &*data.cast::<TypedTrace>() }
+            .trace
+            .collect("finally");
+    }
+    unsafe extern "C-unwind" fn body_calling_typed(data: *mut c_void) -> SEXP {
+        unsafe {
+            super::super::R_withCallingErrorHandler(
+                Some(body_typed_error),
+                data,
+                Some(typed_calling),
+                data,
+            )
+        }
+    }
+    #[test]
+    fn typed_native_errors_preserve_fields_and_honor_exit_only_through_collecting_callbacks() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let classes = factory.strings(&["objectNotFoundError"]).unwrap();
+            let previous = super::super::handler_stack();
+            for exit_only in [0, 1] {
+                let trace = TypedTrace {
+                    trace: trace(&session),
+                    exit_only,
+                };
+                let data = (&trace as *const TypedTrace).cast_mut().cast();
+                let result = unsafe {
+                    context::own_control_value(super::super::R_tryCatch(
+                        Some(body_calling_typed),
+                        data,
+                        classes.as_raw(),
+                        Some(typed_exiting),
+                        data,
+                        Some(typed_finally),
+                        data,
+                    ))
+                };
+                let expected: &[&str] = if exit_only == 0 {
+                    &["calling", "exiting", "finally"]
+                } else {
+                    &["exiting", "finally"]
+                };
+                assert_eq!(*trace.trace.events.borrow(), expected);
+                assert_eq!(super::super::handler_stack(), previous);
+                session.owner_token().unwrap().full_gc().unwrap();
+                assert_eq!(
+                    result
+                        .try_vector_elt(2)
+                        .unwrap()
+                        .try_string_value_elt(0)
+                        .unwrap()
+                        .as_deref(),
+                    Some("original name")
+                );
+            }
+        });
+    }
     #[test]
     fn owned_rust_trycatch_retains_normal_value_through_collecting_finalizer() {
         let session = RSession::new_for_gc_tests();

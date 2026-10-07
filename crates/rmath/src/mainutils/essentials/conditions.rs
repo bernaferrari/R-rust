@@ -2448,10 +2448,11 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let selected = mget::lookup_one(sym, env, &mode, inherits)
             .unwrap_or_else(|error| base_error(error.to_string()));
         let Some(selected) = selected else {
-            if mode == "any" {
-                base_error(format!("object '{name}' not found"));
-            }
-            base_error(format!("object '{name}' of mode '{mode}' was not found"));
+            crate::mainutils::errors::R_ObjectNotFoundError(
+                sym,
+                _call,
+                (mode != "any").then_some(mode.as_str()),
+            );
         };
         let value = selected.as_raw();
         if value == crate::sexp::globals::R_MissingArg() {

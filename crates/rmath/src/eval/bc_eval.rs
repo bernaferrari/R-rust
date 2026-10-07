@@ -100,28 +100,14 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
     unreachable!("R_MissingArgError signals");
 }
 
-fn bc_unbound_object_error(symbol: SEXP) -> ! {
-    let name = unsafe {
-        if symbol.is_null() {
-            "???".to_string()
-        } else {
-            let pname = PRINTNAME(symbol);
-            if pname.is_null() {
-                "???".to_string()
-            } else {
-                let chars = CHAR(pname);
-                if chars.is_null() {
-                    "???".to_string()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|_| "???".to_string())
-                }
-            }
-        }
-    };
-    bc_error(format!("object '{name}' not found"));
+fn bc_unbound_object_error(symbol: SEXP, rho: SEXP) -> ! {
+    unsafe {
+        crate::mainutils::errors::R_ObjectNotFoundError(
+            symbol,
+            super::context::get_lexical_call(rho),
+            None,
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -608,7 +594,7 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
         {
             let value = crate::sexp::envir::ddfindVar(symbol, rho);
             if value == R_UnboundValue() {
-                bc_unbound_object_error(symbol);
+                bc_unbound_object_error(symbol, rho);
             }
             value
         } else {
@@ -619,7 +605,7 @@ unsafe fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: boo
                 ) {
                     value = primitive.as_raw();
                 } else {
-                    bc_unbound_object_error(symbol);
+                    bc_unbound_object_error(symbol, rho);
                 }
             }
             value
@@ -4158,7 +4144,7 @@ unsafe fn bc_eval_private(
                         ) {
                             val = primitive.as_raw();
                         } else {
-                            bc_unbound_object_error(sym);
+                            bc_unbound_object_error(sym, rho);
                         }
                     }
                     if val == R_MissingArg() {

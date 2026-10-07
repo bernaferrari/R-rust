@@ -232,6 +232,15 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// and that entry plus newer handlers are removed before invoking its callback.
 /// Restore the original owner's stack on normal return and every unwind path.
 pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
+    unsafe { signal_condition_handlers(cond, msg, ecall, SignalMode::Condition) }
+}
+
+enum SignalMode {
+    Condition,
+    Error { exit_only: bool },
+}
+
+unsafe fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMode) -> bool {
     let condition = unsafe { crate::sexp::context::own_control_value(cond) };
     let message = unsafe { crate::sexp::context::own_control_value(msg) };
     let call = unsafe { crate::sexp::context::own_control_value(ecall) };
@@ -244,6 +253,9 @@ pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP)
             if IS_CALLING_ENTRY(entry.as_raw()) != 0 {
                 let h = ENTRY_HANDLER(entry.as_raw());
                 if h == globals::R_RestartToken() {
+                    if matches!(mode, SignalMode::Error { .. }) {
+                        break;
+                    }
                     let msg = message.as_raw();
                     let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP && LENGTH(msg) > 0 {
                         let c = translateChar(STRING_ELT(msg, 0));
@@ -253,12 +265,14 @@ pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP)
                     };
                     let cmsg = std::ffi::CString::new(msgstr).unwrap_or_default();
                     verrorcall_dflt(call.as_raw(), cmsg.as_ptr(), ptr::null_mut());
-                } else if !super::native::dispatch_calling_handler(h, condition.as_raw()) {
-                    let hcall = Rf_lang2(h, condition.as_raw());
-                    let _hcall_guard = protect(hcall);
-                    let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
+                } else if !matches!(mode, SignalMode::Error { exit_only: true }) {
+                    if !super::native::dispatch_calling_handler(h, condition.as_raw()) {
+                        let hcall = Rf_lang2(h, condition.as_raw());
+                        let _hcall_guard = protect(hcall);
+                        let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
+                    }
+                    called = true;
                 }
-                called = true;
             } else {
                 gotoExitingHandler(condition.as_raw(), call.as_raw(), entry.as_raw());
             }
@@ -383,11 +397,32 @@ pub(super) unsafe fn make_condition(
 
 /// R_signalErrorCondition — signal an error condition.
 pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
+    unsafe { R_signalErrorConditionEx(cond, call, 0) }
+}
+
+/// Signal the original typed condition before default rendering. Native errors
+/// skip calling handlers only when requested (for example, stack overflow).
+/// Default rendering must not signal a new simpleError over this condition.
+pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
     unsafe {
-        // Extract message from condition and call errorcall_dflt
+        let condition = crate::sexp::context::own_control_value(cond);
+        let call = crate::sexp::context::own_control_value(if call.is_null() {
+            globals::R_NilValue()
+        } else {
+            call
+        });
+        signal_condition_handlers(
+            condition.as_raw(),
+            globals::R_NilValue(),
+            call.as_raw(),
+            SignalMode::Error {
+                exit_only: exitOnly != 0,
+            },
+        );
+        let cond = condition.as_raw();
         if TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0 {
             errorcall(
-                call,
+                call.as_raw(),
                 b"condition object must be a VECSXP of length at least one\x00".as_ptr()
                     as *const c_char,
             );
@@ -395,27 +430,19 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
         let elt = VECTOR_ELT(cond, 0);
         if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
             errorcall(
-                call,
+                call.as_raw(),
                 b"first element of condition object must be a scalar string\x00".as_ptr()
                     as *const c_char,
             );
         }
-        // GNU R_signalErrorCondition keeps `cond` as the signaled object so
-        // tryCatch handlers receive objectNotFoundError rather than a
-        // reconstructed simpleError.
+        // Keep the same condition available to the outer public error adapter
+        // when no installed exiting entry handled it before default rendering.
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
         let msg = translateChar(STRING_ELT(elt, 0));
-        errorcall(call, msg);
-    }
-}
-
-/// R_signalErrorConditionEx — signal an error condition with exitOnly flag.
-pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
-    unsafe {
-        R_signalErrorCondition(cond, call);
+        verrorcall_dflt(call.as_raw(), msg, ptr::null_mut());
     }
 }
 

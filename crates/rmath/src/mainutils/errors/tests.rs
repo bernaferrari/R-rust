@@ -241,23 +241,47 @@ fn test_print_trunc_not_truncated() {
 
 #[test]
 fn test_mkHandlerEntry() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let klass = Rf_mkString(b"error\x00".as_ptr() as *const c_char);
-        let handler = Rf_mkString(b"handler\x00".as_ptr() as *const c_char);
-        let entry = mkHandlerEntry(
-            klass,
-            ptr::null_mut(),
-            handler,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            1,
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let factory = session.owner_token().unwrap().node_factory();
+        let klass = factory.character("error").unwrap();
+        let handler = factory.strings(&["handler"]).unwrap();
+        let nil = factory.nil();
+        let entry = factory
+            .wrap(mkHandlerEntry(
+                klass.as_raw(),
+                nil.as_raw(),
+                handler.as_raw(),
+                nil.as_raw(),
+                nil.as_raw(),
+                1,
+            ))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        drop(klass);
+        drop(handler);
+        session.owner_token().unwrap().full_gc().unwrap();
+        assert_eq!(entry.typeof_(), SEXPTYPE::VECSXP);
+        assert_eq!(entry.len(), 5);
+        assert_eq!(
+            entry.try_vector_elt(0).unwrap().try_as_string().unwrap(),
+            "error"
         );
-        assert!(!entry.is_null());
-        assert_eq!(TYPEOF(entry), SEXPTYPE::VECSXP);
-        assert_eq!(LENGTH(entry), 5);
-        assert_eq!(IS_CALLING_ENTRY(entry), 1);
-    }
+        assert_eq!(
+            entry
+                .try_vector_elt(2)
+                .unwrap()
+                .try_string_value_elt(0)
+                .unwrap()
+                .as_deref(),
+            Some("handler")
+        );
+        for index in [1, 3, 4] {
+            assert!(entry.try_vector_elt(index).unwrap().is_nil());
+        }
+        assert_eq!(IS_CALLING_ENTRY(entry.as_raw()), 1);
+    });
 }
 
 #[test]
@@ -636,14 +660,32 @@ fn test_r_make_partial_argument_match_warning_condition() {
 }
 
 #[test]
-#[ignore = "cannot catch_unwind across extern \"C\" boundary"]
 fn test_r_missing_arg_error_c() {
-    let _session = crate::sexp::session::RSession::new();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let msg = c"my_arg";
-        R_MissingArgError_c(msg.as_ptr(), ptr::null_mut(), ptr::null_mut());
-    }));
-    assert!(result.is_err());
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let factory = session.owner_token().unwrap().node_factory();
+        let classes = factory.strings(&["missingArgError"]).unwrap();
+        let result = super::native::try_catch_owned(
+            || unsafe {
+                R_MissingArgError_c(c"my_arg".as_ptr(), factory.nil().as_raw(), ptr::null());
+                unreachable!("missing argument must signal")
+            },
+            &classes,
+            |condition| condition,
+            || {
+                session.owner_token().unwrap().full_gc().unwrap();
+            },
+        );
+        assert_eq!(
+            result
+                .try_vector_elt(0)
+                .unwrap()
+                .try_string_value_elt(0)
+                .unwrap()
+                .as_deref(),
+            Some("argument \"my_arg\" is missing, with no default")
+        );
+    });
 }
 
 #[test]

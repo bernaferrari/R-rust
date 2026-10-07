@@ -134,3 +134,76 @@ case("collecting-handler-and-finally", {
               identical(finalizations, 1L))
 })
 clear()
+case("typed-variable", {
+    e <- tryCatch(missing_symbol, error=identity)
+    stopifnot(identical(class(e), c("objectNotFoundError", "error", "condition")),
+              identical(e$name, quote(missing_symbol)), identical(e$mode, "any"))
+})
+case("typed-formal-promise", {
+    meta <- function(name) {
+        e <- tryCatch(name, error=identity)
+        stopifnot(identical(class(e), c("objectNotFoundError", "error", "condition")),
+                  identical(e$name, quote(missing_symbol)), identical(e$mode, "any"))
+        paste(deparse(substitute(name)), class(e)[1L], sep="|")
+    }
+    stopifnot(identical(meta(missing_symbol), "missing_symbol|objectNotFoundError"))
+})
+case("typed-compiled-formal", {
+    meta <- compiler::cmpfun(meta)
+    stopifnot(identical(meta(missing_symbol), "missing_symbol|objectNotFoundError"))
+})
+case("typed-compiled-direct", {
+    compiled_direct <- compiler::cmpfun(function() missing_direct)
+    e <- tryCatch(compiled_direct(), error=identity)
+    stopifnot(identical(class(e), c("objectNotFoundError", "error", "condition")),
+              identical(e$name, quote(missing_direct)), identical(e$mode, "any"),
+              identical(conditionCall(e), quote(compiled_direct())))
+})
+case("typed-function", {
+    e <- tryCatch(missing_function(), error=identity)
+    stopifnot(identical(class(e), c("functionNotFoundError", "objectNotFoundError", "error", "condition")),
+              identical(e$name, quote(missing_function)), identical(e$mode, "function"))
+})
+case("typed-get-mode", {
+    e <- tryCatch(get("missing_object", mode="function"), error=identity)
+    stopifnot(identical(class(e), c("objectNotFoundError", "error", "condition")),
+              identical(e$name, quote(missing_object)), identical(e$mode, "function"))
+})
+case("typed-exiting-priority", {
+    seen <- tryCatch(missing_symbol, objectNotFoundError=function(e) {
+        gc(full=TRUE)
+        c("specific", as.character(e$name), e$mode)
+    }, error=function(e) "broad")
+    stopifnot(identical(seen, c("specific", "missing_symbol", "any")))
+})
+case("typed-calling-once", {
+    events <- character()
+    e <- tryCatch(withCallingHandlers(missing_symbol, objectNotFoundError=function(e) {
+        gc(full=TRUE)
+        events <<- c(events, paste(class(e)[1L], as.character(e$name), sep=":"))
+    }, error=function(e) events <<- c(events, "broad")), error=identity)
+    stopifnot(identical(events, c("objectNotFoundError:missing_symbol", "broad")),
+              inherits(e, "objectNotFoundError"), identical(e$mode, "any"))
+})
+case("typed-handler-error-outward", {
+    e <- tryCatch(tryCatch(missing_symbol, objectNotFoundError=function(e) missing_function()),
+                  functionNotFoundError=identity)
+    stopifnot(inherits(e, "functionNotFoundError"), identical(e$name, quote(missing_function)),
+              identical(e$mode, "function"))
+})
+case("typed-error-buffer", {
+    e <- tryCatch(stop("typed-buffer-seed"), error=identity)
+    before <- geterrmessage()
+    e <- tryCatch(missing_symbol, error=identity)
+    stopifnot(identical(geterrmessage(), before), inherits(e, "objectNotFoundError"))
+})
+case("typed-collection-and-finally", {
+    cleaned <- 0L
+    e <- tryCatch(get("missing_object"), error=function(e) {
+        gc(full=TRUE)
+        e
+    }, finally={cleaned <<- cleaned+1L; gc(full=TRUE)})
+    stopifnot(identical(cleaned, 1L), inherits(e, "objectNotFoundError"),
+              identical(e$name, quote(missing_object)), identical(e$mode, "any"))
+})
+clear()

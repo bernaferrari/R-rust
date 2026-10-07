@@ -170,8 +170,8 @@ fn compiled_trycatch_leaves_stop_and_unbound_symbol_unevaluated() {
         ("G_VAL", "caught"),
         ("H_VAL", "caught"),
         ("KIND_VAL", "caught-error"),
-        // GNU's missing-symbol condition starts at simpleError. This port
-        // signals objectNotFoundError; the bytecode path still catches it.
+        // Pinned GNU R and the public compiled path preserve the typed
+        // objectNotFoundError condition when forcing this promise.
         ("META_VAL", "missing_symbol|objectNotFoundError"),
         ("GNU_STOP_LOAD", "ok"),
         ("GNU_MISS_LOAD", "ok"),
