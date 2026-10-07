@@ -760,7 +760,169 @@
   "immutable_ci_checkpoint": {
     "run_id": 37563648799,
     "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
-    "state": "pending; not Linux passing evidence",
-    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37563648799"
+    "state": "partial; complete conditions.R and public package gates independently authenticated; full checkpoint pending",
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/37563648799",
+    "condition_driver": {
+      "status": "pass",
+      "producer": "upstream-r-shard-whole-0",
+      "validation": "validate_report against clean frozen014f source; engine/library/source seals, actual exits, process journals, log hashes and unchanged normalizers authenticated",
+      "contract": {
+        "path": "target/ci-checkpoint-014f15f2/upstream-r-shard-whole-0/contract.json",
+        "sha256": "b23d66317e3c48b5d4b4f319127331ba2b8c9f0e14d68edc80e9aa14f351b2ef",
+        "bytes": 317315
+      },
+      "summary": {
+        "path": "target/ci-checkpoint-014f15f2/upstream-r-shard-whole-0/summary.json",
+        "sha256": "2d5e8d1fb88e75000fdccb24fb406bd7f2afac9dd7481496c56637f2c739cc56",
+        "bytes": 370709
+      },
+      "case": {
+        "case": "conditions.R",
+        "detail": "",
+        "disposition": "pass",
+        "kind": "whole",
+        "normalizations": [
+          {
+            "engine": "gnu",
+            "input_sha256": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/gnu/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R",
+              "elapsed_seconds": 0.05132092700000612,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-07T03:01:07.773237+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9"
+              },
+              "pid": 3309,
+              "schema_version": 1,
+              "started_at": "2026-10-07T03:01:07.720934+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "input_sha256": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9",
+            "process": {
+              "command": [
+                "/usr/bin/bash",
+                "-o",
+                "pipefail",
+                "-c",
+                "/usr/bin/tr -d '\\r' <\"$1\" | /usr/bin/sed 's/[[:space:]]*$//' | /usr/bin/gawk '/^Time elapsed:/ { next } { lines[++n] = $0 } END { while (n > 0 && lines[n] == \"\") n--; for (i = 1; i <= n; i++) print lines[i] }'",
+                "_",
+                "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/rust/combined.log"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R",
+              "elapsed_seconds": 0.051340124999910586,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-07T03:01:07.942605+00:00",
+              "logs": {
+                "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "stdout.log": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9"
+              },
+              "pid": 3313,
+              "schema_version": 1,
+              "started_at": "2026-10-07T03:01:07.890414+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "owner": "-",
+        "path": "tests/upstream-r/vendor/conditions.R",
+        "phases": [
+          {
+            "engine": "gnu",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/.cache/rport/r-oracle/bac583951b728e97b9786804d3b4081f0fe18df5/bin/Rscript",
+                "--vanilla",
+                "conditions.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/gnu-workspace",
+              "elapsed_seconds": 0.1515224779999471,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-07T03:01:04.767410+00:00",
+              "logs": {
+                "combined.log": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9"
+              },
+              "pid": 3296,
+              "schema_version": 1,
+              "started_at": "2026-10-07T03:01:04.614787+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          },
+          {
+            "engine": "rust",
+            "generated_artifacts": {},
+            "process": {
+              "command": [
+                "/home/runner/work/_temp/upstream-r/rust_runner",
+                "conditions.R"
+              ],
+              "cwd": "/home/runner/work/_temp/upstream-r/cases/whole-conditions.R/rust-workspace",
+              "elapsed_seconds": 2.857449468000027,
+              "execution_complete": true,
+              "exit_code": 0,
+              "finished_at": "2026-10-07T03:01:07.652489+00:00",
+              "logs": {
+                "combined.log": "1e545c5deed75a0add8533a6d1e7017e954a51096903848d068ac2bea50d08c9"
+              },
+              "pid": 3308,
+              "schema_version": 1,
+              "started_at": "2026-10-07T03:01:04.793970+00:00",
+              "state": "finished",
+              "timeout_seconds": 1800.0
+            }
+          }
+        ],
+        "reason": "-",
+        "runtime_info_sha256": "c01a2709458453f76beaf04f916ca432bd843bae2183183733a8ccc1ae37f626",
+        "status": "pass"
+      }
+    },
+    "public_package_integration": {
+      "passed": 77,
+      "failed": 0,
+      "suites": 28,
+      "separate_s4_passed": 2,
+      "separate_s4_failed": 0,
+      "warm_s4_seconds": {
+        "native": 14.924863461,
+        "portable": 14.907897534
+      },
+      "timing_risk": "Passes original15s limit; headroom remains narrow and repeatability is tracked separately.",
+      "profile": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/profile.json",
+        "sha256": "acc32cbe409b58c2a9f67218679d19b8f8c8009e2be6cf54961013f7f944581f",
+        "bytes": 517
+      },
+      "execute": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/execute/process.json",
+        "sha256": "6c812646c7ca8c7d54825a74d88d0dd3b9d3ba20b61b8b2564af3e9618feea58",
+        "bytes": 1864
+      },
+      "s4": {
+        "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/s4-subset-call/process.json",
+        "sha256": "d48098aaeddac83e0fd27e2a92856ad1528a2b1e6287a6963d373f6eb63350c2",
+        "bytes": 731
+      }
+    }
   }
 }
