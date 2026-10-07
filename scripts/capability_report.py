@@ -375,8 +375,26 @@ handler/finally failures. All77selected native tests in28suites,33condition/GC
 units, seven native scope tests,35production contracts per fresh session,
 61local Chromium tests and three reset repetitions pass. Reset exercises seven
 fixtures. Original budgets and meaningful output are retained. Its immutable
-Linux checkpoint is pending; these local results do not replace the completed54
-inventory or imply the remaining whole-driver/conformance failures are repaired.
+Linux run now independently verifies the complete condition driver, all 77 public
+tests, two separate S4 checks, 35 production contracts per fresh session, and all
+61 Chromium tests. Its complete upstream inventory records 19 whole drivers
+passing, 20 failing and 31 skipped, with all 15 curated slices passing. All six
+conformance producers still record 1090 pass / 91 fail, with no timeouts or
+changed case statuses. The full debug workspace checkpoint remains pending;
+these panels do not declare a passing workspace.
+
+The [public attribute printing milestone](ci-checkpoints/attribute-print-workflow-ceeb9571.json)
+at `ceeb9571` preserves completed output and stdout/stderr chronology when an S3
+or S4 attribute method fails. It retains the original attribute chain through
+collection while reading each next edge after callbacks, matching GNU's clear,
+remove and replace behavior. Nested attribute lists retain their full paths.
+The 23 independently captured GNU cases and complete unchanged `print-tests.R`
+match raw output under both public constructors. All 78 native tests in 29 suites,
+49 printing/output units, 36 contracts in each of two fresh production Wasm
+sessions, and all 61 Chromium tests pass. Eight fixtures survive actual reset in
+three repeated runs. Original budgets, examples, selectors and meaningful output
+remain intact. Its immutable Linux checkpoint is pending; these focused results
+do not reduce the complete conformance failure count by declaration.
 
 The [completed 6a checkpoint](ci-checkpoints/conformance-browser-6a2fd0b1.json)
 independently joins all six conformance producers: **1088 pass / 93 fail**,

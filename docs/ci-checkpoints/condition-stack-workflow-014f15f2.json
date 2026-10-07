@@ -760,7 +760,7 @@
   "immutable_ci_checkpoint": {
     "run_id": 37563648799,
     "source_commit": "014f15f261d84a9fd80781411260633bb284c540",
-    "state": "partial; complete conditions.R and public package gates independently authenticated; full checkpoint pending",
+    "state": "partial; public package/browser panels and complete conformance/upstream inventories authenticated; full debug workspace checkpoint pending",
     "url": "https://github.com/bernaferrari/R-rust/actions/runs/37563648799",
     "condition_driver": {
       "status": "pass",
@@ -922,6 +922,76 @@
         "path": "target/ci-checkpoint-014f15f2/public-package-checkpoint/s4-subset-call/process.json",
         "sha256": "d48098aaeddac83e0fd27e2a92856ad1528a2b1e6287a6963d373f6eb63350c2",
         "bytes": 731
+      }
+    },
+    "complete_upstream": {
+      "whole": {
+        "pass": 19,
+        "fail": 20,
+        "skip": 31
+      },
+      "curated": {
+        "pass": 15,
+        "fail": 0
+      },
+      "validation": "Five producers authenticated against clean frozen014f and independently joined; byte-identical to official union. Only changed54 status is conditions.R fail to pass.",
+      "independent_union": {
+        "path": "target/ci-checkpoint-014f15f2/independent-upstream.json",
+        "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
+        "bytes": 578033
+      },
+      "official_union": {
+        "path": "target/ci-checkpoint-014f15f2/upstream-r-exact-union/summary.json",
+        "sha256": "dc07b75514d2513a6209b75990b153f9ad793668322c13c4a9f2db28a37a0a30",
+        "bytes": 578033
+      }
+    },
+    "complete_conformance": {
+      "status_counts": {
+        "fail": 91,
+        "pass": 1090,
+        "skip": 0,
+        "xfail": 0,
+        "xpass": 0
+      },
+      "inventory_total": 1181,
+      "timed_out": 0,
+      "validation": "Six producer source/profile contracts authenticated and independently joined against frozen014f; full1181inventory, no missing cases. Same91failure set as54. Official CI union not yet available.",
+      "independent_union": {
+        "path": "target/ci-checkpoint-014f15f2/independent-conformance.json",
+        "sha256": "d8210d40f29c109444bae364ce870ce1fc3b3e27a28aa5c6df25680e74b9d8fb",
+        "bytes": 200727
+      }
+    },
+    "browser": {
+      "stats": {
+        "startTime": "2026-10-07T03:12:12.676Z",
+        "duration": 523132.337,
+        "expected": 61,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "report": {
+        "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/playwright.json",
+        "sha256": "2e67fc39af4a9ad54106f3d4917e7e6a907b01d9951a9f7238e7b15de2ee8175",
+        "bytes": 79715
+      },
+      "wasm": {
+        "bytes": 25763643,
+        "sha256": "6f0667a160d38656b099eb29d39501459fbaf7ee3fd9122415ff4d5bef0f5f05"
+      },
+      "node_contracts_per_fresh_session": 35,
+      "fresh_sessions": 2,
+      "node_report": {
+        "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/portable-package-contracts.log",
+        "sha256": "46eb6e41d80ab0c5df8427dfca93e7984d79818e1193e5b95917711c2a02b8d9",
+        "bytes": 13740
+      },
+      "workflow_profile": {
+        "path": "target/ci-checkpoint-014f15f2/showcase-validation/_temp/showcase-evidence/workflow-profile.jsonl",
+        "sha256": "b37049b4aa210653def331ebb4490c7f837b4649f60cd6ad82bb9239ad0cad3d",
+        "bytes": 35761
       }
     }
   }
