@@ -299,6 +299,16 @@ pub struct BinaryReader<'a> {
     persist_hook_data: SEXP,
     pub(super) lazy_restore: Option<super::api::LazyLoadRestore>,
     persist_cache: std::collections::HashMap<String, SEXP>,
+    /// Pull-mode byte source: bytes are fetched on demand, exactly as the
+    /// decoder requests them (GNU `ConnReadChar` data flow).
+    pull: Option<PullInput<'a>>,
+}
+
+/// Owning buffer plus a fill callback that grows `buf` to a requested
+/// absolute length by reading exactly the missing bytes from a source.
+struct PullInput<'a> {
+    buf: Vec<u8>,
+    fill: &'a mut dyn FnMut(&mut Vec<u8>, usize) -> bool,
 }
 
 /// Why a declared vector length is not admitted.
@@ -364,6 +374,46 @@ mod vector_length_fits_tests {
         assert!(vector_length_fits(i32::MAX, 4, 4, false).is_err());
     }
 }
+mod pull_admission_tests {
+    use super::BinaryReader;
+
+    #[test]
+    fn pull_mode_short_stream_huge_declared_length_is_truncated() {
+        // A 4-byte header declaring INT32_MAX doubles followed by end of
+        // input must be rejected without attempting the payload allocation.
+        let mut served = false;
+        let mut fill = move |buf: &mut Vec<u8>, need: usize| -> bool {
+            if served {
+                return false;
+            }
+            buf.extend_from_slice(&i32::MAX.to_ne_bytes());
+            served = true;
+            buf.len() >= need
+        };
+        let mut reader = BinaryReader::new_pull(&mut fill);
+        let rejected = reader
+            .read_vector_length(8)
+            .expect_err("huge declared length must be rejected");
+        assert!(rejected.contains("truncated vector payload"), "{rejected}");
+    }
+
+    #[test]
+    fn pull_mode_declared_length_with_buffered_payload_is_admitted() {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(&3_i32.to_ne_bytes());
+        bytes.extend_from_slice(&[0u8; 24]);
+        let mut cursor = 0usize;
+        let mut fill = move |buf: &mut Vec<u8>, need: usize| -> bool {
+            while buf.len() < need && cursor < bytes.len() {
+                buf.push(bytes[cursor]);
+                cursor += 1;
+            }
+            buf.len() >= need
+        };
+        let mut reader = BinaryReader::new_pull(&mut fill);
+        assert_eq!(reader.read_vector_length(8).unwrap(), 3);
+    }
+}
 
 #[cfg(kani)]
 mod vector_length_kani {
@@ -374,6 +424,7 @@ mod vector_length_kani {
         let len: i32 = kani::any();
         let remaining: usize = kani::any();
         kani::assume(remaining <= 64);
+
         let element_bytes: usize = kani::any();
         kani::assume(matches!(element_bytes, 0 | 1 | 4 | 8 | 16));
         let ascii: bool = kani::any();
@@ -406,6 +457,30 @@ impl<'a> BinaryReader<'a> {
             persist_hook_data: ptr::null_mut(),
             lazy_restore: None,
             persist_cache: std::collections::HashMap::new(),
+            pull: None,
+        }
+    }
+
+    /// Build a reader whose bytes arrive on demand through `fill(buf, need)`,
+    /// which must grow `buf` to length `need` (or return false at end of
+    /// input). The source is never read beyond what the decoder asks for.
+    pub fn new_pull(fill: &'a mut dyn FnMut(&mut Vec<u8>, usize) -> bool) -> Self {
+        BinaryReader {
+            data: &[],
+            pos: 0,
+            ascii_body: false,
+            xdr_body: false,
+            item_depth: 0,
+            bc_source_depth: 0,
+            persist_hook: ptr::null_mut(),
+            persist_hook_func: None,
+            persist_hook_data: ptr::null_mut(),
+            lazy_restore: None,
+            persist_cache: std::collections::HashMap::new(),
+            pull: Some(PullInput {
+                buf: Vec::new(),
+                fill,
+            }),
         }
     }
 
@@ -432,7 +507,63 @@ impl<'a> BinaryReader<'a> {
     }
 
     pub fn remaining(&self) -> usize {
-        self.data.len().saturating_sub(self.pos)
+        match &self.pull {
+            // A pull source has no known end; admission therefore runs
+            // against the bytes actually buffered, and callers must have
+            // pulled the declared payload's lower bound via `ensure()` first
+            // (GNU reads until end of input, so no static length exists).
+            Some(p) => p.buf.len().saturating_sub(self.pos),
+            None => self.data.len().saturating_sub(self.pos),
+        }
+    }
+
+    /// The bytes currently available to the decoder.
+    fn src(&self) -> &[u8] {
+        match &self.pull {
+            Some(p) => &p.buf,
+            None => self.data,
+        }
+    }
+
+    /// Ensure `count` more bytes are readable at `pos`. Pull mode requests
+    /// exactly the missing bytes from the source.
+    fn ensure(&mut self, count: usize) -> bool {
+        let Some(needed) = self.pos.checked_add(count) else {
+            return false;
+        };
+        match self.pull.as_mut() {
+            Some(p) => (p.fill)(&mut p.buf, needed),
+            None => self.data.len() >= needed,
+        }
+    }
+
+    /// Next byte without consuming it; pulls one byte in pull mode.
+    fn peek_byte(&mut self) -> Option<u8> {
+        if !self.ensure(1) {
+            return None;
+        }
+        Some(self.src()[self.pos])
+    }
+
+    fn next_byte(&mut self) -> Option<u8> {
+        let byte = self.peek_byte()?;
+        self.pos += 1;
+        Some(byte)
+    }
+
+    /// Pull mode only: bytes buffered but not consumed by the decode. The
+    /// caller must return them to the source (e.g. connection pushback) so
+    /// trailing data is not lost.
+    pub fn take_leftover(&mut self) -> Vec<u8> {
+        match self.pull.as_mut() {
+            Some(p) => {
+                let rest = p.buf[self.pos..].to_vec();
+                p.buf.clear();
+                self.pos = 0;
+                rest
+            }
+            None => Vec::new(),
+        }
     }
 
     pub fn read_i32(&mut self) -> Result<i32, String> {
@@ -445,10 +576,10 @@ impl<'a> BinaryReader<'a> {
                 .parse::<i32>()
                 .map_err(|_| format!("read error: invalid integer token '{token}'"));
         }
-        if self.remaining() < 4 {
+        if !self.ensure(4) {
             return Err("read error: not enough bytes for i32".into());
         }
-        let bytes: [u8; 4] = self.data[self.pos..self.pos + 4]
+        let bytes: [u8; 4] = self.src()[self.pos..self.pos + 4]
             .try_into()
             .unwrap_or([0; 4]);
         self.pos += 4;
@@ -465,10 +596,10 @@ impl<'a> BinaryReader<'a> {
             return super::ascii_numbers::parse_real(&token)
                 .map_err(|_| format!("read error: invalid real token '{token}'"));
         }
-        if self.remaining() < 8 {
+        if !self.ensure(8) {
             return Err("read error: not enough bytes for f64".into());
         }
-        let bytes: [u8; 8] = self.data[self.pos..self.pos + 8]
+        let bytes: [u8; 8] = self.src()[self.pos..self.pos + 8]
             .try_into()
             .unwrap_or([0; 8]);
         self.pos += 8;
@@ -485,33 +616,51 @@ impl<'a> BinaryReader<'a> {
             return u8::from_str_radix(&token, 16)
                 .map_err(|_| format!("read error: invalid byte token '{token}'"));
         }
-        if self.remaining() < 1 {
-            return Err("read error: not enough bytes for byte".into());
-        }
-        let b = self.data[self.pos];
-        self.pos += 1;
-        Ok(b)
+        self.next_byte()
+            .ok_or_else(|| "read error: not enough bytes for byte".to_string())
     }
 
-    pub fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], String> {
+    /// The returned slice borrows the reader's buffer; in pull mode any later
+    /// read may reallocate it, so consume the slice before reading on.
+    pub fn read_bytes(&mut self, len: usize) -> Result<&[u8], String> {
         if self.ascii_body {
             self.skip_ascii_whitespace();
         }
-        if self.remaining() < len {
+        let start = self.pos;
+        if !self.ensure(len) {
             return Err(format!("read error: not enough bytes for {} bytes", len));
         }
-        let slice = &self.data[self.pos..self.pos + len];
         self.pos += len;
-        if self.ascii_body && self.remaining() > 0 && self.data[self.pos] == b'\n' {
+        if self.ascii_body && self.peek_byte() == Some(b'\n') {
             self.pos += 1;
         }
-        Ok(slice)
+        Ok(&self.src()[start..start + len])
     }
 
     /// A vector cannot contain more elements than the remaining stream can
     /// encode. Check this before allocating its R payload, even without a budget.
     fn read_vector_length(&mut self, binary_element_bytes: usize) -> Result<i32, String> {
         let len = self.read_i32()?;
+        // Pull-mode streams have no known end, so a declared length is only
+        // admissible once its minimum encoding is actually buffered: the fill
+        // callback stops at end of input without pre-sizing, so a short
+        // malicious header is rejected here instead of driving a huge
+        // payload allocation. Slice mode `ensure` is the same presence check
+        // the admission below performs.
+        if let Ok(count) = usize::try_from(len) {
+            let minimum = if self.ascii_body {
+                1
+            } else {
+                binary_element_bytes
+            };
+            let admissible = count
+                .checked_mul(minimum)
+                .map(|needed| self.ensure(needed))
+                .unwrap_or(false);
+            if !admissible {
+                return Err("read error: truncated vector payload".to_string());
+            }
+        }
         vector_length_fits(len, self.remaining(), binary_element_bytes, self.ascii_body)
     }
 
@@ -521,29 +670,27 @@ impl<'a> BinaryReader<'a> {
         }
 
         self.skip_ascii_whitespace();
-        // Escapes consume at least one input byte per decoded byte. Never
-        // reserve a stream-declared allocation before checking that lower bound.
-        if len > self.remaining() {
+        // Escapes consume at least one input byte per decoded byte. Pull-mode
+        // streams must buffer that lower bound before any reservation; the
+        // fill callback stops at end of input without pre-sizing. Never
+        // reserve a stream-declared allocation before checking that bound.
+        if !self.ensure(len) || len > self.remaining() {
             return Err("read error: truncated ASCII string".into());
         }
         let mut out = Vec::new();
         out.try_reserve_exact(len)
             .map_err(|_| "read error: ASCII string allocation failed".to_string())?;
         while out.len() < len {
-            if self.pos >= self.data.len() {
-                return Err("read error: unexpected end of ASCII string".to_string());
-            }
-            let byte = self.data[self.pos];
-            self.pos += 1;
+            let byte = self
+                .next_byte()
+                .ok_or_else(|| "read error: unexpected end of ASCII string".to_string())?;
             if byte != b'\\' {
                 out.push(byte);
                 continue;
             }
-            if self.pos >= self.data.len() {
-                return Err("read error: truncated ASCII string escape".to_string());
-            }
-            let escaped = self.data[self.pos];
-            self.pos += 1;
+            let escaped = self
+                .next_byte()
+                .ok_or_else(|| "read error: truncated ASCII string escape".to_string())?;
             match escaped {
                 b'n' => out.push(b'\n'),
                 b't' => out.push(b'\t'),
@@ -559,13 +706,14 @@ impl<'a> BinaryReader<'a> {
                 b'0'..=b'7' => {
                     let mut value = (escaped - b'0') as u8;
                     let mut digits = 1usize;
-                    while digits < 3
-                        && self.pos < self.data.len()
-                        && matches!(self.data[self.pos], b'0'..=b'7')
-                    {
-                        value = value
-                            .saturating_mul(8)
-                            .saturating_add(self.data[self.pos] - b'0');
+                    while digits < 3 {
+                        let Some(digit) = self.peek_byte() else {
+                            break;
+                        };
+                        if !matches!(digit, b'0'..=b'7') {
+                            break;
+                        }
+                        value = value.saturating_mul(8).saturating_add(digit - b'0');
                         self.pos += 1;
                         digits += 1;
                     }
@@ -574,7 +722,7 @@ impl<'a> BinaryReader<'a> {
                 other => out.push(other),
             }
         }
-        if self.remaining() > 0 && self.data[self.pos] == b'\n' {
+        if self.peek_byte() == Some(b'\n') {
             self.pos += 1;
         }
         Ok(out)
@@ -583,22 +731,29 @@ impl<'a> BinaryReader<'a> {
     pub fn read_ascii_token(&mut self) -> Result<String, String> {
         self.skip_ascii_whitespace();
         let start = self.pos;
-        while self.pos < self.data.len() && !self.data[self.pos].is_ascii_whitespace() {
+        loop {
             if self.pos - start == 127 {
                 return Err("read error: ASCII token exceeds 127 bytes".into());
             }
-            self.pos += 1;
+            match self.peek_byte() {
+                Some(byte) if !byte.is_ascii_whitespace() => self.pos += 1,
+                _ => break,
+            }
         }
         if start == self.pos {
             return Err("read error: missing ASCII token".to_string());
         }
-        std::str::from_utf8(&self.data[start..self.pos])
+        let token = self.src()[start..self.pos].to_vec();
+        std::str::from_utf8(&token)
             .map(|s| s.to_string())
             .map_err(|_| "read error: invalid ASCII token".to_string())
     }
 
     pub fn skip_ascii_whitespace(&mut self) {
-        while self.pos < self.data.len() && self.data[self.pos].is_ascii_whitespace() {
+        while self
+            .peek_byte()
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
             self.pos += 1;
         }
     }

@@ -2106,6 +2106,12 @@ pub(crate) unsafe fn load_package_namespace(
             reject_unsupported_lazyload_code(package, package_dir)?;
         }
 
+        // GNU makeNamespace assigns `ns$.__S3MethodsTable__.` before
+        // `.Internal(registerNamespace)` and well before sealNamespace locks
+        // the namespace; nothing may add bindings once it is locked below, so
+        // every loaded namespace must carry its table from construction on.
+        ensure_s3_methods_table(package_env)?;
+
         // Register the in-flight namespace before sourcing its R files:
         // upstream loadNamespace records the namespace first, so package
         // code that calls `asNamespace(pkg)` mid-load (crayon's

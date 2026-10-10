@@ -2,7 +2,7 @@
 use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, setAttrib};
 use crate::library::graphics::par::{ParValue, set_plot_parameter};
 use crate::mainutils::essentials::{base_error, elt_to_string};
-use crate::mainutils::portable_plot::Coordinates;
+use crate::mainutils::portable_plot::{Coordinates, ManualClip};
 use crate::sexp::{
     accessors::*,
     constructors::*,
@@ -14,7 +14,9 @@ use crate::sexp::{
 };
 use r_graphics_engine::Scene;
 
-const RECORDING_STATE_LEN: usize = 18;
+// limits[4] + rect[4] + figure[4] + device[4] + log[2] + clip rect[4] + clip
+// xpd region code (-1 records "no manual clip").
+const RECORDING_STATE_LEN: usize = 23;
 const GRID_STATE_ATTR: &[u8] = b"rport.grid.state\0";
 
 /// Keep GNU replay for its display-list format while admitting the owned scene
@@ -84,7 +86,11 @@ unsafe fn snapshot_portable_state(recording: SEXP) {
         else {
             return;
         };
-        let state_symbol = recording_state_symbol();
+        let clip = with_required_current_instance(|inst| unsafe { (*inst).portable_graphics.clip });
+        let (clip_rect, clip_xpd) = match clip {
+            Some(clip) => (clip.rect, f64::from(clip.xpd)),
+            None => ([0.; 4], -1.),
+        };
         let state = Rf_allocVector3(SEXPTYPE::REALSXP, RECORDING_STATE_LEN as i64);
         let _state_guard = protect(state);
         let values = [
@@ -106,15 +112,27 @@ unsafe fn snapshot_portable_state(recording: SEXP) {
             coords.device[3] as f64,
             if coords.log[0] { 1. } else { 0. },
             if coords.log[1] { 1. } else { 0. },
+            f64::from(clip_rect[0]),
+            f64::from(clip_rect[1]),
+            f64::from(clip_rect[2]),
+            f64::from(clip_rect[3]),
+            clip_xpd,
         ];
         for (index, value) in values.into_iter().enumerate() {
             *REAL(state).add(index) = value;
         }
-        setAttrib(recording, state_symbol, state);
+        setAttrib(recording, recording_state_symbol(), state);
     }
 }
 
-unsafe fn decode_portable_state(recording: SEXP) -> Result<Option<Coordinates>, &'static str> {
+/// The portable plotting state captured with a recording: the installed plot
+/// coordinates and the manual `clip()` rectangle, if any.
+struct PortableState {
+    coordinates: Coordinates,
+    clip: Option<ManualClip>,
+}
+
+unsafe fn decode_portable_state(recording: SEXP) -> Result<Option<PortableState>, &'static str> {
     unsafe {
         let state = getAttrib(recording, recording_state_symbol());
         if state == R_NilValue() {
@@ -127,13 +145,19 @@ unsafe fn decode_portable_state(recording: SEXP) -> Result<Option<Coordinates>, 
             .map(|index| *REAL(state).add(index))
             .collect();
         const MAX_METADATA_COORDINATE: f64 = 1.0e9;
-        let converted_coordinates = values[4..16]
+        let converted_coordinates = values[4..22]
             .iter()
             .map(|value| *value as f32)
             .collect::<Vec<_>>();
+        // The clip xpd slot is -1 (no manual clip) or a region code 0..=2.
+        let clip_xpd = if values[22] < 0. {
+            None
+        } else {
+            Some(values[22] as u8)
+        };
         if values.iter().any(|value| !value.is_finite())
             || converted_coordinates.iter().any(|value| !value.is_finite())
-            || values[4..16]
+            || values[4..22]
                 .iter()
                 .any(|value| value.abs() > MAX_METADATA_COORDINATE)
             || values[0] == values[1]
@@ -148,36 +172,49 @@ unsafe fn decode_portable_state(recording: SEXP) -> Result<Option<Coordinates>, 
             || !values[17].is_finite()
             || ![0., 1.].contains(&values[16])
             || ![0., 1.].contains(&values[17])
+            || (clip_xpd.is_some() && ![-1., 0., 1., 2.].contains(&values[22]))
+            || (clip_xpd.is_some() && (values[18] > values[20] || values[19] > values[21]))
         {
             return Err("recorded plot has invalid graphics state metadata");
         }
-        Ok(Some(Coordinates {
-            limits: [values[0], values[1], values[2], values[3]],
-            rect: [
-                values[4] as f32,
-                values[5] as f32,
-                values[6] as f32,
-                values[7] as f32,
-            ],
-            figure: [
-                values[8] as f32,
-                values[9] as f32,
-                values[10] as f32,
-                values[11] as f32,
-            ],
-            device: [
-                values[12] as f32,
-                values[13] as f32,
-                values[14] as f32,
-                values[15] as f32,
-            ],
-            log: [values[16] != 0., values[17] != 0.],
+        Ok(Some(PortableState {
+            coordinates: Coordinates {
+                limits: [values[0], values[1], values[2], values[3]],
+                rect: [
+                    values[4] as f32,
+                    values[5] as f32,
+                    values[6] as f32,
+                    values[7] as f32,
+                ],
+                figure: [
+                    values[8] as f32,
+                    values[9] as f32,
+                    values[10] as f32,
+                    values[11] as f32,
+                ],
+                device: [
+                    values[12] as f32,
+                    values[13] as f32,
+                    values[14] as f32,
+                    values[15] as f32,
+                ],
+                log: [values[16] != 0., values[17] != 0.],
+            },
+            clip: clip_xpd.map(|xpd| ManualClip {
+                rect: [
+                    values[18] as f32,
+                    values[19] as f32,
+                    values[20] as f32,
+                    values[21] as f32,
+                ],
+                xpd,
+            }),
         }))
     }
 }
 
 unsafe fn restore_portable_state(
-    state: Coordinates,
+    state: PortableState,
     source_dimensions: (u32, u32),
     target_dimensions: (u32, u32),
 ) {
@@ -188,12 +225,17 @@ unsafe fn restore_portable_state(
     }
     let sx = target_width as f32 / source_width as f32;
     let sy = target_height as f32 / source_height as f32;
-    let mut scaled = state;
+    let mut scaled = state.coordinates;
     scale_rect(&mut scaled.rect, sx, sy);
     scale_rect(&mut scaled.figure, sx, sy);
     scale_rect(&mut scaled.device, sx, sy);
+    let clip = state.clip.map(|mut clip| {
+        scale_rect(&mut clip.rect, sx, sy);
+        clip
+    });
     with_required_current_instance(|inst| unsafe {
         (*inst).portable_graphics.current = Some(scaled);
+        (*inst).portable_graphics.clip = clip;
     });
     set_plot_parameter("usr", ParValue::Real(scaled.limits.to_vec()));
     set_plot_parameter("xlog", ParValue::Logical(vec![i32::from(scaled.log[0])]));

@@ -15532,78 +15532,72 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             crate::mainutils::errors::errorcall_str(call, "'arg' should be one of");
         }
         let several_cell = CDR(choices_cell);
-        let several_ok = if several_cell.is_null() || several_cell == R_NilValue() {
+        let several_expr = if several_cell.is_null() || several_cell == R_NilValue() {
+            R_MissingArg()
+        } else {
+            CAR(several_cell)
+        };
+        // GNU: 'several.ok' must be logical, or a string starting with "all"
+        // (which also requires every element of arg to match).
+        let mut all_match = false;
+        let several_ok = if several_expr.is_null()
+            || several_expr == R_NilValue()
+            || several_expr == R_MissingArg()
+        {
             false
         } else {
-            let flag = crate::eval::eval::Rf_eval(CAR(several_cell), rho);
-            !flag.is_null() && flag != R_NilValue() && crate::main::coerce::asLogical(flag) == 1
+            let flag = crate::eval::eval::Rf_eval(several_expr, rho);
+            let flag_type = TYPEOF(flag);
+            if flag_type == SEXPTYPE::LGLSXP {
+                match crate::main::coerce::asLogical(flag) {
+                    1 => true,
+                    0 => false,
+                    _ => crate::mainutils::errors::errorcall_str(
+                        call,
+                        "missing value where TRUE/FALSE needed",
+                    ),
+                }
+            } else if flag_type == SEXPTYPE::STRSXP {
+                let text = elt_to_string(flag, 0);
+                if text.starts_with("all") {
+                    all_match = true;
+                    true
+                } else {
+                    crate::mainutils::errors::errorcall_str(
+                        call,
+                        "'several.ok' must be logical or a string starting with \"all\"",
+                    )
+                }
+            } else {
+                crate::mainutils::errors::errorcall_str(
+                    call,
+                    "'several.ok' must be logical or a string starting with \"all\"",
+                )
+            }
         };
-        if several_ok {
-            let mut hits: Vec<String> = Vec::new();
-            for a in 0..XLENGTH(arg) {
-                let needle = elt_to_string(arg, a);
-                if needle.is_empty() {
-                    continue;
-                }
-                let mut exact: Option<i64> = None;
-                let mut prefixes: Vec<i64> = Vec::new();
-                for i in 0..XLENGTH(choices) {
-                    let choice = elt_to_string(choices, i);
-                    if choice == needle {
-                        exact = Some(i);
-                        break;
-                    }
-                    if choice.starts_with(&needle) {
-                        prefixes.push(i);
-                    }
-                }
-                if let Some(i) = exact.or_else(|| {
-                    if prefixes.len() == 1 {
-                        prefixes.pop()
-                    } else {
-                        None
-                    }
-                }) {
-                    hits.push(elt_to_string(choices, i));
-                }
+        if !several_ok {
+            // The arg can be the whole of choices as a default argument.
+            if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
+                return match_arg_first(choices);
             }
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, hits.len() as i64);
-            let _result = protect(result);
-            for (i, hit) in hits.iter().enumerate() {
-                let cstr = std::ffi::CString::new(hit.as_str()).unwrap_or_default();
-                SET_STRING_ELT(result, i as i64, Rf_mkChar(cstr.as_ptr()));
+            if XLENGTH(arg) != 1 {
+                crate::mainutils::errors::errorcall_str(call, "'arg' must be of length 1");
             }
-            return result;
+        } else if XLENGTH(arg) == 0 {
+            crate::mainutils::errors::errorcall_str(call, "'arg' must be of length >= 1");
         }
 
-        if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
-            return match_arg_first(choices);
+        // Handle each element of arg separately:
+        // pmatch(arg, choices, nomatch = 0, duplicates.ok = TRUE).
+        let mut idxs: Vec<i64> = Vec::with_capacity(XLENGTH(arg) as usize);
+        for a in 0..XLENGTH(arg) {
+            let needle = elt_to_string(arg, a);
+            idxs.push(match_arg_pmatch_index(&needle, choices));
         }
-        if XLENGTH(arg) != 1 {
-            crate::mainutils::errors::errorcall_str(call, "'arg' must be of length 1");
-        }
-
-        let needle = elt_to_string(arg, 0);
-        let mut exact: Option<i64> = None;
-        let mut prefixes: Vec<i64> = Vec::new();
-        if !needle.is_empty() {
-            for i in 0..XLENGTH(choices) {
-                let choice = elt_to_string(choices, i);
-                if choice == needle {
-                    exact = Some(i);
-                    break;
-                }
-                if choice.starts_with(&needle) {
-                    prefixes.push(i);
-                }
-            }
-        }
-        let idx = if let Some(i) = exact {
-            i
-        } else if prefixes.len() == 1 {
-            prefixes[0]
-        } else {
-            let mut shown = Vec::new();
+        let all_zero = idxs.iter().all(|&i| i < 0);
+        let any_zero = idxs.iter().any(|&i| i < 0);
+        if all_zero || (all_match && any_zero) {
+            let mut shown: Vec<String> = Vec::new();
             for i in 0..XLENGTH(choices) {
                 let choice = elt_to_string(choices, i);
                 if !choice.is_empty() && !shown.contains(&choice) {
@@ -15621,8 +15615,40 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 format!("'arg' should be one of {list}")
             };
             crate::mainutils::errors::errorcall_str(call, &msg);
-        };
-        match_arg_elt(choices, idx)
+        }
+        let hits: Vec<String> = idxs
+            .iter()
+            .filter(|i| **i >= 0)
+            .map(|&i| elt_to_string(choices, i))
+            .collect();
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, hits.len() as i64);
+        let _result = protect(result);
+        for (i, hit) in hits.iter().enumerate() {
+            let cstr = std::ffi::CString::new(hit.as_str()).unwrap_or_default();
+            SET_STRING_ELT(result, i as i64, Rf_mkChar(cstr.as_ptr()));
+        }
+        result
+    }
+}
+
+/// `pmatch(x, table, nomatch = 0, duplicates.ok = TRUE)` for a single
+/// element: an exact match wins, otherwise a unique prefix; -1 = nomatch.
+unsafe fn match_arg_pmatch_index(needle: &str, choices: SEXP) -> i64 {
+    unsafe {
+        for i in 0..XLENGTH(choices) {
+            if elt_to_string(choices, i) == needle {
+                return i;
+            }
+        }
+        let mut prefix: i64 = -1;
+        let mut count = 0;
+        for i in 0..XLENGTH(choices) {
+            if elt_to_string(choices, i).starts_with(needle) {
+                count += 1;
+                prefix = i;
+            }
+        }
+        if count == 1 { prefix } else { -1 }
     }
 }
 

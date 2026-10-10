@@ -3182,6 +3182,13 @@ unsafe fn retarget_base_closure_envs(base_env: SEXP) {
         let sym = Rf_install_in_current(".BaseNamespaceEnv");
         defineVar(sym, namespace, base_env);
         SET_SYMVALUE(sym, namespace);
+
+        // GNU base/R/namespace.R gives the base namespace its table for
+        // registered methods while base is still unsealed; after session
+        // bootstrap locks base, nothing may add bindings to it. The define
+        // mirrors into the shared base frame like every other base binding.
+        crate::mainutils::essentials::ensure_s3_methods_table(namespace)
+            .expect("base namespace requires an S3 methods table");
     }
 }
 

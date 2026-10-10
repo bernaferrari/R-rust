@@ -5245,14 +5245,43 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             match slot {
                 3 => {
                     if TYPEOF(value) == SEXPTYPE::STRSXP {
+                        // GNU format.default: justify <- match.arg(justify) against
+                        // c("left", "right", "centre", "none") — prefix matching
+                        // applies; unknown/ambiguous values are an error.
+                        const JUSTIFY_CHOICES: [&str; 4] = ["left", "right", "centre", "none"];
                         let text = elt_to_string(value, 0);
-                        justify = match text.as_str() {
-                            "left" => 0,
-                            "right" => 1,
-                            "centre" | "center" => 2,
-                            "none" => 3,
-                            _ => 0,
-                        };
+                        let mut exact: Option<usize> = None;
+                        let mut prefixes: Vec<usize> = Vec::new();
+                        for (i, choice) in JUSTIFY_CHOICES.iter().enumerate() {
+                            if *choice == text {
+                                exact = Some(i);
+                                break;
+                            }
+                            if choice.starts_with(text.as_str()) {
+                                prefixes.push(i);
+                            }
+                        }
+                        let idx = exact.or_else(|| {
+                            if prefixes.len() == 1 {
+                                prefixes.pop()
+                            } else {
+                                None
+                            }
+                        });
+                        match idx {
+                            Some(i) => justify = i as c_int,
+                            None => {
+                                let list = JUSTIFY_CHOICES
+                                    .iter()
+                                    .map(|c| format!("\"{c}\""))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                crate::mainutils::errors::errorcall_str(
+                                    crate::mainutils::errors::R_getCurrentCall(),
+                                    &format!("'arg' should be one of {list}"),
+                                );
+                            }
+                        }
                     } else {
                         let v = crate::main::coerce::asInteger(value);
                         if v != NA_INTEGER && (0..=3).contains(&v) {

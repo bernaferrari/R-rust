@@ -27,9 +27,21 @@ pub(crate) struct Coordinates {
     pub device: [f32; 4],
     pub log: [bool; 2],
 }
+/// A manual device clip installed by `clip()`.
+///
+/// GNU pins the rectangle against the next region-derived `GClip` by copying
+/// `xpd` into `oldxpd`; the rectangle survives until the effective xpd region
+/// changes or a new plot is started.
+#[derive(Clone, Copy)]
+pub(crate) struct ManualClip {
+    pub rect: [f32; 4],
+    /// The xpd region code (`xpd_region_code`) recorded when `clip()` ran.
+    pub xpd: u8,
+}
 #[derive(Default)]
 pub(crate) struct GraphicsState {
     pub current: Option<Coordinates>,
+    pub clip: Option<ManualClip>,
     layout: [usize; 2],
     next: usize,
 }
@@ -739,13 +751,44 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
 /// FALSE clips to the plot region, TRUE to the figure, and NA to the device.
 /// An inline xpd argument takes precedence over par("xpd").
 fn clip_for_xpd(c: Coordinates, value: f64) -> [f32; 4] {
+    xpd_region(c, xpd_region_code(value))
+}
+
+/// Region code for the xpd contract: 0 plot, 1 figure, 2 device.
+fn xpd_region_code(value: f64) -> u8 {
     if value.is_nan() || value < -1.0e9 {
-        c.device
+        2
     } else if value != 0. {
-        c.figure
+        1
     } else {
-        c.rect
+        0
     }
+}
+
+fn xpd_region(c: Coordinates, code: u8) -> [f32; 4] {
+    match code {
+        2 => c.device,
+        1 => c.figure,
+        _ => c.rect,
+    }
+}
+
+fn manual_clip() -> Option<ManualClip> {
+    with_required_current_instance(|inst| unsafe { (*inst).portable_graphics.clip })
+}
+
+fn install_manual_clip(clip: ManualClip) {
+    with_required_current_instance(|inst| unsafe {
+        (*inst).portable_graphics.clip = Some(clip);
+    });
+}
+
+/// GNU GNewPlot forces the device clip back to the derived region; a manual
+/// `clip()` rectangle never survives into a new plot.
+fn clear_manual_clip() {
+    with_required_current_instance(|inst| unsafe {
+        (*inst).portable_graphics.clip = None;
+    });
 }
 
 unsafe fn clip_rect(c: Coordinates, args: SEXP) -> [f32; 4] {
@@ -755,7 +798,298 @@ unsafe fn clip_rect(c: Coordinates, args: SEXP) -> [f32; 4] {
     } else {
         unsafe { values(value).first().copied().unwrap_or(0.) }
     };
-    clip_for_xpd(c, value)
+    let code = xpd_region_code(value);
+    // GNU GClip: a manual clip() rectangle stays in force while the effective
+    // xpd region matches the one recorded when clip() ran. Any other region
+    // (an inline xpd argument or a changed par) restores the derived clip and
+    // discards the manual rectangle, exactly like GNU's oldxpd comparison.
+    if let Some(manual) = manual_clip() {
+        if manual.xpd == code {
+            return manual.rect;
+        }
+        clear_manual_clip();
+    }
+    xpd_region(c, code)
+}
+
+/// Map a user x location to device coordinates in f64, mirroring
+/// `Coordinates::map_transformed` without the f32 rounding.
+fn user_x_to_device(c: &Coordinates, x: f64) -> f64 {
+    let x = if c.log[0] { x.log10() } else { x };
+    f64::from(c.rect[0])
+        + (x - c.limits[0]) / (c.limits[1] - c.limits[0]) * f64::from(c.rect[2] - c.rect[0])
+}
+
+/// Map a user y location to device coordinates. Device y grows downward, so
+/// the upper user limit maps to the top edge.
+fn user_y_to_device(c: &Coordinates, y: f64) -> f64 {
+    let y = if c.log[1] { y.log10() } else { y };
+    f64::from(c.rect[3])
+        - (y - c.limits[2]) / (c.limits[3] - c.limits[2]) * f64::from(c.rect[3] - c.rect[1])
+}
+
+fn device_x_to_user(c: &Coordinates, d: f64) -> f64 {
+    let t = (d - f64::from(c.rect[0])) / f64::from(c.rect[2] - c.rect[0]);
+    let u = c.limits[0] + t * (c.limits[1] - c.limits[0]);
+    if c.log[0] { 10f64.powf(u) } else { u }
+}
+
+fn device_y_to_user(c: &Coordinates, d: f64) -> f64 {
+    let t = (f64::from(c.rect[3]) - d) / f64::from(c.rect[3] - c.rect[1]);
+    let u = c.limits[2] + t * (c.limits[3] - c.limits[2]);
+    if c.log[1] { 10f64.powf(u) } else { u }
+}
+
+/// GNU `C_clip` — `clip(x1, x2, y1, y2)`.
+///
+/// Installs a persistent device clip rectangle from user coordinates
+/// (GESetClip) and pins it against the next region-derived clip by recording
+/// the current xpd region, mirroring GNU's `oldxpd` assignment. Each edge is
+/// clamped to the device region and the rectangle is stored normalized, as
+/// GESetClip does. The immediate device call also records the state change in
+/// the scene display list.
+pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        let mut corners = [0f64; 4];
+        for (index, name) in ["x1", "x2", "y1", "y2"].into_iter().enumerate() {
+            let value = if cell.is_null() || cell == R_NilValue() {
+                R_NilValue()
+            } else {
+                let head = CAR(cell);
+                cell = CDR(cell);
+                head
+            };
+            let corner = crate::mainutils::coerce::asReal(value);
+            if !corner.is_finite() {
+                base_error(format!("invalid '{name}' argument"));
+            }
+            corners[index] = corner;
+        }
+        let c = current();
+        // GConvert both corners USER -> DEVICE, then GESetClip: clamp every
+        // edge to the device region (nonfinite maps collapse to the nearest
+        // edge) and normalize the stored order like clipLeft/clipRight/
+        // clipBottom/clipTop.
+        let clamp = |v: f64, lo: f64, hi: f64| {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else if v > 0. {
+                hi
+            } else {
+                lo
+            }
+        };
+        let x = [
+            clamp(
+                user_x_to_device(&c, corners[0]),
+                f64::from(c.device[0]),
+                f64::from(c.device[2]),
+            ),
+            clamp(
+                user_x_to_device(&c, corners[2]),
+                f64::from(c.device[0]),
+                f64::from(c.device[2]),
+            ),
+        ];
+        let y = [
+            clamp(
+                user_y_to_device(&c, corners[1]),
+                f64::from(c.device[1]),
+                f64::from(c.device[3]),
+            ),
+            clamp(
+                user_y_to_device(&c, corners[3]),
+                f64::from(c.device[1]),
+                f64::from(c.device[3]),
+            ),
+        ];
+        let rect = [
+            (x[0].min(x[1])) as f32,
+            (y[0].min(y[1])) as f32,
+            (x[0].max(x[1])) as f32,
+            (y[0].max(y[1])) as f32,
+        ];
+        let xpd = par_numbers("xpd").first().copied().unwrap_or(0.);
+        install_manual_clip(ManualClip {
+            rect,
+            xpd: xpd_region_code(xpd),
+        });
+        // GESetClip applies the clip to the device immediately.
+        let target = &mut *renderer();
+        target.set_clip(Some(rect));
+        invisible()
+    }
+}
+
+/// Device-space geometry for GNU `GConvertX`/`GConvertY`: the installed plot
+/// coordinates plus the margin yardsticks derived from par("csi"),
+/// par("mex"), par("cex") and par("oma"). The portable device uses 72 device
+/// units per inch with square pixels, so one margin line is `mex * csi * 72`
+/// units and one character height is `csi * 72` units, matching GNU's
+/// xNDCPerLine/xNDCPerChar with cra[1] = 1.2 * startps.
+struct ConversionGeometry {
+    c: Coordinates,
+    inner: [f64; 4],
+    /// Device units per margin line.
+    line: f64,
+    /// Device units per character height at cex 1.
+    char_height: f64,
+    cex: f64,
+    oma: [f64; 4],
+}
+
+impl ConversionGeometry {
+    fn capture(c: Coordinates) -> Self {
+        let csi = par_numbers("csi").first().copied().unwrap_or(0.2);
+        let mex = par_numbers("mex").first().copied().unwrap_or(1.);
+        let line = csi * 72. * mex;
+        let oma = par_numbers("oma");
+        let oma = [
+            oma.first().copied().unwrap_or(0.),
+            oma.get(1).copied().unwrap_or(0.),
+            oma.get(2).copied().unwrap_or(0.),
+            oma.get(3).copied().unwrap_or(0.),
+        ];
+        let margin = |lines: f64| lines * line;
+        let inner = [
+            f64::from(c.device[0]) + margin(oma[1]),
+            f64::from(c.device[1]) + margin(oma[2]),
+            f64::from(c.device[2]) - margin(oma[3]),
+            f64::from(c.device[3]) - margin(oma[0]),
+        ];
+        Self {
+            c,
+            inner,
+            line,
+            char_height: csi * 72.,
+            cex: par_numbers("cex").first().copied().unwrap_or(1.),
+            oma,
+        }
+    }
+}
+
+fn bad_units_error(vertical: bool) -> ! {
+    base_error(format!(
+        "bad units specified in '{}'",
+        if vertical { "GConvertY" } else { "GConvertX" }
+    ))
+}
+
+/// Convert a location from a GNU GUnit coordinate system to device
+/// coordinates. Codes are zero-based GUnit values: 0 device, 1 ndc, 2/4
+/// oma1/oma3, 6 nic, 7 nfc, 8/10 mar1/mar3, 12 user, 13 inches, 14 lines,
+/// 15 chars, 16 npc. The cross-axis margin codes (3, 5, 9, 11) have no
+/// single-axis conversion and error like GNU's BadUnitsError.
+fn location_to_device(g: &ConversionGeometry, vertical: bool, code: i32, v: f64) -> f64 {
+    let c = &g.c;
+    if vertical {
+        // Device y grows downward: the ndc/nic/nfc/npc origins and the
+        // inches/lines/chars origins sit at the bottom edge.
+        let bottom = f64::from(c.device[3]);
+        match code {
+            0 => v,
+            1 => bottom - v * f64::from(c.device[3] - c.device[1]),
+            2 => bottom - (g.oma[0] - v) * g.line,
+            4 => f64::from(c.device[1]) + (g.oma[2] - v) * g.line,
+            6 => g.inner[3] - v * (g.inner[3] - g.inner[1]),
+            7 => f64::from(c.figure[3]) - v * f64::from(c.figure[3] - c.figure[1]),
+            8 => f64::from(c.rect[3]) + v * g.line,
+            10 => f64::from(c.rect[1]) - v * g.line,
+            12 => user_y_to_device(c, v),
+            13 => bottom - v * 72.,
+            14 => bottom - v * g.line,
+            15 => bottom - v * g.cex * g.char_height,
+            16 => f64::from(c.rect[3]) - v * f64::from(c.rect[3] - c.rect[1]),
+            _ => bad_units_error(vertical),
+        }
+    } else {
+        // OMA1/OMA3 share the inner x axis; MAR1/MAR3 share the user x axis.
+        let left = f64::from(c.device[0]);
+        match code {
+            0 => v,
+            1 => left + v * f64::from(c.device[2] - c.device[0]),
+            2 | 4 => g.inner[0] + v * (g.inner[2] - g.inner[0]),
+            6 => g.inner[0] + v * (g.inner[2] - g.inner[0]),
+            7 => f64::from(c.figure[0]) + v * f64::from(c.figure[2] - c.figure[0]),
+            8 | 10 => user_x_to_device(c, v),
+            12 => user_x_to_device(c, v),
+            13 => left + v * 72.,
+            14 => left + v * g.line,
+            15 => left + v * g.cex * g.char_height,
+            16 => f64::from(c.rect[0]) + v * f64::from(c.rect[2] - c.rect[0]),
+            _ => bad_units_error(vertical),
+        }
+    }
+}
+
+/// Convert a device-space location to a GNU GUnit coordinate system.
+fn device_to_location(g: &ConversionGeometry, vertical: bool, code: i32, d: f64) -> f64 {
+    let c = &g.c;
+    if vertical {
+        let bottom = f64::from(c.device[3]);
+        match code {
+            0 => d,
+            1 => (bottom - d) / f64::from(c.device[3] - c.device[1]),
+            2 => g.oma[0] - (bottom - d) / g.line,
+            4 => g.oma[2] - (d - f64::from(c.device[1])) / g.line,
+            6 => (g.inner[3] - d) / (g.inner[3] - g.inner[1]),
+            7 => (f64::from(c.figure[3]) - d) / f64::from(c.figure[3] - c.figure[1]),
+            8 => (d - f64::from(c.rect[3])) / g.line,
+            10 => (f64::from(c.rect[1]) - d) / g.line,
+            12 => device_y_to_user(c, d),
+            13 => (bottom - d) / 72.,
+            14 => (bottom - d) / g.line,
+            15 => (bottom - d) / (g.cex * g.char_height),
+            16 => (f64::from(c.rect[3]) - d) / f64::from(c.rect[3] - c.rect[1]),
+            _ => bad_units_error(vertical),
+        }
+    } else {
+        let left = f64::from(c.device[0]);
+        match code {
+            0 => d,
+            1 => (d - left) / f64::from(c.device[2] - c.device[0]),
+            2 | 4 => (d - g.inner[0]) / (g.inner[2] - g.inner[0]),
+            6 => (d - g.inner[0]) / (g.inner[2] - g.inner[0]),
+            7 => (d - f64::from(c.figure[0])) / f64::from(c.figure[2] - c.figure[0]),
+            8 | 10 => device_x_to_user(c, d),
+            12 => device_x_to_user(c, d),
+            13 => (d - left) / 72.,
+            14 => (d - left) / g.line,
+            15 => (d - left) / (g.cex * g.char_height),
+            16 => (d - f64::from(c.rect[0])) / f64::from(c.rect[2] - c.rect[0]),
+            _ => bad_units_error(vertical),
+        }
+    }
+}
+
+/// GNU `C_convertX`/`C_convertY` — the engine behind `grconvertX` and
+/// `grconvertY`. Converts locations between the graphics coordinate systems
+/// through device space, like GConvertX/GConvertY.
+pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if TYPEOF(x) != SEXPTYPE::REALSXP {
+            base_error("invalid 'x' argument");
+        }
+        let from = crate::mainutils::coerce::asInteger(CADR(args));
+        if from == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&from) {
+            base_error("invalid 'from' argument");
+        }
+        let to = crate::mainutils::coerce::asInteger(CADDR(args));
+        if to == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&to) {
+            base_error("invalid 'to' argument");
+        }
+        let (from, to) = (from - 1, to - 1);
+        let geometry = ConversionGeometry::capture(current());
+        let result = crate::mainutils::duplicate::Rf_duplicate(x);
+        for index in 0..XLENGTH(result) as usize {
+            let value = *REAL(result).add(index);
+            let device = location_to_device(&geometry, vertical, from, value);
+            *REAL(result).add(index) = device_to_location(&geometry, vertical, to, device);
+        }
+        result
+    }
 }
 fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
     if [a.x, a.y, b.x, b.y].iter().any(|v| !v.is_finite()) {
@@ -1628,6 +1962,97 @@ mod tests {
         assert!(!ticks.is_empty());
         assert!(ticks.iter().all(|tick| tick.is_finite()));
     }
+
+    /// Default 7-inch pdf geometry: 504 device units, mar 5.1/4.1/4.1/2.1
+    /// lines of 14.4 units, plot rectangle at plt [0.117, 0.94, 0.146, 0.883].
+    fn default_pdf_geometry() -> super::ConversionGeometry {
+        super::ConversionGeometry {
+            c: Coordinates {
+                limits: [0., 1., 0., 1.],
+                rect: [59.04, 59.04, 473.76, 430.56],
+                figure: [0., 0., 504., 504.],
+                device: [0., 0., 504., 504.],
+                log: [false; 2],
+            },
+            inner: [0., 0., 504., 504.],
+            line: 14.4,
+            char_height: 14.4,
+            cex: 1.,
+            oma: [0.; 4],
+        }
+    }
+
+    #[test]
+    fn gconvert_math_matches_usr_plt_and_ndc_relations() {
+        let g = default_pdf_geometry();
+        // The plot rectangle is stored in f32, so device-space values carry
+        // f32 rounding; the normalized relations stay tight.
+        let device_x = super::location_to_device(&g, false, 12, 0.5);
+        assert!((device_x - 266.4).abs() < 1e-3);
+        // ndc is the device fraction: 266.4 / 504.
+        let ndc = super::device_to_location(&g, false, 1, device_x);
+        assert!((ndc - 266.4 / 504.).abs() < 1e-6);
+        // npc is the plot-region fraction.
+        let npc = super::device_to_location(&g, false, 16, device_x);
+        assert!((npc - 0.5).abs() < 1e-6);
+        // inches on a 7-inch device.
+        let inches = super::device_to_location(&g, false, 13, 252.);
+        assert!((inches - 3.5).abs() < 1e-9);
+        // y axis: ndc 0 is the bottom edge; user 0.5 the plot middle.
+        let bottom = super::location_to_device(&g, true, 1, 0.);
+        assert!((bottom - 504.).abs() < 1e-3);
+        let device_y = super::location_to_device(&g, true, 12, 0.5);
+        assert!((device_y - 244.8).abs() < 1e-3);
+        let npc_y = super::device_to_location(&g, true, 16, device_y);
+        assert!((npc_y - 0.5).abs() < 1e-6);
+        // lines and chars use the csi/mex yardstick of 14.4 device units.
+        let lines = super::location_to_device(&g, false, 14, 2.);
+        assert!((lines - 28.8).abs() < 1e-6);
+        let chars = super::device_to_location(&g, true, 15, 504. - 28.8);
+        assert!((chars - 2.).abs() < 1e-6);
+        // nic/nfc share the full device when oma is zero.
+        let nic = super::location_to_device(&g, false, 6, 0.25);
+        assert!((nic - 126.).abs() < 1e-6);
+        // mar1 counts lines below the plot region.
+        let mar1 = super::location_to_device(&g, true, 8, 1.);
+        assert!((mar1 - (430.56 + 14.4)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn gconvert_user_roundtrips_on_log_axes() {
+        let mut g = default_pdf_geometry();
+        g.c.log = [true, true];
+        // limits store log10 of the user range [1, 10].
+        let device = super::location_to_device(&g, false, 12, 10.);
+        assert!((device - 473.76).abs() < 1e-3);
+        let user = super::device_to_location(&g, false, 12, device);
+        assert!((user - 10.).abs() < 1e-9);
+        let device_y = super::location_to_device(&g, true, 12, 1.);
+        assert!((device_y - 430.56).abs() < 1e-3);
+        let user_y = super::device_to_location(&g, true, 12, device_y);
+        assert!((user_y - 1.).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gconvert_rejects_cross_axis_margin_units() {
+        let error = std::panic::catch_unwind(|| {
+            let g = default_pdf_geometry();
+            super::location_to_device(&g, false, 3, 0.5)
+        })
+        .expect_err("oma2 has no x-axis conversion");
+        let error = error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("cross-axis margin units should use the R error path");
+        assert!(error.message.contains("bad units specified in 'GConvertX'"));
+    }
+
+    #[test]
+    fn xpd_region_codes_partition_false_true_and_na() {
+        assert_eq!(super::xpd_region_code(0.), 0);
+        assert_eq!(super::xpd_region_code(1.), 1);
+        assert_eq!(super::xpd_region_code(f64::NAN), 2);
+        assert_eq!(super::xpd_region_code(-2.0e9), 2);
+    }
 }
 fn box_path(target: &mut dyn DrawTarget, c: Coordinates, color: Color) {
     let mut path = Path::rect(
@@ -1768,6 +2193,9 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         }
         let (c, clear) = coordinates(args, &x, &y, true);
         install(c);
+        // GNU's high-level plot() opens its frame through plot.new, whose
+        // GNewPlot forces the clip back to the derived region.
+        clear_manual_clip();
         let axes = scalar(args, "axes", 1.) != 0.;
         let frame = scalar(args, "frame.plot", if axes { 1. } else { 0. }) != 0.;
         let title_labels = title_labels(args);
@@ -1805,6 +2233,9 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             }
             let (c, clear) = coordinates(args, &[0., 1.], &[0., 1.], true);
             install(c);
+            // GNewPlot follows GReset with GForceClip: the manual clip()
+            // rectangle never survives into a new plot.
+            clear_manual_clip();
             let target = &mut *renderer();
             target.set_clip(None);
             if clear {

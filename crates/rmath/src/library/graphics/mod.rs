@@ -267,6 +267,56 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
         ))
     }
 }
+
+/// GNU `clip` passes four user coordinates after the routine name.
+unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        if renderplot_backend_active() {
+            return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+/// GNU `grconvertX` passes the values plus one-based unit indices.
+unsafe extern "C-unwind" fn c_convert_x(args: SEXP) -> SEXP {
+    unsafe { convert_locations(args, false) }
+}
+
+/// GNU `grconvertY` passes the values plus one-based unit indices.
+unsafe extern "C-unwind" fn c_convert_y(args: SEXP) -> SEXP {
+    unsafe { convert_locations(args, true) }
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn convert_locations(args: SEXP, vertical: bool) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return crate::mainutils::portable_plot::native_convert(
+                crate::sexp::accessors::CDR(args),
+                vertical,
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe fn convert_locations(args: SEXP, _vertical: bool) -> SEXP {
+    unsafe {
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
 unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::essentials::do_axis(
@@ -422,23 +472,27 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             c_unsupported_graphics,
             crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
-        "convertX" | "convertY" => {
-            Some(crate::mainutils::native_routines::NativeRoutine::External1(
-                c_unsupported_graphics,
-                crate::mainutils::native_routines::PayloadArity::Fixed(3),
-            ))
-        }
+        "clip" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_clip,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "convertX" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_convert_x,
+            crate::mainutils::native_routines::PayloadArity::Fixed(3),
+        )),
+        "convertY" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_convert_y,
+            crate::mainutils::native_routines::PayloadArity::Fixed(3),
+        )),
         "raster" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_raster,
             crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
-        "persp" | "clip" | "dend" | "dendwindow" | "erase" | "path" | "symbols" | "xspline"
-        | "locator" | "identify" => {
-            Some(crate::mainutils::native_routines::NativeRoutine::External1(
-                c_unsupported_graphics,
-                crate::mainutils::native_routines::PayloadArity::Variadic,
-            ))
-        }
+        "persp" | "dend" | "dendwindow" | "erase" | "path" | "symbols" | "xspline" | "locator"
+        | "identify" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_unsupported_graphics,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
         "StemLeaf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_stem_leaf),
         )),
@@ -647,5 +701,216 @@ mod portable_title_tests {
             })
             .collect();
         assert_eq!(text, ["main label", "x label", "y label", "subtitle"]);
+    }
+}
+
+#[cfg(all(test, feature = "renderplot-device"))]
+mod clip_and_convert_tests {
+    use crate::sexp::session::RSession;
+
+    /// Default 7-inch pdf geometry on a 504x504 scene: mar 5.1/4.1/4.1/2.1
+    /// lines of 14.4 device units put the plot rectangle at
+    /// [59.04, 59.04, 473.76, 430.56] with usr [0, 1] x [0, 1] under
+    /// xaxs/yaxs = "i".
+    const PLOT_RECT: [f32; 4] = [59.04, 59.04, 473.76, 430.56];
+    const WINDOW: &str = "plot.new(); plot.window(xlim=c(0,1), ylim=c(0,1), xaxs='i', yaxs='i')";
+
+    fn close(actual: &[f32; 4], expected: &[f32; 4]) -> bool {
+        actual
+            .iter()
+            .zip(expected)
+            .all(|(a, b)| (a - b).abs() < 0.01)
+    }
+
+    fn clip_rects(scene: &r_graphics_engine::Scene) -> Vec<[f32; 4]> {
+        scene
+            .operations()
+            .iter()
+            .filter_map(|operation| match operation {
+                r_graphics_engine::DrawOperation::Clip(Some(rect)) => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn clip_installs_the_manual_device_clip_for_subsequent_drawing() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let ok = session.eval_script_with_output_capture_then_renderplot(
+            &format!("{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); points(0.5, 0.5)"),
+            &mut scene,
+            |value, _, _| value.is_ok(),
+        );
+        assert!(ok, "clip probe should evaluate without error");
+        // user (0.25, 0.25)..(0.75, 0.75) maps to the plot-rectangle quarter.
+        let expected = [162.72, 151.92, 370.08, 337.68];
+        let clips = clip_rects(&scene);
+        assert!(
+            clips.iter().any(|rect| close(rect, &expected)),
+            "manual clip rect missing from {clips:?}"
+        );
+        // The point after clip() draws under the manual rectangle too.
+        assert_eq!(clips.len(), 2);
+        assert!(close(&clips[1], &expected));
+    }
+
+    #[test]
+    fn clip_rectangle_is_clamped_to_the_device_region() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let ok = session.eval_script_with_output_capture_then_renderplot(
+            &format!("{WINDOW}; clip(-10, 100, -10, 100)"),
+            &mut scene,
+            |value, _, _| value.is_ok(),
+        );
+        assert!(ok, "wide clip should evaluate without error");
+        // GESetClip clamps each edge to the device region.
+        let expected = [0., 0., 504., 504.];
+        let clips = clip_rects(&scene);
+        assert_eq!(clips.len(), 1);
+        assert!(close(&clips[0], &expected), "clips: {clips:?}");
+    }
+
+    #[test]
+    fn clip_does_not_survive_a_new_plot() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let ok = session.eval_script_with_output_capture_then_renderplot(
+            &format!("{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); plot.new(); points(0.5, 0.5)"),
+            &mut scene,
+            |value, _, _| value.is_ok(),
+        );
+        assert!(ok, "clip reset probe should evaluate without error");
+        // plot.new starts a fresh frame (the scene is cleared) and GNewPlot's
+        // GForceClip discards the manual rectangle: points() clips to the
+        // plot region again.
+        let clips = clip_rects(&scene);
+        assert_eq!(clips.len(), 1);
+        assert!(close(&clips[0], &PLOT_RECT), "clips: {clips:?}");
+    }
+
+    #[test]
+    fn a_changed_xpd_region_restores_the_derived_clip() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let ok = session.eval_script_with_output_capture_then_renderplot(
+            &format!(
+                "{WINDOW}; clip(0.25, 0.75, 0.25, 0.75); segments(0.4, 0.4, 0.6, 0.6, xpd=TRUE)"
+            ),
+            &mut scene,
+            |value, _, _| value.is_ok(),
+        );
+        assert!(ok, "xpd probe should evaluate without error");
+        // GClip sees a region change and reverts to the figure clip.
+        let clips = clip_rects(&scene);
+        assert_eq!(clips.len(), 2);
+        assert!(close(&clips[0], &[162.72, 151.92, 370.08, 337.68]));
+        assert!(close(&clips[1], &[0., 0., 504., 504.]));
+    }
+
+    #[test]
+    fn clip_rejects_nonfinite_coordinates_like_gnu() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let message = session.eval_script_with_output_capture_then_renderplot(
+            &format!("{WINDOW}; clip(NaN, 2, 1, 2)"),
+            &mut scene,
+            |value, _, _| match value {
+                Ok(_) => panic!("clip(NaN) should error"),
+                Err(error) => error.to_string(),
+            },
+        );
+        assert!(message.contains("invalid 'x1' argument"), "{message}");
+    }
+
+    #[test]
+    fn grconvert_follows_usr_plt_and_ndc_math() {
+        let mut session = RSession::new();
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        let values = session.eval_script_with_output_capture_then_renderplot(
+            &format!(
+                "{WINDOW}; c(grconvertX(0.5,'user','ndc'), \
+                 grconvertX(0.5,'user','inches'), \
+                 grconvertX(0.5,'user','npc'), \
+                 grconvertY(0.5,'user','ndc'), \
+                 grconvertY(0.5,'user','npc'), \
+                 grconvertX(1,'inches','user'), \
+                 grconvertX(1,'user','npc'))"
+            ),
+            &mut scene,
+            |value, _, _| unsafe {
+                // SAFETY: the session roots its result for this synchronous callback.
+                let value = value.unwrap();
+                (0..value.clone().len())
+                    .map(|index| value.real_elt(index).unwrap())
+                    .collect::<Vec<f64>>()
+            },
+        );
+        let expected = [
+            266.4 / 504.,
+            266.4 / 72.,
+            0.5,
+            (504. - 244.8) / 504.,
+            0.5,
+            (72. - 59.04) / (473.76 - 59.04),
+            1.,
+        ];
+        assert_eq!(values.len(), expected.len());
+        // The plot rectangle is stored in f32, so converted locations carry
+        // f32 rounding of the geometry.
+        for (actual, expected) in values.iter().zip(&expected) {
+            assert!(
+                (actual - expected).abs() < 1e-6,
+                "grconvert mismatch: {values:?} vs {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn convert_rejects_invalid_unit_indices_like_gnu() {
+        use crate::sexp::object::SessionNodeFactory;
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        // .External payload: routine name, values, from, to.
+        let mut input = factory.nil().into_owned().unwrap();
+        for index in (0..4).rev() {
+            let value = match index {
+                0 => factory.strings(&["C_convertX"]).unwrap(),
+                1 => factory
+                    .wrap(unsafe { crate::sexp::constructors::Rf_ScalarReal(0.5) })
+                    .unwrap(),
+                _ => factory
+                    .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(0) })
+                    .unwrap(),
+            };
+            input = factory
+                .pairlist_cell(&value, &input, &factory.nil())
+                .unwrap()
+                .into_owned()
+                .unwrap();
+        }
+        let mut scene = r_graphics_engine::Scene::new(504, 504);
+        session.with_active_in(|instance| unsafe {
+            (*instance).current_renderplot_backend = Some(&mut scene);
+            (*instance).portable_graphics.current =
+                Some(crate::mainutils::portable_plot::Coordinates {
+                    limits: [0., 1., 0., 1.],
+                    rect: [59.04, 59.04, 473.76, 430.56],
+                    figure: [0., 0., 504., 504.],
+                    device: [0., 0., 504., 504.],
+                    log: [false; 2],
+                });
+        });
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::c_convert_x(input.as_raw())
+        }))
+        .expect_err("unit index 0 should error");
+        session.with_active_in(|instance| unsafe { (*instance).current_renderplot_backend = None });
+        let error = error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("invalid unit index should use the R error path");
+        assert!(error.message.contains("invalid 'from' argument"));
     }
 }

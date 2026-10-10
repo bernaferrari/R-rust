@@ -2229,7 +2229,7 @@ pub(crate) unsafe fn s3_methods_table_symbol() -> SEXP {
     unsafe { crate::mainutils::objects::S3MethodsTable_symbol() }
 }
 
-unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
+pub(crate) unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
     unsafe {
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return Err("S3 method registration requires an environment".to_string());

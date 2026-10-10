@@ -964,7 +964,18 @@ unsafe fn R_unserialize_from_stream_hooks(
         } else {
             reader.set_persist_hook(hook_data);
         }
+        decode_stream_object(&owner, &mut reader)
+    }
+}
 
+/// Parse the stream header (format, versions, native encoding) and decode the
+/// single object that follows. The reader's byte source — slice or pull —
+/// determines how many input bytes this consumes.
+unsafe fn decode_stream_object(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    reader: &mut BinaryReader<'_>,
+) -> SEXP {
+    unsafe {
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
@@ -1009,7 +1020,7 @@ unsafe fn R_unserialize_from_stream_hooks(
         // Read the object
         let mut ref_table = ReadRefTable::new();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ReadItemInternal(&mut reader, &mut ref_table)
+            ReadItemInternal(reader, &mut ref_table)
         }));
         owner
             .require_active()
@@ -1021,6 +1032,96 @@ unsafe fn R_unserialize_from_stream_hooks(
                 .as_raw(),
             Ok(Err(message)) => error(&message),
             Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+/// `unserialize(connection)`: decode exactly one serialized object from the
+/// connection, pulling bytes on demand (GNU `R_InitConnInPStream` /
+/// `ConnReadChar` data flow). Trailing bytes stay unread in the connection.
+unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
+    unsafe {
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+
+        // Sniff exactly the two gzip magic bytes before committing to a
+        // streaming decode.
+        let first = crate::mainutils::connections::connection_fgetc(index);
+        if first < 0 {
+            error("read error");
+        }
+        let second = crate::mainutils::connections::connection_fgetc(index);
+        if second < 0 {
+            error("read error");
+        }
+
+        let result;
+        if first == 0x1f && second == 0x8b {
+            // Compressed stream: gather the remainder, decompress, and decode
+            // from the slice. The connection is left at end of stream.
+            let mut compressed = vec![first as u8, second as u8];
+            compressed.extend(crate::mainutils::connections::connection_read_all(index));
+            let mut decompressed = Vec::new();
+            let mut decoder = GzDecoder::new(compressed.as_slice());
+            if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_err()
+                || decompressed.is_empty()
+            {
+                error("read error");
+            }
+            let mut reader = BinaryReader::new(&decompressed);
+            configure_conn_hooks(&owner, &mut reader, hook);
+            result = decode_stream_object(&owner, &mut reader);
+        } else {
+            // Pull bytes from the connection only as the decoder asks for
+            // them; a read is never larger than the decoder's request.
+            let mut seed = vec![first as u8, second as u8];
+            let mut fill = |buf: &mut Vec<u8>, need: usize| -> bool {
+                while buf.len() < need {
+                    let byte = if !seed.is_empty() {
+                        seed.remove(0)
+                    } else {
+                        match crate::mainutils::connections::connection_fgetc(index) {
+                            c if c >= 0 => c as u8,
+                            _ => return false,
+                        }
+                    };
+                    buf.push(byte);
+                }
+                true
+            };
+            let mut reader = BinaryReader::new_pull(&mut fill);
+            configure_conn_hooks(&owner, &mut reader, hook);
+            result = decode_stream_object(&owner, &mut reader);
+            // ASCII lookahead may have buffered bytes past the object; hand
+            // them back so trailing data is not lost.
+            let leftover = reader.take_leftover();
+            if !leftover.is_empty() {
+                crate::mainutils::connections::connection_pushback(index, &leftover);
+            }
+        }
+        result
+    }
+}
+
+/// Apply the `refhook` argument of `unserialize(connection, refhook)`.
+unsafe fn configure_conn_hooks(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    reader: &mut BinaryReader<'_>,
+    hook: SEXP,
+) {
+    unsafe {
+        if !hook.is_null() && hook != R_NilValue() && TYPEOF(hook) == SEXPTYPE::ENVSXP {
+            let data = owner
+                .sexp(hook)
+                .and_then(|s| s.into_owned())
+                .unwrap_or_else(|e| error(&e.to_string()));
+            reader.lazy_restore = Some(LazyLoadRestore { data });
+        } else {
+            reader.set_persist_hook(hook);
         }
     }
 }
@@ -1102,9 +1203,6 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
             R_NilValue(),
             R_NilValue(),
         );
-        if conn.is_null() || conn == R_NilValue() || TYPEOF(conn) != SEXPTYPE::INTSXP {
-            return raw;
-        }
         let index = *INTEGER(conn) as usize;
         let guard = crate::mainutils::connections::get_connection(index);
         let path = guard[index].as_ref().unwrap().description.clone();
@@ -1138,12 +1236,8 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             && XLENGTH(conn) == 1
             && crate::mainutils::objects::inherits2(conn, c"connection".as_ptr()) != 0
         {
-            let bytes = crate::mainutils::connections::connection_read_all(*INTEGER(conn));
-            let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as i64);
-            if !bytes.is_empty() {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw), bytes.len());
-            }
-            return R_unserialize(raw, hook);
+            let index = *INTEGER(conn);
+            return R_unserialize_from_conn(index, hook);
         }
         error("'connection' must be a connection");
     }
