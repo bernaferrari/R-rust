@@ -1,0 +1,57 @@
+{
+  "source": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "runtime": {
+    "version": "4.7.0 Under development (unstable)",
+    "nickname": "Unsuffered Consequences",
+    "svn_revision": 90451,
+    "source_date": "2026-08-27T09:09:57Z"
+  },
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "generator_sha256": {
+    "generate.R": "823767bff6632c30e7a2446a0b66df9fcefe9d0e0bd4180e9bea04ba86e6d895",
+    "generate.py": "aa8bdaf27dc320dcf74014a58806b6cf337e60d9d92a02364ed2ff0ef4da1ab7"
+  },
+  "files": {
+    "DESCRIPTION": {
+      "bytes": 414,
+      "sha256": "6db0dc2c5150020a26491a0570702b880643fd87995018f3670490dc63a77530"
+    },
+    "NAMESPACE": {
+      "bytes": 759,
+      "sha256": "dd91e25d42b07ee04da18b25a293873685854f09598d53ddfbbaae920b0c3759"
+    },
+    "S3methods.rds": {
+      "bytes": 61,
+      "sha256": "059d3f5673baff42e5bfa6b6fe4140af7013ade19343c62fa2067fc13701e50e"
+    },
+    "envhook.R": {
+      "bytes": 938,
+      "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
+    },
+    "exports.rds": {
+      "bytes": 554,
+      "sha256": "070abbdf6b95d4fecc2f82ee695162803c6dc5f4061350bcd4c29297b0915c61"
+    },
+    "generation.log": {
+      "bytes": 84,
+      "sha256": "b5738740346e77096ec4bcfebef7d73b5b94eea883efb5c6232f858c84abe7ee"
+    },
+    "imports.rds": {
+      "bytes": 1110,
+      "sha256": "352d2bf140c17f213c648b050d313a67f407fe672b30837abcb314e74725d778"
+    },
+    "index.rds": {
+      "bytes": 3563,
+      "sha256": "693d31aca02e012d091d91496dedcacfd2812aba7ed1600d314b3aa2788c8263"
+    },
+    "stats4.rdb": {
+      "bytes": 187384,
+      "sha256": "cfc22ca39efc42b1767d0d4cc845c811a06812ffc1d97e5d3b0bc32359346214"
+    }
+  }
+}

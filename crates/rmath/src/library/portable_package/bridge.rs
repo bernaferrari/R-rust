@@ -222,6 +222,9 @@ pub(super) fn install_native(
             "stats" => {
                 crate::library::stats::random::install_stats_call_symbols(namespace.as_raw())
             }
+            // The original stats4 namespace contains R code and imports its
+            // native-backed dependencies; it registers no native routines.
+            "stats4" => {}
             "grDevices" => {
                 crate::library::grdevices::install_call_symbols(namespace.as_raw());
                 crate::library::grdevices::colors::initPalette();

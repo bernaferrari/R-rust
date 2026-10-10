@@ -94,7 +94,21 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
                 .into_owned()
         })?;
         let info = lookup(access, &env, c".__NAMESPACE__.")?;
-        if env.as_raw() == base.as_raw() || info.typeof_() == SEXPTYPE::ENVSXP {
+        let namespace = if env.as_raw() == base.as_raw() {
+            true
+        } else if info.typeof_() == SEXPTYPE::ENVSXP {
+            let spec = lookup(access, &info, c"spec")?;
+            if spec.typeof_() == SEXPTYPE::STRSXP {
+                let length = spec.len();
+                access.require_active()?;
+                length > 0
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if namespace {
             return Err(failure("can not set the parent environment of a namespace"));
         }
         if env.try_enclos()?.as_raw() == base.as_raw() {
@@ -173,19 +187,29 @@ pub(super) unsafe fn dispatch(raw: SEXP, setter: bool) -> SEXP {
             )));
         }
         let runtime = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-        with_runtime(&runtime, |access| {
-            if setter {
-                return set(access, &values);
-            }
-            let env = environment(access, &values[0], "argument is not an environment")?;
-            let empty = access.with_native(|token| unsafe {
-                token.sexp(crate::sexp::globals::R_EmptyEnv())?.into_owned()
-            })?;
-            if env.as_raw() == empty.as_raw() {
-                return Err(failure("the empty environment has no parent"));
-            }
-            env.try_enclos()?.into_owned()
-        })?
+        let _pin = runtime.pin()?;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_runtime(&runtime, |access| {
+                if setter {
+                    return set(access, &values);
+                }
+                let env = environment(access, &values[0], "argument is not an environment")?;
+                let empty = access.with_native(|token| unsafe {
+                    token.sexp(crate::sexp::globals::R_EmptyEnv())?.into_owned()
+                })?;
+                if env.as_raw() == empty.as_raw() {
+                    return Err(failure("the empty environment has no parent"));
+                }
+                env.try_enclos()?.into_owned()
+            })
+        }));
+        // A provider's native error cannot escape as a live result/signal after
+        // revoking the original runtime. The original Rc remains pinned here.
+        owner.require_active()?;
+        match result {
+            Ok(result) => result?,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     })();
     result
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))

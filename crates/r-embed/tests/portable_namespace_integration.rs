@@ -1,6 +1,26 @@
 use r_embed::{RSession, RuntimePathPolicy};
 
 #[test]
+fn original_stats4_public_workflow_survives_reattachment_under_both_policies() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        assert_eq!(
+            session
+                .eval(include_str!("fixtures/stats4-namespace-public-contract.R"))
+                .unwrap(),
+            include_str!("fixtures/stats4-namespace-public-contract.out"),
+            "portable={portable}"
+        );
+        assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
+    }
+}
+
+#[test]
 fn portable_methods_exports_are_available_through_public_constructor() {
     let mut session =
         RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp")).unwrap();

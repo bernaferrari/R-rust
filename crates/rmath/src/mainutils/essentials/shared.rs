@@ -2039,6 +2039,12 @@ pub(crate) unsafe fn load_package_namespace(
             return Err(format!("cyclic namespace load while loading '{package}'"));
         }
         if let Some(env) = cached_package_namespace(package, package_dir) {
+            // A completed namespace already has its native descriptors and
+            // initialization hooks. Reinstalling them on a lookup mutates the
+            // namespace and can rerun package code after it has been sealed.
+            if crate::sexp::envir::environment_is_locked_raw(env) {
+                return Ok((env, read_namespace_directives(package_dir)?));
+            }
             if package == "methods" {
                 crate::library::methods::native_calls::install_methods_call_symbols(env);
                 retarget_methods_generics(env);
@@ -2165,6 +2171,7 @@ pub(crate) unsafe fn load_package_namespace(
             crate::library::graphics::install_call_symbols(package_env);
         }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
+        crate::sexp::envir::lock_environment_raw(package_env);
 
         Ok((package_env, namespace))
     }

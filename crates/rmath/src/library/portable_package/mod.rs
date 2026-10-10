@@ -54,6 +54,12 @@ static STATS: PackageImage = image!(
     None,
     Some(include_bytes!("assets/stats/imports.rds"))
 );
+static STATS4: PackageImage = image!(
+    "stats4",
+    "assets/stats4",
+    None,
+    Some(include_bytes!("assets/stats4/imports.rds"))
+);
 static UTILS: PackageImage = image!(
     "utils",
     "assets/utils",
@@ -82,6 +88,7 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
         "grDevices" => Some(&GRDEVICES),
         "graphics" => Some(&GRAPHICS),
         "stats" => Some(&STATS),
+        "stats4" => Some(&STATS4),
         _ => None,
     }
 }
@@ -93,9 +100,11 @@ pub(crate) struct LazyDatabase {
 }
 
 fn databases() -> impl Iterator<Item = &'static LazyDatabase> {
-    [&METHODS, &UTILS, &TOOLS, &GRDEVICES, &GRAPHICS, &STATS]
-        .into_iter()
-        .flat_map(|image| std::iter::once(&image.database).chain(image.sysdata.as_ref()))
+    [
+        &METHODS, &UTILS, &TOOLS, &GRDEVICES, &GRAPHICS, &STATS, &STATS4,
+    ]
+    .into_iter()
+    .flat_map(|image| std::iter::once(&image.database).chain(image.sysdata.as_ref()))
 }
 
 pub(crate) fn database_path(path: &std::path::Path) -> Option<&'static LazyDatabase> {

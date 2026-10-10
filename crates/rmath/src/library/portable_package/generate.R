@@ -2,7 +2,7 @@
 args <- commandArgs(TRUE)
 stopifnot(length(args) == 2L, identical(as.character(getRversion()), "4.7.0"), identical(R.version[["svn rev"]], "90451"))
 package <- args[[1L]]; out <- args[[2L]]
-stopifnot(package %in% c("methods", "utils", "tools", "grDevices", "graphics", "stats"))
+stopifnot(package %in% c("methods", "utils", "tools", "grDevices", "graphics", "stats", "stats4"))
 dir.create(out, recursive=TRUE, showWarnings=FALSE)
 p <- system.file(package=package)
 stopifnot(nzchar(p))
