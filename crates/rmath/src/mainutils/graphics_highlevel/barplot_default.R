@@ -15,7 +15,7 @@ function(height, width = 1, space = NULL, names.arg = NULL, legend.text = NULL,
     if (vectorInput) {
         if (!is.numeric(height)) stop("'height' must be a vector or a matrix")
         original.names <- names(height)
-        height <- rbind(as.vector(height))
+        height <- cbind(height)
         beside <- TRUE
         if (is.null(col)) col <- "grey"
     } else if (length(d) == 2L && is.numeric(height)) {
@@ -61,20 +61,19 @@ function(height, width = 1, space = NULL, names.arg = NULL, legend.text = NULL,
         plot.window(xlim, ylim, log = log)
     }
     if (beside) {
-        for (j in seq_len(NC)) for (i in seq_len(NR)) {
-            if (horiz) rect(hdraw[i, j] + offset[i], w.l[(j - 1L) * NR + i],
-                            rectbase + offset[i], w.r[(j - 1L) * NR + i], col = col[i], border = border)
-            else rect(w.l[(j - 1L) * NR + i], rectbase + offset[i],
-                      w.r[(j - 1L) * NR + i], hdraw[i, j] + offset[i], col = col[i], border = border)
-        }
+        if (horiz) rect(as.vector(hdraw) + offset, w.l, rectbase + offset, w.r, col = col, border = border)
+        else rect(w.l, rectbase + offset, w.r, as.vector(hdraw) + offset, col = col, border = border)
     } else {
-        for (j in seq_len(NC)) for (i in seq_len(NR)) {
-            if (horiz) rect(hdraw[i, j] + offset[j], w.l[j], hdraw[i + 1L, j] + offset[j], w.r[j], col = col[i], border = border)
-            else rect(w.l[j], hdraw[i, j] + offset[j], w.r[j], hdraw[i + 1L, j] + offset[j], col = col[i], border = border)
+        for (j in seq_len(NC)) {
+            if (horiz) rect(hdraw[seq_len(NR), j] + offset[j], w.l[j], hdraw[-1L, j] + offset[j], w.r[j], col = col, border = border)
+            else rect(w.l[j], hdraw[seq_len(NR), j] + offset[j], w.r[j], hdraw[-1L, j] + offset[j], col = col, border = border)
         }
     }
     if (axisnames && !is.null(names.arg)) {
-        at <- if (length(names.arg) == NC && !is.null(dim(w.m))) colMeans(w.m) else w.m
+        at <- if (length(names.arg) != length(w.m)) {
+            if (length(names.arg) == NC) colMeans(w.m)
+            else stop("incorrect number of names")
+        } else w.m
         axis(if (horiz) 2 else 1, at = as.vector(at), labels = names.arg)
     }
     if (axes) axis(if (horiz) 1 else 2)

@@ -1,0 +1,45 @@
+CASE one
+list(coefficients = c(`(Intercept)` = 7), rank = 1L, df.residual = 0L, 
+    residuals = c(`1` = 0), fitted.values = c(`1` = 7), qr = list(
+        qr = structure(1, dim = c(1L, 1L), dimnames = list("1", 
+            "(Intercept)"), assign = 0L), qraux = 1, rank = 1L, 
+        pivot = 1L), na.action = NULL, covratio = c(`1` = NaN))
+CASE constant
+list(coefficients = c(`(Intercept)` = 3), rank = 1L, df.residual = 3L, 
+    residuals = c(`1` = 0, `2` = 0, `3` = 0, `4` = 0), fitted.values = c(`1` = 3, 
+    `2` = 3, `3` = 3, `4` = 3), qr = list(qr = structure(c(-2, 
+    0.5, 0.5, 0.5), dim = c(4L, 1L), dimnames = list(c("1", "2", 
+    "3", "4"), "(Intercept)"), assign = 0L), qraux = 1.5, rank = 1L, 
+        pivot = 1L), na.action = NULL, covratio = c(`1` = NaN, 
+    `2` = NaN, `3` = NaN, `4` = NaN))
+CASE missing_named
+list(coefficients = c(`(Intercept)` = 3), rank = 1L, df.residual = 2L, 
+    residuals = c(a = -2, c = -6.49209390246103e-16, e = 2), 
+    fitted.values = c(a = 3, c = 3, e = 3), qr = list(qr = structure(c(-1.73205080756888, 
+    0.577350269189626, 0.577350269189626), dim = c(3L, 1L), dimnames = list(
+        c("a", "c", "e"), "(Intercept)"), assign = 0L), qraux = 1.57735026918963, 
+        rank = 1L, pivot = 1L), na.action = structure(c(b = 2L, 
+    d = 4L), class = "omit"), covratio = c(a = 0.75, c = 3, e = 0.749999999999999
+    ))
+CASE all_missing
+"0 (non-NA) cases"
+CASE infinite
+"NA/NaN/Inf in 'y'"
+CASE zero_response_rank_one
+list(coefficients = c(`(Intercept)` = 0), rank = 1L, df.residual = 2L, 
+    residuals = c(`1` = 0, `2` = 0, `3` = 0), fitted.values = c(`1` = 0, 
+    `2` = 0, `3` = 0), qr = list(qr = structure(c(-1.73205080756888, 
+    0.577350269189626, 0.577350269189626), dim = c(3L, 1L), dimnames = list(
+        c("1", "2", "3"), "(Intercept)"), assign = 0L), qraux = 1.57735026918963, 
+        rank = 1L, pivot = 1L), na.action = NULL, covratio = c(`1` = NaN, 
+    `2` = NaN, `3` = NaN))
+CASE integer
+list(coefficients = c(`(Intercept)` = 2.33333333333333), rank = 1L, 
+    df.residual = 2L, residuals = c(`1` = -1.33333333333333, 
+    `2` = -0.333333333333334, `3` = 1.66666666666667), fitted.values = c(`1` = 2.33333333333333, 
+    `2` = 2.33333333333333, `3` = 2.33333333333333), qr = list(
+        qr = structure(c(-1.73205080756888, 0.577350269189626, 
+        0.577350269189626), dim = c(3L, 1L), dimnames = list(
+            c("1", "2", "3"), "(Intercept)"), assign = 0L), qraux = 1.57735026918963, 
+        rank = 1L, pivot = 1L), na.action = NULL, covratio = c(`1` = 1.28571428571429, 
+    `2` = 2.89285714285714, `3` = 0.321428571428571))

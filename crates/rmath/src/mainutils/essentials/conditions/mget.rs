@@ -271,7 +271,10 @@ fn execute(
         let character = x.try_string_elt(index)?.into_owned()?;
         access.require_active()?;
         let name = character.try_as_string()?;
-        if name.is_empty() {
+        // GNU's initial validation rejects an empty first name. Later empty
+        // names fail during sequential symbol installation, after earlier
+        // bindings or fallbacks have already been evaluated.
+        if index == 0 && name.is_empty() {
             return Err(failure(format!("invalid name in position {}", index + 1)));
         }
         names.push(name);
@@ -344,6 +347,9 @@ fn execute(
             .into_owned()?;
         access.require_active()?;
         let mode = Mode::parse(&mode_character.try_as_string()?)?;
+        if name.is_empty() {
+            return Err(failure("attempt to use zero-length variable name"));
+        }
         let symbol = access.with_native(|token| {
             let name =
                 std::ffi::CString::new(name.as_str()).map_err(|_| failure("invalid mget name"))?;

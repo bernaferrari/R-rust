@@ -396,6 +396,74 @@ pub unsafe fn coerceToPairList(v: SEXP) -> SEXP {
     }
 }
 
+struct PairlistNative;
+impl super::pairlist::Native for PairlistNative {
+    fn scalar(
+        &mut self,
+        access: &crate::sexp::owner::RuntimeAccess,
+        value: &Sexp<'static>,
+        target: SEXPTYPE,
+    ) -> crate::sexp::SexpResult<super::pairlist::Scalar> {
+        use super::pairlist::Scalar;
+        access.with_native(|_| unsafe {
+            Ok(match target {
+                SEXPTYPE::LGLSXP => Scalar::Logical(asLogical(value.as_raw())),
+                SEXPTYPE::INTSXP => Scalar::Integer(asInteger(value.as_raw())),
+                SEXPTYPE::REALSXP => Scalar::Real(asReal(value.as_raw())),
+                SEXPTYPE::CPLXSXP => Scalar::Complex(asComplex(value.as_raw())),
+                // GNU coercePairList uses the integer cast here, including
+                // wrapping -1 and 256. Vector-list raw coercion differs.
+                SEXPTYPE::RAWSXP => Scalar::Raw(asInteger(value.as_raw()) as Rbyte),
+                _ => {
+                    return Err(crate::sexp::SexpError::EvaluationFailed {
+                        message: "unsupported pairlist scalar target".into(),
+                    });
+                }
+            })
+        })
+    }
+    fn deparse(
+        &mut self,
+        access: &crate::sexp::owner::RuntimeAccess,
+        value: &Sexp<'static>,
+    ) -> crate::sexp::SexpResult<Sexp<'static>> {
+        access.with_native(|owner| unsafe {
+            owner
+                .sexp(crate::mainutils::deparse::deparse1line(
+                    value.as_raw(),
+                    false,
+                ))?
+                .into_owned()
+        })
+    }
+    fn names(
+        &mut self,
+        access: &crate::sexp::owner::RuntimeAccess,
+        value: &Sexp<'static>,
+        names: &Sexp<'static>,
+    ) -> crate::sexp::SexpResult<()> {
+        access.with_native(|_| unsafe {
+            setAttrib(value.as_raw(), R_NamesSymbol(), names.as_raw());
+            Ok(())
+        })
+    }
+}
+
+unsafe fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
+    let result = (|| {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
+            .weak_owner()
+            .ok_or(crate::sexp::SexpError::RootUnavailable)?;
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let value = access.domain().wrap(value)?.into_owned()?;
+            super::pairlist::coerce(value, target, access, &mut PairlistNative)
+        })?
+    })();
+    result
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .as_raw()
+}
+
 /// Coerce a pairlist (LISTSXP/LANGSXP) to the given type.
 pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
@@ -406,120 +474,7 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             return rval;
         }
 
-        if type_ == SEXPTYPE::STRSXP {
-            // bind length: pairlists carry no meaningful raw length field,
-            // so count the cells (trunk length()).
-            let mut n: c_int = 0;
-            {
-                let mut counter = v;
-                while !counter.is_null() && !isNull(counter) {
-                    n += 1;
-                    counter = CDR(counter);
-                }
-            }
-            let rval = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-            let _rval_guard = protect(rval);
-            let mut vp = v;
-            for i in 0..n {
-                let car = CAR(vp);
-                if isString(car) && LENGTH(car) == 1 {
-                    SET_STRING_ELT(rval, i as R_xlen_t, STRING_ELT(car, 0));
-                } else {
-                    // coerce.c coercePairList: deparse non-trivial cells
-                    // onto a single line (deparse1line).
-                    let dep = crate::mainutils::deparse::deparse1line(car, false);
-                    if !dep.is_null()
-                        && dep != R_NilValue()
-                        && TYPEOF(dep) == SEXPTYPE::STRSXP
-                        && xlength(dep) > 0
-                    {
-                        SET_STRING_ELT(rval, i as R_xlen_t, STRING_ELT(dep, 0));
-                    } else {
-                        SET_STRING_ELT(rval, i as R_xlen_t, R_NaString());
-                    }
-                }
-                vp = CDR(vp);
-            }
-            return rval;
-        }
-
-        if type_ == SEXPTYPE::VECSXP {
-            // PairToVectorList
-            let mut len: c_int = 0;
-            let mut xptr = v;
-            while !xptr.is_null() && !isNull(xptr) {
-                len += 1;
-                xptr = CDR(xptr);
-            }
-            let xnew = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
-            let _xnew_guard = protect(xnew);
-            let mut xptr = v;
-            let mut any_tag = false;
-            for i in 0..len {
-                SET_VECTOR_ELT(xnew, i as R_xlen_t, CAR(xptr));
-                if !TAG(xptr).is_null() && TAG(xptr) != R_NilValue() {
-                    any_tag = true;
-                }
-                xptr = CDR(xptr);
-            }
-            if any_tag {
-                let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-                let _ng = protect(names);
-                let mut xptr = v;
-                for i in 0..len {
-                    let tag = TAG(xptr);
-                    if !tag.is_null() && tag != R_NilValue() {
-                        SET_STRING_ELT(names, i as R_xlen_t, PRINTNAME(tag));
-                    } else {
-                        SET_STRING_ELT(names, i as R_xlen_t, R_BlankString());
-                    }
-                    xptr = CDR(xptr);
-                }
-                setAttrib(xnew, R_NamesSymbol(), names);
-            }
-            return xnew;
-        }
-
-        if isVectorizable(v) {
-            let n = LENGTH(v);
-            let rval = Rf_allocVector3(type_.0, n as R_xlen_t);
-            let _rval_guard = protect(rval);
-            let mut vp = v;
-            for i in 0..n {
-                match type_.0 {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(rval).add(i as usize) = asLogical(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(rval).add(i as usize) = asInteger(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        *REAL(rval).add(i as usize) = asReal(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(rval).add(i as usize) = asComplex(CAR(vp));
-                    }
-                    t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(rval).add(i as usize) = asInteger(CAR(vp)) as Rbyte;
-                    }
-                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
-                }
-                vp = CDR(vp);
-            }
-            return rval;
-        }
-
-        let from = unsafe {
-            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(v) as i32))
-                .to_string_lossy()
-        };
-        let to = unsafe {
-            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(type_.0 as i32))
-                .to_string_lossy()
-        };
-        error(&format!(
-            "cannot coerce type '{from}' to vector of type '{to}'"
-        ));
+        checked_pairlist(v, type_)
     }
 }
 
@@ -865,13 +820,7 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
             }
             // Calls have linked cells, never an atomic vector length field.
             // Reuse the counted pairlist path, including element deparsing.
-            t if t == SEXPTYPE::LANGSXP => {
-                let result = coercePairList(v, target);
-                if target == SEXPTYPE::STRSXP && TYPEOF(CAR(v)) == SEXPTYPE::SYMSXP {
-                    SET_STRING_ELT(result, 0, PRINTNAME(CAR(v)));
-                }
-                result
-            }
+            t if t == SEXPTYPE::LANGSXP => coercePairList(v, target),
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => coerceVectorList(v, target),
             t if t == SEXPTYPE::ENVSXP => {
                 error("environments cannot be coerced to other types");

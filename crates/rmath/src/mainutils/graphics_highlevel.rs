@@ -13,6 +13,10 @@
 
 use crate::sexp::ffi::SEXP;
 
+#[cfg(test)]
+#[path = "graphics_highlevel/barplot_tests.rs"]
+mod barplot_tests;
+
 /// The public `hist` generic.
 pub unsafe fn do_hist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {

@@ -6165,7 +6165,95 @@ unsafe fn lm_named_call(call: SEXP) -> SEXP {
     }
 }
 
-/// GNU `lm(y ~ x)` intercept + slope.
+#[path = "lm_intercept.rs"]
+mod lm_intercept;
+
+/// The translated boundary owns evaluation and symbol interning. Numerical
+/// fitting, data frames and output publication use the checked Rust helper.
+unsafe fn try_lm_intercept(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    call: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        use crate::sexp::object::{Sexp, SexpError};
+        let arguments = owner
+            .sexp(args)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let call = if call.is_null() {
+            owner.node_factory().nil()
+        } else {
+            owner
+                .sexp(call)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        }
+        .into_owned()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let parent = owner
+            .sexp(rho)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let weak = owner
+            .weak_owner()
+            .unwrap_or_else(|| crate::sexp::context::r_error("lm requires a managed runtime"));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::sexp::owner::with_runtime(
+                &weak,
+                |access| -> Result<Option<Sexp<'static>>, String> {
+                    let Some(request) =
+                        lm_intercept::Request::capture(access, &arguments, call, parent)?
+                    else {
+                        return Ok(None);
+                    };
+                    let intern = |name: &str| -> Result<Sexp<'static>, String> {
+                        let name = CString::new(name).map_err(|_| "invalid model column name")?;
+                        access
+                            .with_native(|token| {
+                                let symbol = Rf_install(name.as_ptr());
+                                token.require_active()?;
+                                token.sexp(symbol)?.into_owned()
+                            })
+                            .map_err(|error| error.to_string())
+                    };
+                    let mut bindings = Vec::new();
+                    for (name, value) in request.bindings(access)? {
+                        bindings.push((intern(&name)?, value));
+                    }
+                    let environment = request.environment(access, &bindings)?;
+                    let response = access
+                        .with_native(|_| {
+                            crate::eval::eval::eval_safe(request.expression.clone(), environment)
+                                .map_err(|message| SexpError::EvaluationFailed { message })?
+                                .into_owned()
+                        })
+                        .map_err(|error| error.to_string())?;
+                    let symbols = lm_intercept::Symbols {
+                        names: intern("names")?,
+                        class: intern("class")?,
+                        dim: intern("dim")?,
+                        dimnames: intern("dimnames")?,
+                        assign: intern("assign")?,
+                        formula: intern("formula")?,
+                    };
+                    lm_intercept::evaluate(access, &request, response, &symbols).map(Some)
+                },
+            )
+        }));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        match result {
+            Ok(Ok(Ok(model))) => model.map(|model| model.as_raw()),
+            Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
+            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+/// GNU `lm(y ~ x)` intercept + slope, and owning intercept-only fitting.
 pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
@@ -6176,6 +6264,9 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _arguments = owner
             .sexp(args)
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        if let Some(model) = try_lm_intercept(owner, call, args, rho) {
+            return model;
+        }
         let mut row_data = None;
         let mut row_labels = Vec::new();
         let mut response_roots = Vec::new();
@@ -16344,3 +16435,7 @@ mod trunk_r90451_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "lm_intercept_tests.rs"]
+mod lm_intercept_tests;
