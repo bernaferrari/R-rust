@@ -898,13 +898,17 @@ unsafe fn R_unserialize_from_stream_hooks(
         owner
             .require_active()
             .unwrap_or_else(|e| error(&e.to_string()));
-        let input = owner.sexp(icon).unwrap_or_else(|e| error(&e.to_string()));
+        let input = owner
+            .sexp(icon)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|e| error(&e.to_string()));
         let _hook = if hook_data.is_null() {
             None
         } else {
             Some(
                 owner
                     .sexp(hook_data)
+                    .and_then(|value| value.into_owned())
                     .unwrap_or_else(|e| error(&e.to_string())),
             )
         };
@@ -987,6 +991,19 @@ unsafe fn R_unserialize_from_stream_hooks(
                 // Skip encoding bytes
                 let _ = reader.read_bytes(nelen as usize);
             }
+        }
+
+        // No partially decoded graph exists yet. Reclaim the original owner's
+        // garbage before a bounded decoder starts allocating; the input and
+        // restoration hook are owning roots across collection callbacks.
+        let collect = owner
+            .with_arena(|arena| arena.budget_pressure_warrants_full_gc())
+            .unwrap_or_else(|e| error(&e.to_string()));
+        if collect {
+            owner.full_gc().unwrap_or_else(|e| error(&e.to_string()));
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
         }
 
         // Read the object

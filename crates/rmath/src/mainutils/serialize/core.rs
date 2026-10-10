@@ -2542,6 +2542,10 @@ pub unsafe fn defaultSerializeVersion() -> c_int {
 }
 
 #[cfg(test)]
+#[path = "owned_collection_tests.rs"]
+mod owned_collection_tests;
+
+#[cfg(test)]
 mod bytecode_reader_tests {
     use super::*;
 
