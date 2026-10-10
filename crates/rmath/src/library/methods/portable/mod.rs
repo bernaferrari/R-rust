@@ -30,3 +30,6 @@ pub(crate) fn fetch(key: Sexp<'static>, file: Sexp<'static>, compressed: Sexp<'s
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod allocation_diagnostics;

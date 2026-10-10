@@ -104,6 +104,15 @@ impl<'a> SexpMut<'a> {
         self.inner.is_vector()
     }
 
+    pub(crate) fn try_set_pairlist_car(&mut self, value: &Sexp<'_>) -> SexpResult<()> {
+        self.inner.expect_any_type(
+            "pairlist",
+            &[SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP],
+        )?;
+        self.inner
+            .set_checked_edge(crate::sexp::ffi::EdgeField::ListCar, value)
+    }
+
     /// Set the i-th logical value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.

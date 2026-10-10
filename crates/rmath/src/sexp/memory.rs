@@ -39,6 +39,9 @@ use super::object::Sexp;
 use super::payload::{OwnedPayload, PayloadError, PayloadLease, PayloadLink};
 
 /// Byte size of one node for checking legacy projection address ranges.
+#[cfg(test)]
+mod admission_diagnostics;
+
 const NODE_BYTES: usize = std::mem::size_of::<SexprecCore>();
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
@@ -741,6 +744,8 @@ pub struct RArena {
     bytes_at_last_gc: usize,
     /// Optional budget to limit arena growth.
     budget: ArenaBudget,
+    #[cfg(test)]
+    admission_refusal: Cell<Option<admission_diagnostics::AdmissionRefusal>>,
 }
 
 impl RArena {
@@ -923,6 +928,8 @@ impl RArena {
             nodes_at_last_gc: 0,
             bytes_at_last_gc: 0,
             budget,
+            #[cfg(test)]
+            admission_refusal: Cell::new(None),
         };
 
         a.alloc_new_page();
@@ -1008,13 +1015,18 @@ impl RArena {
     /// including an R error or cancellation unwind. The allocation itself is
     /// owned by the caller; this only accounts for its peak workspace.
     pub(crate) fn try_reserve_transient(&mut self, bytes: usize) -> Option<TransientReservation> {
-        TransientReservation::new(
+        let reservation = TransientReservation::new(
             self.budget.max_bytes,
             self.allocated_bytes.get(),
             0,
             &self.transient_bytes,
             bytes,
-        )
+        );
+        #[cfg(test)]
+        if reservation.is_none() {
+            self.note_admission_refusal("transient workspace", 0, Some(0), Some(0), Some(bytes), Some(bytes));
+        }
+        reservation
     }
 
     fn add_accounted_bytes(&mut self, bytes: usize) {
@@ -1116,10 +1128,16 @@ impl RArena {
     }
 
     fn can_allocate_node_with_payload(&self, bytes: usize) -> bool {
-        self.can_activate_node()
+        let accepted = self.can_activate_node()
             && bytes
                 .checked_add(self.fresh_header_bytes())
-                .is_some_and(|total| self.can_grow_bytes_by(total))
+                .is_some_and(|total| self.can_grow_bytes_by(total));
+        #[cfg(test)]
+        if !accepted {
+            let header = self.fresh_header_bytes();
+            self.note_admission_refusal("node and payload", 1, Some(header), Some(bytes), Some(0), header.checked_add(bytes));
+        }
+        accepted
     }
 
     /// Allocate a scalar SexprecCore node using slab pages.
@@ -1135,6 +1153,8 @@ impl RArena {
         }
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
         if !self.can_activate_node() {
+            #[cfg(test)]
+            self.note_admission_refusal("scalar node", 1, Some(self.fresh_header_bytes()), Some(0), Some(0), Some(self.fresh_header_bytes()));
             return ptr::null_mut();
         }
 
@@ -1222,6 +1242,8 @@ impl RArena {
         if self.budget.max_nodes > 0 {
             let active = self.node_count();
             if active >= self.budget.max_nodes {
+                #[cfg(test)]
+                self.note_admission_refusal("typed vector nodes", 1, Some(self.fresh_header_bytes()), Some(layout.size()), Some(0), self.fresh_header_bytes().checked_add(layout.size()));
                 return Err(ArenaError::NodeBudgetExceeded {
                     limit: self.budget.max_nodes,
                     requested: active + 1,
@@ -1246,6 +1268,8 @@ impl RArena {
                     requested: usize::MAX,
                 })?;
             if new_total > self.budget.max_bytes {
+                #[cfg(test)]
+                self.note_admission_refusal("typed vector bytes", 1, Some(self.fresh_header_bytes()), Some(data_bytes), Some(0), Some(total_increase));
                 return Err(ArenaError::ByteBudgetExceeded {
                     limit: self.budget.max_bytes,
                     requested: new_total,

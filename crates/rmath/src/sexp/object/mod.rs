@@ -796,6 +796,29 @@ impl<'a> Sexp<'a> {
         Ok(())
     }
 
+    /// Complete the original collector barrier before publishing a checked edge.
+    fn set_checked_edge(&self, field: super::ffi::EdgeField, child: &Sexp<'_>) -> SexpResult<()> {
+        self.check_child_owner(child)?;
+        let node = self.reference_node()?;
+        let heap = node.heap_identity();
+        if heap.edge(&node, field).is_none() {
+            return Err(SexpError::TypeMismatch {
+                expected: "compatible graph edge",
+                actual: self.typeof_(),
+            });
+        }
+        self.remember_child(child)?;
+        let link = child.link_in(&heap)?;
+        let mut header = heap
+            .node_snapshot(&node)
+            .ok_or(SexpError::StaleAllocation)?;
+        header
+            .set_edge(field, link)
+            .ok_or(SexpError::StaleAllocation)?;
+        heap.replace_node(&node, header)
+            .ok_or(SexpError::StaleAllocation)
+    }
+
     /// Capture this handle's original capability as an edge in `heap`.
     /// Singleton links retain the actual lease, including an earlier bank.
     pub(crate) fn link_in(&self, heap: &HeapIdentity) -> SexpResult<NodeLink> {

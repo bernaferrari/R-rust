@@ -11,7 +11,9 @@ cases <- c(
  '.Internal(`parent.env<-`(emptyenv(), baseenv()))',
  '.Internal(`parent.env<-`(baseenv(), globalenv()))',
  '.Internal(`parent.env<-`(asNamespace("base"), globalenv()))',
- '.Internal(`parent.env<-`(parent.env(asNamespace("methods")), globalenv()))',
+ 'local({ e <- new.env(parent=asNamespace("base")); attr(e,"name") <- "imports:test"; lockEnvironment(e); .Internal(`parent.env<-`(e,globalenv())) })',
+ 'local({ e <- new.env(parent=emptyenv()); e$.__NAMESPACE__. <- new.env(); lockEnvironment(e); identical(.Internal(`parent.env<-`(e,baseenv())),e) })',
+ 'local({ e <- new.env(parent=emptyenv()); e$.__NAMESPACE__. <- new.env(); e$.__NAMESPACE__.$spec <- "test"; lockEnvironment(e); .Internal(`parent.env<-`(e,baseenv())) })',
  'local({ e <- new.env(); p <- new.env(parent=emptyenv()); lockEnvironment(e); identical(.Internal(`parent.env<-`(e,p)),e) && identical(parent.env(e),p) })',
  'local({ e <- new.env(parent=emptyenv()); p <- new.env(parent=e); .Internal(`parent.env<-`(e,p)) })'
 )

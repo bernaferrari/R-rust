@@ -1528,9 +1528,24 @@ pub unsafe fn WriteItemInternal(
 // Internal ReadItem (recursive, reads from BinaryReader)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
+enum ReadContext {
+    Data,
+    ClosureBody,
+    PromiseExpression,
+}
+
 pub unsafe fn ReadItemInternal(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
+) -> Result<SEXP, String> {
+    unsafe { read_item_in_context(reader, ref_table, ReadContext::Data) }
+}
+
+unsafe fn read_item_in_context(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    context: ReadContext,
 ) -> Result<SEXP, String> {
     // Bound native stack usage independently of the R evaluation stack.
     // This reader is private; a panic discards it at the session boundary.
@@ -1538,14 +1553,14 @@ pub unsafe fn ReadItemInternal(
         return Err("read error: serialized object nesting exceeds 128 levels".into());
     }
     reader.item_depth += 1;
-    let result = unsafe { read_item_body(reader, ref_table, false) };
+    let result = unsafe { read_item_body(reader, ref_table, context) };
     reader.item_depth -= 1;
     result
 }
 
 // Read GNU compiler constants completely and retain the instruction stream in
 // an explicitly tagged internal BCODESXP. Standalone GNU bytecode remains
-// rejected below; this path is reached only for a serialized closure body.
+// rejected below; this path is reached only for executable closure bodies or promise expressions.
 unsafe fn read_bc_source(
     reader: &mut BinaryReader,
     refs: &mut ReadRefTable,
@@ -1751,7 +1766,11 @@ unsafe fn read_promise(
             .map_err(|e| e.to_string())?;
         owner.require_active().map_err(|e| e.to_string())?;
         let expression = factory
-            .wrap(ReadItemInternal(reader, ref_table)?)
+            .wrap(read_item_in_context(
+                reader,
+                ref_table,
+                ReadContext::PromiseExpression,
+            )?)
             .map_err(|e| e.to_string())?;
         owner.require_active().map_err(|e| e.to_string())?;
         let attributes_link = factory.link(&attributes).map_err(|e| e.to_string())?;
@@ -1781,69 +1800,161 @@ unsafe fn read_promise(
     }
 }
 
+/// Keep the recursive entry small: the unchanged depth limit is meaningful
+/// only when a node does not reserve every unrelated payload branch's locals.
+#[derive(Clone, Copy)]
+struct ItemFlags {
+    stype: c_int,
+    levs: c_int,
+    isobj: c_int,
+    hasattr: c_int,
+    hastag: c_int,
+}
+
+#[inline(never)]
 unsafe fn read_item_body(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
-    closure_body: bool,
+    context: ReadContext,
 ) -> Result<SEXP, String> {
     unsafe {
-        let flags = reader.read_i32()?;
-        let mut stype: c_int = 0;
-        let mut levs: c_int = 0;
-        let mut isobj: c_int = 0;
-        let mut hasattr: c_int = 0;
-        let mut hastag: c_int = 0;
+        let packed = reader.read_i32()?;
+        let mut flags = ItemFlags {
+            stype: 0,
+            levs: 0,
+            isobj: 0,
+            hasattr: 0,
+            hastag: 0,
+        };
         UnpackFlags(
-            flags,
-            &mut stype,
-            &mut levs,
-            &mut isobj,
-            &mut hasattr,
-            &mut hastag,
+            packed,
+            &mut flags.stype,
+            &mut flags.levs,
+            &mut flags.isobj,
+            &mut flags.hasattr,
+            &mut flags.hastag,
         );
+        match SEXPTYPE(flags.stype) {
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => read_list_item(reader, ref_table, flags),
+            SEXPTYPE::CLOSXP => read_closure_item(reader, ref_table, flags),
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => read_references_item(reader, ref_table, flags),
+            _ => read_remaining_item(reader, ref_table, packed, flags, context),
+        }
+    }
+}
 
+#[inline(never)]
+unsafe fn read_list_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    flags: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        hastag,
+    } = flags;
+    unsafe {
+        let s = allocSExp(SEXPTYPE(stype));
+        let _s_guard = protect(s);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        if hastag != 0 {
+            let tag = ReadItemInternal(reader, ref_table)?;
+            SETTAG(s, tag);
+        }
+        let car = ReadItemInternal(reader, ref_table)?;
+        SETCAR(s, car);
+        let cdr = ReadItemInternal(reader, ref_table)?;
+        SETCDR(s, cdr);
+        restore_serialized_gp(s, levs, isobj);
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_closure_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    flags: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = flags;
+    unsafe {
+        let s = allocSExp(SEXPTYPE::CLOSXP);
+        let _s_guard = protect(s);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        let cloenv = ReadItemInternal(reader, ref_table)?;
+        SET_CLOENV(s, cloenv);
+        let formals = ReadItemInternal(reader, ref_table)?;
+        SET_FORMALS(s, formals);
+        let body = read_item_in_context(reader, ref_table, ReadContext::ClosureBody)?;
+        SET_BODY(s, body);
+        restore_serialized_gp(s, levs, isobj);
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_references_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    flags: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = flags;
+    unsafe {
+        let len = reader.read_vector_length(4)?;
+        let s = Rf_allocVector3(stype, len as R_xlen_t);
+        let _s_guard = protect(s);
+        for i in 0..len {
+            let elt = ReadItemInternal(reader, ref_table)?;
+            SET_VECTOR_ELT(s, i as R_xlen_t, elt);
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_remaining_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    packed: c_int,
+    item: ItemFlags,
+    context: ReadContext,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        hastag,
+    } = item;
+    let flags = packed;
+    unsafe {
         if stype == PERSISTSXP {
-            let names_flag = reader.read_i32()?;
-            if names_flag != 0 {
-                return Err("names in persistent strings are not supported".into());
-            }
-            let len = reader.read_vector_length(4)?;
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-            let _names_guard = protect(names);
-            for i in 0..len {
-                let value = ReadItemInternal(reader, ref_table)?;
-                if TYPEOF(value) != SEXPTYPE::CHARSXP {
-                    return Err("persistent names must contain strings".into());
-                }
-                SET_STRING_ELT(names, i as R_xlen_t, value);
-            }
-            let mut cache_key = String::new();
-            for i in 0..len {
-                if i > 0 {
-                    cache_key.push('\0');
-                }
-                let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
-                if !raw.is_null() {
-                    cache_key.push_str(&std::ffi::CStr::from_ptr(raw).to_string_lossy());
-                }
-            }
-            if let Some(&cached) = reader.persist_cache.get(&cache_key) {
-                ref_table.add(cached);
-                return Ok(cached);
-            }
-            let restored = if let Some(restore) = reader.lazy_restore.clone() {
-                restore.restore(names)?
-            } else if let Some(func) = reader.persist_hook_func {
-                func(names, reader.persist_hook_data)
-            } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
-                return Err("no restore method available".into());
-            } else {
-                CallHook(names, reader.persist_hook)
-            };
-            let _restored_guard = protect(restored);
-            ref_table.add(restored);
-            reader.persist_cache.insert(cache_key, restored);
-            return Ok(restored);
+            read_persistent_item(reader, ref_table, item)
         } else if stype == NILVALUE_SXP {
             Ok(R_NilValue())
         } else if stype == GLOBALENV_SXP {
@@ -1859,329 +1970,563 @@ unsafe fn read_item_body(
         } else if stype == BASENAMESPACE_SXP {
             Ok(crate::sexp::envir::R_BaseNamespace())
         } else if stype == NAMESPACESXP || stype == PACKAGESXP {
-            let names = read_packed_string_vec(reader, ref_table)?;
-            let pkg = first_string_elt(names);
-            let env = if pkg.is_empty() || pkg == "base" {
-                R_BaseEnv()
-            } else {
-                crate::mainutils::essentials::load_package_namespace_by_name(&pkg).unwrap_or_else(
-                    |_| {
-                        crate::sexp::memory_ext::NewEnvironment(
-                            R_NilValue(),
-                            R_BaseEnv(),
-                            R_NilValue(),
-                        )
-                    },
-                )
-            };
-            ref_table.add(env);
-            Ok(env)
+            read_namespace_item(reader, ref_table, item)
         } else if stype == REFSXP {
             let idx = InRefIndex(flags, reader)?;
             ref_table.get(idx)
         } else if stype == SEXPTYPE::ENVSXP {
-            let locked = reader.read_i32()?;
-            let env =
-                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
-            let _env = protect(env);
-            ref_table.add(env); // Cyclic environments must resolve before their bindings are read.
-            let parent = ReadItemInternal(reader, ref_table)?;
-            if parent != R_NilValue() && TYPEOF(parent) != SEXPTYPE::ENVSXP {
-                return Err("invalid environment enclosure".into());
-            }
-            SET_ENCLOS(
-                env,
-                if parent == R_NilValue() {
-                    R_BaseEnv()
-                } else {
-                    parent
-                },
-            );
-            let frame = ReadItemInternal(reader, ref_table)?;
-            let _frame = protect(frame);
-            let hash = ReadItemInternal(reader, ref_table)?;
-            let _hash = protect(hash);
-            let attributes = ReadItemInternal(reader, ref_table)?;
-            SET_ATTRIB(env, attributes);
-            let mut chains = vec![frame];
-            if hash != R_NilValue() {
-                if TYPEOF(hash) != SEXPTYPE::VECSXP {
-                    return Err("invalid environment hash table".into());
-                }
-                for i in 0..XLENGTH(hash) {
-                    chains.push(VECTOR_ELT(hash, i));
-                }
-            }
-            let mut seen = std::collections::HashSet::new();
-            for mut cell in chains {
-                while !cell.is_null() && cell != R_NilValue() {
-                    if TYPEOF(cell) != SEXPTYPE::LISTSXP || !seen.insert(cell as usize) {
-                        return Err("invalid or cyclic environment binding list".into());
-                    }
-                    // GNU Defn.h stores active/locked binding flags in gp15/gp14.
-                    // Reject rather than silently turn these into ordinary bindings.
-                    if LEVELS(cell) & ((1 << 15) | (1 << 14)) != 0 {
-                        return Err("restoration of active or individually locked bindings is not supported".into());
-                    }
-                    let symbol = TAG(cell);
-                    if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-                        return Err("invalid environment binding name".into());
-                    }
-                    crate::sexp::envir::defineVar(symbol, CAR(cell), env);
-                    cell = CDR(cell);
-                }
-            }
-            if attributes != R_NilValue()
-                && crate::eval::attrib_core::getAttrib(
-                    env,
-                    crate::eval::attrib_core::R_ClassSymbol(),
-                ) != R_NilValue()
-            {
-                SET_OBJECT(env, 1);
-            }
-            if locked != 0 {
-                crate::sexp::envir::lock_environment_raw(env);
-            }
-            Ok(env)
+            read_environment_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::SYMSXP {
-            let pname = ReadItemInternal(reader, ref_table)?;
-            let sym = Rf_install(CHAR(pname));
-            ref_table.add(sym);
-            Ok(sym)
-        } else if stype == SEXPTYPE::LISTSXP || stype == SEXPTYPE::LANGSXP {
-            let s = allocSExp(SEXPTYPE(stype));
-            let _s_guard = protect(s);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            if hastag != 0 {
-                let tag = ReadItemInternal(reader, ref_table)?;
-                SETTAG(s, tag);
-            }
-            let car = ReadItemInternal(reader, ref_table)?;
-            SETCAR(s, car);
-            let cdr = ReadItemInternal(reader, ref_table)?;
-            SETCDR(s, cdr);
-            restore_serialized_gp(s, levs, isobj);
-            Ok(s)
+            read_symbol_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::PROMSXP {
             read_promise(reader, ref_table, hasattr, hastag, levs, isobj)
-        } else if stype == SEXPTYPE::CLOSXP {
-            let s = allocSExp(SEXPTYPE::CLOSXP);
-            let _s_guard = protect(s);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            let cloenv = ReadItemInternal(reader, ref_table)?;
-            SET_CLOENV(s, cloenv);
-            let formals = ReadItemInternal(reader, ref_table)?;
-            SET_FORMALS(s, formals);
-            if reader.item_depth >= 128 {
-                return Err("read error: serialized object nesting exceeds 128 levels".into());
-            }
-            reader.item_depth += 1;
-            let body = read_item_body(reader, ref_table, true);
-            reader.item_depth -= 1;
-            SET_BODY(s, body?);
-            restore_serialized_gp(s, levs, isobj);
-            Ok(s)
         } else if stype == SEXPTYPE::CHARSXP {
-            let len = reader.read_i32()?;
-            if len < 0 {
-                Ok(R_NaString())
-            } else if len == 0 {
-                let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
-                Ok(s)
-            } else {
-                let bytes = reader.read_string_bytes(len as usize)?;
-                let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
-                Ok(s)
-            }
+            read_character_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
-            let len = reader.read_vector_length(4)?;
-            let s = Rf_allocVector3(stype, len as R_xlen_t);
-            let _s_guard = protect(s);
-            let int_data = INTEGER(s);
-            for i in 0..len as isize {
-                *int_data.offset(i) = reader.read_i32()?;
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_integer_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::REALSXP {
-            let len = reader.read_vector_length(8)?;
-            let s = Rf_allocVector3(stype, len as R_xlen_t);
-            let _s_guard = protect(s);
-            let real_data = REAL(s);
-            for i in 0..len as isize {
-                *real_data.offset(i) = reader.read_f64()?;
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_real_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::CPLXSXP {
-            let len = reader.read_vector_length(16)?;
-            let s = Rf_allocVector3(stype, len as R_xlen_t);
-            let _s_guard = protect(s);
-            let cpx_data = COMPLEX(s);
-            for i in 0..len as isize {
-                let r = reader.read_f64()?;
-                let im = reader.read_f64()?;
-                *cpx_data.offset(i) = Rcomplex { r, i: im };
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_complex_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::STRSXP {
-            let len = reader.read_vector_length(4)?;
-            let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-            let _s_guard = protect(s);
-            for i in 0..len {
-                let elt = ReadItemInternal(reader, ref_table)?;
-                SET_STRING_ELT(s, i as R_xlen_t, elt);
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_strings_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::RAWSXP {
-            let len = reader.read_vector_length(1)?;
-            let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
-            let _s_guard = protect(s);
-            let raw_data = RAW(s);
-            for i in 0..len as isize {
-                *raw_data.offset(i) = reader.read_byte()?;
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
-        } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
-            let len = reader.read_vector_length(4)?;
-            let s = Rf_allocVector3(stype, len as R_xlen_t);
-            let _s_guard = protect(s);
-            for i in 0..len {
-                let elt = ReadItemInternal(reader, ref_table)?;
-                SET_VECTOR_ELT(s, i as R_xlen_t, elt);
-            }
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
-        } else if stype == SEXPTYPE::BCODESXP && (closure_body || reader.bc_source_depth > 0) {
-            let repeated = reader.read_vector_length(4)?;
-            let reps = Rf_allocVector(SEXPTYPE::VECSXP, repeated);
-            let _reps = protect(reps);
-            for i in 0..repeated {
-                SET_VECTOR_ELT(reps, i as R_xlen_t, R_NilValue());
-            }
-            read_bc_source(reader, ref_table, reps)
+            read_raw_item(reader, ref_table, item)
+        } else if stype == SEXPTYPE::BCODESXP
+            && (!matches!(context, ReadContext::Data) || reader.bc_source_depth > 0)
+        {
+            read_bytecode_source_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::BCODESXP {
-            let repeated = reader.read_i32()?;
-            if repeated < 1 {
-                return Err("GNU R BCODESXP has an invalid repetition table length".into());
-            }
-            let code = ReadItemInternal(reader, ref_table)?;
-            if TYPEOF(code) != SEXPTYPE::INTSXP {
-                return Err("GNU R BCODESXP instruction stream is not an integer vector".into());
-            }
-            let code_len = XLENGTH(code) as usize;
-            let code_ptr = INTEGER(code);
-            if code_len > 0 && code_ptr.is_null() {
-                return Err("GNU R BCODESXP instruction stream has a null data pointer".into());
-            }
-            let code_slice = if code_len == 0 {
-                &[][..]
-            } else {
-                std::slice::from_raw_parts(code_ptr, code_len)
-            };
-            crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
-            Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
+            read_bytecode_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::SPECIALSXP || stype == SEXPTYPE::BUILTINSXP {
-            // GNU serialize.c: OutInteger(strlen(PRIMNAME)); OutString(name, len)
-            let length = reader.read_i32()?;
-            if length < 0 {
-                return Err("invalid primitive name length".into());
-            }
-            let bytes = reader.read_string_bytes(length as usize)?;
-            let mut cbuf = bytes;
-            cbuf.push(0);
-            let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
-            if prim.is_null() || prim == R_NilValue() {
-                Ok(R_NilValue())
-            } else {
-                Ok(prim)
-            }
+            read_primitive_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::EXTPTRSXP {
-            // GNU serialize.c: HashAdd; WriteItem(PROT); WriteItem(TAG); addr is not serialized.
-            let s = allocSExp(SEXPTYPE::EXTPTRSXP);
-            let _s_guard = protect(s);
-            ref_table.add(s);
-            crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
-            let prot = ReadItemInternal(reader, ref_table)?;
-            crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
-            let tag = ReadItemInternal(reader, ref_table)?;
-            crate::mainutils::memory_main::R_SetExternalPtrTag(s, tag);
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_external_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::WEAKREFSXP {
-            let s = crate::mainutils::memory_main::R_MakeWeakRef(
-                R_NilValue(),
-                R_NilValue(),
-                R_NilValue(),
-                0,
-            );
-            let _s_guard = protect(s);
-            ref_table.add(s);
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_weakref_item(reader, ref_table, item)
         } else if stype == SEXPTYPE::S4SXP {
-            // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
-            let s = allocSExp(SEXPTYPE::S4SXP);
-            let _s_guard = protect(s);
-            SET_S4_OBJECT(s);
-            restore_serialized_gp(s, levs, isobj);
-            if hasattr != 0 {
-                let attr = ReadItemInternal(reader, ref_table)?;
-                SET_ATTRIB(s, attr);
-            }
-            Ok(s)
+            read_s4_item(reader, ref_table, item)
         } else if stype == ALTREP_SXP {
-            let info = ReadItemInternal(reader, ref_table)?;
-            let _info = protect(info);
-            let state = ReadItemInternal(reader, ref_table)?;
-            let _state = protect(state);
-            let attr = ReadItemInternal(reader, ref_table)?;
-            let _attr = protect(attr);
-            altrep_unserialize_ex(info, state, attr, isobj, levs)
+            read_altrep_item(reader, ref_table, item)
         } else {
             Err(format!("ReadItem: unknown type {}", stype))
         }
+    }
+}
+
+#[inline(never)]
+unsafe fn read_weakref_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let s = crate::mainutils::memory_main::R_MakeWeakRef(
+            R_NilValue(),
+            R_NilValue(),
+            R_NilValue(),
+            0,
+        );
+        let _s_guard = protect(s);
+        ref_table.add(s);
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_persistent_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let names_flag = reader.read_i32()?;
+        if names_flag != 0 {
+            return Err("names in persistent strings are not supported".into());
+        }
+        let len = reader.read_vector_length(4)?;
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _names_guard = protect(names);
+        for i in 0..len {
+            let value = ReadItemInternal(reader, ref_table)?;
+            if TYPEOF(value) != SEXPTYPE::CHARSXP {
+                return Err("persistent names must contain strings".into());
+            }
+            SET_STRING_ELT(names, i as R_xlen_t, value);
+        }
+        let mut cache_key = String::new();
+        for i in 0..len {
+            if i > 0 {
+                cache_key.push('\0');
+            }
+            let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
+            if !raw.is_null() {
+                cache_key.push_str(&std::ffi::CStr::from_ptr(raw).to_string_lossy());
+            }
+        }
+        if let Some(&cached) = reader.persist_cache.get(&cache_key) {
+            ref_table.add(cached);
+            return Ok(cached);
+        }
+        let restored = if let Some(restore) = reader.lazy_restore.clone() {
+            restore.restore(names)?
+        } else if let Some(func) = reader.persist_hook_func {
+            func(names, reader.persist_hook_data)
+        } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
+            return Err("no restore method available".into());
+        } else {
+            CallHook(names, reader.persist_hook)
+        };
+        let _restored_guard = protect(restored);
+        ref_table.add(restored);
+        reader.persist_cache.insert(cache_key, restored);
+        return Ok(restored);
+    }
+}
+
+#[inline(never)]
+unsafe fn read_namespace_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let names = read_packed_string_vec(reader, ref_table)?;
+        let pkg = first_string_elt(names);
+        let env = if pkg.is_empty() || pkg == "base" {
+            R_BaseEnv()
+        } else {
+            crate::mainutils::essentials::load_package_namespace_by_name(&pkg).unwrap_or_else(
+                |_| {
+                    crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue())
+                },
+            )
+        };
+        ref_table.add(env);
+        Ok(env)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_environment_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let locked = reader.read_i32()?;
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
+        let _env = protect(env);
+        ref_table.add(env); // Cyclic environments must resolve before their bindings are read.
+        let parent = ReadItemInternal(reader, ref_table)?;
+        if parent != R_NilValue() && TYPEOF(parent) != SEXPTYPE::ENVSXP {
+            return Err("invalid environment enclosure".into());
+        }
+        SET_ENCLOS(
+            env,
+            if parent == R_NilValue() {
+                R_BaseEnv()
+            } else {
+                parent
+            },
+        );
+        let frame = ReadItemInternal(reader, ref_table)?;
+        let _frame = protect(frame);
+        let hash = ReadItemInternal(reader, ref_table)?;
+        let _hash = protect(hash);
+        let attributes = ReadItemInternal(reader, ref_table)?;
+        SET_ATTRIB(env, attributes);
+        let mut chains = vec![frame];
+        if hash != R_NilValue() {
+            if TYPEOF(hash) != SEXPTYPE::VECSXP {
+                return Err("invalid environment hash table".into());
+            }
+            for i in 0..XLENGTH(hash) {
+                chains.push(VECTOR_ELT(hash, i));
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for mut cell in chains {
+            while !cell.is_null() && cell != R_NilValue() {
+                if TYPEOF(cell) != SEXPTYPE::LISTSXP || !seen.insert(cell as usize) {
+                    return Err("invalid or cyclic environment binding list".into());
+                }
+                // GNU Defn.h stores active/locked binding flags in gp15/gp14.
+                // Reject rather than silently turn these into ordinary bindings.
+                if LEVELS(cell) & ((1 << 15) | (1 << 14)) != 0 {
+                    return Err(
+                        "restoration of active or individually locked bindings is not supported"
+                            .into(),
+                    );
+                }
+                let symbol = TAG(cell);
+                if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                    return Err("invalid environment binding name".into());
+                }
+                crate::sexp::envir::defineVar(symbol, CAR(cell), env);
+                cell = CDR(cell);
+            }
+        }
+        if attributes != R_NilValue()
+            && crate::eval::attrib_core::getAttrib(env, crate::eval::attrib_core::R_ClassSymbol())
+                != R_NilValue()
+        {
+            SET_OBJECT(env, 1);
+        }
+        if locked != 0 {
+            crate::sexp::envir::lock_environment_raw(env);
+        }
+        Ok(env)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_symbol_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let pname = ReadItemInternal(reader, ref_table)?;
+        let sym = Rf_install(CHAR(pname));
+        ref_table.add(sym);
+        Ok(sym)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_character_item(
+    reader: &mut BinaryReader,
+    _ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let len = reader.read_i32()?;
+        if len < 0 {
+            Ok(R_NaString())
+        } else if len == 0 {
+            let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
+            Ok(s)
+        } else {
+            let bytes = reader.read_string_bytes(len as usize)?;
+            let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
+            Ok(s)
+        }
+    }
+}
+
+#[inline(never)]
+unsafe fn read_integer_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let len = reader.read_vector_length(4)?;
+        let s = Rf_allocVector3(stype, len as R_xlen_t);
+        let _s_guard = protect(s);
+        let int_data = INTEGER(s);
+        for i in 0..len as isize {
+            *int_data.offset(i) = reader.read_i32()?;
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_real_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let len = reader.read_vector_length(8)?;
+        let s = Rf_allocVector3(stype, len as R_xlen_t);
+        let _s_guard = protect(s);
+        let real_data = REAL(s);
+        for i in 0..len as isize {
+            *real_data.offset(i) = reader.read_f64()?;
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_complex_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        stype,
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let len = reader.read_vector_length(16)?;
+        let s = Rf_allocVector3(stype, len as R_xlen_t);
+        let _s_guard = protect(s);
+        let cpx_data = COMPLEX(s);
+        for i in 0..len as isize {
+            let r = reader.read_f64()?;
+            let im = reader.read_f64()?;
+            *cpx_data.offset(i) = Rcomplex { r, i: im };
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_strings_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let len = reader.read_vector_length(4)?;
+        let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _s_guard = protect(s);
+        for i in 0..len {
+            let elt = ReadItemInternal(reader, ref_table)?;
+            SET_STRING_ELT(s, i as R_xlen_t, elt);
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_raw_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        let len = reader.read_vector_length(1)?;
+        let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
+        let _s_guard = protect(s);
+        let raw_data = RAW(s);
+        for i in 0..len as isize {
+            *raw_data.offset(i) = reader.read_byte()?;
+        }
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_bytecode_source_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let repeated = reader.read_vector_length(4)?;
+        let reps = Rf_allocVector(SEXPTYPE::VECSXP, repeated);
+        let _reps = protect(reps);
+        for i in 0..repeated {
+            SET_VECTOR_ELT(reps, i as R_xlen_t, R_NilValue());
+        }
+        read_bc_source(reader, ref_table, reps)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_bytecode_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        let repeated = reader.read_i32()?;
+        if repeated < 1 {
+            return Err("GNU R BCODESXP has an invalid repetition table length".into());
+        }
+        let code = ReadItemInternal(reader, ref_table)?;
+        if TYPEOF(code) != SEXPTYPE::INTSXP {
+            return Err("GNU R BCODESXP instruction stream is not an integer vector".into());
+        }
+        let code_len = XLENGTH(code) as usize;
+        let code_ptr = INTEGER(code);
+        if code_len > 0 && code_ptr.is_null() {
+            return Err("GNU R BCODESXP instruction stream has a null data pointer".into());
+        }
+        let code_slice = if code_len == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(code_ptr, code_len)
+        };
+        crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
+        Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
+    }
+}
+
+#[inline(never)]
+unsafe fn read_primitive_item(
+    reader: &mut BinaryReader,
+    _ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let _ = item;
+    unsafe {
+        // GNU serialize.c: OutInteger(strlen(PRIMNAME)); OutString(name, len)
+        let length = reader.read_i32()?;
+        if length < 0 {
+            return Err("invalid primitive name length".into());
+        }
+        let bytes = reader.read_string_bytes(length as usize)?;
+        let mut cbuf = bytes;
+        cbuf.push(0);
+        let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
+        if prim.is_null() || prim == R_NilValue() {
+            Ok(R_NilValue())
+        } else {
+            Ok(prim)
+        }
+    }
+}
+
+#[inline(never)]
+unsafe fn read_external_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        // GNU serialize.c: HashAdd; WriteItem(PROT); WriteItem(TAG); addr is not serialized.
+        let s = allocSExp(SEXPTYPE::EXTPTRSXP);
+        let _s_guard = protect(s);
+        ref_table.add(s);
+        crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
+        let prot = ReadItemInternal(reader, ref_table)?;
+        crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
+        let tag = ReadItemInternal(reader, ref_table)?;
+        crate::mainutils::memory_main::R_SetExternalPtrTag(s, tag);
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_s4_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags {
+        levs,
+        isobj,
+        hasattr,
+        ..
+    } = item;
+    unsafe {
+        // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
+        let s = allocSExp(SEXPTYPE::S4SXP);
+        let _s_guard = protect(s);
+        SET_S4_OBJECT(s);
+        restore_serialized_gp(s, levs, isobj);
+        if hasattr != 0 {
+            let attr = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(s, attr);
+        }
+        Ok(s)
+    }
+}
+
+#[inline(never)]
+unsafe fn read_altrep_item(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+    item: ItemFlags,
+) -> Result<SEXP, String> {
+    let ItemFlags { levs, isobj, .. } = item;
+    unsafe {
+        let info = ReadItemInternal(reader, ref_table)?;
+        let _info = protect(info);
+        let state = ReadItemInternal(reader, ref_table)?;
+        let _state = protect(state);
+        let attr = ReadItemInternal(reader, ref_table)?;
+        let _attr = protect(attr);
+        altrep_unserialize_ex(info, state, attr, isobj, levs)
     }
 }
 
@@ -2192,6 +2537,10 @@ unsafe fn read_item_body(
 pub unsafe fn defaultSerializeVersion() -> c_int {
     R_DEFAULT_SERIALIZE_VERSION
 }
+
+#[cfg(test)]
+#[path = "owned_collection_tests.rs"]
+mod owned_collection_tests;
 
 #[cfg(test)]
 mod bytecode_reader_tests {
@@ -2351,5 +2700,193 @@ mod special_environment_identity_tests {
         left.with_active(|| left.owner_token().unwrap().full_gc().unwrap());
         assert!(left_value.allocation().unwrap().is_live());
         assert!(right_value.allocation().unwrap().is_live());
+    }
+}
+
+#[cfg(test)]
+mod bounded_frame_reader_tests {
+    use super::*;
+    use crate::sexp::{owner::OwnerToken, session::RSession};
+
+    fn nested_vectors(depth: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for _ in 0..depth {
+            bytes.extend_from_slice(&SEXPTYPE::VECSXP.as_c_int().to_ne_bytes());
+            bytes.extend_from_slice(&1_i32.to_ne_bytes());
+        }
+        bytes.extend_from_slice(&NILVALUE_SXP.to_ne_bytes());
+        bytes
+    }
+
+    fn compiled_constant() -> Vec<i32> {
+        vec![
+            SEXPTYPE::BCODESXP.as_c_int(),
+            1, // Outer WriteBC repetition table.
+            SEXPTYPE::INTSXP.as_c_int(),
+            4,
+            crate::eval::bytecode::GNU_BC_MAX_VERSION,
+            16, // LDCONST
+            0,
+            1,                           // RETURN
+            1,                           // One constant, also the original source expression.
+            SEXPTYPE::INTSXP.as_c_int(), // WriteBC constant kind.
+            SEXPTYPE::INTSXP.as_c_int(),
+            1,
+            42,
+        ]
+    }
+
+    #[test]
+    fn owned_decoder_compiled_promise_expression_survives_collection_and_forcing() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let mut words = vec![
+                SEXPTYPE::PROMSXP.as_c_int() | HAS_TAG_BIT_MASK,
+                BASEENV_SXP,
+                UNBOUNDVALUE_SXP,
+            ];
+            words.extend(compiled_constant());
+            let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
+            let mut reader = BinaryReader::new(&bytes);
+            let owner = OwnerToken::current().unwrap();
+            let promise = owner
+                .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            assert_eq!(reader.pos, bytes.len());
+            assert_eq!(reader.item_depth, 0);
+            assert_eq!(reader.bc_source_depth, 0);
+            assert_eq!(TYPEOF(PRCODE(promise.as_raw())), SEXPTYPE::BCODESXP);
+            assert_eq!(PRVALUE(promise.as_raw()), R_UnboundValue());
+            owner.full_gc().unwrap();
+            let result = owner
+                .sexp(crate::sexp::envir::forcePromise(promise.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            owner.full_gc().unwrap();
+            assert_eq!(result.try_integer_elt(0).unwrap(), 42);
+            assert_eq!(PRVALUE(promise.as_raw()), result.as_raw());
+        });
+    }
+
+    #[test]
+    fn decoder_compiled_field_context_keeps_data_and_malformed_stream_rejections() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let standalone: Vec<u8> = compiled_constant()
+                .into_iter()
+                .flat_map(i32::to_ne_bytes)
+                .collect();
+            let error = ReadItemInternal(
+                &mut BinaryReader::new(&standalone),
+                &mut ReadRefTable::new(),
+            )
+            .unwrap_err();
+            assert_eq!(
+                error,
+                "GNU R BCODESXP is well-framed but execution adapter is unavailable"
+            );
+            // PRVALUE is data even when the enclosing item is a promise.
+            let mut value = vec![SEXPTYPE::PROMSXP.as_c_int()];
+            value.extend(compiled_constant());
+            value.push(NILVALUE_SXP);
+            let bytes: Vec<u8> = value.into_iter().flat_map(i32::to_ne_bytes).collect();
+            assert_eq!(
+                ReadItemInternal(&mut BinaryReader::new(&bytes), &mut ReadRefTable::new())
+                    .unwrap_err(),
+                error
+            );
+            let mut expression = vec![SEXPTYPE::PROMSXP.as_c_int(), UNBOUNDVALUE_SXP];
+            let mut invalid = compiled_constant();
+            invalid[5] = crate::eval::bytecode::GNU_BC_OPCODE_COUNT as i32;
+            expression.extend(invalid);
+            let bytes: Vec<u8> = expression.into_iter().flat_map(i32::to_ne_bytes).collect();
+            let mut reader = BinaryReader::new(&bytes);
+            let error = ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap_err();
+            assert!(error.contains("unknown GNU R bytecode opcode"), "{error}");
+            assert_eq!(reader.item_depth, 0);
+            assert_eq!(reader.bc_source_depth, 0);
+        });
+    }
+
+    #[test]
+    fn owned_small_decoder_frames_preserve_deep_vector_graph_and_collection() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let bytes = nested_vectors(96);
+            let mut reader = BinaryReader::new(&bytes);
+            let mut refs = ReadRefTable::new();
+            let owner = OwnerToken::current().unwrap();
+            let raw = ReadItemInternal(&mut reader, &mut refs).unwrap();
+            let result = owner.sexp(raw).unwrap().into_owned().unwrap();
+            assert_eq!(reader.item_depth, 0);
+            owner.full_gc().unwrap();
+            let mut current = result;
+            for _ in 0..96 {
+                assert_eq!(current.typeof_(), SEXPTYPE::VECSXP);
+                assert_eq!(current.len(), 1);
+                current = current.try_vector_elt(0).unwrap().into_owned().unwrap();
+            }
+            assert!(current.is_nil());
+        });
+    }
+
+    #[test]
+    fn owned_small_decoder_frames_preserve_environment_reference_identity() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let words = [
+                SEXPTYPE::VECSXP.as_c_int(),
+                2,
+                SEXPTYPE::ENVSXP.as_c_int(),
+                0,
+                EMPTYENV_SXP,
+                NILVALUE_SXP,
+                NILVALUE_SXP,
+                NILVALUE_SXP,
+                (1 << 8) | REFSXP,
+            ];
+            let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
+            let mut reader = BinaryReader::new(&bytes);
+            let owner = OwnerToken::current().unwrap();
+            let value = owner
+                .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let left = value.try_vector_elt(0).unwrap().into_owned().unwrap();
+            let right = value.try_vector_elt(1).unwrap().into_owned().unwrap();
+            assert_eq!(left, right);
+            assert_eq!(left.typeof_(), SEXPTYPE::ENVSXP);
+            owner.full_gc().unwrap();
+            assert_eq!(
+                value.try_vector_elt(0).unwrap(),
+                value.try_vector_elt(1).unwrap()
+            );
+            assert!(left.allocation().unwrap().is_live());
+            assert_eq!(reader.item_depth, 0);
+        });
+    }
+
+    #[test]
+    fn small_decoder_frames_keep_original_depth_and_truncation_rejections() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let mut truncated = nested_vectors(96);
+            truncated.truncate(truncated.len() - 4);
+            let mut reader = BinaryReader::new(&truncated);
+            assert!(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).is_err());
+            assert_eq!(reader.item_depth, 0);
+            let bytes = nested_vectors(128);
+            let mut reader = BinaryReader::new(&bytes);
+            let error = ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap_err();
+            assert_eq!(
+                error,
+                "read error: serialized object nesting exceeds 128 levels"
+            );
+            assert_eq!(reader.item_depth, 0);
+        });
     }
 }

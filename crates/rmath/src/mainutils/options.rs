@@ -632,15 +632,33 @@ fn options_vector<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>> 
     Ok(value)
 }
 
-/// Refresh the base `.Options` snapshot while its complete graph is owned.
-unsafe fn refresh_options_binding() {
-    let owner = require_options(unsafe { OwnerToken::current() });
+/// Publish through original internal authority without unlocking `.Options`.
+unsafe fn refresh_options_binding(owner: OwnerToken<'_>) {
+    let _pin = require_options(owner.pin());
     let factory = owner.node_factory();
-    let options = require_options(options_pairlist(&factory));
-    let symbol = require_options(factory.wrap(options_symbol()));
     require_options(factory.require_active());
-    unsafe {
-        defineVar(symbol.as_raw(), options.as_raw(), R_BaseEnv());
+    // These identities belong to the captured owner, before pairlist callbacks.
+    let base = require_options(
+        factory
+            .wrap(unsafe { R_BaseEnv_in(owner.as_ptr()) })
+            .and_then(Sexp::into_owned),
+    );
+    let symbol = require_options(factory.wrap(options_symbol()).and_then(Sexp::into_owned));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let options = require_options(options_pairlist(&factory));
+        require_options(factory.require_active());
+        let replaced = publication::replace_existing(&factory, &base, &symbol, &options)
+            .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
+        if !replaced {
+            // First bootstrap publication obeys normal environment admission.
+            // Later internal updates use only the existing checked cell above.
+            unsafe { defineVar(symbol.as_raw(), options.as_raw(), base.as_raw()) };
+        }
+    }));
+    // Revocation takes precedence even if a construction callback panics.
+    require_options(owner.require_active());
+    if let Err(payload) = result {
+        std::panic::resume_unwind(payload);
     }
 }
 
@@ -697,7 +715,7 @@ pub unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
         } else {
             (*owner.as_ptr()).options.insert(name.to_string(), value)
         };
-        refresh_options_binding();
+        refresh_options_binding(owner);
         require_options(factory.require_active());
         old.map_or_else(|| nil.as_raw(), |value| value.as_raw())
     }
@@ -974,7 +992,7 @@ pub unsafe fn InitOptions() {
         }
     }
     unsafe {
-        refresh_options_binding();
+        refresh_options_binding(owner);
     }
     require_options(define_platform_binding(&factory));
     require_options(factory.require_active());
@@ -2128,3 +2146,10 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "options/publication_tests.rs"]
+mod publication_tests;
+
+#[path = "options/publication.rs"]
+mod publication;

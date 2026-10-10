@@ -4540,6 +4540,9 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    // GNU names.c: original internal environment accessors, exact arities.
+    FunTabEntry::new(b"parent.env\0", None, 0, 11, 1, PPinfo::new(PP_FUNCALL, PREC_FN, 0)),
+    FunTabEntry::new(b"parent.env<-\0", None, 0, 11, 2, PPinfo::new(PP_FUNCALL, PREC_FN, 0)),
     FunTabEntry::new(
         b"environment\0",
         None,

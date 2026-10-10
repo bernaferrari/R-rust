@@ -213,27 +213,11 @@ fn symbol_name_for_error(expr: Sexp<'_>) -> String {
     "<unknown>".to_string()
 }
 
+#[inline(never)]
 unsafe fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     match classify_expr(expr.clone()) {
         EvalKind::SelfEvaluating => Ok(expr),
-        EvalKind::Symbol => {
-            if let Some(value) = (unsafe {
-                /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-                find_var_result(expr.clone(), env.clone())
-            })? {
-                return Ok(value);
-            }
-            match primitive_for_symbol(expr.clone()) {
-                Some(primitive) => Ok(primitive),
-                None => unsafe {
-                    crate::mainutils::errors::R_ObjectNotFoundError(
-                        expr.as_raw(),
-                        super::context::get_lexical_call(env.as_raw()),
-                        None,
-                    )
-                },
-            }
-        }
+        EvalKind::Symbol => unsafe { eval_symbol_safe(expr, env) },
         EvalKind::Language => unsafe {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_lang_safe(expr, env)
@@ -250,6 +234,26 @@ unsafe fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>,
         EvalKind::Dots => eval_dots_safe(expr, env),
         EvalKind::Bytecode => unsafe { eval_bytecode_safe(expr, env) },
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
+    }
+}
+
+#[inline(never)]
+unsafe fn eval_symbol_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    if let Some(value) = (unsafe {
+        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+        find_var_result(expr.clone(), env.clone())
+    })? {
+        return Ok(value);
+    }
+    match primitive_for_symbol(expr.clone()) {
+        Some(primitive) => Ok(primitive),
+        None => unsafe {
+            crate::mainutils::errors::R_ObjectNotFoundError(
+                expr.as_raw(),
+                super::context::get_lexical_call(env.as_raw()),
+                None,
+            )
+        },
     }
 }
 
@@ -321,6 +325,7 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
+#[inline(never)]
 pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let fun = e
         .clone()
@@ -335,25 +340,7 @@ pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Se
 
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
-    let fun_val = if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
-        match (unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            find_fun_result(fun.clone(), rho.clone())
-        })? {
-            Some(value) => value,
-            None => match primitive_for_symbol(fun.clone()) {
-                Some(primitive) => primitive,
-                None => unsafe {
-                    crate::mainutils::errors::R_FunctionNotFoundError(fun.as_raw(), e.as_raw())
-                },
-            },
-        }
-    } else {
-        (unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            eval_safe(fun.clone(), rho.clone())
-        })?
-    };
+    let fun_val = unsafe { resolve_call_function(fun.clone(), e.clone(), rho.clone()) }?;
 
     match fun_val.clone().typeof_() {
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
@@ -368,6 +355,37 @@ pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Se
             Err(format!("cannot call type {kind:?} for {head}"))
         }
     }
+}
+
+// Lookup/evaluation may reenter. Its locals end before applying the resolved
+// function; the caller retains the original call, arguments and environment.
+#[inline(never)]
+unsafe fn resolve_call_function<'a>(
+    fun: Sexp<'a>,
+    e: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    Ok({
+        if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
+            match (unsafe {
+                /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+                find_fun_result(fun.clone(), rho.clone())
+            })? {
+                Some(value) => value,
+                None => match primitive_for_symbol(fun.clone()) {
+                    Some(primitive) => primitive,
+                    None => unsafe {
+                        crate::mainutils::errors::R_FunctionNotFoundError(fun.as_raw(), e.as_raw())
+                    },
+                },
+            }
+        } else {
+            (unsafe {
+                /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+                eval_safe(fun.clone(), rho.clone())
+            })?
+        }
+    })
 }
 
 pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {

@@ -10,6 +10,8 @@ expression	result
 .Internal(`parent.env<-`(emptyenv(), baseenv()))	can not set parent of the empty environment
 .Internal(`parent.env<-`(baseenv(), globalenv()))	cycles in parent chains are not allowed
 .Internal(`parent.env<-`(asNamespace("base"), globalenv()))	can not set the parent environment of a namespace
-.Internal(`parent.env<-`(parent.env(asNamespace("methods")), globalenv()))	can not set the parent environment of package imports
+local({ e <- new.env(parent=asNamespace("base")); attr(e,"name") <- "imports:test"; lockEnvironment(e); .Internal(`parent.env<-`(e,globalenv())) })	can not set the parent environment of package imports
+local({ e <- new.env(parent=emptyenv()); e$.__NAMESPACE__. <- new.env(); lockEnvironment(e); identical(.Internal(`parent.env<-`(e,baseenv())),e) })	TRUE
+local({ e <- new.env(parent=emptyenv()); e$.__NAMESPACE__. <- new.env(); e$.__NAMESPACE__.$spec <- "test"; lockEnvironment(e); .Internal(`parent.env<-`(e,baseenv())) })	can not set the parent environment of a namespace
 local({ e <- new.env(); p <- new.env(parent=emptyenv()); lockEnvironment(e); identical(.Internal(`parent.env<-`(e,p)),e) && identical(parent.env(e),p) })	TRUE
 local({ e <- new.env(parent=emptyenv()); p <- new.env(parent=e); .Internal(`parent.env<-`(e,p)) })	cycles in parent chains are not allowed

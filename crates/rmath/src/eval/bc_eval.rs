@@ -3915,6 +3915,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+#[inline(never)]
 unsafe fn bc_eval_owned(
     body_owned: Sexp<'static>,
     rho_owned: Sexp<'static>,
@@ -3931,6 +3932,21 @@ unsafe fn bc_eval_owned(
             return eval_gnu_adapter(body, rho, pin);
         }
 
+        bc_eval_private(body_owned, rho_owned, pin)
+    }
+}
+
+// GNU execution must not reserve the private instruction dispatch's locals.
+// Both branches retain the same original roots and scoped owning runtime pin.
+#[inline(never)]
+unsafe fn bc_eval_private(
+    body_owned: Sexp<'static>,
+    rho_owned: Sexp<'static>,
+    pin: &crate::sexp::owner::OwnerPin,
+) -> Sexp<'static> {
+    unsafe {
+        let body = body_owned.as_raw();
+        let rho = rho_owned.as_raw();
         let code_owned = own_operand(VECTOR_ELT(body, 0));
         let code = owned_instruction_words(&code_owned);
         let code_ptr = code.as_slice();
