@@ -5,6 +5,23 @@
 This is an experimental, embeddable Rust R runtime. Entries are curated;
 compatibility claims are defined by the maintained docs and executable checks.
 
+### Projection-pursuit regression fidelity fixes (2026-10-10)
+
+- `ppr` (`smart.rs`, the `ppr.f` SMART port) now matches GNU R bit-for-bit on
+  the supsmu path, verified against a `gfortran` build of the vendored
+  `ppr.f` across ten probe fits (p up to 3, q up to 3, term dropping,
+  non-uniform weights, duplicate abscissae, `optlevel` 0/1/2). Four
+  translation defects fixed: `oneone` sorted the stale scratch column instead
+  of the projection column before `supsmu` (scrambling the stored term
+  curves, e.g. `ppr(1:5, c(1.1,1.9,3.2,3.8,5.1), nterms=1)` fitted
+  `1.8,2.41,3.02,3.63,4.24` instead of `1.04,2.03,3.02,4.01,5`);
+  `smart1` read the weakest-term index from the sort-key column instead of
+  the permutation column; `newb` wrote initial ridge loadings into column 1
+  instead of column `lm` (zeroing the projection response of every term
+  after the first); and `ppconj`'s packed off-diagonal index was
+  `i*(i-1)/2+j` instead of `i*(i+1)/2+j`, corrupting direction searches for
+  two or more predictors.
+
 ### Browser, graphics and repository organization (2026-09-08)
 
 - Added the Rove website with sixteen runnable examples, focused editor pages,
