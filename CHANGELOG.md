@@ -22,6 +22,30 @@ compatibility claims are defined by the maintained docs and executable checks.
   `i*(i-1)/2+j` instead of `i*(i+1)/2+j`, corrupting direction searches for
   two or more predictors.
 
+### Full-parity conformance and driver wave (2026-10-11)
+
+- The exact-oracle conformance corpus now passes 1181/1181 strict (was 1090/91):
+  bound the missing stats natives (HoltWinters/STL/supsmu/isoreg/Ansari/nlminb/
+  Smirnov/BinDist) and ported ks.c, loglin.c (AS51 plus the GNU wrapper), the
+  PORT nlminb contract and the ppr.f SMART engine; fixed the L-BFGS-B kernel
+  (dtrsl/cauchy/matupd/formk/formt/subsm), arima getQ0, KalmanSmooth nit,
+  smooth.spline stxwx boundary, dummy.coef via contracted ddot/daxpy, and
+  GNU-exact scalar real formatting; `match.arg`/`format(justify=)`, `.Defunct`,
+  marginSums, exists() base fallback; Date/POSIXt/difftime/strptime parity.
+- The native graphics surface is complete: C_clip and C_convertX/Y plus persp,
+  filledcontour, path, symbols, xspline, dend, dendwindow, erase, locator,
+  identify - real device-level clipping with display-list replay, GNU
+  null-device semantics for device-less builds.
+- `unserialize(connection)` consumes exactly one object byte-exactly with
+  pull-mode admission (short malicious headers rejected before allocation);
+  namespace S3-methods tables are created pre-lock so getNamespace/asNamespace
+  work on loaded packages.
+- Twelve of the twenty failing whole upstream drivers now pass against the
+  pinned GNU oracle (classes-methods, both d-p-q-r, datasets, datetime2/4/5,
+  iconv, lm-tests, r-strict-tst, reg-plot-latin1, utf8); La_library honestly
+  reports the faer backend and BLAS/LAPACK sessionInfo lines are classified
+  as platform-dependent in the comparison policy.
+
 ### Browser, graphics and repository organization (2026-09-08)
 
 - Added the Rove website with sixteen runnable examples, focused editor pages,
