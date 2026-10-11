@@ -18,7 +18,7 @@ fn version_entry_points_use_the_pinned_gnu_compatibility_target() {
         "identical(v$month,'08')",
         "identical(v$day,'27')",
         "identical(v[['svn rev']],'90451')",
-        "grepl('Rust Port',R.version.string,fixed=TRUE)",
+        "identical(R.version.string,'R Under development (unstable) (2026-08-27 r90451)')",
     ] {
         assert_eq!(
             session
