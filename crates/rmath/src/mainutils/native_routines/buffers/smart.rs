@@ -52,7 +52,7 @@ pub(crate) const SMART_ROUTINE: BufferRoutine = BufferRoutine::owned(
 );
 fn checked_mul(a: usize, b: usize) -> Result<usize, BufferError> {
     a.checked_mul(b)
-        .filter(|v| *v <= i32::MAX as usize)
+        .filter(|v| i32::try_from(*v).is_ok())
         .ok_or_else(|| BufferError::new("native dimension product overflow"))
 }
 fn checked_add(a: usize, b: usize) -> Result<usize, BufferError> {

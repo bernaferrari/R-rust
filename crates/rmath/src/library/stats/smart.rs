@@ -587,7 +587,7 @@ fn oneone(
             sw,
             &y_slice[..], // r = y
             x,
-            &mut d_slice[n..2 * n], // d = sc(1,2)
+            &d_slice[n..2 * n], // d = sc(1,2)
             a,
             dp,
         );
@@ -733,7 +733,7 @@ fn oneone(
                 sw,
                 &c1_c5[4 * n..5 * n], // r = sc(1,5)
                 x,
-                &mut c6[..], // d = sc(1,6)
+                &c6[..],     // d = sc(1,6)
                 &mut g[..p], // e = g(1,1)
                 dp,
             );

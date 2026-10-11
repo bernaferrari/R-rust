@@ -4167,7 +4167,7 @@ pub unsafe fn ARMAtoMA(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
         for i in 0..m as usize {
             let mut tmp = if i < q { *theta.add(i) } else { 0.0 };
             for j in 0..((i + 1).min(p)) {
-                tmp += *phi.add(j) * if i >= j + 1 { *psi.add(i - j - 1) } else { 1.0 };
+                tmp += *phi.add(j) * if i > j { *psi.add(i - j - 1) } else { 1.0 };
             }
             *psi.add(i) = tmp;
         }

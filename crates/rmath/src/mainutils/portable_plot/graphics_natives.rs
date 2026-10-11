@@ -20,6 +20,7 @@ use crate::library::graphics::xspline;
 use crate::main::coerce::{asInteger, asLogical, asReal};
 use crate::mainutils::essentials::base_error;
 use crate::mainutils::plotmath::Label;
+#[allow(unused_imports)]
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};

@@ -30,6 +30,9 @@ impl TraceContext {
         assert_ne!(epoch, 0, "collection tracing requires an active epoch");
         Self { heap, epoch }
     }
+    pub(super) fn heap_identity(&self) -> HeapIdentity {
+        self.heap.clone()
+    }
 
     pub(super) fn reference_links(&self, node: &TraceNode) -> Option<Vec<NodeLink>> {
         self.heap.reference_links(&node.token)

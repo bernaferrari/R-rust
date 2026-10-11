@@ -606,7 +606,7 @@ pub(crate) fn gnu_hash_order(initial: i32, names: &[Vec<u8>]) -> Vec<Vec<u8>> {
     let mut pri = 0i32;
     for name in names {
         let idx = (hashpjw(name) % size as u32) as usize;
-        if buckets[idx].iter().any(|n| *n == name.as_slice()) {
+        if buckets[idx].contains(&name.as_slice()) {
             continue; // R_HashSet updates in place
         }
         buckets[idx].insert(0, name.as_slice());

@@ -43,6 +43,9 @@ impl ChildSnapshot {
     pub(super) fn into_edges(self) -> impl Iterator<Item = NodeLink> {
         self.fixed.into_iter().chain(self.vector)
     }
+    pub(super) fn edges(&self) -> impl Iterator<Item = &NodeLink> {
+        self.fixed.iter().chain(self.vector.iter())
+    }
 }
 
 /// Copy children from checked headers and owned typed payload cells.
