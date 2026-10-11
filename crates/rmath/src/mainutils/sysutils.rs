@@ -255,6 +255,10 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let val_str = std::ffi::CStr::from_ptr(val_c).to_str().unwrap_or("");
             if allowed {
                 std::env::set_var(name_str, val_str);
+                if name_str == "TZ" {
+                    // GNU tzcode: changing TZ invalidates the cached local zone.
+                    crate::tzone::set_timezone_override(None);
+                }
                 *LOGICAL(ans).add(i as usize) = TRUE;
             } else {
                 *LOGICAL(ans).add(i as usize) = FALSE;
@@ -290,6 +294,9 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
             if allowed {
                 std::env::remove_var(name_str);
+                if name_str == "TZ" {
+                    crate::tzone::set_timezone_override(None);
+                }
                 *LOGICAL(ans).add(i as usize) = TRUE;
             } else {
                 *LOGICAL(ans).add(i as usize) = FALSE;

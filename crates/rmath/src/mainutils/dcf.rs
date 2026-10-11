@@ -197,9 +197,12 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         // Read the file content as raw bytes and repair invalid UTF-8 byte
         // sequences ("<xx>", as upstream dcf.c's mkCharUTF8sub() does), so
         // that field names and values become valid UTF-8 strings.
-        let content_bytes = match fs::read(&filename) {
-            Ok(b) => b,
-            Err(_) => return R_NilValue(),
+        let content_bytes = match crate::library::builtin_files::file_bytes(&filename) {
+            Some(bytes) => bytes.to_vec(),
+            None => match fs::read(&filename) {
+                Ok(b) => b,
+                Err(_) => return R_NilValue(),
+            },
         };
         let content = utf8_sub_bytes(&content_bytes);
 

@@ -128,7 +128,13 @@ pub(crate) fn smart(
         smod,
         &[
             5, // header: m, p, q, n, flm
-            q, 1, p * m, q * m, n * m, n * m, 15.min(m + 1),
+            q,
+            1,
+            p * m,
+            q * m,
+            n * m,
+            n * m,
+            15.min(m + 1),
         ],
     );
     let asr = parts.pop().unwrap_or(&mut [][..]);
@@ -333,8 +339,7 @@ fn subfit(
             let mut edf0 = edf[0];
             let (scw, gw) = (&mut sc[..13 * n], &mut g[..2 * p]);
             onetrm(
-                par, 0, p, q, n, w, sw, x, r, ww, ac, bc, fc, tc, &mut asr0, scw, gw, dp,
-                &mut edf0,
+                par, 0, p, q, n, w, sw, x, r, ww, ac, bc, fc, tc, &mut asr0, scw, gw, dp, &mut edf0,
             )?;
             asr[0] = asr0;
             edf[0] = edf0;
@@ -424,7 +429,24 @@ fn fulfit(
                 let (gws, a3) = g[..3 * p].split_at_mut(2 * p);
                 let mut edf_lp = edf[lp];
                 onetrm(
-                    par, 1, p, q, n, w, sw, x, r, ww, a3, bt, scf, sct, &mut asri, scw, gws, dp,
+                    par,
+                    1,
+                    p,
+                    q,
+                    n,
+                    w,
+                    sw,
+                    x,
+                    r,
+                    ww,
+                    a3,
+                    bt,
+                    scf,
+                    sct,
+                    &mut asri,
+                    scw,
+                    gws,
+                    dp,
                     &mut edf_lp,
                 )?;
                 edf[lp] = edf_lp;
@@ -520,11 +542,7 @@ fn onetrm(
             }
             *asr += ww[i] * s / sw;
         }
-        if !(q != 1
-            && iter <= par.maxit
-            && *asr > 0.0
-            && (asrold - *asr) / asrold >= par.conv)
-        {
+        if !(q != 1 && iter <= par.maxit && *asr > 0.0 && (asrold - *asr) / asrold >= par.conv) {
             return Ok(());
         }
     }
@@ -558,21 +576,21 @@ fn oneone(
         for j in 0..n {
             sc[n + j] = 1.0; // sc(j,2)
         }
-    let mut parts = split_mut(sc, &[2 * n, 10 * n, n]); // c1-c2, c3-c12, y(=c13)
-    let y_slice = parts.pop().unwrap_or(&mut [][..]);
-    let _c3_c12 = parts.pop().unwrap_or(&mut [][..]);
-    let mut d_slice = parts.pop().unwrap_or(&mut [][..]);
-    pprdir(
-        p,
-        n,
-        w,
-        sw,
-        &y_slice[..],          // r = y
-        x,
-        &mut d_slice[n..2 * n], // d = sc(1,2)
-        a,
-        dp,
-    );
+        let mut parts = split_mut(sc, &[2 * n, 10 * n, n]); // c1-c2, c3-c12, y(=c13)
+        let y_slice = parts.pop().unwrap_or(&mut [][..]);
+        let _c3_c12 = parts.pop().unwrap_or(&mut [][..]);
+        let mut d_slice = parts.pop().unwrap_or(&mut [][..]);
+        pprdir(
+            p,
+            n,
+            w,
+            sw,
+            &y_slice[..], // r = y
+            x,
+            &mut d_slice[n..2 * n], // d = sc(1,2)
+            a,
+            dp,
+        );
     }
     let mut s = 0.0;
     for i in 0..p {
@@ -693,8 +711,8 @@ fn oneone(
                 &c8_c12[4 * n..5 * n], // s = sc(1,12)
                 &c3[..],               // w = sc(1,3)
                 par.fdel,
-                &mut d[..],            // d = sc(1,4)
-                &mut sc5[..],          // sc = sc(1,5) (n,3)
+                &mut d[..],   // d = sc(1,4)
+                &mut sc5[..], // sc = sc(1,5) (n,3)
             )?;
         }
         for j in 0..n {
@@ -715,8 +733,8 @@ fn oneone(
                 sw,
                 &c1_c5[4 * n..5 * n], // r = sc(1,5)
                 x,
-                &mut c6[..],          // d = sc(1,6)
-                &mut g[..p],          // e = g(1,1)
+                &mut c6[..], // d = sc(1,6)
+                &mut g[..p], // e = g(1,1)
                 dp,
             );
         }
@@ -1302,7 +1320,11 @@ fn splineAA(
         let mut e = *edf;
         unsafe {
             crate::library::stats::ksmooth::splineprt_(
-                &mut df, &mut gcvpen, &mut ismethod, &mut lam, &mut e,
+                &mut df,
+                &mut gcvpen,
+                &mut ismethod,
+                &mut lam,
+                &mut e,
             );
         }
     }

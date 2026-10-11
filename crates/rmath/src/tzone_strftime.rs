@@ -478,14 +478,11 @@ unsafe fn fmt_do(
 
                     // Locale modifiers -- skip and re-process the next char
                     b'E' | b'O' => {
-                        idx += 1;
-                        if idx < len {
-                            // Re-process the character after E/O by backing up.
-                            // We handle this by recursing on a single-character
-                            // "format" which is just the next specifier.
-                            // But simpler: just back up and let the loop continue.
-                            idx -= 1;
-                            continue;
+                        // Locale modifiers (C99): GNU tzcode re-processes the
+                        // next character as a plain specifier (goto label).
+                        if idx + 1 < len {
+                            pt = fmt_do(buf, &[b'%', format[idx + 1]], t, pt, ptlim);
+                            idx += 1;
                         }
                     }
 
@@ -533,8 +530,11 @@ unsafe fn fmt_do(
                         pt = fmt_conv(buf, pt, ptlim, (*t).tm_sec, "%02d");
                     }
                     b's' => {
-                        let tm_copy = *t;
-                        let mkt = r_mktime(&tm_copy);
+                        // GNU extra/tzone strftime.c: %s = R_mktime(&tm).
+                        let mut tm_copy = *t;
+                        let mkt = crate::tzone::R_mktime(
+                            &mut tm_copy as *mut stm as *mut crate::tzone::stm,
+                        );
                         let mkt_str = format!("{}", mkt);
                         pt = fmt_add_str(buf, pt, ptlim, &mkt_str);
                     }

@@ -977,8 +977,21 @@ fn matrix_row_geometry(row_labels: &[String], row_title: Option<&str>) -> (usize
     (row_width, lbloff)
 }
 
+/// GNU `IndexWidth(n)`: decimal digits of `n` (n >= 1).
+fn gnu_index_width(n: usize) -> usize {
+    let mut width = 1;
+    let mut v = n;
+    while v >= 10 {
+        v /= 10;
+        width += 1;
+    }
+    width
+}
+
 fn gnu_row_index_label(row: usize, nrow: usize) -> String {
-    let rlabw = ((nrow as f64).log10().floor() as usize) + 1 + 3;
+    // GNU printarray.c: rlabw = IndexWidth(r + 1) + 3 -- sized for the NEXT
+    // row index, so a 9-row matrix gets width 5 ("[10,]"), not 4.
+    let rlabw = gnu_index_width(nrow + 1) + 3;
     format!("{:>rlabw$}", format!("[{},]", row + 1))
 }
 
@@ -1318,7 +1331,7 @@ where
                 .as_ref()
                 .and_then(|names| names.get(r))
                 .cloned()
-                .unwrap_or_else(|| format!("[{},]", r + 1))
+                .unwrap_or_else(|| gnu_row_index_label(r, nrow))
         })
         .collect();
     let col_labels: Vec<String> = (0..c_pr)
@@ -2737,7 +2750,11 @@ fn dispatch_print_method(x: Sexp<'_>) -> Option<()> {
         let method = crate::mainutils::objects::lookup_s3_method_for_classes(
             "print", klass, env, env, env, false,
         )?;
-        if TYPEOF(method.method) != SEXPTYPE::CLOSXP {
+        let method_ty = TYPEOF(method.method);
+        if method_ty != SEXPTYPE::CLOSXP
+            && method_ty != SEXPTYPE::BUILTINSXP
+            && method_ty != SEXPTYPE::SPECIALSXP
+        {
             return None;
         }
         let extras = print_dispatch_extras();
@@ -3094,12 +3111,14 @@ unsafe fn type_field_width(
             }
             SEXPTYPE::STRSXP => {
                 let mut w = 0;
-                crate::mainutils::format::formatStringS(
-                    raw,
-                    n,
-                    &mut w,
-                    quote as std::os::raw::c_int,
-                );
+                // Stock formatString measures against the actual quote
+                // character so embedded quotes render as \" (two columns).
+                let quote_ch = if quote {
+                    b'"' as std::os::raw::c_int
+                } else {
+                    0
+                };
+                crate::mainutils::format::formatStringS(raw, n, &mut w, quote_ch);
                 (w, 0, 0)
             }
             SEXPTYPE::RAWSXP => {
@@ -3642,16 +3661,37 @@ pub fn print_value(x: Sexp<'_>) {
 
     match x.clone().typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP | SEXPTYPE::CLOSXP => {
-            if x.clone().typeof_() == SEXPTYPE::CLOSXP && print_use_source_flag() {
-                if let Some(source) =
+            let is_closure = x.clone().typeof_() == SEXPTYPE::CLOSXP;
+            if is_closure && print_use_source_flag() {
+                if let Some(mut source) =
                     crate::mainutils::essentials::print::function_srcref_text(x.clone().as_raw())
                 {
+                    // GNU PrintClosure appends the environment line after
+                    // the source text as well (print.c:189-198).
+                    unsafe {
+                        crate::mainutils::essentials::print::append_closure_environment(
+                            x.clone().as_raw(),
+                            &mut source,
+                        )
+                    };
                     emit(&source);
                     return;
                 }
             }
             let base = deparse_expression_one(x.clone().as_raw());
+            let closure_raw = if is_closure {
+                Some(x.clone().as_raw())
+            } else {
+                None
+            };
             print_with_printable_attributes(&base, x);
+            if let Some(raw) = closure_raw {
+                let mut tail = String::new();
+                unsafe {
+                    crate::mainutils::essentials::print::append_closure_environment(raw, &mut tail)
+                };
+                emit(&tail);
+            }
         }
         SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
             print_with_printable_attributes(&format_primitive(x.clone()), x);
@@ -3820,7 +3860,27 @@ pub fn print_value(x: Sexp<'_>) {
         }
 
         SEXPTYPE::EXPRSXP => {
-            print_with_printable_attributes(&format_expression_vector(x.clone()), x);
+            // GNU PrintExpression: deparse1w with the print cutoff, so long
+            // lines wrap inside expression(...) exactly like print() does.
+            // Element-wise MAX_CUTOFF deparse never wrapped them (PR#15534
+            // derivatives printed .grad/.hessian lines unwrapped).
+            let opts = crate::mainutils::deparse::DEFAULTDEPARSE
+                & !crate::mainutils::deparse::SHOWATTRIBUTES;
+            let text =
+                unsafe { crate::mainutils::deparse::deparse1w(x.clone().as_raw(), false, opts) };
+            let _text_guard = unsafe { crate::sexp::protect::protect(text) };
+            let mut joined = String::new();
+            for i in 0..unsafe { XLENGTH(text) } {
+                let chars = unsafe { CHAR(STRING_ELT(text, i)) };
+                if i > 0 {
+                    joined.push('\n');
+                }
+                if !chars.is_null() {
+                    joined
+                        .push_str(&(unsafe { std::ffi::CStr::from_ptr(chars) }.to_string_lossy()));
+                }
+            }
+            print_with_printable_attributes(&joined, x);
         }
         SEXPTYPE::ENVSXP => {
             print_with_printable_attributes(&format_environment(x.clone()), x);

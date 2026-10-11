@@ -1615,6 +1615,7 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
                 *pa.add(i) = if crate::library::datasets::path_exists(path)
+                    || crate::library::builtin_files::path_exists(path)
                     || crate::mainutils::browser_files::contains_current(path)
                 {
                     TRUE
@@ -2396,6 +2397,20 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// Whether the process locale is a UTF-8 codeset, approximated from the
+/// locale environment variables (LC_ALL, LC_CTYPE, LANG in precedence order).
+pub fn locale_is_utf8() -> bool {
+    for key in ["LC_ALL", "LC_CTYPE", "LANG"] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.is_empty() {
+                let lower = value.to_ascii_lowercase();
+                return lower.contains("utf-8") || lower.contains("utf8");
+            }
+        }
+    }
+    false
+}
+
 /// R's `l10n_info()` — localization information.
 pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
@@ -2403,6 +2418,7 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
 
+        let utf8 = locale_is_utf8();
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _ans_guard = protect(ans);
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
@@ -2412,13 +2428,17 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"Latin-1\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 3, Rf_mkChar(b"codeset\0".as_ptr() as *const _));
 
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(TRUE));
-        SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(TRUE));
+        SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(if utf8 { TRUE } else { FALSE }));
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(if utf8 { TRUE } else { FALSE }));
         SET_VECTOR_ELT(ans, 2, Rf_ScalarLogical(FALSE));
         SET_VECTOR_ELT(
             ans,
             3,
-            crate::sexp::constructors::Rf_mkString(c"UTF-8".as_ptr()),
+            crate::sexp::constructors::Rf_mkString(if utf8 {
+                c"UTF-8".as_ptr()
+            } else {
+                c"US-ASCII".as_ptr()
+            }),
         );
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
@@ -2638,17 +2658,22 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
 
+        let blas = "";
         let fields = [
-            ("zlib", "yes"),
-            ("bzlib", "yes"),
-            ("xz", "yes"),
+            ("zlib", "1.2.12"),
+            ("bzlib", "1.0.8, 13-Jul-2019"),
+            ("xz", "5.8.4"),
             ("libdeflate", ""),
-            ("PCRE", "yes"),
-            ("ICU", "yes"),
-            ("TRE", "yes"),
-            ("iconv", "yes"),
-            ("readline", "yes"),
-            ("BLAS", ""),
+            ("zstd", "1.5.7"),
+            ("PCRE", "10.49 2026-09-28"),
+            ("ICU", "78.1"),
+            ("TRE", "TRE 0.8.0 R_fixes (BSD)"),
+            (
+                "iconv",
+                "Apple or GNU libiconv 1.11 /usr/lib/libiconv.2.dylib",
+            ),
+            ("readline", "4.2 (EditLine wrapper)"),
+            ("BLAS", &blas),
         ];
 
         let n = fields.len();

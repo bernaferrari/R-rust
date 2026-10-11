@@ -324,7 +324,11 @@ unsafe fn stxwx(
             // findInterval returns the 0-based interval index; for the right
             // boundary (mflag == 1) it returns n = nk+1, which already equals
             // Fortran interv's 1-based marker value, so no +1 shift there.
-            let mut ileft = if mflag == 1 { (nk + 1) as c_int } else { ret + 1 };
+            let mut ileft = if mflag == 1 {
+                (nk + 1) as c_int
+            } else {
+                ret + 1
+            };
 
             if mflag == 1 {
                 if *xs.add(i) <= *knot.add(nk) + eps {

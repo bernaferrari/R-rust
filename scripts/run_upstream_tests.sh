@@ -123,14 +123,40 @@ SUMMARY_MD="$REPORT_DIR/summary.md"
 : >"$SUMMARY_TSV"
 printf 'file\tverdict\treason\ttrunk_exit\trport_exit\tstock_exit\tstdout=trunk\tstdout=stock\tstderr=trunk\n' >"$SUMMARY_TSV"
 
-# normalize <file> : strip CRs, trailing whitespace, trailing blank lines.
+# normalize <file> : strip CRs, trailing whitespace, trailing blank lines;
+# apply GNU-Rdiff-equivalent timing rules (tools/R/testing.R clean() strips
+# '^Time ' lines) plus proc.time block normalization so live CPU-time values
+# never enter the comparison.
 normalize() {
     # -E: macOS BSD sed has no BRE \+; GNU sed accepts -E too.
     tr -d '\r' <"$1" | sed -E -e 's/[[:space:]]+$//' \
         -e 's/^Time elapsed:.*/Time elapsed: <t>/' \
         -e 's/<environment: 0x[0-9a-fA-F]*>/<environment: 0x*>/' \
         -e 's/tracemem\[0x[0-9a-fA-F]+ -> 0x[0-9a-fA-F]+\]/tracemem[0x* -> 0x*]/' \
-        -e :a -e '/^$/{$d;N;ba' -e '}'
+        -e '/^(BLAS:|LAPACK:|  LAPACK version)/d' \
+    | awk '
+        function isnum3(l) { return l ~ /^[ \t]*[-+.0-9eE]+([ \t]+[-+.0-9eE]+){2}[ \t]*$/ }
+        function isrow5(l) { return l ~ /^[ \t]*[^ \t]+([ \t]+[-+.0-9eE]+){5}[ \t]*$/ }
+        # GNU Rdiff: drop showSys.time() lines ("^Time " prefix).
+        /^Time / { next }
+        # print(summary(proc.time())): 3-column header + one values row.
+        $0 ~ /^[ \t]*user[ \t]+system[ \t]+elapsed[ \t]*$/ {
+            got = (getline nxt) > 0
+            if (got && isnum3(nxt)) next
+            print $0
+            if (got) print nxt
+            next
+        }
+        # rbind(proc.time()-t0, proc.time()) matrix: 5-column header + rows.
+        $0 ~ /^[ \t]*user\.self[ \t]+sys\.self[ \t]+elapsed[ \t]+user\.child[ \t]+sys\.child[ \t]*$/ {
+            while ((getline nxt) > 0 && isrow5(nxt)) ;
+            if (nxt != "" && !isrow5(nxt)) print nxt
+            nxt = ""
+            next
+        }
+        { print }
+    ' \
+    | sed -E -e :a -e '/^$/{$d;N;ba' -e '}'
 }
 
 

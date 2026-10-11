@@ -2750,6 +2750,9 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         ));
                     }
                     self.advance();
+                    // GNU accepts a line break between a formal's name
+                    // and its '=' (e.g. base demo recursion.R: `limit\n= 10`).
+                    self.skip_newlines();
                     let default = if self.peek() == &Token::Assign {
                         self.advance();
                         self.parse_expr()?

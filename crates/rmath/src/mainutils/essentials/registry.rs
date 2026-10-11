@@ -396,6 +396,8 @@ pub(super) const ALL_FNS: &[&str] = &[
     "print.data.frame",
     "print.table",
     "print.factor",
+    "print.rle",
+    "print.proc_time",
     "print.raw",
     "summary.default",
     "summary.data.frame",

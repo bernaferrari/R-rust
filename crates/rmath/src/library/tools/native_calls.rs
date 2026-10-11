@@ -129,8 +129,11 @@ unsafe extern "C-unwind" fn c_renctest(x: *mut std::ffi::c_void) {
             return;
         }
         let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        let shown = String::from_utf8_lossy(bytes);
-        let msg = format!("'{}', nbytes = {}\n", shown, bytes.len());
+        // GNU prints the native bytes verbatim; they need not be UTF-8.
+        let mut msg: Vec<u8> = Vec::with_capacity(bytes.len() + 24);
+        msg.push(b'\'');
+        msg.extend_from_slice(bytes);
+        msg.extend_from_slice(format!("', nbytes = {}\n", bytes.len()).as_bytes());
         if let Ok(c) = CString::new(msg) {
             crate::mainutils::printutils::Rprintf(c.as_ptr(), std::ptr::null_mut());
         }

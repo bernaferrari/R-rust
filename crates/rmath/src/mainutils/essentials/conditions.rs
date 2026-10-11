@@ -1720,7 +1720,11 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let condition = if !passed.is_null() {
             passed
         } else {
-            simple_condition(&message, &["simpleMessage", "message", "condition"])
+            simple_condition_at(
+                &message,
+                &["simpleMessage", "message", "condition"],
+                crate::mainutils::errors::R_getCurrentCall(),
+            )
         };
         let classes = condition_classes(condition);
         let scope = ScopedRestartStack::capture();
@@ -1925,23 +1929,36 @@ pub(crate) unsafe fn simple_warning_condition(message: &str, call: SEXP) -> SEXP
     }
 }
 pub(crate) unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
+    unsafe { simple_condition_at(message, classes, R_NilValue()) }
+}
+
+pub(crate) unsafe fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -> SEXP {
     unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        // GNU simpleWarning/simpleMessage/simpleCondition all carry both a
+        // `message` and a `call` field (GNU conditions.R / message.R).
+        let call = if call.is_null() { R_NilValue() } else { call };
+        let _call_guard = protect(call);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         let msg = Rf_mkString(CString::new(message).unwrap_or_default().as_ptr());
+        let _msg_guard = protect(msg);
         SET_VECTOR_ELT(result, 0, msg);
+        SET_VECTOR_ELT(result, 1, call);
 
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !names.is_null() {
             let _np = protect(names);
             SET_STRING_ELT(names, 0, Rf_mkChar(c"message".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+            SET_STRING_ELT(names, 1, Rf_mkChar(c"call".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
-
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"message".as_ptr()), msg);
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
 

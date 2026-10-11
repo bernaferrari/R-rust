@@ -199,10 +199,13 @@ unsafe fn file_arg(args: SEXP) -> SEXP {
             }
             cell = CDR(cell);
         }
-        // Lone positional string that names a readable file.
+        // Lone positional string that names a readable file. A tagged
+        // argument (e.g. parse(text="1")) matched its formal by name and
+        // must never fall into the positional `file` slot.
         if !args.is_null()
             && args != R_NilValue()
             && (CDR(args).is_null() || CDR(args) == R_NilValue())
+            && (TAG(args).is_null() || TAG(args) == R_NilValue())
         {
             let first = CAR(args);
             if TYPEOF(first) == SEXPTYPE::STRSXP {

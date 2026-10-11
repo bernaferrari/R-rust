@@ -396,11 +396,7 @@ unsafe fn add_hess() -> SEXP {
     unsafe {
         Rf_lang3(
             sym("<-"),
-            Rf_lang3(
-                sym("attr"),
-                sym(".value"),
-                Rf_mkString(c"hessian".as_ptr()),
-            ),
+            Rf_lang3(sym("attr"), sym(".value"), Rf_mkString(c"hessian".as_ptr())),
             sym(".hessian"),
         )
     }
@@ -482,8 +478,7 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
                 let first = deriv_expr(crate::mainutils::duplicate::Rf_duplicate(expr), var);
                 for j in i..nderiv {
                     let varj = sym(&string_at(names, j as R_xlen_t));
-                    let second =
-                        deriv_expr(crate::mainutils::duplicate::Rf_duplicate(first), varj);
+                    let second = deriv_expr(crate::mainutils::duplicate::Rf_duplicate(first), varj);
                     d2_index[k] = find_subexprs(second, exprlist, &tag);
                     k += 1;
                 }
@@ -511,10 +506,8 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
                             accumulate_new(make_variable(d2_index[k], &tag), exprlist);
                         } else {
                             let varj = sym(&string_at(names, j as R_xlen_t));
-                            let second = deriv_expr(
-                                crate::mainutils::duplicate::Rf_duplicate(first),
-                                varj,
-                            );
+                            let second =
+                                deriv_expr(crate::mainutils::duplicate::Rf_duplicate(first), varj);
                             accumulate_new(second, exprlist);
                         }
                         k += 1;
@@ -535,10 +528,8 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
                             accumulate_new(make_variable(d2_index[k], &tag), exprlist);
                         } else {
                             let varj = sym(&string_at(names, j as R_xlen_t));
-                            let second = deriv_expr(
-                                crate::mainutils::duplicate::Rf_duplicate(first),
-                                varj,
-                            );
+                            let second =
+                                deriv_expr(crate::mainutils::duplicate::Rf_duplicate(first), varj);
                             if is_zero(second) {
                                 accumulate_new(R_MissingArg(), exprlist);
                             } else {

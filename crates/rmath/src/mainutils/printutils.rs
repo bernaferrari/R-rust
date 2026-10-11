@@ -900,6 +900,18 @@ pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
         if p.is_null() {
             return 0;
         }
+        if !crate::mainutils::platform::locale_is_utf8() {
+            // In a single-byte locale the display width matches what
+            // EncodeString measures: escaped width for unknown/latin1
+            // text, raw byte count for UTF-8-marked elements.
+            let len = XLENGTH(s) as usize;
+            let bytes = std::slice::from_raw_parts(p as *const u8, len);
+            let ce = crate::sexp::accessors::getCharCE(s);
+            if ce == 2 {
+                return len as c_int;
+            }
+            return escape_native_string_body(bytes, ce, quote, quote as u8).len() as c_int;
+        }
         let len = LENGTH(s);
         Rstrwid(p, len, 0, quote) // CE_NATIVE = 0
     }
@@ -920,6 +932,106 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
+/// Escaped representation of a CHARSXP body in a single-byte (non-UTF-8)
+/// locale, following GNU's `EncodeString`: ASCII is escaped as usual, unknown
+/// high bytes become octal escapes, latin1 bytes `<xx>`, and UTF-8 code
+/// points `<U+XXXX>`.
+fn escape_native_string_body(bytes: &[u8], ce: c_int, quote: c_int, quote_char: u8) -> Vec<u8> {
+    fn push_ascii(out: &mut Vec<u8>, k: u8, quote: c_int, quote_char: u8) {
+        if k != b'\t' && (k >= 0x20 && k < 0x7f) {
+            match k {
+                b'\\' => out.extend_from_slice(b"\\\\"),
+                b'\'' | b'"' | b'`' => {
+                    if quote != 0 && k == quote_char {
+                        out.push(b'\\');
+                    }
+                    out.push(k);
+                }
+                _ => out.push(k),
+            }
+        } else {
+            match k {
+                0x07 => out.extend_from_slice(b"\\a"),
+                0x08 => out.extend_from_slice(b"\\b"),
+                0x0C => out.extend_from_slice(b"\\f"),
+                b'\n' => out.extend_from_slice(b"\\n"),
+                b'\r' => out.extend_from_slice(b"\\r"),
+                b'\t' => out.extend_from_slice(b"\\t"),
+                0x0B => out.extend_from_slice(b"\\v"),
+                0x00 => out.extend_from_slice(b"\\0"),
+                _ => {
+                    out.push(b'\\');
+                    out.push(b'0' + (k >> 6));
+                    out.push(b'0' + ((k >> 3) & 7));
+                    out.push(b'0' + (k & 7));
+                }
+            }
+        }
+    }
+    fn push_octal(out: &mut Vec<u8>, k: u8) {
+        out.push(b'\\');
+        out.push(b'0' + (k >> 6));
+        out.push(b'0' + ((k >> 3) & 7));
+        out.push(b'0' + (k & 7));
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    if ce == 2 {
+        // UTF-8-marked: decode; non-ASCII code points become <U+XXXX>.
+        let mut i = 0;
+        while i < bytes.len() {
+            let k = bytes[i];
+            if k < 0x80 {
+                push_ascii(&mut out, k, quote, quote_char);
+                i += 1;
+                continue;
+            }
+            let seq_len = match k {
+                0xC0..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF7 => 4,
+                _ => 0,
+            };
+            let decoded = if seq_len > 0 {
+                bytes
+                    .get(i..i + seq_len)
+                    .and_then(|seq| std::str::from_utf8(seq).ok())
+                    .and_then(|s| s.chars().next())
+            } else {
+                None
+            };
+            match decoded {
+                Some(ch) => {
+                    let cp = ch as u32;
+                    out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
+                    i += seq_len;
+                }
+                None => {
+                    push_octal(&mut out, k);
+                    i += 1;
+                }
+            }
+        }
+    } else if ce == 3 {
+        // latin1-marked: high bytes become <xx>.
+        for &k in bytes {
+            if k < 0x80 {
+                push_ascii(&mut out, k, quote, quote_char);
+            } else {
+                out.extend_from_slice(format!("<{k:02x}>").as_bytes());
+            }
+        }
+    } else {
+        for &k in bytes {
+            if k < 0x80 {
+                push_ascii(&mut out, k, quote, quote_char);
+            } else {
+                push_octal(&mut out, k);
+            }
+        }
+    }
+    out
+}
+
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
         // Stock uses `R_print.na_string` ("NA") for quoted string values and
@@ -972,10 +1084,32 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
         let bytes = CStr::from_ptr(p).to_bytes();
         let cnt = bytes.len();
 
-        // Compute display width (escaped width)
-        let i = Rstrwid(p, cnt as c_int, 0, quote);
-
         let quote_char = quote as u8;
+
+        // In a non-UTF-8 locale GNU escapes CHARSXPs per their declared
+        // encoding: unknown bytes as octal escapes, latin1 as <xx>, and
+        // UTF-8 as <U+XXXX>. For unknown/latin1 text the escaped body's
+        // byte length is the display width; GNU still measures UTF-8-marked
+        // elements by their raw byte count even though it prints the
+        // escaped form.
+        let ce = crate::sexp::accessors::getCharCE(s);
+        let escaped_body = if crate::mainutils::platform::locale_is_utf8() {
+            None
+        } else {
+            Some(escape_native_string_body(bytes, ce, quote, quote_char))
+        };
+
+        // Compute display width (escaped width)
+        let i = match &escaped_body {
+            Some(body) => {
+                if ce == 2 {
+                    cnt as c_int
+                } else {
+                    body.len() as c_int
+                }
+            }
+            None => Rstrwid(p, cnt as c_int, 0, quote),
+        };
 
         // Compute padding
         let mut b = w - i - if quote != 0 { 2 } else { 0 };
@@ -1005,78 +1139,84 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
                 buffer.push(quote_char);
             }
 
-            // Encode each byte with escaping (ASCII path, matching R's non-MBCS path)
-            for &k in bytes {
-                if k < 0x80 {
-                    // ASCII
-                    if k != b'\t' && (k >= 0x20 && k < 0x7f) {
-                        match k {
-                            b'\\' => {
-                                buffer.push(b'\\');
-                                buffer.push(b'\\');
-                            }
-                            b'\'' | b'"' | b'`' => {
-                                if quote != 0 && k == quote_char {
-                                    buffer.push(b'\\');
+            match &escaped_body {
+                Some(body) => buffer.extend_from_slice(body),
+                None => {
+                    // Encode each byte with escaping (ASCII path, matching
+                    // R's non-MBCS path)
+                    for &k in bytes {
+                        if k < 0x80 {
+                            // ASCII
+                            if k != b'\t' && (k >= 0x20 && k < 0x7f) {
+                                match k {
+                                    b'\\' => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'\\');
+                                    }
+                                    b'\'' | b'"' | b'`' => {
+                                        if quote != 0 && k == quote_char {
+                                            buffer.push(b'\\');
+                                        }
+                                        buffer.push(k);
+                                    }
+                                    _ => buffer.push(k),
                                 }
+                            } else {
+                                // Control characters / non-printable ASCII
+                                match k {
+                                    0x07 => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'a');
+                                    }
+                                    0x08 => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'b');
+                                    }
+                                    0x0C => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'f');
+                                    }
+                                    b'\n' => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'n');
+                                    }
+                                    b'\r' => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'r');
+                                    }
+                                    b'\t' => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b't');
+                                    }
+                                    0x0B => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'v');
+                                    }
+                                    0x00 => {
+                                        buffer.push(b'\\');
+                                        buffer.push(b'0');
+                                    }
+                                    _ => {
+                                        // Octal encoding: \OOO
+                                        buffer.push(b'\\');
+                                        buffer.push(b'0' + (k >> 6));
+                                        buffer.push(b'0' + ((k >> 3) & 7));
+                                        buffer.push(b'0' + (k & 7));
+                                    }
+                                }
+                            }
+                        } else {
+                            // High byte: pass through (non-MBCS simplified path)
+                            if k >= 0x20 {
                                 buffer.push(k);
-                            }
-                            _ => buffer.push(k),
-                        }
-                    } else {
-                        // Control characters / non-printable ASCII
-                        match k {
-                            0x07 => {
-                                buffer.push(b'\\');
-                                buffer.push(b'a');
-                            }
-                            0x08 => {
-                                buffer.push(b'\\');
-                                buffer.push(b'b');
-                            }
-                            0x0C => {
-                                buffer.push(b'\\');
-                                buffer.push(b'f');
-                            }
-                            b'\n' => {
-                                buffer.push(b'\\');
-                                buffer.push(b'n');
-                            }
-                            b'\r' => {
-                                buffer.push(b'\\');
-                                buffer.push(b'r');
-                            }
-                            b'\t' => {
-                                buffer.push(b'\\');
-                                buffer.push(b't');
-                            }
-                            0x0B => {
-                                buffer.push(b'\\');
-                                buffer.push(b'v');
-                            }
-                            0x00 => {
-                                buffer.push(b'\\');
-                                buffer.push(b'0');
-                            }
-                            _ => {
-                                // Octal encoding: \OOO
+                            } else {
+                                // Octal encoding
                                 buffer.push(b'\\');
                                 buffer.push(b'0' + (k >> 6));
                                 buffer.push(b'0' + ((k >> 3) & 7));
                                 buffer.push(b'0' + (k & 7));
                             }
                         }
-                    }
-                } else {
-                    // High byte: pass through (non-MBCS simplified path)
-                    if k >= 0x20 {
-                        buffer.push(k);
-                    } else {
-                        // Octal encoding
-                        buffer.push(b'\\');
-                        buffer.push(b'0' + (k >> 6));
-                        buffer.push(b'0' + ((k >> 3) & 7));
-                        buffer.push(b'0' + (k & 7));
                     }
                 }
             }
@@ -1276,12 +1416,18 @@ pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
         if format.is_null() {
             return;
         }
-        let s = CStr::from_ptr(format);
-        if let Ok(text) = s.to_str() {
-            let stdout = std::io::stdout();
-            let mut handle = stdout.lock();
-            let _ = handle.write_all(text.as_bytes());
-        }
+        let bytes = CStr::from_ptr(format).to_bytes();
+        // Native text may hold single-byte-locale bytes that are not valid
+        // UTF-8; GNU writes them verbatim, so keep the raw bytes and route
+        // through the capture-aware emitter to preserve output order.
+        let text = match std::str::from_utf8(bytes) {
+            Ok(text) => text.to_string(),
+            // SAFETY: the bytes only pass through byte-oriented append and
+            // write paths (capture buffers and write_all); no char-boundary
+            // indexing happens on the way to the terminal.
+            Err(_) => unsafe { String::from_utf8_unchecked(bytes.to_vec()) },
+        };
+        crate::sexp::output::emit(&text);
     }
 }
 

@@ -369,7 +369,11 @@ fn namespace_in(
                     image.name
                 )));
             }
-            super::bridge::bind(access, &namespace, &name, &inherited)?;
+            // GNU namespaceExport binds exported names in the exports
+            // environment; importFrom-backed re-exports (stats4::show)
+            // must stay absent from the namespace frame itself so
+            // `ns[["show"]]` remains NULL like GNU.
+            super::bridge::bind(access, &exports, &name, &inherited)?;
         }
     }
     super::bridge::lock(access, &imports_environment)?;

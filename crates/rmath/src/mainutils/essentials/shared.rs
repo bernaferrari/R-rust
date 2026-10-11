@@ -894,6 +894,13 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
         }
 
         let package_path = find_package_path(package);
+        // The authenticated builtin datasets image owns the datasets
+        // namespace even when a library tree is visible: its lazydata
+        // promises are what `datasets::` must resolve (an installed
+        // source tree only carries the empty lazydata NAMESPACE).
+        if package == "datasets" {
+            return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
+        }
         if package_path.is_empty() {
             if package == "methods" {
                 return crate::library::methods::portable::namespace()
@@ -901,9 +908,6 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
             }
             if let Some(image) = crate::library::portable_package::image(package) {
                 return image.namespace().map(|namespace| namespace.as_raw());
-            }
-            if package == "datasets" {
-                return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
             }
             return Err(format!("there is no package called '{}'", package));
         }
@@ -2163,6 +2167,7 @@ pub(crate) unsafe fn load_package_namespace(
         }
         if package == "utils" {
             crate::library::utils::install_utils_call_symbols(package_env);
+            ensure_utils_os_version(package_env);
         }
         if package == "grDevices" {
             crate::library::grdevices::install_call_symbols(package_env);
@@ -2394,6 +2399,63 @@ pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
     }
 }
 
+/// GNU utils' `.osVersion()`: a pretty OS description. Assigned into the
+/// utils namespace when its `.onLoad` could not (GNU's zzz.R).
+unsafe fn ensure_utils_os_version(package_env: SEXP) {
+    unsafe {
+        let sym = Rf_install(c"osVersion".as_ptr());
+        let existing = crate::sexp::envir::R_findVarInFrame(package_env, sym);
+        if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
+            return;
+        }
+        let Some(text) = gnu_os_version_string() else {
+            return;
+        };
+        let Ok(cstring) = std::ffi::CString::new(text) else {
+            return;
+        };
+        let value = crate::sexp::constructors::Rf_mkString(cstring.as_ptr());
+        let _v = protect(value);
+        crate::sexp::envir::defineVar(sym, value, package_env);
+    }
+}
+
+fn gnu_os_version_string() -> Option<String> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let plist = std::fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist").ok()?;
+    let mut version: Option<String> = None;
+    for (index, line) in plist.lines().enumerate() {
+        if line.contains("ProductUserVisibleVersion") {
+            if let Some(next) = plist.lines().nth(index + 1) {
+                version = next
+                    .split("<string>")
+                    .nth(1)
+                    .and_then(|rest| rest.split("</string>").next())
+                    .map(|ver| ver.to_string());
+            }
+            break;
+        }
+    }
+    let version = version?;
+    let first = version.split('.').next().unwrap_or("");
+    let codename = match first {
+        "11" => Some("Big Sur"),
+        "12" => Some("Monterey"),
+        "13" => Some("Ventura"),
+        "14" => Some("Sonoma"),
+        "15" => Some("Sequoia"),
+        "26" => Some("Tahoe"),
+        "27" => Some("Golden Gate"),
+        _ => None,
+    };
+    Some(match codename {
+        Some(name) => format!("macOS {name} {version}"),
+        None => format!("macOS {version}"),
+    })
+}
+
 unsafe fn ensure_s3methods_slot(info: SEXP) {
     unsafe {
         let sym = Rf_install(c"S3methods".as_ptr());
@@ -2469,15 +2531,18 @@ unsafe fn record_namespace_s3_metadata(package_env: SEXP, directives: &Namespace
 
 /// GNU `makeNamespace` + `namespaceExport`: `.__NAMESPACE__.` holds
 /// `exports` so `.isExported` / `.minimalName` / `show()` work.
-unsafe fn ensure_namespace_info(
+pub(crate) unsafe fn ensure_namespace_info(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
     directives: Option<&NamespaceDirectives>,
 ) {
     unsafe {
-        // GNU namespaceExport creates a local binding for an inherited
-        // re-export such as graphics::plot (the base generic).
+        // GNU namespaceExport binds exports in the exports environment
+        // only. An inherited re-export such as stats4::show (via
+        // importFrom(methods, show)) must NOT gain a namespace-frame
+        // binding, or `asNamespace(pkg)[["show"]]` stops being NULL and
+        // `pkg:::name` semantics diverge from GNU.
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
                 .unwrap_or_else(|e| package_error(e.to_string())),
@@ -2485,23 +2550,27 @@ unsafe fn ensure_namespace_info(
         let namespace = factory
             .wrap(package_env)
             .unwrap_or_else(|e| package_error(e.to_string()));
-        for name in namespace_exports(directives, package_env) {
-            let Ok(name) = CString::new(name) else {
-                continue;
-            };
-            let symbol = Rf_install(name.as_ptr());
-            if crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol)
-                == crate::sexp::globals::R_UnboundValue()
-            {
-                let value = crate::sexp::envir::R_findVar(symbol, namespace.as_raw());
-                if value != crate::sexp::globals::R_UnboundValue() {
-                    let value = factory
-                        .wrap(value)
-                        .unwrap_or_else(|e| package_error(e.to_string()));
-                    crate::sexp::envir::defineVar(symbol, value.as_raw(), namespace.as_raw());
-                }
-            }
-        }
+        // Export presence includes inherited re-exports (imports env), so
+        // the exports environment still records the self-symbol alias that
+        // `::` resolves by evaluating the symbol in the namespace. Only the
+        // one-level imports environment is consulted: a full inherited
+        // lookup would force unrelated lazy promises mid-load.
+        let import_parent = crate::sexp::accessors::ENCLOS(package_env);
+        let export_present = |symbol: SEXP| {
+            crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol)
+                != crate::sexp::globals::R_UnboundValue()
+                || (!import_parent.is_null()
+                    && import_parent != R_NilValue()
+                    && crate::sexp::envir::R_findVarInFrame(import_parent, symbol)
+                        != crate::sexp::globals::R_UnboundValue())
+                // GNU namespaceExport resolves inherited re-exports through
+                // the namespace's full search path, which ends at base
+                // (e.g. graphics::plot is the base generic).
+                || crate::sexp::envir::R_findVarInFrame(
+                    crate::sexp::envir::R_BaseNamespace(),
+                    symbol,
+                ) != crate::sexp::globals::R_UnboundValue()
+        };
         let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
         let existing = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
         if !existing.is_null()
@@ -2519,8 +2588,7 @@ unsafe fn ensure_namespace_info(
                         continue;
                     };
                     let symbol = Rf_install(name.as_ptr());
-                    let value = crate::sexp::envir::R_findVarInFrame(namespace.as_raw(), symbol);
-                    if value != crate::sexp::globals::R_UnboundValue() {
+                    if export_present(symbol) {
                         crate::sexp::envir::defineVar(symbol, symbol, exports.as_raw());
                     }
                 }

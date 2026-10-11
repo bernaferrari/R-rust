@@ -939,9 +939,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     // lbfgsb() wrapper errors on a non-finite fn value.
                     val = fminfn(npar, dpar, os_ptr as *mut std::ffi::c_void);
                     if !R_FINITE(val) {
-                        Rf_error(
-                            b"L-BFGS-B needs finite values of 'fn'\0".as_ptr() as *const _,
-                        );
+                        Rf_error(b"L-BFGS-B needs finite values of 'fn'\0".as_ptr() as *const _);
                     }
                     fmingr(npar, dpar, g, os_ptr as *mut std::ffi::c_void);
                 } else if task_bytes.starts_with(b"NEW_X") {
@@ -949,10 +947,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if trace == 1 && (l_iter % nREPORT == 0) {
                         let line = format!("iter {:4} value {:.6}\n", l_iter, val);
                         let cline = CString::new(line).unwrap_or_default();
-                        crate::mainutils::printutils::Rprintf(
-                            cline.as_ptr(),
-                            std::ptr::null_mut(),
-                        );
+                        crate::mainutils::printutils::Rprintf(cline.as_ptr(), std::ptr::null_mut());
                     }
                     if l_iter > maxit {
                         ifail = 1; // iteration limit reached (GNU: *fail = 1)

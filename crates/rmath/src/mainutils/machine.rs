@@ -182,7 +182,9 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
             i32::MAX,
             std::mem::size_of::<i64>() as c_int,
             std::mem::size_of::<i64>() as c_int,
-            std::mem::size_of::<u128>() as c_int,
+            // The port computes in f64 only (no extended precision); report
+            // the no-long-double build size, matching the reference oracle.
+            8,
             std::mem::size_of::<*const c_void>() as c_int,
             std::mem::size_of::<i64>() as c_int,
         ];

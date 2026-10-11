@@ -2,6 +2,7 @@
 
 #![allow(unused_doc_comments)]
 #![allow(unused_attributes)]
+pub(crate) mod builtin_files;
 pub(crate) mod datasets;
 pub(crate) mod portable_package;
 // Minimal per-package lint allowances: the C-transliterated package ports

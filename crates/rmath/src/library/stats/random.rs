@@ -747,20 +747,12 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
         "Smirnov_sim" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_smirnov_sim),
         )),
-        "pkolmogorov_two_limit" => Some(
-            crate::mainutils::native_routines::NativeRoutine::Call(
-                crate::mainutils::native_routines::CallRoutine::Args3(
-                    c_pkolmogorov_two_limit,
-                ),
-            ),
-        ),
-        "pkolmogorov_two_exact" => Some(
-            crate::mainutils::native_routines::NativeRoutine::Call(
-                crate::mainutils::native_routines::CallRoutine::Args2(
-                    c_pkolmogorov_two_exact,
-                ),
-            ),
-        ),
+        "pkolmogorov_two_limit" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_pkolmogorov_two_limit),
+        )),
+        "pkolmogorov_two_exact" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_pkolmogorov_two_exact),
+        )),
         "Cdqrls" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_cdqrls),
         )),

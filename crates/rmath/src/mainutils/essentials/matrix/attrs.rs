@@ -1082,6 +1082,23 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                 return result;
             }
+            if lookup_name == ".keep_white_description_fields" {
+                // GNU packageDescription reads Meta/package.rds when present
+                // (the oracle install always has it), so this constant is
+                // served without loading the tools namespace.
+                let values = ["Description", "Authors@R", "Author", "Built", "Packaged"];
+                let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let _result_guard = protect(result);
+                for (i, value) in values.iter().enumerate() {
+                    let c_value = CString::new(*value).expect("static field name has no NUL byte");
+                    SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+                }
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                return result;
+            }
             if lookup_name == "file_ext" || lookup_name == "file_path_sans_ext" {
                 let probe = crate::eval::primitive::make_primitive_binding(
                     &lookup_name,

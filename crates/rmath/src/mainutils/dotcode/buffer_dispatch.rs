@@ -8,6 +8,7 @@ use crate::sexp::{
     object::{NodeAllocator, NodeDomain, Sexp, SexpError, SexpMut, SexpResult},
     owner::{OwnerToken, RuntimeAccess, with_runtime},
 };
+use std::os::raw::c_int;
 
 fn failure(message: impl Into<String>) -> SexpError {
     super::native_admission_error(message)
@@ -193,19 +194,107 @@ fn marshal(
             data.try_reserve_exact(n)
                 .map_err(|_| failure("native buffer allocation failed"))?;
             for i in 0..n {
-                let text = argument.value.try_string_value_elt(i as R_xlen_t)?;
+                let bytes = access.with_native(|_| {
+                    // SAFETY: the argument is retained for this whole
+                    // marshalling step; only its immutable payload is read.
+                    unsafe {
+                        let elt = crate::sexp::accessors::STRING_ELT(
+                            argument.value.as_raw(),
+                            i as R_xlen_t,
+                        );
+                        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                            return Ok(None);
+                        }
+                        let len = crate::sexp::accessors::XLENGTH(elt) as usize;
+                        let p = crate::sexp::accessors::CHAR(elt) as *const u8;
+                        let bytes = std::slice::from_raw_parts(p, len).to_vec();
+                        let ce = crate::sexp::accessors::getCharCE(elt);
+                        Ok(Some(translate_native_bytes(&bytes, ce)))
+                    }
+                })?;
                 access.require_active()?;
-                let text = text.ok_or_else(|| failure("NA string in foreign function call"))?;
-                if text.as_bytes().contains(&0) {
+                let bytes = bytes.ok_or_else(|| failure("NA string in foreign function call"))?;
+                if bytes.contains(&0) {
                     return Err(failure("embedded NUL in native character argument"));
                 }
-                let mut bytes = text.into_bytes();
+                let mut bytes = bytes;
                 bytes.push(0);
                 data.push(bytes);
             }
             Ok(NativeBuffer::Character(data))
         }
     }
+}
+
+/// Translate a CHARSXP's bytes to the native encoding the way GNU's
+/// `.C`/`.Fortran` marshalling does (`translateChar`): in a UTF-8 locale
+/// latin1 text is re-encoded to UTF-8; in a single-byte locale latin1 bytes
+/// become `<xx>` and UTF-8 code points `<U+XXXX>`. Unmarked (native) text is
+/// passed through unchanged.
+fn translate_native_bytes(bytes: &[u8], ce: c_int) -> Vec<u8> {
+    if crate::mainutils::platform::locale_is_utf8() {
+        if ce == 3 && bytes.is_ascii() {
+            return bytes.to_vec();
+        }
+        if ce != 3 {
+            return bytes.to_vec();
+        }
+        // latin1 in a UTF-8 locale: re-encode.
+        let mut out = Vec::with_capacity(bytes.len());
+        for &k in bytes {
+            let mut buf = [0u8; 4];
+            out.extend_from_slice((k as char).encode_utf8(&mut buf).as_bytes());
+        }
+        return out;
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    if ce == 2 {
+        let mut i = 0;
+        while i < bytes.len() {
+            let k = bytes[i];
+            if k < 0x80 {
+                out.push(k);
+                i += 1;
+                continue;
+            }
+            let seq_len = match k {
+                0xC0..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF7 => 4,
+                _ => 0,
+            };
+            let decoded = if seq_len > 0 {
+                bytes
+                    .get(i..i + seq_len)
+                    .and_then(|seq| std::str::from_utf8(seq).ok())
+                    .and_then(|s| s.chars().next())
+            } else {
+                None
+            };
+            match decoded {
+                Some(ch) => {
+                    let cp = ch as u32;
+                    out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
+                    i += seq_len;
+                }
+                None => {
+                    out.push(k);
+                    i += 1;
+                }
+            }
+        }
+    } else if ce == 3 {
+        for &k in bytes {
+            if k < 0x80 {
+                out.push(k);
+            } else {
+                out.extend_from_slice(format!("<{k:02x}>").as_bytes());
+            }
+        }
+    } else {
+        out.extend_from_slice(bytes);
+    }
+    out
 }
 
 fn allocate_vector(
@@ -284,19 +373,29 @@ fn publish(
             mutation.freeze()
         }
         NativeBuffer::Character(data) => {
-            let text: Vec<_> = data
-                .into_iter()
-                .map(|bytes| {
-                    let end = bytes
-                        .iter()
-                        .position(|v| *v == 0)
-                        .ok_or_else(|| failure("unterminated native character result"))?;
-                    String::from_utf8(bytes[..end].to_vec())
-                        .map_err(|_| failure("invalid native character result"))
-                })
-                .collect::<SexpResult<_>>()?;
-            let slices: Vec<_> = text.iter().map(String::as_str).collect();
-            allocator.strings(&slices)?
+            // Native results come back in the native encoding and are
+            // unmarked; the bytes need not be valid UTF-8 (GNU keeps them
+            // verbatim in single-byte locales).
+            allocator.allocate(|arena| {
+                let mut elements = Vec::with_capacity(data.len());
+                for bytes in &data {
+                    let end = bytes.iter().position(|v| *v == 0).unwrap_or(bytes.len());
+                    // SAFETY: fresh arena node, exclusively owned here.
+                    elements.push(arena.alloc_charsxp(&bytes[..end]));
+                }
+                // SAFETY: fresh arena node, exclusively owned here.
+                let output = arena.alloc_vector_sexp(SEXPTYPE::STRSXP, data.len() as R_xlen_t)?;
+                for (i, charsxp) in elements.into_iter().enumerate() {
+                    unsafe {
+                        crate::sexp::accessors::SET_STRING_ELT(
+                            output.as_raw(),
+                            i as R_xlen_t,
+                            charsxp,
+                        )
+                    };
+                }
+                Some(output.as_raw())
+            })?
         }
     };
     install_attributes(&output, &source.attributes, domain, access)?;

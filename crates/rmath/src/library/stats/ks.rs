@@ -183,15 +183,11 @@ pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
 /// random contingency tables with the given row/col totals (AS 159).
 pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
     unsafe {
-        let sr = crate::main::coerce::coerceVector(
-            sr,
-            crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int(),
-        );
+        let sr =
+            crate::main::coerce::coerceVector(sr, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
         let _sr = protect(sr);
-        let sc = crate::main::coerce::coerceVector(
-            sc,
-            crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int(),
-        );
+        let sc =
+            crate::main::coerce::coerceVector(sc, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
         let _sc = protect(sc);
         let nr = LENGTH(sr);
         let nc = LENGTH(sc);
@@ -209,8 +205,7 @@ pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP 
                 Some(total) => n = total,
                 None => {
                     crate::main::errors::Rf_error(
-                        b"Sample size too large\0".as_ptr()
-                            as *const std::os::raw::c_char,
+                        b"Sample size too large\0".as_ptr() as *const std::os::raw::c_char
                     );
                     unreachable!("Rf_error raises an R error");
                 }

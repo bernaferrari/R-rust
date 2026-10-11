@@ -3437,7 +3437,7 @@ fn iconv_decode(bytes: &[u8], from: &str, marked: &str) -> Option<Vec<char>> {
     }
 }
 
-fn iconv_encode(chars: &[char], to: &str, sub: Option<&str>) -> Option<Vec<u8>> {
+fn iconv_encode(chars: &[char], to: &str, sub: Option<&str>, translit: bool) -> Option<Vec<u8>> {
     match to {
         "UTF-8" | "native" => {
             let mut out = Vec::new();
@@ -3488,32 +3488,43 @@ fn iconv_encode(chars: &[char], to: &str, sub: Option<&str>) -> Option<Vec<u8>> 
                 if cp <= 0x7f {
                     out.push(cp as u8);
                 } else {
-                    match sub {
-                        None => return None,
-                        Some("") => {}
-                        Some("?") => out.push(b'?'),
-                        Some("byte") => {
-                            if cp <= 0xff {
-                                out.extend_from_slice(format!("<{cp:02x}>").as_bytes());
-                            } else {
-                                let mut buf = [0u8; 4];
-                                let raw = ch.encode_utf8(&mut buf).as_bytes();
-                                for b in raw {
-                                    out.extend_from_slice(format!("<{b:02x}>").as_bytes());
+                    // With //TRANSLIT, macOS libiconv substitutes an ASCII
+                    // approximation first; only unmapped code points fall
+                    // through to the 'sub' policy.
+                    let transliterated = if translit {
+                        ascii_translit(cp).map(|text| text.as_bytes().to_vec())
+                    } else {
+                        None
+                    };
+                    match transliterated {
+                        Some(bytes) => out.extend_from_slice(&bytes),
+                        None => match sub {
+                            None => return None,
+                            Some("") => {}
+                            Some("?") => out.push(b'?'),
+                            Some("byte") => {
+                                if cp <= 0xff {
+                                    out.extend_from_slice(format!("<{cp:02x}>").as_bytes());
+                                } else {
+                                    let mut buf = [0u8; 4];
+                                    let raw = ch.encode_utf8(&mut buf).as_bytes();
+                                    for b in raw {
+                                        out.extend_from_slice(format!("<{b:02x}>").as_bytes());
+                                    }
                                 }
                             }
-                        }
-                        Some("Unicode") => {
-                            out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
-                        }
-                        Some("c99") => {
-                            if cp <= 0xffff {
-                                out.extend_from_slice(format!("\\u{cp:04x}").as_bytes());
-                            } else {
-                                out.extend_from_slice(format!("\\U{cp:08x}").as_bytes());
+                            Some("Unicode") => {
+                                out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
                             }
-                        }
-                        Some(other) => out.extend_from_slice(other.as_bytes()),
+                            Some("c99") => {
+                                if cp <= 0xffff {
+                                    out.extend_from_slice(format!("\\u{cp:04x}").as_bytes());
+                                } else {
+                                    out.extend_from_slice(format!("\\U{cp:08x}").as_bytes());
+                                }
+                            }
+                            Some(other) => out.extend_from_slice(other.as_bytes()),
+                        },
                     }
                 }
             }
@@ -3521,6 +3532,108 @@ fn iconv_encode(chars: &[char], to: &str, sub: Option<&str>) -> Option<Vec<u8>> 
         }
         _ => None,
     }
+}
+
+/// macOS libiconv's Latin-1 supplement transliterations for
+/// `ASCII//TRANSLIT` (0xA0-0xFF). `None` marks code points iconv cannot
+/// transliterate.
+fn ascii_translit(cp: u32) -> Option<&'static str> {
+    Some(match cp {
+        0xA0 => " ",
+        0xA1 => "!",
+        0xA2 => "c",
+        0xA3 => "lb",
+        0xA4 => return None,
+        0xA5 => "yen",
+        0xA6 => "|",
+        0xA7 => "SS",
+        0xA8 => "\"",
+        0xA9 => "(c)",
+        0xAA => "a",
+        0xAB => "<<",
+        0xAC => "not",
+        0xAD => "-",
+        0xAE => "(R)",
+        0xAF => return None,
+        0xB0 => "^0",
+        0xB1 => "+/-",
+        0xB2 => "^2",
+        0xB3 => "^3",
+        0xB4 => "'",
+        0xB5 => "u",
+        0xB6 => "P",
+        0xB7 => ".",
+        0xB8 => ",",
+        0xB9 => "^1",
+        0xBA => "o",
+        0xBB => ">>",
+        0xBC..=0xBF => return None,
+        0xC0 => "`A",
+        0xC1 => "'A",
+        0xC2 => "^A",
+        0xC3 => "~A",
+        0xC4 => "\"A",
+        0xC5 => "A",
+        0xC6 => "AE",
+        0xC7 => "C",
+        0xC8 => "`E",
+        0xC9 => "'E",
+        0xCA => "^E",
+        0xCB => "\"E",
+        0xCC => "`I",
+        0xCD => "'I",
+        0xCE => "^I",
+        0xCF => "\"I",
+        0xD0 => "D",
+        0xD1 => "~N",
+        0xD2 => "`O",
+        0xD3 => "'O",
+        0xD4 => "^O",
+        0xD5 => "~O",
+        0xD6 => "\"O",
+        0xD7 => "x",
+        0xD8 => "O",
+        0xD9 => "`U",
+        0xDA => "'U",
+        0xDB => "^U",
+        0xDC => "\"U",
+        0xDD => "'Y",
+        0xDE => "Th",
+        0xDF => "ss",
+        0xE0 => "`a",
+        0xE1 => "'a",
+        0xE2 => "^a",
+        0xE3 => "~a",
+        0xE4 => "\"a",
+        0xE5 => "a",
+        0xE6 => "ae",
+        0xE7 => "c",
+        0xE8 => "`e",
+        0xE9 => "'e",
+        0xEA => "^e",
+        0xEB => "\"e",
+        0xEC => "`i",
+        0xED => "'i",
+        0xEE => "^i",
+        0xEF => "\"i",
+        0xF0 => "d",
+        0xF1 => "~n",
+        0xF2 => "`o",
+        0xF3 => "'o",
+        0xF4 => "^o",
+        0xF5 => "~o",
+        0xF6 => "\"o",
+        0xF7 => ":",
+        0xF8 => "o",
+        0xF9 => "`u",
+        0xFA => "'u",
+        0xFB => "^u",
+        0xFC => "\"u",
+        0xFD => "'y",
+        0xFE => "th",
+        0xFF => "\"y",
+        _ => return None,
+    })
 }
 
 /// GNU `iconv(x, from, to, sub, mark, toRaw)`.
@@ -3556,6 +3669,10 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let from_n = iconv_norm_enc(&from);
         let to_n = iconv_norm_enc(&to);
+        let translit = to
+            .split("//")
+            .nth(1)
+            .is_some_and(|flag| flag.eq_ignore_ascii_case("TRANSLIT"));
         let sub_arg = arg_by_name_or_position(args, &["sub"], 3);
         let sub = if sub_arg.is_null()
             || sub_arg == R_NilValue()
@@ -3601,7 +3718,7 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 continue;
             };
             let sub_ref = sub.as_deref();
-            let Some(encoded) = iconv_encode(&chars, to_n, sub_ref) else {
+            let Some(encoded) = iconv_encode(&chars, to_n, sub_ref, translit) else {
                 SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
                 continue;
             };
@@ -4278,22 +4395,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             for i in 0..n {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
             }
-            let src_names = crate::sexp::attrib_core::getAttrib(
-                x_arg,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            if !src_names.is_null()
-                && TYPEOF(src_names) == SEXPTYPE::STRSXP
-                && XLENGTH(src_names) == n
-            {
-                let dup = crate::mainutils::duplicate::Rf_duplicate(src_names);
-                let _g = protect(dup);
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    dup,
-                );
-            }
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
             return result;
         }
         let replacement_missing = string_arg_is_na(replacement_arg);
@@ -4347,18 +4449,8 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
         }
-        let src_names =
-            crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_NamesSymbol());
-        if !src_names.is_null() && TYPEOF(src_names) == SEXPTYPE::STRSXP && XLENGTH(src_names) == n
-        {
-            let dup = crate::mainutils::duplicate::Rf_duplicate(src_names);
-            let _g = protect(dup);
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                dup,
-            );
-        }
+        // GNU sub/gsub copy x's attributes (names, dim, dimnames) to the result.
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
         result
     }
 }
@@ -4937,14 +5029,7 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     // wr instead of underflowing the c_int).
                     let field_re = if w > wi + 2 { w - wi - 2 } else { wr };
                     crate::mainutils::printutils::EncodeComplex(
-                        v,
-                        field_re,
-                        dr,
-                        er,
-                        wi,
-                        di,
-                        ei,
-                        outdec,
+                        v, field_re, dr, er, wi, di, ei, outdec,
                     )
                 }
             };
@@ -6141,7 +6226,14 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if width_len == 0 {
             super::shared::base_error("invalid 'width' argument");
         }
+        // GNU strtrim keeps NA strings as NA instead of the text "NA".
         let width = real_or_default(width_arg, f64::MAX) as usize;
+        let x = if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+            x_arg
+        } else {
+            crate::main::coerce::coerceVector(x_arg, SEXPTYPE::STRSXP.as_c_int())
+        };
+        let _x_guard = protect(x);
 
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -6151,8 +6243,13 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _result_guard = protect(result);
 
         for i in 0..n {
-            let s = elt_to_string(x_arg, i);
-            let truncated: String = s.chars().take(width).collect();
+            let s = STRING_ELT(x, i as R_xlen_t);
+            if s == crate::sexp::globals::R_NaString() {
+                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, s);
+                continue;
+            }
+            let text = elt_to_string(x, i);
+            let truncated: String = text.chars().take(width).collect();
             let cstr = CString::new(truncated).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
@@ -6262,6 +6359,40 @@ pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
         }
         Rf_mkString(CString::new(result).unwrap_or_default().as_ptr())
+    }
+}
+
+/// GNU `strwrap(...)` — dispatch to the verbatim base closure so wrapping
+/// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
+pub unsafe fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let fun = crate::sexp::envir::R_findVarInFrame(
+            crate::sexp::globals::R_BaseEnv(),
+            crate::sexp::symbol::Rf_install(c"strwrap".as_ptr()),
+        );
+        let _fun_guard = crate::sexp::protect::protect(fun);
+        // Rebuild the call with the already-evaluated arguments and their
+        // original tags so the closure's default expressions (width, prefix,
+        // initial = prefix) apply exactly as in GNU.
+        let mut cells: Vec<SEXP> = Vec::new();
+        let mut _guards = Vec::new();
+        let mut cursor = args;
+        while !cursor.is_null() && cursor != R_NilValue() {
+            let cell = Rf_cons(CAR(cursor), R_NilValue());
+            _guards.push(crate::sexp::protect::protect(cell));
+            cells.push(cell);
+            SETTAG(cell, TAG(cursor));
+            cursor = CDR(cursor);
+        }
+        let call = Rf_cons(fun, R_NilValue());
+        let _call_guard = crate::sexp::protect::protect(call);
+        let mut tail = call;
+        for cell in &cells {
+            SETCDR(tail, *cell);
+            tail = *cell;
+        }
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+        crate::eval::eval::Rf_eval(call, rho)
     }
 }
 

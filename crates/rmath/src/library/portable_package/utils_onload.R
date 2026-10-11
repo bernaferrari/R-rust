@@ -21,6 +21,30 @@ local({
     }
     hook <- get(".onLoad", original, inherits=FALSE)
     environment(hook) <- hooks
-    hook("<builtin:utils>", "utils")
-    assign("osVersion", get("osVersion", hooks, inherits=FALSE), envir=original)
+    tryCatch(hook("<builtin:utils>", "utils"),
+             error = function(e) warning("utils .onLoad: ", conditionMessage(e)))
+    ov <- tryCatch(get("osVersion", hooks, inherits=FALSE), error = function(e) NULL)
+    if (!is.character(ov) || length(ov) != 1L || !nzchar(ov)) {
+        ## .onLoad may abort before assigning osVersion; derive it directly
+        ## (GNU utils sessionInfo.R Darwin branch).
+        ov <- tryCatch({
+            ver <- readLines("/System/Library/CoreServices/SystemVersion.plist")
+            ind <- grep("ProductUserVisibleVersion", ver)
+            ver <- sub("</string>$", "", sub(".*<string>", "", ver[ind + 1L]))
+            ver1 <- strsplit(ver, ".", fixed = TRUE)[[1L]]
+            if (ver1[1L] == "10")
+                sprintf("%s %s %s",
+                        if (as.numeric(ver1[2L]) < 12) "OS X" else "macOS", "", ver)
+            else if (ver1[1L] %in% c(11:15, 26:27))
+                sprintf("macOS %s %s",
+                        switch(ver1[1L],
+                               "11" = "Big Sur", "12" = "Monterey", "13" = "Ventura",
+                               "14" = "Sonoma", "15" = "Sequoia",
+                               "26" = "Tahoe", "27" = "Golden Gate"),
+                        ver)
+            else sprintf("macOS %s", ver)
+        }, error = function(e) { NULL })
+    }
+    if (is.character(ov) && length(ov) == 1L && nzchar(ov))
+        assign("osVersion", ov, envir=original)
 })

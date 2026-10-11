@@ -8,14 +8,37 @@
 //
 // ../appl/uncmin.f -- translated by f2c, hand edited by Saikat DebRoy.
 // Contains: fdhess, optif9, and all supporting routines.
+use crate::utils::{fmax2, fmin2};
 
-use crate::utils::*;
-use libm::*;
-
+// =====================================================================
+// Math helpers: GNU uncmin.c calls the system libm (pow via Rexp10, hypot,
+// log10). Rust std routes f64::powf / f64::hypot / f64::log10 to the same
+// system libm, whereas the pure-Rust `libm` crate need not be bit-identical,
+// and nlm() results are sensitive to the last ulp of these.
+// =====================================================================
+#[inline(always)]
+fn pow(x: f64, y: f64) -> f64 {
+    x.powf(y)
+}
+#[inline(always)]
+fn hypot(x: f64, y: f64) -> f64 {
+    x.hypot(y)
+}
+#[inline(always)]
+fn sqrt(x: f64) -> f64 {
+    x.sqrt()
+}
+#[inline(always)]
+fn fabs(x: f64) -> f64 {
+    x.abs()
+}
+#[inline(always)]
+fn log10(x: f64) -> f64 {
+    x.log10()
+}
 // =====================================================================
 // Callback types
 // =====================================================================
-
 /// Function type: fn(n, x, f, state) — evaluates function and stores result in f
 pub type UncminFcn = unsafe extern "C" fn(
     n: std::os::raw::c_int,
@@ -47,16 +70,19 @@ pub type UncminD2Fcn = unsafe extern "C" fn(
 
 #[inline(always)]
 fn ddot(n: i32, dx: &[f64], incx: usize, dy: &[f64], incy: usize) -> f64 {
+    // gfortran -O2 (Rblas) contracts each accumulate into an FMA; the
+    // reference Fortran's 5-wide unroll still adds one product at a
+    // time, so this matches it for any n.
     let mut s = 0.0_f64;
     if incx == 1 && incy == 1 {
         for i in 0..n as usize {
-            s += dx[i] * dy[i];
+            s = dx[i].mul_add(dy[i], s);
         }
     } else {
         let mut ix = 0;
         let mut iy = 0;
         for _ in 0..n {
-            s += dx[ix] * dy[iy];
+            s = dx[ix].mul_add(dy[iy], s);
             ix += incx;
             iy += incy;
         }
@@ -66,15 +92,18 @@ fn ddot(n: i32, dx: &[f64], incx: usize, dy: &[f64], incy: usize) -> f64 {
 
 #[inline(always)]
 fn dnrm2(n: i32, x: &[f64], incx: usize) -> f64 {
+    // Blue's algorithm as in Rblas (blas2.f90): for mid-range values
+    // (2^-511 <= |x| <= 2^486, the only case reachable here) it is a
+    // sequential sum of squares; gfortran contracts the accumulate.
     let mut sum = 0.0_f64;
     if incx == 1 {
         for i in 0..n as usize {
-            sum += x[i] * x[i];
+            sum = x[i].mul_add(x[i], sum);
         }
     } else {
         let mut ix = 0;
         for _ in 0..n {
-            sum += x[ix] * x[ix];
+            sum = x[ix].mul_add(x[ix], sum);
             ix += incx;
         }
     }
@@ -107,7 +136,7 @@ fn dtrsl(a: &[f64], nr: i32, n: i32, x: &mut [f64], job: i32) -> i32 {
     let mut info = 0;
 
     if job == 0 {
-        // Solve L*x = b
+        // Solve L*x = b (daxpy-based; gfortran contracts dy + da*dx)
         for j in 0..n as usize {
             if a[j * nr as usize + j] == 0.0 {
                 info = (j + 1) as i32;
@@ -116,11 +145,11 @@ fn dtrsl(a: &[f64], nr: i32, n: i32, x: &mut [f64], job: i32) -> i32 {
             x[j] /= a[j * nr as usize + j];
             let tmp = x[j];
             for i in (j + 1)..n as usize {
-                x[i] -= tmp * a[j * nr as usize + i];
+                x[i] = (-tmp).mul_add(a[j * nr as usize + i], x[i]);
             }
         }
     } else {
-        // Solve L'*x = b
+        // Solve L'*x = b (ddot-based back substitution)
         for j in (0..n as usize).rev() {
             let mut tmp = x[j];
             for i in (j + 1)..n as usize {
@@ -137,14 +166,13 @@ fn dtrsl(a: &[f64], nr: i32, n: i32, x: &mut [f64], job: i32) -> i32 {
 }
 
 // =====================================================================
-// Helper: print vector
+// Helper: print vector (R's printRealVector, as uncmin.c's prt_result uses)
 // =====================================================================
 
-fn print_real_vector(v: &[f64], n: i32) {
-    for i in 0..n as usize {
-        eprint!("{} ", v[i]);
+fn print_real_vector(v: &[f64], n: usize) {
+    unsafe {
+        crate::mainutils::printvector::printRealVector(v.as_ptr(), n as i64, 1);
     }
-    eprintln!();
 }
 
 // =====================================================================
@@ -237,7 +265,8 @@ fn mvmltl(nr: usize, n: usize, a: &[f64], x: &[f64], y: &mut [f64]) {
     for i in 0..n {
         let mut sum = 0.0;
         for j in 0..=i {
-            sum += a[i + j * nr] * x[j];
+            // clang -O2 contracts sum + a*x
+            sum = a[i + j * nr].mul_add(x[j], sum);
         }
         y[i] = sum;
     }
@@ -256,10 +285,10 @@ fn mvmlts(nr: usize, n: usize, a: &[f64], x: &[f64], y: &mut [f64]) {
     for i in 0..n {
         let mut sum = 0.0;
         for j in 0..=i {
-            sum += a[i + j * nr] * x[j];
+            sum = a[i + j * nr].mul_add(x[j], sum);
         }
         for j in (i + 1)..n {
-            sum += a[j + i * nr] * x[j];
+            sum = a[j + i * nr].mul_add(x[j], sum);
         }
         y[i] = sum;
     }
@@ -381,7 +410,7 @@ fn qrupdt(nr: usize, n: usize, a: &mut [f64], u: &mut [f64], v: &[f64]) {
 
     // r <- r + u(1) * v^T
     for j in 0..n {
-        a[j * nr] += u[0] * v[j];
+        a[j * nr] = u[0].mul_add(v[j], a[j * nr]);
     }
 
     // Jacobi rotations to restore upper triangular
@@ -572,7 +601,10 @@ unsafe fn lnsrch(
         *iretcd = 2;
         loop {
             for i in 0..n {
-                xpls[i] = x[i] + lambda * p[i];
+                // GNU's clang -O2 build contracts this into a single
+                // fused multiply-add; replicate it for bit-exact iterates
+                // (visible whenever lambda is not a power of two).
+                xpls[i] = lambda.mul_add(p[i], x[i]);
             }
             let mut fpls_val = 0.0;
             fcn(
@@ -1316,14 +1348,13 @@ unsafe fn fstofd(
             let stepsz = sqrt(rnoise) * fmax2(temp1, temp2);
             let xtmpj = xpls[j];
             xpls[j] = xtmpj + stepsz;
-            let mut fhat_val = 0.0;
+            // C calls fcn (which is d1fcn cast when m == n) to fill fhat[0..m-1]
             fcn(
                 n as std::os::raw::c_int,
                 xpls.as_mut_ptr(),
-                &mut fhat_val as *mut f64,
+                fhat.as_mut_ptr(),
                 state,
             );
-            fhat[j] = fhat_val;
             xpls[j] = xtmpj;
             for i in 0..m {
                 a[i + j * nr] = (fhat[i] - fpls[i]) / stepsz;
@@ -1725,18 +1756,18 @@ fn prt_result(
     itncnt: i32,
     iflg: i32,
 ) {
-    eprintln!("iteration = {}", itncnt);
+    crate::sexp::output::emit(&format!("iteration = {}\n", itncnt));
     if iflg != 0 {
-        eprintln!("Step:");
-        print_real_vector(p, n as i32);
+        crate::sexp::output::emit("Step:\n");
+        print_real_vector(p, n);
     }
-    eprintln!("Parameter:");
-    print_real_vector(x, n as i32);
-    eprintln!("Function Value");
-    print_real_vector(&[f], 1);
-    eprintln!("Gradient:");
-    print_real_vector(g, n as i32);
-    eprintln!();
+    crate::sexp::output::emit("Parameter:\n");
+    print_real_vector(x, n);
+    crate::sexp::output::emit("Function Value\n");
+    print_real_vector(std::slice::from_ref(&f), 1);
+    crate::sexp::output::emit("Gradient:\n");
+    print_real_vector(g, n);
+    crate::sexp::output::emit("\n");
 }
 
 // =====================================================================
@@ -1831,6 +1862,11 @@ unsafe fn optdrv(
         let mut phip0 = 0.0_f64;
         let mut phi = 0.0_f64;
         let mut amu = 0.0_f64;
+        let mut dltsav = 0.0_f64;
+        let mut amusav = 0.0_f64;
+        let mut dlpsav = 0.0_f64;
+        let mut phisav = 0.0_f64;
+        let mut phpsav = 0.0_f64;
 
         *itncnt = 0;
         optchk(
@@ -1972,206 +2008,141 @@ unsafe fn optdrv(
             prt_result(nr, n, x, f, g, a, p, *itncnt, 1);
         }
 
-        // Main iteration loop
-        loop {
+        // THE Iterations :
+        'iters: loop {
             *itncnt += 1;
 
-            if iexp != 0 && method != 3 {
-                // Skip chlhsn, already have cholesky from secfac
-            } else {
-                chlhsn(nr, n, a, epsm, sx, udiag);
-            }
-
-            // Solve for Newton step: p = -g
-            for i in 0..n {
-                wrk1[i] = -g[i];
-            }
-            lltslv(nr, n, a, p, wrk1);
-
-            // Save state for retry
-            let dltsav = dlt;
-            let amusav = amu;
-            let dlpsav = dltp;
-            let phisav = phi;
-            let phpsav = phip0;
-
-            let mut iretcd = 0;
-            match method {
-                1 => {
-                    lnsrch(
-                        n,
-                        x,
-                        f,
-                        g,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        &mut mxtake,
-                        &mut iretcd,
-                        stepmx,
-                        steptl,
-                        sx,
-                    );
-                }
-                2 => {
-                    dogdrv(
-                        nr,
-                        n,
-                        x,
-                        f,
-                        g,
-                        a,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        sx,
-                        stepmx,
-                        steptl,
-                        &mut dlt,
-                        &mut iretcd,
-                        &mut mxtake,
-                        wrk0,
-                        wrk1,
-                        wrk2,
-                        wrk3,
-                        *itncnt,
-                    );
-                }
-                3 => {
-                    hookdrv(
-                        nr,
-                        n,
-                        x,
-                        f,
-                        g,
-                        a,
-                        udiag,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        sx,
-                        stepmx,
-                        steptl,
-                        &mut dlt,
-                        &mut iretcd,
-                        &mut mxtake,
-                        &mut amu,
-                        &mut dltp,
-                        &mut phi,
-                        &mut phip0,
-                        wrk0,
-                        wrk1,
-                        wrk2,
-                        epsm,
-                        *itncnt,
-                    );
-                }
-                _ => {}
-            }
-
-            // Retry with central differences if forward diff failed
-            if iretcd == 1 && iagflg == 0 {
-                iagflg = -1; // flag for central differences
-                fstocd(n, x, fcn, state, sx, rnf, g);
-                if method == 1 {
+            // C control flow: `if (iexp && method != 3) goto L105;`
+            // L103: chlhsn; L105: newton solve + global step. The central-
+            // difference retry jumps back to L105 (method 1/2: no chlhsn,
+            // keep the secant cholesky factor) or to L103 (method 3).
+            let mut do_chlhsn = !(iexp != 0 && method != 3);
+            'step: loop {
+                if do_chlhsn {
                     chlhsn(nr, n, a, epsm, sx, udiag);
-                    for i in 0..n {
-                        wrk1[i] = -g[i];
+                }
+
+                // L105: solve for newton step: ap = -g
+                for i in 0..n {
+                    wrk1[i] = -g[i];
+                }
+                lltslv(nr, n, a, p, wrk1);
+
+                // save state for possible retry (methods 2/3 only)
+                if iagflg == 0 && method != 1 {
+                    dltsav = dlt;
+                    if method != 2 {
+                        /* i.e. method = 3 */
+                        amusav = amu;
+                        dlpsav = dltp;
+                        phisav = phi;
+                        phpsav = phip0;
                     }
-                    lltslv(nr, n, a, p, wrk1);
-                    lnsrch(
-                        n,
-                        x,
-                        f,
-                        g,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        &mut mxtake,
-                        &mut iretcd,
-                        stepmx,
-                        steptl,
-                        sx,
-                    );
-                } else if method == 2 {
+                }
+
+                let mut iretcd = 0;
+                match method {
+                    1 => {
+                        lnsrch(
+                            n,
+                            x,
+                            f,
+                            g,
+                            p,
+                            xpls,
+                            fpls,
+                            fcn,
+                            state,
+                            &mut mxtake,
+                            &mut iretcd,
+                            stepmx,
+                            steptl,
+                            sx,
+                        );
+                    }
+                    2 => {
+                        dogdrv(
+                            nr,
+                            n,
+                            x,
+                            f,
+                            g,
+                            a,
+                            p,
+                            xpls,
+                            fpls,
+                            fcn,
+                            state,
+                            sx,
+                            stepmx,
+                            steptl,
+                            &mut dlt,
+                            &mut iretcd,
+                            &mut mxtake,
+                            wrk0,
+                            wrk1,
+                            wrk2,
+                            wrk3,
+                            *itncnt,
+                        );
+                    }
+                    3 => {
+                        hookdrv(
+                            nr,
+                            n,
+                            x,
+                            f,
+                            g,
+                            a,
+                            udiag,
+                            p,
+                            xpls,
+                            fpls,
+                            fcn,
+                            state,
+                            sx,
+                            stepmx,
+                            steptl,
+                            &mut dlt,
+                            &mut iretcd,
+                            &mut mxtake,
+                            &mut amu,
+                            &mut dltp,
+                            &mut phi,
+                            &mut phip0,
+                            wrk0,
+                            wrk1,
+                            wrk2,
+                            epsm,
+                            *itncnt,
+                        );
+                    }
+                    _ => {}
+                }
+
+                // if could not find satisfactory step and forward difference
+                // gradient was used, retry using central difference gradient.
+                if iretcd == 1 && iagflg == 0 {
+                    iagflg = -1; // set iagflg for central differences
+                    fstocd(n, x, fcn, state, sx, rnf, g);
+                    if method == 1 {
+                        do_chlhsn = false; /* goto L105 */
+                        continue 'step;
+                    }
                     dlt = dltsav;
-                    chlhsn(nr, n, a, epsm, sx, udiag);
-                    for i in 0..n {
-                        wrk1[i] = -g[i];
+                    if method == 2 {
+                        do_chlhsn = false; /* goto L105 */
+                        continue 'step;
                     }
-                    lltslv(nr, n, a, p, wrk1);
-                    dogdrv(
-                        nr,
-                        n,
-                        x,
-                        f,
-                        g,
-                        a,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        sx,
-                        stepmx,
-                        steptl,
-                        &mut dlt,
-                        &mut iretcd,
-                        &mut mxtake,
-                        wrk0,
-                        wrk1,
-                        wrk2,
-                        wrk3,
-                        *itncnt,
-                    );
-                } else {
+                    /* else : method == 3 */
                     amu = amusav;
                     dltp = dlpsav;
                     phi = phisav;
                     phip0 = phpsav;
-                    chlhsn(nr, n, a, epsm, sx, udiag);
-                    for i in 0..n {
-                        wrk1[i] = -g[i];
-                    }
-                    lltslv(nr, n, a, p, wrk1);
-                    hookdrv(
-                        nr,
-                        n,
-                        x,
-                        f,
-                        g,
-                        a,
-                        udiag,
-                        p,
-                        xpls,
-                        fpls,
-                        fcn,
-                        state,
-                        sx,
-                        stepmx,
-                        steptl,
-                        &mut dlt,
-                        &mut iretcd,
-                        &mut mxtake,
-                        &mut amu,
-                        &mut dltp,
-                        &mut phi,
-                        &mut phip0,
-                        wrk0,
-                        wrk1,
-                        wrk2,
-                        epsm,
-                        *itncnt,
-                    );
+                    do_chlhsn = true; /* goto L103 */
+                    continue 'step;
                 }
+                break 'step;
             }
 
             // Calculate step for output
@@ -2231,7 +2202,7 @@ unsafe fn optdrv(
                 mxtake,
             );
             if *itrmcd != 0 {
-                break;
+                break 'iters;
             }
 
             // Evaluate hessian at xpls
@@ -2432,6 +2403,254 @@ pub unsafe fn optif9(
             for i in 0..n {
                 *_gpls.add(i) = gpls[i];
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // R's `t^2` is computed as t*t (R_pow fast path), so these native
+    // objectives reproduce the R-level demo arithmetic bit for bit.
+    // Reference values: GNU R 4.7.0 (bac5839) on this machine, from
+    // stats::nlm on demo(nlm)'s objectives printed at full precision.
+
+    unsafe extern "C" fn rosenbrock(
+        _n: std::os::raw::c_int,
+        x: *mut f64,
+        f: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        let x = std::slice::from_raw_parts(x, 2);
+        let (x1, x2) = (x[0], x[1]);
+        let t = x2 - x1 * x1;
+        let u = 1.0 - x1;
+        // R: 100 * t^2 + u^2 with ^2 as R_pow's t*t — mind the grouping
+        *f = 100.0 * (t * t) + (u * u);
+    }
+
+    unsafe extern "C" fn rosenbrock_g(
+        _n: std::os::raw::c_int,
+        x: *mut f64,
+        g: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        let x = std::slice::from_raw_parts(x, 2);
+        let (x1, x2) = (x[0], x[1]);
+        let g = std::slice::from_raw_parts_mut(g, 2);
+        g[0] = -400.0 * x1 * (x2 - x1 * x1) - 2.0 * (1.0 - x1);
+        g[1] = 200.0 * (x2 - x1 * x1);
+    }
+
+    unsafe extern "C" fn rosenbrock_h(
+        nr: std::os::raw::c_int,
+        _n: std::os::raw::c_int,
+        x: *mut f64,
+        h: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        let x = std::slice::from_raw_parts(x, 2);
+        let (x1, x2) = (x[0], x[1]);
+        let nr = nr as usize;
+        let h = std::slice::from_raw_parts_mut(h, 4);
+        h[0] = 2.0 - 400.0 * x2 + 1200.0 * x1 * x1;
+        h[1] = -400.0 * x1;
+        h[0 + 1 * nr] = -400.0 * x1;
+        h[1 + 1 * nr] = 200.0;
+    }
+
+    unsafe extern "C" fn helical(
+        _n: std::os::raw::c_int,
+        x: *mut f64,
+        f: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        let x = std::slice::from_raw_parts(x, 3);
+        let theta = x[1].atan2(x[0]) / (2.0 * std::f64::consts::PI);
+        let f1 = 10.0 * (x[2] - 10.0 * theta);
+        let f2 = 10.0 * ((x[0] * x[0] + x[1] * x[1]).sqrt() - 1.0);
+        let f3 = x[2];
+        *f = f1 * f1 + f2 * f2 + f3 * f3;
+    }
+
+    struct Outcome {
+        fpls: f64,
+        xpls: Vec<f64>,
+        gpls: Vec<f64>,
+        code: std::os::raw::c_int,
+        itncnt: std::os::raw::c_int,
+    }
+
+    unsafe fn run_nlm(
+        n: usize,
+        x0: &[f64],
+        fcn: UncminFcn,
+        d1fcn: UncminD1Fcn,
+        d2fcn: UncminD2Fcn,
+        iagflg: std::os::raw::c_int,
+        iahflg: std::os::raw::c_int,
+    ) -> Outcome {
+        let mut x = x0.to_vec();
+        let mut typsiz = vec![1.0f64; n];
+        let mut xpls = vec![0.0f64; n];
+        let mut gpls = vec![0.0f64; n];
+        let mut a = vec![0.0f64; n * n];
+        let mut wrk = vec![0.0f64; 8 * n];
+        let mut fpls = 0.0f64;
+        let mut code = 0;
+        let mut itncnt = 0;
+        let mut msg: std::os::raw::c_int = 9; // print.level 0 default
+        optif9(
+            n as std::os::raw::c_int,
+            n as std::os::raw::c_int,
+            x.as_mut_ptr(),
+            fcn,
+            d1fcn,
+            d2fcn,
+            std::ptr::null_mut(),
+            typsiz.as_mut_ptr(),
+            1.0,                             // fscale
+            1,                               // method: line search
+            if iahflg != 0 { 0 } else { 1 }, // iexp
+            &mut msg,
+            12,  // ndigit
+            100, // iterlim
+            iagflg,
+            iahflg,
+            1.0,  // dlt
+            1e-6, // gradtol
+            0.0,  // stepmax -> auto
+            1e-6, // steptol
+            xpls.as_mut_ptr(),
+            &mut fpls,
+            gpls.as_mut_ptr(),
+            &mut code,
+            a.as_mut_ptr(),
+            wrk.as_mut_ptr(),
+            &mut itncnt,
+        );
+        assert_eq!(msg, 0);
+        Outcome {
+            fpls,
+            xpls,
+            gpls,
+            code,
+            itncnt,
+        }
+    }
+
+    unsafe extern "C" fn never_called(
+        _n: std::os::raw::c_int,
+        _x: *mut f64,
+        _g: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        panic!("d1fcn must not be called in this scenario");
+    }
+
+    #[test]
+    fn nlm_rosenbrock_matches_gnu() {
+        unsafe {
+            // Finite-difference gradients go through the QR secant update,
+            // where the last un-replicated clang FMA contraction leaves ~1e-8
+            // relative drift in the terminal values (identical at R's str()
+            // display precision); code and iteration count stay exact.
+            let o = run_nlm(
+                2,
+                &[-1.2, 1.0],
+                rosenbrock,
+                never_called,
+                never_called2,
+                0,
+                0,
+            );
+            assert!((o.fpls - 3.9737654444861321e-12).abs() / 3.9737654444861321e-12 < 1e-6);
+            assert!((o.xpls[0] - 0.99999800663921257).abs() < 1e-9);
+            assert!((o.xpls[1] - 0.99999601495037826).abs() < 1e-9);
+            assert!((o.gpls[0] - -6.5392005545988035e-07).abs() / 6.5392005545988035e-07 < 1e-5);
+            assert!((o.gpls[1] - 3.3359593976126505e-07).abs() / 3.3359593976126505e-07 < 1e-5);
+            assert_eq!(o.code, 1);
+            assert_eq!(o.itncnt, 23);
+        }
+    }
+
+    unsafe extern "C" fn never_called2(
+        _nr: std::os::raw::c_int,
+        _n: std::os::raw::c_int,
+        _x: *mut f64,
+        _h: *mut f64,
+        _state: *mut std::ffi::c_void,
+    ) {
+        panic!("d2fcn must not be called in this scenario");
+    }
+
+    #[test]
+    fn nlm_rosenbrock_analytic_gradient_matches_gnu() {
+        unsafe {
+            let o = run_nlm(
+                2,
+                &[-1.2, 1.0],
+                rosenbrock,
+                rosenbrock_g,
+                never_called2,
+                1,
+                0,
+            );
+            assert_eq!(o.fpls, 1.1820961652299623e-20);
+            assert_eq!(o.xpls[0], 1.0000000000906322);
+            assert_eq!(o.xpls[1], 1.0000000001752587);
+            assert_eq!(o.gpls[0], 2.5835205088543604e-09);
+            assert_eq!(o.gpls[1], -1.2011280858814644e-09);
+            assert_eq!(o.code, 1);
+            assert_eq!(o.itncnt, 24);
+        }
+    }
+
+    #[test]
+    fn nlm_rosenbrock_analytic_hessian_matches_gnu() {
+        unsafe {
+            let o = run_nlm(
+                2,
+                &[-1.2, 1.0],
+                rosenbrock,
+                rosenbrock_g,
+                rosenbrock_h,
+                1,
+                1,
+            );
+            assert_eq!(o.fpls, 1.1270257587201423e-17);
+            assert_eq!(o.xpls[0], 0.99999999928545746);
+            assert_eq!(o.xpls[1], 0.99999999824289532);
+            assert_eq!(o.gpls[0], 1.2977875942294302e-07);
+            assert_eq!(o.gpls[1], -6.5603922294599215e-08);
+            assert_eq!(o.code, 1);
+            assert_eq!(o.itncnt, 24);
+        }
+    }
+
+    #[test]
+    fn nlm_helical_valley_matches_gnu() {
+        unsafe {
+            // See nlm_rosenbrock_matches_gnu: FD-gradient path drift.
+            let o = run_nlm(
+                3,
+                &[-1.0, 0.0, 0.0],
+                helical,
+                never_called,
+                never_called2,
+                0,
+                0,
+            );
+            assert!((o.fpls - 1.238240707101609e-14).abs() / 1.238240707101609e-14 < 1e-4);
+            assert!((o.xpls[0] - 0.99999999812210127).abs() < 1e-8);
+            assert!((o.xpls[1] - 3.0711081852378829e-09).abs() < 1e-12);
+            assert!((o.xpls[2] - -6.0634312658223856e-09).abs() < 1e-12);
+            assert!((o.gpls[0] - -3.7557975578744549e-07).abs() / 3.7557975578744549e-07 < 2e-4);
+            assert!((o.gpls[1] - 3.4858916824254435e-06).abs() / 3.4858916824254435e-06 < 2e-4);
+            assert!((o.gpls[2] - -2.2023772144331659e-06).abs() / 2.2023772144331659e-06 < 2e-4);
+            assert_eq!(o.code, 2);
+            assert_eq!(o.itncnt, 27);
         }
     }
 }

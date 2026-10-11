@@ -92,7 +92,7 @@ unsafe fn attach_recommended_package_stub(package: &str) {
             });
             return;
         }
-        if lib_path.is_empty() && package == "datasets" {
+        if package == "datasets" {
             crate::library::datasets::attach().unwrap_or_else(|message| {
                 std::panic::panic_any(crate::sexp::context::RError { message })
             });

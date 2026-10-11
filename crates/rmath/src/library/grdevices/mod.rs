@@ -30,6 +30,9 @@ mod winbitmap;
 unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devps::PDF(args) }
 }
+unsafe extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { devps::PostScript(args) }
+}
 unsafe extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { init::cairoProps(which) }
 }
@@ -148,6 +151,10 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             c_pdf,
             crate::mainutils::native_routines::PayloadArity::Fixed(23),
         )),
+        "PostScript" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_postscript,
+            crate::mainutils::native_routines::PayloadArity::Fixed(19),
+        )),
         "palette" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_palette),
         )),
@@ -225,7 +232,7 @@ pub(crate) fn lookup_external(
 ) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
-        "PDF" | "devholdflush" | "devcur" | "devoff" | "devset" | "devcontrol"
+        "PDF" | "PostScript" | "devholdflush" | "devcur" | "devoff" | "devset" | "devcontrol"
         | "devdisplaylist" | "devcap" | "devsize" | "devnext" | "devprev" => lookup(name),
         _ => None,
     }
@@ -236,6 +243,7 @@ pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
         for name in [
             "C_cairoProps",
             "C_PDF",
+            "C_PostScript",
             "C_palette",
             "C_palette2",
             "C_devholdflush",

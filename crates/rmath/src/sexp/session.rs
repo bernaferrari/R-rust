@@ -722,12 +722,23 @@ impl RSession {
             return session;
         }
         session.with_active(|| unsafe {
+            // GNU registers the compiler namespace at engine boot.
+            let _ = crate::eval::compiler::namespace();
             let factory = SessionNodeFactory::new(session.owner_token().expect("active session"));
             // GNU defaultPackages: datasets, utils, grDevices, graphics,
             // stats, methods. library() inserts at pos 2, so attach in
             // that order and stats sits just under .GlobalEnv.
             let mut stats_loaded = false;
             for package in ["methods", "datasets", "utils", "grDevices", "graphics", "stats"] {
+                // The authenticated builtin datasets image owns the
+                // datasets namespace even when a library tree is visible:
+                // the builtin lazydata promises back `datasets::` lookups.
+                if package == "datasets" {
+                    crate::library::datasets::attach().unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RError { message })
+                    });
+                    continue;
+                }
                 let path = crate::mainutils::essentials::find_package_path(package);
                 if !path.is_empty() {
                     let loaded = crate::mainutils::essentials::load_pure_r_package(

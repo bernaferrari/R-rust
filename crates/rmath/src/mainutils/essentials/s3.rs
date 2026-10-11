@@ -77,6 +77,15 @@ pub(crate) unsafe fn apply_s3_closure_method(
             if let Some(primfun) = crate::eval::builtin::PRIMFUN(method.method) {
                 return Some(primfun(call, method.method, args, rho));
             }
+            // Portable (Rust-only) primitives carry a session-local negative
+            // PRIMOFFSET, so PRIMFUN cannot resolve them; route through the
+            // evaluated-builtin handler table by name instead.
+            if let Some(sexp) = crate::sexp::object::Sexp::try_from_raw(method.method).ok()
+                && let Some(name) = crate::eval::primitive::portable_primitive_name(sexp)
+                && let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(&name)
+            {
+                return Some(handler(call, method.method, args, rho));
+            }
         }
         None
     }

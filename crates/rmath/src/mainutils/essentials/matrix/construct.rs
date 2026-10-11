@@ -912,7 +912,23 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return x;
         }
         if is_data_frame_object(x) {
-            return data_frame_as_matrix(x);
+            // GNU's as.matrix.data.frame closure (exact base dataframe.R
+            // semantics: automatic row names collapse to NULL, matrix and
+            // data-frame columns expand, classed columns format).
+            let method = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                Rf_install(c"as.matrix.data.frame".as_ptr()),
+            );
+            let quoted = crate::sexp::constructors::Rf_lang2(Rf_install(c"quote".as_ptr()), x);
+            let _quoted = protect(quoted);
+            let call = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+                let forced = crate::sexp::constructors::Rf_lang3(method, quoted, CAR(CDR(args)));
+                forced
+            } else {
+                crate::sexp::constructors::Rf_lang2(method, quoted)
+            };
+            let _call = protect(call);
+            return crate::eval::eval::Rf_eval(call, _rho);
         }
         // Run the original default workflow so all vector kinds, names and
         // higher-dimensional arrays share array()'s admission and allocation.

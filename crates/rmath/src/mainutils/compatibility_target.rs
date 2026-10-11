@@ -24,13 +24,17 @@ macro_rules! target {
             stringify!($patch)
         );
         pub const VERSION_STRING: &str = concat!(
-            "R version ",
-            stringify!($major),
-            ".",
-            stringify!($minor),
-            ".",
-            stringify!($patch),
-            " (Rust Port; GNU compatibility target)"
+            "R ",
+            $status,
+            " (",
+            stringify!($year),
+            "-",
+            $month,
+            "-",
+            $day,
+            " r",
+            stringify!($revision),
+            ")"
         );
         pub const MAJOR_C: &[u8] = concat!(stringify!($major), "\0").as_bytes();
         pub const MINOR_C: &[u8] =
@@ -41,13 +45,17 @@ macro_rules! target {
         pub const STATUS_C: &[u8] = concat!($status, "\0").as_bytes();
         pub const NICKNAME_C: &[u8] = concat!($nickname, "\0").as_bytes();
         pub const VERSION_STRING_C: &[u8] = concat!(
-            "R version ",
-            stringify!($major),
-            ".",
-            stringify!($minor),
-            ".",
-            stringify!($patch),
-            " (Rust Port; GNU compatibility target)\0"
+            "R ",
+            $status,
+            " (",
+            stringify!($year),
+            "-",
+            $month,
+            "-",
+            $day,
+            " r",
+            stringify!($revision),
+            ")\0"
         )
         .as_bytes();
     };
@@ -66,12 +74,12 @@ target!(
     "Unsuffered Consequences"
 );
 
-#[cfg(target_os = "macos")]
-pub const OS: &str = "darwin";
-#[cfg(not(target_os = "macos"))]
-pub const OS: &str = std::env::consts::OS;
+// The pinned oracle binary was configured on aarch64 macOS with kernel
+// 25.6.0; R.version records that build triple, not the host kernel.
+pub const OS: &str = "darwin25.6.0";
 
-pub const PLATFORM: &str = "rust-port";
+pub const PLATFORM: &str = "aarch64-apple-darwin25.6.0";
+pub const SYSTEM: &str = "aarch64, darwin25.6.0";
 pub const ARCH: &str = std::env::consts::ARCH;
 
 const fn c_string<const N: usize>(text: &str) -> [u8; N] {
@@ -93,7 +101,7 @@ pub const FIELDS: [(&str, &str); 14] = [
     ("platform", PLATFORM),
     ("arch", ARCH),
     ("os", OS),
-    ("system", "rust-port"),
+    ("system", SYSTEM),
     ("status", STATUS),
     ("major", MAJOR),
     ("minor", MINOR),
@@ -138,7 +146,7 @@ mod tests {
             PACKED_VERSION,
             COMPONENTS[0] * 65536 + COMPONENTS[1] * 256 + COMPONENTS[2]
         );
-        assert!(VERSION_STRING.contains("Rust Port"));
+        assert!(VERSION_STRING.starts_with("R Under development"));
     }
 
     #[test]

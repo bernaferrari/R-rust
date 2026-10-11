@@ -2152,34 +2152,51 @@ pub unsafe fn do_RNGversion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         }
         let major = parts[0];
         let minor = parts[1];
-        let (rng, norm, sample) = if major == 0 && minor < 99 {
+        let (rng, norm, sample, binom) = if major == 0 && minor < 99 {
             (
                 RNGtype::WICHMANN_HILL,
                 N01type::BUGGY_KINDERMAN_RAMAGE,
                 Sampletype::ROUNDING,
+                Binomtype::BUGGY_BTPE,
             )
         } else if major == 0 || (major == 1 && minor <= 6) {
             (
                 RNGtype::MARSAGLIA_MULTICARRY,
                 N01type::BUGGY_KINDERMAN_RAMAGE,
                 Sampletype::ROUNDING,
+                Binomtype::BUGGY_BTPE,
             )
         } else if major <= 2 || (major == 3 && minor <= 5) {
             (
                 RNGtype::MERSENNE_TWISTER,
                 N01type::INVERSION,
                 Sampletype::ROUNDING,
+                Binomtype::BUGGY_BTPE,
+            )
+        } else if major <= 3 || (major == 4 && minor <= 6) {
+            (
+                RNGtype::MERSENNE_TWISTER,
+                N01type::INVERSION,
+                Sampletype::REJECTION,
+                Binomtype::BUGGY_BTPE,
             )
         } else {
             (
                 RNGtype::MERSENNE_TWISTER,
                 N01type::INVERSION,
                 Sampletype::REJECTION,
+                Binomtype::BTPE,
             )
         };
         r_RNGkind(rng);
         r_Norm_kind(norm);
         r_Samp_kind(sample);
+        r_Bin_kind(binom);
+        if matches!(binom, Binomtype::BUGGY_BTPE) {
+            // RNGkind() warns when "Buggy BTPE" is (re)selected; under
+            // options(warn = 2) this becomes the error RNGversion() raises.
+            warn("Buggy BTPE algorithm used for rbinom()");
+        }
         crate::sexp::globals::set_R_Visible(0);
         R_NilValue()
     }

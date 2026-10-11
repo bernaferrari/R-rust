@@ -19,9 +19,23 @@ pub(super) fn selected_source(content: &str) -> Result<String, String> {
         export <- exportMethods <- exportClasses <- exportPattern <-
             import <- importFrom <- importClassesFrom <- importMethodsFrom <-
             S3method <- useDynLib <- function(...) {{
-                .calls <<- c(.calls, paste(deparse(sys.call()), collapse=""))
-                invisible(NULL)
-            }}
+            .calls <<- c(.calls, paste(deparse(sys.call()), collapse=""))
+            invisible(NULL)
+        }}
+        ## GNU evaluates NAMESPACE conditions at install time (nsRDS cache);
+        ## resolve them here without loading extra namespaces.
+        `.osFallback` <- function(key) if (identical(key, "tools:::.OStype"))
+            function() "unix" else NULL
+        `::` <- function(pkg, name) {{
+            key <- paste(substitute(pkg), substitute(name), sep = "::")
+            f <- `.osFallback`(key)
+            if (is.null(f)) base::`::`(pkg, name) else f
+        }}
+        `:::` <- function(pkg, name) {{
+            key <- paste(substitute(pkg), substitute(name), sep = ":::")
+            f <- `.osFallback`(key)
+            if (is.null(f)) base::`:::`(pkg, name) else f
+        }}
         {content}
         .calls
     "#

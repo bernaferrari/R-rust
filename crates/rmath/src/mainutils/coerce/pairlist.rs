@@ -82,8 +82,10 @@ pub(super) fn coerce(
     let mut selected = Vec::new();
     let mut seen = std::collections::HashSet::new();
     while !cursor.is_nil() {
+        // A language object's whole cons chain is LANGSXP cells; only a
+        // chain that starts as LISTSXP must keep LISTSXP tails.
         if cursor.typeof_() != SEXPTYPE::LISTSXP
-            && !(selected.is_empty() && cursor.typeof_() == SEXPTYPE::LANGSXP)
+            && !(language && cursor.typeof_() == SEXPTYPE::LANGSXP)
         {
             return Err(failure("improper pairlist in vector coercion"));
         }

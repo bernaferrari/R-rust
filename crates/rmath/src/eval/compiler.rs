@@ -158,6 +158,38 @@ unsafe fn new_compiler_environment() -> SEXP {
         );
         let _guard = protect(env);
         crate::mainutils::essentials::define_package_metadata("compiler", env);
+        crate::mainutils::essentials::ensure_namespace_info(
+            "compiler",
+            std::path::Path::new("<builtin:compiler>"),
+            env,
+            None,
+        );
+        // GNU's compiler namespace reports the engine version.
+        {
+            let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+            let info = crate::sexp::envir::R_findVarInFrame(env, info_sym);
+            if !info.is_null() && info != crate::sexp::globals::R_UnboundValue() {
+                let spec_sym = Rf_install(c"spec".as_ptr());
+                let spec = crate::sexp::envir::R_findVarInFrame(info, spec_sym);
+                if !spec.is_null()
+                    && spec != crate::sexp::globals::R_UnboundValue()
+                    && TYPEOF(spec) == SEXPTYPE::STRSXP
+                    && crate::sexp::accessors::XLENGTH(spec) == 2
+                {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        spec,
+                        1,
+                        crate::sexp::constructors::Rf_mkChar(
+                            std::ffi::CString::new(
+                                crate::mainutils::compatibility_target::NUMERIC_VERSION,
+                            )
+                            .unwrap_or_default()
+                            .as_ptr(),
+                        ),
+                    );
+                }
+            }
+        }
         for name in EXPORTS {
             let symbol = Rf_install(std::ffi::CString::new(*name).unwrap().as_ptr());
             let value = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);

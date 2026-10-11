@@ -98,6 +98,42 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
         let file_path = elt_to_string(file_arg, 0);
+        // GNU source(encoding = "UTF-8") opens the file with a UTF-8
+        // connection; in a single-byte locale the input is translated to
+        // native on read and lines are truncated at the first byte that
+        // cannot be represented (with a warning).
+        if let Some(encoding) = parsed.encoding.as_deref() {
+            let normalized = encoding.to_ascii_lowercase();
+            if (normalized == "utf-8" || normalized == "utf8")
+                && !crate::mainutils::platform::locale_is_utf8()
+            {
+                if let Ok(raw) = std::fs::read(&file_path) {
+                    let (content, invalid) = translate_utf8_source_to_native(&raw);
+                    if invalid {
+                        if let Ok(message) = std::ffi::CString::new(format!(
+                            "invalid input found on input connection '{}'",
+                            file_path
+                        )) {
+                            crate::mainutils::errors::Rf_warning1(message.as_ptr());
+                        }
+                    }
+                    return eval_source_text_with_options(
+                        &content,
+                        env,
+                        &file_path,
+                        parsed.echo,
+                        parsed.print_eval.unwrap_or(parsed.echo),
+                        &parsed.prompt,
+                        &parsed.continue_echo,
+                        parsed.skip_echo,
+                        parsed.keep_source,
+                        parsed.cutoff,
+                        parsed.deparse_opts,
+                        parsed.max_deparse_length,
+                    );
+                }
+            }
+        }
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => eval_source_text_with_options(
                 &content,
@@ -162,6 +198,8 @@ struct SourceCallArgs {
     deparse_opts: c_int,
     /// GNU `source(max.deparse.length=)` default 150.
     max_deparse_length: usize,
+    /// GNU `source(encoding=)`; "UTF-8" input is translated to native.
+    encoding: Option<String>,
 }
 
 fn source_call_args(args: SEXP) -> SourceCallArgs {
@@ -178,6 +216,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut cutoff = crate::mainutils::deparse::DEFAULT_CUTOFF;
         let mut max_deparse_length: usize = 150;
         let mut deparse_opts = crate::mainutils::deparse::SHOWATTRIBUTES;
+        let mut encoding: Option<String> = None;
 
         let mut first_positional = None;
         let mut positional = 0usize;
@@ -221,6 +260,11 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                 Some("deparseCtrl") | Some("deparse.ctrl") => {
                     deparse_opts = crate::mainutils::deparse::deparse_opts_from_control(value);
                 }
+                Some("encoding") => {
+                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                        encoding = Some(elt_to_string(value, 0));
+                    }
+                }
 
                 Some(_) => {}
 
@@ -250,6 +294,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             deparse_opts,
 
             max_deparse_length,
+            encoding,
         }
     }
 }
@@ -627,7 +672,10 @@ unsafe fn eval_source_text_with_options(
                 .map_err(|e| e.to_string())
         });
         let Ok(spans) = spans else {
-            return eval_source_text_with_name(content, env, filename, keep_source);
+            // GNU raises the parse error; nothing is echoed for a file that
+            // does not parse completely.
+            base_error(format!("{}: parse error (unterminated input)", filename));
+            return R_NilValue();
         };
         let lines: Vec<&str> = content.lines().collect();
         let nlines = lines.len() as i32;
@@ -933,4 +981,30 @@ unsafe fn topic_name_from_arg(topic_arg: SEXP) -> String {
             _ => elt_to_string(topic_arg, 0),
         }
     }
+}
+
+/// Translate UTF-8 source input to a single-byte (ASCII) native locale the
+/// way a UTF-8-marked connection does: ASCII passes through, and each line is
+/// truncated at the first byte that is invalid UTF-8 or not representable.
+/// Returns the translated text and whether any truncation happened.
+fn translate_utf8_source_to_native(raw: &[u8]) -> (String, bool) {
+    let mut out = String::with_capacity(raw.len());
+    let mut invalid = false;
+    let mut i = 0;
+    while i < raw.len() {
+        let k = raw[i];
+        if k < 0x80 {
+            out.push(k as char);
+            i += 1;
+            continue;
+        }
+        // Any non-ASCII byte is invalid input for a single-byte ASCII
+        // locale (whether or not it starts a valid UTF-8 sequence): drop the
+        // rest of the line like GNU's connection translation.
+        invalid = true;
+        while i < raw.len() && raw[i] != b'\n' {
+            i += 1;
+        }
+    }
+    (out, invalid)
 }

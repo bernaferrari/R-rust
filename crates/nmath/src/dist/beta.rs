@@ -267,10 +267,14 @@ pub fn pbeta_inner(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64
 // =====================================================================
 
 const USE_LOG_X_CUTOFF: f64 = -5.0;
-const N_NEWTON_FREE: i32 = 4;
+const N_NEWTON_FREE: usize = 4;
 
 const DBL_VERY_MIN: f64 = DBL_MIN / 4.0;
-const DBL_LOG_V_MIN: f64 = M_LN2 * ((DBL_MIN_EXP - 2) as f64);
+/// qbeta.c's `DBL_MIN_EXP` is the C float.h macro (-1021), *not* R's
+/// `.Machine$double.min.exp` (-1022): `M_LN2*(DBL_MIN_EXP - 2)` must equal
+/// `log(DBL_very_MIN) = log(DBL_MIN/4) = M_LN2*(-1023)`.
+const DBL_MIN_EXP_C: i32 = -1021;
+const DBL_LOG_V_MIN: f64 = M_LN2 * ((DBL_MIN_EXP_C - 2) as f64);
 const DBL_1__EPS: f64 = 1.0 - DBL_EPSILON / 2.0; // 0x1.fffffffffffffp-1
 
 const FPU: f64 = 3e-308;
@@ -285,6 +289,26 @@ const CONST4: f64 = 0.04481;
 
 const LOG_EPS_C: f64 = M_LN2 * (1.0 - DBL_MANT_DIG as f64); // = log(DBL_EPSILON)
 
+/// C `%.5g`, for mathlib warning text only.
+fn fmt_g5(x: f64) -> String {
+    if x == 0.0 {
+        return "0".to_string();
+    }
+    let exp = x.abs().log10().floor() as i32;
+    if (-4..5).contains(&exp) {
+        let digits = (4 - exp).max(0) as usize;
+        let s = format!("{x:.digits$}");
+        let s = s.trim_end_matches('0').trim_end_matches('.');
+        if s.is_empty() || s == "-" {
+            "0".to_string()
+        } else {
+            s.to_string()
+        }
+    } else {
+        format!("{x:.4e}")
+    }
+}
+
 fn qbeta_raw(
     alpha: f64,
     p: f64,
@@ -292,7 +316,7 @@ fn qbeta_raw(
     lower_tail: bool,
     log_p: bool,
     log_q_cut: f64,
-    n_n: i32,
+    n_n: usize,
 ) -> [f64; 2] {
     // qb[0:1] = { qbeta(), 1 - qbeta() }
     let mut qb = [ML_NAN, ML_NAN];
@@ -400,10 +424,18 @@ fn qbeta_raw(
 
     let mut swap_tail = p_ > 0.5;
 
-    let mut n_maybe_swaps: i32 = 0;
+    let mut n_maybe_swaps: u32 = 0;
 
     // calculate the initial approximation
     let (mut a, mut la, mut pp, mut qq): (f64, f64, f64, f64);
+    let mut acu: f64;
+    let mut u: f64;
+    let mut xinbta: f64;
+    let mut tx: f64;
+    let mut u_n: f64;
+    let mut y: f64;
+    let mut warned: bool;
+    let mut log_: bool;
 
     'maybe_swap: loop {
         // change tail; afterwards 0 < a <= 1/2
@@ -421,47 +453,48 @@ fn qbeta_raw(
         n_maybe_swaps += 1;
 
         // Desired accuracy for Newton iterations
-        let acu = fmax2(ACU_MIN, pow(10.0, -13.0 - 2.5 / (pp * pp) - 0.5 / (a * a)));
+        acu = fmax2(ACU_MIN, pow(10.0, -13.0 - 2.5 / (pp * pp) - 0.5 / (a * a)));
 
+        // try to catch "extreme left tail" early
         let u0 = (la + log(pp) + logbeta) / pp; // = log(x_0)
         let mut rp = pp * (1.0 - qq) / (pp + 1.0);
 
         let t = 0.2;
-        let u0_maybe = M_LN2 * (DBL_MIN_EXP as f64) < u0 && u0 < -0.01;
+        let u0_maybe = M_LN2 * (DBL_MIN_EXP_C as f64) < u0 && u0 < -0.01;
 
-        let mut u_n: f64; // to be log(xinbta) <==> xinbta = exp(u_n)
-        let mut xinbta: f64;
-        let mut tx: f64;
-        let mut u: f64;
+        u_n = 1.0; // to be log(xinbta) <==> xinbta = exp(u_n). 1 is impossible
+        y = -1.0;
+        warned = false;
 
         if u0_maybe
             && u0
                 < (t * LOG_EPS_C - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))))
                     / 2.0
         {
-            // MM's one-step correction
-            rp = rp * exp(u0);
+            // MM's one-step correction (cheaper than 1 Newton!)
+            rp = rp * exp(u0); // = rp*x0
             u = if rp > -1.0 { u0 - log1p(rp) / pp } else { u0 };
             tx = exp(u);
             xinbta = exp(u);
             use_log_x = true;
-            // goto L_Newton equivalent
-            u_n = u;
-            // Fall through to Newton section below
+            // C: goto L_Newton -- skip the AS 64 initial approximation and
+            // its swap/bad_init fixups below; both paths continue at L_Newton.
         } else {
-            // y := y_alpha in AS 64
+            // y := y_alpha in AS 64 := Hastings(1955) approximation of qnorm(1 - a)
             let r = sqrt(-2.0 * la);
-            let y = r - (CONST1 + CONST2 * r) / (1.0 + (CONST3 + CONST4 * r) * r);
+            let yv = r - (CONST1 + CONST2 * r) / (1.0 + (CONST3 + CONST4 * r) * r);
+            y = yv;
 
             if pp > 1.0 && qq > 1.0 {
                 // use Carter(1947), see AS 109, remark '5.'
-                let r = (y * y - 3.0) / 6.0;
+                let r = (yv * yv - 3.0) / 6.0;
                 let s = 1.0 / (pp + pp - 1.0);
                 let t = 1.0 / (qq + qq - 1.0);
                 let h = 2.0 / (s + t);
-                let w = y * sqrt(h + r) / h - (t - s) * (r + 5.0 / 6.0 - 2.0 / (3.0 * h));
+                let w = yv * sqrt(h + r) / h - (t - s) * (r + 5.0 / 6.0 - 2.0 / (3.0 * h));
                 if w > 300.0 {
-                    let t = w + w + log(qq) - log(pp);
+                    // exp(w+w) is huge or overflows
+                    let t = w + w + log(qq) - log(pp); // = argument of log1pexp(.)
                     u = if t <= 18.0 {
                         -log1p(exp(t))
                     } else {
@@ -470,16 +503,17 @@ fn qbeta_raw(
                     xinbta = exp(u);
                 } else {
                     xinbta = pp / (pp + qq * exp(w + w));
-                    u = -log1p(qq / pp * exp(w + w));
+                    u = -log1p(qq / pp * exp(w + w)); // log(xinbta)
                 }
             } else {
                 // use the original AS 64 proposal, Scheffe-Tukey and Wilson-Hilferty
                 let r = qq + qq;
                 let t = 1.0 / (3.0 * sqrt(qq));
-                let t = r * crate::special::mlutils::R_pow_di(1.0 + t * (-t + y), 3);
+                let t = r * crate::special::mlutils::R_pow_di(1.0 + t * (-t + yv), 3);
                 let s = 4.0 * pp + r - 2.0;
 
                 if t == 0.0 || (t < 0.0 && s >= t) {
+                    // cannot use chisq approx
                     let l1ma = if swap_tail {
                         r_dt_log(alpha, lower_tail, log_p)
                     } else {
@@ -489,8 +523,9 @@ fn qbeta_raw(
                     let xx = (l1ma + log(qq) + logbeta) / qq;
                     if xx <= 0.0 {
                         xinbta = -expm1(xx);
-                        u = r_log1_exp(xx);
+                        u = r_log1_exp(xx); // = log(xinbta) = log(1 - exp(...A...))
                     } else {
+                        // xx > 0 ==> 1 - e^xx < 0 .. is nonsense
                         let r_ = rp * exp(u0);
                         u = if r_ > -1.0 { u0 - log1p(r_) / pp } else { u0 };
                         xinbta = exp(u);
@@ -498,9 +533,11 @@ fn qbeta_raw(
                 } else {
                     let t = s / t;
                     if t <= 1.0 {
+                        // cannot use chisq, either
                         u = u0;
                         xinbta = exp(u);
                     } else {
+                        // (1+x0)/(1-x0) = t, solved for x0 :
                         xinbta = 1.0 - 2.0 / (t + 1.0);
                         u = log1p(-2.0 / (t + 1.0));
                     }
@@ -511,14 +548,17 @@ fn qbeta_raw(
             if (swap_tail && u >= -exp(log_q_cut))
                 || (!swap_tail && u >= -exp(4.0 * log_q_cut) && pp / qq < 1000.0)
             {
+                // reverse swap (and typically use_log_x)
                 swap_tail = !swap_tail;
 
                 if swap_tail {
+                    // "swap now" (much less easily)
                     a = r_dt_civ(alpha, lower_tail, log_p);
                     la = r_dt_clog(alpha, lower_tail, log_p);
                     pp = q;
                     qq = p;
                 } else {
+                    // "swap back"
                     a = p_;
                     la = r_dt_log(alpha, lower_tail, log_p);
                     pp = p;
@@ -529,48 +569,47 @@ fn qbeta_raw(
             }
 
             if !use_log_x {
-                use_log_x = u < log_q_cut;
+                use_log_x = u < log_q_cut; // <==> xinbta = e^u < exp(log_q_cut)
             }
-
             let bad_u = !r_finite(u);
             let bad_init = bad_u || xinbta > P_HI;
 
-            tx = xinbta;
+            tx = xinbta; // keeping "original initial x" (for now)
 
             if bad_u || u < log_q_cut {
+                // try "left border" quickly, i.e., at smallest positive number:
                 let w = pbeta_raw(DBL_VERY_MIN, pp, qq, true, log_p);
                 if w > (if log_p { la } else { a }) {
+                    // quantile is left of DBL_very_MIN: boundary "convergence"
                     if log_p || fabs(w - a) < fabs(0.0 - a) {
+                        // DBL_very_MIN is better than 0
                         tx = DBL_VERY_MIN;
-                        u_n = DBL_LOG_V_MIN;
+                        u_n = DBL_LOG_V_MIN; // = log(DBL_very_MIN)
                     } else {
                         tx = 0.0;
                         u_n = ML_NEGINF;
                     }
                     use_log_x = log_p;
-                    add_n_step = false;
-                    // goto L_return
-                    qb = compute_qbeta_return(
-                        tx, u_n, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a, logbeta,
-                        log_p, lower_tail, alpha,
+                    // C: goto L_return
+                    return qbeta_L_return(
+                        tx, u_n, xinbta, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a,
+                        la, logbeta, log_p,
                     );
-                    return qb;
-                } else {
-                    if u < DBL_LOG_V_MIN {
-                        u = DBL_LOG_V_MIN;
-                        xinbta = DBL_VERY_MIN;
-                    }
+                } else if u < DBL_LOG_V_MIN {
+                    u = DBL_LOG_V_MIN; // = log(DBL_very_MIN)
+                    xinbta = DBL_VERY_MIN;
                 }
             }
 
             // Sometimes the approximation is negative (and == 0 is also not "ok")
             if bad_init && !(use_log_x && tx > 0.0) {
                 if u == ML_NEGINF {
-                    u = M_LN2 * (DBL_MIN_EXP as f64);
+                    u = M_LN2 * (DBL_MIN_EXP_C as f64);
                     xinbta = DBL_MIN;
                 } else {
                     xinbta = if xinbta > 1.1 {
-                        0.5
+                        // i.e. "way off"
+                        0.5 // otherwise, keep the respective boundary:
                     } else if xinbta < P_LO {
                         exp(u)
                     } else {
@@ -579,28 +618,35 @@ fn qbeta_raw(
                     if bad_u {
                         u = log(xinbta);
                     }
+                    // otherwise: not changing "potentially better" u than the above
                 }
             }
-
-            u_n = u;
         }
 
-        // L_Newton: Newton-Raphson
+        // L_Newton: solve for x by a modified Newton-Raphson method, using pbeta_raw()
         let r = 1.0 - pp;
         let t_val = 1.0 - qq;
-        let mut wprev = 0.0;
-        let mut prev = 1.0;
-        let mut adj = 1.0;
-        let mut warned = false;
+        let mut wprev = 0.0_f64;
+        let mut prev = 1.0_f64;
+        let mut adj = 1.0_f64; // -Wall
+
+        #[derive(Clone, Copy)]
+        enum NewtonOutcome {
+            Converged,
+            NotConverged,
+            MaybeSwap,
+            GiveUp,
+        }
+        let mut outcome = NewtonOutcome::Converged;
 
         if use_log_x {
-            let mut u = u_n;
-            let mut xinbta = exp(u);
+            // find log(xinbta) -- work in u := log(x) scale
+            // using log_p == TRUE unconditionally here
             let mut converged = false;
-            let mut y = 0.0_f64;
+            'log_newton: for i_pb in 0..1000usize {
+                y = pbeta_raw(xinbta, pp, qq, /*lower_tail = */ true, true);
 
-            for i_pb in 0..1000 {
-                y = pbeta_raw(xinbta, pp, qq, true, true);
+                // w := Newton step size for L(u) = log F(e^u) -!= 0;  u := log(x)
                 let w = if y == ML_NEGINF {
                     0.0
                 } else {
@@ -608,114 +654,92 @@ fn qbeta_raw(
                 };
 
                 if !r_finite(w) {
+                    // what we should do is ==> go back, get better starting value
                     if n_maybe_swaps <= 1 {
-                        continue 'maybe_swap;
+                        outcome = NewtonOutcome::MaybeSwap;
+                        break 'log_newton;
                     }
-                    ml_warning(ME_DOMAIN, "");
-                    qb[0] = ML_NAN;
-                    qb[1] = ML_NAN;
-                    return qb;
+                    outcome = NewtonOutcome::GiveUp;
+                    break 'log_newton;
                 }
-
-                if i_pb >= n_n as usize && w * wprev <= 0.0 {
+                if i_pb >= n_n && w * wprev <= 0.0 {
                     prev = fmax2(fabs(adj), FPU);
                 }
-
                 let mut g = 1.0;
-                let mut stepped = false;
+                let mut inner_converged = false;
                 for _i_inn in 0..1000 {
                     adj = g * w;
+                    // safe guard (here, from the very beginning)
                     if fabs(adj) < prev {
-                        u_n = u - adj;
+                        u_n = u - adj; // u_{n+1} = u_n - g*w
                         if u_n <= 0.0 {
+                            // <==> 0 < xinbta := e^u <= 1
                             if prev <= acu || fabs(w) <= acu {
-                                converged = true;
-                                break;
+                                inner_converged = true;
                             }
-                            stepped = true;
                             break;
                         }
                     }
                     g /= 3.0;
                 }
-                if !stepped && !converged {
-                    continue;
+                if inner_converged {
+                    converged = true;
+                    break 'log_newton;
                 }
-
+                // (cancellation in (u_n - u) => may differ from adj:)
                 let d = fmin2(fabs(adj), fabs(u_n - u));
                 if d <= 4e-16 * fabs(u_n + u) {
                     converged = true;
-                    break;
+                    break 'log_newton;
                 }
                 u = u_n;
                 xinbta = exp(u);
                 wprev = w;
             }
-
-            if !converged {
-                warned = true;
-                ml_warning(ME_PRECISION, "qbeta");
+            if !converged && matches!(outcome, NewtonOutcome::Converged) {
+                // Only iteration-budget exhaustion is "not converged";
+                // MaybeSwap/GiveUp set inside the loop must survive.
+                outcome = NewtonOutcome::NotConverged;
             }
-
-            // L_converged:
-            let log_ = log_p || use_log_x;
-            if (log_ && y == ML_NEGINF) || (!log_ && y == 0.0) {
-                let w = pbeta_raw(DBL_VERY_MIN, pp, qq, true, log_);
-                if log_ || fabs(w - a) <= fabs(y - a) {
-                    tx = DBL_VERY_MIN;
-                    u_n = DBL_LOG_V_MIN;
-                }
-                add_n_step = false;
-            } else if !warned && (log_ && fabs(y - la) > 3.0 || !log_ && fabs(y - a) > 1e-4) {
-                // accuracy warning
-            }
-
-            qb = compute_qbeta_return(
-                tx, u_n, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a, logbeta, log_p,
-                lower_tail, alpha,
-            );
-            return qb;
         } else {
             // "normal scale" Newton
-            let mut xinbta = if u_n != 1.0 { exp(u_n) } else { xinbta };
             let mut converged = false;
-            let mut y = 0.0_f64;
+            'norm_newton: for i_pb in 0..1000usize {
+                y = pbeta_raw(xinbta, pp, qq, /*lower_tail = */ true, log_p);
 
-            for i_pb in 0..1000 {
-                y = pbeta_raw(xinbta, pp, qq, true, log_p);
+                // w := Newton step size (F(.) - a) / F'(.)
                 let w = if log_p {
                     (y - la) * exp(y + logbeta + r * log(xinbta) + t_val * log1p(-xinbta))
                 } else {
                     (y - a) * exp(logbeta + r * log(xinbta) + t_val * log1p(-xinbta))
                 };
-
                 if !r_finite(w) {
+                    // what we should do is ==> go back, get better starting value
                     if n_maybe_swaps <= 2 {
                         if !log_p && n_maybe_swaps == 2 {
-                            use_log_x = true;
+                            use_log_x = true; // try now
                         }
                         if !log_p || n_maybe_swaps <= 1 {
-                            continue 'maybe_swap;
+                            outcome = NewtonOutcome::MaybeSwap;
+                            break 'norm_newton;
                         }
                     }
-                    ml_warning(ME_DOMAIN, "");
-                    qb[0] = ML_NAN;
-                    qb[1] = ML_NAN;
-                    return qb;
+                    outcome = NewtonOutcome::GiveUp;
+                    break 'norm_newton;
                 }
-
-                if i_pb >= n_n as usize && w * wprev <= 0.0 {
+                if i_pb >= n_n && w * wprev <= 0.0 {
                     prev = fmax2(fabs(adj), FPU);
                 }
-
                 let mut g = 1.0;
+                let mut inner_converged = false;
                 for _i_inn in 0..1000 {
                     adj = g * w;
-                    if i_pb < n_n as usize || fabs(adj) < prev {
-                        tx = xinbta - adj;
+                    // take full Newton steps at the beginning; only then safe guard:
+                    if i_pb < n_n || fabs(adj) < prev {
+                        tx = xinbta - adj; // x_{n+1} = x_n - g*w
                         if 0.0 <= tx && tx <= 1.0 {
                             if prev <= acu || fabs(w) <= acu {
-                                converged = true;
+                                inner_converged = true;
                                 break;
                             }
                             if tx != 0.0 && tx != 1.0 {
@@ -725,49 +749,84 @@ fn qbeta_raw(
                     }
                     g /= 3.0;
                 }
-
-                if fabs(tx - xinbta) <= 4e-16 * (tx + xinbta) {
+                if inner_converged {
                     converged = true;
-                    break;
+                    break 'norm_newton;
+                }
+                if fabs(tx - xinbta) <= 4e-16 * (tx + xinbta) {
+                    // "<=" : (.) == 0
+                    converged = true;
+                    break 'norm_newton;
                 }
                 xinbta = tx;
                 if tx == 0.0 {
-                    break;
+                    // "we have lost"
+                    break 'norm_newton;
                 }
                 wprev = w;
             }
-
-            if !converged {
-                warned = true;
-                ml_warning(ME_PRECISION, "qbeta");
+            if !converged && matches!(outcome, NewtonOutcome::Converged) {
+                outcome = NewtonOutcome::NotConverged;
             }
-
-            // L_converged:
-            let log_ = log_p || use_log_x;
-            if (log_ && y == ML_NEGINF) || (!log_ && y == 0.0) {
-                let w = pbeta_raw(DBL_VERY_MIN, pp, qq, true, log_);
-                if log_ || fabs(w - a) <= fabs(y - a) {
-                    tx = DBL_VERY_MIN;
-                    u_n = DBL_LOG_V_MIN;
-                }
-                add_n_step = false;
-            } else if !warned && (log_ && fabs(y - la) > 3.0 || !log_ && fabs(y - a) > 1e-4) {
-                // accuracy warning
-            }
-
-            qb = compute_qbeta_return(
-                tx, u_n, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a, logbeta, log_p,
-                lower_tail, alpha,
-            );
-            return qb;
         }
+
+        match outcome {
+            NewtonOutcome::MaybeSwap => continue 'maybe_swap,
+            NewtonOutcome::GiveUp => {
+                ml_warning(ME_DOMAIN, "");
+                qb[0] = ML_NAN;
+                qb[1] = ML_NAN;
+                return qb;
+            }
+            NewtonOutcome::Converged | NewtonOutcome::NotConverged => {}
+        }
+        if matches!(outcome, NewtonOutcome::NotConverged) {
+            // NOT converged: iteration count
+            warned = true;
+            ml_warning(ME_PRECISION, "qbeta");
+        }
+
+        // L_converged:
+        log_ = log_p || use_log_x;
+        if (log_ && y == ML_NEGINF) || (!log_ && y == 0.0) {
+            // stuck at left, try if smallest positive number is "better"
+            let w = pbeta_raw(DBL_VERY_MIN, pp, qq, true, log_);
+            if log_ || fabs(w - a) <= fabs(y - a) {
+                tx = DBL_VERY_MIN;
+                u_n = DBL_LOG_V_MIN; // = log(DBL_very_MIN)
+            }
+            add_n_step = false; // not trying to do better anymore
+        } else if !warned
+            && (if log_ {
+                fabs(y - la) > 3.0
+            } else {
+                fabs(y - a) > 1e-4
+            })
+        {
+            if !(log_ && y == ML_NEGINF && pbeta_raw(DBL_1__EPS, pp, qq, true, true) > la + 2.0) {
+                // MATHLIB_WARNING2: low accuracy for more platform independent output
+                ml_warn_message(&format!(
+                    "qbeta(a, *) =: x0 with |pbeta(x0,*{}) - alpha| = {} is not accurate",
+                    if log_ { ", log_" } else { "" },
+                    fmt_g5(fabs(if log_ { y - la } else { y - a }))
+                ));
+            }
+        }
+
+        // L_return:
+        return qbeta_L_return(
+            tx, u_n, xinbta, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a, la, logbeta,
+            log_p,
+        );
     }
 }
 
-/// Compute the return value for qbeta based on scale and tail
-fn compute_qbeta_return(
+/// C qbeta.c's `L_return` tail: assemble qb[0:1] from (tx, u_n) per scale.
+#[allow(clippy::too_many_arguments)]
+fn qbeta_L_return(
     tx: f64,
     u_n: f64,
+    xinbta: f64,
     swap_tail: bool,
     give_log_q: bool,
     use_log_x: bool,
@@ -775,53 +834,50 @@ fn compute_qbeta_return(
     pp: f64,
     qq: f64,
     a: f64,
+    la: f64,
     logbeta: f64,
     log_p: bool,
-    lower_tail: bool,
-    alpha: f64,
 ) -> [f64; 2] {
     let mut qb = [0.0, 0.0];
     let r = 1.0 - pp;
     let t = 1.0 - qq;
 
     if give_log_q {
-        let r = r_log1_exp(u_n);
+        if !use_log_x {
+            ml_warn_message(
+                "qbeta() L_return, u_n=<u_n>; give_log_q=TRUE but use_log_x=FALSE -- please report!",
+            );
+        }
+        let r_log = r_log1_exp(u_n);
         if swap_tail {
-            qb[0] = r;
+            qb[0] = r_log;
             qb[1] = u_n;
         } else {
             qb[0] = u_n;
-            qb[1] = r;
+            qb[1] = r_log;
         }
     } else {
+        let mut tx = tx;
         if use_log_x {
             if add_n_step {
-                // add one last Newton step on original x scale
-                let xinbta = if u_n != 1.0 { exp(u_n) } else { 1.0 };
-                let y = pbeta_raw(xinbta, pp, qq, true, log_p);
+                // add one last Newton step on original x scale, e.g., for
+                // qbeta(2^-98, 0.125, 2^-96)
+                let mut xinbta = xinbta;
+                if u_n != 1.0 {
+                    // u_n has been computed above
+                    xinbta = exp(u_n);
+                }
+                let y = pbeta_raw(xinbta, pp, qq, /*lower_tail = */ true, log_p);
                 let w = if log_p {
-                    (y - r_dt_log(alpha, lower_tail, log_p))
-                        * exp(y + logbeta + r * log(xinbta) + t * log1p(-xinbta))
+                    (y - la) * exp(y + logbeta + r * log(xinbta) + t * log1p(-xinbta))
                 } else {
                     (y - a) * exp(logbeta + r * log(xinbta) + t * log1p(-xinbta))
                 };
                 if r_finite(w) {
-                    let new_tx = xinbta - w;
-                    if swap_tail {
-                        qb[0] = 1.0 - new_tx;
-                        qb[1] = new_tx;
-                    } else {
-                        qb[0] = new_tx;
-                        qb[1] = 1.0 - new_tx;
-                    }
+                    tx = xinbta - w;
                 } else {
-                    if swap_tail {
-                        qb[0] = 1.0 - tx;
-                        qb[1] = tx;
-                    } else {
-                        qb[0] = tx;
-                        qb[1] = 1.0 - tx;
-                    }
+                    // Newton step w cannot be used ==> keep x = xinbta
+                    tx = xinbta;
                 }
             } else {
                 if swap_tail {
@@ -831,18 +887,17 @@ fn compute_qbeta_return(
                     qb[0] = exp(u_n);
                     qb[1] = -expm1(u_n);
                 }
-            }
-        } else {
-            if swap_tail {
-                qb[0] = 1.0 - tx;
-                qb[1] = tx;
-            } else {
-                qb[0] = tx;
-                qb[1] = 1.0 - tx;
+                return qb;
             }
         }
+        if swap_tail {
+            qb[0] = 1.0 - tx;
+            qb[1] = tx;
+        } else {
+            qb[0] = tx;
+            qb[1] = 1.0 - tx;
+        }
     }
-
     qb
 }
 

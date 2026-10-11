@@ -712,6 +712,17 @@ unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset
                 args,
                 rho,
             )
+        } else if TYPEOF(x) == SEXPTYPE::VECSXP
+            && crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        {
+            // POSIXlt subsetting needs the full `[` path (S3 semantics,
+            // component recycling, balanced bookkeeping).
+            crate::mainutils::subset::do_subset(
+                call,
+                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                args,
+                rho,
+            )
         } else {
             let result = crate::mainutils::subset::do_subset_dflt(
                 call,

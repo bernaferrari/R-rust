@@ -1160,7 +1160,34 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
             SET_VECTOR_ELT(result, i as R_xlen_t, recycle_column_if_needed(*col, nrow));
         }
         set_string_names(result, &names);
-        set_compact_row_names(result, nrow);
+        // GNU cbind on data.frames keeps the first explicit row names
+        // (anova.lmlist's dimnames<- followed by stat.anova's cbind rely
+        // on this so printCoefmat shows rows 1,2 without matrix brackets).
+        let mut explicit_rows: Option<SEXP> = None;
+        for &(arg, arg_nrow, _, _) in entries {
+            if arg_nrow == nrow
+                && sexp_has_class(arg, "data.frame")
+                && TYPEOF(arg) == SEXPTYPE::VECSXP
+            {
+                let rn = crate::sexp::attrib_core::getAttrib(
+                    arg,
+                    crate::sexp::attrib_core::R_RowNamesSymbol(),
+                );
+                if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrow {
+                    explicit_rows = Some(rn);
+                    break;
+                }
+            }
+        }
+        if let Some(rn) = explicit_rows {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn,
+            );
+        } else {
+            set_compact_row_names(result, nrow);
+        }
         set_data_frame_class(result);
         result
     }

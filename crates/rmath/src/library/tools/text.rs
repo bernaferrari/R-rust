@@ -95,7 +95,52 @@ pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
                 *matchlen_ptr.add(i) = -1;
                 continue;
             }
-            let s_bytes = CStr::from_ptr(s_ptr).to_bytes();
+            // GNU's delim_match sees the translated native string: in a
+            // single-byte locale a UTF-8-marked element becomes its escaped
+            // ASCII form (<U+XXXX>), which the match length then counts.
+            let mut translated: Vec<u8>;
+            let s_bytes = if !crate::mainutils::platform::locale_is_utf8()
+                && crate::sexp::accessors::getCharCE(s_elt) == 2
+            {
+                translated = Vec::new();
+                let src = CStr::from_ptr(s_ptr).to_bytes();
+                let mut j = 0;
+                while j < src.len() {
+                    let k = src[j];
+                    if k < 0x80 {
+                        translated.push(k);
+                        j += 1;
+                        continue;
+                    }
+                    let seq_len = match k {
+                        0xC0..=0xDF => 2,
+                        0xE0..=0xEF => 3,
+                        0xF0..=0xF7 => 4,
+                        _ => 0,
+                    };
+                    let decoded = if seq_len > 0 {
+                        src.get(j..j + seq_len)
+                            .and_then(|seq| std::str::from_utf8(seq).ok())
+                            .and_then(|s| s.chars().next())
+                    } else {
+                        None
+                    };
+                    match decoded {
+                        Some(ch) => {
+                            let cp = ch as u32;
+                            translated.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
+                            j += seq_len;
+                        }
+                        None => {
+                            translated.push(k);
+                            j += 1;
+                        }
+                    }
+                }
+                translated.as_slice()
+            } else {
+                CStr::from_ptr(s_ptr).to_bytes()
+            };
 
             let mut pos: c_int = 0;
             let mut delim_depth: c_int = 0;

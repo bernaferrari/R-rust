@@ -1003,11 +1003,7 @@ pub unsafe extern "C-unwind" fn c_loess_dfitse(
                 .map(|j| {
                     let r = *robust.add(j);
                     let w = *weights.add(j);
-                    if r > 0.0 {
-                        w / r
-                    } else {
-                        w
-                    }
+                    if r > 0.0 { w / r } else { w }
                 })
                 .collect()
         } else {

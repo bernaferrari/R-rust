@@ -426,7 +426,9 @@ where
                     "psigamma" => {
                         let order = match b {
                             Some(order) => order,
-                            None => self.integer(1)?,
+                            // psigamma(x)'s second argument defaults to 0;
+                            // d/dx psigamma(x, 0) is psigamma(x, 1L).
+                            None => self.integer(0)?,
                         };
                         let next = match self.numeric(&order)? {
                             Some(order) => self.integer(
@@ -442,33 +444,26 @@ where
                             Some(self.call("psigamma", &[a, next])?),
                         )
                     }
-                    "cosh" => {
-                        self.simplify(
-                            "*",
-                            self.call("sinh", std::slice::from_ref(&a))?,
-                            Some(self.derive(&a, variable)?),
-                        )
-                    }
-                    "sinh" => {
-                        self.simplify(
-                            "*",
-                            self.call("cosh", std::slice::from_ref(&a))?,
-                            Some(self.derive(&a, variable)?),
-                        )
-                    }
+                    "cosh" => self.simplify(
+                        "*",
+                        self.call("sinh", std::slice::from_ref(&a))?,
+                        Some(self.derive(&a, variable)?),
+                    ),
+                    "sinh" => self.simplify(
+                        "*",
+                        self.call("cosh", std::slice::from_ref(&a))?,
+                        Some(self.derive(&a, variable)?),
+                    ),
                     "tanh" => {
                         let cosine = self.call("cosh", std::slice::from_ref(&a))?;
-                        let denominator =
-                            self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
                         self.simplify("/", self.derive(&a, variable)?, Some(denominator))
                     }
-                    "pnorm" => {
-                        self.simplify(
-                            "*",
-                            self.call("dnorm", std::slice::from_ref(&a))?,
-                            Some(self.derive(&a, variable)?),
-                        )
-                    }
+                    "pnorm" => self.simplify(
+                        "*",
+                        self.call("dnorm", std::slice::from_ref(&a))?,
+                        Some(self.derive(&a, variable)?),
+                    ),
                     "dnorm" => {
                         let inner = self.simplify(
                             "*",
@@ -497,13 +492,11 @@ where
                         let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
                         self.simplify("/", self.derive(&a, variable)?, Some(denominator))
                     }
-                    "expm1" => {
-                        self.simplify(
-                            "*",
-                            self.call("exp", std::slice::from_ref(&a))?,
-                            Some(self.derive(&a, variable)?),
-                        )
-                    }
+                    "expm1" => self.simplify(
+                        "*",
+                        self.call("exp", std::slice::from_ref(&a))?,
+                        Some(self.derive(&a, variable)?),
+                    ),
                     "log1p" => {
                         let derived = self.derive(&a, variable)?;
                         let denominator = self.simplify("+", self.scalar(1.)?, Some(a))?;
@@ -512,7 +505,8 @@ where
                     "log2" | "log10" => {
                         let base = if function == "log2" { 2. } else { 10. };
                         let derived = self.derive(&a, variable)?;
-                        let log_base = self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
+                        let log_base =
+                            self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
                         let denominator = self.simplify("*", a, Some(log_base))?;
                         self.simplify("/", derived, Some(denominator))
                     }
@@ -548,22 +542,18 @@ where
                             Some(self.derive(&a, variable)?),
                         )?;
                         let cosine = self.call("cospi", std::slice::from_ref(&a))?;
-                        let denominator =
-                            self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
                         self.simplify("/", numerator, Some(denominator))
                     }
                     "lfactorial" => {
-                        let shifted =
-                            self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                        let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
                         let digamma = self.call("digamma", &[shifted])?;
                         self.simplify("*", self.derive(&a, variable)?, Some(digamma))
                     }
                     "factorial" => {
-                        let shifted =
-                            self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                        let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
                         let digamma = self.call("digamma", &[shifted])?;
-                        let product =
-                            self.simplify("*", expression.clone(), Some(digamma))?;
+                        let product = self.simplify("*", expression.clone(), Some(digamma))?;
                         self.simplify("*", self.derive(&a, variable)?, Some(product))
                     }
                     _ => Err(invalid(format!(

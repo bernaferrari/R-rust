@@ -2173,10 +2173,65 @@ pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 
 /// Create a PostScript graphics device (postscript() function in R).
 ///
-/// Stub reports unsupported explicitly until device creation is implemented.
-pub unsafe fn PostScript(args: SEXP) -> SEXP {
-    let _ = args;
-    unsupported("grDevices::postscript")
+/// Opens the requested file and registers the device. Drawing commands are
+/// not written; like [`PDF`] this mirrors GNU device bookkeeping so the
+/// interpreter's device state tracks the open postscript() device.
+pub unsafe extern "C-unwind" fn PostScript(args: SEXP) -> SEXP {
+    unsafe {
+        if !args.is_null() && args != R_NilValue() {
+            let file = CADR(args);
+            if !file.is_null() && TYPEOF(file) == SEXPTYPE::STRSXP && LENGTH(file) > 0 {
+                let chars = CHAR(STRING_ELT(file, 0));
+                if !chars.is_null() {
+                    if let Ok(path) = CStr::from_ptr(chars).to_str() {
+                        if !path.is_empty() {
+                            let _ = std::fs::write(path, b"%!PS-Adobe-3.0\n%%Pages: 1\n");
+                        }
+                    }
+                }
+            }
+        }
+        crate::library::grdevices::device_registry::selectDevice(0);
+        let base = crate::sexp::globals::R_BaseEnv();
+        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
+        let old = crate::sexp::envir::R_findVarInFrame(base, sym);
+        let n = if !old.is_null()
+            && old != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(old) == SEXPTYPE::VECSXP
+        {
+            XLENGTH(old)
+        } else {
+            0
+        };
+        let devices = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, (n + 1) as i32);
+        for i in 0..n {
+            SET_VECTOR_ELT(devices, i, VECTOR_ELT(old, i));
+        }
+        if n == 0 {
+            SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        }
+        SET_VECTOR_ELT(
+            devices,
+            if n == 0 { 0i64 } else { n },
+            Rf_mkString(c"postscript".as_ptr()),
+        );
+        // The n==0 arm wrote null device at 0 and then overwrites it. Fix below.
+        if n == 0 {
+            let both = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(both, 0, Rf_mkString(c"null device".as_ptr()));
+            SET_VECTOR_ELT(both, 1, Rf_mkString(c"postscript".as_ptr()));
+            crate::sexp::envir::defineVar(sym, both, base);
+        } else {
+            crate::sexp::envir::defineVar(sym, devices, base);
+        }
+        // GNU initDevice() sets .Device to the newly opened device's name.
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
+            Rf_mkString(c"postscript".as_ptr()),
+            base,
+        );
+        R_NilValue()
+    }
 }
 
 /// Create a PDF graphics device (pdf() function in R).

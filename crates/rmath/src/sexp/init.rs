@@ -220,6 +220,27 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.single.default",
             "function(x, ...) structure(as.double(x), Csingle = TRUE)",
         );
+        // GNU format.R: format() is a generic; format.factor relabels via
+        // levels and format.default forwards to the natively implemented
+        // .Internal(format(...)).
+        eval_base_binding(base_env, "format", "function(x, ...) UseMethod(\"format\")");
+        eval_base_binding(
+            base_env,
+            "format.factor",
+            "function(x, ...) format(structure(as.character(x), names = names(x), dim = dim(x), dimnames = dimnames(x)), ...)",
+        );
+        eval_base_binding(
+            base_env,
+            "format.default",
+            "function(x, trim = FALSE, digits = NULL, nsmall = 0L,\n\
+                     justify = c(\"left\", \"right\", \"centre\", \"none\"),\n\
+                     width = NULL, na.encode = TRUE, scientific = NA,\n\
+                     decimal.mark = getOption(\"OutDec\"), ...) {\n\
+                 adj <- match(justify, c(\"left\", \"right\", \"centre\", \"none\")) - 1L\n\
+                 .Internal(format(x, trim, digits, nsmall, width, adj,\n\
+                                  na.encode, scientific, decimal.mark))\n\
+             }",
+        );
         eval_base_binding(
             base_env,
             "hcl",
@@ -521,13 +542,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(
             base_env,
             "as.data.frame.array",
-            "function(x, ...) {\n\
-             if (length(dim(x)) == 1L) {\n\
-                 dim(x) <- NULL\n\
-                 class(x) <- NULL\n\
-                 as.data.frame.vector(x, ...)\n\
-             } else as.data.frame.default(x, ...)\n\
-             }",
+            include_str!("gnu_as_data_frame_array.R"),
         );
 
         for cls in [
@@ -1958,6 +1973,18 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "as.matrix.data.frame",
+            include_str!("gnu_as_matrix_data_frame.R"),
+        );
+        eval_base_binding(base_env, "strwrap", include_str!("gnu_strwrap.R"));
+        eval_base_binding(base_env, "by", include_str!("gnu_by.R"));
+        eval_base_binding(
+            base_env,
+            "format.data.frame",
+            include_str!("gnu_format_data_frame.R"),
+        );
+        eval_base_binding(
+            base_env,
             "print.octmode",
             "function(x, ...) { if(length(x)) print(format(x), ...) else cat(\"<0-length octmode>\\n\"); invisible(x) }",
         );
@@ -2778,6 +2805,22 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
+            "print.proc_time",
+            "function(x, ...) {\n\
+             y <- x[1L:3L]\n\
+             w <- max(7L, nchar(sprintf(\"%.3f\", y)))\n\
+             cat(paste(sprintf(paste0(\"%\", w, \"s\"), c(\"user\", \"system\", \"elapsed\")), collapse = \" \"), \"\\n\", sep = \" \")\n\
+             cat(paste(sprintf(paste0(\"%\", w, \".3f\"), y), collapse = \" \"), \"\\n\", sep = \" \")\n\
+             invisible(x)\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            ".register_print_proc_time",
+            "{ registerS3method(\"print\", \"proc_time\", print.proc_time); TRUE }",
+        );
+        eval_base_binding(
+            base_env,
             "setNamespaceInfo",
             "function(ns, which, val) {\n\
              ns <- asNamespace(ns)\n\
@@ -3025,7 +3068,80 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             ".difftime",
             "function(xx, units, cl = \"difftime\") { class(xx) <- cl; attr(xx, \"units\") <- units; xx }",
         );
+        // GNU datetime.R: ISOdatetime/ISOdate are closures over paste/strptime.
+        eval_base_binding(
+            base_env,
+            "ISOdatetime",
+            "function(year, month, day, hour, min, sec, tz = \"\") {\n\
+             if(min(lengths(list(year, month, day, hour, min, sec), use.names=FALSE)) == 0L)\n\
+             .POSIXct(integer(), tz = tz)\n\
+             else {\n\
+             x <- paste(year, month, day, hour, min, sec, sep = \"-\")\n\
+             as.POSIXct(strptime(x, \"%Y-%m-%d-%H-%M-%OS\", tz = tz), tz = tz)\n\
+             }\n\
+             }",
+        );
+        eval_base_binding(
+            base_env,
+            "ISOdate",
+            "function(year, month, day, hour = 12, min = 0, sec = 0, tz = \"GMT\")\n\
+             ISOdatetime(year, month, day, hour, min, sec, tz)",
+        );
+        // GNU all.equal.R: dispatches via as.POSIXct, ignoring POSIXlt
+        // bookkeeping attributes like "balanced".
+        eval_base_binding(
+            base_env,
+            "all.equal.POSIXt",
+            "function(target, current, ..., tolerance = 1e-3, scale, check.tzone = TRUE) {\n\
+             if(!inherits(target, \"POSIXt\")) return(\"'target' is not a POSIXt\")\n\
+             if(!inherits(current, \"POSIXt\")) return(\"'current' is not a POSIXt\")\n\
+             target  <- as.POSIXct(target)\n\
+             current <- as.POSIXct(current)\n\
+             msg <- NULL\n\
+             if(check.tzone) {\n\
+             tz <- function(dt) {\n\
+             if(is.null(tz <- attr(dt, \"tzone\"))) \"\" else tz[1L]\n\
+             }\n\
+             tzt <- tz(target)\n\
+             tzc <- tz(current)\n\
+             if(!isTRUE(tzt == tzc))\n\
+             msg <- sprintf(\"'tzone' attributes are inconsistent ('%s' and '%s')\", tzt, tzc)\n\
+             }\n\
+             attr(target, \"tzone\") <- attr(current, \"tzone\") <- NULL\n\
+             val <- all.equal.numeric(target, current, ..., tolerance = tolerance, scale = 1)\n\
+             if(!isTRUE(val)) msg <- c(msg, val)\n\
+             if(is.null(msg)) TRUE else msg\n\
+             }",
+        );
         eval_base_binding(base_env, "names.POSIXlt", "function(x) names(x$year)");
+        // GNU datetime.R: `[.difftime` keeps class and units through NextMethod.
+        eval_base_binding(
+            base_env,
+            "[.difftime",
+            "function(x, ..., drop = TRUE)\n\
+             .difftime(NextMethod(\"[\"), attr(x, \"units\"), oldClass(x))",
+        );
+        // GNU datetime.R: format.difftime appends the units.
+        eval_base_binding(
+            base_env,
+            "format.difftime",
+            "function(x, ..., with.units = TRUE) {\n\
+             y <- if (length(x))\n\
+             paste0(format(unclass(x), ...), if (with.units) paste0(\" \", units(x)))\n\
+             else\n\
+             character()\n\
+             names(y) <- names(x)\n\
+             y\n\
+             }",
+        );
+        // GNU datetime.R: strftime is format(as.POSIXlt(x, tz), ...) so a
+        // vector 'format' recycles and names travel from the POSIXlt.
+        eval_base_binding(
+            base_env,
+            "strftime",
+            "function(x, format = \"\", tz = \"\", usetz = FALSE, ...)\n\
+             format(as.POSIXlt(x, tz = tz), format = format, usetz = usetz, ...)",
+        );
         eval_base_binding(
             base_env,
             "length.POSIXlt",

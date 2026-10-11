@@ -593,6 +593,41 @@ fn replay_chains(mut size: i32, names: &[Vec<u8>]) -> (i32, i32, Vec<i32>) {
     (size, pri, counts)
 }
 
+/// GNU HashTableValues order: buckets flattened in index order; new
+/// bindings prepend within a bucket; resize rebuilds from insertion order.
+pub(crate) fn gnu_hash_order(initial: i32, names: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    // Faithful simulation of GNU R_HashSet/R_HashResize chain layout:
+    // chains are stored head-first; inserts prepend; resize scans old
+    // buckets in index order and head->tail, prepending into the new
+    // table (so each old chain's contribution is reversed).
+    let mut size = if initial <= 0 { 29 } else { initial };
+    // buckets[i][0] is the chain head.
+    let mut buckets: Vec<Vec<&[u8]>> = vec![Vec::new(); size as usize];
+    let mut pri = 0i32;
+    for name in names {
+        let idx = (hashpjw(name) % size as u32) as usize;
+        if buckets[idx].iter().any(|n| *n == name.as_slice()) {
+            continue; // R_HashSet updates in place
+        }
+        buckets[idx].insert(0, name.as_slice());
+        pri += 1;
+        if pri as f64 > size as f64 * 0.85 {
+            let new_size = hash_resize_size(size);
+            let mut new_buckets: Vec<Vec<&[u8]>> = vec![Vec::new(); new_size as usize];
+            for chain in &buckets {
+                for n in chain {
+                    let nidx = (hashpjw(n) % new_size as u32) as usize;
+                    new_buckets[nidx].insert(0, n);
+                }
+            }
+            pri = new_buckets.iter().filter(|c| !c.is_empty()).count() as i32;
+            size = new_size;
+            buckets = new_buckets;
+        }
+    }
+    buckets.into_iter().flatten().map(|n| n.to_vec()).collect()
+}
+
 fn place(size: i32, names: &[&[u8]]) -> (Vec<i32>, i32) {
     let mut counts = vec![0i32; size as usize];
     let mut pri = 0i32;

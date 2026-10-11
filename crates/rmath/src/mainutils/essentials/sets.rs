@@ -1579,7 +1579,7 @@ unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey
                 } else if value.is_nan() {
                     MatchKey::Real(f64::NAN.to_bits())
                 } else {
-                    MatchKey::Real(value.to_bits())
+                    MatchKey::Real(if value == 0.0 { 0u64 } else { value.to_bits() })
                 }
             }
             _ => {

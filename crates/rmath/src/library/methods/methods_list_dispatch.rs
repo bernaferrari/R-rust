@@ -61,6 +61,15 @@ fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -
 
 /// GNU `R_evalHandleError` + `argEvalCleanup`: eval the dispatch argument
 /// and wrap a failure as the method-selection error.
+///
+/// GNU evaluates the argument inside `R_withCallingErrorHandler`, which
+/// installs a *calling* handler for conditions inheriting from class
+/// "error"; the handler re-raises with the wrapper prefix. In Rust terms an
+/// error can arrive either as a direct `RError`/`RSignal::Error` panic or,
+/// for R-level `stop()` caught by an enclosing `tryCatch`, as an in-flight
+/// `RSignal::ExitingHandler` transfer carrying the signaled condition.
+/// Only error-class conditions are wrapped; every other payload (warnings,
+/// messages, returns, restarts, interrupts) keeps unwinding untouched.
 unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::eval::eval::Rf_eval(arg_sym, ev)
@@ -68,11 +77,7 @@ unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
     match result {
         Ok(value) => value,
         Err(payload) => {
-            let inner = if let Some(err) = payload.downcast_ref::<RError>() {
-                err.message.clone()
-            } else if let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() {
-                message.clone()
-            } else {
+            let Some(inner) = dispatch_arg_error_message(&*payload) else {
                 std::panic::resume_unwind(payload);
             };
             let arg_name = unsafe { CStr::from_ptr(CHAR(PRINTNAME(arg_sym))).to_string_lossy() };
@@ -83,6 +88,56 @@ unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
                 arg_name, fun_name, inner
             ));
         }
+    }
+}
+
+/// Extract the message GNU's `argEvalCleanup` would format, i.e.
+/// `conditionMessage(err)` for an error-class condition; `None` means the
+/// unwind is not an error (GNU's handler would not have fired).
+fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    if let Some(err) = payload.downcast_ref::<RError>() {
+        return Some(err.message.clone());
+    }
+    let signal = payload.downcast_ref::<RSignal>()?;
+    match signal {
+        RSignal::Error { message } => Some(message.clone()),
+        RSignal::ExitingHandler(ticket) => {
+            // Borrow the transfer (no `take`) so an untouched payload can
+            // still resume its original unwind.
+            let lease = ticket.resolve().ok()?;
+            let crate::sexp::transfer::OwnedTransfer::ExitingHandler { result, .. } = lease.data()
+            else {
+                return None;
+            };
+            let condition = result.try_vector_elt(0).ok()?.as_raw();
+            if !unsafe { condition_inherits_error(condition) } {
+                return None;
+            }
+            let message = unsafe { named_element(condition, "message") };
+            unsafe { sexp_to_string(message) }
+        }
+        _ => None,
+    }
+}
+
+/// GNU's dispatch handler only matches conditions inheriting from "error".
+/// Condition objects carry every inherited class in their class attribute.
+unsafe fn condition_inherits_error(condition: SEXP) -> bool {
+    unsafe {
+        if condition.is_null() || condition == R_NilValue() {
+            return false;
+        }
+        let class = crate::eval::attrib_core::getAttrib(
+            condition,
+            crate::eval::attrib_core::R_ClassSymbol(),
+        );
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..LENGTH(class)).any(|i| {
+            let elt = STRING_ELT(class, i as R_xlen_t);
+            !elt.is_null() && CStr::from_ptr(CHAR(elt)).to_bytes() == b"error"
+        })
     }
 }
 
@@ -727,8 +782,25 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         // (AIC.pfit after stats4::setGeneric("AIC")). Exact table hits win;
         // inherited ANY does not beat generic.class.
         if !exact {
-            if let Some(ans) = try_s3_method_for_generic(&name, fname, ev, sigargs) {
-                return ans;
+            if let Some(s3_method) = try_s3_method_for_generic(&name, fname, ev, sigargs) {
+                // GNU applies the table's S3 default through R_execMethod,
+                // which matches the method's formals against the generic's
+                // evaluation environment. The old objects::usemethod call
+                // reused the ambient (standardGeneric) context, so its
+                // promargs belonged to `standardGeneric(f)` and the method
+                // received the generic-name string as its first argument.
+                install_method_context(
+                    ev,
+                    &name,
+                    mtable,
+                    &classes,
+                    &TableMethod {
+                        signature: classes.clone(),
+                        method: s3_method,
+                        distances: vec![0; classes.len().max(1)],
+                    },
+                );
+                return apply_table_method(s3_method, ev);
             }
             let class_vec = string_vector(&classes);
             let _class_guard = protect(class_vec);
@@ -775,27 +847,14 @@ unsafe fn try_s3_method_for_generic(
         if class.is_null() || class == R_NilValue() {
             return None;
         }
-        let Ok(cname) = CString::new(name) else {
-            return None;
-        };
+        let klass = crate::mainutils::objects::R_data_class2(obj);
+        let _klass_guard = protect(klass);
         let callrho = crate::sexp::globals::R_GlobalEnv();
         let defrho = crate::sexp::globals::R_BaseEnv();
-        let mut ans = R_NilValue();
-        if crate::mainutils::objects::usemethod(
-            cname.as_ptr(),
-            obj,
-            R_NilValue(),
-            R_NilValue(),
-            ev,
-            callrho,
-            defrho,
-            &mut ans,
-        ) == 1
-        {
-            Some(ans)
-        } else {
-            None
-        }
+        crate::mainutils::objects::lookup_s3_method_for_classes(
+            name, klass, ev, callrho, defrho, true,
+        )
+        .map(|method_match| method_match.method)
     }
 }
 

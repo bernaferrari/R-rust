@@ -279,6 +279,24 @@ pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 false
             };
+            if ok {
+                let is_tz = (|| {
+                    if let Some(key) = tag_name(current)
+                        && !key.is_empty()
+                    {
+                        return key == "TZ";
+                    }
+                    let s = elt_to_string(arg, 0);
+                    match s.find('=') {
+                        Some(pos) => &s[..pos] == "TZ",
+                        None => false,
+                    }
+                })();
+                if is_tz {
+                    // GNU tzcode: a changed TZ invalidates the cached zone.
+                    crate::tzone::set_timezone_override(None);
+                }
+            }
             results.push(if ok { TRUE } else { FALSE });
             current = CDR(current);
         }
@@ -653,9 +671,9 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 } else {
                     *REAL(x).add(i as usize)
                 };
-                *out.add(i as usize) = if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                    || seconds.is_nan()
-                {
+                // GNU as.Date.POSIXct (UTC fast path): floor(x/86400);
+                // NaN stays NaN, only the NA bit pattern maps to NA.
+                *out.add(i as usize) = if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL
                 } else {
                     (seconds / 86_400.0).floor()
@@ -1908,7 +1926,32 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 elt_to_string(tz_arg, 0)
             };
-            if tz.is_empty() {
+            // GNU as.POSIXct.POSIXlt: the tzone attribute only fills in a
+            // MISSING tz; an explicit tz = "" means "local zone". The
+            // builtin sees evaluated args, so inspect the call's tags.
+            let tz_supplied = {
+                let mut cell = _call;
+                let mut found = false;
+                while !cell.is_null() && cell != R_NilValue() {
+                    if TYPEOF(cell) == SEXPTYPE::LANGSXP || TYPEOF(cell) == SEXPTYPE::LISTSXP {
+                        let tag = TAG(cell);
+                        if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
+                        {
+                            let name =
+                                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                            if name == "tz" {
+                                found = true;
+                                break;
+                            }
+                        }
+                        cell = CDR(cell);
+                    } else {
+                        break;
+                    }
+                }
+                found
+            };
+            if tz.is_empty() && !tz_supplied {
                 let attr = crate::sexp::attrib_core::getAttrib(
                     x,
                     crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
@@ -1923,7 +1966,8 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             let result = crate::mainutils::datetime::convert_posixlt_to_posixct(x, &tz);
             let _r = protect(result);
-            set_posixct_class(result, if tz.is_empty() { "UTC" } else { &tz });
+            // GNU .POSIXct(y, tz): an empty tz means "local zone", not UTC.
+            set_posixct_class(result, &tz);
             // List names are sec/min/hour. Observation names sit on year.
             let names = if XLENGTH(x) >= 6 {
                 crate::sexp::attrib_core::getAttrib(
@@ -1936,12 +1980,25 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == XLENGTH(result)
+                && XLENGTH(names) > 0
             {
+                // Pad with NA to the object length; the result names then
+                // recycle like GNU's.
+                let n = XLENGTH(result);
+                let padded = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                let _p = protect(padded);
+                for j in 0..n {
+                    let s = if j < XLENGTH(names) {
+                        STRING_ELT(names, j)
+                    } else {
+                        crate::sexp::globals::R_NaString()
+                    };
+                    SET_STRING_ELT(padded, j, s);
+                }
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
+                    padded,
                 );
             }
 
@@ -2524,7 +2581,11 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 if ch.is_null() {
                     None
                 } else {
-                    Some(std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned())
+                    Some(
+                        std::ffi::CStr::from_ptr(CHAR(ch))
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
                 }
             } else {
                 None
@@ -2548,11 +2609,7 @@ pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _class = protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
         SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            r,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(r, crate::sexp::attrib_core::R_ClassSymbol(), class);
         if let Some(tz) = tz {
             let tzone = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
             let _t = protect(tzone);
@@ -2614,9 +2671,33 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 false
             };
             if !skip {
-                let v = if TYPEOF(v) == SEXPTYPE::STRSXP
-                    || crate::mainutils::objects::inherits2(v, c"factor".as_ptr()) != 0
-                {
+                let v = if crate::mainutils::objects::inherits2(v, c"factor".as_ptr()) != 0 {
+                    // GNU c.POSIXlt: factor goes through as.character().
+                    let levels = crate::sexp::attrib_core::getAttrib(
+                        v,
+                        crate::eval::attrib_core::R_LevelsSymbol(),
+                    );
+                    let n = XLENGTH(v);
+                    let text = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                    let _t = protect(text);
+                    for i in 0..n {
+                        let code = INTEGER_ELT(v, i as i32);
+                        let s = if code == crate::sexp::ffi::NA_INTEGER || code < 1 {
+                            crate::sexp::globals::R_NaString()
+                        } else {
+                            STRING_ELT(levels, (code - 1) as R_xlen_t)
+                        };
+                        SET_STRING_ELT(text, i, s);
+                    }
+                    let lt = crate::mainutils::datetime::do_as_POSIXlt(
+                        call,
+                        op,
+                        Rf_cons(text, R_NilValue()),
+                        rho,
+                    );
+                    let _ltv = protect(lt);
+                    lt
+                } else if TYPEOF(v) == SEXPTYPE::STRSXP {
                     let lt = crate::mainutils::datetime::do_as_POSIXlt(
                         call,
                         op,
@@ -3037,8 +3118,14 @@ fn collect_olson_names(root: &Path, relative: &Path, names: &mut BTreeSet<String
         };
         if file_type.is_dir() {
             collect_olson_names(root, &next_relative, names);
-        } else if file_type.is_file() && next_relative.components().count() > 1 {
-            names.insert(next_relative.to_string_lossy().replace('\\', "/"));
+        } else if file_type.is_file() {
+            // GNU OlsonNames: list.files(recursive=TRUE) filtered to names
+            // starting with an uppercase letter (drops lowercase auxiliary
+            // files and VERSION; keeps GMT, EST5EDT, UTC, ...).
+            let path = next_relative.to_string_lossy().replace('\\', "/");
+            if path.starts_with(|c: char| c.is_ascii_uppercase()) && path != "VERSION" {
+                names.insert(path);
+            }
         }
     }
 }

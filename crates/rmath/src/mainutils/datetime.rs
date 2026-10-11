@@ -521,11 +521,13 @@ pub fn julian2dtime(x_i: c_double, tm: &mut stm) -> bool {
         }
     }
 
-    // Avoid overflows
-    let year0 = y - 1900 + (rounds as c_int) * 400;
-    if year0 > c_int::MAX || year0 < c_int::MIN {
+    // Avoid overflows: GNU computes year0 in double to detect overflow
+    // before narrowing to int.
+    let year0_f = (y - 1900) as c_double + rounds * 400.0;
+    if year0_f > c_int::MAX as c_double || year0_f < c_int::MIN as c_double {
         return false;
     }
+    let year0 = year0_f as c_int;
 
     tm.tm_year = year0;
     tm.tm_yday = day;
@@ -898,15 +900,18 @@ unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
         if XLENGTH(sec) < n {
             return false;
         }
+        // GNU charToDate: only the first non-NA/non-empty string must parse;
+        // later entries may fail to NA without an error.
         for i in 0..n {
             let s = STRING_ELT(x, i);
             if s.is_null() || s == R_NaString() {
                 continue;
             }
-            let v = *REAL(sec).add(i as usize);
-            if !R_FINITE(v) {
-                return false;
+            if CStr::from_ptr(CHAR(s)).to_bytes().is_empty() {
+                continue;
             }
+            let v = *REAL(sec).add(i as usize);
+            return R_FINITE(v);
         }
         true
     }
@@ -1068,7 +1073,14 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
                 } else {
                     String::new()
                 };
-                (named, if valid { dummy.tm_gmtoff as c_int } else { NA_INTEGER })
+                (
+                    named,
+                    if valid {
+                        dummy.tm_gmtoff as c_int
+                    } else {
+                        NA_INTEGER
+                    },
+                )
             };
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
@@ -1453,6 +1465,38 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             !u.is_null() && u != R_NilValue() && crate::mainutils::coerce::asLogical(u) == TRUE
         };
         let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+        // GNU: if the format includes %Z or %z, set TZ from the tzone attr.
+        let mut saved_tz: Option<Option<String>> = None;
+        {
+            let mut tz1: Option<String> = None;
+            if !tzone.is_null()
+                && tzone != R_NilValue()
+                && TYPEOF(tzone) == SEXPTYPE::STRSXP
+                && XLENGTH(tzone) > 0
+            {
+                let ch = STRING_ELT(tzone, 0);
+                if !ch.is_null() && ch != R_NaString() {
+                    let s = CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
+                    if !s.is_empty() {
+                        tz1 = Some(s);
+                    }
+                }
+            }
+            if let Some(tz) = tz1.as_ref() {
+                let need_tz = (0..m).any(|k| {
+                    let ch = STRING_ELT(sformat, k);
+                    if ch.is_null() || ch == R_NaString() {
+                        return false;
+                    }
+                    let s = CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                    s.contains("%Z") || s.contains("%z")
+                });
+                if need_tz {
+                    saved_tz = Some(crate::tzone::timezone_override());
+                    crate::tzone::set_timezone_override(Some(tz.clone()));
+                }
+            }
+        }
         let mut ns0 = -1i32;
 
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, N);
@@ -1546,6 +1590,31 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     sf_tm_ctm.tm_wday = ctm.tm_wday;
                     sf_tm_ctm.tm_yday = ctm.tm_yday;
                     sf_tm_ctm.tm_isdst = ctm.tm_isdst;
+                    // GNU: populate tm_zone/tm_gmtoff from components 9/10.
+                    let mut tm_zone_buf = [0u8; 20];
+                    if LENGTH(x) >= 11 {
+                        let zv = VECTOR_ELT(x, 9);
+                        if TYPEOF(zv) == SEXPTYPE::STRSXP && XLENGTH(zv) > 0 {
+                            let ch = STRING_ELT(zv, (i % XLENGTH(zv)) as R_xlen_t);
+                            if !ch.is_null() && ch != R_NaString() {
+                                let bytes = CStr::from_ptr(CHAR(ch)).to_bytes();
+                                let n = bytes.len().min(19);
+                                tm_zone_buf[..n].copy_from_slice(&bytes[..n]);
+                                sf_tm_ctm.tm_zone =
+                                    tm_zone_buf.as_ptr() as *const core::ffi::c_char;
+                            }
+                        }
+                        let gv = VECTOR_ELT(x, 10);
+                        let tmp = posixlt_int_elt(gv, iu);
+                        if tmp == NA_INTEGER && fmt_exp.contains("%z") {
+                            sf_tm_ctm.tm_gmtoff = 0;
+                            // mktime corrects tm_gmtoff where supported (glibc).
+                            let _ =
+                                R_mktime(&mut sf_tm_ctm as *mut sf_tm as *mut crate::tzone::stm);
+                        } else {
+                            sf_tm_ctm.tm_gmtoff = tmp as i64;
+                        }
+                    }
                     let mut buf = [0u8; 2049];
                     let res = unsafe {
                         R_strftime(
@@ -1590,7 +1659,39 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                 }
             }
         }
+        // GNU: names come from the year component, padded to n, recycled to N.
+        let nm = getAttrib(VECTOR_ELT(x, 5), R_NamesSymbol());
+        let _nm = protect(nm);
+        if !nm.is_null() && nm != R_NilValue() {
+            let n_names = XLENGTH(nm);
+            let nm2 = if n_names < n {
+                let padded = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                let _p2 = protect(padded);
+                for j in 0..n {
+                    let s = if j < n_names {
+                        STRING_ELT(nm, j as R_xlen_t)
+                    } else {
+                        R_NaString()
+                    };
+                    SET_STRING_ELT(padded, j as R_xlen_t, s);
+                }
+                padded
+            } else {
+                nm
+            };
+            let _nm2 = protect(nm2);
+            let nm3 = Rf_allocVector3(SEXPTYPE::STRSXP, N);
+            let _nm3 = protect(nm3);
+            for j in 0..N {
+                let idx = (j % XLENGTH(nm2)) as R_xlen_t;
+                SET_STRING_ELT(nm3, j as R_xlen_t, STRING_ELT(nm2, idx));
+            }
+            setAttrib(ans, R_NamesSymbol(), nm3);
+        }
 
+        if let Some(prev) = saved_tz {
+            crate::tzone::set_timezone_override(prev);
+        }
         ans
     }
 }
@@ -2005,18 +2106,16 @@ pub unsafe fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             String::new()
         };
         if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
-            let out = do_D2POSIXlt(call, op, Rf_cons(x, R_NilValue()), env);
-            let _o = protect(out);
-            if let Some(tz) = posixlt_supplied_tz(args) {
-                if !tz.is_empty() {
-                    setAttrib(
-                        out,
-                        Rf_install(c"tzone".as_ptr()),
-                        Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
-                    );
-                }
-            }
-            return out;
+            // GNU as.POSIXlt.Date(x, tz="UTC"): Date2POSIXlt(x, tz) then
+            // .POSIXlt(x, tz) — zone strings and tzone both carry tz.
+            let tz_use = if tz_s.is_empty() {
+                "UTC".to_string()
+            } else {
+                tz_s.clone()
+            };
+            let tz_arg = Rf_mkString(CString::new(tz_use.as_str()).unwrap_or_default().as_ptr());
+            let _ta = protect(tz_arg);
+            return do_D2POSIXlt(call, op, Rf_cons(x, Rf_cons(tz_arg, R_NilValue())), env);
         }
 
         if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
@@ -2550,6 +2649,22 @@ unsafe fn as_character_real(call: SEXP, op: SEXP, env: SEXP, value: f64, outdec:
     unsafe {
         let scalar = Rf_ScalarReal(value);
         let _s = protect(scalar);
+        // GNU: if(getOption("OutDec") != OutDec) options(OutDec = OutDec)
+        // for the duration (restored on exit).
+        let outdec_sym = Rf_install(c"OutDec".as_ptr());
+        let old_outdec = crate::mainutils::options::GetOption1(outdec_sym);
+        let _od = protect(old_outdec);
+        let old_text = if !old_outdec.is_null() && old_outdec != R_NilValue() {
+            charsxp_text(STRING_ELT(old_outdec, 0), "OutDec")
+        } else {
+            ".".to_string()
+        };
+        let changed = old_text != outdec;
+        if changed {
+            let nv = Rf_mkString(CString::new(outdec).unwrap_or_default().as_ptr());
+            let _n = protect(nv);
+            crate::mainutils::options::SetOptionByName("OutDec", nv);
+        }
         let ch = crate::mainutils::essentials::do_as_character(
             call,
             op,
@@ -2557,15 +2672,16 @@ unsafe fn as_character_real(call: SEXP, op: SEXP, env: SEXP, value: f64, outdec:
             env,
         );
         let _c = protect(ch);
-        let mut text = if TYPEOF(ch) == SEXPTYPE::STRSXP && XLENGTH(ch) > 0 {
+        if changed {
+            let nv = Rf_mkString(CString::new(old_text.as_str()).unwrap_or_default().as_ptr());
+            let _n2 = protect(nv);
+            crate::mainutils::options::SetOptionByName("OutDec", nv);
+        }
+        if TYPEOF(ch) == SEXPTYPE::STRSXP && XLENGTH(ch) > 0 {
             charsxp_text(STRING_ELT(ch, 0), "as.character")
         } else {
             String::new()
-        };
-        if outdec != "." {
-            text = text.replace('.', outdec);
         }
-        text
     }
 }
 
@@ -2634,6 +2750,28 @@ fn tzname_str(idx: usize) -> String {
 pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        // GNU do_D2POSIXlt: optional second arg tz; empty -> "UTC".
+        let tz_name = {
+            let t = CDR(args);
+            if !t.is_null() && t != R_NilValue() {
+                let stz = CAR(t);
+                if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
+                    let ch = STRING_ELT(stz, 0);
+                    if !ch.is_null() && ch != R_NaString() {
+                        let s = CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
+                        if s.is_empty() { "UTC".to_string() } else { s }
+                    } else {
+                        "UTC".to_string()
+                    }
+                } else {
+                    std::panic::panic_any(RError {
+                        message: "invalid 'tz' value".to_string(),
+                    });
+                }
+            } else {
+                "UTC".to_string()
+            }
+        };
         let _x_guard = protect(x);
         if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
@@ -2665,25 +2803,24 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 if valid { 0.0 } else { x_i },
             );
 
-            // zone = "UTC", gmtoff = 0
-            let utc_cstr = c"UTC";
+            // zone = tz, gmtoff = 0
+            let zone_cstr = CString::new(tz_name.as_str()).unwrap_or_default();
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
                 i as R_xlen_t,
-                Rf_mkChar(utc_cstr.as_ptr()),
+                Rf_mkChar(zone_cstr.as_ptr()),
             );
             *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0;
         }
-        let tzone = Rf_mkString(c"UTC".as_ptr());
+        let tzone = Rf_mkString(CString::new(tz_name.as_str()).unwrap_or_default().as_ptr());
         let _tz = protect(tzone);
         finish_posixlt(ans, ansnames, tzone);
         let names = getAttrib(x, R_NamesSymbol());
         if !names.is_null() && names != R_NilValue() {
-            for j in 0..XLENGTH(ans) {
-                let elt = VECTOR_ELT(ans, j);
-                if !elt.is_null() && elt != R_NilValue() {
-                    setAttrib(elt, R_NamesSymbol(), names);
-                }
+            // GNU POSIXlt keeps observation names on the year component only.
+            let elt = VECTOR_ELT(ans, 5);
+            if !elt.is_null() && elt != R_NilValue() {
+                setAttrib(elt, R_NamesSymbol(), names);
             }
         }
         ans

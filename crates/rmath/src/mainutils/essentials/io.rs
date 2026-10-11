@@ -174,7 +174,9 @@ pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let dst = LOGICAL(result);
         for i in 0..n {
             let path = elt_to_string(x, i);
-            *dst.add(i as usize) = if std::path::Path::new(&path).exists() {
+            *dst.add(i as usize) = if std::path::Path::new(&path).exists()
+                || crate::library::builtin_files::path_exists(&path)
+            {
                 TRUE
             } else {
                 FALSE

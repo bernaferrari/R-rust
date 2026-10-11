@@ -8089,7 +8089,6 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// (crates/rmath/src/library/stats/loglin.rs, from loglin.c).
 pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-
         let missing = |v: SEXP| v.is_null() || v == R_NilValue() || v == R_MissingArg();
         let sexp_real = |v: SEXP| -> f64 {
             let t = TYPEOF(v);
@@ -8188,7 +8187,8 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             );
         }
 
-        let dtab = crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimSymbol());
+        let dtab =
+            crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimSymbol());
         let nvar = LENGTH(dtab) as c_int;
         if nvar == 0 {
             crate::mainutils::errors::errorcall_str(
@@ -8197,19 +8197,13 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             );
         }
         let ncon = LENGTH(margin) as c_int;
-        let conf = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::INTSXP.as_c_int(),
-            nvar,
-            ncon,
-        );
+        let conf = crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nvar, ncon);
         let _conf_g = protect(conf);
         let confp = INTEGER(conf);
         for i in 0..(nvar * ncon) as usize {
             *confp.add(i) = 0;
         }
-        let dimv: Vec<c_int> = (0..nvar)
-            .map(|j| INTEGER_ELT(dtab, j as i32))
-            .collect();
+        let dimv: Vec<c_int> = (0..nvar).map(|j| INTEGER_ELT(dtab, j as i32)).collect();
 
         let mut nmar: i64 = 0;
         for k in 0..ncon as i64 {
@@ -8273,9 +8267,8 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _eps_g = protect(eps_s);
         let iter_s = Rf_ScalarInteger(iter);
         let _iter_g = protect(iter_s);
-        let z = crate::library::stats::loglin::LogLin(
-            dtab, conf, table, start, snmar_s, eps_s, iter_s,
-        );
+        let z =
+            crate::library::stats::loglin::LogLin(dtab, conf, table, start, snmar_s, eps_s, iter_s);
         let _z_g = protect(z);
         let zfit = VECTOR_ELT(z, 0);
         let zdev = VECTOR_ELT(z, 1);
@@ -8297,9 +8290,16 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         // fit <- z$fit; attributes(fit) <- attributes(table)
         crate::sexp::attrib_core::setAttrib(zfit, crate::sexp::attrib_core::R_DimSymbol(), dtab);
-        let dn = crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimNamesSymbol());
+        let dn = crate::sexp::attrib_core::getAttrib(
+            table,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
         if !dn.is_null() && dn != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(zfit, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+            crate::sexp::attrib_core::setAttrib(
+                zfit,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
+            );
         }
 
         let elt_real = |x: SEXP, i: i32| -> f64 {
@@ -8372,7 +8372,13 @@ pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             SET_VECTOR_ELT(ans, 4, zfit);
         }
         let names: Vec<String> = if rfit {
-            vec!["lrt".into(), "pearson".into(), "df".into(), "margin".into(), "fit".into()]
+            vec![
+                "lrt".into(),
+                "pearson".into(),
+                "df".into(),
+                "margin".into(),
+                "fit".into(),
+            ]
         } else {
             vec!["lrt".into(), "pearson".into(), "df".into(), "margin".into()]
         };
@@ -14313,9 +14319,25 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
             return R_NilValue();
         }
         let _p = protect(result);
-        for i in 0..5 {
-            *REAL(result).add(i) = 0.0;
-        }
+        // Wall-clock elapsed since first observation, rounded to
+        // milliseconds exactly like GNU's proc.time() (times.c).
+        static SESSION_START: std::sync::LazyLock<std::time::Instant> =
+            std::sync::LazyLock::new(std::time::Instant::now);
+        let elapsed = SESSION_START.elapsed().as_secs_f64();
+        // user/sys CPU split (own and children) from getrusage via the
+        // sys_unix port of times.c:R_getProcTime; on wasm32 these stay 0.
+        // CPU ticks are floored to the clock increment (CLK_TCK) like
+        // times(2) reporting, so sub-tick interpreted work matches the
+        // sub-tick native work GNU reports as 0.
+        let mut times = [0.0f64; 5];
+        crate::unix::sys_unix::R_getProcTime(times.as_mut_ptr());
+        let tick = crate::unix::sys_unix::R_getClockIncrement();
+        let ticks = |secs: f64| (secs / tick).floor() * tick;
+        *REAL(result).add(0) = ticks(times[0]);
+        *REAL(result).add(1) = ticks(times[1]);
+        *REAL(result).add(2) = 1e-3 * (1000.0 * elapsed).round();
+        *REAL(result).add(3) = ticks(times[3]);
+        *REAL(result).add(4) = ticks(times[4]);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         if !names.is_null() {
             let _np = protect(names);
@@ -14340,14 +14362,23 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// GNU `system.time(expr)` — evaluate `expr` and return a `proc_time` delta.
+/// GNU `system.time(expr, gcFirst = TRUE)` — evaluate `expr` and return a
+/// `proc_time` delta (`structure(new.time - time, class="proc_time")`,
+/// base/time.R). The child-time columns stay at zero (no subprocesses).
 pub unsafe fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
+        let before = do_proc_time(_call, _op, R_NilValue(), rho);
+        let _before_guard = protect(before);
         if !expr.is_null() && expr != R_NilValue() {
             let _ = crate::eval::eval::Rf_eval(expr, rho);
         }
-        do_proc_time(_call, _op, R_NilValue(), rho)
+        let after = do_proc_time(_call, _op, R_NilValue(), rho);
+        let _after_guard = protect(after);
+        for i in 0..XLENGTH(after) {
+            *REAL(after).add(i as usize) -= *REAL(before).add(i as usize);
+        }
+        after
     }
 }
 

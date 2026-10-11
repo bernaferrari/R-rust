@@ -332,91 +332,388 @@ pub unsafe fn do_optimize(
     }
 }
 
-unsafe fn nlm_eval(
-    fun: crate::sexp::ffi::SEXP,
-    rho: crate::sexp::ffi::SEXP,
-    x: &[f64],
-) -> (f64, Vec<f64>) {
-    unsafe {
-        use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3, Rf_lang2};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::protect;
-        let n = x.len();
-        let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _xv = protect(xv);
-        for i in 0..n {
-            *REAL(xv).add(i) = x[i];
-        }
-        let call = Rf_lang2(fun, xv);
-        let _c = protect(call);
-        let v = crate::eval::eval::Rf_eval(call, rho);
-        let _v = protect(v);
-        let value = if TYPEOF(v) == SEXPTYPE::REALSXP {
-            v
-        } else {
-            crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
-        };
-        let f = if XLENGTH(value) >= 1 {
-            *REAL(value)
-        } else {
-            f64::NAN
-        };
-        let gsym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const _);
-        let ga = crate::sexp::attrib_core::getAttrib(v, gsym);
-        let mut g = vec![0.0; n];
-        if !ga.is_null() && TYPEOF(ga) == SEXPTYPE::REALSXP && XLENGTH(ga) as usize == n {
-            for i in 0..n {
-                g[i] = *REAL(ga).add(i);
-            }
-        } else {
-            for i in 0..n {
-                let eps = 1e-7 * (x[i].abs() + 1.0);
-                let mut xp = x.to_vec();
-                let mut xm = x.to_vec();
-                xp[i] += eps;
-                xm[i] -= eps;
-                let fp = nlm_value_only(fun, rho, &xp);
-                let fm = nlm_value_only(fun, rho, &xm);
-                g[i] = (fp - fm) / (2.0 * eps);
-            }
-        }
-        (f, g)
-    }
+// ---------------------------------------------------------------------------
+// nlm() — faithful port of r-source/src/library/stats/src/optimize.c's nlm()
+// (the Schnabel/Dennis `uncmin` translation in src/appl/uncmin.c, optif9).
+//
+// .External2(C_nlm, function(x) f(x, ...), p, hessian, typsize, fscale,
+//            msg, ndigit, gradtol, stepmax, steptol, iterlim)
+// ---------------------------------------------------------------------------
+
+/// Default size of the table of stored function values (FT_SIZE in optimize.c).
+const NLM_FT_SIZE: usize = 5;
+
+struct NlmFtEntry {
+    fval: f64,
+    x: Vec<f64>,
+    grad: Option<Vec<f64>>,
+    hess: Option<Vec<f64>>,
 }
-unsafe fn nlm_value_only(
-    fun: crate::sexp::ffi::SEXP,
-    rho: crate::sexp::ffi::SEXP,
+
+/// `function_info` from optimize.c: the objective callback plus the cache of
+/// computed function values shared with the analytic gradient/hessian
+/// handlers.
+struct NlmState {
+    r_fcall: crate::sexp::ffi::SEXP,
+    r_env: crate::sexp::ffi::SEXP,
+    have_gradient: bool,
+    have_hessian: bool,
+    ft_size: usize,
+    ft_last: isize,
+    ftable: Vec<NlmFtEntry>,
+}
+
+/// FT_init: initialize the table of computed function values.
+unsafe fn nlm_ft_init(n: usize, ft_size: usize, state: &mut NlmState) {
+    let mut ftable = Vec::with_capacity(ft_size);
+    for _ in 0..ft_size {
+        // initialize to unlikely parameter values
+        ftable.push(NlmFtEntry {
+            fval: 0.0,
+            x: vec![f64::MAX; n],
+            grad: if state.have_gradient {
+                Some(vec![0.0; n])
+            } else {
+                None
+            },
+            hess: if state.have_gradient && state.have_hessian {
+                Some(vec![0.0; n * n])
+            } else {
+                None
+            },
+        });
+    }
+    state.ftable = ftable;
+    state.ft_size = ft_size;
+    state.ft_last = -1;
+}
+
+/// FT_store: store an entry in the table of computed function values.
+unsafe fn nlm_ft_store(
+    n: usize,
+    f: f64,
     x: &[f64],
-) -> f64 {
-    unsafe {
-        use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_lang2};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::protect;
-        let n = x.len();
-        let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _xv = protect(xv);
-        for i in 0..n {
-            *REAL(xv).add(i) = x[i];
-        }
-        let call = Rf_lang2(fun, xv);
-        let _c = protect(call);
-        let v = crate::eval::eval::Rf_eval(call, rho);
-        let value = if TYPEOF(v) == SEXPTYPE::REALSXP {
-            v
-        } else {
-            crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
-        };
-        if XLENGTH(value) >= 1 {
-            *REAL(value)
-        } else {
-            f64::NAN
+    grad: Option<&[f64]>,
+    hess: Option<&[f64]>,
+    state: &mut NlmState,
+) {
+    state.ft_last += 1;
+    let ind = (state.ft_last % state.ft_size as isize) as usize;
+    let e = &mut state.ftable[ind];
+    e.fval = f;
+    e.x[..n].copy_from_slice(&x[..n]);
+    if let Some(g) = grad {
+        if let Some(eg) = &mut e.grad {
+            eg[..n].copy_from_slice(&g[..n]);
+            if let Some(h) = hess {
+                if let Some(eh) = &mut e.hess {
+                    eh[..n * n].copy_from_slice(&h[..n * n]);
+                }
+            }
         }
     }
 }
 
-/// GNU `nlm(f, p)` — BFGS with finite-difference or attribute gradients.
+/// FT_lookup: check for stored values; returns the table index or None.
+unsafe fn nlm_ft_lookup(n: usize, x: &[f64], state: &NlmState) -> Option<usize> {
+    for i in 0..state.ft_size as isize {
+        let mut ind = (state.ft_last - i) % state.ft_size as isize;
+        /* why can't they define modulus correctly */
+        if ind < 0 {
+            ind += state.ft_size as isize;
+        }
+        if state.ftable[ind as usize].x[..n] == x[..n] {
+            return Some(ind as usize);
+        }
+    }
+    None
+}
+
+/// Read a `gradient`/`hessian` attribute as doubles (GNU does
+/// `REAL(coerceVector(getAttrib(...), REALSXP))`).
+unsafe fn nlm_attr_real(v: crate::sexp::ffi::SEXP, len: usize) -> Vec<f64> {
+    use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_NilValue;
+    unsafe {
+        let mut out = vec![0.0f64; len];
+        if v.is_null() || v == R_NilValue() {
+            return out;
+        }
+        let vr = if TYPEOF(v) == SEXPTYPE::REALSXP {
+            v
+        } else {
+            crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
+        };
+        if vr.is_null() || vr == R_NilValue() || XLENGTH(vr) < len as i64 {
+            return out;
+        }
+        for i in 0..len {
+            out[i] = *REAL(vr).add(i);
+        }
+        out
+    }
+}
+
+/// The optimizer's objective handler (`fcn` in optimize.c).
+unsafe extern "C" fn nlm_fcn(
+    n: core::ffi::c_int,
+    x: *mut core::ffi::c_double,
+    f: *mut core::ffi::c_double,
+    arg_state: *mut core::ffi::c_void,
+) {
+    unsafe {
+        use crate::sexp::accessors::{CDR, INTEGER, REAL, SETCAR, TYPEOF, XLENGTH};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_lang2};
+        use crate::sexp::ffi::{ISNAN, NA_INTEGER, SEXPTYPE};
+        use crate::sexp::protect::protect;
+        let n = n as usize;
+        let state = &mut *(arg_state as *mut NlmState);
+        let xs = core::slice::from_raw_parts(x, n);
+        if let Some(ind) = nlm_ft_lookup(n, xs, state) {
+            *f = state.ftable[ind].fval;
+            return;
+        }
+        /* calculate for a new value of x */
+        let s = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _ps = protect(s);
+        for i in 0..n {
+            if !xs[i].is_finite() {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "non-finite value supplied by 'nlm'",
+                );
+            }
+            *REAL(s).add(i) = xs[i];
+        }
+        SETCAR(CDR(state.r_fcall), s);
+        let value = crate::eval::eval::Rf_eval(state.r_fcall, state.r_env);
+        let _pv = protect(value);
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => {
+                if XLENGTH(value) != 1 {
+                    nlm_bad_value();
+                }
+                let iv = *INTEGER(value);
+                if iv == NA_INTEGER {
+                    crate::mainutils::errors::Rf_warning1(
+                        c"NA replaced by maximum positive value".as_ptr(),
+                    );
+                    *f = f64::MAX;
+                } else {
+                    *f = iv as f64;
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                if XLENGTH(value) != 1 {
+                    nlm_bad_value();
+                }
+                let rv = *REAL(value);
+                if !rv.is_finite() {
+                    if rv == f64::NEG_INFINITY {
+                        // keep sign for root finding !
+                        crate::mainutils::errors::Rf_warning1(
+                            c"-Inf replaced by maximally negative value".as_ptr(),
+                        );
+                        *f = -f64::MAX;
+                    } else {
+                        crate::mainutils::errors::Rf_warning1(if ISNAN(rv) {
+                            c"NA/NaN replaced by maximum positive value".as_ptr()
+                        } else {
+                            c"Inf replaced by maximum positive value".as_ptr()
+                        });
+                        *f = f64::MAX;
+                    }
+                } else {
+                    *f = rv;
+                }
+            }
+            _ => nlm_bad_value(),
+        }
+        let mut grad: Option<Vec<f64>> = None;
+        let mut hess: Option<Vec<f64>> = None;
+        if state.have_gradient {
+            let gsym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const _);
+            grad = Some(nlm_attr_real(
+                crate::sexp::attrib_core::getAttrib(value, gsym),
+                n,
+            ));
+            if state.have_hessian {
+                let hsym = crate::sexp::symbol::Rf_install(b"hessian\0".as_ptr() as *const _);
+                hess = Some(nlm_attr_real(
+                    crate::sexp::attrib_core::getAttrib(value, hsym),
+                    n * n,
+                ));
+            }
+        }
+        nlm_ft_store(n, *f, xs, grad.as_deref(), hess.as_deref(), state);
+    }
+}
+
+unsafe fn nlm_bad_value() -> ! {
+    unsafe {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "invalid function value in 'nlm' optimizer",
+        )
+    }
+}
+
+/// Handler for the analytic gradient (`Cd1fcn` in optimize.c).
+unsafe extern "C" fn nlm_d1fcn(
+    n: core::ffi::c_int,
+    x: *mut core::ffi::c_double,
+    g: *mut core::ffi::c_double,
+    arg_state: *mut core::ffi::c_void,
+) {
+    unsafe {
+        let n = n as usize;
+        let state = &mut *(arg_state as *mut NlmState);
+        let xs = core::slice::from_raw_parts(x, n);
+        let mut ind = nlm_ft_lookup(n, xs, state);
+        if ind.is_none() {
+            /* shouldn't happen */
+            let mut tmp = 0.0f64;
+            nlm_fcn(n as core::ffi::c_int, x, &mut tmp, arg_state);
+            ind = nlm_ft_lookup(n, xs, state);
+        }
+        let gs = core::slice::from_raw_parts_mut(g, n);
+        match ind.and_then(|i| state.ftable[i].grad.as_ref()) {
+            Some(v) => gs.copy_from_slice(v),
+            None => crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "function value caching for optimization is seriously confused",
+            ),
+        }
+    }
+}
+
+/// Handler for the analytic hessian (`Cd2fcn` in optimize.c).
+unsafe extern "C" fn nlm_d2fcn(
+    nr: core::ffi::c_int,
+    n: core::ffi::c_int,
+    x: *mut core::ffi::c_double,
+    h: *mut core::ffi::c_double,
+    arg_state: *mut core::ffi::c_void,
+) {
+    unsafe {
+        let n = n as usize;
+        let state = &mut *(arg_state as *mut NlmState);
+        let xs = core::slice::from_raw_parts(x, n);
+        let mut ind = nlm_ft_lookup(n, xs, state);
+        if ind.is_none() {
+            /* shouldn't happen */
+            let mut tmp = 0.0f64;
+            nlm_fcn(n as core::ffi::c_int, x, &mut tmp, arg_state);
+            ind = nlm_ft_lookup(n, xs, state);
+        }
+        let hs = core::slice::from_raw_parts_mut(h, nr as usize * n);
+        let he = match ind.and_then(|i| state.ftable[i].hess.as_ref()) {
+            Some(v) => v,
+            None => crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "function value caching for optimization is seriously confused",
+            ),
+        };
+        for j in 0..n {
+            /* fill in lower triangle only */
+            let off = j * (n + 1);
+            hs[off..off + (n - j)].copy_from_slice(&he[off..off + (n - j)]);
+        }
+    }
+}
+
+/// fixparam from optimize.c: check/extract a numeric parameter vector.
+unsafe fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
+    use crate::sexp::accessors::{INTEGER, REAL, TYPEOF, XLENGTH};
+    use crate::sexp::ffi::SEXPTYPE;
+    unsafe {
+        let bad = |msg: &str| -> ! {
+            unsafe {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    msg,
+                )
+            }
+        };
+        let t = TYPEOF(p);
+        if !(t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP) {
+            bad("numeric parameter expected");
+        }
+        let len = XLENGTH(p) as usize;
+        if *n != 0 {
+            if len != *n {
+                bad("conflicting parameter lengths");
+            }
+        } else {
+            if len == 0 {
+                bad("invalid parameter length");
+            }
+            *n = len;
+        }
+        let mut x = vec![0.0f64; *n];
+        match t {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                for i in 0..*n {
+                    if *INTEGER(p).add(i) == crate::sexp::ffi::NA_INTEGER {
+                        bad("missing value in parameter");
+                    }
+                    x[i] = *INTEGER(p).add(i) as f64;
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                for i in 0..*n {
+                    if !(*REAL(p).add(i)).is_finite() {
+                        bad("missing value in parameter");
+                    }
+                    x[i] = *REAL(p).add(i);
+                }
+            }
+            _ => bad("invalid parameter type"),
+        }
+        x
+    }
+}
+
+/// Fatal errors — we don't deliver an answer (opterror in optimize.c).
+unsafe fn nlm_opterror(nerr: i32) -> ! {
+    let msg = match nerr {
+        -1 => "non-positive number of parameters in nlm",
+        -2 => "nlm is inefficient for 1-d problems",
+        -3 => "invalid gradient tolerance in nlm",
+        -4 => "invalid iteration limit in nlm",
+        -5 => "minimization function has no good digits in nlm",
+        -6 => "no analytic gradient to check in nlm!",
+        -7 => "no analytic Hessian to check in nlm!",
+        -21 => "probable coding error in analytic gradient",
+        -22 => "probable coding error in analytic Hessian",
+        _ => "*** unknown error message (msg = %d) in nlm()\n*** should not happen!",
+    };
+    unsafe {
+        crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), msg)
+    }
+}
+
+/// Warnings — we return a value, but print a warning (optcode in optimize.c).
+unsafe fn nlm_optcode(code: i32) {
+    let text = match code {
+        1 => "Relative gradient close to zero.\nCurrent iterate is probably solution.\n",
+        2 => "Successive iterates within tolerance.\nCurrent iterate is probably solution.\n",
+        3 => {
+            "Last global step failed to locate a point lower than x.\nEither x is an approximate local minimum of the function,\nthe function is too non-linear for this algorithm,\nor steptol is too large.\n"
+        }
+        4 => "Iteration limit exceeded.  Algorithm failed.\n",
+        5 => {
+            "Maximum step size exceeded 5 consecutive times.\nEither the function is unbounded below,\nbecomes asymptotic to a finite value\nfrom above in some direction,\nor stepmx is too small.\n"
+        }
+        _ => "",
+    };
+    crate::sexp::output::emit(text);
+    crate::sexp::output::emit("\n");
+}
+
+/// GNU `nlm(f, p, ...)` — Dennis–Schnabel minimizer (statement-level port of
+/// `nlm()` in r-source/src/library/stats/src/optimize.c driving `optif9`).
 pub unsafe fn do_nlm(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
@@ -424,161 +721,249 @@ pub unsafe fn do_nlm(
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     unsafe {
+        use crate::appl::uncmin::{fdhess, optif9};
         use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
-        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::constructors::{
+            Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_lang2,
+        };
+        use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_IsNA, SEXPTYPE};
         use crate::sexp::protect::protect;
-        let fun = CAR(args);
-        let p = CAR(CDR(args));
-        let hess_arg = CAR(CDR(CDR(args)));
-        let want_hess = !hess_arg.is_null()
-            && TYPEOF(hess_arg) == SEXPTYPE::LGLSXP
-            && XLENGTH(hess_arg) >= 1
-            && *INTEGER(hess_arg) != 0;
-        let n = XLENGTH(p) as usize;
-        if n < 1 {
+        crate::mainutils::print::PrintDefaults();
+
+        /* the function to be minimized */
+        let v = CAR(args);
+        if !crate::mainutils::coerce::isFunction(v) {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "invalid parameter length",
+                "attempt to minimize non-function",
             );
         }
-        let mut x = vec![0.0; n];
-        if TYPEOF(p) == SEXPTYPE::REALSXP {
-            for i in 0..n {
-                x[i] = *REAL(p).add(i);
-            }
-        } else if TYPEOF(p) == SEXPTYPE::INTSXP {
-            for i in 0..n {
-                x[i] = *INTEGER(p).add(i) as f64;
-            }
-        } else {
+        let r_fcall = Rf_lang2(v, crate::sexp::globals::R_NilValue());
+        let _pf = protect(r_fcall);
+        let mut args = CDR(args);
+
+        /* `p' : initial parameter value */
+        let mut n: usize = 0;
+        let mut x = nlm_fixparam(CAR(args), &mut n);
+        args = CDR(args);
+
+        /* `hessian' : H. required? */
+        let mut want_hessian = crate::mainutils::coerce::asLogical(CAR(args));
+        if want_hessian == NA_LOGICAL {
+            want_hessian = 0;
+        }
+        args = CDR(args);
+
+        /* `typsize' : typical size of parameter elements */
+        let mut typsiz = nlm_fixparam(CAR(args), &mut n);
+        args = CDR(args);
+
+        /* `fscale' : expected function size */
+        let mut fscale = crate::mainutils::coerce::asReal(CAR(args));
+        if R_IsNA(fscale) {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "invalid parameter type",
+                "invalid NA value in parameter",
             );
         }
-        if n > 1 {
-            for i in 0..n {
-                if x[i] == 0.0 {
-                    x[i] = 1e-6;
-                }
-            }
+        args = CDR(args);
+
+        /* `msg' (bit pattern) */
+        let mut msg = crate::mainutils::coerce::asInteger(CAR(args));
+        let omsg = msg;
+        if msg == NA_INTEGER {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
         }
-        let (mut f, mut g) = nlm_eval(fun, rho, &x);
-        let mut hinv = vec![0.0; n * n];
+        args = CDR(args);
+
+        let mut ndigit = crate::mainutils::coerce::asInteger(CAR(args));
+        if ndigit == NA_INTEGER {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
+        }
+        args = CDR(args);
+
+        let gradtl = crate::mainutils::coerce::asReal(CAR(args));
+        if R_IsNA(gradtl) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
+        }
+        args = CDR(args);
+
+        let mut stepmx = crate::mainutils::coerce::asReal(CAR(args));
+        if R_IsNA(stepmx) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
+        }
+        args = CDR(args);
+
+        let steptol = crate::mainutils::coerce::asReal(CAR(args));
+        if R_IsNA(steptol) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
+        }
+        args = CDR(args);
+
+        /* `iterlim' (def. 100) */
+        let itnlim = crate::mainutils::coerce::asInteger(CAR(args));
+        if itnlim == NA_INTEGER {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid NA value in parameter",
+            );
+        }
+
+        /* force one evaluation to check for the gradient and hessian */
+        let mut iagflg: i32 = 0; /* No analytic gradient */
+        let mut iahflg: i32 = 0; /* No analytic hessian */
+        let mut state = NlmState {
+            r_fcall,
+            r_env: rho,
+            have_gradient: false,
+            have_hessian: false,
+            ft_size: 0,
+            ft_last: -1,
+            ftable: Vec::new(),
+        };
+        let gsym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const _);
+        let hsym = crate::sexp::symbol::Rf_install(b"hessian\0".as_ptr() as *const _);
+
+        let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _px = protect(xv);
         for i in 0..n {
-            hinv[i * n + i] = 1.0;
+            *REAL(xv).add(i) = x[i];
         }
-        let mut iters = 0i32;
-        for _ in 0..200 {
-            let gnorm: f64 = g.iter().map(|v| v * v).sum::<f64>().sqrt();
-            if gnorm < 1e-8 {
-                break;
-            }
-            let mut dir = vec![0.0; n];
-            for i in 0..n {
-                let mut s = 0.0;
-                for j in 0..n {
-                    s += hinv[i * n + j] * g[j];
-                }
-                dir[i] = -s;
-            }
-            let slope: f64 = g.iter().zip(dir.iter()).map(|(a, b)| a * b).sum();
-            if slope >= 0.0 {
-                for i in 0..n {
-                    dir[i] = -g[i];
-                }
-            }
-            let mut alpha = 1.0;
-            let mut accepted = false;
-            let mut x_try = x.clone();
-            let mut f_try = f;
-            let mut g_try = g.clone();
-            for _ls in 0..24 {
-                for i in 0..n {
-                    x_try[i] = x[i] + alpha * dir[i];
-                }
-                let (ft, gt) = nlm_eval(fun, rho, &x_try);
-                if ft <= f + 1e-4 * alpha * slope.min(0.0) && ft.is_finite() {
-                    f_try = ft;
-                    g_try = gt;
-                    accepted = true;
-                    break;
-                }
-                alpha *= 0.5;
-            }
-            if !accepted {
-                break;
-            }
-            let mut s = vec![0.0; n];
-            let mut yv = vec![0.0; n];
-            for i in 0..n {
-                s[i] = x_try[i] - x[i];
-                yv[i] = g_try[i] - g[i];
-            }
-            let ys: f64 = yv.iter().zip(s.iter()).map(|(a, b)| a * b).sum();
-            if ys > 1e-16 {
-                let mut hy = vec![0.0; n];
-                for i in 0..n {
-                    let mut acc = 0.0;
-                    for j in 0..n {
-                        acc += hinv[i * n + j] * yv[j];
+        crate::sexp::accessors::SETCAR(crate::sexp::accessors::CDR(r_fcall), xv);
+        let value = crate::eval::eval::Rf_eval(r_fcall, state.r_env);
+        let _pval = protect(value);
+
+        let ga = crate::sexp::attrib_core::getAttrib(value, gsym);
+        if ga != crate::sexp::globals::R_NilValue() {
+            let g_ok = XLENGTH(ga) == n as i64
+                && (TYPEOF(ga) == SEXPTYPE::REALSXP || TYPEOF(ga) == SEXPTYPE::INTSXP);
+            if g_ok {
+                iagflg = 1;
+                state.have_gradient = true;
+                let ha = crate::sexp::attrib_core::getAttrib(value, hsym);
+                if ha != crate::sexp::globals::R_NilValue() {
+                    let h_ok = XLENGTH(ha) == (n * n) as i64
+                        && (TYPEOF(ha) == SEXPTYPE::REALSXP || TYPEOF(ha) == SEXPTYPE::INTSXP);
+                    if h_ok {
+                        iahflg = 1;
+                        state.have_hessian = true;
+                    } else {
+                        crate::mainutils::errors::Rf_warning1(
+                            c"hessian supplied is of the wrong length or mode, so ignored".as_ptr(),
+                        );
                     }
-                    hy[i] = acc;
                 }
-                let yhy: f64 = yv.iter().zip(hy.iter()).map(|(a, b)| a * b).sum();
-                for i in 0..n {
-                    for j in 0..n {
-                        hinv[i * n + j] += (ys + yhy) * s[i] * s[j] / (ys * ys)
-                            - (hy[i] * s[j] + s[i] * hy[j]) / ys;
-                    }
+            } else {
+                crate::mainutils::errors::Rf_warning1(
+                    c"gradient supplied is of the wrong length or mode, so ignored".as_ptr(),
+                );
+            }
+        }
+        if (msg / 4) % 2 != 0 && iahflg == 0 {
+            /* skip check of analytic Hessian */
+            msg -= 4;
+        }
+        if (msg / 2) % 2 != 0 && iagflg == 0 {
+            /* skip check of analytic gradient */
+            msg -= 2;
+        }
+        nlm_ft_init(n, NLM_FT_SIZE, &mut state);
+
+        /* Plug in the call to the optimizer here */
+        let method: i32 = 1; /* Line Search */
+        let iexp: i32 = if iahflg != 0 { 0 } else { 1 }; /* calls expensive */
+        let dlt: f64 = 1.0;
+
+        let mut xpls = vec![0.0f64; n];
+        let mut gpls = vec![0.0f64; n];
+        let mut a = vec![0.0f64; n * n];
+        let mut wrk = vec![0.0f64; 8 * n];
+        let mut fpls: f64 = 0.0;
+        let mut code: core::ffi::c_int = 0;
+        let mut itncnt: core::ffi::c_int = 0;
+        let state_ptr = &mut state as *mut NlmState as *mut core::ffi::c_void;
+
+        optif9(
+            n as core::ffi::c_int,
+            n as core::ffi::c_int,
+            x.as_mut_ptr(),
+            nlm_fcn,
+            nlm_d1fcn,
+            nlm_d2fcn,
+            state_ptr,
+            typsiz.as_mut_ptr(),
+            fscale,
+            method,
+            iexp,
+            &mut msg,
+            ndigit,
+            itnlim,
+            iagflg,
+            iahflg,
+            dlt,
+            gradtl,
+            stepmx,
+            steptol,
+            xpls.as_mut_ptr(),
+            &mut fpls,
+            gpls.as_mut_ptr(),
+            &mut code,
+            a.as_mut_ptr(),
+            wrk.as_mut_ptr(),
+            &mut itncnt,
+        );
+
+        if msg < 0 {
+            nlm_opterror(msg);
+        }
+        if code != 0 && (omsg & 8) == 0 {
+            nlm_optcode(code);
+        }
+
+        let mut slot = 0isize;
+        let result = if want_hessian != 0 {
+            fdhess(
+                n as core::ffi::c_int,
+                xpls.as_mut_ptr(),
+                fpls,
+                nlm_fcn,
+                state_ptr,
+                a.as_mut_ptr(),
+                n as core::ffi::c_int,
+                wrk.as_mut_ptr(),
+                wrk.as_mut_ptr().add(n),
+                ndigit,
+                typsiz.as_ptr(),
+            );
+            for i in 0..n {
+                for j in 0..i {
+                    a[i + j * n] = a[j + i * n];
                 }
             }
-            x = x_try;
-            f = f_try;
-            g = g_try;
-            iters += 1;
-        }
-        let gnorm: f64 = g.iter().map(|v| v * v).sum::<f64>().sqrt();
-        let code = if gnorm < 1e-6 { 1 } else { 4 };
-        let ncomp = if want_hess { 6 } else { 5 };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp as i64);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(f));
-        let est = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _e = protect(est);
-        for i in 0..n {
-            *REAL(est).add(i) = x[i];
-        }
-        SET_VECTOR_ELT(result, 1, est);
-        let gr = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _g = protect(gr);
-        for i in 0..n {
-            *REAL(gr).add(i) = g[i];
-        }
-        SET_VECTOR_ELT(result, 2, gr);
-        let mut names = vec![
-            "minimum".to_string(),
-            "estimate".to_string(),
-            "gradient".to_string(),
-        ];
-        let mut slot = 3isize;
-        if want_hess {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+            let _r = protect(result);
             let hess = Rf_allocVector3(SEXPTYPE::REALSXP, (n * n) as i64);
             let _h = protect(hess);
-            for i in 0..n {
-                let eps = 1e-6 * (x[i].abs() + 1.0);
-                let mut xp = x.clone();
-                let mut xm = x.clone();
-                xp[i] += eps;
-                xm[i] -= eps;
-                let (_, gp) = nlm_eval(fun, rho, &xp);
-                let (_, gm) = nlm_eval(fun, rho, &xm);
-                for j in 0..n {
-                    *REAL(hess).add(j + i * n) = (gp[j] - gm[j]) / (2.0 * eps);
-                }
+            for i in 0..n * n {
+                *REAL(hess).add(i) = a[i];
             }
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _d = protect(dim);
             *INTEGER(dim) = n as i32;
             *INTEGER(dim).add(1) = n as i32;
             crate::sexp::attrib_core::setAttrib(
@@ -586,14 +971,51 @@ pub unsafe fn do_nlm(
                 crate::sexp::symbol::Rf_install(b"dim\0".as_ptr() as *const _),
                 dim,
             );
-            SET_VECTOR_ELT(result, slot as i64, hess);
-            names.push("hessian".to_string());
-            slot += 1;
+            SET_VECTOR_ELT(result, 3, hess);
+            slot = 4;
+            result
+        } else {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+            let _r = protect(result);
+            slot = 3;
+            result
+        };
+        let _r = protect(result);
+
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(fpls));
+
+        let est = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(est);
+        for i in 0..n {
+            *REAL(est).add(i) = xpls[i];
         }
+        SET_VECTOR_ELT(result, 1, est);
+
+        let gr = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _g = protect(gr);
+        for i in 0..n {
+            *REAL(gr).add(i) = gpls[i];
+        }
+        SET_VECTOR_ELT(result, 2, gr);
+
+        if want_hessian != 0 {
+            // hessian was set at index 3 above (before minimum/estimate/
+            // gradient were filled); GNU fills in order, we set it early
+            // but the slot content is identical.
+        }
+
         SET_VECTOR_ELT(result, slot as i64, Rf_ScalarInteger(code));
+        SET_VECTOR_ELT(result, slot as i64 + 1, Rf_ScalarInteger(itncnt));
+
+        let mut names = vec![
+            "minimum".to_string(),
+            "estimate".to_string(),
+            "gradient".to_string(),
+        ];
+        if want_hessian != 0 {
+            names.push("hessian".to_string());
+        }
         names.push("code".to_string());
-        slot += 1;
-        SET_VECTOR_ELT(result, slot as i64, Rf_ScalarInteger(iters));
         names.push("iterations".to_string());
         crate::mainutils::essentials::set_string_names(result, &names);
         result
@@ -608,7 +1030,8 @@ pub unsafe extern "C-unwind" fn c_nlm(
     unsafe { do_nlm(call, op, crate::sexp::accessors::CDR(args), rho) }
 }
 
-/// GNU `nlminb(start, objective)` 1-d via nlm.
+/// GNU `nlminb(start, objective)` 1-d via nlm (rport fallback; the real
+/// nlminb dispatches to C_port_nlminb).
 pub unsafe fn do_nlminb(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
@@ -616,13 +1039,55 @@ pub unsafe fn do_nlminb(
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, SET_VECTOR_ELT, VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+        use crate::sexp::accessors::{CAR, CDR, REAL, SET_VECTOR_ELT, VECTOR_ELT, XLENGTH};
+        use crate::sexp::constructors::{
+            Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
+        };
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::protect;
         let start = CAR(args);
         let fun = CAR(CDR(args));
-        let nlm_args = Rf_cons(fun, Rf_cons(start, R_NilValue()));
+        let n = XLENGTH(start).max(1) as usize;
+        // typsize = rep(1, length(p)) — the R-level nlm() default
+        let typsiz = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i64);
+        let _t = protect(typsiz);
+        for i in 0..n {
+            *REAL(typsiz).add(i) = 1.0;
+        }
+        // .External2 payload with nlm()'s R-level defaults:
+        // hessian=FALSE, typsize, fscale=1, msg=9, ndigit=12, gradtol=1e-6,
+        // stepmax=0 (auto), steptol=1e-6, iterlim=100
+        let nlm_args = Rf_cons(
+            fun,
+            Rf_cons(
+                start,
+                Rf_cons(
+                    Rf_ScalarInteger(0),
+                    Rf_cons(
+                        typsiz,
+                        Rf_cons(
+                            Rf_ScalarReal(1.0),
+                            Rf_cons(
+                                Rf_ScalarInteger(9),
+                                Rf_cons(
+                                    Rf_ScalarInteger(12),
+                                    Rf_cons(
+                                        Rf_ScalarReal(1e-6),
+                                        Rf_cons(
+                                            Rf_ScalarReal(0.0),
+                                            Rf_cons(
+                                                Rf_ScalarReal(1e-6),
+                                                Rf_cons(Rf_ScalarInteger(100), R_NilValue()),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        );
         let _na = protect(nlm_args);
         let nlm = do_nlm(call, op, nlm_args, rho);
         let _n = protect(nlm);

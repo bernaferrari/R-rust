@@ -3560,10 +3560,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_append,
     },
     EvaluatedBuiltin {
-        name: "head",
-        handler: crate::mainutils::essentials::do_head,
-    },
-    EvaluatedBuiltin {
         // grDevices color primitives (existing implementations in
         // library::grdevices::colors, previously unreachable from R code;
         // needed by real packages such as crayon via col2rgb/colors).
@@ -3593,10 +3589,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "grey",
         handler: crate::library::grdevices::colors::do_gray_builtin,
-    },
-    EvaluatedBuiltin {
-        name: "tail",
-        handler: crate::mainutils::essentials::do_tail,
     },
     EvaluatedBuiltin {
         name: ".subset",
@@ -4125,6 +4117,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "print.factor",
         handler: crate::mainutils::essentials::do_print_factor,
+    },
+    EvaluatedBuiltin {
+        name: "print.rle",
+        handler: crate::mainutils::essentials::do_print_rle,
+    },
+    EvaluatedBuiltin {
+        name: "print.proc_time",
+        handler: crate::mainutils::essentials::do_print_proc_time,
     },
     EvaluatedBuiltin {
         name: "summary.data.frame",
@@ -4750,7 +4750,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "strwrap",
-        handler: crate::mainutils::essentials::do_str_wrap,
+        handler: crate::mainutils::essentials::do_strwrap,
     },
     EvaluatedBuiltin {
         name: "system.file",

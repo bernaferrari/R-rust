@@ -2284,6 +2284,30 @@ pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
             }
             frame = CDR(frame);
         }
+        let gnu_hashed = x == crate::sexp::globals::R_GlobalEnv()
+            || crate::sexp::env_hash::env_has_hash_table(x);
+        if !sorted && gnu_hashed && !entries.is_empty() {
+            // GNU env2list iterates HashTableValues: bucket order, not the
+            // frame. rport's frame is reverse-insertion, so insertion order
+            // is its reverse.
+            let initial = crate::sexp::env_hash::hashed_size(x).unwrap_or(0);
+            let insertion: Vec<Vec<u8>> = entries
+                .iter()
+                .rev()
+                .map(|(name, _)| name.as_bytes().to_vec())
+                .collect();
+            let order = crate::sexp::env_hash::gnu_hash_order(initial, &insertion);
+            let mut placed = Vec::with_capacity(entries.len());
+            for name in &order {
+                if let Some(pos) = entries
+                    .iter()
+                    .position(|(n, _)| n.as_bytes() == name.as_slice())
+                {
+                    placed.push(entries.remove(pos));
+                }
+            }
+            entries = placed;
+        }
         if sorted {
             entries.sort_by(|left, right| left.0.cmp(&right.0));
         }

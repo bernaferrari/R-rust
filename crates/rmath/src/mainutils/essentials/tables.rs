@@ -1453,34 +1453,35 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `by(data, INDICES, FUN)` — apply by groups (simplified).
+/// GNU `by(data, INDICES, FUN, ...)` — dispatch to the verbatim base
+/// closure (tapply-based grouping with by.data.frame/by.default methods
+/// and print.by) bound from gnu_by.R.
 pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let data = CAR(args);
-        let indices = CAR(CDR(args));
-        let fun = CAR(CDR(CDR(args)));
-        if data.is_null() || data == R_NilValue() {
-            return R_NilValue();
+        let fun = crate::sexp::envir::R_findVarInFrame(
+            crate::sexp::globals::R_BaseEnv(),
+            crate::sexp::symbol::Rf_install(c"by".as_ptr()),
+        );
+        let _fun_guard = crate::sexp::protect::protect(fun);
+        let mut cells: Vec<SEXP> = Vec::new();
+        let mut _guards = Vec::new();
+        let mut cursor = args;
+        while !cursor.is_null() && cursor != R_NilValue() {
+            let cell = Rf_cons(CAR(cursor), R_NilValue());
+            _guards.push(crate::sexp::protect::protect(cell));
+            cells.push(cell);
+            SETTAG(cell, TAG(cursor));
+            cursor = CDR(cursor);
         }
-        if let Some(result) = tapply_numeric_array(data, indices, fun, _call) {
-            set_single_class(result, "by");
-            return result;
+        let call = Rf_cons(fun, R_NilValue());
+        let _call_guard = crate::sexp::protect::protect(call);
+        let mut tail = call;
+        for cell in &cells {
+            SETCDR(tail, *cell);
+            tail = *cell;
         }
-        if !fun.is_null() && fun != R_NilValue() {
-            let call_args = Rf_cons(data, R_NilValue());
-            let call_sexp = Rf_cons(fun, call_args);
-            if !call_sexp.is_null() {
-                crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
-            }
-            let result = crate::eval::eval::Rf_eval(call_sexp, rho);
-            let out = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-            let _g = protect(out);
-            SET_VECTOR_ELT(out, 0, result);
-            set_single_class(out, "by");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return out;
-        }
-        data
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+        crate::eval::eval::Rf_eval(call, rho)
     }
 }
 

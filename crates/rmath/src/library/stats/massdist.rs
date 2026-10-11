@@ -22,7 +22,6 @@ unsafe fn as_integer(s: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asInteger(s) }
 }
 
-
 // ---------------------------------------------------------------------------
 // BinDist -- binned density estimation
 // ---------------------------------------------------------------------------
@@ -63,19 +62,13 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
         let sx = if crate::sexp::accessors::TYPEOF(sx) == crate::sexp::ffi::SEXPTYPE::REALSXP {
             sx
         } else {
-            crate::main::coerce::coerceVector(
-                sx,
-                crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int(),
-            )
+            crate::main::coerce::coerceVector(sx, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
         };
         let _sx_guard = protect(sx);
         let sw = if crate::sexp::accessors::TYPEOF(sw) == crate::sexp::ffi::SEXPTYPE::REALSXP {
             sw
         } else {
-            crate::main::coerce::coerceVector(
-                sw,
-                crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int(),
-            )
+            crate::main::coerce::coerceVector(sw, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
         };
         let _sw_guard = protect(sw);
 

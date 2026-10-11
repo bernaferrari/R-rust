@@ -74,11 +74,7 @@ unsafe fn port_eval(call: &mut PortCall, x: &[c_double], sym: SEXP) -> c_double 
         let value = crate::eval::eval::Rf_eval(call.expr, call.rho);
         call.count += 1;
         let f = crate::mainutils::coerce::asReal(value);
-        if f.is_nan() {
-            f64::INFINITY
-        } else {
-            f
-        }
+        if f.is_nan() { f64::INFINITY } else { f }
     }
 }
 
@@ -187,7 +183,8 @@ pub unsafe fn port_nlminb(
         let lmm = 10 as c_int;
         let mut f = 0.0 as c_double;
         let mut g = vec![0.0 as c_double; n];
-        let wa_len = (2 * lmm * n as c_int + 5 * n as c_int + 11 * lmm * lmm + 8 * lmm + 1) as usize;
+        let wa_len =
+            (2 * lmm * n as c_int + 5 * n as c_int + 11 * lmm * lmm + 8 * lmm + 1) as usize;
         let mut wa = vec![0.0 as c_double; wa_len];
         let mut iwa = vec![0 as c_int; 3 * n];
         let mut task: [c_char; 60] = [0; 60];

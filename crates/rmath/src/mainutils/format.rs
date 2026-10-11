@@ -190,21 +190,22 @@ const NB: usize = 1000;
 /// >= 16 for IEEE 754 double).
 pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
     unsafe {
-        let mut buff = [0 as core::ffi::c_char; NB];
-        let d = d as usize;
-        let _nc = snprintf(&mut buff, NB, b"%#.*e\0".as_ptr().cast(), d - 1, r);
-        // buff[d+2..] contains the exponent string, e.g. "e+02" or "e+100"
-        // We parse it as an integer.
-        let exp_start = d + 2;
-        let exp_str = std::ffi::CStr::from_ptr(buff.as_ptr().add(exp_start));
-        let exp_val: i64 = exp_str.to_str().unwrap_or("0").parse().unwrap_or(0);
-        *kpower = exp_val as c_int;
-        // Count significant digits from the right: skip trailing zeros.
-        let mut i = d as i32;
-        while i >= 2 && buff[i as usize] == b'0' as core::ffi::c_char {
+        // C's snprintf("%#.<d-1>e", r): mantissa with d significant digits
+        // (trailing zeros kept) plus a decimal exponent.
+        let text = format!("{:.*e}", (d - 1).max(0) as usize, r);
+        let (mantissa, exponent) = match text.split_once('e') {
+            Some(parts) => parts,
+            None => (&text[..], "0"),
+        };
+        *kpower = exponent.parse::<i64>().unwrap_or(0) as c_int;
+        // Significant digits: mantissa digits without '.', skipping
+        // trailing zeros but keeping at least one.
+        let digits: Vec<char> = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+        let mut i = digits.len();
+        while i > 1 && digits[i - 1] == '0' {
             i -= 1;
         }
-        *nsig = i;
+        *nsig = i as c_int;
     }
 }
 
