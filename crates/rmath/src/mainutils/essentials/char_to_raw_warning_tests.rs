@@ -323,69 +323,18 @@ fn handler_case(action: u8) {
                             .collect::<Vec<_>>(),
                         b"first"
                     );
-                    if let Some(proj) = (*instance).heap_identity.node_projection(&child) {
-                        crate::sexp::gengc::DEBUG_GC_TARGET.with(|t| t.set(Some(proj)));
-                    }
-                    if let Some(proj) = (*instance).heap_identity.node_projection(&input) {
-                        eprintln!("DBG pre-gc input ptr={proj:p} roots={}", input.root_count());
-                    }
-                    {
-                        let outer_args = call.try_cdr().unwrap();
-                        let expr = outer_args.try_car().unwrap();
-                        let inner_args = expr.try_cdr().unwrap();
-                        let src = inner_args.try_car().unwrap();
-                        eprintln!(
-                            "DBG expr ptr={:p} t={:?} src ptr={:p} t={:?}",
-                            expr.as_raw(),
-                            expr.typeof_(),
-                            src.as_raw(),
-                            src.typeof_()
-                        );
-                    }
+                    // The charsxp is interned and shared with the fixture
+                    // CALL's constant vector; the deferred warning also owns
+                    // the original call (see the sibling warning-ownership
+                    // test). Release those legitimate owners before asserting
+                    // the detached input graph is collected.
+                    drop(value);
+                    drop(call);
+                    drop(args);
+                    drop(previous);
+                    (*instance).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
                     crate::sexp::gengc::full_gc();
-                    if let Some(proj) = (*instance).heap_identity.node_projection(&input) {
-                        eprintln!("DBG input ptr={proj:p}");
-                    }
                     assert!(!input.is_live());
-                    if child.is_live() {
-                        use crate::sexp::protect::RootValue;
-                        let heap = &(*instance).heap_identity;
-                        eprintln!(
-                            "DBG child_live root_count={} input_live={} input_roots={}",
-                            child.root_count(),
-                            input.is_live(),
-                            input.root_count()
-                        );
-                        if let Some(proj) = heap.node_projection(&child) {
-                            let kind = unsafe { (*proj).sxpinfo.type_of() };
-                            eprintln!("DBG child type={kind:?} ptr={proj:p}");
-                            let snapshot = |v: Vec<RootValue>| {
-                                v.into_iter()
-                                    .filter(|r| {
-                                        let p = match r {
-                                            RootValue::Checked { projection, .. } => projection,
-                                            RootValue::Static { projection } => projection,
-                                        };
-                                        *p == proj
-                                    })
-                                    .count()
-                            };
-                            let in_root_table =
-                                snapshot((*instance).root_table.checked_entries_snapshot());
-                            let in_fresh = crate::sexp::memory::fresh_allocation_roots(heap)
-                                .into_iter()
-                                .filter(|(p, _)| *p == proj)
-                                .count();
-                            let in_persistent = (*instance)
-                                .persistent_nodes
-                                .projections()
-                                .filter(|p| *p == proj)
-                                .count();
-                            eprintln!(
-                                "DBG in_root_table={in_root_table} in_fresh={in_fresh} in_persistent={in_persistent}"
-                            );
-                        }
-                    }
                     assert!(!child.is_live());
                 }
                 1 => assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 953),

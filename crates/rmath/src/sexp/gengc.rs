@@ -318,33 +318,6 @@ fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
         // revalidates the token, copies edges, and lends no mutable fields.
         let children =
             trace_result(unsafe { gc_trace_bridge::snapshot_children(&node, pending.context()) });
-        #[cfg(test)]
-        {
-            if let Some(target) = DEBUG_GC_TARGET.with(|t| t.get()) {
-                if !target.is_null() {
-                    let heap = pending.context().heap_identity();
-                    for child in children.edges() {
-                        if let Some(projection) = heap.projection_of_link(*child)
-                            && projection == target
-                        {
-                            let label = MARK_WHERE.with(|w| w.get());
-                            let parent_type = node
-                                .snapshot(pending.context())
-                                .map(|h| format!("{:?}", h.sxpinfo.type_of()))
-                                .unwrap_or_else(|e| format!("err {e:?}"));
-                            eprintln!(
-                                "DBGPARENT parent_addr={:#x} parent_type={parent_type} where={label}",
-                                node.address()
-                            );
-                        }
-                    }
-                }
-            }
-            for child in children.into_edges() {
-                trace_result(pending.enqueue_link(child));
-            }
-        }
-        #[cfg(not(test))]
         for child in children.into_edges() {
             trace_result(pending.enqueue_link(child));
         }
@@ -486,98 +459,6 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(obj);
         }
     }
-}
-#[cfg(test)]
-thread_local! {
-    pub(crate) static DEBUG_GC_TARGET: std::cell::Cell<Option<SEXP>> =
-        const { std::cell::Cell::new(None) };
-}
-
-#[cfg(test)]
-pub(crate) fn debug_direct_roots_containing(
-    instance: *mut instance::RInstance,
-    target: SEXP,
-) -> Vec<&'static str> {
-    let mut hits = Vec::new();
-    let mut check = |label: &'static str, present: bool| {
-        if present {
-            hits.push(label);
-        }
-    };
-    unsafe {
-        let direct = |obj: SEXP| obj == target;
-        check("empty_env", direct((*instance).empty_env));
-        check("base_env", direct((*instance).base_env));
-        check("global_env", direct((*instance).global_env));
-        check(
-            "persistent",
-            (*instance).persistent_nodes.projections().any(direct),
-        );
-        let snap = |v: Vec<super::protect::RootValue>| {
-            v.into_iter().any(|r| {
-                let p = match r {
-                    super::protect::RootValue::Checked { projection, .. } => projection,
-                    super::protect::RootValue::Static { projection } => projection,
-                };
-                p == target
-            })
-        };
-        let identity = &(*instance).heap_identity;
-        check(
-            "fresh",
-            super::memory::fresh_allocation_roots(identity)
-                .into_iter()
-                .any(|(p, _)| p == target),
-        );
-        check(
-            "automatic",
-            super::memory::automatic_roots(identity)
-                .into_iter()
-                .any(|(p, _)| p == target),
-        );
-        check(
-            "legacy_protect",
-            snap((*instance).legacy_protect.checked_entries_snapshot()),
-        );
-        check(
-            "root_table",
-            snap((*instance).root_table.checked_entries_snapshot()),
-        );
-        check(
-            "preserve_stack",
-            snap((*instance).preserve_stack.checked_entries_snapshot()),
-        );
-        check("symbols", (*instance).symbols.values().any(|&o| direct(o)));
-        check(
-            "symbol_nodes",
-            (*instance).symbol_nodes.iter().any(|&o| direct(o)),
-        );
-        check(
-            "env_nodes",
-            (*instance).env_nodes.iter().any(|&o| direct(o)),
-        );
-        check(
-            "ddval",
-            (*instance)
-                .names_state
-                .ddval_symbols
-                .iter()
-                .any(|&o| direct(o)),
-        );
-        check(
-            "package_ns",
-            (*instance)
-                .package_namespace_cache
-                .values()
-                .any(|&(_, ns)| direct(ns)),
-        );
-        check("raw_cons", (*instance).raw_cons.iter().any(|&o| direct(o)));
-        check("remembered", {
-            let roots = (*instance).gc_state.remembered_set.checked_roots();
-            snap(roots)
-        });
-    }
-    hits
 }
 
 // ---------------------------------------------------------------------------
@@ -1676,16 +1557,6 @@ fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
 fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe {
         mark_from_all_roots_in(instance);
-        #[cfg(test)]
-        if let Some(target) = DEBUG_GC_TARGET.with(|t| t.get()) {
-            if !target.is_null() {
-                let marked = super::memory::arena_node_marked(target);
-                let roots = debug_direct_roots_containing(instance, target);
-                let generation = (*target).sxpinfo.gcgen();
-                eprintln!("DBGGC marked={marked} gen={generation:?} direct_roots={roots:?}");
-            }
-        }
-
         let mut freed_count = 0;
         let mut promoted_count = 0;
         let mut to_free = Vec::new();
