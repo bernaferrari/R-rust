@@ -2842,6 +2842,19 @@ identical(first, c("[1] 1 2 3", 'attr(,"id")', '[1] "An Example"')) &&
 
     #[test]
     fn str_s4_formal_class_matches_gnu() {
+        // capture.output(str(<S4>)) drives deep bounded evaluator recursion;
+        // debug frames exceed libtest's default thread stack (release and the
+        // 8 MiB main-thread stacks are fine). Run on an explicit deep stack
+        // like the owned-depth tests.
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(str_s4_formal_class_body)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    fn str_s4_formal_class_body() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
             r#"
