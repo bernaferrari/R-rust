@@ -435,7 +435,7 @@ fn qbeta_raw(
     let mut u_n: f64;
     let mut y: f64;
     let mut warned: bool;
-    let mut log_: bool;
+    let log_: bool;
 
     'maybe_swap: loop {
         // change tail; afterwards 0 < a <= 1/2

@@ -614,13 +614,13 @@ pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
                     // `exists(..., mode = "function")` must find them too.
                     | SEXPTYPE::BUILTINSXP
                     | SEXPTYPE::CLOSXP
-                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+                    if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
                     || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
             )
         {
             return Ok(Some(sym_val));
         }
-        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+        if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
             && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
         {
             return Ok(Some(val));
@@ -669,8 +669,7 @@ unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
         }
     }
     if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
-        let primitive =
-            unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
+        let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
         if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
             return unsafe { Sexp::from_raw(primitive) };
         }
@@ -705,13 +704,13 @@ pub unsafe fn find_var_binding_result<'a>(
                 SEXPTYPE::SPECIALSXP
                     | SEXPTYPE::BUILTINSXP
                     | SEXPTYPE::CLOSXP
-                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+                    if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
                     || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
             )
         {
             return Ok(Some(sym_val));
         }
-        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+        if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
             && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
         {
             return Ok(Some(val));

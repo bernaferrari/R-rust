@@ -675,7 +675,6 @@ unsafe fn eval_source_text_with_options(
             // GNU raises the parse error; nothing is echoed for a file that
             // does not parse completely.
             base_error(format!("{}: parse error (unterminated input)", filename));
-            return R_NilValue();
         };
         let lines: Vec<&str> = content.lines().collect();
         let nlines = lines.len() as i32;

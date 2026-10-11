@@ -375,6 +375,7 @@ mod vector_length_fits_tests {
     }
 }
 mod pull_admission_tests {
+    #[allow(unused_imports)]
     use super::BinaryReader;
 
     #[test]

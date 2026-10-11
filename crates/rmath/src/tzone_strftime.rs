@@ -71,12 +71,6 @@ fn r_tzset() {
     // No-op placeholder. Real implementation lives in the tzone module.
 }
 
-/// Stub for `R_mktime`. Returns 0.
-fn r_mktime(_t: &stm) -> i64 {
-    // Placeholder. Real implementation lives in the tzone module.
-    0
-}
-
 /// Stubs for `R_tzname`. Returns a static pointer to "UTC".
 fn r_tzname(_isdst: bool) -> *const core::ffi::c_char {
     // Placeholder. Real implementation lives in the tzone module.

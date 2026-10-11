@@ -158,8 +158,7 @@ pub unsafe fn vmmin(
                     if count < n {
                         f = fminfn(n0 as std::os::raw::c_int, b, ex);
                         funcount += 1;
-                        accpoint =
-                            f.is_finite() && f <= *fmin + gradproj * steplength * ACCTOL;
+                        accpoint = f.is_finite() && f <= *fmin + gradproj * steplength * ACCTOL;
                         if !accpoint {
                             steplength *= STEPREDN;
                         }

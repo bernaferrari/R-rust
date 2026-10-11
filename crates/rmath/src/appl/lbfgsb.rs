@@ -2286,13 +2286,7 @@ unsafe fn matupd(
             // Move old information: Fortran dcopy(j, ss(2, j+1), ss(1, j))
             // and dcopy(col-j, sy(j+1, j+1), sy(j, j)) with 0-based j here.
             for j in 0..(*col - 1) as usize {
-                dcopy(
-                    j as i32 + 1,
-                    ss.add(1 + (j + 1) * mi),
-                    1,
-                    ss.add(j * mi),
-                    1,
-                );
+                dcopy(j as i32 + 1, ss.add(1 + (j + 1) * mi), 1, ss.add(j * mi), 1);
                 let cnt = *col - (j as i32 + 1);
                 dcopy(
                     cnt,

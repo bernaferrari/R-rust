@@ -2022,7 +2022,11 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Division always yields doubles in GNU (`1L/4L` is 0.25), so the
         // swept vector is REALSXP for `/` even when `x` is integer.
-        let result_t = if op_str == "/" { SEXPTYPE::REALSXP } else { SEXPTYPE(t) };
+        let result_t = if op_str == "/" {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE(t)
+        };
 
         let result = Rf_allocVector3(result_t, n);
         if result.is_null() {

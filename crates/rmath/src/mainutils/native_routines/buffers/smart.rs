@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 use super::BufferType::{Integer, Real};
 use super::{
-    dimension, finite, minimum, BufferError, BufferInterface, BufferRoutine, NativeBuffer,
+    BufferError, BufferInterface, BufferRoutine, NativeBuffer, dimension, finite, minimum,
 };
 use crate::library::stats::smart;
 
@@ -45,7 +45,7 @@ pub(crate) const SMART_ROUTINE: BufferRoutine = BufferRoutine::owned(
         Real, Integer, // smod nsmod
         Real, Integer, // sp nsp
         Real, Integer, // dp ndp
-        Real, // edf
+        Real,    // edf
     ],
     smart_shape,
     smart_invoke,
@@ -66,9 +66,7 @@ fn smart_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
     let q = dimension(b, 3, 1)?;
     let n = dimension(b, 4, 1)?;
     if mu > m {
-        return Err(BufferError::new(
-            "number of ppr terms exceeds max.terms",
-        ));
+        return Err(BufferError::new("number of ppr terms exceeds max.terms"));
     }
     minimum(b, 5, n)?; // w
     minimum(b, 6, checked_mul(p, n)?)?; // x(p,n)
@@ -83,10 +81,7 @@ fn smart_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
     minimum(b, 9, smod_need)?;
     // sp: r(q*n) + sc(n,15) + bt(q) + g(p,3)
     let sp_need = checked_add(
-        checked_add(
-            checked_add(checked_mul(q, n)?, checked_mul(15, n)?)?,
-            q,
-        )?,
+        checked_add(checked_add(checked_mul(q, n)?, checked_mul(15, n)?)?, q)?,
         checked_mul(3, p)?,
     )?;
     minimum(b, 11, sp_need)?;
@@ -127,6 +122,5 @@ fn smart_invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     else {
         return Err(BufferError::new("invalid SMART buffer types"));
     };
-    smart::smart(m, mu, p, q, n, w, x, y, ww, smod, sp, dp, edf)
-        .map_err(BufferError::new)
+    smart::smart(m, mu, p, q, n, w, x, y, ww, smod, sp, dp, edf).map_err(BufferError::new)
 }
