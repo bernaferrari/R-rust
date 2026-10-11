@@ -891,7 +891,20 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 task[i] = b as c_char;
             }
 
-            // Stateful loop: lbfgsb returns with task indicating what to do next
+            // Map trace to lbfgsb's iprint exactly as appl/optim.c's lbfgsb
+            // wrapper does: silent (-1) unless trace >= 2.
+            let iprint = match trace {
+                2 => 0,
+                3 => nREPORT,
+                4 => 99,
+                5 => 100,
+                6 => 101,
+                _ => -1,
+            };
+            // Stateful loop mirroring the C wrapper in appl/optim.c: evaluate
+            // f/g only on FG* tasks, count iterations on NEW_X, and stop only
+            // when iter exceeds maxit.
+            let mut l_iter: c_int = 0;
             loop {
                 lbfgsb(
                     npar,
@@ -907,7 +920,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     wa,
                     iwa,
                     task.as_mut_ptr(),
-                    trace,
+                    iprint,
                     isave.as_mut_ptr(),
                 );
 
@@ -915,43 +928,77 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let task_len = task.iter().position(|&c| c == 0).unwrap_or(60);
                 let task_bytes: &[u8] =
                     unsafe { std::slice::from_raw_parts(task.as_ptr() as *const u8, task_len) };
-
-                // Check for convergence
-                if task_bytes.starts_with(b"CONVERGENCE") {
-                    ifail = 0;
+                let copy_msg = |lmsg: &mut [u8; 60]| {
                     for j in 0..task_len.min(60) {
                         lmsg[j] = task_bytes[j];
                     }
-                    fncount = isave[33]; // nfgv (function/gradient count)
+                };
+
+                if task_bytes.starts_with(b"FG") {
+                    // FG_START or FG or FG_LNSRCH: compute f and g. GNU's
+                    // lbfgsb() wrapper errors on a non-finite fn value.
+                    val = fminfn(npar, dpar, os_ptr as *mut std::ffi::c_void);
+                    if !R_FINITE(val) {
+                        Rf_error(
+                            b"L-BFGS-B needs finite values of 'fn'\0".as_ptr() as *const _,
+                        );
+                    }
+                    fmingr(npar, dpar, g, os_ptr as *mut std::ffi::c_void);
+                } else if task_bytes.starts_with(b"NEW_X") {
+                    l_iter += 1;
+                    if trace == 1 && (l_iter % nREPORT == 0) {
+                        let line = format!("iter {:4} value {:.6}\n", l_iter, val);
+                        let cline = CString::new(line).unwrap_or_default();
+                        crate::mainutils::printutils::Rprintf(
+                            cline.as_ptr(),
+                            std::ptr::null_mut(),
+                        );
+                    }
+                    if l_iter > maxit {
+                        ifail = 1; // iteration limit reached (GNU: *fail = 1)
+                        copy_msg(&mut lmsg);
+                        fncount = isave[33]; // nfgv (function/gradient count)
+                        grcount = fncount;
+                        break;
+                    }
+                } else if task_bytes.starts_with(b"WARN") {
+                    ifail = 51;
+                    copy_msg(&mut lmsg);
+                    fncount = isave[33];
                     grcount = fncount;
                     break;
-                }
-
-                // Check for error
-                if task_bytes.starts_with(b"ERROR") {
-                    ifail = 1;
-                    for j in 0..task_len.min(60) {
-                        lmsg[j] = task_bytes[j];
-                    }
+                } else if task_bytes.starts_with(b"CONV") {
+                    copy_msg(&mut lmsg);
+                    fncount = isave[33];
+                    grcount = fncount;
+                    break;
+                } else if task_bytes.starts_with(b"ERROR") {
+                    ifail = 52;
+                    copy_msg(&mut lmsg);
+                    fncount = isave[33];
+                    grcount = fncount;
+                    break;
+                } else {
+                    // some other condition that is not supposed to happen
+                    ifail = 52;
+                    copy_msg(&mut lmsg);
                     fncount = isave[33];
                     grcount = fncount;
                     break;
                 }
+            }
 
-                // FG_START or FG or NEW_X or FG_LN: compute function value and gradient
-                fncount += 1;
-                val = fminfn(npar, dpar, os_ptr as *mut std::ffi::c_void);
-                grcount += 1;
-                fmingr(npar, dpar, g, os_ptr as *mut std::ffi::c_void);
-
-                // Check iteration limit (isave[29] = iter)
-                if isave[29] >= maxit {
-                    ifail = 51; // iteration limit reached
-                    for j in 0..task_len.min(60) {
-                        lmsg[j] = task_bytes[j];
-                    }
-                    break;
-                }
+            if trace != 0 {
+                let line = format!("final  value {:.6} \n", val);
+                let cline = CString::new(line).unwrap_or_default();
+                crate::mainutils::printutils::Rprintf(cline.as_ptr(), std::ptr::null_mut());
+                let line2 = if l_iter < maxit && ifail == 0 {
+                    "converged\n".to_string()
+                } else {
+                    format!("stopped after {} iterations\n", l_iter)
+                };
+                let cline2 = CString::new(line2).unwrap_or_default();
+                crate::mainutils::printutils::Rprintf(cline2.as_ptr(), std::ptr::null_mut());
             }
 
             for i in 0..npar {

@@ -1,11 +1,11 @@
 //! GNU `stats/src/deriv.c`: symbolic `D()` and `deriv()`.
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, INTEGER, LENGTH, REAL, SETCAR, SETCDR, STRING_ELT, TYPEOF,
+    CADDR, CADR, CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SETCAR, SETCDR, STRING_ELT, TYPEOF,
 };
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_cons, Rf_lang2, Rf_lang3, Rf_lang4,
-    Rf_mkString,
+    Rf_lang5, Rf_mkString,
 };
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -277,8 +277,6 @@ unsafe fn replace(symbol: SEXP, expr: SEXP, lst: SEXP) -> SEXP {
 unsafe fn create_grad(names: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(names);
-        let mut name_args = R_NilValue();
-        let mut names_call = sym("c");
         let mut args: Vec<SEXP> = Vec::new();
         for i in 0..n {
             args.push(Rf_mkString(crate::sexp::accessors::CHAR(STRING_ELT(
@@ -286,21 +284,7 @@ unsafe fn create_grad(names: SEXP) -> SEXP {
                 i as R_xlen_t,
             ))));
         }
-        let names_call = match args.len() {
-            1 => Rf_lang2(sym("c"), args[0]),
-            2 => Rf_lang3(sym("c"), args[0], args[1]),
-            _ => Rf_lang3(sym("c"), args[0], args[1]),
-        };
-        let _ = names_call;
-        let dimnames = Rf_lang3(
-            sym("list"),
-            R_NilValue(),
-            if n == 2 {
-                Rf_lang3(sym("c"), args[0], args[1])
-            } else {
-                Rf_lang2(sym("c"), args[0])
-            },
-        );
+        let dimnames = Rf_lang3(sym("list"), R_NilValue(), names_c_call(&args));
         let dim = Rf_lang3(
             sym("c"),
             Rf_lang2(sym("length"), sym(".value")),
@@ -337,6 +321,98 @@ unsafe fn add_grad() -> SEXP {
             ),
             sym(".grad"),
         )
+    }
+}
+
+unsafe fn names_c_call(args: &[SEXP]) -> SEXP {
+    unsafe {
+        let mut tail = R_NilValue();
+        for arg in args.iter().rev() {
+            tail = Rf_cons(*arg, tail);
+        }
+        // GNU deriv.c builds this with LCONS(): a call `c(name1, ..., namen)`.
+        let call = Rf_cons(sym("c"), tail);
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+        call
+    }
+}
+
+unsafe fn create_hess(names: SEXP) -> SEXP {
+    unsafe {
+        let n = LENGTH(names);
+        let mut args: Vec<SEXP> = Vec::new();
+        for i in 0..n {
+            args.push(Rf_mkString(crate::sexp::accessors::CHAR(STRING_ELT(
+                names,
+                i as R_xlen_t,
+            ))));
+        }
+        let names_call = names_c_call(&args);
+        let dimnames = Rf_lang4(
+            sym("list"),
+            R_NilValue(),
+            names_call,
+            crate::mainutils::duplicate::Rf_duplicate(names_call),
+        );
+        let dim = Rf_lang4(
+            sym("c"),
+            Rf_lang2(sym("length"), sym(".value")),
+            Rf_ScalarInteger(n),
+            Rf_ScalarInteger(n),
+        );
+        Rf_lang3(
+            sym("<-"),
+            sym(".hessian"),
+            Rf_lang4(sym("array"), constant(0.0), dim, dimnames),
+        )
+    }
+}
+
+unsafe fn hess_assign1(name: SEXP, expr: SEXP) -> SEXP {
+    unsafe {
+        let bracket = Rf_lang5(
+            sym("["),
+            sym(".hessian"),
+            R_MissingArg(),
+            Rf_mkString(crate::sexp::accessors::CHAR(name)),
+            Rf_mkString(crate::sexp::accessors::CHAR(name)),
+        );
+        Rf_lang3(sym("<-"), bracket, expr)
+    }
+}
+
+unsafe fn hess_assign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
+    unsafe {
+        let new1 = Rf_mkString(crate::sexp::accessors::CHAR(name1));
+        let new2 = Rf_mkString(crate::sexp::accessors::CHAR(name2));
+        let tmp1 = Rf_lang5(sym("["), sym(".hessian"), R_MissingArg(), new1, new2);
+        let tmp2 = Rf_lang5(sym("["), sym(".hessian"), R_MissingArg(), new2, new1);
+        let inner = Rf_lang3(sym("<-"), tmp2, expr);
+        Rf_lang3(sym("<-"), tmp1, inner)
+    }
+}
+
+unsafe fn add_hess() -> SEXP {
+    unsafe {
+        Rf_lang3(
+            sym("<-"),
+            Rf_lang3(
+                sym("attr"),
+                sym(".value"),
+                Rf_mkString(c"hessian".as_ptr()),
+            ),
+            sym(".hessian"),
+        )
+    }
+}
+
+unsafe fn is_zero(expr: SEXP) -> bool {
+    unsafe {
+        match ty(expr) {
+            SEXPTYPE::REALSXP => *REAL(expr) == 0.0,
+            SEXPTYPE::INTSXP => *INTEGER(expr) == 0,
+            _ => false,
+        }
     }
 }
 
@@ -378,16 +454,40 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
         let funarg = CAR(args);
         args = CDR(args);
         let tag = string_at(CAR(args), 0);
+        args = CDR(args);
+        let hess_arg = CAR(args);
+        let hessian = match ty(hess_arg) {
+            SEXPTYPE::LGLSXP => *LOGICAL(hess_arg) != 0,
+            SEXPTYPE::INTSXP => *INTEGER(hess_arg) != 0,
+            SEXPTYPE::REALSXP => *REAL(hess_arg) != 0.0,
+            _ => false,
+        };
         let exprlist = Rf_lang2(sym("{"), R_NilValue());
         SETCDR(exprlist, R_NilValue());
         let duplicated = crate::mainutils::duplicate::Rf_duplicate(expr);
         let _el = protect(exprlist);
         let f_index = find_subexprs(duplicated, exprlist, &tag);
         let mut d_index = vec![0i32; nderiv as usize];
+        let mut d2_index = if hessian {
+            vec![0i32; (nderiv * (1 + nderiv) / 2) as usize]
+        } else {
+            Vec::new()
+        };
+        let mut k = 0usize;
         for i in 0..nderiv {
             let var = sym(&string_at(names, i as R_xlen_t));
             let derived = deriv_expr(crate::mainutils::duplicate::Rf_duplicate(expr), var);
             d_index[i as usize] = find_subexprs(derived, exprlist, &tag);
+            if hessian {
+                let first = deriv_expr(crate::mainutils::duplicate::Rf_duplicate(expr), var);
+                for j in i..nderiv {
+                    let varj = sym(&string_at(names, j as R_xlen_t));
+                    let second =
+                        deriv_expr(crate::mainutils::duplicate::Rf_duplicate(first), varj);
+                    d2_index[k] = find_subexprs(second, exprlist, &tag);
+                    k += 1;
+                }
+            }
         }
         let nexpr = LENGTH(exprlist) - 1;
         if f_index != 0 {
@@ -396,20 +496,65 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
             accumulate_new(crate::mainutils::duplicate::Rf_duplicate(expr), exprlist);
         }
         accumulate_new(R_MissingArg(), exprlist);
+        if hessian {
+            accumulate_new(R_MissingArg(), exprlist);
+        }
+        let mut k = 0usize;
         for i in 0..nderiv {
+            let var = sym(&string_at(names, i as R_xlen_t));
             if d_index[i as usize] != 0 {
                 accumulate_new(make_variable(d_index[i as usize], &tag), exprlist);
+                if hessian {
+                    let first = deriv_expr(crate::mainutils::duplicate::Rf_duplicate(expr), var);
+                    for j in i..nderiv {
+                        if d2_index[k] != 0 {
+                            accumulate_new(make_variable(d2_index[k], &tag), exprlist);
+                        } else {
+                            let varj = sym(&string_at(names, j as R_xlen_t));
+                            let second = deriv_expr(
+                                crate::mainutils::duplicate::Rf_duplicate(first),
+                                varj,
+                            );
+                            accumulate_new(second, exprlist);
+                        }
+                        k += 1;
+                    }
+                }
             } else {
-                let var = sym(&string_at(names, i as R_xlen_t));
                 accumulate_new(
                     deriv_expr(crate::mainutils::duplicate::Rf_duplicate(expr), var),
                     exprlist,
                 );
+                if hessian {
+                    let first = deriv_expr(
+                        crate::mainutils::duplicate::Rf_duplicate(expr),
+                        sym(&string_at(names, i as R_xlen_t)),
+                    );
+                    for j in i..nderiv {
+                        if d2_index[k] != 0 {
+                            accumulate_new(make_variable(d2_index[k], &tag), exprlist);
+                        } else {
+                            let varj = sym(&string_at(names, j as R_xlen_t));
+                            let second = deriv_expr(
+                                crate::mainutils::duplicate::Rf_duplicate(first),
+                                varj,
+                            );
+                            if is_zero(second) {
+                                accumulate_new(R_MissingArg(), exprlist);
+                            } else {
+                                accumulate_new(second, exprlist);
+                            }
+                        }
+                        k += 1;
+                    }
+                }
             }
         }
         accumulate_new(R_MissingArg(), exprlist);
         accumulate_new(R_MissingArg(), exprlist);
-        accumulate_new(R_MissingArg(), exprlist);
+        if hessian {
+            accumulate_new(R_MissingArg(), exprlist);
+        }
         let mut i = 0;
         let mut ans = CDR(exprlist);
         while i < nexpr {
@@ -430,15 +575,48 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
         ans = CDR(ans);
         SETCAR(ans, create_grad(names));
         ans = CDR(ans);
+        if hessian {
+            SETCAR(ans, create_hess(names));
+            ans = CDR(ans);
+        }
         for i in 0..nderiv {
             SETCAR(
                 ans,
                 deriv_assign(STRING_ELT(names, i as R_xlen_t), add_parens(CAR(ans))),
             );
             ans = CDR(ans);
+            if hessian {
+                for j in i..nderiv {
+                    if CAR(ans) != R_MissingArg() {
+                        if i == j {
+                            SETCAR(
+                                ans,
+                                hess_assign1(
+                                    STRING_ELT(names, i as R_xlen_t),
+                                    add_parens(CAR(ans)),
+                                ),
+                            );
+                        } else {
+                            SETCAR(
+                                ans,
+                                hess_assign2(
+                                    STRING_ELT(names, i as R_xlen_t),
+                                    STRING_ELT(names, j as R_xlen_t),
+                                    add_parens(CAR(ans)),
+                                ),
+                            );
+                        }
+                    }
+                    ans = CDR(ans);
+                }
+            }
         }
         SETCAR(ans, add_grad());
         ans = CDR(ans);
+        if hessian {
+            SETCAR(ans, add_hess());
+            ans = CDR(ans);
+        }
         SETCAR(ans, sym(".value"));
         SETCDR(exprlist, prune(CDR(exprlist)));
         let body = CDR(exprlist);

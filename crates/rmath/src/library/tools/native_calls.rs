@@ -137,6 +137,17 @@ unsafe extern "C-unwind" fn c_renctest(x: *mut std::ffi::c_void) {
     }
 }
 
+unsafe extern "C-unwind" fn c_setsmu(iunit: *mut std::ffi::c_void) {
+    unsafe {
+        if iunit.is_null() {
+            return;
+        }
+        let unit = *(iunit as *mut i32);
+        crate::mainutils::native_routines::buffers::SMU_TRACE_UNIT
+            .store(unit, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     let bare = name.strip_prefix("C_").unwrap_or(name);
     match bare {
@@ -188,7 +199,16 @@ pub(crate) fn lookup_buffer(
             "multi_burg" => buffers::multi_burg::ROUTINE,
             "stl" => buffers::stl::ROUTINE,
             "supsmu" => buffers::supsmu::ROUTINE,
+            "setsmu" => BufferRoutine::void(
+                "stats",
+                BufferInterface::Fortran,
+                &[Integer],
+                buffers::setsmu,
+                VoidKernel::Args1(c_setsmu),
+            ),
             "pppred" => buffers::ppr_predict::ROUTINE,
+            "setppr" => buffers::smart::SETPPR_ROUTINE,
+            "smart" => buffers::smart::SMART_ROUTINE,
             "dtrco" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,

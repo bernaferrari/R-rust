@@ -655,6 +655,11 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
             return res;
         }
         if p > 0 {
+            // GNU zeroes P (the inclu2 `d` accumulator), rbar, thetab and
+            // xnext before use; allocMatrix memory is not zeroed here.
+            for i in 0..np {
+                pmat[i] = 0.0;
+            }
             let mut xnext = vec![0.0; np];
             let mut xrow = vec![0.0; np];
             let mut rbar = vec![0.0; nrbar.max(1)];
@@ -752,7 +757,7 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
         while i > 1 {
             i -= 1;
             let mut j = r;
-            while j >= i {
+            while j > i {
                 j -= 1;
                 indp -= 1;
                 pmat[r * i + j] = pmat[indp];

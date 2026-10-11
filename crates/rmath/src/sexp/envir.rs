@@ -605,9 +605,25 @@ pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
 
         if symbol.clone().is_symbol()
             && let Ok(sym_val) = symbol.clone().try_symvalue()
-            && sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
+            && matches!(
+                sym_val.clone().typeof_(),
+                SEXPTYPE::SPECIALSXP
+                    // GNU findVar returns SYMVALUE once the walk reaches the
+                    // base environment; the port keeps closures/builtins that
+                    // are not frame-accounted primitives there, so
+                    // `exists(..., mode = "function")` must find them too.
+                    | SEXPTYPE::BUILTINSXP
+                    | SEXPTYPE::CLOSXP
+                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+                    || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
+            )
         {
             return Ok(Some(sym_val));
+        }
+        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+            && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
+        {
+            return Ok(Some(val));
         }
 
         current = current
@@ -616,6 +632,50 @@ pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
     }
 
     Ok(None)
+}
+
+/// Reflective lookup fallback for names the Rust evaluator dispatches from the
+/// builtin table rather than a frame binding. GNU sessions hold these as base
+/// environment bindings, so `exists()`/`get()` style lookups must find them
+/// once the walk reaches the base environment.
+///
+/// # Safety
+/// Activate the live owner of all inputs and retain their reachable graphs
+/// through allocation and R reentry. No Rust payload loan may cross execution.
+unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
+    let raw = symbol.as_raw();
+    let name = unsafe {
+        let pname = crate::sexp::accessors::PRINTNAME(raw);
+        if pname.is_null() {
+            String::new()
+        } else {
+            let chars = crate::sexp::accessors::CHAR(pname);
+            if chars.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        }
+    };
+    if name.is_empty() || crate::eval::builtin::is_hidden_builtin_name(&name) {
+        return None;
+    }
+    if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
+        let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
+        if !prim.is_null() && prim != unsafe { R_NilValue() } {
+            return unsafe { Sexp::from_raw(prim) };
+        }
+    }
+    if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
+        let primitive =
+            unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
+        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+            return unsafe { Sexp::from_raw(primitive) };
+        }
+    }
+    None
 }
 
 /// Walk the environment chain and return the binding without forcing
@@ -640,9 +700,21 @@ pub unsafe fn find_var_binding_result<'a>(
         }
         if symbol.clone().is_symbol()
             && let Ok(sym_val) = symbol.clone().try_symvalue()
-            && sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
+            && matches!(
+                sym_val.clone().typeof_(),
+                SEXPTYPE::SPECIALSXP
+                    | SEXPTYPE::BUILTINSXP
+                    | SEXPTYPE::CLOSXP
+                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+                    || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
+            )
         {
             return Ok(Some(sym_val));
+        }
+        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
+            && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
+        {
+            return Ok(Some(val));
         }
         current = current
             .try_enclos()

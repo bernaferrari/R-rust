@@ -1243,9 +1243,9 @@ pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
                     counts = *LOGICAL(value) == TRUE;
                 }
-            } else if named == "y"
-                || (named.is_empty() && positional == 0 && TYPEOF(value) == SEXPTYPE::STRSXP)
-            {
+            } else if named == "y" || (named.is_empty() && positional == 0) {
+                // First argument after x: the GNU closure passes the
+                // utf8ToInt lists (VECSXP), not character vectors.
                 y = value;
             }
             if named.is_empty() {
@@ -1389,6 +1389,11 @@ pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let text = CAR(CDR(args));
         let mut maxd = 0.1;
         let mut cell = CDR(CDR(args));
+        // The GNU closure passes .Internal(aregexec(pattern, text,
+        // bounds, costs, ...)): only the third argument (the expanded
+        // match-distance bounds) carries the distance. Later unnamed
+        // arguments (costs, flags) must not overwrite it.
+        let mut positional = 2;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
@@ -1398,17 +1403,36 @@ pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             } else {
                 String::new()
             };
-            if name == "max.distance" || name.is_empty() {
+            if name == "max.distance" || (name.is_empty() && positional == 2) {
                 let v = CAR(cell);
                 if !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
-                    maxd = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    let candidate = if TYPEOF(v) == SEXPTYPE::REALSXP {
                         *REAL(v)
                     } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                        *INTEGER(v) as f64
+                        let iv = *INTEGER(v);
+                        if iv == crate::sexp::ffi::NA_INTEGER {
+                            f64::NAN
+                        } else {
+                            iv as f64
+                        }
                     } else {
-                        maxd
+                        f64::NAN
                     };
+                    // Scalar max.distance expands to bounds = c(x, NA*4);
+                    // the list form leaves bounds[1] ("cost") NA and sets
+                    // the shared "all" bound instead.
+                    if !candidate.is_nan() {
+                        maxd = candidate;
+                    } else if XLENGTH(v) > 4
+                        && TYPEOF(v) == SEXPTYPE::REALSXP
+                        && !(*REAL(v).add(4)).is_nan()
+                    {
+                        maxd = *REAL(v).add(4);
+                    }
                 }
+            }
+            if name.is_empty() {
+                positional += 1;
             }
             cell = CDR(cell);
         }
@@ -4906,9 +4930,15 @@ unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 }
                 _ => {
                     let v = *crate::sexp::accessors::COMPLEX(x).add(i as usize);
+                    // GNU encodes each part with its own width and then
+                    // right-justifies to the total width; fusing that into a
+                    // wider real field is equivalent only when w holds the
+                    // combined width (trim=TRUE sets w = 0, so fall back to
+                    // wr instead of underflowing the c_int).
+                    let field_re = if w > wi + 2 { w - wi - 2 } else { wr };
                     crate::mainutils::printutils::EncodeComplex(
                         v,
-                        w - wi - 2,
+                        field_re,
                         dr,
                         er,
                         wi,

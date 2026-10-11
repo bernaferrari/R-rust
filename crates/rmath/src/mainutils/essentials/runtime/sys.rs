@@ -2431,10 +2431,59 @@ pub unsafe fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-/// GNU `c.Date(...)`.
+/// Build a fresh argument list for `c.<class>()` with every element passed
+/// through `convert` (GNU's `lapply(list(...), function(e) ...)`) and the
+/// `recursive` formal dropped. Tags are preserved.
+unsafe fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP {
+    unsafe {
+        let mut out = R_NilValue();
+        let mut tail: SEXP = std::ptr::null_mut();
+        let mut guards: Vec<crate::sexp::protect::ProtectGuard<'static>> = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let skip = if !tag.is_null() && tag != R_NilValue() {
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "recursive"
+            } else {
+                false
+            };
+            if !skip {
+                let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
+                guards.push(protect(v));
+                let converted = convert(v);
+                guards.push(protect(converted));
+                let node = Rf_cons(converted, R_NilValue());
+                guards.push(protect(node));
+                if !tag.is_null() && tag != R_NilValue() {
+                    SETTAG(node, tag);
+                }
+                if out == R_NilValue() {
+                    out = node;
+                } else {
+                    SETCDR(tail, node);
+                }
+                tail = node;
+            }
+            cell = CDR(cell);
+        }
+
+        out
+    }
+}
+
+/// GNU `c.Date(...)`:
+/// `.Date(c(unlist(lapply(list(...), function(e) unclass(as.Date(e))))))`
 pub unsafe fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let r = crate::mainutils::bind::do_c_dflt(call, op, args, rho);
+        let converted = convert_c_args(args, rho, &|v| {
+            if sexp_has_class(v, "Date") {
+                v
+            } else {
+                do_as_Date(call, op, Rf_cons(v, R_NilValue()), rho)
+            }
+        });
+        let _c = protect(converted);
+        let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
         let _r = protect(r);
         drop_empty_names(r);
         set_single_class(r, "Date");
@@ -2442,28 +2491,77 @@ pub unsafe fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `c.POSIXct(...)`.
+/// GNU `c.POSIXct(...)`:
+/// `x <- lapply(list(...), function(e) unclass(as.POSIXct(e)))`;
+/// `tz <- if(length(unique(tzones)) == 1L) tzones[[1L]] else NULL`;
+/// `.POSIXct(c(unlist(x)), tz)`
 pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let tz = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
-        );
-        let mut tz_s = String::new();
-        if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0
-        {
-            let ch = STRING_ELT(tz, 0);
-            if !ch.is_null() {
-                tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned();
+        let converted = convert_c_args(args, rho, &|v| {
+            if sexp_has_class(v, "POSIXct") {
+                v
+            } else {
+                do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
             }
+        });
+        let _c = protect(converted);
+
+        // Collect the tzone attribute of every converted element; the result
+        // carries it only when the list is non-empty and all agree.
+        let mut tzones: Vec<Option<String>> = Vec::new();
+        let mut cell = converted;
+        while !cell.is_null() && cell != R_NilValue() {
+            let attr = crate::sexp::attrib_core::getAttrib(
+                CAR(cell),
+                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+            );
+            let this = if !attr.is_null()
+                && attr != R_NilValue()
+                && TYPEOF(attr) == SEXPTYPE::STRSXP
+                && XLENGTH(attr) > 0
+            {
+                let ch = STRING_ELT(attr, 0);
+                if ch.is_null() {
+                    None
+                } else {
+                    Some(std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned())
+                }
+            } else {
+                None
+            };
+            tzones.push(this);
+            cell = CDR(cell);
         }
-        let r = crate::mainutils::bind::do_c_dflt(call, op, args, rho);
+        let tz = if let Some(first) = tzones.first()
+            && first.is_some()
+            && tzones.iter().all(|t| t == first)
+        {
+            first.clone()
+        } else {
+            None
+        };
+
+        let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
         let _r = protect(r);
         drop_empty_names(r);
-        set_posixct_class(r, &tz_s);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _class = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            r,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        if let Some(tz) = tz {
+            let tzone = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
+            let _t = protect(tzone);
+            crate::sexp::attrib_core::setAttrib(
+                r,
+                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                tzone,
+            );
+        }
         r
     }
 }

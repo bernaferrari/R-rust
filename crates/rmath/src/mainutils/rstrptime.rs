@@ -674,11 +674,14 @@ fn strptime_internal(
         if !have_yday {
             // Get yday from the week and day-of-the-week.
             // This does not validate yday against any upper limit.
-            // `del >= 0` selects the week origin. The old `yday < 0`
-            // adjustment double-counted a negative weekday offset.
+            // GNU Rstrptime.h: yday = (7 - (wday - w_offset)) % 7
+            //   + (week_no - 1) * 7 + save_wday - w_offset,
+            // then + 7 if negative.
             let del = save_wday - w_offset;
-            tm.tm_yday =
-                (7 - (tm.tm_wday - w_offset)) % 7 + (week_no - c_int::from(del >= 0)) * 7 + del;
+            tm.tm_yday = (7 - (tm.tm_wday - w_offset)) % 7 + (week_no - 1) * 7 + del;
+            if tm.tm_yday < 0 {
+                tm.tm_yday += 7;
+            }
         }
 
         if !have_mday || !have_mon {

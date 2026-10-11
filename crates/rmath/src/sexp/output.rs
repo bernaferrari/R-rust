@@ -515,32 +515,62 @@ pub(crate) fn format_real_value(v: f64) -> String {
         // overflows before clamp. GNU prints both signed zeros as 0.
         "0".to_string()
     } else if !needs_scientific(v) {
-        let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
-        let exponent = v.abs().log10().floor() as i32;
-        let decimals = (digits - exponent - 1).clamp(0, 64) as usize;
+        let (_, rgt, _) = real_format_widths(v);
+        let decimals = rgt.max(0) as usize;
         format!("{v:.decimals$}")
     } else {
         format_r_default_real(v)
     }
 }
 
+/// `scientific()` from GNU format.c: (neg, kpower, nsig) for a finite
+/// non-zero double, with `nsig = min(R_print.digits, #{significant digits})`.
+fn scientific_parts(v: f64) -> (i32, i32, i32) {
+    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits };
+    let neg = if v < 0.0 { 1 } else { 0 };
+    // Rust's `{:e}` with no precision is the shortest round-trip form, so its
+    // mantissa digit count is the #{significant digits} GNU computes.
+    let s = format!("{:e}", v.abs());
+    let (mantissa, exponent) = s.split_once('e').unwrap_or((s.as_str(), "0"));
+    let kpower: i32 = exponent.parse().unwrap_or(0);
+    let nsig_actual = mantissa.chars().filter(|c| c.is_ascii_digit()).count() as i32;
+    let nsig = if digits < 1 {
+        1
+    } else {
+        digits.min(nsig_actual).max(1)
+    };
+    (neg, kpower, nsig)
+}
+
+/// The single-element case of GNU formatReal (format.c): fixed width `wF`,
+/// fixed decimals `rgt`, and scientific width `wE`, used to pick the format.
+/// Returns `(wF, rgt, wE)`.
+fn real_format_widths(v: f64) -> (i32, i32, i32) {
+    let (neg, kpower, nsig) = scientific_parts(v);
+    let left = kpower + 1;
+    let sleft = neg + if left <= 0 { 1 } else { left };
+    let right = nsig - left;
+    let mut rgt = right.max(0);
+    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits };
+    if digits == 0 {
+        rgt = 0;
+    }
+    let w_f = sleft + rgt + i32::from(rgt != 0);
+    // E Format has the form [S]X[.XXX]E+XX[X]
+    let e = if left > 100 || left <= -99 { 2 } else { 1 };
+    let d = nsig - 1;
+    let w_e = neg + i32::from(d > 0) + d + 4 + e;
+    (w_f, rgt, w_e)
+}
+
 fn needs_scientific(v: f64) -> bool {
     if !v.is_finite() || v == 0.0 {
         return false;
     }
-    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
-    let exponent = v.abs().log10().floor() as i32;
-    if (-4..digits).contains(&exponent) {
-        return false;
-    }
     let scipen = unsafe { crate::mainutils::options::GetOptionScipen() };
-    let fixed = if exponent >= 0 {
-        exponent + 1
-    } else {
-        -exponent + 1
-    };
-    let sci = 6 + exponent.abs().to_string().len() as i32;
-    fixed > sci + scipen
+    let (w_f, _, w_e) = real_format_widths(v);
+    // Fixpoint whenever it needs no more space than E + scipen.
+    w_f > w_e + scipen
 }
 
 fn is_finite_r_number(v: f64) -> bool {
@@ -595,36 +625,32 @@ fn trim_float(s: String) -> String {
     let exponent = if exponent.len() >= 2 {
         let mark = &exponent[..1];
         let rest = &exponent[1..];
-        if rest.starts_with('+') || rest.starts_with('-') {
-            format!("{mark}{rest}")
+        let (sign, digits) = if let Some(stripped) = rest.strip_prefix('+') {
+            ("+", stripped)
+        } else if let Some(stripped) = rest.strip_prefix('-') {
+            ("-", stripped)
         } else {
-            format!("{mark}+{rest}")
-        }
+            ("+", rest)
+        };
+        // C's %e keeps at least two exponent digits (e+09, e-05).
+        let padded = if digits.len() < 2 {
+            format!("0{digits}")
+        } else {
+            digits.to_string()
+        };
+        format!("{mark}{sign}{padded}")
     } else {
         exponent
     };
     format!("{mantissa}{exponent}")
 }
 
+/// Scientific rendering, GNU `EncodeReal0` with `d = nsig - 1` decimals.
+/// Only reached when `needs_scientific` selected the E format.
 fn format_r_default_real(v: f64) -> String {
-    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits }.max(1);
-    let abs = v.abs();
-    if abs == 0.0 {
-        return "0".to_string();
-    }
-
-    let exponent = abs.log10().floor() as i32;
-    if !(-4..digits).contains(&exponent) {
-        let decimals = (digits as usize).saturating_sub(1);
-        return trim_float(format!("{v:.decimals$e}"));
-    }
-
-    let decimals = if exponent >= 0 {
-        (digits - exponent - 1).max(0) as usize
-    } else {
-        (digits - exponent - 1) as usize
-    };
-    trim_float(format!("{v:.decimals$}"))
+    let (_, _, nsig) = scientific_parts(v);
+    let decimals = (nsig - 1).max(0) as usize;
+    trim_float(format!("{v:.decimals$e}"))
 }
 
 fn format_logical_value(v: i32) -> String {
@@ -2043,10 +2069,30 @@ fn difftime_units(x: Sexp<'_>) -> String {
     }
 }
 
+/// GNU `print.difftime` (base/R/datetime.R).
 fn format_difftime_vector(x: Sexp<'_>) -> String {
     let units = difftime_units(x.clone());
     if x.clone().len() == 0 {
-        return format!("Time difference of 0 {units}");
+        return "difftime of length 0".to_string();
+    }
+    if x.clone().len() > 1 {
+        // cat("Time differences in ", units, "\n") + print(unclassed values)
+        let body = unsafe {
+            let raw = crate::mainutils::duplicate::duplicate(x.as_raw());
+            let _r = crate::sexp::protect::protect(raw);
+            crate::sexp::attrib_core::setAttrib(
+                raw,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                raw,
+                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                R_NilValue(),
+            );
+            format_vector_stock(Sexp::from_raw_unchecked(raw), true)
+        };
+        return format!("Time differences in {units}\n{body}");
     }
     let value = x
         .try_real_elt(0)

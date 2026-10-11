@@ -130,19 +130,16 @@ pub unsafe fn vmmin(
                 c[i] = g[l[i]];
             }
             let mut gradproj = 0.0_f64;
-            // Keep GNU's fused scalar BFGS arithmetic explicit so native and
-            // Wasm searches take the same rounding path, independent of the
-            // compiler's implicit floating-point contraction policy.
             for i in 0..n_usize {
                 let mut s = 0.0_f64;
                 for j in 0..=i {
-                    s = (-bmat[i][j]).mul_add(g[l[j]], s);
+                    s -= bmat[i][j] * g[l[j]];
                 }
                 for j in (i + 1)..n_usize {
-                    s = (-bmat[j][i]).mul_add(g[l[j]], s);
+                    s -= bmat[j][i] * g[l[j]];
                 }
                 t[i] = s;
-                gradproj = s.mul_add(g[l[i]], gradproj);
+                gradproj += s * g[l[i]];
             }
 
             let mut count: i32 = 0;
@@ -153,7 +150,7 @@ pub unsafe fn vmmin(
                 loop {
                     count = 0;
                     for i in 0..n_usize {
-                        *b.add(l[i]) = steplength.mul_add(t[i], x[i]);
+                        *b.add(l[i]) = x[i] + steplength * t[i];
                         if RELTEST + x[i] == RELTEST + *b.add(l[i]) {
                             count += 1;
                         }
@@ -162,7 +159,7 @@ pub unsafe fn vmmin(
                         f = fminfn(n0 as std::os::raw::c_int, b, ex);
                         funcount += 1;
                         accpoint =
-                            f.is_finite() && f <= (gradproj * steplength).mul_add(ACCTOL, *fmin);
+                            f.is_finite() && f <= *fmin + gradproj * steplength * ACCTOL;
                         if !accpoint {
                             steplength *= STEPREDN;
                         }
@@ -187,26 +184,25 @@ pub unsafe fn vmmin(
                     for i in 0..n_usize {
                         t[i] *= steplength;
                         c[i] = g[l[i]] - c[i];
-                        d1 = t[i].mul_add(c[i], d1);
+                        d1 += t[i] * c[i];
                     }
                     if d1 > 0.0 {
                         let mut d2 = 0.0_f64;
                         for i in 0..n_usize {
                             let mut s = 0.0_f64;
                             for j in 0..=i {
-                                s = bmat[i][j].mul_add(c[j], s);
+                                s += bmat[i][j] * c[j];
                             }
                             for j in (i + 1)..n_usize {
-                                s = bmat[j][i].mul_add(c[j], s);
+                                s += bmat[j][i] * c[j];
                             }
                             x[i] = s;
-                            d2 = s.mul_add(c[i], d2);
+                            d2 += s * c[i];
                         }
                         let d2 = 1.0 + d2 / d1;
                         for i in 0..n_usize {
                             for j in 0..=i {
-                                let update = (d2 * t[i]).mul_add(t[j], -(x[i] * t[j]));
-                                bmat[i][j] += (-t[i]).mul_add(x[j], update) / d1;
+                                bmat[i][j] += (d2 * t[i] * t[j] - x[i] * t[j] - t[i] * x[j]) / d1;
                             }
                         }
                     } else {

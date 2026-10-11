@@ -32,8 +32,12 @@ fn daxpy(n: c_int, da: f64, dx: *const f64, incx: c_int, dy: *mut f64, incy: c_i
     unsafe {
         let mut ix: isize = 0;
         let mut iy: isize = 0;
+        // GNU builds the reference BLAS with default `-ffp-contract=fast`,
+        // fusing `dy += da*dx` into an FMA; mirror that arithmetic so that
+        // identical inputs (e.g. y equal to a model-matrix column) cancel
+        // exactly, as LINPACK's least-squares cancellation requires.
         for _ in 0..n {
-            *dy.offset(iy) += da * *dx.offset(ix);
+            *dy.offset(iy) = da.mul_add(*dx.offset(ix), *dy.offset(iy));
             ix += incx as isize;
             iy += incy as isize;
         }
@@ -48,8 +52,10 @@ fn ddot(n: c_int, dx: *const f64, incx: c_int, dy: *const f64, incy: c_int) -> f
     unsafe {
         let mut ix: isize = 0;
         let mut iy: isize = 0;
+        // FMA-contracted accumulation, matching the reference BLAS compiled
+        // with `-ffp-contract=fast` (see daxpy note above).
         for _ in 0..n {
-            sum += *dx.offset(ix) * *dy.offset(iy);
+            sum = (*dx.offset(ix)).mul_add(*dy.offset(iy), sum);
             ix += incx as isize;
             iy += incy as isize;
         }

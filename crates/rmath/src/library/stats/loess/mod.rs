@@ -330,6 +330,20 @@ impl Model {
         se: bool,
         execution: &Execution<'_>,
     ) -> Result<(Vec<f64>, Vec<f64>), String> {
+        self.predict_with_execution_se(queries, se, None, execution)
+    }
+
+    /// Like [`Self::predict_with_execution`], but the standard-error weights
+    /// (`se.fit = s * sqrt(sum(L^2 / se_divisor))`) may differ from the model
+    /// weights. GNU R's `loess_dfitse` computes L with `weights*robust` yet
+    /// divides by the raw `weights` when forming `se.fit`.
+    pub fn predict_with_execution_se(
+        &self,
+        queries: &[Vec<f64>],
+        se: bool,
+        se_divisor: Option<&[f64]>,
+        execution: &Execution<'_>,
+    ) -> Result<(Vec<f64>, Vec<f64>), String> {
         execution.checkpoint()?;
         let d = self.divisor.len();
         let n = self.y.len();
@@ -420,10 +434,11 @@ impl Model {
         for (k, (i, _)) in valid.iter().enumerate() {
             fitted[*i] = values[k];
             if se {
+                let divisor = se_divisor.unwrap_or(&self.weights);
                 errors[*i] = self.s
                     * uncertainty[k]
                         .iter()
-                        .zip(&self.weights)
+                        .zip(divisor)
                         .map(|(l, w)| if *w > 0. { l * l / w } else { 0. })
                         .sum::<f64>()
                         .sqrt();

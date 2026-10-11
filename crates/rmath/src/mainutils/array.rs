@@ -19,8 +19,8 @@ use std::os::raw::c_int;
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
-    SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF,
-    UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
+    SET_ATTRIB, SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG,
+    TYPEOF, UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
 
 use crate::sexp::attrib_core::{
@@ -1232,8 +1232,12 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Short-circuit identity permutation (PR#19069): when resizing and the
         // permutation is the identity, return the original array unchanged.
         let is_identity = perm.iter().enumerate().all(|(i, &axis)| axis == i);
+        // GNU builds a fresh result carrying only `dim`/`dimnames`; the
+        // identity permutation must also drop tsp/class/names (FIXME in
+        // array.c: other attributes are documented but NOT copied).
         if is_identity {
-            return x;
+            let copy = crate::mainutils::duplicate::duplicate(x);
+            return keep_only_dim_attributes(copy);
         }
 
         // Special case for 2D arrays (PR#19133): the only non-identity
@@ -1256,11 +1260,11 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     SET_STRING_ELT(nm_dr, 1, STRING_ELT(nmdm, 0));
                     setAttrib(dimsr, R_NamesSymbol(), nm_dr);
                 }
-                return transposed;
+                return keep_only_dim_attributes(transposed);
             }
             setAttrib(transposed, R_DimSymbol(), source_dim);
             setAttrib(transposed, R_DimNamesSymbol(), R_NilValue());
-            return transposed;
+            return keep_only_dim_attributes(transposed);
         }
 
         let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
@@ -1297,9 +1301,28 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             setAttrib(result, R_DimSymbol(), source_dim);
         }
 
-        // Copy all other attributes as documented (names/dim/dimnames excluded).
-        copyMostAttrib(x, result);
+        // GNU do_aperm does not copy other attributes (see the FIXME in
+        // array.c): only dim/dimnames survive.
         result
+    }
+}
+
+/// GNU `do_aperm` returns a fresh object with only `dim` and `dimnames`
+/// (and `names(dim)`); drop every other attribute such as `tsp`/`class`.
+unsafe fn keep_only_dim_attributes(r: SEXP) -> SEXP {
+    unsafe {
+        let dim = getAttrib(r, R_DimSymbol());
+        let _dim_guard = protect(dim);
+        let dimnames = getAttrib(r, R_DimNamesSymbol());
+        let _dn_guard = protect(dimnames);
+        SET_ATTRIB(r, R_NilValue());
+        if !dim.is_null() && dim != R_NilValue() {
+            setAttrib(r, R_DimSymbol(), dim);
+        }
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            setAttrib(r, R_DimNamesSymbol(), dimnames);
+        }
+        r
     }
 }
 
@@ -1317,7 +1340,9 @@ pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
-                setAttrib(dest, tag, CAR(cell));
+                // GNU copyMostAttrib stores attributes via installAttrib:
+                // tsp is attached without the `tsp<-` validation pass.
+                crate::sexp::attrib_core::installAttrib(dest, tag, CAR(cell));
             }
             cell = CDR(cell);
         }

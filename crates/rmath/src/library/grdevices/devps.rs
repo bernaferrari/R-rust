@@ -2230,6 +2230,15 @@ pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
         } else {
             crate::sexp::envir::defineVar(sym, devices, base);
         }
+        // GNU initDevice() sets .Device to the newly opened device's name;
+        // lag.plot() and friends test `.Device == "null device"` before
+        // calling dev.new(), so a stale "null device" makes them reopen a
+        // device (and dev.new() then announces "Rplots1.pdf").
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
+            Rf_mkString(c"pdf".as_ptr()),
+            base,
+        );
         R_NilValue()
     }
 }

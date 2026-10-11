@@ -12,7 +12,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::attrib_core::{R_NamesSymbol, setAttrib};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_warning};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -113,11 +113,11 @@ unsafe fn collap(
         size[0] = 1;
         let mut k = 1;
         while k <= nvar {
-            let l = *config.add(k as usize);
+            let l = *config.add((k - 1) as usize);
             if l == 0 {
                 break;
             }
-            size[k as usize] = size[(k - 1) as usize] * *dim.add(l as usize);
+            size[k as usize] = size[(k - 1) as usize] * *dim.add((l - 1) as usize);
             k += 1;
         }
         let n = k - 1; // number of variables in configuration
@@ -137,7 +137,7 @@ unsafe fn collap(
         loop {
             let mut j = locy - 1; // 1-based index into y
             for kk in 1..=n {
-                let l = *config.add(kk as usize);
+                let l = *config.add((kk - 1) as usize);
                 j += coord[(l - 1) as usize] * size[(kk - 1) as usize];
             }
             *y.add(j as usize) += *x.add((i - 1) as usize);
@@ -147,7 +147,7 @@ unsafe fn collap(
             let mut done = true;
             for kk in 1..=nvar {
                 coord[(kk - 1) as usize] += 1;
-                if coord[(kk - 1) as usize] < *dim.add(kk as usize) {
+                if coord[(kk - 1) as usize] < *dim.add((kk - 1) as usize) {
                     done = false;
                     break;
                 }
@@ -182,11 +182,11 @@ unsafe fn adjust(
         size[0] = 1;
         let mut k = 1;
         while k <= nvar {
-            let l = *config.add(k as usize);
+            let l = *config.add((k - 1) as usize);
             if l == 0 {
                 break;
             }
-            size[k as usize] = size[(k - 1) as usize] * *dim.add(l as usize);
+            size[k as usize] = size[(k - 1) as usize] * *dim.add((l - 1) as usize);
             k += 1;
         }
         let n = k - 1;
@@ -194,13 +194,14 @@ unsafe fn adjust(
         // Test size of deviation
         let l = size[n as usize];
         let mut j = 1; // 1-based into y
-        let kk0 = *locz; // 1-based into z
+        let mut k = *locz; // 1-based into z (advances with j, as in AS 51.2)
         for _i in 1..=l {
-            let e = (*z.add((kk0 - 1) as usize) - *y.add((j - 1) as usize)).abs();
+            let e = (*z.add((k - 1) as usize) - *y.add((j - 1) as usize)).abs();
             if e > *d {
                 *d = e;
             }
             j += 1;
+            k += 1;
         }
 
         // Initialize coordinates
@@ -211,7 +212,7 @@ unsafe fn adjust(
         loop {
             let mut j = 0; // 0-based offset
             for kk in 1..=n {
-                let l = *config.add(kk as usize);
+                let l = *config.add((kk - 1) as usize);
                 j += coord[(l - 1) as usize] * size[(kk - 1) as usize];
             }
             let kk = j + *locz - 1; // 0-based into z
@@ -231,7 +232,7 @@ unsafe fn adjust(
             let mut done = true;
             for kk in 1..=nvar {
                 coord[(kk - 1) as usize] += 1;
-                if coord[(kk - 1) as usize] < *dim.add(kk as usize) {
+                if coord[(kk - 1) as usize] < *dim.add((kk - 1) as usize) {
                     done = false;
                     break;
                 }
@@ -272,7 +273,11 @@ unsafe fn loglin(
         *nlast = 0;
 
         // Check validity of NVAR and maxit
-        if nvar <= 0 || maxit <= 0 {
+        if nvar == 0 {
+            Rf_error(b"no variables\0".as_ptr() as *const _);
+        }
+        // Check validity of maxit
+        if maxit <= 0 {
             *ifault = 4;
             return;
         }
@@ -318,9 +323,12 @@ unsafe fn loglin(
         // Allocate marginal tables
         let mut point = 1;
         let mut n = 0;
+        let mut iconf = ncon + 1;
         for i in 1..=ncon {
-            // A zero beginning a configuration indicates that the list is completed
-            if *config.add((i * nvar) as usize) == 0 {
+            // A zero beginning a configuration indicates that the list is
+            // completed (C: config[i*nvar + 1 - (nvar+1)] == config[(i-1)*nvar])
+            if *config.add(((i - 1) * nvar) as usize) == 0 {
+                iconf = i;
                 break;
             }
             // Get marginal table size. While doing this task, see if the
@@ -361,8 +369,9 @@ unsafe fn loglin(
             point += sz;
         }
 
-        // Get N, number of valid configurations
-        n = ncon; // i was ncon+1 in C, so n = ncon
+        // Get N, number of valid configurations (C: i = ncon+1 unless an
+        // early break happened at a zero-leading configuration; n = i - 1)
+        n = iconf - 1;
 
         // See if MARG can hold all marginal tables
         if point > nmar + 1 {
@@ -439,7 +448,7 @@ pub unsafe fn LogLin(
 ) -> SEXP {
     unsafe {
         let nvar = LENGTH(dtab);
-        let ncon = ncols(dtab as *const _);
+        let ncon = ncols(conf as *const _);
         let ntab = LENGTH(table);
         let nmar = as_integer(snmar);
         let maxit = as_integer(iter);
@@ -494,7 +503,7 @@ pub unsafe fn LogLin(
                 Rf_error(b"this should not happen\0".as_ptr() as *const _);
             }
             3 => {
-                Rf_error(b"algorithm did not converge\0".as_ptr() as *const _);
+                Rf_warning(b"algorithm did not converge\0".as_ptr() as *const _);
             }
             4 => {
                 Rf_error(b"incorrect specification of 'table' or 'start'\0".as_ptr() as *const _);

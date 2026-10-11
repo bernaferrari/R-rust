@@ -115,34 +115,73 @@ unsafe fn dscal(n: i32, da: f64, dx: *mut f64, incx: i32) {
 // Inline LINPACK replacements
 // =====================================================================
 
-/// dtrsl: solve triangular system. a stored column-major, lower triangle.
-/// job: 0 = L*x=b (forward), 11 = L'*x=b (backward)
+/// dtrsl: solve triangular systems with Fortran dtrsl job semantics.
+/// Element (row r, col c) [0-based] lives at offset r + c*lda.
+///   job 00 (0):  solve T*x = b, T lower triangular (forward)
+///   job 01 (1):  solve T*x = b, T upper triangular (backward)
+///   job 10 (10): solve T'*x = b, T lower triangular (backward)
+///   job 11 (11): solve T'*x = b, T upper triangular (forward)
 #[inline(always)]
 unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i32) -> i32 {
     unsafe {
-        if job == 0 {
-            for j in 0..n as usize {
-                let ajj = *a.add(j * lda as usize + j);
-                if ajj == 0.0 {
-                    return (j + 1) as i32;
-                }
-                *x.add(j) /= ajj;
-                let tmp = *x.add(j);
-                for i in (j + 1)..n as usize {
-                    *x.add(i) -= tmp * *a.add(j * lda as usize + i);
+        let kase1 = if job % 10 != 0 { 1 } else { 0 };
+        let kase2 = if (job / 10) % 10 != 0 { 1 } else { 0 };
+        let kase = 1 + kase1 + 2 * kase2;
+        let n_u = n as usize;
+        let lda_u = lda as usize;
+        // dtrsl.f scans all diagonal elements first and returns the index
+        // of the first zero one without touching b.
+        for j in 0..n_u {
+            if *a.add(j + j * lda_u) == 0.0 {
+                return (j + 1) as i32;
+            }
+        }
+        match kase {
+            1 => {
+                // solve T*x = b, T lower triangular: forward
+                for j in 0..n_u {
+                    let mut tmp = *x.add(j);
+                    for c in 0..j {
+                        tmp -= *a.add(j + c * lda_u) * *x.add(c);
+                    }
+                    let ajj = *a.add(j + j * lda_u);
+                    *x.add(j) = tmp / ajj;
                 }
             }
-        } else {
-            for j in (0..n as usize).rev() {
-                let mut tmp = *x.add(j);
-                for i in (j + 1)..n as usize {
-                    tmp -= *a.add(j * lda as usize + i) * *x.add(i);
+            2 => {
+                // solve T*x = b, T upper triangular: backward
+                for j in (0..n_u).rev() {
+                    let mut tmp = *x.add(j);
+                    for c in (j + 1)..n_u {
+                        tmp -= *a.add(j + c * lda_u) * *x.add(c);
+                    }
+                    let ajj = *a.add(j + j * lda_u);
+                    *x.add(j) = tmp / ajj;
                 }
-                let ajj = *a.add(j * lda as usize + j);
-                if ajj == 0.0 {
-                    return (j + 1) as i32;
+            }
+            3 => {
+                // solve T'*x = b, T lower triangular: backward.
+                // dtrsl.f: b(j) = b(j) - ddot(rows j+1..n, column j, b)
+                for j in (0..n_u).rev() {
+                    let mut dot = 0.0_f64;
+                    for r in (j + 1)..n_u {
+                        dot += *a.add(r + j * lda_u) * *x.add(r);
+                    }
+                    let ajj = *a.add(j + j * lda_u);
+                    *x.add(j) = (*x.add(j) - dot) / ajj;
                 }
-                *x.add(j) = tmp / ajj;
+            }
+            _ => {
+                // solve T'*x = b, T upper triangular: forward.
+                // dtrsl.f: b(j) = b(j) - ddot(rows 1..j-1, column j, b)
+                for j in 0..n_u {
+                    let mut dot = 0.0_f64;
+                    for r in 0..j {
+                        dot += *a.add(r + j * lda_u) * *x.add(r);
+                    }
+                    let ajj = *a.add(j + j * lda_u);
+                    *x.add(j) = (*x.add(j) - dot) / ajj;
+                }
             }
         }
         0
@@ -160,7 +199,9 @@ unsafe fn dpofa(a: *mut f64, lda: i32, n: i32) -> i32 {
                 s += aij * aij;
             }
             let ajj = *a.add(j * lda as usize + j) - s;
-            if ajj <= 0.0 {
+            // R's vendored dpofa.f fails when s <= eps*|a(j,j)| (eps = 1e-14),
+            // not only when the pivot is non-positive.
+            if ajj <= 1.0e-14 * (*a.add(j * lda as usize + j)).abs() {
                 return (j + 1) as i32;
             }
             *a.add(j * lda as usize + j) = sqrt(ajj);
@@ -427,6 +468,10 @@ pub unsafe fn lbfgsb(
                 isave,
                 st,
             );
+            // GNU mainlb saves nfgv into isave at every exit (isave[12]
+            // of the rearranged size-21 layout); our caller reads the
+            // original-layout slot 33 (Fortran isave(34)).
+            *isave.add(33) = st.nfgv;
         });
     }
 }
@@ -639,7 +684,9 @@ unsafe fn mainlb(
                     st.iupdat = 0;
                     st.updatd = 0;
                     cstrcpy(task, b"RESTART_FROM_LNSRCH");
-                    return;
+                    // GNU's mainlb does `goto L222` here: restart the
+                    // iteration inside this call instead of returning to
+                    // the driver. Fall through to the L222 loop below.
                 }
             } else if cstrncmp(task, b"FG_LN", 5) {
                 return;
@@ -1135,7 +1182,9 @@ unsafe fn mainlb(
                     st.iupdat = 0;
                     st.updatd = 0;
                     cstrcpy(task, b"RESTART_FROM_LNSRCH");
-                    return;
+                    // GNU: `goto L222` — restart the iteration inside
+                    // this call; do not return to the driver.
+                    continue;
                 }
             } else if cstrncmp(task, b"FG_LN", 5) {
                 return;
@@ -1273,7 +1322,7 @@ unsafe fn bmv(
         }
 
         // PART II
-        *info = dtrsl(wt, m, col_v, p.add(col_i), 0);
+        *info = dtrsl(wt, m, col_v, p.add(col_i), 1);
         if *info != 0 {
             return;
         }
@@ -1459,7 +1508,7 @@ unsafe fn cauchy(
         f2 = -*theta * f1;
         let f2_org = f2;
         if *col > 0 {
-            bmv(m, sy, wt, col, v, p, info);
+            bmv(m, sy, wt, col, p, v, info);
             if *info != 0 {
                 return;
             }
@@ -1824,8 +1873,8 @@ unsafe fn formk(
                     t3 += *wy.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
                     t4 += *ws.add(k1 + ipntr * ni) * *ws.add(k1 + jpntr * ni);
                 }
-                *wn1.add(iy + jy * m2i) += t1 - t3;
-                *wn1.add(is_ + js * m2i) += -t2 + t4;
+                *wn1.add(iy + jy * m2i) = *wn1.add(iy + jy * m2i) + t1 - t3;
+                *wn1.add(is_ + js * m2i) = *wn1.add(is_ + js * m2i) - t2 + t4;
                 jpntr = (jpntr + 1) % mi;
             }
             ipntr = (ipntr + 1) % mi;
@@ -1865,14 +1914,16 @@ unsafe fn formk(
                 *wn.add(jy + iy * m2i) = *wn1.add(iy + jy * m2i) / *theta;
                 *wn.add(js + is_ * m2i) = *wn1.add(is1 + js1 * m2i) * *theta;
             }
-            for jy in (iy + 1)..*col as usize {
-                *wn.add(jy + iy * m2i) = -*wn1.add(is1 + jy * m2i);
+            // (1,2) block of the upper triangle: -wn1 below the diagonal
+            // of the block, +wn1 on and above it (Fortran wn(jy, is)).
+            for jy in 0..iy {
+                *wn.add(jy + is_ * m2i) = -*wn1.add(is1 + jy * m2i);
             }
-            *wn.add(iy + is_ * m2i) = 0.0;
-            for jy in (iy + 1)..*col as usize {
-                *wn.add(is_ + jy * m2i) = *wn1.add(is1 + jy * m2i);
+            for jy in iy..*col as usize {
+                *wn.add(jy + is_ * m2i) = *wn1.add(is1 + jy * m2i);
             }
-            *wn.add(is_ + iy * m2i) += *sy.add(iy + iy * mi);
+            // sy diagonal enters the (1,1) block diagonal.
+            *wn.add(iy + iy * m2i) += *sy.add(iy + iy * mi);
         }
 
         // Cholesky (1,1)
@@ -1885,10 +1936,9 @@ unsafe fn formk(
         // L^-1 in (1,2)
         let col2 = *col * 2;
         for js in *col..col2 {
-            let r = dtrsl(wn, m2, *col, wn.add(js as usize * m2i), 11);
-            if r != 0 {
-                return;
-            }
+            // GNU ignores intermediate dtrsl info codes here; the final
+            // dpofa below decides success.
+            *info = dtrsl(wn, m2, *col, wn.add(js as usize * m2i), 11);
         }
 
         // Complete (2,2)
@@ -1926,9 +1976,10 @@ unsafe fn formt(
         }
         for i in 1..*col as usize {
             for j in i..*col as usize {
-                let k1 = if i < j { i } else { j } - 1;
+                // Fortran: k1 = min(i,j) - 1 (1-based) == 0-based loop
+                // bound min(i,j) here since j >= i in this loop.
                 let mut ddum = 0.0_f64;
-                for k in 0..k1 as usize {
+                for k in 0..i {
                     ddum += *sy.add(i + k * mi) * *sy.add(j + k * mi) / *sy.add(k + k * mi);
                 }
                 *wt.add(i + j * mi) = ddum + *theta * *ss.add(i + j * mi);
@@ -2232,12 +2283,14 @@ unsafe fn matupd(
         *theta = *rr / *dr;
 
         if *iupdat > m {
+            // Move old information: Fortran dcopy(j, ss(2, j+1), ss(1, j))
+            // and dcopy(col-j, sy(j+1, j+1), sy(j, j)) with 0-based j here.
             for j in 0..(*col - 1) as usize {
                 dcopy(
-                    j as i32,
-                    ss.add((j + 1) + (j + 1) * mi),
+                    j as i32 + 1,
+                    ss.add(1 + (j + 1) * mi),
                     1,
-                    ss.add(j + j * mi),
+                    ss.add(j * mi),
                     1,
                 );
                 let cnt = *col - (j as i32 + 1);
@@ -2251,18 +2304,21 @@ unsafe fn matupd(
             }
         }
 
+        // Add new information: the last row of SY and the last column of SS.
+        // Fortran indices col_f/j_f are 1-based; raw offsets are 0-based.
+        let col0 = (*col - 1) as usize;
         let mut pointr = (*head - 1) as usize;
-        for j in 0..(*col - 1) as usize {
-            *sy.add(*col as usize + j * mi) = ddot(n, d, 1, wy.add(pointr * ni), 1);
-            *ss.add(j + *col as usize * mi) = ddot(n, ws.add(pointr * ni), 1, d, 1);
+        for j in 0..col0 {
+            *sy.add(col0 + j * mi) = ddot(n, d, 1, wy.add(pointr * ni), 1);
+            *ss.add(j + col0 * mi) = ddot(n, ws.add(pointr * ni), 1, d, 1);
             pointr = (pointr + 1) % mi;
         }
         if *stp == 1.0 {
-            *ss.add(*col as usize + *col as usize * mi) = *dtd;
+            *ss.add(col0 + col0 * mi) = *dtd;
         } else {
-            *ss.add(*col as usize + *col as usize * mi) = *stp * *stp * *dtd;
+            *ss.add(col0 + col0 * mi) = *stp * *stp * *dtd;
         }
-        *sy.add(*col as usize + *col as usize * mi) = *dr;
+        *sy.add(col0 + col0 * mi) = *dr;
     }
 }
 
@@ -2365,7 +2421,7 @@ unsafe fn subsm(
         for i in 0..*col as usize {
             *wv.add(i) = -*wv.add(i);
         }
-        *info = dtrsl(wn, m2, col2, wv, 0);
+        *info = dtrsl(wn, m2, col2, wv, 1);
         if *info != 0 {
             return;
         }
@@ -2386,6 +2442,7 @@ unsafe fn subsm(
 
         // Backtrack to feasible region
         let mut alpha = 1.0_f64;
+        let mut temp1 = alpha;
         let mut ibd = 0i32;
         for i in 0..ns as usize {
             let k = (*ind.add(i) - 1) as usize;
@@ -2394,21 +2451,22 @@ unsafe fn subsm(
                 if dk < 0.0 && *nbd.add(k) <= 2 {
                     let temp2 = *l.add(k) - *x.add(k);
                     if temp2 >= 0.0 {
-                        alpha = 0.0;
+                        temp1 = 0.0;
                     } else if dk * alpha < temp2 {
-                        alpha = temp2 / dk;
+                        temp1 = temp2 / dk;
                     }
                 } else if dk > 0.0 && *nbd.add(k) >= 2 {
                     let temp2 = *u.add(k) - *x.add(k);
                     if temp2 <= 0.0 {
-                        alpha = 0.0;
+                        temp1 = 0.0;
                     } else if dk * alpha > temp2 {
-                        alpha = temp2 / dk;
+                        temp1 = temp2 / dk;
                     }
                 }
-                if alpha < 1.0 {
-                    ibd = i as i32 + 1;
-                } // 1-based
+                if temp1 < alpha {
+                    alpha = temp1;
+                    ibd = i as i32 + 1; // 1-based
+                }
             }
         }
         if alpha < 1.0 {

@@ -713,6 +713,18 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             let digits = if nd == 0 {
                 6.0
+            } else if TYPEOF(digits_arg) == SEXPTYPE::INTSXP
+                || TYPEOF(digits_arg) == SEXPTYPE::LGLSXP
+            {
+                // GNU coerces the digits argument with asReal: integer or
+                // logical NA becomes NA_real_, which propagates as NA —
+                // not the numeric default.
+                let iv = *INTEGER(digits_arg).add((i % nd) as usize);
+                if iv == crate::sexp::ffi::NA_INTEGER {
+                    NA_REAL
+                } else {
+                    iv as f64
+                }
             } else {
                 real_elt_or_default(digits_arg, i, 6.0)
             };
@@ -8072,36 +8084,300 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// GNU `loglin(table, list(1,2), fit=TRUE)` — 2×2 independence fit.
+/// GNU `loglin(table, margin, start, fit, eps, iter, param, print)` — port of
+/// r-source/src/library/stats/R/loglin.R, calling the AS 51 kernel
+/// (crates/rmath/src/library/stats/loglin.rs, from loglin.c).
 pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let tab = CAR(args);
-        if XLENGTH(tab) < 4 {
-            return R_NilValue();
+
+        let missing = |v: SEXP| v.is_null() || v == R_NilValue() || v == R_MissingArg();
+        let sexp_real = |v: SEXP| -> f64 {
+            let t = TYPEOF(v);
+            if t == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 0)
+            } else if t == SEXPTYPE::INTSXP {
+                INTEGER_ELT(v, 0) as f64
+            } else if t == SEXPTYPE::LGLSXP {
+                LOGICAL_ELT(v, 0) as f64
+            } else {
+                0.0
+            }
+        };
+        let sexp_int = |v: SEXP| -> c_int {
+            let t = TYPEOF(v);
+            if t == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 0) as c_int
+            } else if t == SEXPTYPE::INTSXP {
+                INTEGER_ELT(v, 0)
+            } else if t == SEXPTYPE::LGLSXP {
+                LOGICAL_ELT(v, 0)
+            } else {
+                0
+            }
+        };
+        let sexp_bool = |v: SEXP| -> bool {
+            let t = TYPEOF(v);
+            if t == SEXPTYPE::LGLSXP {
+                LOGICAL_ELT(v, 0) != 0
+            } else if t == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 0) != 0.0
+            } else if t == SEXPTYPE::INTSXP {
+                INTEGER_ELT(v, 0) != 0
+            } else {
+                false
+            }
+        };
+
+        // Parse arguments: table, margin, start, fit, eps, iter, param, print
+        let (mut table, mut margin, mut start) = (R_NilValue(), R_NilValue(), R_NilValue());
+        let (mut rfit, mut print) = (false, true);
+        let (mut eps, mut iter) = (0.1_f64, 20_i32);
+        {
+            let mut pos = 0;
+            let mut cell = args;
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                let name = if !tag.is_null() && tag != R_NilValue() {
+                    CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    String::new()
+                };
+                let val = CAR(cell);
+                if !missing(val) {
+                    let key = if name.is_empty() {
+                        match pos {
+                            0 => "table",
+                            1 => "margin",
+                            2 => "start",
+                            3 => "fit",
+                            4 => "eps",
+                            5 => "iter",
+                            6 => "param",
+                            7 => "print",
+                            _ => "",
+                        }
+                        .to_string()
+                    } else {
+                        name.clone()
+                    };
+                    match key.as_str() {
+                        "table" => table = val,
+                        "margin" => margin = val,
+                        "start" => start = val,
+                        "fit" => rfit = sexp_bool(val),
+                        "eps" => eps = sexp_real(val),
+                        "iter" => iter = sexp_int(val),
+                        "print" => print = sexp_bool(val),
+                        _ => {}
+                    }
+                    if name.is_empty() {
+                        pos += 1;
+                    }
+                } else if name.is_empty() {
+                    pos += 1;
+                }
+                cell = CDR(cell);
+            }
         }
-        let a = elt_real_safe(tab, 0);
-        let b = elt_real_safe(tab, 1);
-        let c = elt_real_safe(tab, 2);
-        let d = elt_real_safe(tab, 3);
-        let n = a + b + c + d;
-        if n == 0.0 {
-            return R_NilValue();
+        if missing(table) || missing(margin) {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument \"table\" is missing, with no default",
+            );
         }
-        let r1 = a + c;
-        let r2 = b + d;
-        let c1 = a + b;
-        let c2 = c + d;
-        let fit = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
-        let _f = protect(fit);
-        *REAL(fit) = r1 * c1 / n;
-        *REAL(fit).add(1) = r2 * c1 / n;
-        *REAL(fit).add(2) = r1 * c2 / n;
-        *REAL(fit).add(3) = r2 * c2 / n;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, fit);
-        crate::mainutils::essentials::set_string_names(result, &["fit".to_string()]);
-        result
+
+        let dtab = crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimSymbol());
+        let nvar = LENGTH(dtab) as c_int;
+        if nvar == 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "no variables",
+            );
+        }
+        let ncon = LENGTH(margin) as c_int;
+        let conf = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::INTSXP.as_c_int(),
+            nvar,
+            ncon,
+        );
+        let _conf_g = protect(conf);
+        let confp = INTEGER(conf);
+        for i in 0..(nvar * ncon) as usize {
+            *confp.add(i) = 0;
+        }
+        let dimv: Vec<c_int> = (0..nvar)
+            .map(|j| INTEGER_ELT(dtab, j as i32))
+            .collect();
+
+        let mut nmar: i64 = 0;
+        for k in 0..ncon as i64 {
+            let tmp = VECTOR_ELT(margin, k);
+            let t = TYPEOF(tmp);
+            if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "'margin' must contain names or numbers corresponding to 'table'",
+                );
+            }
+            let m = LENGTH(tmp);
+            let mut ok = true;
+            let mut vars = Vec::with_capacity(m as usize);
+            for i in 0..m {
+                let x = if t == SEXPTYPE::REALSXP {
+                    REAL_ELT(tmp, i)
+                } else {
+                    INTEGER_ELT(tmp, i) as f64
+                };
+                if x.is_nan() || x <= 0.0 {
+                    ok = false;
+                    break;
+                }
+                vars.push(x as c_int);
+            }
+            if !ok {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    "'margin' must contain names or numbers corresponding to 'table'",
+                );
+            }
+            for (i, &v) in vars.iter().enumerate() {
+                *confp.add((k as usize) * nvar as usize + i) = v;
+                nmar += dimv[(v - 1) as usize] as i64;
+            }
+        }
+
+        let ntab = LENGTH(table);
+        let start = if missing(start) {
+            let s = Rf_allocVector3(SEXPTYPE::REALSXP, ntab as i64);
+            let _s_g = protect(s);
+            for i in 0..ntab {
+                *REAL(s).add(i as usize) = 1.0;
+            }
+            s
+        } else {
+            start
+        };
+        let _start_g = protect(start);
+        if LENGTH(start) != ntab {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'start' and 'table' must be same length",
+            );
+        }
+
+        let snmar_s = Rf_ScalarInteger(nmar as c_int);
+        let _snmar_g = protect(snmar_s);
+        let eps_s = Rf_ScalarReal(eps);
+        let _eps_g = protect(eps_s);
+        let iter_s = Rf_ScalarInteger(iter);
+        let _iter_g = protect(iter_s);
+        let z = crate::library::stats::loglin::LogLin(
+            dtab, conf, table, start, snmar_s, eps_s, iter_s,
+        );
+        let _z_g = protect(z);
+        let zfit = VECTOR_ELT(z, 0);
+        let zdev = VECTOR_ELT(z, 1);
+        let nlast = INTEGER_ELT(VECTOR_ELT(z, 2), 0);
+
+        if print {
+            if nlast > 0 {
+                let msg = format!(
+                    "{} iterations: deviation {}\n",
+                    nlast,
+                    crate::sexp::accessors::REAL_ELT(zdev, nlast as i32 - 1)
+                );
+                crate::sexp::output::capture_stdout(&msg);
+            } else {
+                let msg = format!("{} iterations\n", nlast);
+                crate::sexp::output::capture_stdout(&msg);
+            }
+        }
+
+        // fit <- z$fit; attributes(fit) <- attributes(table)
+        crate::sexp::attrib_core::setAttrib(zfit, crate::sexp::attrib_core::R_DimSymbol(), dtab);
+        let dn = crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(zfit, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+        }
+
+        let elt_real = |x: SEXP, i: i32| -> f64 {
+            let t = TYPEOF(x);
+            if t == SEXPTYPE::REALSXP {
+                REAL_ELT(x, i)
+            } else if t == SEXPTYPE::INTSXP {
+                INTEGER_ELT(x, i) as f64
+            } else {
+                0.0
+            }
+        };
+
+        // Pearson chi-sq and likelihood ratio statistics
+        let mut pearson = 0.0_f64;
+        for i in 0..ntab {
+            if elt_real(start, i) > 0.0 {
+                let obs = elt_real(table, i);
+                let exp = elt_real(zfit, i);
+                pearson += (obs - exp) * (obs - exp) / exp;
+            }
+        }
+        let mut lrt = 0.0_f64;
+        for i in 0..ntab {
+            let obs = elt_real(table, i);
+            let exp = elt_real(zfit, i);
+            if obs * exp > 0.0 {
+                lrt += obs * (obs / exp).ln();
+            }
+        }
+        lrt *= 2.0;
+
+        // Degrees of freedom via dyadic subset representation
+        let mut seen = std::collections::HashMap::new();
+        for k in 0..ncon as i64 {
+            let tmp = VECTOR_ELT(margin, k);
+            let t = TYPEOF(tmp);
+            let m = LENGTH(tmp);
+            let vars: Vec<c_int> = (0..m)
+                .map(|i| {
+                    if t == SEXPTYPE::REALSXP {
+                        REAL_ELT(tmp, i) as c_int
+                    } else {
+                        INTEGER_ELT(tmp, i)
+                    }
+                })
+                .collect();
+            for mask in 1usize..(1usize << (m as usize)) {
+                let mut key = 0i64;
+                let mut val = 1i64;
+                for (i, &v) in vars.iter().enumerate() {
+                    if mask & (1 << i) != 0 {
+                        key += 1i64 << (v - 1);
+                        val *= (dimv[(v - 1) as usize] - 1) as i64;
+                    }
+                }
+                seen.insert(key, val);
+            }
+        }
+        let df = ntab as i64 - seen.values().sum::<i64>() - 1;
+
+        let n_out = if rfit { 5 } else { 4 };
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, n_out as i64);
+        let _ans_g = protect(ans);
+        SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(lrt));
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(pearson));
+        SET_VECTOR_ELT(ans, 2, Rf_ScalarReal(df as f64));
+        SET_VECTOR_ELT(ans, 3, margin);
+        if rfit {
+            SET_VECTOR_ELT(ans, 4, zfit);
+        }
+        let names: Vec<String> = if rfit {
+            vec!["lrt".into(), "pearson".into(), "df".into(), "margin".into(), "fit".into()]
+        } else {
+            vec!["lrt".into(), "pearson".into(), "df".into(), "margin".into()]
+        };
+        crate::mainutils::essentials::functional::set_string_names(ans, &names);
+        ans
     }
 }
 

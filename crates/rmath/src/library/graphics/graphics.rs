@@ -667,16 +667,35 @@ pub unsafe fn GRestorePars(_dd: pGEDevDesc) {
     /* Stub: full implementation restores all inline pars from static vars */
 }
 
+/// GNU `gpptr(dd)->state`: nonzero once `plot.new` has established a plot
+/// frame on the current device. The engine keeps it per device; this port
+/// has a single implicit device per session, so a global flag reproduces
+/// the `GCheckState` contract ("plot.new has not been called yet").
+static PLOT_STATE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
 /// GSetState -- set the graphics state flag (records whether GNewPlot called).
-/// Stub: does nothing.
-pub unsafe fn GSetState(_newstate: c_int, _dd: pGEDevDesc) {
-    /* Stub: full implementation sets dpptr(dd)->state = gpptr(dd)->state */
+pub unsafe fn GSetState(newstate: c_int, _dd: pGEDevDesc) {
+    let state = if newstate < 0 { 0 } else { newstate };
+    PLOT_STATE.store(state.min(255) as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether `plot.new` has been called on the implicit current device.
+pub(crate) fn plot_new_called() -> bool {
+    PLOT_STATE.load(std::sync::atomic::Ordering::Relaxed) != 0
+}
+
+/// Mark a plot frame as established (`plot.new` equivalent). Only the
+/// device-less profile routes plot setup through Rust handlers directly.
+#[allow(dead_code)]
+pub(crate) fn set_plot_new_state() {
+    PLOT_STATE.store(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// GCheckState -- enquire whether GNewPlot has been called.
-/// Stub: does nothing (does not error).
 pub unsafe fn GCheckState(_dd: pGEDevDesc) {
-    /* Stub: full implementation errors if state==0 or !valid */
+    if !plot_new_called() {
+        graphics_error("plot.new has not been called yet");
+    }
 }
 
 /* ========================================================================

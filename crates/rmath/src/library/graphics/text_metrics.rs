@@ -3,9 +3,139 @@
 use crate::mainutils::essentials::base_error;
 use crate::sexp::ffi::SEXP;
 
+/// Device-less profile: no renderer is linked, so strings are measured from
+/// the default-device geometry that `par` reports (7x7 inch device, 12pt
+/// base font, `cin` character cell). GNU scales by the same par("cex") and
+/// par("ps") inputs and converts user units through par("usr")/par("pin")
+/// exactly like `GConvertXUnits`, so every unit still yields finite doubles.
 #[cfg(not(feature = "renderplot-device"))]
-pub(super) unsafe fn measure(_args: SEXP, _height: bool) -> SEXP {
-    base_error("graphics string metrics require the renderplot-device feature")
+pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
+    use crate::mainutils::essentials::elt_to_string;
+    use crate::mainutils::coerce::{asInteger, asReal, coerceVector};
+    use crate::sexp::{
+        accessors::*,
+        ffi::SEXPTYPE,
+        globals::R_NilValue,
+        protect::protect,
+    };
+    use super::graphics;
+    use super::par::{parameter, ParValue};
+    unsafe {
+        let nil = R_NilValue();
+        let mut cell = CDR(args);
+        let mut arguments = [nil; 5];
+        for argument in &mut arguments {
+            if cell.is_null() || cell == nil {
+                base_error("too few arguments");
+            }
+            *argument = CAR(cell);
+            cell = CDR(cell);
+        }
+        let [input, units, cex, _font, vfont] = arguments;
+        let units = asInteger(units);
+        if !(1..=3).contains(&units) {
+            base_error("invalid units");
+        }
+        if vfont != nil {
+            base_error("Hershey font metrics are not supported by the portable device");
+        }
+        let strings = coerceVector(input, SEXPTYPE::STRSXP.0);
+        let _strings = protect(strings);
+        let base_scale = match parameter("cex") {
+            ParValue::Real(values) if values.len() == 1 => values[0],
+            _ => base_error("invalid 'cex' graphics parameter"),
+        };
+        let scale = if cex == nil {
+            base_scale
+        } else {
+            asReal(cex) * base_scale
+        };
+        let ps = match parameter("ps") {
+            ParValue::Integer(values) if values.len() == 1 => f64::from(values[0]),
+            ParValue::Real(values) if values.len() == 1 => values[0],
+            _ => base_error("invalid 'ps' graphics parameter"),
+        };
+        if !scale.is_finite() || scale <= 0.0 || !ps.is_finite() || ps <= 0.0 {
+            base_error("invalid 'cex' value");
+        }
+        let char_cell = match parameter("cin") {
+            ParValue::Real(values) if values.len() == 2 => (values[0], values[1]),
+            _ => base_error("invalid 'cin' graphics parameter"),
+        };
+        let factor = match units {
+            3 => 1.0,
+            2 => {
+                let [figure_width, figure_height] = match parameter("din") {
+                    ParValue::Real(values) if values.len() == 2 => [values[0], values[1]],
+                    _ => base_error("invalid 'din' graphics parameter"),
+                };
+                1.0 / if height {
+                    figure_height
+                } else {
+                    figure_width
+                }
+            }
+            _ => {
+                // User units need an established plot frame (GCheckState).
+                if !graphics::plot_new_called() {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::R_getCurrentCall(),
+                        "plot.new has not been called yet",
+                    );
+                }
+                let usr = match parameter("usr") {
+                    ParValue::Real(values) if values.len() == 4 => values,
+                    _ => base_error("invalid 'usr' graphics parameter"),
+                };
+                let pin = match parameter("pin") {
+                    ParValue::Real(values) if values.len() == 2 => values,
+                    _ => base_error("invalid 'pin' graphics parameter"),
+                };
+                let (lo, hi, span) = if height {
+                    (usr[2], usr[3], pin[1])
+                } else {
+                    (usr[0], usr[1], pin[0])
+                };
+                if hi > lo && span > 0.0 {
+                    (hi - lo) / span
+                } else {
+                    1.0
+                }
+            }
+        };
+        let measured: Vec<f64> = (0..XLENGTH(strings))
+            .map(|index| {
+                if STRING_ELT(strings, index) == crate::sexp::globals::R_NaString() {
+                    return 0.0;
+                }
+                let text = elt_to_string(strings, index);
+                let ems = scale * ps / 12.0;
+                let inches = if height {
+                    (1 + text.bytes().filter(|byte| *byte == b'\n').count()) as f64
+                        * char_cell.1
+                        * ems
+                } else {
+                    text.split('\n')
+                        .map(|line| line.chars().count() as f64)
+                        .fold(0.0, f64::max)
+                        * char_cell.0
+                        * ems
+                };
+                let value = inches * factor;
+                if !value.is_finite() {
+                    base_error("graphics string metric conversion overflow");
+                }
+                value
+            })
+            .collect();
+        // No graphics state is used after this point, including allocation/GC.
+        let result =
+            crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, measured.len() as i64);
+        for (index, value) in measured.into_iter().enumerate() {
+            *REAL(result).add(index) = value;
+        }
+        result
+    }
 }
 
 #[cfg(feature = "renderplot-device")]

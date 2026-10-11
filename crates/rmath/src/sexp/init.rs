@@ -1201,6 +1201,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "curve", include_str!("gnu_curve.R"));
         eval_base_binding(base_env, "proportions", include_str!("gnu_proportions.R"));
         eval_base_binding(base_env, "prop.table", "proportions");
+        eval_base_binding(base_env, "marginSums", include_str!("gnu_margin_sums.R"));
         eval_base_binding(base_env, "C_PDF", "\"C_PDF\"");
         eval_base_binding(
             base_env,
@@ -1836,6 +1837,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
     costs
 }"#,
         );
+        eval_base_binding(
+            base_env,
+            ".amatch_bounds",
+            include_str!("gnu_amatch_bounds.R"),
+        );
         eval_base_binding(base_env, "path.package", include_str!("gnu_path_package.R"));
         eval_base_binding(base_env, "Negate", include_str!("gnu_negate.R"));
         eval_base_binding(
@@ -1900,6 +1906,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "bxp", include_str!("gnu_bxp.R"));
         eval_base_binding(base_env, "reformulate", include_str!("gnu_reformulate.R"));
         eval_base_binding(base_env, ".Deprecated", include_str!("gnu_deprecated.R"));
+        eval_base_binding(base_env, ".Defunct", include_str!("gnu_defunct.R"));
         eval_base_binding(
             base_env,
             "simpleMessage",

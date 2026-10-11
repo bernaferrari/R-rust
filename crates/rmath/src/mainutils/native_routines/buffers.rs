@@ -437,6 +437,17 @@ pub(crate) fn renctest(b: &[NativeBuffer]) -> Result<(), BufferError> {
     minimum(b, 0, 1)
 }
 
+/// Trace unit recorded by `.Fortran(C_setsmu, as.integer(trace))`. The GNU
+/// Fortran `setsmu` only stores the unit for optional trace printing.
+pub(crate) static SMU_TRACE_UNIT: std::sync::atomic::AtomicI32 =
+    std::sync::atomic::AtomicI32::new(0);
+
+pub(crate) fn setsmu(b: &[NativeBuffer]) -> Result<(), BufferError> {
+    match b {
+        [unit] if unit.len() == 1 && unit.kind() == BufferType::Integer => Ok(()),
+        _ => Err(BufferError::new("setsmu requires one integer trace unit")),
+    }
+}
 pub(crate) fn kmeans(b: &[NativeBuffer]) -> Result<(), BufferError> {
     let n = dimension(b, 1, 0)?;
     let p = dimension(b, 2, 1)?;
@@ -740,6 +751,7 @@ pub(crate) fn invocation_count() -> usize {
 pub(crate) mod holtwinters;
 pub(crate) mod multi_burg;
 pub(crate) mod ppr_predict;
+pub(crate) mod smart;
 pub(crate) mod stl;
 pub(crate) mod supsmu;
 
@@ -1002,8 +1014,8 @@ tools	.C	Renctest	1";
             covered += 1;
         }
         assert_eq!(
-            covered, 22,
-            "four unsupported registrations are explicit inventory gaps"
+            covered, 25,
+            "rcont2 is the one unsupported registration (explicit inventory gap)"
         );
         assert_eq!(
             invocation_count(),

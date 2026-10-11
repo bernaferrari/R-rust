@@ -2020,7 +2020,11 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 (n, 1)
             };
 
-        let result = Rf_allocVector3(t, n);
+        // Division always yields doubles in GNU (`1L/4L` is 0.25), so the
+        // swept vector is REALSXP for `/` even when `x` is integer.
+        let result_t = if op_str == "/" { SEXPTYPE::REALSXP } else { SEXPTYPE(t) };
+
+        let result = Rf_allocVector3(result_t, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -2072,9 +2076,9 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         elt_real_safe(stats, stat_idx as i64)
                     };
                     let res = apply_binary(src_val, stat_val);
-                    if t == SEXPTYPE::REALSXP {
+                    if result_t == SEXPTYPE::REALSXP {
                         *REAL(result).add(src_idx) = res;
-                    } else if t == SEXPTYPE::INTSXP {
+                    } else if result_t == SEXPTYPE::INTSXP {
                         *INTEGER(result).add(src_idx) = if res.is_nan() || res == NA_REAL {
                             NA_INTEGER
                         } else {
@@ -2112,9 +2116,9 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         elt_real_safe(stats, stat_idx as i64)
                     };
                     let res = apply_binary(src_val, stat_val);
-                    if t == SEXPTYPE::REALSXP {
+                    if result_t == SEXPTYPE::REALSXP {
                         *REAL(result).add(src_idx) = res;
-                    } else if t == SEXPTYPE::INTSXP {
+                    } else if result_t == SEXPTYPE::INTSXP {
                         *INTEGER(result).add(src_idx) = if res.is_nan() || res == NA_REAL {
                             NA_INTEGER
                         } else {
@@ -5061,6 +5065,8 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = (call, op, rho);
+        // GNU plot.default establishes the plot frame via plot.new() first.
+        crate::library::graphics::graphics::set_plot_new_state();
         unsafe { record_plot_window(args) };
         unsafe { crate::sexp::globals::R_NilValue() }
     }
@@ -5561,6 +5567,8 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     #[cfg(not(feature = "renderplot-device"))]
     unsafe {
+        // GNU C_axis opens with GCheckState: a plot frame must exist.
+        no_device_require_plot_frame();
         let mut side = 1.0;
         let mut cell = args;
         while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
@@ -5634,9 +5642,6 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         result
     }
 }
-static NO_DEVICE_PLOT_NEW: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
 pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // No active device: GEcurrentDevice evaluates options("device").
     // A closure that opens nothing is an error (PR#15883).
@@ -5652,7 +5657,7 @@ pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         unsafe {
             let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
         }
-        NO_DEVICE_PLOT_NEW.store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::library::graphics::graphics::set_plot_new_state();
         unsafe { crate::sexp::globals::R_NilValue() }
     }
 }
@@ -5666,12 +5671,7 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        if !NO_DEVICE_PLOT_NEW.load(std::sync::atomic::Ordering::Relaxed) {
-            crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
-                "plot.new has not been called yet",
-            );
-        }
+        no_device_require_plot_frame();
         unsafe { crate::sexp::globals::R_NilValue() }
     }
 }
@@ -5685,9 +5685,20 @@ pub unsafe fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     #[cfg(not(feature = "renderplot-device"))]
     {
         let _ = args;
-        // This build has no graphics device. GNU Rscript opens one and
-        // draws; the regression only needs the call not to stop.
+        no_device_require_plot_frame();
         unsafe { R_NilValue() }
+    }
+}
+
+/// GNU's drawing builtins share one contract: `GCheckState` demands a plot
+/// frame established by `plot.new` (the device itself auto-opens).
+#[cfg(not(feature = "renderplot-device"))]
+fn no_device_require_plot_frame() {
+    if !crate::library::graphics::graphics::plot_new_called() {
+        crate::mainutils::errors::errorcall_str(
+            unsafe { crate::mainutils::errors::R_getCurrentCall() },
+            "plot.new has not been called yet",
+        );
     }
 }
 

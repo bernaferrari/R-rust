@@ -465,10 +465,96 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_bw_bcv",
     "C_bw_phi4",
     "C_bw_phi6",
+    "C_HoltWinters",
+    "C_stl",
+    "C_setsmu",
+    "C_supsmu",
+    "C_setppr",
+    "C_smart",
+    "C_pppred",
+    "C_isoreg",
+    "C_pAnsari",
+    "C_intgrt_vec",
+    "C_pp_sum",
+    "C_ARMAtoMA",
+    "C_Burg",
+    "C_LogLin",
+    "C_port_ivset",
+    "C_port_nlminb",
+    "C_Smirnov_sim",
+    "C_pkolmogorov_two_limit",
+    "C_pkolmogorov_two_exact",
 ];
 
 unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
     unsafe { super::massdist::BinDist(sx, sw, slo, shi, sn) }
+}
+
+unsafe extern "C-unwind" fn c_isoreg(y: SEXP) -> SEXP {
+    unsafe { super::isoreg::isoreg(y) }
+}
+
+unsafe extern "C-unwind" fn c_pansari(q: SEXP, m: SEXP, n: SEXP) -> SEXP {
+    unsafe { super::ansari::pAnsari(q, m, n) }
+}
+
+unsafe extern "C-unwind" fn c_intgrt_vec(x: SEXP, xi: SEXP, lag: SEXP) -> SEXP {
+    unsafe { super::ppsum::intgrt_vec(x, xi, lag) }
+}
+
+unsafe extern "C-unwind" fn c_pp_sum(u: SEXP, l: SEXP) -> SEXP {
+    unsafe { super::ppsum::pp_sum(u, l) }
+}
+
+unsafe extern "C-unwind" fn c_armatoma(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
+    unsafe { super::filter::ARMAtoMA(ar, ma, lag_max) }
+}
+
+unsafe extern "C-unwind" fn c_burg(x: SEXP, order: SEXP) -> SEXP {
+    unsafe { super::burg::Burg(x, order) }
+}
+
+unsafe extern "C-unwind" fn c_loglin(
+    dtab: SEXP,
+    conf: SEXP,
+    table: SEXP,
+    start: SEXP,
+    nmar: SEXP,
+    eps: SEXP,
+    iter: SEXP,
+) -> SEXP {
+    unsafe { super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter) }
+}
+
+unsafe extern "C-unwind" fn c_port_ivset(kind: SEXP, iv: SEXP, v: SEXP) -> SEXP {
+    unsafe { super::port::port_ivset(kind, iv, v) }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe extern "C-unwind" fn c_port_nlminb(
+    fn_expr: SEXP,
+    gr_expr: SEXP,
+    hs_expr: SEXP,
+    rho: SEXP,
+    lowerb: SEXP,
+    upperb: SEXP,
+    d: SEXP,
+    iv: SEXP,
+    v: SEXP,
+) -> SEXP {
+    unsafe { super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) }
+}
+
+unsafe extern "C-unwind" fn c_smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
+    unsafe { super::ks::Smirnov_sim(sr, sc, sb, twosided) }
+}
+
+unsafe extern "C-unwind" fn c_pkolmogorov_two_limit(sq: SEXP, lower: SEXP, tol: SEXP) -> SEXP {
+    unsafe { super::ks::pkolmogorov_two_limit(sq, lower, tol) }
+}
+
+unsafe extern "C-unwind" fn c_pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
+    unsafe { super::ks::pkolmogorov_two_exact(sq, sn) }
 }
 
 unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
@@ -631,6 +717,50 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
                 crate::library::stats::rwishart::c_rWishart,
             ),
         )),
+        "isoreg" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_isoreg),
+        )),
+        "pAnsari" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_pansari),
+        )),
+        "intgrt_vec" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_intgrt_vec),
+        )),
+        "pp_sum" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_pp_sum),
+        )),
+        "ARMAtoMA" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_armatoma),
+        )),
+        "Burg" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args2(c_burg),
+        )),
+        "LogLin" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args7(c_loglin),
+        )),
+        "port_ivset" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_port_ivset),
+        )),
+        "port_nlminb" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args9(c_port_nlminb),
+        )),
+        "Smirnov_sim" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args4(c_smirnov_sim),
+        )),
+        "pkolmogorov_two_limit" => Some(
+            crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args3(
+                    c_pkolmogorov_two_limit,
+                ),
+            ),
+        ),
+        "pkolmogorov_two_exact" => Some(
+            crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args2(
+                    c_pkolmogorov_two_exact,
+                ),
+            ),
+        ),
         "Cdqrls" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args4(c_cdqrls),
         )),

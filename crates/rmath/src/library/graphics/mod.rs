@@ -1,7 +1,7 @@
 //! Graphics package - graphics primitives
 
 mod base;
-mod graphics;
+pub(crate) mod graphics;
 mod init;
 pub(crate) mod par;
 mod par_common;
@@ -40,6 +40,23 @@ unsafe fn external_routine_name(args: SEXP) -> String {
         std::ffi::CStr::from_ptr(chars)
             .to_string_lossy()
             .into_owned()
+    }
+}
+
+/// Device-less profile: GNU's drawing primitives auto-open a device and
+/// require an established plot frame (`GCheckState`). Without a renderplot
+/// backend there is nothing to draw on, so a drawing call degrades to
+/// enforcing exactly that contract and returning `NULL`.
+#[cfg(not(feature = "renderplot-device"))]
+unsafe fn null_device_draw() -> SEXP {
+    unsafe {
+        if !graphics::plot_new_called() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "plot.new has not been called yet",
+            );
+        }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -232,9 +249,9 @@ unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
     }
 }
 
+#[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
     unsafe {
-        #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
             let name = external_routine_name(args);
             let bare = name.strip_prefix("C_").unwrap_or(name.as_str());
@@ -268,10 +285,18 @@ unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
     }
 }
 
+/// GNU's C_plotXY/C_title/C_text/C_mtext/C_box/C_segments/C_rect/C_polygon/
+/// C_abline/C_arrows all start with `GCheckState`. Without a backend the
+/// contract is the plot frame itself.
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
 /// GNU `clip` passes four user coordinates after the routine name.
+#[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
     unsafe {
-        #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
             return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
         }
@@ -280,6 +305,13 @@ unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
             external_routine_name(args),
         ))
     }
+}
+
+/// GNU C_clip converts and stores a clip rectangle; it does not require an
+/// established plot frame, so the device-less form only discards the box.
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_clip(_args: SEXP) -> SEXP {
+    unsafe { crate::sexp::globals::R_NilValue() }
 }
 
 /// GNU `grconvertX` passes the values plus one-based unit indices.
@@ -362,9 +394,9 @@ unsafe extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
     }
 }
 
+#[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
     unsafe {
-        #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
             return draw_portable_positional(
                 "rasterImage",
@@ -385,6 +417,12 @@ unsafe extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
             external_routine_name(args),
         ))
     }
+}
+
+/// GNU C_raster requires a plot frame (`GCheckState`) before blitting.
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_raster(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
 }
 
 /// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.

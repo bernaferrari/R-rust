@@ -3250,10 +3250,12 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if nchars >= 0 && (nchars as usize) < text.len() {
             text.truncate(nchars as usize);
         }
+        // GNU appends only the `eos` terminator (default "" writes
+        // nothing); `eos = NULL` writes no terminator at all, so a
+        // trailing NUL must not appear in the output.
         if !eos_arg.is_null() && eos_arg != R_NilValue() && TYPEOF(eos_arg) == SEXPTYPE::STRSXP {
             text.push_str(&elt_to_string(eos_arg, 0));
         }
-        text.push('\0');
 
         if inherits_class(con_arg, "connection") {
             let connection = connection_index(con_arg);

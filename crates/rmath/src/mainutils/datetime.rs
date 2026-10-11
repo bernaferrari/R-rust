@@ -1052,26 +1052,30 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
                 false
             };
             makelt(&dummy, ans, i, valid, if valid { d - d.floor() } else { d });
-            let zone = if valid && dummy.tm_isdst >= 0 {
-                let named = tm_zone_string(dummy.tm_zone);
-                if named.is_empty() {
-                    tzname_str(dummy.tm_isdst.clamp(0, 1) as usize)
-                } else {
-                    named
-                }
+            // GNU datetime.c asPOSIXlt: when isUTC, zone is the tz string
+            // itself and gmtoff is 0 (localtime0's gmtime path leaves
+            // tm_zone unset in this port).
+            let (zone, gmtoff) = if is_utc {
+                (tz.to_string(), 0)
             } else {
-                String::new()
+                let named = if valid && dummy.tm_isdst >= 0 {
+                    let named = tm_zone_string(dummy.tm_zone);
+                    if named.is_empty() {
+                        tzname_str(dummy.tm_isdst.clamp(0, 1) as usize)
+                    } else {
+                        named
+                    }
+                } else {
+                    String::new()
+                };
+                (named, if valid { dummy.tm_gmtoff as c_int } else { NA_INTEGER })
             };
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
                 i,
                 Rf_mkChar(CString::new(zone).unwrap_or_default().as_ptr()),
             );
-            *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = if valid {
-                dummy.tm_gmtoff as c_int
-            } else {
-                NA_INTEGER
-            };
+            *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = gmtoff;
         }
         finish_posixlt(ans, ansnames, tzone);
         let names = getAttrib(x, R_NamesSymbol());

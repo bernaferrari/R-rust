@@ -3,7 +3,16 @@ function(x, digits = max(3L, getOption("digits") - 3L), zdigits = 4L, ...)
     if (is.null(digits)) digits <- max(3L, getOption("digits") - 3L)
     if (is.null(zdigits)) zdigits <- 4L
     if (is.character(x) || is.integer(x)) {
-        print(unclass(x), ...)
+        ## GNU NextMethod("print") finds print.table, which formats
+        ## unclass(x) and prints the named vector: names and entries
+        ## right-justified to one common width (printNamedStringVectorS
+        ## uses max(entry width, name width) for every column).
+        xx <- format(unclass(x), justify = "none")
+        nm <- names(xx)
+        if (is.null(nm)) nm <- names(x)
+        width <- max(nchar(xx), nchar(nm))
+        cat(paste0(format(nm, width = width, justify = "right"), " "), sep = "", "\n")
+        cat(paste0(format(xx, width = width, justify = "right"), " "), sep = "", "\n")
         return(invisible(x))
     }
     if (inherits(x, "difftime")) {

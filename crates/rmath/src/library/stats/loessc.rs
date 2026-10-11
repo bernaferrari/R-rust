@@ -194,6 +194,10 @@ fn engine_loess_se(
     degree: *mut c_int,
     nonparametric: *mut c_int,
     drop_square: *mut c_int,
+    cell: c_double,
+    interpolate: bool,
+    se_divisor: *mut c_double,
+    fit_weights: *mut c_double,
     d: *mut c_int,
     n: *mut c_int,
     m: *mut c_int,
@@ -201,18 +205,22 @@ fn engine_loess_se(
     leverages: *mut c_double,
 ) {
     unsafe {
+        let span_v = *span;
+        // R passes span*cell for loess_ise; the model's kd-tree threshold is
+        // floor(n * span * config.cell), so undo the span pre-multiplication.
+        let cell_v = if span_v > 0.0 { cell / span_v } else { cell };
         let model = fit_loess_model(
             y,
             x,
             weights,
             *d,
             *n,
-            *span,
+            span_v,
             *degree,
             *nonparametric,
             drop_square,
-            0.2,
-            false,
+            cell_v,
+            interpolate,
             false,
             false,
         );
@@ -223,13 +231,49 @@ fn engine_loess_se(
         let mm = (*m).max(0) as usize;
         let nn = (*n).max(0) as usize;
         let queries = column_major_rows(x_evaluate, mm, *d as usize);
-        let (fitted, se) = match model.predict_with_execution(
+        // GNU R divides L^2 by the object's raw weights when forming se.fit;
+        // the L matrix itself is computed with the weights passed above.
+        let divisor: Vec<f64> = if se_divisor.is_null() {
+            model.weights.clone()
+        } else {
+            copy_vec(se_divisor, nn)
+        };
+        let (fitted, se) = match model.predict_with_execution_se(
             &queries,
             true,
+            Some(&divisor),
             &super::loess::Execution::new(&|| Ok(())),
         ) {
             Ok(pair) => pair,
             Err(message) => fail_loess(&message),
+        };
+        // loess_dfitse's SYMMETRIC branch refits the point estimates with the
+        // robustness weights alone (lowesf's second call in loessc.c).
+        let fitted = if !fit_weights.is_null() {
+            let fit_model = fit_loess_model(
+                y,
+                x,
+                fit_weights,
+                *d,
+                *n,
+                span_v,
+                *degree,
+                *nonparametric,
+                drop_square,
+                cell_v,
+                false,
+                false,
+                false,
+            );
+            match fit_model {
+                Ok(fit_model) => match predict_model(&fit_model, &queries) {
+                    Ok(values) => values,
+                    Err(message) => fail_loess(&message),
+                },
+                Err(message) => fail_loess(&message),
+            }
+        } else {
+            fitted
         };
         write_fit(fit, &fitted);
         if leverages.is_null() {
@@ -238,14 +282,14 @@ fn engine_loess_se(
         for i in 0..(mm.saturating_mul(nn)) {
             *leverages.add(i) = 0.0;
         }
+        // Encode se.fit's inner sum in a single L column: the R-level
+        // predLoess computes s * sqrt(rowSums(L^2 / weights)), so storing
+        // sqrt(sum(L^2/divisor)) * sqrt(divisor[j0]) at column j0 keeps the
+        // model's own sigma out of the result.
         let j0 = (0..nn)
-            .find(|&j| !weights.is_null() && *weights.add(j) > 0.0)
+            .find(|&j| divisor.get(j).is_some_and(|w| *w > 0.0))
             .unwrap_or(0);
-        let wj = if weights.is_null() || nn == 0 {
-            1.0
-        } else {
-            *weights.add(j0)
-        };
+        let wj = divisor.get(j0).copied().unwrap_or(1.0);
         let scale = if wj > 0.0 { wj.sqrt() } else { 1.0 };
         let s = if model.s.is_finite() && model.s > 0.0 {
             model.s
@@ -904,6 +948,9 @@ pub unsafe extern "C-unwind" fn c_loess_ise(
     L: *mut c_double,
 ) {
     unsafe {
+        // loess_ise rebuilds the k-d tree with v[1] = span*cell and computes
+        // L by interpolating the vertex influence rows (lowesb + lowesl);
+        // se.fit divides by the raw weights.
         engine_loess_se(
             y,
             x,
@@ -913,6 +960,10 @@ pub unsafe extern "C-unwind" fn c_loess_ise(
             degree,
             nonparametric,
             drop_square,
+            *cell,
+            true,
+            weights,
+            std::ptr::null_mut(),
             d,
             n,
             m,
@@ -941,20 +992,48 @@ pub unsafe extern "C-unwind" fn c_loess_dfitse(
     L: *mut c_double,
 ) {
     unsafe {
-        let w = if !robust.is_null() && !family.is_null() && *family != 1 {
-            robust
+        // loessc.c's loess_dfitse: R passes weights = w*robust here. L is
+        // computed with those weights; se.fit divides by the object's raw
+        // weights; for SYMMETRIC the point fit is refitted with the
+        // robustness weights alone.
+        let nn = (*n).max(0) as usize;
+        let symmetric = !robust.is_null() && !family.is_null() && *family != 1;
+        let divisor: Vec<f64> = if symmetric {
+            (0..nn)
+                .map(|j| {
+                    let r = *robust.add(j);
+                    let w = *weights.add(j);
+                    if r > 0.0 {
+                        w / r
+                    } else {
+                        w
+                    }
+                })
+                .collect()
         } else {
-            weights
+            Vec::new()
         };
         engine_loess_se(
             y,
             x,
             x_evaluate,
-            w,
+            weights,
             span,
             degree,
             nonparametric,
             drop_square,
+            0.2,
+            false,
+            if symmetric {
+                divisor.as_ptr() as *mut c_double
+            } else {
+                weights
+            },
+            if symmetric {
+                robust
+            } else {
+                std::ptr::null_mut()
+            },
             d,
             n,
             m,

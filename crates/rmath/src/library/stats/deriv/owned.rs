@@ -151,6 +151,10 @@ where
         self.build(&head, values, None)
     }
 
+    fn symbol(&self, name: &str) -> SexpResult<Value> {
+        (self.install)(self.access, name)
+    }
+
     fn numeric(&self, value: &Value) -> SexpResult<Option<f64>> {
         if value.is_empty()
             || !matches!(
@@ -438,7 +442,134 @@ where
                             Some(self.call("psigamma", &[a, next])?),
                         )
                     }
-                    _ => Err(invalid("Function is not in the derivatives table")),
+                    "cosh" => {
+                        self.simplify(
+                            "*",
+                            self.call("sinh", std::slice::from_ref(&a))?,
+                            Some(self.derive(&a, variable)?),
+                        )
+                    }
+                    "sinh" => {
+                        self.simplify(
+                            "*",
+                            self.call("cosh", std::slice::from_ref(&a))?,
+                            Some(self.derive(&a, variable)?),
+                        )
+                    }
+                    "tanh" => {
+                        let cosine = self.call("cosh", std::slice::from_ref(&a))?;
+                        let denominator =
+                            self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        self.simplify("/", self.derive(&a, variable)?, Some(denominator))
+                    }
+                    "pnorm" => {
+                        self.simplify(
+                            "*",
+                            self.call("dnorm", std::slice::from_ref(&a))?,
+                            Some(self.derive(&a, variable)?),
+                        )
+                    }
+                    "dnorm" => {
+                        let inner = self.simplify(
+                            "*",
+                            self.call("dnorm", std::slice::from_ref(&a))?,
+                            Some(self.derive(&a, variable)?),
+                        )?;
+                        let negated = self.simplify("-", a, None)?;
+                        self.simplify("*", negated, Some(inner))
+                    }
+                    "asin" => {
+                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                        let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
+                        let root = self.call("sqrt", &[radicand])?;
+                        self.simplify("/", self.derive(&a, variable)?, Some(root))
+                    }
+                    "acos" => {
+                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                        let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
+                        let root = self.call("sqrt", &[radicand])?;
+                        let quotient =
+                            self.simplify("/", self.derive(&a, variable)?, Some(root))?;
+                        self.simplify("-", quotient, None)
+                    }
+                    "atan" => {
+                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                        let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
+                        self.simplify("/", self.derive(&a, variable)?, Some(denominator))
+                    }
+                    "expm1" => {
+                        self.simplify(
+                            "*",
+                            self.call("exp", std::slice::from_ref(&a))?,
+                            Some(self.derive(&a, variable)?),
+                        )
+                    }
+                    "log1p" => {
+                        let derived = self.derive(&a, variable)?;
+                        let denominator = self.simplify("+", self.scalar(1.)?, Some(a))?;
+                        self.simplify("/", derived, Some(denominator))
+                    }
+                    "log2" | "log10" => {
+                        let base = if function == "log2" { 2. } else { 10. };
+                        let derived = self.derive(&a, variable)?;
+                        let log_base = self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
+                        let denominator = self.simplify("*", a, Some(log_base))?;
+                        self.simplify("/", derived, Some(denominator))
+                    }
+                    "cospi" => {
+                        let factor = self.simplify(
+                            "*",
+                            self.symbol("pi")?,
+                            Some(self.derive(&a, variable)?),
+                        )?;
+                        let negated = self.simplify("-", factor, None)?;
+                        self.simplify(
+                            "*",
+                            self.call("sinpi", std::slice::from_ref(&a))?,
+                            Some(negated),
+                        )
+                    }
+                    "sinpi" => {
+                        let factor = self.simplify(
+                            "*",
+                            self.symbol("pi")?,
+                            Some(self.derive(&a, variable)?),
+                        )?;
+                        self.simplify(
+                            "*",
+                            self.call("cospi", std::slice::from_ref(&a))?,
+                            Some(factor),
+                        )
+                    }
+                    "tanpi" => {
+                        let numerator = self.simplify(
+                            "*",
+                            self.symbol("pi")?,
+                            Some(self.derive(&a, variable)?),
+                        )?;
+                        let cosine = self.call("cospi", std::slice::from_ref(&a))?;
+                        let denominator =
+                            self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        self.simplify("/", numerator, Some(denominator))
+                    }
+                    "lfactorial" => {
+                        let shifted =
+                            self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                        let digamma = self.call("digamma", &[shifted])?;
+                        self.simplify("*", self.derive(&a, variable)?, Some(digamma))
+                    }
+                    "factorial" => {
+                        let shifted =
+                            self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                        let digamma = self.call("digamma", &[shifted])?;
+                        let product =
+                            self.simplify("*", expression.clone(), Some(digamma))?;
+                        self.simplify("*", self.derive(&a, variable)?, Some(product))
+                    }
+                    _ => Err(invalid(format!(
+                        "Function '{}' is not in the derivatives table",
+                        function
+                    ))),
                 }
             }
             _ => Err(invalid("invalid derivative expression")),

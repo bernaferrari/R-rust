@@ -22,23 +22,6 @@ unsafe fn as_integer(s: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asInteger(s) }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: asReal -- extract a scalar double from an SEXP
-// ---------------------------------------------------------------------------
-
-/// Extract a scalar double value from an SEXP.
-/// Returns NaN if the SEXP is NULL or has no real data.
-unsafe fn as_real(s: SEXP) -> c_double {
-    unsafe {
-        if s.is_null() {
-            return f64::NAN; // NaN
-        }
-        if REAL(s).is_null() {
-            return f64::NAN; // NaN
-        }
-        *REAL(s)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // BinDist -- binned density estimation
@@ -75,11 +58,32 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
             );
         }
 
+        // GNU: PROTECT(sx = coerceVector(sx, REALSXP)); same for sw — the
+        // wrapper may hand integer observations or weights.
+        let sx = if crate::sexp::accessors::TYPEOF(sx) == crate::sexp::ffi::SEXPTYPE::REALSXP {
+            sx
+        } else {
+            crate::main::coerce::coerceVector(
+                sx,
+                crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int(),
+            )
+        };
+        let _sx_guard = protect(sx);
+        let sw = if crate::sexp::accessors::TYPEOF(sw) == crate::sexp::ffi::SEXPTYPE::REALSXP {
+            sw
+        } else {
+            crate::main::coerce::coerceVector(
+                sw,
+                crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int(),
+            )
+        };
+        let _sw_guard = protect(sw);
+
         let n_xlen = n as R_xlen_t;
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
         let _ans_guard = protect(ans);
-        let xlo = as_real(slo);
-        let xhi = as_real(shi);
+        let xlo = crate::mainutils::coerce::asReal(slo);
+        let xhi = crate::mainutils::coerce::asReal(shi);
 
         let x = REAL(sx);
         let w = REAL(sw);

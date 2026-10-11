@@ -2470,74 +2470,238 @@ fn elt_real_or(x: SEXP, default: f64) -> f64 {
     }
 }
 
-struct KalmanFit {
-    lik: f64,
+/// State-space model components for the Kalman routines (arima.c).
+/// `z` and `a` have length p; matrices are p x p column-major.
+struct KalmanModel {
+    z: Vec<f64>,
+    a: Vec<f64>,
+    p: Vec<f64>,
+    t: Vec<f64>,
+    v: Vec<f64>,
+    h: f64,
+    pn: Vec<f64>,
+}
+
+unsafe fn real_vec(x: SEXP) -> Vec<f64> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        let n = XLENGTH(x) as usize;
+        (0..n)
+            .map(|i| {
+                if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i)
+                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                    *INTEGER(x).add(i) as f64
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect()
+    }
+}
+
+unsafe fn read_kalman_model(model: SEXP) -> Option<KalmanModel> {
+    unsafe {
+        if model.is_null() || model == R_NilValue() {
+            return None;
+        }
+        let m = KalmanModel {
+            z: real_vec(named_list_elt(model, "Z")),
+            a: real_vec(named_list_elt(model, "a")),
+            p: real_vec(named_list_elt(model, "P")),
+            t: real_vec(named_list_elt(model, "T")),
+            v: real_vec(named_list_elt(model, "V")),
+            h: elt_real_or(named_list_elt(model, "h"), 0.0),
+            pn: real_vec(named_list_elt(model, "Pn")),
+        };
+        let p = m.a.len();
+        if p == 0
+            || m.z.len() != p
+            || m.p.len() != p * p
+            || m.t.len() != p * p
+            || m.v.len() != p * p
+            || m.pn.len() != p * p
+        {
+            return None;
+        }
+        Some(m)
+    }
+}
+
+/// Write the final filter state back into a (duplicated) model.
+unsafe fn write_kalman_model(model: SEXP, m: &KalmanModel) {
+    unsafe {
+        let pairs: [(&str, &Vec<f64>); 3] = [("a", &m.a), ("P", &m.p), ("Pn", &m.pn)];
+        for (name, vals) in pairs {
+            let elt = named_list_elt(model, name);
+            if elt.is_null() || elt == R_NilValue() {
+                continue;
+            }
+            if TYPEOF(elt) == SEXPTYPE::REALSXP {
+                for (i, &v) in vals.iter().enumerate() {
+                    if i < XLENGTH(elt) as usize {
+                        *REAL(elt).add(i) = v;
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct KalmanOut {
     s2: f64,
+    sumlog: f64,
     resid: Vec<f64>,
     states: Vec<f64>,
 }
 
-unsafe fn kalman_run_1d(y: SEXP, model: SEXP) -> Option<KalmanFit> {
+/// Port of `KalmanLike` in arima.c (one filter pass). `lop` selects the
+/// KalmanRun variant (standardized residuals plus an n x p states matrix).
+/// Like the C original, mutates `m.a`, `m.p` and `m.pn` in place.
+unsafe fn kalman_like_pass(y: &[f64], m: &mut KalmanModel, s_up: i32, lop: bool) -> KalmanOut {
     unsafe {
-        if y.is_null() || y == R_NilValue() || model.is_null() || model == R_NilValue() {
-            return None;
-        }
-        let n = XLENGTH(y) as usize;
-        if n == 0 {
-            return None;
-        }
-        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
-        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
-        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
-        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
-        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
-        let mut p = elt_real_or(named_list_elt(model, "Pn"), 1.0);
-        let mut s2 = 0.0;
+        let n = y.len();
+        let p = m.a.len();
+        let mut anew = vec![0.0; p];
+        let mut mm = vec![0.0; p * p];
+        let mut gain_vec = vec![0.0; p];
+        let mut resid = if lop { vec![f64::NAN; n] } else { Vec::new() };
+        let mut states = if lop { vec![0.0; n * p] } else { Vec::new() };
         let mut sumlog = 0.0;
-        let mut resid_out = vec![0.0; n];
-        let mut states = vec![0.0; n];
-        for i in 0..n {
-            let yi = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y).add(i)
-            } else {
-                *INTEGER(y).add(i) as f64
-            };
-            let resid = yi - z * a;
-            let f = z * z * p + h;
-            if f > 0.0 {
-                s2 += resid * resid / f;
-                sumlog += f.ln();
-                resid_out[i] = resid / f.sqrt();
-                let k = p * z / f;
-                a += k * resid;
-                p -= k * k * f;
+        let mut ssq = 0.0;
+        let mut nu = 0.0f64;
+        for l in 0..n {
+            for i in 0..p {
+                let mut tmp = 0.0;
+                for (k, &ak) in m.a.iter().enumerate() {
+                    tmp += m.t[i + p * k] * ak;
+                }
+                anew[i] = tmp;
             }
-            states[i] = a;
-            a = t * a;
-            p = t * p * t + v;
+            if l as i32 > s_up {
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = 0.0;
+                        for k in 0..p {
+                            tmp += m.t[i + p * k] * m.p[k + p * j];
+                        }
+                        mm[i + p * j] = tmp;
+                    }
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = m.v[i + p * j];
+                        for k in 0..p {
+                            tmp += mm[i + p * k] * m.t[j + p * k];
+                        }
+                        m.pn[i + p * j] = tmp;
+                    }
+                }
+            }
+            if !y[l].is_nan() {
+                nu += 1.0;
+                let mut resid0 = y[l];
+                for i in 0..p {
+                    resid0 -= m.z[i] * anew[i];
+                }
+                let mut gain = m.h;
+                for i in 0..p {
+                    let mut tmp = 0.0;
+                    for j in 0..p {
+                        tmp += m.pn[i + j * p] * m.z[j];
+                    }
+                    gain_vec[i] = tmp;
+                    gain += m.z[i] * tmp;
+                }
+                ssq += resid0 * resid0 / gain;
+                sumlog += gain.ln();
+                if lop {
+                    resid[l] = resid0 / gain.sqrt();
+                }
+                for i in 0..p {
+                    m.a[i] = anew[i] + gain_vec[i] * resid0 / gain;
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        m.p[i + j * p] = m.pn[i + j * p] - gain_vec[i] * gain_vec[j] / gain;
+                    }
+                }
+            } else {
+                for i in 0..p {
+                    m.a[i] = anew[i];
+                }
+                for i in 0..p * p {
+                    m.p[i] = m.pn[i];
+                }
+                if lop {
+                    resid[l] = f64::NAN;
+                }
+            }
+            if lop {
+                for j in 0..p {
+                    states[l + n * j] = m.a[j];
+                }
+            }
         }
-        let nf = n as f64;
-        s2 /= nf;
-        let lik = 0.5 * (s2.ln() + sumlog / nf);
-        Some(KalmanFit {
-            lik,
+        let (s2, sumlog) = if nu > 0.0 {
+            (ssq / nu, sumlog / nu)
+        } else {
+            (f64::NAN, f64::NAN)
+        };
+        KalmanOut {
             s2,
-            resid: resid_out,
+            sumlog,
+            resid,
             states,
-        })
+        }
     }
 }
 
-/// GNU `KalmanLike(y, mod)` — univariate AR(1) state-space likelihood.
+unsafe fn logical_elt(x: SEXP) -> i32 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+            return 0;
+        }
+        let ty = TYPEOF(x);
+        if ty == SEXPTYPE::LGLSXP {
+            *LOGICAL(x) as i32
+        } else if ty == SEXPTYPE::INTSXP {
+            *INTEGER(x)
+        } else if ty == SEXPTYPE::REALSXP && *REAL(x) != 0.0 {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+unsafe fn attach_mod_attr(target: SEXP, model: SEXP, m: &KalmanModel) {
+    unsafe {
+        let dup = crate::mainutils::duplicate::Rf_duplicate(model);
+        let _d = protect(dup);
+        write_kalman_model(dup, m);
+        let sym = crate::sexp::symbol::Rf_install(c"mod".as_ptr());
+        crate::sexp::attrib_core::setAttrib(target, sym, dup);
+    }
+}
+
+/// GNU `KalmanLike(y, mod)` — R-wrapper semantics: list(Lik, s2).
 pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let Some(fit) = kalman_run_1d(CAR(args), CAR(CDR(args))) else {
+        let y = CAR(args);
+        let model = CAR(CDR(args));
+        let Some(mut m) = read_kalman_model(model) else {
             return R_NilValue();
         };
+        let yv = real_vec(y);
+        let out = kalman_like_pass(&yv, &mut m, 0, false);
+        let lik = 0.5 * (out.s2.ln() + out.sumlog);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(fit.lik));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fit.s2));
+        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(lik));
+        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(out.s2));
         crate::mainutils::essentials::set_string_names(
             result,
             &["Lik".to_string(), "s2".to_string()],
@@ -2546,32 +2710,55 @@ pub unsafe fn do_kalman_like(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// GNU `KalmanRun(y, mod)` — likelihood, standardized residuals, filtered states.
+/// GNU `KalmanRun(y, mod, nit = 0, update = FALSE)` — likelihood,
+/// standardized residuals and filtered states (n x p matrix).
 pub unsafe fn do_kalman_run(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let Some(fit) = kalman_run_1d(CAR(args), CAR(CDR(args))) else {
+        let y = CAR(args);
+        let model = CAR(CDR(args));
+        let tail = CDR(CDR(args));
+        let nit = if tail.is_null() || tail == R_NilValue() {
+            0
+        } else {
+            elt_real_or(CAR(tail), 0.0) as i32
+        };
+        let update = {
+            let t2 = if tail.is_null() || tail == R_NilValue() {
+                tail
+            } else {
+                CDR(tail)
+            };
+            !t2.is_null() && t2 != R_NilValue() && logical_elt(CAR(t2)) == 1
+        };
+        let Some(mut m) = read_kalman_model(model) else {
             return R_NilValue();
         };
-        let n = fit.resid.len();
+        let yv = real_vec(y);
+        let n = yv.len();
+        let out = kalman_like_pass(&yv, &mut m, nit, true);
+        let lik = 0.5 * (out.s2.ln() + out.sumlog);
         let values = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _v = protect(values);
-        *REAL(values) = fit.s2;
-        *REAL(values).add(1) = if fit.s2 > 0.0 {
-            2.0 * fit.lik - fit.s2.ln()
-        } else {
-            0.0
-        };
+        *REAL(values) = lik;
+        *REAL(values).add(1) = out.s2;
         crate::mainutils::essentials::set_string_names(
             values,
             &["Lik".to_string(), "s2".to_string()],
         );
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _e = protect(resid);
-        let states = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _s = protect(states);
         for i in 0..n {
-            *REAL(resid).add(i) = fit.resid[i];
-            *REAL(states).add(i) = fit.states[i];
+            *REAL(resid).add(i) = out.resid[i];
+        }
+        let p = m.a.len();
+        let states = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as c_int,
+            p as c_int,
+        );
+        let _s = protect(states);
+        for (i, &v) in out.states.iter().enumerate() {
+            *REAL(states).add(i) = v;
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
@@ -2586,33 +2773,68 @@ pub unsafe fn do_kalman_run(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 "states".to_string(),
             ],
         );
+        if update {
+            attach_mod_attr(result, model, &m);
+        }
         result
     }
 }
 
-/// GNU `KalmanForecast(n.ahead, mod)` — iterate predict from `a` and `P`.
+/// GNU `KalmanForecast(n.ahead, mod)` — iterate the prediction step.
 pub unsafe fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_ahead = elt_real_or(CAR(args), 0.0).round() as usize;
         let model = CAR(CDR(args));
+        let tail = CDR(CDR(args));
+        let update = !tail.is_null() && tail != R_NilValue() && logical_elt(CAR(tail)) == 1;
         if n_ahead == 0 || model.is_null() || model == R_NilValue() {
             return R_NilValue();
         }
-        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
-        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
-        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
-        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
-        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
-        let mut p = elt_real_or(named_list_elt(model, "P"), 0.0);
+        let Some(mut m) = read_kalman_model(model) else {
+            return R_NilValue();
+        };
+        let p = m.a.len();
         let pred = Rf_allocVector3(SEXPTYPE::REALSXP, n_ahead as i64);
         let _p = protect(pred);
         let var = Rf_allocVector3(SEXPTYPE::REALSXP, n_ahead as i64);
         let _va = protect(var);
-        for i in 0..n_ahead {
-            a = t * a;
-            p = t * p * t + v;
-            *REAL(pred).add(i) = z * a;
-            *REAL(var).add(i) = z * z * p + h;
+        let mut anew = vec![0.0; p];
+        let mut mm = vec![0.0; p * p];
+        for l in 0..n_ahead {
+            let mut fc = 0.0;
+            for i in 0..p {
+                let mut tmp = 0.0;
+                for (k, &ak) in m.a.iter().enumerate() {
+                    tmp += m.t[i + p * k] * ak;
+                }
+                anew[i] = tmp;
+                fc += tmp * m.z[i];
+            }
+            for i in 0..p {
+                m.a[i] = anew[i];
+            }
+            *REAL(pred).add(l) = fc;
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = 0.0;
+                    for k in 0..p {
+                        tmp += m.t[i + p * k] * m.p[k + p * j];
+                    }
+                    mm[i + p * j] = tmp;
+                }
+            }
+            let mut se = m.h;
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = m.v[i + p * j];
+                    for k in 0..p {
+                        tmp += mm[i + p * k] * m.t[j + p * k];
+                    }
+                    m.p[i + j * p] = tmp;
+                    se += m.z[i] * m.z[j] * m.p[i + j * p];
+                }
+            }
+            *REAL(var).add(l) = se;
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -2622,6 +2844,9 @@ pub unsafe fn do_kalman_forecast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             result,
             &["pred".to_string(), "var".to_string()],
         );
+        if update {
+            attach_mod_attr(result, model, &m);
+        }
         result
     }
 }
@@ -2635,108 +2860,287 @@ pub unsafe extern "C-unwind" fn c_kalman_fore(n_ahead: SEXP, model: SEXP, _updat
 pub unsafe extern "C-unwind" fn c_kalman_like(
     y: SEXP,
     model: SEXP,
-    _nit: SEXP,
-    fast: SEXP,
-    _update: SEXP,
+    s_up: SEXP,
+    op: SEXP,
+    update: SEXP,
 ) -> SEXP {
     unsafe {
-        let want_run = TYPEOF(fast) == SEXPTYPE::LGLSXP && LENGTH(fast) >= 1 && *LOGICAL(fast) == 1;
-        let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
-        let args = crate::sexp::constructors::Rf_cons(y, args);
-        if want_run {
-            return do_kalman_run(R_NilValue(), R_NilValue(), args, R_NilValue());
-        }
-        let Some(fit) = kalman_run_1d(y, model) else {
+        // Port of KalmanLike in arima.c: `op` FALSE gives KalmanLike
+        // (numeric c(ssq/nu, sumlog/nu)); TRUE gives KalmanRun's list.
+        let lop = logical_elt(op) == 1;
+        let upd = logical_elt(update) == 1;
+        let nit = elt_real_or(s_up, 0.0) as i32;
+        let Some(mut m) = read_kalman_model(model) else {
             return R_NilValue();
         };
-        let out = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-        *REAL(out) = fit.s2;
-        *REAL(out).add(1) = if fit.s2 > 0.0 {
-            2.0 * fit.lik - fit.s2.ln()
-        } else {
-            0.0
-        };
-        out
+        let yv = real_vec(y);
+        let out = kalman_like_pass(&yv, &mut m, nit, lop);
+        let res2 = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _r2 = protect(res2);
+        *REAL(res2) = out.s2;
+        *REAL(res2).add(1) = out.sumlog;
+        if !lop {
+            if upd {
+                attach_mod_attr(res2, model, &m);
+            }
+            return res2;
+        }
+        let n = yv.len();
+        let p = m.a.len();
+        let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        let _e = protect(resid);
+        for i in 0..n {
+            *REAL(resid).add(i) = out.resid[i];
+        }
+        let states = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as c_int,
+            p as c_int,
+        );
+        let _s = protect(states);
+        for (i, &v) in out.states.iter().enumerate() {
+            *REAL(states).add(i) = v;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _r = protect(result);
+        SET_VECTOR_ELT(result, 0, res2);
+        SET_VECTOR_ELT(result, 1, resid);
+        SET_VECTOR_ELT(result, 2, states);
+        crate::mainutils::essentials::set_string_names(
+            result,
+            &[
+                "values".to_string(),
+                "resid".to_string(),
+                "states".to_string(),
+            ],
+        );
+        if upd {
+            attach_mod_attr(result, model, &m);
+        }
+        result
     }
 }
 
-pub unsafe extern "C-unwind" fn c_kalman_smooth(y: SEXP, model: SEXP, _nit: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn c_kalman_smooth(y: SEXP, model: SEXP, nit: SEXP) -> SEXP {
     unsafe {
-        let args = crate::sexp::constructors::Rf_cons(model, R_NilValue());
+        let args = crate::sexp::constructors::Rf_cons(nit, R_NilValue());
+        let args = crate::sexp::constructors::Rf_cons(model, args);
         let args = crate::sexp::constructors::Rf_cons(y, args);
         do_kalman_smooth(R_NilValue(), R_NilValue(), args, R_NilValue())
     }
 }
 
-/// GNU `KalmanSmooth(y, mod)` — Rauch–Tung–Striebel smoother, state dim 1.
+/// GNU `KalmanSmooth(y, mod, nit)` — Rauch–Tung–Striebel smoother, general
+/// state dimension (port of KalmanSmooth in arima.c).
 pub unsafe fn do_kalman_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(args);
         let model = CAR(CDR(args));
+        let tail = CDR(CDR(args));
+        let nit = if tail.is_null() || tail == R_NilValue() {
+            0
+        } else {
+            elt_real_or(CAR(tail), 0.0) as i32
+        };
         if y.is_null() || y == R_NilValue() || model.is_null() || model == R_NilValue() {
             return R_NilValue();
         }
-        let n = XLENGTH(y) as usize;
+        let Some(mut m) = read_kalman_model(model) else {
+            return R_NilValue();
+        };
+        let yv = real_vec(y);
+        let n = yv.len();
         if n == 0 {
             return R_NilValue();
         }
-        let z = elt_real_or(named_list_elt(model, "Z"), 1.0);
-        let mut a = elt_real_or(named_list_elt(model, "a"), 0.0);
-        let t = elt_real_or(named_list_elt(model, "T"), 0.0);
-        let v = elt_real_or(named_list_elt(model, "V"), 1.0);
-        let h = elt_real_or(named_list_elt(model, "h"), 0.0);
-        let mut p = elt_real_or(named_list_elt(model, "Pn"), 1.0);
-        let mut a_pred = vec![0.0; n];
-        let mut p_pred = vec![0.0; n];
-        let mut a_filt = vec![0.0; n];
-        let mut p_filt = vec![0.0; n];
-        for i in 0..n {
-            a_pred[i] = a;
-            p_pred[i] = p;
-            let yi = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y).add(i)
+        let p = m.a.len();
+        let mut anew = vec![0.0; p];
+        let mut mm = vec![0.0; p * p];
+        let mut gain_vec = vec![0.0; p];
+        let mut big_l = vec![0.0; p * p];
+        let mut at = vec![0.0; n * p];
+        let mut pt = vec![0.0; n * p * p];
+        let mut gains = vec![0.0; n];
+        let mut resids = vec![0.0; n];
+        let mut mt = vec![0.0; n * p];
+        for l in 0..n {
+            for i in 0..p {
+                let mut tmp = 0.0;
+                for (k, &ak) in m.a.iter().enumerate() {
+                    tmp += m.t[i + p * k] * ak;
+                }
+                anew[i] = tmp;
+            }
+            if l as i32 > nit {
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = 0.0;
+                        for k in 0..p {
+                            tmp += m.t[i + p * k] * m.p[k + p * j];
+                        }
+                        mm[i + p * j] = tmp;
+                    }
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = m.v[i + p * j];
+                        for k in 0..p {
+                            tmp += mm[i + p * k] * m.t[j + p * k];
+                        }
+                        m.pn[i + p * j] = tmp;
+                    }
+                }
+            }
+            for i in 0..p {
+                at[l + n * i] = anew[i];
+            }
+            for i in 0..p * p {
+                pt[l + n * i] = m.pn[i];
+            }
+            if !yv[l].is_nan() {
+                let mut resid0 = yv[l];
+                for i in 0..p {
+                    resid0 -= m.z[i] * anew[i];
+                }
+                let mut gain = m.h;
+                for i in 0..p {
+                    let mut tmp = 0.0;
+                    for j in 0..p {
+                        tmp += m.pn[i + j * p] * m.z[j];
+                    }
+                    mt[l + n * i] = tmp;
+                    gain_vec[i] = tmp;
+                    gain += m.z[i] * tmp;
+                }
+                gains[l] = gain;
+                resids[l] = resid0;
+                for i in 0..p {
+                    m.a[i] = anew[i] + gain_vec[i] * resid0 / gain;
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        m.p[i + j * p] = m.pn[i + j * p] - gain_vec[i] * gain_vec[j] / gain;
+                    }
+                }
             } else {
-                *INTEGER(y).add(i) as f64
+                for i in 0..p {
+                    m.a[i] = anew[i];
+                    mt[l + n * i] = 0.0;
+                }
+                for i in 0..p * p {
+                    m.p[i] = m.pn[i];
+                }
+                gains[l] = f64::NAN;
+                resids[l] = f64::NAN;
+            }
+        }
+        // Backward pass: rt holds r_{t-1}; Nt the smoothed covariances.
+        let mut nt = vec![0.0; n * p * p];
+        let mut rt = vec![0.0; n * p];
+        for l in (0..n).rev() {
+            let gn = if !gains[l].is_nan() && gains[l] != 0.0 {
+                1.0 / gains[l]
+            } else {
+                0.0
             };
-            let resid = yi - z * a;
-            let f = z * z * p + h;
-            if f > 0.0 {
-                let k = p * z / f;
-                a += k * resid;
-                p -= k * k * f;
+            if !gains[l].is_nan() {
+                for i in 0..p {
+                    rt[l + n * i] = m.z[i] * resids[l] * gn;
+                }
+            } else {
+                for i in 0..p {
+                    rt[l + n * i] = 0.0;
+                }
             }
-            a_filt[i] = a;
-            p_filt[i] = p.max(0.0);
-            a = t * a;
-            p = t * p * t + v;
-        }
-        let mut smooth = vec![0.0; n];
-        let mut svar = vec![0.0; n];
-        smooth[n - 1] = a_filt[n - 1];
-        svar[n - 1] = p_filt[n - 1];
-        if n >= 2 {
-            for i in (0..n - 1).rev() {
-                let j = if p_pred[i + 1] > 1e-15 {
-                    p_filt[i] * t / p_pred[i + 1]
-                } else {
-                    0.0
-                };
-                smooth[i] = a_filt[i] + j * (smooth[i + 1] - a_pred[i + 1]);
-                svar[i] = p_filt[i] + j * j * (svar[i + 1] - p_pred[i + 1]);
+            for i in 0..p {
+                for j in 0..p {
+                    nt[l + n * i + n * p * j] = m.z[i] * m.z[j] * gn;
+                }
+            }
+            if l < n - 1 {
+                for i in 0..p {
+                    for j in 0..p {
+                        mm[i + p * j] =
+                            (if i == j { 1.0 } else { 0.0 }) - mt[l + n * i] * m.z[j] * gn;
+                    }
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = 0.0;
+                        for k in 0..p {
+                            tmp += m.t[i + p * k] * mm[k + p * j];
+                        }
+                        big_l[i + p * j] = tmp;
+                    }
+                }
+                for i in 0..p {
+                    let mut tmp = 0.0;
+                    for j in 0..p {
+                        tmp += big_l[j + p * i] * rt[l + 1 + n * j];
+                    }
+                    rt[l + n * i] += tmp;
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = 0.0;
+                        for k in 0..p {
+                            tmp += big_l[k + p * i] * nt[l + 1 + n * k + n * p * j];
+                        }
+                        mm[i + p * j] = tmp;
+                    }
+                }
+                for i in 0..p {
+                    for j in 0..p {
+                        let mut tmp = 0.0;
+                        for k in 0..p {
+                            tmp += mm[i + p * k] * big_l[k + p * j];
+                        }
+                        nt[l + n * i + n * p * j] += tmp;
+                    }
+                }
+            }
+            for i in 0..p {
+                let mut tmp = 0.0;
+                for j in 0..p {
+                    tmp += pt[l + n * i + n * p * j] * rt[l + n * j];
+                }
+                at[l + n * i] += tmp;
             }
         }
-        let sm = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+        for l in 0..n {
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = 0.0;
+                    for k in 0..p {
+                        tmp += pt[l + n * i + n * p * k] * nt[l + n * k + n * p * j];
+                    }
+                    mm[i + p * j] = tmp;
+                }
+            }
+            for i in 0..p {
+                for j in 0..p {
+                    let mut tmp = pt[l + n * i + n * p * j];
+                    for k in 0..p {
+                        tmp -= mm[i + p * k] * pt[l + n * k + n * p * j];
+                    }
+                    nt[l + n * i + n * p * j] = tmp;
+                }
+            }
+        }
+        let sm = crate::mainutils::array::allocMatrix(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as c_int,
+            p as c_int,
+        );
         let _sm = protect(sm);
-        let va = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _va = protect(va);
-        for i in 0..n {
-            *REAL(sm).add(i) = smooth[i];
-            *REAL(va).add(i) = svar[i].max(0.0);
+        for (i, &v) in at.iter().enumerate() {
+            *REAL(sm).add(i) = v;
         }
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = n as i32;
-        *INTEGER(dim).add(1) = 1;
-        crate::sexp::attrib_core::setAttrib(sm, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let va = Rf_allocVector3(SEXPTYPE::REALSXP, (n * p * p) as i64);
+        let _va = protect(va);
+        for (i, &v) in nt.iter().enumerate() {
+            *REAL(va).add(i) = v;
+        }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, sm);
@@ -3737,6 +4141,42 @@ pub unsafe fn do_ARMAacf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let names: Vec<String> = (0..=lag_max).map(|i| i.to_string()).collect();
         crate::mainutils::essentials::set_string_names(ans, &names);
         ans
+    }
+}
+
+/// GNU `C_ARMAtoMA(ar, ma, lag.max)` — MA(∞) coefficients, ported from pacf.c.
+pub unsafe fn ARMAtoMA(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
+    unsafe {
+        let p = crate::sexp::accessors::LENGTH(ar) as usize;
+        let q = crate::sexp::accessors::LENGTH(ma) as usize;
+        let m = crate::mainutils::coerce::asInteger(lag_max);
+        if m <= 0 || m == crate::sexp::ffi::NA_INTEGER {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "invalid value of lag.max",
+            );
+        }
+        let phi = crate::sexp::accessors::REAL(ar);
+        let theta = crate::sexp::accessors::REAL(ma);
+        let res = crate::sexp::constructors::Rf_allocVector3(
+            crate::sexp::ffi::SEXPTYPE::REALSXP,
+            m as i64,
+        );
+        let _r = protect(res);
+        let psi = crate::sexp::accessors::REAL(res);
+        for i in 0..m as usize {
+            let mut tmp = if i < q { *theta.add(i) } else { 0.0 };
+            for j in 0..((i + 1).min(p)) {
+                tmp += *phi.add(j)
+                    * if i >= j + 1 {
+                        *psi.add(i - j - 1)
+                    } else {
+                        1.0
+                    };
+            }
+            *psi.add(i) = tmp;
+        }
+        res
     }
 }
 
