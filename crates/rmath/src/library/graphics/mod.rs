@@ -230,6 +230,8 @@ unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SE
         if renderplot_backend_active() {
             // The renderplot scene is the device. The legacy plot.new calls
             // GEcurrentDevice, which opens options("device") and writes pdf.
+            // GNewPlot records the frame exactly like the device-less path.
+            graphics::set_plot_new_state();
             return crate::mainutils::portable_plot::draw_builtin(
                 "plot.new",
                 crate::sexp::accessors::CDR(args),
@@ -425,6 +427,341 @@ unsafe extern "C-unwind" fn c_raster(_args: SEXP) -> SEXP {
     unsafe { null_device_draw() }
 }
 
+/// GNU `persp` — validation and the viewing transformation live in the
+/// plot3d port; the drawing half runs only with a live renderplot backend,
+/// so the device-less profile matches GNU's null device (matrix, no draw).
+unsafe extern "C-unwind" fn c_persp(args: SEXP) -> SEXP {
+    unsafe { plot3d::C_persp(args) }
+}
+
+/// GNU `filledcontour` — plot.new is required (GCheckState); the colored
+/// bands are drawn through the portable engine when a backend is live.
+unsafe extern "C-unwind" fn c_filledcontour(args: SEXP) -> SEXP {
+    unsafe { plot3d::C_filledcontour(args) }
+}
+
+/// GNU `path` (polypath) — requires a plot frame.
+#[cfg(feature = "renderplot-device")]
+unsafe extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "path",
+                args,
+                &["x", "y", "nper", "rule", "col", "border", "lty"],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_path(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
+/// GNU `symbols` — requires a plot frame.
+#[cfg(feature = "renderplot-device")]
+unsafe extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "symbols",
+                args,
+                &["x", "y", "type", "data", "inches", "bg", "fg"],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_symbols(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
+/// GNU `xspline` — requires a plot frame.
+#[cfg(feature = "renderplot-device")]
+unsafe extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "xspline",
+                args,
+                &["x", "y", "s", "open", "repEnds", "draw", "col", "border"],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_xspline(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
+/// GNU `erase` — no plot frame required; the transparent default makes the
+/// device-less form a silent no-op.
+unsafe extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        {
+            if renderplot_backend_active() {
+                return draw_portable_positional("erase", args, &["col"]);
+            }
+        }
+        crate::sexp::globals::R_NilValue()
+    }
+}
+
+/// GNU `dend` — requires a plot frame.
+#[cfg(feature = "renderplot-device")]
+unsafe extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "dend",
+                args,
+                &["n", "merge", "height", "ord", "hang", "labels"],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_dend(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
+/// GNU `dendwindow` — requires a plot frame.
+#[cfg(feature = "renderplot-device")]
+unsafe extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
+    unsafe {
+        if renderplot_backend_active() {
+            return draw_portable_positional(
+                "dendwindow",
+                args,
+                &["n", "merge", "height", "hang", "labels"],
+            );
+        }
+        crate::mainutils::essentials::base_error(format!(
+            "native graphics operation '{}' requires an active renderplot device",
+            external_routine_name(args),
+        ))
+    }
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+unsafe extern "C-unwind" fn c_dendwindow(_args: SEXP) -> SEXP {
+    unsafe { null_device_draw() }
+}
+
+/// GNU `locator` — `.External2(C_locator, n, type)`. The scene device has
+/// no locator callback, so GLocator fails on the first click: the wrapper
+/// observes zero points and `locator()` returns NULL.
+unsafe extern "C-unwind" fn c_locator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        {
+            if renderplot_backend_active() {
+                return draw_portable_positional("locator", args, &["n", "type"]);
+            }
+        }
+        null_device_locator(args)
+    }
+}
+
+/// Device-less locator: enforce the plot frame, then report zero clicks.
+unsafe fn null_device_locator(args: SEXP) -> SEXP {
+    unsafe {
+        if !graphics::plot_new_called() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "plot.new has not been called yet",
+            );
+        }
+        locator_result(crate::sexp::accessors::CDR(args))
+    }
+}
+
+/// GNU `identify` — `.External2(C_identify, ...)`. Zero clicks identifies
+/// nothing: the all-zero result reduces to integer(0) in the wrapper.
+unsafe extern "C-unwind" fn c_identify(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        #[cfg(feature = "renderplot-device")]
+        {
+            if renderplot_backend_active() {
+                return draw_portable_positional(
+                    "identify",
+                    args,
+                    &["x", "y", "labels", "n", "plot", "offset", "tol", "atpen"],
+                );
+            }
+        }
+        null_device_identify(args)
+    }
+}
+
+/// Device-less identify: enforce the plot frame, then report zero picks.
+unsafe fn null_device_identify(args: SEXP) -> SEXP {
+    unsafe {
+        if !graphics::plot_new_called() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "plot.new has not been called yet",
+            );
+        }
+        identify_result(crate::sexp::accessors::CDR(args))
+    }
+}
+
+/// Build GNU's zero-click locator result: NA coordinate vectors of length
+/// `n` and a zero observation count.
+pub(crate) unsafe fn locator_result(args: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::*;
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXPTYPE};
+        use crate::sexp::protect::protect;
+        let n = crate::main::coerce::asInteger(arg_or_nil(args, 0));
+        if n <= 0 || n == NA_INTEGER {
+            crate::mainutils::essentials::base_error("invalid number of points in locator()");
+        }
+        let type_cell = arg_or_nil(args, 1);
+        let kind = if type_cell == crate::sexp::globals::R_NilValue() {
+            String::new()
+        } else {
+            crate::mainutils::essentials::elt_to_string(type_cell, 0)
+        };
+        if kind.chars().count() != 1 || !"pln".contains(kind.as_str()) {
+            crate::mainutils::essentials::base_error("invalid plot type");
+        }
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
+        let _x = protect(x);
+        let y = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
+        let _y = protect(y);
+        for i in 0..n as usize {
+            *REAL(x).add(i) = NA_REAL;
+            *REAL(y).add(i) = NA_REAL;
+        }
+        let nobs = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        let _nobs = protect(nobs);
+        SET_INTEGER_ELT(nobs, 0, 0);
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _ans = protect(ans);
+        SET_VECTOR_ELT(ans, 0, x);
+        SET_VECTOR_ELT(ans, 1, y);
+        SET_VECTOR_ELT(ans, 2, nobs);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _names = protect(names);
+        SET_STRING_ELT(names, 0, Rf_mkChar(b"x\0".as_ptr().cast()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(b"y\0".as_ptr().cast()));
+        SET_STRING_ELT(names, 2, Rf_mkChar(b"n\0".as_ptr().cast()));
+        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
+        ans
+    }
+}
+
+/// Positional helper over a plain argument list.
+unsafe fn arg_or_nil(args: SEXP, index: usize) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        let mut i = 0;
+        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+            if i == index {
+                return crate::sexp::accessors::CAR(cell);
+            }
+            cell = crate::sexp::accessors::CDR(cell);
+            i += 1;
+        }
+        crate::sexp::globals::R_NilValue()
+    }
+}
+
+/// Build GNU's zero-click identify result: all-false `ind` with zero
+/// `pos`/`order`.
+pub(crate) unsafe fn identify_result(args: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::*;
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXPTYPE};
+        use crate::sexp::protect::protect;
+        let x = arg_or_nil(args, 0);
+        let y = arg_or_nil(args, 1);
+        let labels = arg_or_nil(args, 2);
+        let npts = crate::main::coerce::asInteger(arg_or_nil(args, 3));
+        let plot = crate::main::coerce::asLogical(arg_or_nil(args, 4));
+        let offset = arg_or_nil(args, 5);
+        let tol = crate::main::coerce::asReal(arg_or_nil(args, 6));
+        let atpen = crate::main::coerce::asLogical(arg_or_nil(args, 7));
+        if !matches!(SEXPTYPE(TYPEOF(x)), SEXPTYPE::REALSXP | SEXPTYPE::INTSXP)
+            || !matches!(SEXPTYPE(TYPEOF(y)), SEXPTYPE::REALSXP | SEXPTYPE::INTSXP)
+            || SEXPTYPE(TYPEOF(labels)) != SEXPTYPE::STRSXP
+            || !matches!(
+                SEXPTYPE(TYPEOF(offset)),
+                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP
+            )
+        {
+            crate::mainutils::essentials::base_error("incorrect argument type");
+        }
+        if npts <= 0 || npts == NA_INTEGER {
+            crate::mainutils::essentials::base_error("invalid number of points in identify()");
+        }
+        if plot == NA_LOGICAL {
+            crate::mainutils::essentials::base_error("invalid 'plot' value");
+        }
+        if tol <= 0. || tol.is_nan() {
+            crate::mainutils::essentials::base_error("invalid 'tolerance' value");
+        }
+        if atpen == NA_LOGICAL {
+            crate::mainutils::essentials::base_error("invalid 'atpen' value");
+        }
+        let n = XLENGTH(x) as usize;
+        if n != XLENGTH(y) as usize {
+            crate::mainutils::essentials::base_error("different argument lengths");
+        }
+        if XLENGTH(labels) == 0 {
+            crate::mainutils::essentials::base_error("zero-length 'labels' specified");
+        }
+        let ind = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
+        let _ind = protect(ind);
+        let pos = Rf_allocVector3(SEXPTYPE::INTSXP, n as R_xlen_t);
+        let _pos = protect(pos);
+        let order = Rf_allocVector3(SEXPTYPE::INTSXP, n as R_xlen_t);
+        let _order = protect(order);
+        for i in 0..n as i32 {
+            SET_LOGICAL_ELT(ind, i, 0);
+            SET_INTEGER_ELT(pos, i, 0);
+            SET_INTEGER_ELT(order, i, 0);
+        }
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _ans = protect(ans);
+        SET_VECTOR_ELT(ans, 0, ind);
+        SET_VECTOR_ELT(ans, 1, pos);
+        SET_VECTOR_ELT(ans, 2, order);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _names = protect(names);
+        SET_STRING_ELT(names, 0, Rf_mkChar(b"ind\0".as_ptr().cast()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(b"pos\0".as_ptr().cast()));
+        SET_STRING_ELT(names, 2, Rf_mkChar(b"order\0".as_ptr().cast()));
+        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
+        ans
+    }
+}
+
 /// GNU `recordPlot` is `.External2(C_getSnapshot)` in the grDevices namespace.
 #[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_get_snapshot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -507,7 +844,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "filledcontour" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
-            c_unsupported_graphics,
+            c_filledcontour,
             crate::mainutils::native_routines::PayloadArity::Fixed(5),
         )),
         "clip" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
@@ -526,9 +863,40 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             c_raster,
             crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
-        "persp" | "dend" | "dendwindow" | "erase" | "path" | "symbols" | "xspline" | "locator"
-        | "identify" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
-            c_unsupported_graphics,
+        "persp" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_persp,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "path" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_path,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "symbols" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_symbols,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "xspline" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_xspline,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "dend" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_dend,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "dendwindow" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_dendwindow,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "erase" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_erase,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "locator" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_locator,
+            crate::mainutils::native_routines::PayloadArity::Variadic,
+        )),
+        "identify" => Some(crate::mainutils::native_routines::NativeRoutine::External2(
+            c_identify,
             crate::mainutils::native_routines::PayloadArity::Variadic,
         )),
         "StemLeaf" => Some(crate::mainutils::native_routines::NativeRoutine::Call(

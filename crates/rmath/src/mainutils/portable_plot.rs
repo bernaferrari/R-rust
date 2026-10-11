@@ -16,6 +16,7 @@ use r_graphics_engine::{
 use std::ffi::CString;
 use std::os::raw::c_int;
 
+pub(crate) mod graphics_natives;
 mod mtext;
 
 #[derive(Clone, Copy, Debug)]
@@ -2247,6 +2248,11 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             let (c, _) = coordinates(args, &[], &[], false);
             install(c);
             return invisible();
+        }
+        // GNU graphics natives with dedicated portable implementations run
+        // before the generic decode (erase must not require a plot frame).
+        if let Some(result) = graphics_natives::dispatch(name, args) {
+            return result;
         }
         let c = current();
         if name == "mtext" {

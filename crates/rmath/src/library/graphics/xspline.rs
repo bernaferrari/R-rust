@@ -18,7 +18,8 @@ type PGEDevDesc = *mut c_void;
 
 const MAXNUMPTS: usize = 25_000;
 const HIGH_PRECISION: c_double = 0.5;
-const MAX_SPLINE_STEP: c_double = 0.2;
+pub(crate) const LOW_PRECISION: c_double = 1.0;
+pub(crate) const MAX_SPLINE_STEP: c_double = 0.2;
 
 const GE_INCHES: c_int = 13;
 const GE_NDC: c_int = 7;

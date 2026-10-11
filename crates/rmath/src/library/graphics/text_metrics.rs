@@ -10,16 +10,11 @@ use crate::sexp::ffi::SEXP;
 /// exactly like `GConvertXUnits`, so every unit still yields finite doubles.
 #[cfg(not(feature = "renderplot-device"))]
 pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
-    use crate::mainutils::essentials::elt_to_string;
-    use crate::mainutils::coerce::{asInteger, asReal, coerceVector};
-    use crate::sexp::{
-        accessors::*,
-        ffi::SEXPTYPE,
-        globals::R_NilValue,
-        protect::protect,
-    };
     use super::graphics;
-    use super::par::{parameter, ParValue};
+    use super::par::{ParValue, parameter};
+    use crate::mainutils::coerce::{asInteger, asReal, coerceVector};
+    use crate::mainutils::essentials::elt_to_string;
+    use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
     unsafe {
         let nil = R_NilValue();
         let mut cell = CDR(args);
@@ -69,11 +64,7 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
                     ParValue::Real(values) if values.len() == 2 => [values[0], values[1]],
                     _ => base_error("invalid 'din' graphics parameter"),
                 };
-                1.0 / if height {
-                    figure_height
-                } else {
-                    figure_width
-                }
+                1.0 / if height { figure_height } else { figure_width }
             }
             _ => {
                 // User units need an established plot frame (GCheckState).

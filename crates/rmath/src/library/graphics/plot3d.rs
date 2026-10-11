@@ -295,7 +295,7 @@ fn SetUpLight(theta: c_double, phi: c_double) {
 }
 
 /// Compute the shading factor for a facet given two edge vectors.
-fn FacetShade(u: &[c_double], v: &[c_double]) -> c_double {
+pub(crate) fn FacetShade(u: &[c_double], v: &[c_double]) -> c_double {
     let nx = u[1] * v[2] - u[2] * v[1];
     let ny = u[2] * v[0] - u[0] * v[2];
     let nz = u[0] * v[1] - u[1] * v[0];
@@ -416,7 +416,7 @@ fn FindCutPoints(
 
 /// Find the vertices of a polygon formed by clipping a grid cell to the
 /// horizontal slab between z = low and z = high.
-fn FindPolygonVertices(
+pub(crate) fn FindPolygonVertices(
     low: c_double,
     high: c_double,
     x1: c_double,
@@ -542,7 +542,7 @@ fn fmin2(a: c_double, b: c_double) -> c_double {
  * ======================================================================== */
 
 /// The vertices of the bounding box.
-static VERTEX: [[c_int; 3]; 8] = [
+pub(crate) static VERTEX: [[c_int; 3]; 8] = [
     [0, 0, 0],
     [0, 0, 1],
     [0, 1, 0],
@@ -554,7 +554,7 @@ static VERTEX: [[c_int; 3]; 8] = [
 ];
 
 /// The vertices visited when tracing a face.
-static FACE: [[c_int; 4]; 6] = [
+pub(crate) static FACE: [[c_int; 4]; 6] = [
     [0, 1, 5, 4],
     [2, 6, 7, 3],
     [0, 2, 3, 1],
@@ -564,7 +564,7 @@ static FACE: [[c_int; 4]; 6] = [
 ];
 
 /// The edges drawn when tracing a face.
-static EDGE: [[c_int; 4]; 6] = [
+pub(crate) static EDGE: [[c_int; 4]; 6] = [
     [0, 1, 2, 3],
     [4, 5, 6, 7],
     [8, 7, 9, 0],
@@ -574,10 +574,10 @@ static EDGE: [[c_int; 4]; 6] = [
 ];
 
 /// Starting vertex for possible axes.
-static AXIS_START: [c_int; 8] = [0, 0, 2, 4, 0, 4, 2, 6];
+pub(crate) static AXIS_START: [c_int; 8] = [0, 0, 2, 4, 0, 4, 2, 6];
 
 /// Tick vector for possible axes.
-static TICK_VECTOR: [[c_int; 3]; 8] = [
+pub(crate) static TICK_VECTOR: [[c_int; 3]; 8] = [
     [0, -1, -1],
     [-1, 0, -1],
     [0, 1, -1],
@@ -841,6 +841,9 @@ unsafe fn ncols(x: SEXP) -> c_int {
 /// Uses real FindPolygonVertices algorithm; GE drawing calls are stubs.
 pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
     unsafe {
+        if !super::graphics::plot_new_called() {
+            plot3d_error("plot.new has not been called yet");
+        }
         let mut _args = CDR(args);
         if LENGTH(_args) < 5 {
             plot3d_error("filled.contour requires x, y, z, levels, and colors");
@@ -880,46 +883,78 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
         let _scol = FixupCol(CAR(_args), R_TRANWHITE);
         let _scol_guard = protect(_scol);
         let _ncol = LENGTH(_scol);
-
-        /* Real algorithm: FindPolygonVertices for each cell/level pair.
-         * GE drawing calls (GPolygon) are stubs so no visible output. */
         let _x = REAL(sx);
         let _y = REAL(sy);
         let _z = REAL(_sz);
         let _c = REAL(_sc);
-        let _col: *const u32 = INTEGER(_scol) as *const u32;
 
-        let mut _px: [c_double; 8] = [0.0; 8];
-        let mut _py: [c_double; 8] = [0.0; 8];
-        let mut _pz: [c_double; 8] = [0.0; 8];
-        let mut _npt: c_int = 0;
-
-        for i in 1.._nx {
-            for j in 1.._ny {
-                for k in 1.._nc {
-                    _npt = 0;
-                    FindPolygonVertices(
-                        *_c.add((k - 1) as usize),
-                        *_c.add(k as usize),
-                        *_x.add((i - 1) as usize),
-                        *_x.add(i as usize),
-                        *_y.add((j - 1) as usize),
-                        *_y.add(j as usize),
-                        *_z.add((i - 1 + (j - 1) * _nx) as usize),
-                        *_z.add((i + (j - 1) * _nx) as usize),
-                        *_z.add((i - 1 + j * _nx) as usize),
-                        *_z.add((i + j * _nx) as usize),
-                        &mut _px,
-                        &mut _py,
-                        &mut _pz,
-                        &mut _npt,
-                    );
-                    if _npt > 2 { /* GPolygon call would go here -- stub */ }
-                }
+        // GNU badxy/badlev: grid coordinates finite and strictly ascending,
+        // contour levels finite and strictly increasing.
+        if _nx < 1 || _ny < 1 || !(*_x.add(0)).is_finite() || !(*_y.add(0)).is_finite() {
+            plot3d_error("invalid x / y values or limits");
+        }
+        for i in 1.._nx as usize {
+            if !(*_x.add(i)).is_finite() || *_x.add(i) <= *_x.add(i - 1) {
+                plot3d_error("invalid x / y values or limits");
+            }
+        }
+        for j in 1.._ny as usize {
+            if !(*_y.add(j)).is_finite() || *_y.add(j) <= *_y.add(j - 1) {
+                plot3d_error("invalid x / y values or limits");
+            }
+        }
+        if !(*_c.add(0)).is_finite() {
+            plot3d_error("invalid contour levels: must be strictly increasing");
+        }
+        for k in 1.._nc as usize {
+            if !(*_c.add(k)).is_finite() || *_c.add(k) <= *_c.add(k - 1) {
+                plot3d_error("invalid contour levels: must be strictly increasing");
             }
         }
 
-        plot3d_error("filled.contour drawing requires a graphics engine backend")
+        #[cfg(feature = "renderplot-device")]
+        {
+            crate::mainutils::portable_plot::graphics_natives::filledcontour_render(
+                std::slice::from_raw_parts(_x, _nx as usize),
+                std::slice::from_raw_parts(_y, _ny as usize),
+                std::slice::from_raw_parts(_z, (_nx * _ny) as usize),
+                std::slice::from_raw_parts(_c, _nc as usize),
+                _scol,
+            );
+        }
+        #[cfg(not(feature = "renderplot-device"))]
+        {
+            // Null-device semantics: the bands are computed but nothing is
+            // drawn, matching GNU on a device with no drawing surface.
+            let mut _px: [c_double; 8] = [0.0; 8];
+            let mut _py: [c_double; 8] = [0.0; 8];
+            let mut _pz: [c_double; 8] = [0.0; 8];
+            let mut _npt: c_int = 0;
+            for i in 1.._nx {
+                for j in 1.._ny {
+                    for k in 1.._nc {
+                        _npt = 0;
+                        FindPolygonVertices(
+                            *_c.add((k - 1) as usize),
+                            *_c.add(k as usize),
+                            *_x.add((i - 1) as usize),
+                            *_x.add(i as usize),
+                            *_y.add((j - 1) as usize),
+                            *_y.add(j as usize),
+                            *_z.add((i - 1 + (j - 1) * _nx) as usize),
+                            *_z.add((i + (j - 1) * _nx) as usize),
+                            *_z.add((i - 1 + j * _nx) as usize),
+                            *_z.add((i + j * _nx) as usize),
+                            &mut _px,
+                            &mut _py,
+                            &mut _pz,
+                            &mut _npt,
+                        );
+                    }
+                }
+            }
+        }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -1137,6 +1172,12 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
         if !_expand.is_finite() || _expand < 0.0 {
             plot3d_error("persp expand must be finite and non-negative");
         }
+        if _nTicks == NA_INTEGER || _nTicks < 0 {
+            plot3d_error("invalid 'nticks' value");
+        }
+        if _tickType == NA_INTEGER || _tickType < 1 || _tickType > 2 {
+            plot3d_error("invalid 'ticktype' value");
+        }
 
         /* Set up the viewing transformation (real math) */
         set_vt_identity();
@@ -1177,6 +1218,32 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
             REAL(depth),
             INTEGER(indx),
         );
+
+        #[cfg(feature = "renderplot-device")]
+        {
+            use crate::mainutils::portable_plot::graphics_natives::{PerspInput, persp_render};
+            persp_render(&PerspInput {
+                x: std::slice::from_raw_parts(REAL(x), LENGTH(x) as usize),
+                y: std::slice::from_raw_parts(REAL(y), LENGTH(y) as usize),
+                z: std::slice::from_raw_parts(REAL(z), (nr * nc) as usize),
+                xlim: [*REAL(xlim).add(0), *REAL(xlim).add(1)],
+                ylim: [*REAL(ylim).add(0), *REAL(ylim).add(1)],
+                zlim: [*REAL(zlim).add(0), *REAL(zlim).add(1)],
+                col: _col,
+                border: _border,
+                dobox: _dobox != 0,
+                doaxes: _doaxes != 0,
+                n_ticks: _nTicks,
+                tick_type: _tickType,
+                xlab: _xlab,
+                ylab: _ylab,
+                zlab: _zlab,
+                indx: std::slice::from_raw_parts(INTEGER(indx), facet_count as usize),
+                vt: with_plot3d_state(|state| state.vt),
+                inv_scales: [1.0 / _xs2, 1.0 / _ys2, _expand / _zs2],
+                lighting: with_plot3d_state(|state| state.do_lighting),
+            });
+        }
 
         /* Build the result: 4x4 viewing transformation matrix */
         let result = Rf_allocVector(SEXPTYPE::REALSXP, 16);
