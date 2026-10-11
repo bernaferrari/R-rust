@@ -49,12 +49,20 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
             crate::sexp::owner::OwnerToken::current()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
-        let args_owner = factory
-            .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let rho_owner = factory
-            .wrap(rho)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let args_owner = if args.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(args)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        let rho_owner = if rho.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(rho)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
         let mut args_work = args_owner.clone();
 
         if !args_owner.is_nil() && CAR(args) != R_DotsSymbol() {

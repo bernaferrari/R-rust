@@ -1040,9 +1040,11 @@ mod tests {
 
     #[test]
     fn test_s_epoch() {
-        // r_mktime returns 0 in our stub, so %s should output "0"
+        // %s = R_mktime(&tm); Jan 1 2024 00:00:00 UTC = 1704067200.
+        let _session = crate::sexp::session::RSession::new();
+        crate::tzone::set_timezone_override(Some("UTC".to_owned()));
         let t = make_stm(0, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(some(do_fmt("%s", &t)), "0");
+        assert_eq!(some(do_fmt("%s", &t)), "1704067200");
     }
 
     #[test]
@@ -1054,12 +1056,12 @@ mod tests {
 
     #[test]
     fn test_eo_modifiers_skip() {
-        // %O and %E should be skipped, and the next char processed normally
+        // GNU strftime contract: %E/%O modifiers select locale alternative
+        // representations; in the C locale glibc falls back to the plain
+        // conversion, so %Od/%Ed format like %d (oracle: "01" for day 1).
         let t = make_stm(0, 0, 0, 5, 0, 124, 0, 0, 0, 0, ptr::null());
-        // %Od outputs "Od" (modifier passthrough behavior)
-        assert_eq!(some(do_fmt("%Od", &t)), "Od");
-        // %Ed outputs "Ed"
-        assert_eq!(some(do_fmt("%Ed", &t)), "Ed");
+        assert_eq!(some(do_fmt("%Od", &t)), "05");
+        assert_eq!(some(do_fmt("%Ed", &t)), "05");
     }
 
     #[test]

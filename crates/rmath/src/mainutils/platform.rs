@@ -351,7 +351,7 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         for i in 0..n {
             let header = path_at(headers, i as usize).unwrap_or_default();
             if !header.is_empty() {
-                println!("{header}\n");
+                crate::sexp::output::capture_stdout(&format!("{header}\n\n"));
             }
             if let Some(path) = path_at(files, i as usize) {
                 if browser_store {
@@ -359,14 +359,17 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 } else {
                     match std::fs::read_to_string(&path) {
                         Ok(contents) => {
-                            print!("{contents}");
-                            if !contents.ends_with('\n') {
-                                println!();
+                            let mut out = contents;
+                            if !out.ends_with('\n') {
+                                out.push('\n');
                             }
-                            println!();
+                            out.push('\n');
+                            crate::sexp::output::capture_stdout(&out);
                         }
                         Err(err) => {
-                            println!("Cannot open file '{path}': {err}\n");
+                            crate::sexp::output::capture_stdout(&format!(
+                                "Cannot open file '{path}': {err}\n\n"
+                            ));
                         }
                     }
                 }

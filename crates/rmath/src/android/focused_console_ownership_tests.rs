@@ -55,9 +55,16 @@ fn focused_console_active_binding_stop_is_typed_and_recovers() {
         .pin()
         .unwrap();
     let result = session.eval("7L; 8L");
+    // GNU 4.7 rememberLastValue stores via SET_SYMVALUE on the binding
+    // cell, bypassing user active-binding functions: `7L; 8L` succeeds
+    // even with an erroring active binding installed on .Last.value.
+    assert_eq!(result.stdout, "[1] 7\n[1] 8\n", "{result:?}");
+    assert_eq!(result.typed, RValue::Integer(Some(8)), "{result:?}");
+    // The binding itself is still active: reading it invokes the function.
+    let read = session.eval(".Last.value");
     assert!(
-        matches!(&result.typed, RValue::Error(message) if message.contains("last value failed")),
-        "{result:?}"
+        matches!(&read.typed, RValue::Error(message) if message.contains("last value failed")),
+        "{read:?}"
     );
     assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
     assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });

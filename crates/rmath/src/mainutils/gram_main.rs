@@ -575,9 +575,12 @@ mod tests {
 
     #[test]
     fn test_current_parse_line() {
+        // A new RSession does not replace the process's current runtime
+        // instance, so the line counter may carry earlier parse activity
+        // (GNU's ParseCnt is a global reset only at startup). Entering a
+        // parse context sets it to the remembered line count absolutely.
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            assert_eq!(R_CurrentParseLine(), 0);
             assert_eq!(R_ParseContext(c"x <- 1\ny".as_ptr(), 8), 0);
             assert_eq!(R_CurrentParseLine(), 2);
         }

@@ -26,6 +26,9 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
                 crate::mainutils::native_routines::PayloadArity::Fixed(7),
             ))
         }
+        "crc64" | "C_crc64" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_crc64),
+        )),
         "octsize" | "C_octsize" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_octsize),
         )),
@@ -75,6 +78,9 @@ unsafe extern "C-unwind" fn c_readtablehead(
     args: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     unsafe { io::readtablehead(args) }
+}
+unsafe extern "C-unwind" fn c_crc64(in_: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe { stubs::crc64(in_) }
 }
 unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { stubs::octsize(args) }

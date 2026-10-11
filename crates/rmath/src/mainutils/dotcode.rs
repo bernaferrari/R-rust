@@ -2535,8 +2535,9 @@ utils	ishashtab_Ext	1";
             assert_eq!(routine.payload_arity(), expected, "{package}::{name}");
             covered += 1;
         }
+        // 68 since the PostScript device entry point landed (2026-10-11).
         assert_eq!(
-            covered, 67,
+            covered, 68,
             "static registration coverage, not handler functionality"
         );
         assert_eq!(

@@ -627,14 +627,11 @@ fn altseq_compact_integer_colon_stays_lazy_through_gc_and_hides_its_formula() {
         assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);
-        assert_eq!(
-            crate::sexp::accessors::INTEGER_ELT(seq, 5),
-            crate::sexp::ffi::NA_INTEGER
-        );
-        assert_eq!(
-            crate::sexp::accessors::INTEGER_ELT(seq, -1),
-            crate::sexp::ffi::NA_INTEGER
-        );
+        let checked = crate::sexp::Sexp::from_raw(seq).unwrap();
+        // Out-of-range element reads are errors, not NA; the formula stays
+        // unread either way.
+        assert!(checked.try_integer_elt(5).is_err());
+        assert!(checked.try_integer_elt(-1).is_err());
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert!((*seq).payload.is_empty());
         crate::sexp::gengc::full_gc();
@@ -683,7 +680,9 @@ fn altseq_materializing_integer_colon_registers_a_buffer_that_survives_gc() {
         let data = INTEGER(seq);
         assert_eq!(*data.add(0), 1);
         assert_eq!(*data.add(4), 5);
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        // GNU keeps the alt flag; the expansion is cached on the object.
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!(!(*seq).payload.is_empty());
         assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
         let shown = attribute_list(seq);
         assert!(shown.is_null() || shown == R_NilValue());
@@ -705,10 +704,9 @@ fn altseq_compact_real_colon_matches_plain_reals() {
         assert!((crate::sexp::accessors::REAL_ELT(seq, 0) - 1.5).abs() < 1e-10);
         assert!((crate::sexp::accessors::REAL_ELT(seq, 1) - 2.5).abs() < 1e-10);
         assert!((crate::sexp::accessors::REAL_ELT(seq, 2) - 3.5).abs() < 1e-10);
-        assert_eq!(
-            crate::sexp::accessors::REAL_ELT(seq, 3).to_bits(),
-            crate::sexp::ffi::NA_REAL.to_bits()
-        );
+        let checked = crate::sexp::Sexp::from_raw(seq).unwrap();
+        // Out-of-range element reads are errors, not NA.
+        assert!(checked.try_real_elt(3).is_err());
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert!((*seq).payload.is_empty());
 
@@ -729,7 +727,7 @@ fn altseq_compact_real_colon_matches_plain_reals() {
         assert!((*seq).payload.is_empty());
         crate::sexp::gengc::full_gc();
         assert!((*REAL(seq).add(2) - 3.5).abs() < 1e-10);
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
     }
 }
 
@@ -757,7 +755,7 @@ fn altseq_dataptr_during_arena_lend_registers_the_buffer() {
             assert_eq!(*data.add(3), 4);
             assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
         });
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
         crate::sexp::gengc::full_gc();
         assert_eq!(*INTEGER(seq).add(3), 4);
@@ -799,7 +797,10 @@ fn altseq_duplicate_of_a_lazy_colon_copies_the_values() {
         assert_eq!(crate::sexp::accessors::ALTREP(copy), 0);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(copy, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(copy, 4), 5);
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        // GNU's compact_intseq_Duplicate reads the region; the source stays
+        // a lazy ALTREP with its formula.
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).payload.is_empty());
         crate::sexp::gengc::full_gc();
         assert_eq!(*INTEGER(copy).add(2), 3);
         assert_eq!(*INTEGER(seq).add(4), 5);
@@ -851,12 +852,14 @@ fn altseq_replacing_attributes_materializes_and_keeps_values() {
         root_global("alt_clear_attr", seq);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         crate::sexp::accessors::SET_ATTRIB(seq, R_NilValue());
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
+        // Attribute replacement keeps the compact formula; values still read
+        // lazily and the buffer is only registered on the DATAPTR below.
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
+        assert!((*seq).payload.is_empty());
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 2);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 2), 4);
         let shown = attribute_list(seq);
         assert!(shown.is_null() || shown == R_NilValue());
-        assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
         crate::sexp::gengc::full_gc();
         assert_eq!(*INTEGER(seq).add(1), 3);
     }
@@ -938,7 +941,9 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         let edited_view = crate::sexp::Sexp::from_raw(edited).unwrap();
         let mut edited_mut = crate::sexp::SexpMut::from_owned(edited_view);
         assert!(edited_mut.try_set_integer_elt(1, 9).is_ok());
-        assert_eq!(crate::sexp::accessors::ALTREP(edited), 0);
+        // The numerical write publishes a buffer that takes precedence over
+        // the formula; GNU keeps the alt flag with the cached expansion.
+        assert_eq!(crate::sexp::accessors::ALTREP(edited), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 0), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 1), 9);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(edited, 2), 3);
@@ -947,8 +952,8 @@ fn altseq_arithmetic_and_matrix_print_read_the_formula_without_allocating() {
         assert!(!payload.is_null());
         assert_eq!(*(payload as *const c_int), 1);
         assert_eq!(*(payload.cast::<c_int>().add(4)), 5);
-        assert_eq!(crate::sexp::accessors::ALTREP(seq), 0);
         assert!(crate::sexp::memory::vector_payload_is_tracked(seq));
+        assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
     }
 }
 

@@ -1879,8 +1879,14 @@ unsafe fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) 
 
 unsafe fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
     unsafe {
-        let row_names = getAttrib(frame, Rf_install(c"row.names".as_ptr()));
-        let compact = TYPEOF(row_names) == SEXPTYPE::INTSXP
+        // GNU Ops.data.frame keeps `rn <- NULL` unless
+        // `.row_names_info(e) > 0`: compact `c(NA, -n)` automatic row
+        // names stay NULL. `getAttrib` materializes them to `1:n`, so
+        // read the raw stored attribute like `row.names.stored` does.
+        let row_names = crate::mainutils::essentials::row_names_stored(frame);
+        let compact = !row_names.is_null()
+            && row_names != R_NilValue()
+            && TYPEOF(row_names) == SEXPTYPE::INTSXP
             && XLENGTH(row_names) == 2
             && INTEGER_ELT(row_names, 0) == NA_INTEGER
             && INTEGER_ELT(row_names, 1) < 0;

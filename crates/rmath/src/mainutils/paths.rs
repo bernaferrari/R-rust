@@ -13,6 +13,9 @@ pub struct RuntimePathPolicy {
     library_paths: Vec<PathBuf>,
     temp_dir: PathBuf,
     cache_dir: Option<PathBuf>,
+    /// Android hosts reject serialized `data/*.rda` payloads; desktop
+    /// runtimes load them like GNU `data()` does.
+    allows_serialized_data: bool,
 }
 
 impl RuntimePathPolicy {
@@ -25,6 +28,7 @@ impl RuntimePathPolicy {
             library_paths,
             temp_dir: temp_dir.into(),
             cache_dir: None,
+            allows_serialized_data: true,
         }
     }
 
@@ -35,6 +39,7 @@ impl RuntimePathPolicy {
             library_paths: Vec::new(),
             temp_dir: PathBuf::from("/tmp"),
             cache_dir: None,
+            allows_serialized_data: true,
         }
     }
 
@@ -64,6 +69,7 @@ impl RuntimePathPolicy {
             #[cfg(not(target_arch = "wasm32"))]
             temp_dir: std::env::temp_dir(),
             cache_dir: None,
+            allows_serialized_data: true,
         }
     }
 
@@ -90,6 +96,7 @@ impl RuntimePathPolicy {
             library_paths,
             temp_dir,
             cache_dir: Some(cache_dir),
+            allows_serialized_data: false,
         })
     }
 
@@ -112,6 +119,11 @@ impl RuntimePathPolicy {
 
     pub fn cache_dir(&self) -> Option<&Path> {
         self.cache_dir.as_deref()
+    }
+
+    /// Whether `data()` may load serialized `.rda`/`lazydata` payloads.
+    pub fn allows_serialized_data(&self) -> bool {
+        self.allows_serialized_data
     }
 
     pub fn find_package_path(&self, package: &str) -> Option<PathBuf> {

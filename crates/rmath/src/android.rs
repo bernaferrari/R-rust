@@ -1073,10 +1073,17 @@ mod tests {
         );
         assert!(setup.is_ok(), "{setup:?}");
         drop(setup);
+        // GNU 4.7 rememberLastValue stores via SET_SYMVALUE on the binding
+        // cell, bypassing user active-binding functions: `7L; 8L` succeeds
+        // even with an erroring active binding installed on .Last.value.
         let result = session.eval("7L; 8L");
+        assert_eq!(result.stdout, "[1] 7\n[1] 8\n", "{result:?}");
+        assert_eq!(result.typed, RValue::Integer(Some(8)), "{result:?}");
+        // The binding itself is still active: reading it invokes the function.
+        let read = session.eval(".Last.value");
         assert!(
-            matches!(&result.typed, RValue::Error(message) if message.contains("last value failed")),
-            "{result:?}"
+            matches!(&read.typed, RValue::Error(message) if message.contains("last value failed")),
+            "{read:?}"
         );
         let (removed, _, _) = session
             .core
@@ -1262,14 +1269,17 @@ stop("after-echo")
             base_path.typed,
             string_vector(vec![base_pkg.to_string_lossy().into_owned()])
         );
-        let installed = session.eval("installed.packages()");
+        let installed = session.eval("installed.packages(noCache = TRUE)");
         match installed.typed {
             RValue::Attributed { value, metadata } => {
-                assert_eq!(metadata.dim, Some(vec![1, 16]));
+                // GNU .readPkgDesc only reads Meta/package.rds, so a
+                // DESCRIPTION-only bundled package contributes no rows; the
+                // empty matrix keeps all 18 columns (Archs is dropped only
+                // when rows exist). Oracle: dim c(0, 18).
+                assert_eq!(metadata.dim, Some(vec![0, 18]));
                 match *value {
                     RValue::StringVector(values) => {
-                        assert_eq!(values[0], Some("base".to_string()));
-                        assert_eq!(values[1], Some(bundled.to_string_lossy().into_owned()));
+                        assert!(values.is_empty(), "{values:?}");
                     }
                     other => panic!("expected installed package string matrix, got {other:?}"),
                 }
@@ -1335,13 +1345,35 @@ stop("after-echo")
             .expect("configure paths");
 
         let require = session.eval("require(\"tiny\")");
-        assert_eq!(require.output, "");
+        // GNU require(): packageStartupMessage on the not-yet-attached path.
+        assert_eq!(require.output, "Loading required package: tiny\n");
         assert_eq!(require.typed, RValue::Logical(Some(true)));
         assert_eq!(session.eval("tiny_value()").output, "[1] 42\n");
         assert_eq!(session.eval("lazy_data").output, "[1] 271\n");
+        // GNU data(package=) visibly returns a packageIQR object whose
+        // print method renders the dataset table via file.show.
+        let listing = session.eval("data(package = \"tiny\")");
+        // GNU quotes the package name with sQuote: fancy quotes in UTF-8
+        // locales, ASCII quotes in the C locale this session runs in.
+        assert!(
+            listing.stdout.contains("Data sets in package ‘tiny’")
+                || listing.stdout.contains("Data sets in package 'tiny'"),
+            "{listing:?}"
+        );
+        assert!(
+            listing.stdout.contains("lazy_data") && listing.stdout.contains("tiny_data"),
+            "{listing:?}"
+        );
+        let shape = session
+            .eval("y <- data(package = \"tiny\")\nc(class(y), y$results[, \"Item\"], y$title)");
         assert_eq!(
-            session.eval("data(package = \"tiny\")").typed,
-            string_vector(vec!["lazy_data".to_string(), "tiny_data".to_string()])
+            shape.typed,
+            string_vector(vec![
+                "packageIQR".to_string(),
+                "lazy_data".to_string(),
+                "tiny_data".to_string(),
+                "Data sets".to_string()
+            ])
         );
         assert_eq!(
             session
@@ -1386,7 +1418,10 @@ stop("after-echo")
             matches!(after_detach.typed, RValue::Error(_)),
             "{after_detach:?}"
         );
-        assert_eq!(session.eval("require(\"tiny\")").output, "");
+        assert_eq!(
+            session.eval("require(\"tiny\")").output,
+            "Loading required package: tiny\n"
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1584,11 +1619,14 @@ stop("after-echo")
         let result = session.eval("data(\"tiny_data\", package = \"tiny\")");
         match result.typed {
             RValue::Error(message) => {
+                // Explicit .rda files go through the restore reader even
+                // under the pure-R policy (GNU data() semantics; the embed
+                // corpus smoke test pins the same contract). Lazy databases
+                // (Rdata.rdb) are what the package-data layer rejects.
                 assert!(
-                    message.contains("unsupported serialized/lazy data"),
+                    message.contains("bad restore file magic number"),
                     "{message}"
                 );
-                assert!(message.contains("data/*.R only"), "{message}");
             }
             other => panic!("expected data policy error, got {other:?}"),
         }
@@ -1646,63 +1684,12 @@ stop("after-echo")
 
     #[test]
     fn test_eval_preserves_metadata_in_owned_typed_values() {
-        let _session = crate::sexp::session::RSession::new();
-        let mut arena = crate::sexp::memory::RArena::new();
-        let vector = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)) }.expect("vector");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            vector.clone().try_set_integer_elt(0, 1)
-        }
-        .expect("set integer");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            vector.clone().try_set_integer_elt(1, 2)
-        }
-        .expect("set integer");
-
-        let names = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)) }.expect("names");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            names
-                .clone()
-                .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
-        }
-        .expect("set name");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            names
-                .clone()
-                .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
-        }
-        .expect("set name");
-
-        let class = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)) }.expect("class");
-        unsafe {
-            /* SAFETY: fixture has no outstanding payload borrows. */
-            class.clone().try_set_string_elt(
-                0,
-                Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
-            )
-        }
-        .expect("set class");
-
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let class_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(class.as_raw(), nil, unsafe {
-                crate::sexp::symbol::Rf_install(c"class".as_ptr())
-            })
-        };
-        let names_cell = unsafe {
-            /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-            arena.cons(names.as_raw(), class_cell, unsafe {
-                crate::sexp::symbol::Rf_install(c"names".as_ptr())
-            })
-        };
-        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
-
-        let typed = RValue::from_sexp(vector);
-        let RValue::Attributed { value, metadata } = typed else {
+        // Detached RArena fixtures can no longer cross the graph-ownership
+        // boundary enforced at mutation sites (SET_ATTRIB etc.); build the
+        // attributed value inside the session instead.
+        let mut session = RSession::new();
+        let result = session.eval("structure(c(1L, 2L), names = c('a', 'b'), class = 'foo')");
+        let RValue::Attributed { value, metadata } = result.typed else {
             panic!("expected attributed value");
         };
 

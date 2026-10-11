@@ -450,7 +450,7 @@ pub(super) unsafe fn invoke(
             }
             if super::native_extension_policy_enabled() {
                 return Err(failure(format!(
-                    "{interface} native routine is not implemented by the bundled Rust registry"
+                    "{interface} calls native extension code, which is disabled in this pure-R Android runtime; package authors should use Rust-ported internals or a host-owned native-library policy"
                 )));
             }
             let list = operands.foreign_list(&allocator, &domain)?;

@@ -3827,11 +3827,14 @@ hit_base_ns &&
         let (result, _, _) = session.eval_script_with_output_capture(
             r#"
 exists("objects", envir=baseenv(), inherits=FALSE) &&
-  typeof(objects) == "builtin" &&
+  typeof(objects) == "closure" &&
+  identical(objects, ls) &&
   identical(objects(envir=baseenv()), ls(envir=baseenv()))
 "#,
         );
-        let result = result.expect("GNU attach.R: objects is an ls primitive");
+        // GNU attach.R: `ls <- objects <- function(...)`: one shared
+        // UseMethod closure, not separate primitives.
+        let result = result.expect("GNU attach.R: objects is the ls closure");
         assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 

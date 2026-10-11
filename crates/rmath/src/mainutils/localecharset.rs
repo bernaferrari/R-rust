@@ -211,7 +211,14 @@ mod tests {
     #[test]
     fn test_null_locale() {
         unsafe {
+            // locale2charset(NULL) queries the process LC_CTYPE locale, which
+            // sibling tests may have switched: pin the C locale so the null
+            // query deterministically resolves to ASCII.
+            let saved =
+                CStr::from_ptr(libc::setlocale(libc::LC_CTYPE, std::ptr::null())).to_owned();
+            libc::setlocale(libc::LC_CTYPE, c"C".as_ptr());
             let result = CStr::from_ptr(locale2charset(std::ptr::null()));
+            libc::setlocale(libc::LC_CTYPE, saved.as_ptr());
             assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
     }

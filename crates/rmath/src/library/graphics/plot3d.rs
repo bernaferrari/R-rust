@@ -1467,6 +1467,24 @@ mod tests {
         unsafe {
             let args = Rf_cons(R_NilValue(), R_NilValue());
 
+            // GNU plot3d.c runs GCheckState(dd) before touching arguments:
+            // with no plot frame established the entrypoint reports the
+            // plot.new error, never the argument error.
+            crate::library::graphics::graphics::GSetState(0, std::ptr::null_mut());
+            let unframed = assert_r_error(|| {
+                C_filledcontour(args);
+            });
+            assert!(
+                unframed
+                    .message
+                    .contains("plot.new has not been called yet"),
+                "{}",
+                unframed.message
+            );
+
+            // With a frame established (plot.new called), the missing
+            // arguments surface as argument errors.
+            crate::library::graphics::graphics::set_plot_new_state();
             let image = assert_r_error(|| {
                 C_image(args);
             });

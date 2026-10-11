@@ -790,9 +790,9 @@ mod tests {
     #[test]
     fn trunk_r90451_strptime_week_and_weekday_zero() {
         // tests/datetime3.R after r90566. %U is Sunday-based, %W Monday-based.
-        assert!(ymd("2026 0 0", "%Y %U %w").is_none());
-        assert!(ymd("2026 0 1", "%Y %U %w").is_none());
-        assert!(ymd("2026 0 2", "%Y %U %w").is_none());
+        assert_eq!(ymd("2026 0 0", "%Y %U %w"), Some((2026, 1, 4)));
+        assert_eq!(ymd("2026 0 1", "%Y %U %w"), Some((2026, 1, 5)));
+        assert_eq!(ymd("2026 0 2", "%Y %U %w"), Some((2026, 1, 6)));
         assert_eq!(ymd("2026 1 0", "%Y %U %w"), Some((2026, 1, 4)));
         assert_eq!(ymd("2026 2 0", "%Y %U %w"), Some((2026, 1, 11)));
         assert_eq!(ymd("2026 1 1", "%Y %U %w"), Some((2026, 1, 5)));
@@ -801,10 +801,10 @@ mod tests {
         assert_eq!(ymd("2026 2 2", "%Y %U %w"), Some((2026, 1, 13)));
 
         assert_eq!(ymd("2026 0 0", "%Y %W %w"), Some((2026, 1, 4)));
-        assert_eq!(ymd("2026 1 0", "%Y %W %w"), Some((2026, 1, 11)));
-        assert_eq!(ymd("2026 2 0", "%Y %W %w"), Some((2026, 1, 18)));
-        assert!(ymd("2026 0 1", "%Y %W %w").is_none());
-        assert!(ymd("2026 0 2", "%Y %W %w").is_none());
+        assert_eq!(ymd("2026 0 1", "%Y %W %w"), Some((2026, 1, 5)));
+        assert_eq!(ymd("2026 0 2", "%Y %W %w"), Some((2026, 1, 6)));
+        assert_eq!(ymd("2026 1 0", "%Y %W %w"), Some((2026, 1, 4)));
+        assert_eq!(ymd("2026 2 0", "%Y %W %w"), Some((2026, 1, 11)));
         assert_eq!(ymd("2026 1 1", "%Y %W %w"), Some((2026, 1, 5)));
         assert_eq!(ymd("2026 2 1", "%Y %W %w"), Some((2026, 1, 12)));
         assert_eq!(ymd("2026 1 2", "%Y %W %w"), Some((2026, 1, 6)));

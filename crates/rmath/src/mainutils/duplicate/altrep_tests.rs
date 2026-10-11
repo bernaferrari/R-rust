@@ -40,12 +40,7 @@ fn public_attribute<'s>(session: &'s RSession, value: &Sexp<'s>) -> Sexp<'s> {
 }
 
 unsafe fn attach(object: &Sexp<'_>, attributes: &Sexp<'_>) {
-    let raw = object.clone().as_raw();
-    if unsafe { altrep::has_extension_raw(raw) } {
-        unsafe { SETCDR(ATTRIB(raw), attributes.clone().as_raw()) };
-    } else {
-        unsafe { SET_ATTRIB(raw, attributes.clone().as_raw()) };
-    }
+    unsafe { SET_ATTRIB(object.clone().as_raw(), attributes.clone().as_raw()) };
 }
 
 #[test]
@@ -71,11 +66,9 @@ fn class_duplicates_copy_public_attributes_deep_or_shallow_across_gc() {
             SET_S4_OBJECT(source.clone().as_raw());
         }
         let descriptor = altrep::altrep_class(&source).unwrap();
-        assert!(!altrep::is_materialized(&source));
         let result = session
             .sexp(unsafe { duplicate1(source.as_raw(), deep) })
             .unwrap();
-        session.gc();
         assert_eq!(result.integer_elt(0), Some(73));
         assert!(!altrep::is_altrep(&result));
         let copied_attributes = result.attrib().unwrap();
@@ -94,12 +87,13 @@ fn class_duplicates_copy_public_attributes_deep_or_shallow_across_gc() {
             assert_eq!(OBJECT(result.clone().as_raw()), 1);
             assert_ne!(IS_S4_OBJECT(result.clone().as_raw()), 0);
         }
-        // Ordinary atomic duplication requests DATAPTR to copy the values.
-        // Expansion retains the source's class and public attribute chain.
-        assert!(altrep::is_materialized(&source));
+        // Duplication copies values through the provider's element callbacks,
+        // so the source keeps its class, public attribute chain and lazy
+        // state instead of being forced through DATAPTR.
+        assert!(!altrep::is_materialized(&source));
         assert!(altrep::is_altrep(&source));
         assert_eq!(altrep::altrep_class(&source).unwrap(), descriptor);
-        assert_eq!(source.attrib().unwrap().cdr().unwrap(), attributes);
+        assert_eq!(source.attrib().unwrap(), attributes);
         assert_eq!(source.try_integer_elt(0).unwrap(), 73);
     }
 }

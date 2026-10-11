@@ -1494,6 +1494,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "osVersion", "\"macOS\"");
         eval_base_binding(base_env, "C_readtablehead", "\"C_readtablehead\"");
         eval_base_binding(base_env, "C_octsize", "\"C_octsize\"");
+        eval_base_binding(base_env, "C_crc64", "\"C_crc64\"");
         eval_base_binding(base_env, "C_runmed", "\"C_runmed\"");
         eval_base_binding(
             base_env,
@@ -1977,6 +1978,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             include_str!("gnu_as_matrix_data_frame.R"),
         );
         eval_base_binding(base_env, "strwrap", include_str!("gnu_strwrap.R"));
+        eval_base_binding(base_env, "formatDL", include_str!("gnu_format_dl.R"));
+        eval_base_binding(base_env, "file.show", include_str!("gnu_file_show.R"));
         eval_base_binding(base_env, "by", include_str!("gnu_by.R"));
         eval_base_binding(
             base_env,
@@ -4312,7 +4315,18 @@ mod tests {
             let base = R_BaseEnv();
             let empty = R_EmptyEnv();
 
-            assert_eq!(crate::sexp::accessors::ENCLOS(global), base);
+            // GNU wires the "Autoloads" environment (and, for full
+            // sessions, attached package environments) between .GlobalEnv
+            // and base, so ENCLOS(.GlobalEnv) is not base itself; the
+            // search path must terminate at base without cycling.
+            let mut env = crate::sexp::accessors::ENCLOS(global);
+            let mut hops = 0;
+            while env != base {
+                assert!(!env.is_null(), "search path must reach base");
+                env = crate::sexp::accessors::ENCLOS(env);
+                hops += 1;
+                assert!(hops < 64, "search path must not cycle");
+            }
             assert_eq!(crate::sexp::accessors::ENCLOS(base), empty);
             assert_eq!(crate::sexp::accessors::ENCLOS(empty), R_NilValue());
 

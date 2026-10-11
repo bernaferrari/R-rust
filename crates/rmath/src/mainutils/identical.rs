@@ -948,25 +948,29 @@ mod tests {
 
     #[test]
     fn test_compute_identical_different_types() {
-        unsafe {
-            // Different types => not identical
-            let mut node_int = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1));
-            let mut node_real = Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1));
-            let x = node_int.as_mut() as *mut _ as SEXP;
-            let y = node_real.as_mut() as *mut _ as SEXP;
-            assert_eq!(R_compute_identical(x, y, 0), 0);
-        }
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[1])
+            .build_in(&mut first)
+            .unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::RealVector::new(&[1.0])
+            .build_in(&mut second)
+            .unwrap();
+        // Different types => not identical
+        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
     }
 
     #[test]
     fn test_compute_identical_different_length() {
-        unsafe {
-            let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1));
-            let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 2));
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-            assert_eq!(R_compute_identical(x, y, 0), 0);
-        }
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[42])
+            .build_in(&mut first)
+            .unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::IntVector::new(&[42, 99])
+            .build_in(&mut second)
+            .unwrap();
+        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
     }
 
     #[test]
@@ -1013,23 +1017,16 @@ mod tests {
 
     #[test]
     fn test_compute_identical_special_builtin_offset() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let x = arena.alloc_node(SEXPTYPE::SPECIALSXP);
+        let y = arena.alloc_node(SEXPTYPE::SPECIALSXP);
+        let z = arena.alloc_node(SEXPTYPE::SPECIALSXP);
         unsafe {
-            let mut node1 = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
-            let mut node2 = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
-            let mut node3 = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
+            crate::sexp::accessors::SET_PRIMOFFSET(x, 42);
+            crate::sexp::accessors::SET_PRIMOFFSET(y, 42);
+            crate::sexp::accessors::SET_PRIMOFFSET(z, 99);
 
             // Same offset => identical
-            node1.data =
-                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 42 });
-            node2.data =
-                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 42 });
-            node3.data =
-                crate::sexp::ffi::NodeBody::Primitive(crate::sexp::ffi::Primsxp { offset: 99 });
-
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-            let z = node3.as_mut() as *mut _ as SEXP;
-
             assert_eq!(R_compute_identical(x, y, 0), 1);
             assert_eq!(R_compute_identical(x, z, 0), 0);
         }
@@ -1037,26 +1034,30 @@ mod tests {
 
     #[test]
     fn test_compute_identical_one_null() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[])
+            .build_in(&mut arena)
+            .unwrap();
         unsafe {
             let nil = R_NilValue();
-            let mut node = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 0));
-            let x = node.as_mut() as *mut _ as SEXP;
-            assert_eq!(R_compute_identical(nil, x, 0), 0);
-            assert_eq!(R_compute_identical(x, nil, 0), 0);
+            assert_eq!(R_compute_identical(nil, x.as_raw(), 0), 0);
+            assert_eq!(R_compute_identical(x.as_raw(), nil, 0), 0);
         }
     }
 
     #[test]
     fn test_compute_identical_object_flag_differs() {
+        let mut first = crate::sexp::memory::RArena::new();
+        let x = crate::sexp::builder::IntVector::new(&[])
+            .build_in(&mut first)
+            .unwrap();
+        let mut second = crate::sexp::memory::RArena::new();
+        let y = crate::sexp::builder::IntVector::new(&[])
+            .build_in(&mut second)
+            .unwrap();
         unsafe {
-            let mut node1 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 0));
-            let mut node2 = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 0));
-            node2.sxpinfo.set_obj(true);
-
-            let x = node1.as_mut() as *mut _ as SEXP;
-            let y = node2.as_mut() as *mut _ as SEXP;
-
-            assert_eq!(R_compute_identical(x, y, 0), 0);
+            crate::sexp::accessors::SET_OBJECT(y.as_raw(), 1);
+            assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
         }
     }
 

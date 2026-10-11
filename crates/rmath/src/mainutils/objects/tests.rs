@@ -731,9 +731,11 @@ mod tests {
 
     #[test]
     fn test_isMethodsDispatchOn_initial() {
+        // Sessions load the methods package at startup (GNU R with methods
+        // attached), so table dispatch is registered from the start.
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            assert_eq!(isMethodsDispatchOn(), FALSE);
+            assert_eq!(isMethodsDispatchOn(), TRUE);
         }
     }
 
@@ -741,8 +743,9 @@ mod tests {
     fn test_R_set_standardGeneric_ptr_roundtrip() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
+            // The startup methods load already installed a dispatcher.
             let old = R_set_standardGeneric_ptr(None, ptr::null_mut());
-            assert!(old.is_none());
+            assert!(old.is_some());
             assert_eq!(isMethodsDispatchOn(), FALSE);
         }
     }
@@ -850,7 +853,9 @@ mod tests {
     fn test_R_has_methods() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            assert_eq!(R_has_methods(ptr::null_mut()), FALSE);
+            // GNU objects.c: with methods dispatch on, a NULL op (or closure)
+            // reports TRUE without consulting the primitive tables.
+            assert_eq!(R_has_methods(ptr::null_mut()), TRUE);
         }
     }
 
@@ -1167,14 +1172,20 @@ mod tests {
 
     #[test]
     fn test_do_setClass() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        // setClass now routes through the methods package closure (GNU:
+        // setClass is pure R), so the R-level body needs an active session
+        // pin, just like a session-level eval.
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let class_name = Rf_mkString(b"LegacyClass\0".as_ptr() as *const c_char);
             let args = Rf_cons(class_name, R_NilValue());
-            let result = do_setClass(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            let result = do_setClass(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             assert!(!result.is_null());
-            assert!(s4_class("LegacyClass").is_some());
-        }
+            // GNU setClass returns the class generator function; the class
+            // definition now lives in the methods package's R-level class
+            // table rather than the native registry.
+            assert_eq!(Rf_isFunction(result), 1);
+        });
     }
 
     #[test]
@@ -1221,7 +1232,12 @@ mod tests {
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, -1);
+            // A NULL object has no class, so the generic's `default` method
+            // (print.default, found via the base search added for S3
+            // dispatch) is the lookup result: 0 = default in this port's
+            // 1-based findmethod contract.
+            assert_eq!(result, 0);
+            assert!(!method.is_null() && method != R_NilValue());
         }
     }
 
@@ -1299,8 +1315,13 @@ mod tests {
     fn test_R_do_new_object() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let result = R_do_new_object(ptr::null_mut());
-            assert!(result.is_null() || result == R_NilValue());
+            // GNU objects.c R_do_new_object errors on a null class
+            // definition pointer ("C level NEW macro called with null class
+            // definition pointer").
+            let err = assert_r_error(|| unsafe {
+                R_do_new_object(ptr::null_mut());
+            });
+            assert!(err.message.contains("null class definition pointer"));
 
             register_s4_class(
                 "Point".to_string(),

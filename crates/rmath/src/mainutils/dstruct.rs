@@ -203,10 +203,9 @@ mod tests {
     fn test_mkclosxp_basic() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let formals = arena.alloc_node(SEXPTYPE::NILSXP);
+            let formals = with_arena(|arena| arena.alloc_node(SEXPTYPE::NILSXP));
             let body = Rf_ScalarInteger(42);
-            let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+            let env = with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
 
             let c = mkCLOSXP(formals, body, env);
             assert!(!c.is_null());
@@ -221,8 +220,7 @@ mod tests {
     fn test_mkclosxp_nil_env() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let formals = arena.alloc_node(SEXPTYPE::NILSXP);
+            let formals = with_arena(|arena| arena.alloc_node(SEXPTYPE::NILSXP));
             let body = Rf_ScalarInteger(1);
 
             let c = mkCLOSXP(formals, body, R_NilValue());
@@ -235,10 +233,9 @@ mod tests {
     fn test_mkclosure_basic() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let formals = arena.alloc_node(SEXPTYPE::NILSXP);
+            let formals = with_arena(|arena| arena.alloc_node(SEXPTYPE::NILSXP));
             let body = Rf_ScalarInteger(1);
-            let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+            let env = with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
 
             let c = R_mkClosure(formals, body, env);
             assert!(!c.is_null());
@@ -280,8 +277,7 @@ mod tests {
     fn test_mksymsxp_basic() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let name = arena.alloc_charsxp(b"myvar");
+            let name = with_arena(|arena| arena.alloc_charsxp(b"myvar"));
             let value = Rf_ScalarInteger(99);
 
             let sym = mkSYMSXP(name, value);
@@ -296,8 +292,7 @@ mod tests {
     fn test_mksymsxp_ddname() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let name = arena.alloc_charsxp(b"..1");
+            let name = with_arena(|arena| arena.alloc_charsxp(b"..1"));
             let value = Rf_ScalarInteger(0);
 
             let sym = mkSYMSXP(name, value);
@@ -312,8 +307,7 @@ mod tests {
     fn test_mksymsxp_non_ddname() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let name = arena.alloc_charsxp(b"normal");
+            let name = with_arena(|arena| arena.alloc_charsxp(b"normal"));
             let value = Rf_ScalarInteger(0);
 
             let sym = mkSYMSXP(name, value);

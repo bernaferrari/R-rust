@@ -195,10 +195,12 @@ fn print_panic_r_error(payload: &(dyn std::any::Any + Send)) -> Option<REvalErro
 
 fn remember_last_value(value: SEXP) {
     unsafe {
-        crate::sexp::envir::defineVar(
+        // GNU main.c REPL: SET_SYMVALUE(R_LastvalueSymbol, value). The value
+        // lives on the symbol's value cell, not in a globalenv binding, so
+        // `ls()` never lists `.Last.value` (oracle Rscript: character(0)).
+        crate::sexp::accessors::SET_SYMVALUE(
             crate::sexp::symbol::Rf_install(c".Last.value".as_ptr()),
             value,
-            crate::sexp::globals::R_GlobalEnv(),
         );
     }
 }
@@ -792,6 +794,9 @@ impl RSession {
                 }
             }
         });
+        // GNU sessions start with R_Visible = TRUE; the package-loading
+        // dance above can leave the flag FALSE (e.g. invisible detach()).
+        session.with_active(|| crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE));
 
         session
     }
@@ -2963,11 +2968,17 @@ mod tests {
 
     #[test]
     fn test_session_protected_scope() {
-        let session = RSession::new();
+        let mut session = RSession::new();
+        let first = session
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP))
+            .unwrap();
+        let second = session
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::REALSXP))
+            .unwrap();
         let depth_before = session.with_active(R_ProtectCount);
         session.with_protected(|| {
-            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x1 as SEXP) });
-            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x2 as SEXP) });
+            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(first) });
+            std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(second) });
             // Leaked guards land in the root table; the count-based legacy
             // view does not see them.
             crate::sexp::protect::with_protected_objects(|legacy, roots| {
@@ -2985,11 +2996,14 @@ mod tests {
 
     #[test]
     fn test_session_protected_scope_unwinds_on_panic() {
-        let session = RSession::new();
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP))
+            .unwrap();
         let depth_before = session.with_active(R_ProtectCount);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             session.with_protected(|| {
-                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x1 as SEXP) });
+                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(value) });
                 panic!("forced protected-scope unwind");
             });
         }));
@@ -3004,10 +3018,14 @@ mod tests {
 
     #[test]
     fn test_session_protect_and_preserve_are_local_on_same_thread() {
-        let left = RSession::new();
+        let mut left = RSession::new();
         let right = RSession::new();
-        let protected = 0x1 as SEXP;
-        let preserved = 0x2 as SEXP;
+        let protected = left
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP))
+            .unwrap();
+        let preserved = left
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::REALSXP))
+            .unwrap();
 
         left.with_active(|| {
             std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(protected) });
@@ -3029,11 +3047,14 @@ mod tests {
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
 
+        let nested = left
+            .with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::INTSXP))
+            .unwrap();
         left.with_active(|| {
             // A nested scope reclaims only ITS OWN leaks; the root leaked
             // outside any scope survives until session teardown.
             left.with_protected(|| {
-                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(0x3 as SEXP) });
+                std::mem::forget(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ protect(nested) });
             });
             crate::sexp::protect::with_protected_objects(|_, roots| {
                 assert_eq!(roots, &[protected]);

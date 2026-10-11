@@ -3086,6 +3086,7 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
         }
         let mut alt = false;
+        let mut flag_str = String::new();
         let mut zero_print: Option<String> = None;
         let mut replace_zero = true;
         let mut cell = args;
@@ -3098,9 +3099,9 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                         let ch = STRING_ELT(value, 0);
                         if !ch.is_null() {
-                            alt = std::ffi::CStr::from_ptr(CHAR(ch))
-                                .to_string_lossy()
-                                .contains('#');
+                            let text = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                            alt = text.contains('#');
+                            flag_str = text.into_owned();
                         }
                     }
                 } else if name == "zero.print" {
@@ -3123,6 +3124,51 @@ pub unsafe fn do_formatC(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             cell = CDR(cell);
         }
 
+        // GNU base formatC: character input (or format = "s") is padded by
+        // format.char — format.default with width and justify from the flag.
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let mut justify_left = flag_str == "-";
+            let mut w = if width_missing { 0 } else { width };
+            if w < 0 {
+                justify_left = true;
+                w = -w;
+            }
+            let n = XLENGTH(x);
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _guard = protect(out);
+            for i in 0..n {
+                let elt = STRING_ELT(x, i as R_xlen_t);
+                let text = if elt.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(elt))
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                let len = text.chars().count() as i32;
+                let padded = if len >= w {
+                    text
+                } else if justify_left {
+                    format!("{text}{}", " ".repeat((w - len) as usize))
+                } else {
+                    format!("{}{text}", " ".repeat((w - len) as usize))
+                };
+                let c = std::ffi::CString::new(padded).unwrap_or_default();
+                SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+            }
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                Rf_install(b"names\0".as_ptr() as *const std::ffi::c_char),
+            );
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    out,
+                    Rf_install(b"names\0".as_ptr() as *const std::ffi::c_char),
+                    names,
+                );
+            }
+            return out;
+        }
         let n = XLENGTH(x);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);

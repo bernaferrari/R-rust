@@ -592,6 +592,21 @@ unsafe fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
         if crate::mainutils::coerce::IS_S4_OBJECT(fdef) != FALSE {
             return fdef;
         }
+        // A closure whose environment already carries '.AllMTable' is a
+        // table-initialized generic (GNU R_dispatchGeneric dispatches on it
+        // directly); only bare closures need getGeneric() recovery.
+        if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
+            let f_env = CLOENV(fdef);
+            if TYPEOF(f_env) == SEXPTYPE::ENVSXP {
+                let mtable = crate::sexp::envir::R_findVarInFrame(
+                    f_env,
+                    crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr()),
+                );
+                if mtable != R_UnboundValue() {
+                    return fdef;
+                }
+            }
+        }
         let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
             return fdef;
         };
@@ -1628,8 +1643,10 @@ mod tests {
 
     #[test]
     fn dispatch_generic_executes_table_method() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        // recover_s4_generic may evaluate getGeneric() from the methods
+        // namespace, so the dispatch entry needs an active session pin.
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let method = crate::mainutils::dstruct::mkCLOSXP(
                 R_NilValue(),
                 Rf_ScalarInteger(7),
@@ -1648,7 +1665,7 @@ mod tests {
             let result = R_dispatchGeneric(name, ev, fdef);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 7);
-        }
+        });
     }
 
     #[test]
@@ -1806,8 +1823,10 @@ mod tests {
 
     #[test]
     fn set_generic_and_method_registers_table_dispatch() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        // setGeneric/setMethod now consult the methods package namespace,
+        // so they need an active session pin like a session-level eval.
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
             let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
             let generic =
                 crate::mainutils::dstruct::mkCLOSXP(missing_formals(&["x"]), x_sym, env_with(&[]));
@@ -1839,17 +1858,7 @@ mod tests {
             let result = R_dispatchGeneric(name, ev, generic);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 99);
-        }
-    }
-
-    #[test]
-    fn probe_set_generic_flow() {
-        let mut session = crate::android::RSession::new();
-        // 1) Does setMethod find the generic when passed the CLOSURE directly?
-        let d = session.eval("g <- function(object) standardGeneric(\"show\"); setMethod(\"show\", \"numeric\", function(object) 42L)");
-        println!("setMethod-by-name => {:?}", d.output);
-        let e = session.eval("setMethod(g, \"numeric\", function(object) 42L); g(1.5)");
-        println!("dispatch-via-closure => {:?}", e.output);
+        });
     }
 
     #[test]
@@ -1865,7 +1874,8 @@ mod tests {
         println!("step3 setMethod => {:?}", c.output);
         let d = session.eval("show(1.5)");
         println!("step4 call => {:?}", d.output);
-        assert_eq!(d.output, "[1] 42");
+        // Top-level output now ends with the console newline, as in GNU R.
+        assert_eq!(d.output.trim_end(), "[1] 42");
     }
 
     #[test]
@@ -1873,14 +1883,14 @@ mod tests {
         let mut session = crate::android::RSession::new();
 
         let extends = session.eval("extends(\"integer\", \"vector\")");
-        assert_eq!(extends.output, "[1] TRUE");
+        assert_eq!(extends.output.trim_end(), "[1] TRUE");
 
         let tables = session.eval(
             "generic <- setGeneric(\"show\", function(object) standardGeneric(\"show\"))\n\
              setMethod(\"show\", \"numeric\", function(object) 42)\n\
              identical(show(1.5), 42)",
         );
-        assert_eq!(tables.output, "[1] TRUE");
+        assert_eq!(tables.output.trim_end().lines().last(), Some("[1] TRUE"));
     }
 
     // R_getClassFromCache(. , NULL) is a GNU cache miss (Nil). The old

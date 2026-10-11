@@ -74,11 +74,10 @@ pub unsafe fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_
     }
 }
 
-/// R's `rownames(x)` — get row names attribute.
-/// Stored `row.names`, including the compact `c(NA, -n)` form.
-pub unsafe fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// The raw stored `row.names` attribute, including the compact
+/// `c(NA, -n)` automatic form, without materializing it.
+pub unsafe fn row_names_stored(x: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -92,6 +91,11 @@ pub unsafe fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
         R_NilValue()
     }
+}
+
+/// Stored `row.names`, including the compact `c(NA, -n)` form.
+pub unsafe fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { row_names_stored(CAR(args)) }
 }
 pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

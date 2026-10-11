@@ -1517,13 +1517,12 @@ mod tests {
             let formals = crate::sexp::constructors::Rf_allocList(1);
             crate::sexp::accessors::SETTAG(formals, x_sym);
             crate::sexp::accessors::SETCAR(formals, R_MissingArg());
-            // The minimal compiler intentionally declines arbitrary user
-            // calls; JIT must report that decline instead of returning TRUE
-            // while leaving the body interpreted.
-            let body = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"user_fun".as_ptr()),
-                x_sym,
-            );
+            // The minimal compiler intentionally declines a bare `...`
+            // operand (bc_compile never lowers R_DotsSymbol to OP_GETVAR);
+            // JIT must report that decline instead of returning TRUE while
+            // leaving the body interpreted. Plain symbol calls and dots in
+            // call argument position are supported lowering paths.
+            let body = crate::sexp::symbol::R_DotsSymbol();
             let fun = crate::mainutils::dstruct::mkCLOSXP(
                 formals,
                 body,
@@ -1533,7 +1532,7 @@ mod tests {
             with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
 
             assert_eq!(R_CheckJIT(fun), FALSE);
-            assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::LANGSXP);
+            assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::SYMSXP);
         });
     }
 
@@ -1646,10 +1645,10 @@ mod tests {
         let mut session = crate::android::RSession::new();
 
         let exec = session.eval("x <- 6\nExec(quote(identity(x)))");
-        assert_eq!(exec.output, "[1] 6");
+        assert_eq!(exec.output, "[1] 6\n");
 
         let tailcall = session.eval("f <- function(x) Tailcall(identity, x + 1)\nf(5)");
-        assert_eq!(tailcall.output, "[1] 6");
+        assert_eq!(tailcall.output, "[1] 6\n");
     }
 
     #[test]
@@ -1658,7 +1657,7 @@ mod tests {
         let result = session.eval(
             "countdown <- function(n) if (n <= 0) 0 else Tailcall(countdown, n - 1)\ncountdown(5)",
         );
-        assert_eq!(result.output, "[1] 0");
+        assert_eq!(result.output, "[1] 0\n");
     }
 
     #[test]
@@ -1666,10 +1665,10 @@ mod tests {
         let mut session = crate::android::RSession::new();
 
         let exec = session.eval("is.primitive(Exec)");
-        assert_eq!(exec.output, "[1] TRUE");
+        assert_eq!(exec.output, "[1] TRUE\n");
 
         let tailcall = session.eval("is.primitive(Tailcall)");
-        assert_eq!(tailcall.output, "[1] TRUE");
+        assert_eq!(tailcall.output, "[1] TRUE\n");
     }
 
     #[test]

@@ -1926,23 +1926,29 @@ mod rbind_data_frame_tests {
 
     #[test]
     fn rbind_preserves_data_frame_shape_and_binds_columns_independently() {
+        // GNU oracle: the I() column keeps its 'AsIs' class through the
+        // bind and the anonymous character row gets automatic row names.
         assert_r_true(
             "d1 <- rbind(data.frame(a=1, b=I(TRUE)), new=c(7, 'N')); \
              is.data.frame(d1) && identical(names(d1), c('a', 'b')) && \
-             identical(row.names(d1), c('1', 'new')) && \
-             identical(d1$a, c('1', '7')) && identical(d1$b, c('TRUE', 'N')) && \
+             identical(row.names(d1), c('1', '2')) && \
+             identical(d1$a, c('1', '7')) && \
+             identical(d1$b, I(c('TRUE', 'N'))) && \
              is.null(attr(unclass(d1$b), 'class'))",
         );
     }
 
     #[test]
     fn rbind_matches_data_frame_and_named_row_columns_by_name() {
+        // GNU oracle: after y reorders the columns to (b, a), the named
+        // atomic row c(b='w', a='4') is matched against that column
+        // order, so 'a' receives 'w' and 'b' receives '4'.
         assert_r_true(
             "x <- data.frame(a=1:2, b=c('x', 'y')); \
              y <- data.frame(b='z', a=3); \
              z <- rbind(x, y, c(b='w', a='4')); \
-             identical(z$a, c('1', '2', '3', '4')) && \
-             identical(z$b, c('x', 'y', 'z', 'w'))",
+             identical(z$a, c('1', '2', '3', 'w')) && \
+             identical(z$b, c('x', 'y', 'z', '4'))",
         );
     }
 

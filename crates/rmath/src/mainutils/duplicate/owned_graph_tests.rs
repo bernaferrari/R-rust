@@ -1,7 +1,7 @@
 //! Real duplication callbacks must observe owned original edges, not incidental roots.
 
 use super::*;
-use crate::sexp::{heap::CheckedNode, object::SexpMut, session::RSession};
+use crate::sexp::{ffi::EdgeField, heap::CheckedNode, object::SexpMut, session::RSession};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -547,15 +547,13 @@ fn owning_graph_altrep_callbacks_keep_fresh_values_and_original_public_attribute
             .pairlist_cell(&value, &factory.nil(), &factory.nil())
             .unwrap();
         let attribute_node = attributes.allocation().unwrap().clone();
-        let prefix = source.try_attrib().unwrap();
+        let source_node = source.allocation().unwrap().clone();
         unsafe {
-            SETCDR(prefix.as_raw(), attributes.as_raw());
+            SET_ATTRIB(source.as_raw(), attributes.as_raw());
         }
-        let prefix_node = prefix.allocation().unwrap().clone();
-        drop(prefix);
         drop(attributes);
         drop(value);
-        let heap = prefix_node.heap_identity();
+        let heap = source_node.heap_identity();
         let nil = factory.link(&factory.nil()).unwrap();
         let notified = Rc::new(Cell::new(false));
         let observed = notified.clone();
@@ -563,9 +561,9 @@ fn owning_graph_altrep_callbacks_keep_fresh_values_and_original_public_attribute
             if observed.replace(true) {
                 return;
             }
-            let mut prefix = heap.node_snapshot(&prefix_node).unwrap();
-            prefix.data.list_mut().cdrval = nil;
-            heap.replace_node(&prefix_node, prefix).unwrap();
+            let mut owner = heap.node_snapshot(&source_node).unwrap();
+            owner.set_edge(EdgeField::Attribute, nil).unwrap();
+            heap.replace_node(&source_node, owner).unwrap();
             let mut attribute = heap.node_snapshot(&attribute_node).unwrap();
             attribute.data.list_mut().carval = nil;
             heap.replace_node(&attribute_node, attribute).unwrap();

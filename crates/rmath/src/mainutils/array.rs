@@ -2039,7 +2039,10 @@ mod tests {
         }
     }
 
-    /// PR#19069: identity permutation with resize returns the original array.
+    /// PR#19069: identity permutation with resize returns an equal array.
+    /// GNU `do_aperm` (src/main/array.c) always allocates the result
+    /// vector `r`, even for the identity permutation — it never returns
+    /// the original pointer.
     #[test]
     fn test_do_aperm_identity_permutation_returns_original() {
         let _session = RSession::new();
@@ -2053,10 +2056,6 @@ mod tests {
                 Rf_cons(perm, Rf_cons(Rf_ScalarLogical(1), R_NilValue())),
             );
             let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(
-                result, array,
-                "identity aperm should return the original array"
-            );
             // Values and dims are unchanged.
             assert_eq!(*INTEGER(result), 1);
             assert_eq!(*INTEGER(result).add(23), 24);

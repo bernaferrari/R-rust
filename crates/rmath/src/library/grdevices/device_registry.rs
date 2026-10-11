@@ -1224,8 +1224,13 @@ mod tests {
             assert_eq!(NoDevices(), 1);
             assert_eq!(NumDevices(), 1);
             assert_eq!(curDevice(), 0);
-            assert!(!GEcurrentDevice().is_null());
-            assert_eq!((*GEcurrentDevice()).label, 1);
+            // GNU devices.c: the null device occupies slot 0
+            // (R_Devices[0] = &nullDevice). GEcurrentDevice() would
+            // evaluate options("device") and open the default device, so
+            // inspect the null device through slot 0.
+            let null_device = GEgetDevice(0);
+            assert!(!null_device.is_null());
+            assert_eq!((*null_device).label, 1);
             assert_eq!(nextDevice(0), 0);
             assert_eq!(prevDevice(0), 0);
         }

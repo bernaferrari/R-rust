@@ -488,7 +488,11 @@ mod tests {
     fn devsize_reports_null_device_in_requested_units() {
         let _session = RSession::new();
         device_registry::reset_registry_for_tests();
-
+        // GEcurrentDevice() evaluates options("device") only when nothing
+        // beyond the null device exists (GNU devices.c); selecting the null
+        // device opens a real one, so the helper resolves the current device
+        // without reentering the evaluator.
+        unsafe { assert_eq!(device_registry::selectDevice(0), 0) };
         unsafe {
             let inches = devsize(one_arg_args(Rf_mkString(c"in".as_ptr())));
             assert_eq!(*REAL(inches).add(0), 7.0);
@@ -515,6 +519,7 @@ mod tests {
     fn devcap_reports_implemented_headless_features_only() {
         let _session = RSession::new();
         device_registry::reset_registry_for_tests();
+        unsafe { device_registry::selectDevice(0) };
 
         unsafe {
             let capabilities = Rf_allocVector(SEXPTYPE::VECSXP, 15);
@@ -530,6 +535,7 @@ mod tests {
     fn devcapture_returns_headless_native_raster() {
         let _session = RSession::new();
         device_registry::reset_registry_for_tests();
+        unsafe { device_registry::selectDevice(0) };
 
         unsafe {
             let raster = devcapture(one_arg_args(Rf_ScalarLogical(1)));

@@ -888,14 +888,14 @@ pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
                 f64::from(c.device[2]),
             ),
             clamp(
-                user_x_to_device(&c, corners[2]),
+                user_x_to_device(&c, corners[1]),
                 f64::from(c.device[0]),
                 f64::from(c.device[2]),
             ),
         ];
         let y = [
             clamp(
-                user_y_to_device(&c, corners[1]),
+                user_y_to_device(&c, corners[2]),
                 f64::from(c.device[1]),
                 f64::from(c.device[3]),
             ),

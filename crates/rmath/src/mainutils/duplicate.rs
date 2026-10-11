@@ -2344,13 +2344,16 @@ mod tests {
     fn test_duplicate_closure() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut arena = RArena::new();
-            let formals = arena.alloc_node(SEXPTYPE::NILSXP);
+            // Fixture values must live in the session's graph; a detached
+            // RArena crosses the ownership boundary enforced at duplicate().
+            let formals = R_NilValue();
             let body = Rf_ScalarInteger(42);
-            let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+            let _body_guard = crate::sexp::protect::protect(body);
+            let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
 
             // Create closure using mkCLOSXP
             let c = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
+            let _c_guard = crate::sexp::protect::protect(c);
             let d = duplicate(c);
             assert!(!d.is_null());
             assert_eq!(TYPEOF(d), SEXPTYPE::CLOSXP);
@@ -2584,9 +2587,10 @@ mod tests {
     fn test_duplicate_string_vector() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s1 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0); // placeholder CHARSXP
-            let s2 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0);
+            let s1 = crate::sexp::constructors::Rf_mkChar(c"a".as_ptr());
+            let s2 = crate::sexp::constructors::Rf_mkChar(c"b".as_ptr());
             let v = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            let _v_guard = crate::sexp::protect::protect(v);
             SET_STRING_ELT(v, 0, s1);
             SET_STRING_ELT(v, 1, s2);
             let d = duplicate(v);
@@ -2620,9 +2624,11 @@ mod tests {
         unsafe {
             let extptr = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
             let d = duplicate(extptr);
+            // GNU duplicate.c returns external pointers unchanged (shared
+            // external identity, one collectible graph).
             assert!(!d.is_null());
             assert_eq!(TYPEOF(d), SEXPTYPE::EXTPTRSXP);
-            assert_ne!(d, extptr);
+            assert_eq!(d, extptr);
         }
     }
 }

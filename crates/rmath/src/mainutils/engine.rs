@@ -2280,7 +2280,12 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
         unsafe {
-            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            // With only the null device, GEcurrentDevice() evaluates
+            // options("device") and opens a real device (GNU devices.c);
+            // address the current slot directly instead.
+            let dd = crate::library::grdevices::device_registry::GEgetDevice(
+                crate::library::grdevices::device_registry::curDevice(),
+            );
             let result = GECap(dd.cast());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 504 * 504);
@@ -2293,7 +2298,9 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
         unsafe {
-            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            let dd = crate::library::grdevices::device_registry::GEgetDevice(
+                crate::library::grdevices::device_registry::curDevice(),
+            );
             assert_eq!(toDeviceX(1.0, GE_INCHES, dd.cast()), 72.0);
             assert_eq!(toDeviceY(1.0, GE_INCHES, dd.cast()), 432.0);
 

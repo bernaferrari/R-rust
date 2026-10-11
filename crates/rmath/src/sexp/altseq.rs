@@ -276,8 +276,10 @@ impl Sexp<'_> {
             return None;
         }
         let formula = if kind == SEXPTYPE::INTSXP {
-            let last = from + (length - 1.0).max(0.0) * step;
-            if [from, step, last].iter().any(|v| {
+            // Long runs may wrap past i32::MAX; only the c_int origin and
+            // step must be representable. Wrapped elements match the
+            // wrapping arithmetic of `Formula::int_at`.
+            if [from, step].iter().any(|v| {
                 !v.is_finite() || v.fract() != 0.0 || *v < i32::MIN as f64 || *v > i32::MAX as f64
             }) {
                 return None;

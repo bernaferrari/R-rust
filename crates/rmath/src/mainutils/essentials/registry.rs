@@ -75,6 +75,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "length",
     "nchar",
     "substr",
+    "substr<-",
     "Encoding",
     "Encoding<-",
     "tolower",
@@ -399,7 +400,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "print.rle",
     "print.proc_time",
     "print.raw",
-    "summary.default",
     "summary.data.frame",
     "format.data.frame",
     "matrix",
@@ -871,13 +871,15 @@ mod tests {
 
     #[test]
     fn arithmetic_operator_names_resolve() {
-        // The operator/comparison names and `mean` moved from
-        // eval/arithmetic.rs `register_arithmetic_builtins` into ALL_FNS;
-        // each must still resolve a canonical R_FunTab entry and a builtin
-        // handler by name. `(` only needs its funtab entry: it dispatches
-        // through the evaluator's special-form path, not the handler table.
+        // The operator/comparison names moved from eval/arithmetic.rs
+        // `register_arithmetic_builtins` into ALL_FNS; each must still
+        // resolve a canonical R_FunTab entry and a builtin handler by
+        // name. `(` and `mean` only need their funtab entries: `(`
+        // dispatches through the evaluator's special-form path, and
+        // base `mean` is a GNU-shaped UseMethod closure bound over
+        // `.Internal(mean)` (commit 418a51ff), not a builtin handler.
         let names = [
-            "+", "-", "*", "/", "^", "%%", "%/%", ":", "<", ">", "<=", ">=", "==", "!=", "mean",
+            "+", "-", "*", "/", "^", "%%", "%/%", ":", "<", ">", "<=", ">=", "==", "!=",
         ];
         for name in names {
             assert!(
@@ -890,5 +892,6 @@ mod tests {
             );
         }
         assert!(crate::eval::primitive::fun_tab_index_by_name("(").is_some());
+        assert!(crate::eval::primitive::fun_tab_index_by_name("mean").is_some());
     }
 }

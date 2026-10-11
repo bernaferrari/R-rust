@@ -2311,8 +2311,22 @@ pub(crate) unsafe fn load_package_data_set(
                 source_r_file_into_env(&source_file, target_env)?;
                 return Ok(true);
             }
+            let serialized_allowed = crate::sexp::instance::with_current_instance(|inst| unsafe {
+                (*inst).path_policy.allows_serialized_data()
+            })
+            .unwrap_or(true);
+            let reject_serialized = |file: &std::path::Path| -> Result<(), String> {
+                if serialized_allowed {
+                    return Ok(());
+                }
+                Err(format!(
+                    "unsupported serialized/lazy data {}; this pure-R Android runtime supports R source files and data/*.R only",
+                    file.display()
+                ))
+            };
             let rdb = data_dir.join("Rdata.rdb");
             if rdb.is_file() {
+                reject_serialized(&rdb)?;
                 let scratch = crate::sexp::memory_ext::NewEnvironment(
                     R_NilValue(),
                     crate::sexp::globals::R_EmptyEnv(),
@@ -2336,6 +2350,7 @@ pub(crate) unsafe fn load_package_data_set(
                 data_dir.join(format!("{topic}.RData")),
             ];
             if let Some(path) = per_topic.iter().find(|path| path.is_file()) {
+                reject_serialized(path)?;
                 super::package_data::load_file(path, target_env)?;
                 return Ok(true);
             }

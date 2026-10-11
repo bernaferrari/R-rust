@@ -967,6 +967,19 @@ fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<
     let cnames = factory.strings(&["unordered", "ordered"])?;
     set_option_names(factory, &contrasts, cnames)?;
     options.insert("contrasts".to_string(), contrasts);
+    // GNU base options.R: R_PAGER, then PAGER, then the R installation's
+    // pager script. Embedded sessions fall back to the internal "file.show"
+    // pager, which do_fileshow accepts and ignores.
+    let pager = std::env::var("R_PAGER")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("PAGER")
+                .ok()
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "file.show".to_string());
+    options.insert("pager".to_string(), pm(&pager)?);
     options.insert("pkgType".to_string(), pm("source")?);
     Ok(options)
 }
@@ -1789,7 +1802,7 @@ mod tests {
             assert_eq!(asInteger(GetOptionByName("expressions")), 5000);
             assert_eq!(asInteger(GetOptionByName("max.print")), 99999);
             let owner = session.owner_token().unwrap();
-            assert_eq!((*owner.as_ptr()).options.len(), 45);
+            assert_eq!((*owner.as_ptr()).options.len(), 46);
             assert_eq!(
                 (*owner.as_ptr()).options_initialization,
                 OptionsInitialization::Initialized
@@ -1822,7 +1835,7 @@ mod tests {
             );
 
             let binding = crate::sexp::envir::R_findVarInFrame(R_BaseEnv(), options_symbol());
-            assert_eq!(Rf_length(binding), 45);
+            assert_eq!(Rf_length(binding), 46);
             let platform = session
                 .sexp(crate::sexp::envir::R_findVarInFrame(
                     R_BaseEnv(),

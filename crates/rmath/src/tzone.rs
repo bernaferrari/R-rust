@@ -2442,6 +2442,7 @@ mod tests {
     #[test]
     fn test_mktime_epoch() {
         let _session = activate_test_session();
+        set_timezone_override(Some("UTC".to_owned()));
         unsafe {
             let mut tm = stm {
                 tm_sec: 0,

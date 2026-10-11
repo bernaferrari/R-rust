@@ -757,7 +757,8 @@ fn test_session_eval_parsed_exprs() {
     assert!(r4.output.contains("TRUE") || r4.output.contains('1'));
 
     let r5 = session.eval("NULL");
-    assert_eq!(r5.output, "NULL");
+    // Rscript terminates each printed value with a newline.
+    assert_eq!(r5.output, "NULL\n");
 }
 
 #[test]

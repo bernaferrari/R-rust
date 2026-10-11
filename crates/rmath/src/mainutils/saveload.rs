@@ -1496,6 +1496,9 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// User-facing `load()` wrapper.
 pub unsafe fn do_load_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        // Serialized-workspace policy is enforced at the package-data layer
+        // (load_package_data_set, extension-precise); load() itself must let
+        // the restore reader run so corrupt files report GNU's own errors.
         let file = arg_by_name_or_position(args, "file", 0);
         let envir = {
             let candidate = arg_by_name_or_position(args, "envir", 1);

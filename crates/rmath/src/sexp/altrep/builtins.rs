@@ -157,13 +157,16 @@ impl AltrepClass for SequenceClass {
         {
             return Err(failure("invalid sequence length"));
         }
+        // Integer formulas keep c_int origin/step, but long runs may wrap past
+        // i32::MAX: those elements surface as wrapped values (NA on read via
+        // the formula), matching compact_int_seq's wrapping arithmetic.
         if self.0 == SEXPTYPE::INTSXP {
             let first = state.try_real_elt(1)?;
             let step = state.try_real_elt(2)?;
-            let last = first + (length - 1.0).max(0.0) * step;
-            if [first, step, last].iter().any(|v| {
-                !v.is_finite() || v.fract() != 0.0 || *v < i32::MIN as f64 || *v > i32::MAX as f64
-            }) {
+            if [first, step]
+                .iter()
+                .any(|v| !v.is_finite() || v.fract() != 0.0)
+            {
                 return Err(failure("integer sequence out of range"));
             }
         }
@@ -173,12 +176,20 @@ impl AltrepClass for SequenceClass {
         let state = c.data1()?;
         let value = state.try_real_elt(1)? + i as f64 * state.try_real_elt(2)?;
         match self.0 {
-            SEXPTYPE::INTSXP
-                if value.is_finite()
-                    && value.fract() == 0.0
-                    && value >= i32::MIN as f64
-                    && value <= i32::MAX as f64 =>
-            {
+            SEXPTYPE::INTSXP => {
+                // Integer formulas use c_int origin/step with the same
+                // wrapping arithmetic as `Formula::int_at`, so long runs that
+                // pass i32::MAX stay readable without allocating.
+                let origin = state.try_real_elt(1)?;
+                let step = state.try_real_elt(2)?;
+                if !origin.is_finite()
+                    || !step.is_finite()
+                    || origin.fract() != 0.0
+                    || step.fract() != 0.0
+                {
+                    return Err(failure("invalid sequence element"));
+                }
+                let value = (origin as i64).wrapping_add(i.wrapping_mul(step as i64));
                 Ok(AltrepElement::Integer(value as i32))
             }
             SEXPTYPE::REALSXP => Ok(AltrepElement::Real(value)),

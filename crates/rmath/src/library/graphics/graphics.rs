@@ -1239,7 +1239,12 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
         unsafe {
-            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            // Address the null device the registry starts on directly:
+            // GEcurrentDevice() evaluates options("device") and opens a real
+            // device when only the null device exists (GNU devices.c).
+            let dd = crate::library::grdevices::device_registry::GEgetDevice(
+                crate::library::grdevices::device_registry::curDevice(),
+            );
             assert_eq!(GConvertX(0.5, USER, USER, dd.cast()), 0.5);
             assert_eq!(GConvertX(0.0, NFC, NFC, dd.cast()), 0.0);
             let device_x = GConvertX(0.5, USER, DEVICE, dd.cast());
@@ -1253,7 +1258,13 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
         unsafe {
-            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            // The registry starts on the null device (GNU devices.c: slot 0),
+            // which this engine backs with the headless capture surface.
+            // GEcurrentDevice() would evaluate options("device") and open a
+            // real device instead, so address slot 0 directly.
+            let dd = crate::library::grdevices::device_registry::GEgetDevice(
+                crate::library::grdevices::device_registry::curDevice(),
+            );
             crate::mainutils::engine::GENewPage(ptr::null(), dd.cast());
             GLine(0.0, 0.0, 10.0, 0.0, DEVICE, dd.cast());
             let result = crate::mainutils::engine::GECap(dd.cast());
@@ -1274,7 +1285,9 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
         unsafe {
-            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            let dd = crate::library::grdevices::device_registry::GEgetDevice(
+                crate::library::grdevices::device_registry::curDevice(),
+            );
             assert_eq!(GConvertXUnits(1.0, INCHES, DEVICE, dd.cast()), 72.0);
             assert_eq!(GConvertYUnits(1.0, INCHES, DEVICE, dd.cast()), 432.0);
         }

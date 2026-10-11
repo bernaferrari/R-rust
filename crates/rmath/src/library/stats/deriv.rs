@@ -70,7 +70,17 @@ unsafe fn run_owned_derivative(
     match result {
         Ok(result) => result
             .and_then(|result| result)
-            .unwrap_or_else(|error| fail(error.to_string()))
+            .unwrap_or_else(|error| {
+                // GNU deriv.c raises these with error(), which verror()
+                // attributes to getCurrentCall(): the enclosing closure
+                // (D/deriv), never the .External builtin call.
+                unsafe {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::condition_caller_call(),
+                        &error.to_string(),
+                    );
+                }
+            })
             .as_raw(),
         Err(payload) => std::panic::resume_unwind(payload),
     }

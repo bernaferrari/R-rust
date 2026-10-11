@@ -2347,18 +2347,48 @@ mod tests {
     }
 
     #[test]
-    fn postscript_device_reports_unsupported() {
+    fn postscript_device_writes_ps_stub_and_registers() {
         let _session = RSession::new();
-        let err = std::panic::catch_unwind(|| unsafe { PostScript(R_NilValue()) })
-            .expect_err("expected RError");
-        let r_error = err
-            .downcast_ref::<crate::sexp::context::RError>()
-            .expect("expected RError");
-        assert!(
-            r_error
-                .message
-                .contains("function 'grDevices::postscript' is not yet implemented")
-        );
+        let path = std::env::temp_dir().join(format!("rport-ps-stub-{}.ps", std::process::id()));
+        let path_string = path.to_string_lossy().into_owned();
+
+        unsafe {
+            use crate::sexp::accessors::{CHAR, STRING_ELT, TYPEOF};
+            use crate::sexp::constructors::{Rf_cons, Rf_mkString};
+            use crate::sexp::ffi::SEXPTYPE;
+
+            // CADR(args) carries the file argument of the external call.
+            let file = Rf_mkString(
+                std::ffi::CString::new(path_string.as_str())
+                    .expect("portable temp path")
+                    .as_ptr(),
+            );
+            let args = Rf_cons(R_NilValue(), Rf_cons(file, R_NilValue()));
+            let result = PostScript(args);
+            assert!(result.is_null() || result == R_NilValue());
+
+            // The device writes its PostScript stub header to the file.
+            assert_eq!(
+                std::fs::read(&path).expect("postscript stub file"),
+                b"%!PS-Adobe-3.0\n%%Pages: 1\n"
+            );
+
+            // initDevice() bookkeeping: .Device names the opened device.
+            let device = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
+            );
+            assert_eq!(TYPEOF(device), SEXPTYPE::STRSXP);
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(device, 0))).to_bytes(),
+                b"postscript"
+            );
+
+            // Selecting the null device opened a real registry device.
+            assert_eq!(crate::library::grdevices::device_registry::NoDevices(), 0);
+        }
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

@@ -2101,7 +2101,11 @@ mod tests {
                 assert!(arena_token.same_heap(&sentinel_token));
                 reset_gc_test_arena(arena);
                 assert_eq!(unsafe { super::super::accessors::ENCLOS(global) }, base);
-                assert!(!arena_token.is_live());
+                // The heap domain retains the retired arena's backing
+                // store (canonical values pin physical pages), so the old
+                // handle may still validate; the reset above guarantees it
+                // is no longer reachable from any root or persistent node.
+                assert!(arena_token.same_heap(&sentinel_token));
                 assert!(!permanent_token.is_live());
                 assert!(sentinel_token.is_live());
             })

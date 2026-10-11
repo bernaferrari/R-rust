@@ -653,6 +653,16 @@ pub unsafe fn DispatchOrEval(
     argsevald: c_int,
 ) -> c_int {
     unsafe {
+        if generic.is_null() || ans.is_null() {
+            return 0;
+        }
+        // Without an evaluation environment there is nowhere to dispatch
+        // from or evaluate promises in; treat the arguments as evaluated
+        // values and let the caller run its default code.
+        if argsevald == 0 && (rho.is_null() || rho == R_NilValue()) {
+            *ans = args;
+            return 0;
+        }
         let factory = active_argument_factory();
         let arguments_owner = argument_value(&factory, args);
         let environment_owner = argument_value(&factory, rho);
@@ -660,10 +670,6 @@ pub unsafe fn DispatchOrEval(
         let mut x: SEXP = R_NilValue();
         let mut dots: c_int = FALSE;
         let mut guards = Vec::new();
-
-        if generic.is_null() || ans.is_null() {
-            return 0;
-        }
 
         // Step 1: Find the object to dispatch on
         if argsevald != 0 {
