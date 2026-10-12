@@ -168,6 +168,11 @@ pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
         .wrap(env.as_raw())
         .map_err(|err| sexp_err("environment", err))?;
     let _guard = check_eval_depth()?;
+    // GNU eval() sets R_Visible = TRUE at every entry (src/main/eval.c):
+    // visibility is owned by the last evaluated expression, so a promise
+    // forced mid-body cannot leak an earlier assignment's invisibility past
+    // the body's final expression.
+    super::runtime::set_visible(crate::sexp::ffi::TRUE);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */

@@ -305,7 +305,7 @@ pub(crate) fn apply_builtin_safe<'a>(
     }
 
     let evaled_args = frame.eval_args();
-    if false && !has_funtab_entry && op_name != "withVisible" {
+    if !has_funtab_entry && op_name != "withVisible" {
         // Portable builtins port stock base *closures* (no FunTab entry),
         // so flag 2 means closure semantics: GNU evaluates arguments as
         // promises inside the body, and every eval entry resets R_Visible

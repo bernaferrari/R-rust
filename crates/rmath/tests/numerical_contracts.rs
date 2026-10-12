@@ -104,9 +104,11 @@ fn qbeta_log_p_entry_matches_plain_entry() {
             let lp = pbeta_inner(q_plain, a, b, true, true);
             // pbeta(log.p) represents p to high absolute accuracy on the
             // probability scale; the log magnifies rounding near p=1 by
-            // 1/(1-p), so bound exp(lp) against p rather than lp against ln p.
+            // 1/(1-p), so bound exp(lp) against p rather than lp against
+            // ln p. The bound is relative so a wrong deep-tail log entry
+            // (p=1e-12) cannot hide behind the absolute floor.
             assert!(
-                (lp.exp() - p).abs() <= 1e-9,
+                (lp.exp() - p).abs() <= 1e-9 * p.max(1e-12),
                 "pbeta log.p: a={a} b={b} p={p} log-pbeta={lp}"
             );
         }
