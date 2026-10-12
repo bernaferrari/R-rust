@@ -8,8 +8,8 @@ fn arguments(session: &RSession, description: &str, open: &str) -> Sexp<'static>
     let values = [
         factory.strings(&[description]).unwrap(),
         factory.strings(&[open]).unwrap(),
-        factory.strings(&["native.enc"]).unwrap(),
         factory.domain().logical(true),
+        factory.strings(&["native.enc"]).unwrap(),
         factory.strings(&["default"]).unwrap(),
         factory.domain().logical(false),
     ];

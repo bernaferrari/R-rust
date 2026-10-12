@@ -107,6 +107,62 @@ unsafe fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
     }
 }
 
+/// GNU `envir.c` `findVarInFrame3` short-circuits base-environment and
+/// base-namespace lookups to the symbol's `SYMVALUE` cell — there the frame
+/// *is* the symbol table, whatever the stored type. The port mirrors base
+/// bindings as frame cells, so this is consulted only after a frame miss;
+/// cell-only bindings such as `.Last.value` (main.c REPL `SET_SYMVALUE`) and
+/// `last.warning` (errors.c) resolve through it. Null cells, `R_UnboundValue`
+/// and self-referential marker cells mean unbound, as in GNU.
+unsafe fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
+    if env.is_null() || symbol.is_null() {
+        return None;
+    }
+    let Some(base) = with_current_instance(super::globals::R_BaseEnv_in) else {
+        return None;
+    };
+    unsafe {
+        if base.is_null() || env == R_NilValue() {
+            return None;
+        }
+        if env != base {
+            // The base namespace redirects to the same symbol cells. Read
+            // its binding cell directly so this never re-enters lookup.
+            let namespace = crate::sexp::accessors::SYMVALUE(super::symbol::Rf_install(
+                c".BaseNamespaceEnv".as_ptr(),
+            ));
+            let is_base_namespace = !namespace.is_null()
+                && namespace != R_UnboundValue()
+                && TYPEOF(namespace) == SEXPTYPE::ENVSXP
+                && env == namespace;
+            if !is_base_namespace {
+                return None;
+            }
+        }
+        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let cell = crate::sexp::accessors::SYMVALUE(symbol);
+        if cell.is_null() || cell == R_UnboundValue() || cell == symbol {
+            return None;
+        }
+        // Port-internal builtin registrations (e.g. the hand-rolled
+        // print.* helpers) carry symbol cells that GNU does not expose as
+        // base bindings; they stay unreachable from variable lookup.
+        let pname = crate::sexp::accessors::PRINTNAME(symbol);
+        if !pname.is_null() {
+            let chars = crate::sexp::accessors::CHAR(pname);
+            if !chars.is_null() {
+                let name = std::ffi::CStr::from_ptr(chars).to_string_lossy();
+                if crate::eval::builtin::is_hidden_builtin_name(&name) {
+                    return None;
+                }
+            }
+        }
+        Some(cell)
+    }
+}
+
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
 }
@@ -223,7 +279,10 @@ pub(crate) fn binding_exists_in_frame_raw(env: SEXP, symbol: SEXP) -> bool {
             frame = super::accessors::CDR(frame);
         }
     }
-    false
+    // GNU do_get/exists (findVar1mode → findVarInFrame3) reach the symbol
+    // cell once the walk arrives at the base environment, so cell-only
+    // bindings such as `.Last.value` count as present in that frame.
+    unsafe { base_env_symbol_cell_raw(env, symbol).is_some() }
 }
 
 pub(crate) fn binding_exists_raw(mut env: SEXP, symbol: SEXP, inherits: bool) -> bool {
@@ -509,11 +568,24 @@ pub unsafe fn find_var_in_frame_result<'a>(
     if !rho.clone().is_environment() {
         return Ok(None);
     }
-
+    // GNU findVarInFrame3 redirects base-environment fetches to the symbol
+    // cell; the mirrored frame below matches first, so only cell-only
+    // bindings (`.Last.value`, `last.warning`) resolve through the cell.
+    let base_cell = if unsafe { base_env_symbol_cell_raw(rho.as_raw(), symbol.as_raw()).is_some() }
+    {
+        // Return the cell as a rooted child of the symbol so consumers can
+        // `into_owned` it exactly like frame `try_car` values (get/mget).
+        match symbol.header().body {
+            super::ffi::NodeBody::Symbol(slot) => symbol.checked_child(slot.value).ok(),
+            _ => None,
+        }
+    } else {
+        None
+    };
     // A valid exact-frame index proves name absence; unavailable indexes
     // retain the bounded canonical walk. Hits read the cell's current CAR.
     match super::env_hash::hash_binding_lookup(&rho, &symbol) {
-        super::env_hash::BindingLookup::Absent => return Ok(None),
+        super::env_hash::BindingLookup::Absent => return Ok(base_cell),
         super::env_hash::BindingLookup::Cell(link) => {
             let cell = rho
                 .checked_child(link)
@@ -565,7 +637,7 @@ pub unsafe fn find_var_in_frame_result<'a>(
         }
     }
 
-    Ok(None)
+    Ok(base_cell)
 }
 
 // ---------------------------------------------------------------------------

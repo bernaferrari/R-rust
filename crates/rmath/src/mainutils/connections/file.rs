@@ -37,7 +37,12 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let scmd = positional_or(args, 0, empty);
         let sopen = positional_or(args, 1, empty);
         let _enc = arg_by_name_or_position(args, 3, &["encoding"], native);
-        let _block = arg_by_name_or_position(args, 2, &["blocking"], Rf_ScalarLogical(crate::sexp::ffi::TRUE));
+        let _block = arg_by_name_or_position(
+            args,
+            2,
+            &["blocking"],
+            Rf_ScalarLogical(crate::sexp::ffi::TRUE),
+        );
         let _method = positional_or(args, 4, default_method);
         let raw = check_logical_arg(
             positional_or(args, 5, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),

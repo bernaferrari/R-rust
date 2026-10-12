@@ -742,7 +742,7 @@ pub struct RArena {
     alloc_gc_collect_requested: bool,
     /// Live size after the last collection. Triggers use *growth* since
     /// then so a large live heap does not GC on every `{`.
-    nodes_at_last_gc: usize,
+    pub(crate) nodes_at_last_gc: usize,
     bytes_at_last_gc: usize,
     /// Optional budget to limit arena growth.
     budget: ArenaBudget,

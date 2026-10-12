@@ -21,7 +21,7 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, TAG, TYPEOF,
+    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -301,6 +301,48 @@ pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         let x = CAR(args);
         Rf_ScalarLogical(crate::eval::attrib_core::isObject(x))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_shortRowNames — .Internal(shortRowNames(x, type))
+// ---------------------------------------------------------------------------
+
+/// GNU attrib.c `do_shortRowNames`: with `type = 0` return the raw
+/// (unexpanded) row.names attribute; with `type = 1`/`2` return the
+/// (absolute) row count, compact `c(NA, -n)` included.
+pub unsafe fn do_shortRowNames(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let typ = crate::mainutils::coerce::asInteger(CADR(args));
+        if !(0..=2).contains(&typ) {
+            error("invalid 'type' argument");
+        }
+        // Read the attribute pairlist directly: `getAttrib` expands the
+        // compact `c(NA, ±n)` form, which this internal must see as-is.
+        let mut cell = ATTRIB(x);
+        let mut raw = R_NilValue();
+        while !cell.is_null() && cell != R_NilValue() {
+            if TAG(cell) == crate::sexp::attrib_core::R_RowNamesSymbol() {
+                raw = CAR(cell);
+                break;
+            }
+            cell = CDR(cell);
+        }
+        if typ == 0 {
+            return raw;
+        }
+        let n: i32 = if TYPEOF(raw) == SEXPTYPE::INTSXP
+            && XLENGTH(raw) == 2
+            && *crate::sexp::accessors::INTEGER(raw) == crate::sexp::ffi::NA_INTEGER
+        {
+            *crate::sexp::accessors::INTEGER(raw).add(1)
+        } else if raw.is_null() || raw == R_NilValue() {
+            0
+        } else {
+            XLENGTH(raw) as i32
+        };
+        Rf_ScalarInteger(if typ == 1 { n } else { n.abs() })
     }
 }
 

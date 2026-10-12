@@ -886,6 +886,61 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
+/// GNU `.Internal(do.call(what, args, envir))` contract.
+///
+/// GNU's R-level `do.call` closure handles `quote` itself and hands the
+/// internal exactly three arguments. This engine registers `do_do_call` as
+/// the R-level builtin with the four-argument `(what, args, quote, envir)`
+/// shape, so `.Internal` calls arriving from upstream base source closures
+/// are reshaped here before delegation.
+pub unsafe fn do_do_call_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut matched: [Option<SEXP>; 3] = [None; 3];
+        let mut positional = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            match tag_name(current).as_deref() {
+                Some("what") => matched[0] = Some(CAR(current)),
+                Some("args") => matched[1] = Some(CAR(current)),
+                Some("envir") => matched[2] = Some(CAR(current)),
+                Some(_) => positional.push(CAR(current)),
+                None => positional.push(CAR(current)),
+            }
+            current = CDR(current);
+        }
+        for value in positional {
+            let index = matched
+                .iter()
+                .position(Option::is_none)
+                .unwrap_or_else(|| base_error("unused argument (...)"));
+            matched[index] = Some(value);
+        }
+
+        let what = matched[0].unwrap_or(R_MissingArg());
+        let arg_list = matched[1].unwrap_or(R_MissingArg());
+        let envir = matched[2].unwrap_or(R_MissingArg());
+        let _what_guard = protect(what);
+        let _args_guard = protect(arg_list);
+        let _envir_guard = protect(envir);
+        let false_flag = crate::sexp::constructors::Rf_ScalarLogical(0);
+        let _false_guard = protect(false_flag);
+
+        let env_cell = Rf_cons(envir, R_NilValue());
+        let _env_cell_guard = protect(env_cell);
+        SETTAG(env_cell, Rf_install(c"envir".as_ptr()));
+        let quote_cell = Rf_cons(false_flag, env_cell);
+        let _quote_cell_guard = protect(quote_cell);
+        SETTAG(quote_cell, Rf_install(c"quote".as_ptr()));
+        let args_cell = Rf_cons(arg_list, quote_cell);
+        let _args_cell_guard = protect(args_cell);
+        SETTAG(args_cell, Rf_install(c"args".as_ptr()));
+        let spread = Rf_cons(what, args_cell);
+        let _spread_guard = protect(spread);
+        SETTAG(spread, Rf_install(c"what".as_ptr()));
+        do_do_call(call, op, spread, rho)
+    }
+}
+
 fn callable_arg_by_name_or_position(
     args: SEXP,
     names: &[&str],

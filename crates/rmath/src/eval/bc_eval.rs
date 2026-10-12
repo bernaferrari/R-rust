@@ -668,6 +668,56 @@ unsafe fn eval_gnu_startsubset_n(
     }
 }
 
+/// GNU compiled subset defaults honor lexical scoping: when the running
+/// closure's environment shadows `[` / `[[` with a function other than the
+/// base binding, that function receives the call with the arguments the
+/// bytecode already evaluated (upstream keeps compiled subsetting lexically
+/// scoped like every other closure call). Returns the shadow's result, or
+/// `None` when the generic still resolves to the base primitive and the
+/// default machinery should run.
+unsafe fn eval_gnu_lexical_generic(
+    generic: &std::ffi::CStr,
+    call: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        let symbol = crate::sexp::symbol::Rf_install(generic.as_ptr());
+        let lexical = crate::sexp::envir::findFun(symbol, rho);
+        if lexical.is_null()
+            || lexical == R_UnboundValue()
+            || call.is_null()
+            || TYPEOF(call) != SEXPTYPE::LANGSXP
+        {
+            return None;
+        }
+        let base_binding = crate::sexp::envir::R_findVarInFrame(super::runtime::base_env(), symbol);
+        if base_binding.is_null() || base_binding == R_UnboundValue() || lexical == base_binding {
+            return None;
+        }
+        let function = Sexp::from_raw_unchecked(lexical);
+        let call_s = Sexp::from_raw_unchecked(call);
+        let args_s = Sexp::from_raw_unchecked(args);
+        let env_s = Sexp::from_raw_unchecked(rho);
+        match TYPEOF(lexical) {
+            kind if kind == SEXPTYPE::CLOSXP => Some(
+                super::apply::apply_closure_safe(function, call_s, args_s, env_s)
+                    .unwrap_or_else(|error| bc_error(error))
+                    .as_raw(),
+            ),
+            kind if kind == SEXPTYPE::BUILTINSXP => {
+                force_gnu_builtin_arglist(args);
+                Some(
+                    super::apply::apply_builtin_values_safe(function, call_s, args_s, env_s)
+                        .unwrap_or_else(|error| bc_error(error))
+                        .as_raw(),
+                )
+            }
+            _ => None,
+        }
+    }
+}
+
 /// GNU STARTSUBASSIGN_N matches eval.c DO_START_ASSIGN_DISPATCH_N.
 unsafe fn eval_gnu_startsubassign_n(
     generic: &std::ffi::CStr,
@@ -700,11 +750,16 @@ unsafe fn eval_gnu_startsubassign_n(
     }
 }
 
-/// GNU VECSUBSET / VECSUBSET2 fall through to do_subset(_2)_dflt.
+/// GNU VECSUBSET / VECSUBSET2 fall through to do_subset(_2)_dflt, honoring a
+/// lexical shadow of the generic first.
 unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset2: bool) -> SEXP {
     unsafe {
         let args = Rf_cons(x, Rf_cons(index, R_NilValue()));
         let _args = own_operand(args);
+        let generic = if subset2 { c"[[" } else { c"[" };
+        if let Some(shadowed) = eval_gnu_lexical_generic(generic, call, args, rho) {
+            return shadowed;
+        }
         if subset2 {
             crate::mainutils::subset::do_subset2_dflt(
                 call,
@@ -724,18 +779,18 @@ unsafe fn eval_gnu_vecsubset(call: SEXP, x: SEXP, index: SEXP, rho: SEXP, subset
                 rho,
             )
         } else {
-            let result = crate::mainutils::subset::do_subset_dflt(
+            crate::mainutils::subset::subset_default_after_failed_dispatch(
                 call,
                 crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                 args,
                 rho,
-            );
-            crate::mainutils::subset::finish_factor_subset(x, result)
+            )
         }
     }
 }
 
-/// GNU MATSUBSET / SUBSET_N fall through to do_subset_dflt.
+/// GNU MATSUBSET / SUBSET_N fall through to the default subset helpers,
+/// honoring a lexical shadow of the generic first.
 unsafe fn eval_gnu_subset_indices(
     call: SEXP,
     x: SEXP,
@@ -758,6 +813,10 @@ unsafe fn eval_gnu_subset_indices(
         args = Rf_cons(x, args);
         let _args = own_operand(args);
         let _ = roots;
+        let generic = if subset2 { c"[[" } else { c"[" };
+        if let Some(shadowed) = eval_gnu_lexical_generic(generic, call, args, rho) {
+            return shadowed;
+        }
         if subset2 {
             crate::mainutils::subset::do_subset2_dflt(
                 call,
@@ -766,13 +825,12 @@ unsafe fn eval_gnu_subset_indices(
                 rho,
             )
         } else {
-            let result = crate::mainutils::subset::do_subset_dflt(
+            crate::mainutils::subset::subset_default_after_failed_dispatch(
                 call,
                 crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                 args,
                 rho,
-            );
-            crate::mainutils::subset::finish_factor_subset(x, result)
+            )
         }
     }
 }
@@ -2774,7 +2832,16 @@ unsafe fn eval_gnu_adapter(
                                     crate::sexp::accessors::SETTAG(args, tag.as_raw());
                                 }
                             }
-                            if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
+                            let generic = if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
+                                c"[["
+                            } else {
+                                c"["
+                            };
+                            if let Some(shadowed) =
+                                eval_gnu_lexical_generic(generic, frame.call.as_raw(), args, rho)
+                            {
+                                shadowed
+                            } else if opcode == super::bytecode::GNU_OP_DFLTSUBSET2 {
                                 crate::mainutils::subset::do_subset2_dflt(
                                     frame.call.as_raw(),
                                     crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
@@ -2782,7 +2849,7 @@ unsafe fn eval_gnu_adapter(
                                     rho,
                                 )
                             } else {
-                                crate::mainutils::subset::do_subset_dflt(
+                                crate::mainutils::subset::subset_default_after_failed_dispatch(
                                     frame.call.as_raw(),
                                     crate::sexp::symbol::Rf_install(c"[".as_ptr()),
                                     args,

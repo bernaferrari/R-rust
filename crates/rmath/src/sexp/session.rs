@@ -539,8 +539,10 @@ impl Drop for ProtectScope {
     }
 }
 
-/// Whether top-level evaluation publishes the console's `.Last.value`.
-/// Batch scripts preserve existing user bindings, as GNU Rscript does.
+/// Reserved policy knob for top-level evaluation. `.Last.value` publication
+/// is unconditional and GNU-faithful in every mode (main.c `R_ReplFile`
+/// publishes per expression in script mode too), so the engine itself no
+/// longer branches on this value; embedders keep it to tag sessions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TopLevelEvaluationMode {
     #[default]
@@ -576,8 +578,9 @@ pub struct RSession {
 }
 
 impl RSession {
-    /// Set the policy for subsequent top-level evaluations. Console mode
-    /// publishes `.Last.value`; Script mode preserves user-created bindings.
+    /// Set the policy tag for subsequent top-level evaluations. `.Last.value`
+    /// publication already matches GNU in every mode; this only records the
+    /// embedder's intent for the session.
     pub fn set_top_level_evaluation_mode(&mut self, mode: TopLevelEvaluationMode) {
         self.top_level_evaluation_mode = mode;
     }
@@ -713,6 +716,16 @@ impl RSession {
                     super::envir::lock_binding_raw(namespace.as_raw(), symbol.as_raw());
                 }
                 super::envir::lock_environment_raw(base.as_raw());
+                // GNU main.c runs the base package sources through
+                // R_ReplFile (main.c:1067), so bootstrap leaves
+                // `.Last.value` bound on the symbol cell; sealing base then
+                // locks it (envir.c R_LockEnvironment walks the symbol
+                // table). Mirror that end state: baseenv carries a locked
+                // NULL placeholder that only the REPL's raw cell writes
+                // (SET_SYMVALUE) ever update.
+                let last_value_symbol = super::symbol::Rf_install(c".Last.value".as_ptr());
+                super::accessors::SET_SYMVALUE(last_value_symbol, super::globals::R_NilValue());
+                super::envir::lock_binding_raw(base.as_raw(), last_value_symbol);
                 for name in [c".Device", c".Devices"] {
                     let symbol = super::symbol::Rf_install(name.as_ptr());
                     super::envir::unlock_binding_raw(base.as_raw(), symbol);
@@ -1270,9 +1283,13 @@ impl RSession {
                     result = Err(error);
                     break;
                 }
-                if self.top_level_evaluation_mode == TopLevelEvaluationMode::Console
-                    && let Ok(value) = result.as_ref()
-                {
+                // GNU main.c publishes after EVERY successful top-level
+                // expression in both loops — R_ReplFile:99 (Rscript file
+                // mode) and the console read-eval-print at main.c:265/402 —
+                // regardless of batch or interactive mode. SET_SYMVALUE is a
+                // raw cell write: it bypasses active bindings and the base
+                // environment lock.
+                if let Ok(value) = result.as_ref() {
                     if let Err(error) = _toplevel_no_guard
                         .run_checked(|| remember_last_value(value.clone().as_raw()))
                     {
@@ -1472,9 +1489,9 @@ impl RSession {
                     result = Err(error);
                     break;
                 }
-                if self.top_level_evaluation_mode == TopLevelEvaluationMode::Console
-                    && let Ok(value) = result.as_ref()
-                {
+                // Same unconditional publication as the plain script loop
+                // above (GNU R_ReplFile:99 SETs the cell in script mode).
+                if let Ok(value) = result.as_ref() {
                     if let Err(error) = _toplevel_no_guard
                         .run_checked(|| remember_last_value(value.clone().as_raw()))
                     {

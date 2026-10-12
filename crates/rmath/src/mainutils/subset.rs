@@ -1860,26 +1860,8 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return ans;
         }
 
-        /* Method dispatch has failed, we now run the generic internal code. */
-        // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
-        // from the evaluated argument list. The internal `[` default is
-        // drop = TRUE, but the fixup below emulates the S3 `[.factor`
-        // whose formal default is drop = FALSE.
-        let mut drop: c_int = 0;
-        {
-            let mut cell = ans;
-            while !isNull(cell) {
-                if TAG(cell) == sym_Drop() {
-                    drop = asLogical(CAR(cell));
-                    if drop == NA_LOGICAL && has_class_factor(CAR(ans)) {
-                        // `if (drop)` with NA in upstream [.factor.
-                        errorcall(call, "missing value where TRUE/FALSE needed");
-                    }
-                    break;
-                }
-                cell = CDR(cell);
-            }
-        }
+        /* Method dispatch has failed, we now run the generic internal code
+         * plus the base S3 `[.factor` fixup in one shared tail. */
         let orig = CAR(ans);
         if crate::mainutils::essentials::sexp_has_class(orig, "POSIXlt")
             && TYPEOF(orig) == SEXPTYPE::VECSXP
@@ -1903,6 +1885,47 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
         }
 
+        subset_default_after_failed_dispatch(call, op, ans, env)
+    }
+}
+
+/// The default `[` tail after S3 dispatch failed: `do_subset_dflt` plus the
+/// base S3 `[.factor` fixup. Stock R dispatches factor subsetting to the
+/// `[.factor` method; this port carries no `[.factor` closure in base, so
+/// the method's observable behavior is reproduced here. The AST `[` builtin
+/// (`do_subset`) and the compiled DFLTSUBSET / MATSUBSET / SUBSET_N default
+/// paths share this tail, keeping interpreted and compiled subsetting
+/// identical.
+///
+/// `ans` is the evaluated argument list with `x` first; a tagged `drop`
+/// argument is honored (it matches the `[.factor` formal whose default is
+/// `drop = FALSE`).
+pub unsafe fn subset_default_after_failed_dispatch(
+    call: SEXP,
+    op: SEXP,
+    ans: SEXP,
+    env: SEXP,
+) -> SEXP {
+    unsafe {
+        // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
+        // from the evaluated argument list. The internal `[` default is
+        // drop = TRUE, but the fixup below emulates the S3 `[.factor`
+        // whose formal default is drop = FALSE.
+        let mut drop: c_int = 0;
+        {
+            let mut cell = ans;
+            while !isNull(cell) {
+                if TAG(cell) == sym_Drop() {
+                    drop = asLogical(CAR(cell));
+                    if drop == NA_LOGICAL && has_class_factor(CAR(ans)) {
+                        // `if (drop)` with NA in upstream [.factor.
+                        errorcall(call, "missing value where TRUE/FALSE needed");
+                    }
+                    break;
+                }
+                cell = CDR(cell);
+            }
+        }
         let result = do_subset_dflt(call, op, ans, env);
         // Base R ships an S3 `[.factor`:
         //   y <- NextMethod("[")
@@ -1944,30 +1967,6 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     }
 }
 
-/// Bytecode `[` calls `do_subset_dflt` and skips the S3 `[.factor` fixup.
-/// `[.factor` defaults to `drop = FALSE`, so unused levels stay.
-pub unsafe fn finish_factor_subset(orig: SEXP, result: SEXP) -> SEXP {
-    unsafe {
-        if !has_class_factor(orig) {
-            return result;
-        }
-        let _r_guard = protect(result);
-        let _o_guard = protect(orig);
-        let levels = getAttrib(orig, crate::eval::attrib_core::R_LevelsSymbol());
-        if !isNull(levels) {
-            setAttrib(result, crate::eval::attrib_core::R_LevelsSymbol(), levels);
-        }
-        let class_attr = getAttrib(orig, sym_Class());
-        if !isNull(class_attr) {
-            setAttrib(result, sym_Class(), class_attr);
-        }
-        let contrasts = getAttrib(orig, sym_Contrasts());
-        if !isNull(contrasts) {
-            setAttrib(result, sym_Contrasts(), contrasts);
-        }
-        result
-    }
-}
 pub unsafe fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if !has_class_factor(target)

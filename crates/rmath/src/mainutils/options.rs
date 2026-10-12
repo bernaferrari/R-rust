@@ -1804,7 +1804,7 @@ mod tests {
             assert_eq!(asInteger(GetOptionByName("expressions")), 5000);
             assert_eq!(asInteger(GetOptionByName("max.print")), 99999);
             let owner = session.owner_token().unwrap();
-            assert_eq!((*owner.as_ptr()).options.len(), 46);
+            assert_eq!((*owner.as_ptr()).options.len(), 47);
             assert_eq!(
                 (*owner.as_ptr()).options_initialization,
                 OptionsInitialization::Initialized
@@ -1837,7 +1837,7 @@ mod tests {
             );
 
             let binding = crate::sexp::envir::R_findVarInFrame(R_BaseEnv(), options_symbol());
-            assert_eq!(Rf_length(binding), 46);
+            assert_eq!(Rf_length(binding), 47);
             let platform = session
                 .sexp(crate::sexp::envir::R_findVarInFrame(
                     R_BaseEnv(),

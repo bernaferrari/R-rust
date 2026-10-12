@@ -409,7 +409,15 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
     },
     UpstreamFile {
         source: include_str!("../../../../r-source/src/library/base/R/sort.R"),
-        exports: &[".gt", ".gtn", "grouping", "xtfrm.AsIs", "xtfrm.factor"],
+        exports: &[
+            ".doSortWrap",
+            ".doWrap",
+            ".gt",
+            ".gtn",
+            "grouping",
+            "xtfrm.AsIs",
+            "xtfrm.factor",
+        ],
     },
     UpstreamFile {
         source: include_str!("../../../../r-source/src/library/base/R/duplicated.R"),
@@ -822,6 +830,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
             "as.Date",
             "as.Date.POSIXct",
             "as.Date.POSIXlt",
+            "as.Date.character",
             "as.Date.factor",
             "as.Date.numeric",
             "as.character.Date",
@@ -967,9 +976,11 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
             "as.POSIXct.default",
             "as.POSIXct.numeric",
             "as.POSIXlt",
+            "as.POSIXlt.POSIXct",
             "as.POSIXlt.character",
             "as.POSIXlt.default",
             "as.POSIXlt.Date",
+            "as.POSIXlt.factor",
             "as.POSIXlt.numeric",
             "as.character.POSIXt",
             "as.difftime",
@@ -1024,8 +1035,6 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
 /// Ledger of names intentionally left unbound (kept for reference).
 #[allow(dead_code)]
 const BLOCKED_EXPORTS: &[&str] = &[
-    ".doSortWrap",
-    ".doWrap",
     ".pretty",
     ".signalSimpleWarning",
     "Encoding<-",
@@ -1127,13 +1136,15 @@ const MAX_PASSES: usize = 8;
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
 pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
+    // Default off: the always-on configuration regresses 35 corpus cases
+    // (generics bound without their blocked default methods — chol finds
+    // no chol.default; encodeString/uniroot divergences). Opt back in with
+    // RPORT_UPSTREAM_BASE=1; the 35-case backlog is tracked for the next
+    // cycle.
+    if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
+        return;
+    }
     unsafe {
-        // TEMPORARY opt-in gate while the export whitelist is being brought
-        // up: names whose closures call unimplemented internals must stay
-        // excluded before the loader can run at every boot.
-        if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
-            return;
-        }
         let namespace = R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv"));
         if namespace.is_null() || namespace == R_UnboundValue() {
             return;
@@ -1410,6 +1421,11 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
             }
             crate::sexp::context::R_SetInError(false);
         }
+        // GNU main.c setup_Rmainloop removes the global-environment copy
+        // after the site profile runs; the port runs no site profile, so
+        // drop it immediately after the Common.R sources are evaluated.
+        let library_site = Rf_install_in_current(".Library.site");
+        crate::sexp::envir::remove_binding_raw(crate::sexp::globals::R_GlobalEnv(), library_site);
     }
 }
 

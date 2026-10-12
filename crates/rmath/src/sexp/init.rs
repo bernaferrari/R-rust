@@ -1153,6 +1153,11 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         eval_base_binding(base_env, "format.AsIs", include_str!("gnu_format_asis.R"));
         eval_base_binding(base_env, "print.AsIs", include_str!("gnu_print_asis.R"));
         eval_base_binding(base_env, "prettyNum", include_str!("gnu_prettyNum.R"));
+        // GNU base/format.R formatC: argument checking, character padding
+        // and prettyNum post-processing live at the R level; the builtin
+        // registered under the same name serves only the 7-argument
+        // .Internal(formatC(...)) convention from util.c.
+        eval_base_binding(base_env, "formatC", include_str!("gnu_formatC.R"));
         eval_base_binding(
             base_env,
             "addTaskCallback",
@@ -1831,6 +1836,14 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
                  as.vector(x, \"double\")\n\
              }",
         );
+        // GNU datetime.R Ops group methods. The arithmetic primitive is a
+        // raw `.default` backend: unit coercion for mixed-unit difftime
+        // arithmetic happens here (coerceTimeUnit + NextMethod), exactly
+        // like GNU's R-level Ops.difftime. `*.difftime`/`/.difftime` are
+        // the specific methods findmethod prefers over the group method.
+        eval_base_binding(base_env, "Ops.difftime", include_str!("gnu_Ops_difftime.R"));
+        eval_base_binding(base_env, "*.difftime", include_str!("gnu_mul_difftime.R"));
+        eval_base_binding(base_env, "/.difftime", include_str!("gnu_div_difftime.R"));
         eval_base_binding(base_env, "trunc.POSIXt", include_str!("gnu_trunc_POSIXt.R"));
         eval_base_binding(base_env, "seq.POSIXt", include_str!("gnu_seq_POSIXt.R"));
         eval_base_binding(base_env, "seq.Date", include_str!("gnu_seq_Date.R"));
@@ -1956,12 +1969,6 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "as.list.factor",
             "function(x, ...) { res <- vector(\"list\", length(x)); for (i in seq_along(x)) res[[i]] <- x[[i]]; if (is.null(names(x))) res else `names<-`(res, names(x)) }",
         );
-        eval_base_binding(
-            base_env,
-            "as.POSIXlt.POSIXct",
-            include_str!("gnu_as_POSIXlt_POSIXct.R"),
-        );
-
         eval_base_binding(
             base_env,
             "as.Date.default",
@@ -3146,6 +3153,27 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "strftime",
             "function(x, format = \"\", tz = \"\", usetz = FALSE, ...)\n\
              format(as.POSIXlt(x, tz = tz), format = format, usetz = usetz, ...)",
+        );
+        // GNU datetime.R as.POSIXlt.POSIXct: strptime's Inf/-Inf handling
+        // calls it by name, and it must reach the .Internal form so it can
+        // never re-enter the generic.
+        eval_base_binding(
+            base_env,
+            "as.POSIXlt.POSIXct",
+            include_str!("gnu_as_POSIXlt_POSIXct.R"),
+        );
+        // GNU dates.R/datetime.R +/- methods. Once Ops.difftime is bound,
+        // Date/POSIXt arithmetic must dispatch through these so the
+        // dispatch.rs precedence rules (Ops.difftime yields to +/-.Date and
+        // +/-.POSIXt) resolve exactly like GNU.
+        eval_base_binding(base_env, "+.Date", include_str!("gnu_plus_Date.R"));
+        eval_base_binding(base_env, "-.Date", include_str!("gnu_minus_Date.R"));
+        eval_base_binding(base_env, "+.POSIXt", include_str!("gnu_plus_POSIXt.R"));
+        eval_base_binding(base_env, "-.POSIXt", include_str!("gnu_minus_POSIXt.R"));
+        eval_base_binding(
+            base_env,
+            ".check_tzones",
+            include_str!("gnu_check_tzones.R"),
         );
         eval_base_binding(
             base_env,

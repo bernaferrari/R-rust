@@ -154,6 +154,52 @@ pub fn deparse_opts_from_names(names: &[String]) -> c_int {
     opts
 }
 
+/// Translate a GNU `Defn.h` deparse-opts bitmask (as produced by the
+/// upstream `.deparseOpts()` closure) onto this engine's flag bits.
+///
+/// GNU: keepInteger=1, quoteExpressions=2, showAttributes=4, useSource=8,
+/// warnIncomplete=16, delayPromises=32, keepNA=64, S_compatible=128,
+/// hexNumeric=256, digits17=512, niceNames=1024. R-level `.Internal`
+/// callers always pass GNU-numbered integers; internal Rust callers use
+/// the port constants directly.
+pub fn gnu_deparse_opts_to_port(opts: c_int) -> c_int {
+    let mut out = 0;
+    if (opts & 1) != 0 {
+        out |= KEEPINTEGER;
+    }
+    if (opts & 2) != 0 {
+        out |= QUOTEEXPRESSIONS;
+    }
+    if (opts & 4) != 0 {
+        out |= SHOWATTRIBUTES;
+    }
+    if (opts & 8) != 0 {
+        out |= USESOURCE;
+    }
+    if (opts & 16) != 0 {
+        out |= WARNINCOMPLETE;
+    }
+    if (opts & 32) != 0 {
+        out |= DELAYPROMISES;
+    }
+    if (opts & 64) != 0 {
+        out |= KEEPNA;
+    }
+    if (opts & 128) != 0 {
+        out |= S_COMPAT;
+    }
+    if (opts & 256) != 0 {
+        out |= HEXNUMERIC;
+    }
+    if (opts & 512) != 0 {
+        out |= DIGITS17;
+    }
+    if (opts & 1024) != 0 {
+        out |= NICE_NAMES;
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Precedence constants (local aliases for names.rs values)
 // ---------------------------------------------------------------------------

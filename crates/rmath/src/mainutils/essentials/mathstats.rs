@@ -15045,6 +15045,54 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+/// GNU `.Internal(regexec(pattern, text, ignore.case, fixed, useBytes))`
+/// contract.
+///
+/// GNU's R-level `regexec` closure handles `perl` itself (warning when it
+/// conflicts with `fixed`) and hands the internal five arguments without a
+/// `perl` slot. This engine registers `do_regexec` as the R-level builtin
+/// with the six-argument shape, so `.Internal` calls arriving from upstream
+/// base source closures get a `perl = FALSE` cell inserted before
+/// delegation.
+pub unsafe fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut argc = 0;
+        let mut p = args;
+        while !p.is_null() && p != R_NilValue() {
+            argc += 1;
+            p = CDR(p);
+        }
+        if argc != 5 {
+            return do_regexec(call, op, args, rho);
+        }
+        let pattern = CAR(args);
+        let text = CAR(CDR(args));
+        let ignore_case = CAR(CDR(CDR(args)));
+        let fixed = CAR(CDR(CDR(CDR(args))));
+        let use_bytes = CAR(CDR(CDR(CDR(CDR(args)))));
+        let _g1 = protect(pattern);
+        let _g2 = protect(text);
+        let _g3 = protect(ignore_case);
+        let _g4 = protect(fixed);
+        let _g5 = protect(use_bytes);
+        let perl_false = crate::sexp::constructors::Rf_ScalarLogical(0);
+        let _g6 = protect(perl_false);
+        let tail = Rf_cons(use_bytes, R_NilValue());
+        let _g7 = protect(tail);
+        let fixed_cell = Rf_cons(fixed, tail);
+        let _g8 = protect(fixed_cell);
+        let perl_cell = Rf_cons(perl_false, fixed_cell);
+        let _g9 = protect(perl_cell);
+        let ig_cell = Rf_cons(ignore_case, perl_cell);
+        let _g10 = protect(ig_cell);
+        let text_cell = Rf_cons(text, ig_cell);
+        let _g11 = protect(text_cell);
+        let spread = Rf_cons(pattern, text_cell);
+        let _g12 = protect(spread);
+        do_regexec(call, op, spread, rho)
+    }
+}
+
 unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
     unsafe {
         crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);

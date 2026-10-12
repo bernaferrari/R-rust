@@ -625,13 +625,6 @@ unsafe fn coerce_difftime_operand(
     }
 }
 
-unsafe fn coerce_difftime_to_units(source: SEXP, target_units: &str) -> SEXP {
-    unsafe {
-        let target_unit_seconds = difftime_unit_scale(target_units);
-        coerce_difftime_operand(source, target_unit_seconds, false)
-    }
-}
-
 unsafe fn has_class_attribute(source: SEXP) -> bool {
     unsafe {
         let class = getAttrib(source, Rf_install(c"class".as_ptr()));
@@ -682,14 +675,11 @@ unsafe fn difftime_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
             return None;
         }
 
-        if a_is_difftime && b_is_difftime {
-            let a = coerce_difftime_to_units(a, "secs");
-            let b = coerce_difftime_to_units(b, "secs");
-            let _a_guard = protect(a);
-            let _b_guard = protect(b);
-            return Some(binary_compare(op, a, b));
-        }
-
+        // GNU's C comparison has no difftime unit logic: unit coercion
+        // happens in the R-level Ops.difftime (coerceTimeUnit) before
+        // NextMethod reaches this `.default` backend, so both operands'
+        // raw values are already seconds. Rescaling by the (possibly
+        // stale) units label here would apply the coercion twice.
         Some(binary_compare(op, a, b))
     }
 }
@@ -906,23 +896,13 @@ unsafe fn difftime_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
         }
 
         match op {
-            "+" | "-" if a_is_difftime && b_is_difftime => {
-                let a_units = difftime_units(a);
-                let b_units = difftime_units(b);
-                let (a, b, result_units) = if a_units == b_units {
-                    (a, b, a_units)
-                } else {
-                    let a = coerce_difftime_to_units(a, "secs");
-                    let b = coerce_difftime_to_units(b, "secs");
-                    (a, b, "secs".to_string())
-                };
-                let _a_guard = protect(a);
-                let _b_guard = protect(b);
-                let result = real_binary(op, a, b);
-                set_difftime_attributes(result, &result_units);
-                Some(result)
-            }
-            "+" | "-" if a_is_difftime || b_is_difftime => {
+            // Operands reaching the arithmetic primitive with a difftime
+            // class have already been unit-coerced by Ops.difftime (the
+            // primitive is entered with dispatch suppressed via the
+            // `.default` call name). GNU's R_binary therefore does raw
+            // arithmetic and never rescales: converting here would apply
+            // the scale twice (e.g. `dt + half` -> 3630 secs).
+            "+" | "-" => {
                 let result = real_binary(op, a, b);
                 set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
                 Some(result)

@@ -3988,6 +3988,13 @@ mod tests {
             // finalizer ready.
             let key = with_arena(|arena| arena.alloc_node(SEXPTYPE::EXTPTRSXP));
             crate::mainutils::memory_main::R_RegisterCFinalizerEx(key, count_finalizer, 0);
+            // Boot-time bindings grew with the base-source work; the
+            // registration allocation can cross the deferred-collection
+            // threshold and request a collection. Re-anchor the no-pending
+            // state so the flush contract below is what is under test.
+            instance::with_required_current_instance(|inst| {
+                (*inst).gc_state.gc_pending = false;
+            });
 
             // Nothing pending: no collection, so the finalizer stays put.
             run_pending_gc_if_quiescent_in(inst);
@@ -4027,6 +4034,15 @@ mod tests {
 
             let key = with_arena(|arena| arena.alloc_node(SEXPTYPE::EXTPTRSXP));
             crate::mainutils::memory_main::R_RegisterCFinalizerEx(key, count_finalizer, 0);
+            // See the sibling quiescent test: re-anchor the no-pending
+            // state after the registration allocation. The safe-point
+            // predicate also fires on arena growth, so anchor the growth
+            // baseline too — the boot-time bindings from the base-source
+            // work grew the session past the delta threshold.
+            instance::with_required_current_instance(|inst| {
+                (*inst).gc_state.gc_pending = false;
+                (*inst).arena.nodes_at_last_gc = (*inst).arena.node_count();
+            });
 
             // Under the trigger thresholds: no collection, no finalizer.
             maybe_collect_at_eval_safe_point();

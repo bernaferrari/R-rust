@@ -327,7 +327,7 @@ unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
                 if v != NA_INTEGER && v >= MIN_CUTOFF && v <= MAX_CUTOFF {
                     cutoff = v;
                 } else if opts.is_none() && v != NA_INTEGER {
-                    opts = Some(v);
+                    opts = Some(gnu_deparse_opts_to_port(v));
                 }
             }
             pos += 1;
@@ -345,7 +345,9 @@ unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
                 if TYPEOF(value) == SEXPTYPE::STRSXP {
                     opts = Some(deparse_opts_from_control(value));
                 } else if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
-                    opts = Some(crate::mainutils::coerce::asInteger(value));
+                    opts = Some(gnu_deparse_opts_to_port(
+                        crate::mainutils::coerce::asInteger(value),
+                    ));
                 }
                 pos += 1;
             }
@@ -395,7 +397,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let opts = if isNull(opts_arg) {
             SHOWATTRIBUTES
         } else {
-            Rf_asInteger(opts_arg)
+            gnu_deparse_opts_to_port(Rf_asInteger(opts_arg))
         };
 
         let tval = deparse1(tval_raw, false, opts);
@@ -451,7 +453,7 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let names = CAR(args);
         let sfile = CADR(args);
         let _source = CADDR(args);
-        let opts = Rf_asInteger(CADDDR(args));
+        let opts = gnu_deparse_opts_to_port(Rf_asInteger(CADDDR(args)));
         let _evaluate = CAR(CDR(CDR(CDR(CDR(args)))));
 
         if !isString(names) {

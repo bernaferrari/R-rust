@@ -1022,6 +1022,78 @@ pub unsafe fn get_newo() -> *mut c_int {
 /// where `...` are the vectors to sort.
 ///
 /// Currently supports INTSXP, LGLSXP, REALSXP, and STRSXP vectors.
+
+/// GNU `.Internal(wrap_meta(vec, sorted, noNA))` (sort.c `do_wrap_meta`):
+/// attaches ALTREP "known sorted" metadata to a numeric vector. The port
+/// has no sorted-metadata ALTREP class; the wrapper is observationally
+/// transparent, so the vector is returned unchanged.
+pub unsafe fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+/// GNU `.Internal(sorted_fpass(x, decr, nalast))` (sort.c `do_sorted_fpass`).
+///
+/// The port has no sorted-metadata ALTREP class, so the ALTREP sortedness
+/// consult stays UNKNOWN_SORTEDNESS for every type and only GNU's
+/// increasing-integer scan can confirm sortedness.
+pub unsafe fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    const SORTED_DECR_NA_1ST: c_int = -2;
+    const SORTED_DECR: c_int = -1;
+    const SORTED_INCR: c_int = 1;
+    const SORTED_INCR_NA_1ST: c_int = 2;
+
+    unsafe {
+        let decr = asInteger_scan(CADR(args));
+        let nalast = asInteger_scan(CADDR(args));
+        // makeSortEnum: decr == NA_INTEGER (INT_MIN) marks UNKNOWN_SORTEDNESS;
+        // an NA nalast means the NAs were/will be removed, i.e. "last".
+        let wanted = if decr == NA_INTEGER {
+            NA_INTEGER
+        } else if decr != 0 {
+            if nalast != 0 {
+                SORTED_DECR
+            } else {
+                SORTED_DECR_NA_1ST
+            }
+        } else if nalast != 0 {
+            SORTED_INCR
+        } else {
+            SORTED_INCR_NA_1ST
+        };
+        if !matches!(
+            wanted,
+            SORTED_DECR | SORTED_INCR | SORTED_DECR_NA_1ST | SORTED_INCR_NA_1ST
+        ) {
+            return Rf_ScalarLogical(0);
+        }
+        let x = CAR(args);
+        let mut done = false;
+        // Increasing, usually fairly short, sequences of integers often
+        // arise as levels in as.factor.  A quick check here allows a fast
+        // return in sort.int.  (No ALTREP in the port, so the scan always
+        // applies.)
+        if !done && TYPEOF(x) == SEXPTYPE::INTSXP && wanted > 0 {
+            let len = XLENGTH(x);
+            if len > 0 {
+                let px = INTEGER(x) as *const c_int;
+                let mut last = *px;
+                if last != NA_INTEGER {
+                    done = true;
+                    for i in 1..(len as usize) {
+                        let next = *px.add(i);
+                        if next < last || next == NA_INTEGER {
+                            done = false;
+                            break;
+                        }
+                        last = next;
+                    }
+                }
+            }
+        }
+        Rf_ScalarLogical(done as c_int)
+    }
+}
+
 pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;
@@ -1435,6 +1507,34 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
             }
         } else {
             NA_LOGICAL
+        }
+    }
+}
+
+/// Local `asInteger` helper for do_sorted_fpass (GNU `asInteger` coercion
+/// of a length-one logical/integer/double scalar, NA preserved).
+unsafe fn asInteger_scan(x: SEXP) -> c_int {
+    unsafe {
+        if Rf_isNull(x) != 0 {
+            return NA_INTEGER;
+        }
+        if LENGTH(x) == 0 {
+            return NA_INTEGER;
+        }
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::LGLSXP {
+            LOGICAL_ELT(x, 0)
+        } else if t == SEXPTYPE::INTSXP {
+            INTEGER_ELT(x, 0)
+        } else if t == SEXPTYPE::REALSXP {
+            let v = REAL_ELT(x, 0);
+            if v.is_nan() || v > c_int::MAX as f64 || v < c_int::MIN as f64 {
+                NA_INTEGER
+            } else {
+                v as c_int
+            }
+        } else {
+            NA_INTEGER
         }
     }
 }

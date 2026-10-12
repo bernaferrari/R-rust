@@ -1018,18 +1018,39 @@ pub unsafe fn dgeev_(
                 let ev = evals_c64[idx];
 
                 if ev.im.abs() < 1e-15 * ev.re.abs().max(1.0) {
-                    // Real eigenvector
+                    // Real eigenvector, normalized to unit Euclidean norm
+                    // (LAPACK contract for DGEEV right eigenvectors).
+                    let mut norm_sq = 0.0f64;
                     for i in 0..n_val {
-                        *vr.add(i + j * ldvr_val) = evecs_c64[(i, idx)].re;
+                        let re = evecs_c64[(i, idx)].re;
+                        norm_sq += re * re;
+                    }
+                    let scale = if norm_sq > 0.0 {
+                        1.0 / norm_sq.sqrt()
+                    } else {
+                        0.0
+                    };
+                    for i in 0..n_val {
+                        *vr.add(i + j * ldvr_val) = evecs_c64[(i, idx)].re * scale;
                     }
                     j += 1;
                 } else {
                     // Complex pair: real part in col j, imag part in col j+1
                     let imag_sign = if ev.im > 0.0 { 1.0 } else { -1.0 };
+                    let mut norm_sq = 0.0f64;
                     for i in 0..n_val {
                         let c = evecs_c64[(i, idx)];
-                        *vr.add(i + j * ldvr_val) = c.re;
-                        *vr.add(i + (j + 1) * ldvr_val) = c.im * imag_sign;
+                        norm_sq += c.re * c.re + c.im * c.im;
+                    }
+                    let scale = if norm_sq > 0.0 {
+                        1.0 / norm_sq.sqrt()
+                    } else {
+                        0.0
+                    };
+                    for i in 0..n_val {
+                        let c = evecs_c64[(i, idx)];
+                        *vr.add(i + j * ldvr_val) = c.re * scale;
+                        *vr.add(i + (j + 1) * ldvr_val) = c.im * imag_sign * scale;
                     }
                     j += 2;
                 }
@@ -2285,9 +2306,28 @@ pub unsafe fn zgeev_(
             };
         }
 
-        // Write right eigenvectors
+        // Write right eigenvectors, each column normalized to unit
+        // Euclidean norm (LAPACK contract for ZGEEV right eigenvectors).
         if jobvr_byte == b'V' || jobvr_byte == b'v' {
-            write_matref_c64(evecs, vr, n_val, n_val, ldvr_val);
+            for col in 0..n_val {
+                let mut norm_sq = 0.0f64;
+                for i in 0..n_val {
+                    let c = evecs[(i, col)];
+                    norm_sq += c.re * c.re + c.im * c.im;
+                }
+                let scale = if norm_sq > 0.0 {
+                    1.0 / norm_sq.sqrt()
+                } else {
+                    0.0
+                };
+                for i in 0..n_val {
+                    let c = evecs[(i, col)];
+                    *vr.add(i + col * ldvr_val) = Rcomplex {
+                        r: c.re * scale,
+                        i: c.im * scale,
+                    };
+                }
+            }
         }
 
         // Left eigenvectors (not typically requested)

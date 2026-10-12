@@ -834,6 +834,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // GNU file.info's R wrapper defaults extra_cols to TRUE and the
         // internal rejects NA. This builtin binds `file.info` directly, so
         // both behaviors live here.
+        #[allow(unused_mut)] // mutated only in the non-Unix extras block
         let mut extras = if extra_arg.is_null()
             || extra_arg == R_NilValue()
             || extra_arg == crate::sexp::globals::R_MissingArg()
@@ -857,7 +858,10 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let n_xlen = n as crate::sexp::ffi::R_xlen_t;
         let ncols: i32 = if extras { 10 } else { 6 };
         let mut guards = Vec::new();
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP.as_c_int(), ncols as crate::sexp::ffi::R_xlen_t);
+        let ans = Rf_allocVector3(
+            SEXPTYPE::VECSXP.as_c_int(),
+            ncols as crate::sexp::ffi::R_xlen_t,
+        );
         guards.push(protect(ans));
 
         let size_col = Rf_allocVector3(SEXPTYPE::REALSXP.as_c_int(), n_xlen);
@@ -907,7 +911,9 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         #[cfg(not(unix))]
         macro_rules! extras_na {
-            ($i:expr) => {{ let _ = $i; }};
+            ($i:expr) => {{
+                let _ = $i;
+            }};
         }
 
         for i in 0..n as usize {
@@ -1016,8 +1022,10 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 }
                 Err(_) => {
                     *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = crate::sexp::ffi::NA_INTEGER;
-                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
+                        crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) =
+                        crate::sexp::ffi::NA_INTEGER;
                     *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
                     *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
                     *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
@@ -1056,24 +1064,23 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let name_lits: &[&std::ffi::CStr] = if extras {
             &[
-                c"size",
-                c"isdir",
-                c"mode",
-                c"mtime",
-                c"ctime",
-                c"atime",
-                c"uid",
-                c"gid",
-                c"uname",
+                c"size", c"isdir", c"mode", c"mtime", c"ctime", c"atime", c"uid", c"gid", c"uname",
                 c"grname",
             ]
         } else {
             &[c"size", c"isdir", c"mode", c"mtime", c"ctime", c"atime"]
         };
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), ncols as crate::sexp::ffi::R_xlen_t);
+        let names = Rf_allocVector3(
+            SEXPTYPE::STRSXP.as_c_int(),
+            ncols as crate::sexp::ffi::R_xlen_t,
+        );
         guards.push(protect(names));
         for (j, lit) in name_lits.iter().enumerate() {
-            SET_STRING_ELT(names, j as crate::sexp::ffi::R_xlen_t, Rf_mkChar(lit.as_ptr()));
+            SET_STRING_ELT(
+                names,
+                j as crate::sexp::ffi::R_xlen_t,
+                Rf_mkChar(lit.as_ptr()),
+            );
         }
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
 

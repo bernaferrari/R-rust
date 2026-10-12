@@ -2782,6 +2782,35 @@ pub unsafe fn do_print_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// GNU `print.eigen(x, ...)`: header line plus `print(unclass(x), ...)`;
+/// returns invisible x (base eigen.R).
+pub unsafe fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = print_method_x(_call, args, "eigen");
+        if x.is_null()
+            || x == R_NilValue()
+            || TYPEOF(x) != SEXPTYPE::VECSXP
+            || !crate::mainutils::essentials::sexp_has_class(x, "eigen")
+        {
+            return do_print_default(_call, _op, args, _rho);
+        }
+        emit_print_text("eigen() decomposition");
+        let unclassed = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _u_guard = protect(unclassed);
+        crate::sexp::attrib_core::setAttrib(
+            unclassed,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        let inner_args = Rf_cons(unclassed, CDR(args));
+        let _a_guard = protect(inner_args);
+        do_print_default(R_NilValue(), R_NilValue(), inner_args, _rho);
+
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
 /// GNU `print.proc_time(x, ...)`: `print(summary(x, ...))`; invisible x.
 /// `summary.proc_time` adds the child times into user/sys, keeps the first
 /// three entries and names them user/system/elapsed (base time.R).

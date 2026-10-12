@@ -1781,6 +1781,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::datetime::do_balancePOSIXlt,
     },
     EvaluatedBuiltin {
+        name: "unCfillPOSIXlt",
+        handler: crate::mainutils::datetime::do_balancePOSIXlt,
+    },
+    EvaluatedBuiltin {
         name: "enc2native",
         handler: crate::mainutils::essentials::do_enc2native,
     },
@@ -3429,8 +3433,16 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::datetime::do_POSIXlt2D,
     },
     EvaluatedBuiltin {
-        name: "balancePOSIXlt",
-        handler: crate::mainutils::datetime::do_balancePOSIXlt,
+        name: "shortRowNames",
+        handler: crate::mainutils::attrib::do_shortRowNames,
+    },
+    EvaluatedBuiltin {
+        name: "sorted_fpass",
+        handler: crate::mainutils::radixsort::do_sorted_fpass,
+    },
+    EvaluatedBuiltin {
+        name: "wrap_meta",
+        handler: crate::mainutils::radixsort::do_wrap_meta,
     },
     EvaluatedBuiltin {
         name: "as.Date.POSIXct",
@@ -4110,6 +4122,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "print.factor",
         handler: crate::mainutils::essentials::do_print_factor,
+    },
+    EvaluatedBuiltin {
+        name: "print.eigen",
+        handler: crate::mainutils::essentials::do_print_eigen,
     },
     EvaluatedBuiltin {
         name: "print.rle",

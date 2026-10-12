@@ -350,6 +350,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "sQuote",
     "dQuote",
     "balancePOSIXlt",
+    "unCfillPOSIXlt",
     "runif",
     "rnorm",
     "rpois",
@@ -399,6 +400,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "print.factor",
     "print.rle",
     "print.proc_time",
+    "print.eigen",
     "print.raw",
     "summary.data.frame",
     "format.data.frame",
@@ -823,7 +825,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     ".External",
     ".Fortran",
     "lazyLoadDBfetch",
-    "unCfillPOSIXlt",
 ];
 
 #[cfg(test)]

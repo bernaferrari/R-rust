@@ -5724,7 +5724,67 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                     }
                     return;
                 }
-                if matches!(name.as_str(), "/" | "^" | "(" | "~") {
+                if name == "^" {
+                    // GNU cross power: `(a+b)^2` expands to the main
+                    // effects plus all interactions up to order 2.
+                    let exponent = formula_power_exponent(expr);
+                    let Some(k) = exponent else {
+                        // Non-numeric exponent (e.g. I()): keep operand
+                        // terms as-is like the generic recursion does.
+                        let mut cell = CDR(expr);
+                        while !cell.is_null() && cell != R_NilValue() {
+                            collect_term_labels(CAR(cell), out, nodes, sign);
+                            cell = CDR(cell);
+                        }
+                        return;
+                    };
+                    let mut base_labels = Vec::new();
+                    let mut base_nodes = Vec::new();
+                    collect_term_labels(CADR(expr), &mut base_labels, &mut base_nodes, 1);
+                    // Unique atomic factors, in first-appearance order.
+                    let mut atoms: Vec<&str> = Vec::new();
+                    let mut atom_nodes: Vec<SEXP> = Vec::new();
+                    for (label, node) in base_labels.iter().zip(base_nodes.iter().copied()) {
+                        for part in label.split(':') {
+                            if !atoms.iter().any(|&a| a == part) {
+                                atoms.push(part);
+                                atom_nodes.push(node);
+                            }
+                        }
+                    }
+                    let k = (k as usize).min(atoms.len());
+                    for size in 1..=k {
+                        let mut combo: Vec<usize> = (0..size).collect();
+                        loop {
+                            let label = combo
+                                .iter()
+                                .map(|&i| atoms[i])
+                                .collect::<Vec<_>>()
+                                .join(":");
+                            // Main-effect rows keep their own variable
+                            // node so the variables list never sees the
+                            // synthetic `(...)^k` expression.
+                            let node = if size == 1 {
+                                atom_nodes[combo[0]]
+                            } else {
+                                expr
+                            };
+                            record(label, node, out, nodes);
+                            // Next combination, last index that can advance.
+                            let Some(advance) =
+                                (0..size).rev().find(|&i| combo[i] < atoms.len() - size + i)
+                            else {
+                                break;
+                            };
+                            combo[advance] += 1;
+                            for i in (advance + 1)..size {
+                                combo[i] = combo[i - 1] + 1;
+                            }
+                        }
+                    }
+                    return;
+                }
+                if matches!(name.as_str(), "/" | "(" | "~") {
                     let mut cell = CDR(expr);
                     while !cell.is_null() && cell != R_NilValue() {
                         collect_term_labels(CAR(cell), out, nodes, sign);
@@ -5737,13 +5797,46 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                     collect_formula_symbols(CADR(expr), &mut parts);
                     collect_formula_symbols(CADDR(expr), &mut parts);
                     if !parts.is_empty() {
-                        record(parts.join(":"), expr, out, nodes);
+                        let quoted: Vec<String> = parts
+                            .into_iter()
+                            .map(|name| {
+                                if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(
+                                    name.as_bytes(),
+                                ) {
+                                    name
+                                } else {
+                                    format!("`{name}`")
+                                }
+                            })
+                            .collect();
+                        record(quoted.join(":"), expr, out, nodes);
                     }
                     return;
                 }
                 record(deparse_call(expr), expr, out, nodes);
                 return;
             }
+        }
+    }
+}
+
+/// Numeric exponent of a `base ^ k` formula node, if it is a literal
+/// constant. Anything else (symbols, calls) yields `None`.
+fn formula_power_exponent(expr: SEXP) -> Option<i32> {
+    unsafe {
+        let exponent = CADDR(expr);
+        if exponent.is_null() || exponent == R_NilValue() {
+            return None;
+        }
+        let value = match TYPEOF(exponent) {
+            t if t == SEXPTYPE::INTSXP => *INTEGER(exponent) as f64,
+            t if t == SEXPTYPE::REALSXP => *REAL(exponent),
+            _ => return None,
+        };
+        if value.is_finite() && value >= 0.0 && value.fract() == 0.0 && value <= u32::MAX as f64 {
+            Some(value as i32)
+        } else {
+            None
         }
     }
 }
@@ -6405,9 +6498,7 @@ unsafe fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
 pub unsafe fn updateform(old: SEXP, new: SEXP) -> SEXP {
     unsafe {
         let tilde = crate::sexp::symbol::Rf_install(c"~".as_ptr());
-        if TYPEOF(old) != SEXPTYPE::LANGSXP
-            || TYPEOF(new) != SEXPTYPE::LANGSXP
-            || CAR(new) != tilde
+        if TYPEOF(old) != SEXPTYPE::LANGSXP || TYPEOF(new) != SEXPTYPE::LANGSXP || CAR(new) != tilde
         {
             crate::mainutils::essentials::base_error("formula expected");
         }
@@ -7107,6 +7198,12 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                     }
                     return;
                 }
+                if name == "^" && formula_power_exponent(expr).is_some() {
+                    // Numeric cross power: only the base's atoms are
+                    // variables, never the whole `(...)^k` node.
+                    walk_vars(CADR(expr), var_syms);
+                    return;
+                }
                 if name == "~"
                     || name == "+"
                     || name == "*"
@@ -7133,7 +7230,13 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
         walk_vars(rhs, &mut var_syms);
         for (name, node) in labels.iter().zip(term_nodes.iter().copied()) {
             if is_formula_interaction(name) {
-                for part in split_top_level_colon(name) {
+                for raw_part in split_top_level_colon(name) {
+                    // Term labels backtick-quote non-syntactic names; the
+                    // symbol's print name never contains the quotes.
+                    let part = raw_part
+                        .strip_prefix('`')
+                        .and_then(|s| s.strip_suffix('`'))
+                        .unwrap_or(&raw_part);
                     if var_syms
                         .iter()
                         .any(|&s| symbol_print_name(s) == part || deparse_call(s) == part)
@@ -7354,13 +7457,22 @@ unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
             return;
         }
         let response = CADR(form);
-        let response_name = if TYPEOF(response) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(response)))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            String::new()
-        };
+        // GNU excludes every variable named in the response expression
+        // (e.g. `log(Days + 2.5)` excludes Days), not just a bare symbol.
+        let mut response_names: Vec<String> = Vec::new();
+        if !response.is_null() && response != R_NilValue() {
+            if TYPEOF(response) == SEXPTYPE::SYMSXP {
+                response_names.push(
+                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(response)))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            } else {
+                let mut parts = Vec::new();
+                collect_formula_symbols(response, &mut parts);
+                response_names.extend(parts);
+            }
+        }
         let mut cols = Vec::new();
         let mut seen = Vec::new();
         for i in 0..XLENGTH(names) {
@@ -7375,7 +7487,7 @@ unsafe fn expand_formula_dot(form: SEXP, data: SEXP) {
                 crate::main::errors::Rf_error(msg.as_ptr());
             }
             seen.push(name.clone());
-            if name != response_name {
+            if !response_names.contains(&name) {
                 cols.push(name);
             }
         }

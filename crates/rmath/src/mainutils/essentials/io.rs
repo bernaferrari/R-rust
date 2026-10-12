@@ -1217,20 +1217,10 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let append = logical_scalar_or(append_arg, FALSE) != FALSE;
             let open = if append { "a" } else { "w" };
             let open_sxp = Rf_mkString(CString::new(open).unwrap_or_default().as_ptr());
-            let encoding_sxp = Rf_mkString(c"native.enc".as_ptr());
-            let file_args = Rf_cons(
-                file_arg,
-                Rf_cons(
-                    open_sxp,
-                    Rf_cons(
-                        encoding_sxp,
-                        Rf_cons(
-                            Rf_ScalarLogical(TRUE),
-                            Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue()),
-                        ),
-                    ),
-                ),
-            );
+            // GNU sink.R calls file(file, if(append) "a" else "w"): only
+            // description and open are passed positionally, so file()'s
+            // blocking (pos 2) and encoding (pos 3) keep their defaults.
+            let file_args = Rf_cons(file_arg, Rf_cons(open_sxp, R_NilValue()));
             (
                 crate::mainutils::connections::do_file(_call, _op, file_args, _rho),
                 TRUE,

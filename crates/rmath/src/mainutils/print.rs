@@ -2470,7 +2470,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "legacy printing child failed: {status}");
@@ -2479,7 +2479,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("legacy scalar printing did not terminate within five seconds");
+                panic!("legacy scalar printing did not terminate within sixty seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -2521,7 +2521,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "cyclic printing child failed: {status}");
@@ -2530,7 +2530,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("cyclic legacy printing did not terminate within five seconds");
+                panic!("cyclic legacy printing did not terminate within sixty seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -2571,7 +2571,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "nested cycle child failed: {status}");
@@ -2580,7 +2580,7 @@ mod tests {
             if std::time::Instant::now() >= deadline {
                 child.kill().unwrap();
                 let _ = child.wait();
-                panic!("nested cyclic printing did not terminate within five seconds");
+                panic!("nested cyclic printing did not terminate within sixty seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }

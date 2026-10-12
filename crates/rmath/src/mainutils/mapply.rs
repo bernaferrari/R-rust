@@ -408,6 +408,118 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// GNU `.Internal(mapply(FUN, dots, MoreArgs))` contract.
+///
+/// GNU's R-level `mapply` closure collects `...` into a list and hands the
+/// internal one container of the varying arguments. This engine registers
+/// `do_mapply` as the R-level builtin with the varyings still spread across
+/// the positional cells, so `.Internal` calls arriving from upstream base
+/// source closures are re-spread here before delegation.
+pub unsafe fn do_mapply_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut fun: SEXP = ptr::null_mut();
+        let mut fun_named = false;
+        let mut dots: SEXP = R_NilValue();
+        let mut moreargs: SEXP = ptr::null_mut();
+        let mut ap = args;
+        while !ap.is_null() && ap != R_NilValue() {
+            let tag = crate::mainutils::essentials::tag_name(ap);
+            match tag.as_deref() {
+                Some("FUN") if !fun_named => {
+                    fun = CAR(ap);
+                    fun_named = true;
+                }
+                Some("MoreArgs") if moreargs.is_null() => moreargs = CAR(ap),
+                _ if !fun_named && dots == R_NilValue() && moreargs.is_null() => {
+                    fun = CAR(ap);
+                    fun_named = true;
+                }
+                _ if dots == R_NilValue() => dots = CAR(ap),
+                _ if moreargs.is_null() => moreargs = CAR(ap),
+                _ => {}
+            }
+            ap = CDR(ap);
+        }
+        if dots.is_null() {
+            dots = R_NilValue();
+        }
+
+        let _fun_guard = protect(fun);
+        let _dots_guard = protect(dots);
+        let mut spread = R_NilValue();
+        let mut tail: SEXP = ptr::null_mut();
+        let mut guards: Vec<ProtectGuard> = Vec::new();
+        let push = |elt: SEXP,
+                    tag: SEXP,
+                    spread: &mut SEXP,
+                    tail: &mut SEXP,
+                    guards: &mut Vec<ProtectGuard>| {
+            let cell = Rf_cons(elt, R_NilValue());
+            guards.push(protect(cell));
+            if !tag.is_null() && tag != R_NilValue() {
+                SETTAG(cell, tag);
+            }
+            if *spread == R_NilValue() {
+                *spread = cell;
+            } else {
+                SETCDR(*tail, cell);
+            }
+            *tail = cell;
+        };
+        if !fun.is_null() && fun != R_NilValue() {
+            let tag = if fun_named {
+                crate::sexp::symbol::Rf_install(c"FUN".as_ptr())
+            } else {
+                R_NilValue()
+            };
+            push(fun, tag, &mut spread, &mut tail, &mut guards);
+        }
+        if TYPEOF(dots) == SEXPTYPE::VECSXP || TYPEOF(dots) == SEXPTYPE::EXPRSXP {
+            for j in 0..XLENGTH(dots) {
+                push(
+                    VECTOR_ELT(dots, j),
+                    R_NilValue(),
+                    &mut spread,
+                    &mut tail,
+                    &mut guards,
+                );
+            }
+        } else if TYPEOF(dots) == SEXPTYPE::LISTSXP || TYPEOF(dots) == SEXPTYPE::DOTSXP {
+            let mut p = dots;
+            while !p.is_null() && p != R_NilValue() {
+                push(CAR(p), TAG(p), &mut spread, &mut tail, &mut guards);
+                p = CDR(p);
+            }
+        }
+        if !moreargs.is_null() {
+            push(
+                moreargs,
+                crate::sexp::symbol::Rf_install(c"MoreArgs".as_ptr()),
+                &mut spread,
+                &mut tail,
+                &mut guards,
+            );
+        }
+        // GNU's internal mapply never simplifies; the R-level closure
+        // decides via its own SIMPLIFY argument after the call.
+        let simplify_false = crate::sexp::constructors::Rf_ScalarLogical(0);
+        let _simplify_guard = protect(simplify_false);
+        let simplify_cell = Rf_cons(simplify_false, R_NilValue());
+        let _simplify_cell_guard = protect(simplify_cell);
+        SETTAG(
+            simplify_cell,
+            crate::sexp::symbol::Rf_install(c"SIMPLIFY".as_ptr()),
+        );
+        if spread == R_NilValue() {
+            spread = simplify_cell;
+        } else {
+            SETCDR(tail, simplify_cell);
+        }
+        let _spread_guard = protect(spread);
+        do_mapply(call, op, spread, rho)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

@@ -361,9 +361,9 @@ impl RSession {
         self.core.set_capabilities(capabilities);
     }
 
-    /// Select console last-value publication or GNU Rscript-style evaluation.
-    /// Script mode preserves user-created `.Last.value` bindings without
-    /// reading or writing them during automatic top-level result handling.
+    /// Tag the session's top-level evaluation policy. `.Last.value`
+    /// publication is GNU-faithful in every mode (script included), so the
+    /// engine does not branch on this value.
     pub fn set_top_level_evaluation_mode(&mut self, mode: TopLevelEvaluationMode) {
         self.core.set_top_level_evaluation_mode(mode);
     }
@@ -1998,7 +1998,7 @@ stop("after-echo")
         let mut session = RSession::new();
 
         let file = session
-            .eval("con <- file(tempfile(), \"w+\", \"\", TRUE, \"\", FALSE); isSeekable(con)");
+            .eval("con <- file(tempfile(), \"w+\", TRUE, \"native.enc\", \"default\", FALSE); isSeekable(con)");
         assert_eq!(file.typed, RValue::Logical(Some(true)));
     }
 

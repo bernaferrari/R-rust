@@ -114,7 +114,7 @@ fn test_do_file_create() {
         let _desc_guard = protect(desc_sxp);
         let _open_guard = protect(open_sxp);
 
-        // Build args pairlist: (description, open, encoding, blocking, method, raw)
+        // Build args pairlist: (description, open, blocking, encoding, method, raw)
         let raw_sxp = Rf_ScalarLogical(0);
         let _raw_guard = protect(raw_sxp);
         let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
@@ -128,9 +128,9 @@ fn test_do_file_create() {
         let _p5_guard = protect(p5);
         let p4 = Rf_cons(method_sxp, p5);
         let _p4_guard = protect(p4);
-        let p3 = Rf_cons(block_sxp, p4);
+        let p3 = Rf_cons(enc_sxp, p4);
         let _p3_guard = protect(p3);
-        let p2 = Rf_cons(enc_sxp, p3);
+        let p2 = Rf_cons(block_sxp, p3);
         let _p2_guard = protect(p2);
         let p1 = Rf_cons(open_sxp, p2);
         let _p1_guard = protect(p1);
@@ -591,9 +591,9 @@ fn test_open_file_read_lines() {
         let _p5_guard = protect(p5);
         let p4 = Rf_cons(method_sxp, p5);
         let _p4_guard = protect(p4);
-        let p3 = Rf_cons(block_sxp, p4);
+        let p3 = Rf_cons(enc_sxp, p4);
         let _p3_guard = protect(p3);
-        let p2 = Rf_cons(enc_sxp, p3);
+        let p2 = Rf_cons(block_sxp, p3);
         let _p2_guard = protect(p2);
         let p1 = Rf_cons(open_sxp, p2);
         let _p1_guard = protect(p1);
@@ -683,9 +683,9 @@ fn test_write_lines_to_file() {
         let _p5_guard = protect(p5);
         let p4 = Rf_cons(method_sxp, p5);
         let _p4_guard = protect(p4);
-        let p3 = Rf_cons(block_sxp, p4);
+        let p3 = Rf_cons(enc_sxp, p4);
         let _p3_guard = protect(p3);
-        let p2 = Rf_cons(enc_sxp, p3);
+        let p2 = Rf_cons(block_sxp, p3);
         let _p2_guard = protect(p2);
         let p1 = Rf_cons(open_sxp, p2);
         let _p1_guard = protect(p1);

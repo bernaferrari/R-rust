@@ -5,6 +5,32 @@
 This is an experimental, embeddable Rust R runtime. Entries are curated;
 compatibility claims are defined by the maintained docs and executable checks.
 
+### Loader-independent base datetime/format/sink bindings (2026-10-12)
+
+- The four conformance failures exposed by running with the upstream base
+  loader gated off are fixed by binding the GNU-verbatim R closures the
+  flip had left provider-less in the default configuration:
+  `as.POSIXlt.POSIXct` (strptime's ±Inf path calls it by name; the
+  `.Internal(as.POSIXlt(x, tz))` body cannot recurse into the generic the
+  way the old deleted version did), the datetime Ops group
+  (`Ops.difftime`, `*.difftime`, `/.difftime` — mixed-unit difftime
+  arithmetic coerces through coerceTimeUnit + NextMethod, keeping the
+  arithmetic primitive a raw `.default` backend) together with
+  `+.Date`/`-.Date`/`+.POSIXt`/`-.POSIXt`/`.check_tzones` (required so
+  Ops.difftime yields to the Date/POSIXt methods under GNU's dispatch
+  precedence), and `formatC` (base/format.R verbatim; the builtin keeps
+  only util.c's 7-argument `.Internal(formatC(...))` convention). All of
+  them shadow the loader's identical whitelist copies, so both
+  configurations dispatch identically.
+- `sink(file)` now builds its internal `file()` call with GNU sink.R's two
+  positional arguments (description, open), so blocking (position 2) and
+  encoding (position 3) keep their defaults after the `file()` argument
+  order fix.
+- The arithmetic primitive's difftime comparison no longer rescales by the
+  units label: GNU's C comparison is raw because the R-level Ops.difftime
+  already coerced both operands to seconds before NextMethod (visible as
+  `1 min > 100 secs` now correctly printing FALSE).
+
 ### Projection-pursuit regression fidelity fixes (2026-10-10)
 
 - `ppr` (`smart.rs`, the `ppr.f` SMART port) now matches GNU R bit-for-bit on

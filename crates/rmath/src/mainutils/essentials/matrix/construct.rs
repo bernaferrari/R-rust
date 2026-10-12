@@ -349,6 +349,16 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let ncol_arg = arg_by_name_or_position(args, &["ncol"], 2);
         let byrow_arg = arg_by_name_or_position(args, &["byrow"], 3);
         let dimnames = arg_by_name_or_position(args, &["dimnames"], 4);
+        // GNU base/matrix.R passes `missing(nrow)` / `missing(ncol)` as
+        // R-level formal default and must be treated as not supplied.
+        let flag_true = |value: SEXP| -> bool {
+            !value.is_null()
+                && value != R_NilValue()
+                && TYPEOF(value) == SEXPTYPE::LGLSXP
+                && *LOGICAL(value) == 1
+        };
+        let nrow_missing = flag_true(arg_by_name_or_position(args, &[], 5));
+        let ncol_missing = flag_true(arg_by_name_or_position(args, &[], 6));
 
         if data.is_null() || data == R_NilValue() {
             return R_NilValue();
@@ -365,8 +375,16 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
             Some(number as R_xlen_t)
         };
-        let rows = dimension(nrow_arg, "nrow");
-        let cols = dimension(ncol_arg, "ncol");
+        let rows = if nrow_missing {
+            None
+        } else {
+            dimension(nrow_arg, "nrow")
+        };
+        let cols = if ncol_missing {
+            None
+        } else {
+            dimension(ncol_arg, "ncol")
+        };
         let infer = |known: R_xlen_t| {
             if known == 0 {
                 if data_len > 0 {
