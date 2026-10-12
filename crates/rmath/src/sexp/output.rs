@@ -939,14 +939,17 @@ fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDimnames {
             return empty_matrix_dimnames();
         }
         let (row_title, col_title) = matrix_dimname_titles(dimnames.clone().as_raw());
-        let row_names = string_vector_values(crate::sexp::accessors::VECTOR_ELT(
+        // Dimname entries print as labels: an NA name renders "<NA>" (GNU
+        // EncodeString in MatrixColumnLabel/MatrixRowLabel) instead of
+        // discarding the whole dimname vector.
+        let row_names = string_vector_labels(crate::sexp::accessors::VECTOR_ELT(
             dimnames.clone().as_raw(),
             0,
         ))
         .filter(|names| names.len() >= nrow)
         .map(|names| names.into_iter().take(nrow).collect());
         let col_names =
-            string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
+            string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
                 .filter(|names| names.len() >= ncol)
                 .map(|names| names.into_iter().take(ncol).collect());
         MatrixDimnames {

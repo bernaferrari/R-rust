@@ -876,7 +876,9 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if !quiet {
             let item_word = if n == 1 { "item" } else { "items" };
-            crate::sexp::output::capture_stdout(&format!("Read {n} {item_word}\n"));
+            // GNU scan.c emits "Read %d items" via REprintf (the error
+            // stream / message sink), not stdout.
+            crate::sexp::output::capture_stderr(&format!("Read {n} {item_word}\n"));
         }
         if what_type == SEXPTYPE::INTSXP {
             let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);

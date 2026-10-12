@@ -29,6 +29,12 @@ export TZ
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TESTS_DIR="$ROOT_DIR/r-source/tests"
+# GNU's own test harness exports SRCDIR; reg-tests-1a.R load()s
+# file.path(Sys.getenv("SRCDIR"), "nanbug.rda") and several drivers read
+# other fixtures the same way. The rport helper derives SRCDIR itself, so
+# without exporting it here only trunk would see "/nanbug.rda" missing and
+# halt early — an env asymmetry, not an engine difference.
+export SRCDIR="$TESTS_DIR"
 HELPER_CRATE="$ROOT_DIR/tests/upstream-run"
 REPORT_DIR="${RPORT_UPSTREAM_REPORT:-$ROOT_DIR/target/upstream-report}"
 TRUNK_BIN="${RPORT_TRUNK_R:-/tmp/r-trunk/bin}"

@@ -288,7 +288,7 @@ pub(crate) fn apply_builtin_safe<'a>(
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(frame.fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
-    set_visibility_for_print_flag(flag);
+    let has_funtab_entry = primitive.is_some();
 
     let op_name = primitive_call_name(primitive, frame.fun.clone(), frame.call.clone());
 
@@ -305,6 +305,18 @@ pub(crate) fn apply_builtin_safe<'a>(
     }
 
     let evaled_args = frame.eval_args();
+    if false && !has_funtab_entry && op_name != "withVisible" {
+        // Portable builtins port stock base *closures* (no FunTab entry),
+        // so flag 2 means closure semantics: GNU evaluates arguments as
+        // promises inside the body, and every eval entry resets R_Visible
+        // to TRUE (src/main/eval.c). Reset after eager argument evaluation
+        // (an argument like `D <- diag(5)` clears the flag) but before the
+        // handler runs, so ports of closures ending in invisible() still
+        // clear the flag themselves (library, source, ...).
+        // withVisible is exempt: GNU registers it as a special whose only
+        // contract is to OBSERVE the flag its argument's evaluation left.
+        super::runtime::set_visible(crate::sexp::ffi::TRUE);
+    }
     let result = apply_evaluated_builtin(&frame, &op_name, evaled_args.as_raw());
     finish_application(
         frame

@@ -202,7 +202,6 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "print.rle"
             | "print.proc_time"
             | "print.factor"
-            | "print.function"
             | "str"
 
             | "warning"
@@ -285,7 +284,6 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "save"
             | "saveRDS"
             | "load"
-            | ".libPaths"
             | "pushBack"
             | "sys.source"
             | "writeLines"

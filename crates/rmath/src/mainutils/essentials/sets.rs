@@ -2498,11 +2498,15 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             result
         } else if t == SEXPTYPE::REALSXP {
             let mut vals: Vec<(f64, usize)> = Vec::with_capacity(n as usize);
-            let mut na_idx: Vec<usize> = Vec::new();
+            // GNU radix sort keeps the original payload: NaN and NA both
+            // take the ISNAN detour, but the sorted tail (na.last=TRUE) or
+            // head (na.last=FALSE) replays them in original order, NaN
+            // still printing as NaN.
+            let mut na_idx: Vec<(f64, usize)> = Vec::new();
             for i in 0..n {
                 let value = *REAL(x).add(i as usize);
                 if ISNAN(value) {
-                    na_idx.push(i as usize);
+                    na_idx.push((value, i as usize));
                 } else {
                     vals.push((value, i as usize));
                 }
@@ -2522,8 +2526,8 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut order: Vec<usize> = Vec::with_capacity(output_len);
             let mut out = 0usize;
             if na_placement == SortNaPlacement::First {
-                for idx in &na_idx {
-                    *dst.add(out) = NA_REAL;
+                for (value, idx) in &na_idx {
+                    *dst.add(out) = *value;
                     order.push(*idx);
                     out += 1;
                 }
@@ -2534,8 +2538,8 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 out += 1;
             }
             if na_placement == SortNaPlacement::Last {
-                for idx in &na_idx {
-                    *dst.add(out) = NA_REAL;
+                for (value, idx) in &na_idx {
+                    *dst.add(out) = *value;
                     order.push(*idx);
                     out += 1;
                 }

@@ -5122,7 +5122,7 @@ fn pure_interaction_width(rhs: SEXP, data: SEXP) -> Option<f64> {
     unsafe {
         let mut vars = Vec::new();
         walk(rhs, &mut vars);
-        if vars.len() < 2 || TYPEOF(data) != SEXPTYPE::VECSXP {
+        if vars.len() < 2 || (TYPEOF(data) != SEXPTYPE::VECSXP) {
             return None;
         }
         let names =
@@ -5145,6 +5145,22 @@ fn pure_interaction_width(rhs: SEXP, data: SEXP) -> Option<f64> {
             );
             let nlev = if TYPEOF(levels) == SEXPTYPE::STRSXP && XLENGTH(levels) > 0 {
                 XLENGTH(levels) as f64
+            } else if TYPEOF(col) == SEXPTYPE::STRSXP && col != R_NilValue() {
+                // GNU modelmatrix.c factors character columns first; the
+                // guard must count distinct values as the level count.
+                let mut distinct: Vec<SEXP> = Vec::new();
+                for i in 0..XLENGTH(col) {
+                    let elt = STRING_ELT(col, i);
+                    if elt == crate::sexp::globals::R_NaString() {
+                        continue;
+                    }
+                    if !distinct.iter().any(|&d| {
+                        crate::sexp::accessors::CHAR(d) == crate::sexp::accessors::CHAR(elt)
+                    }) {
+                        distinct.push(elt);
+                    }
+                }
+                distinct.len() as f64
             } else {
                 return None;
             };
@@ -6951,7 +6967,14 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
                     }
                     return;
                 }
-                if name == "~" || name == "+" || name == "*" || name == ":" || name == "(" {
+                if name == "~"
+                    || name == "+"
+                    || name == "*"
+                    || name == ":"
+                    || name == "/"
+                    || name == "%in%"
+                    || name == "("
+                {
                     let mut cell = CDR(expr);
                     while !cell.is_null() && cell != R_NilValue() {
                         walk_vars(CAR(cell), var_syms);
@@ -7742,6 +7765,47 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     }
                 }
             }
+        }
+        // GNU model.c: accumulate each term's column count in a double and
+        // error before allocation when it overflows INT_MAX ("term %d would
+        // require %.0g columns", then "matrix would require %.0g columns").
+        let mut dnc: f64 = 0.0;
+        for (j, parts) in term_parts.iter().enumerate() {
+            let mut dk: f64 = 1.0;
+            for (k, part) in parts.iter().enumerate() {
+                let Some(colx) = find_data_column(data, part) else {
+                    continue;
+                };
+                let levels = crate::sexp::attrib_core::getAttrib(
+                    colx,
+                    crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+                );
+                if TYPEOF(levels) == SEXPTYPE::STRSXP && XLENGTH(levels) > 0 {
+                    let nlev = XLENGTH(levels) as f64;
+                    dk *= if full_map[j][k] {
+                        nlev
+                    } else {
+                        (nlev - 1.0).max(1.0)
+                    };
+                }
+            }
+            if dk > i32::MAX as f64 {
+                let shown = format!("{:.0e}", dk).replace('e', "e+");
+                let msg = std::ffi::CString::new(format!(
+                    "term {} would require {} columns",
+                    j + 1,
+                    shown
+                ))
+                .unwrap_or_default();
+                crate::main::errors::Rf_error(msg.as_ptr());
+            }
+            dnc += dk;
+        }
+        if dnc > i32::MAX as f64 {
+            let shown = format!("{:.0e}", dnc).replace('e', "e+");
+            let msg = std::ffi::CString::new(format!("matrix would require {shown} columns"))
+                .unwrap_or_default();
+            crate::main::errors::Rf_error(msg.as_ptr());
         }
         for j in 0..nterms {
             let lab = if TYPEOF(labs) == SEXPTYPE::STRSXP {

@@ -14102,23 +14102,55 @@ pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         crate::mainutils::rng_dispatch::sample_int_values(n, size, replace, prob)
     }
 }
-
-/// R toString(x)
-pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// GNU `toString.default(x, width = NULL)` (base toString.R):
+/// `paste(x, collapse = ", ")` — classed objects dispatch as.character —
+/// then, when `width` is a positive number and the string is wider, trim to
+/// `strtrim(string, width - 4)` and append `"...."` (`max(6, width)` leaves
+/// something visible); `width < 0` errors, `0`/NULL keeps the full string.
+pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(c"".as_ptr());
         }
-        let n = XLENGTH(x);
+        // paste(x, collapse = ", "): dispatch as.character for classed objects.
+        let chars = if crate::sexp::attrib_core::isObject(x) != 0 {
+            let coerce = crate::sexp::constructors::Rf_lang2(
+                crate::sexp::symbol::Rf_install(c"as.character".as_ptr()),
+                x,
+            );
+            let _coerce_guard = protect(coerce);
+            crate::eval::eval::Rf_eval(coerce, rho)
+        } else {
+            x
+        };
+        let n = if chars.is_null() || chars == R_NilValue() {
+            0
+        } else {
+            XLENGTH(chars)
+        };
         let mut parts: Vec<String> = Vec::new();
-        for i in 0..n.min(999) {
-            parts.push(elt_to_string(x, i));
+        for i in 0..n {
+            parts.push(elt_to_string(chars, i));
         }
-        if n > 999 {
-            parts.push("...".to_string());
+        let mut string = parts.join(", ");
+
+        let width_arg = CAR(CDR(args));
+        if !width_arg.is_null() && width_arg != R_NilValue() && width_arg != R_MissingArg() {
+            let w = crate::mainutils::seq::asInteger(width_arg);
+            if w < 0 {
+                crate::sexp::context::r_error("'width' must be positive");
+            }
+            if w != 0 && (w == NA_INTEGER || string.chars().count() as c_int > w) {
+                if w == NA_INTEGER {
+                    crate::sexp::context::r_error("missing value where TRUE/FALSE needed");
+                }
+                let w = 6.max(w);
+                let keep = (w - 4) as usize;
+                string = format!("{}....", string.chars().take(keep).collect::<String>());
+            }
         }
-        Rf_mkString(CString::new(parts.join(", ")).unwrap_or_default().as_ptr())
+        Rf_mkString(CString::new(string).unwrap_or_default().as_ptr())
     }
 }
 

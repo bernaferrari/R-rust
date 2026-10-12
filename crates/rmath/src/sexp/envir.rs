@@ -2247,6 +2247,10 @@ mod tests {
 mod shared_index_tests;
 
 #[cfg(test)]
+#[path = "envir/global_env_enumeration_tests.rs"]
+mod global_env_enumeration_tests;
+
+#[cfg(test)]
 #[path = "envir/owned_promise_tests.rs"]
 mod owned_promise_tests;
 

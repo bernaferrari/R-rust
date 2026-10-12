@@ -48,6 +48,8 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x
         };
         let mut nchar_type = NcharKind::Chars;
+        let mut keep_na_seen = false;
+        let mut keep_na = false;
         let mut cell = CDR(args);
         let mut positional = 0;
         while !cell.is_null() && cell != R_NilValue() {
@@ -67,7 +69,9 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 None
             };
-            let is_type = named.as_deref() == Some("type") || (named.is_none() && positional == 0);
+            let slot = named.as_deref();
+            let is_type = slot == Some("type") || (slot.is_none() && positional == 0);
+            let is_keep_na = slot == Some("keepNA") || (slot.is_none() && positional == 2);
             if is_type && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
                 let text = elt_to_string(value, 0);
                 nchar_type = match text.as_str() {
@@ -76,10 +80,22 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     _ => NcharKind::Chars,
                 };
             }
-            if named.is_none() {
+            if is_keep_na {
+                let l = crate::mainutils::seq::asLogical(value);
+                if l == crate::sexp::ffi::NA_LOGICAL {
+                    keep_na = !matches!(nchar_type, NcharKind::Width);
+                } else {
+                    keep_na = l != 0;
+                }
+                keep_na_seen = true;
+            }
+            if slot.is_none() {
                 positional += 1;
             }
             cell = CDR(cell);
+        }
+        if !keep_na_seen {
+            keep_na = !matches!(nchar_type, NcharKind::Width);
         }
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -93,11 +109,9 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
                 let charsxp = STRING_ELT(x, idx);
                 if charsxp == crate::sexp::globals::R_NaString() {
-                    *dst.add(i as usize) = if matches!(nchar_type, NcharKind::Width) {
-                        2
-                    } else {
-                        NA_INTEGER
-                    };
+                    // GNU R_nchar: NA_STRING is NA_INTEGER when keepNA,
+                    // else the two characters of "NA".
+                    *dst.add(i as usize) = if keep_na { NA_INTEGER } else { 2 };
                     continue;
                 }
             }

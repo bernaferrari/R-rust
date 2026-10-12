@@ -48,19 +48,26 @@ impl RuntimePathPolicy {
     }
 
     pub fn from_env() -> Self {
+        // GNU startup: .libPaths() starts at unique(c(R_LIBS_USER dirs,
+        // R_LIBS_SITE dirs, .Library)), keeping only directories that exist
+        // (stock filters with dir.exists() before normalizePath). With
+        // R_HOME set, .Library is R_HOME/library; otherwise the cached
+        // oracle build's library is the dev-machine .Library stand-in, so
+        // --vanilla Rscript parity prints exactly the libraries that exist.
         let mut library_paths = Vec::new();
         extend_env_paths(&mut library_paths, "R_LIBS_USER");
         extend_env_paths(&mut library_paths, "R_LIBS_SITE");
 
         if let Some(r_home) = std::env::var_os("R_HOME").map(PathBuf::from) {
             library_paths.push(r_home.join("library"));
-        }
-
-        #[cfg(not(target_os = "android"))]
-        {
+        } else {
+            #[cfg(not(target_os = "android"))]
             library_paths.extend(discover_host_r_libraries());
+            #[cfg(target_os = "android")]
+            library_paths.push(PathBuf::from("/usr/lib/R/library"));
         }
 
+        library_paths.retain(|path| path.is_dir());
         dedupe_paths(&mut library_paths);
 
         RuntimePathPolicy {
@@ -174,6 +181,9 @@ fn dedupe_paths(paths: &mut Vec<PathBuf>) {
 
 #[cfg(not(target_os = "android"))]
 fn discover_host_r_libraries() -> Vec<PathBuf> {
+    // Only the cached oracle build(s): stock .libPaths() never invents host
+    // installs, and homebrew/system site libraries on the dev machine would
+    // surface in .libPaths() output where Rscript prints just .Library.
     let mut out = Vec::new();
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         let oracle = home.join(".cache").join("rport").join("r-oracle");
@@ -186,20 +196,7 @@ fn discover_host_r_libraries() -> Vec<PathBuf> {
             found.sort();
             out.extend(found);
         }
-        out.push(home.join(".R").join("library"));
     }
-    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/Cellar/r") {
-        let mut found = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path().join("lib").join("R").join("library"))
-            .filter(|path| path.join("datasets").join("DESCRIPTION").is_file())
-            .collect::<Vec<_>>();
-        found.sort();
-        out.extend(found);
-    }
-    out.push(PathBuf::from("/usr/local/lib/R/site-library"));
-    out.push(PathBuf::from("/usr/lib/R/site-library"));
-    out.push(PathBuf::from("/usr/lib/R/library"));
     out
 }
 
