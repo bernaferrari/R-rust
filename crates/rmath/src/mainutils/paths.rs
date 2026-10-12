@@ -16,6 +16,8 @@ pub struct RuntimePathPolicy {
     /// Android hosts reject serialized `data/*.rda` payloads; desktop
     /// runtimes load them like GNU `data()` does.
     allows_serialized_data: bool,
+    /// True only for the pure-R Android app runtime (`for_android_app`).
+    android_runtime: bool,
 }
 
 impl RuntimePathPolicy {
@@ -29,6 +31,7 @@ impl RuntimePathPolicy {
             temp_dir: temp_dir.into(),
             cache_dir: None,
             allows_serialized_data: true,
+            android_runtime: false,
         }
     }
 
@@ -40,6 +43,7 @@ impl RuntimePathPolicy {
             temp_dir: PathBuf::from("/tmp"),
             cache_dir: None,
             allows_serialized_data: true,
+            android_runtime: false,
         }
     }
 
@@ -70,6 +74,7 @@ impl RuntimePathPolicy {
             temp_dir: std::env::temp_dir(),
             cache_dir: None,
             allows_serialized_data: true,
+            android_runtime: false,
         }
     }
 
@@ -97,6 +102,7 @@ impl RuntimePathPolicy {
             temp_dir,
             cache_dir: Some(cache_dir),
             allows_serialized_data: false,
+            android_runtime: true,
         })
     }
 
@@ -124,6 +130,13 @@ impl RuntimePathPolicy {
     /// Whether `data()` may load serialized `.rda`/`lazydata` payloads.
     pub fn allows_serialized_data(&self) -> bool {
         self.allows_serialized_data
+    }
+
+    /// Whether this session runs the pure-R Android app runtime policy
+    /// (`for_android_app` / `configure_paths`), which rejects native
+    /// extension calls with the Android policy error.
+    pub fn is_android_runtime(&self) -> bool {
+        self.android_runtime
     }
 
     pub fn find_package_path(&self, package: &str) -> Option<PathBuf> {

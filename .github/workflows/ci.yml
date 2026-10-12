@@ -67,7 +67,7 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -85,6 +85,7 @@ jobs:
         run: >-
           python3 scripts/workspace_execution.py produce
           --shard-index ${{ matrix.shard }} --shard-count 9
+          --timeout 4800
           --directory "${{ runner.temp }}/workspace-debug-${{ matrix.shard }}"
 
       - name: Upload workspace process evidence

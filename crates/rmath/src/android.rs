@@ -1568,7 +1568,15 @@ stop("after-echo")
 
     #[test]
     fn test_native_entrypoints_fail_with_android_policy_errors() {
+        let root = unique_test_root("android-native-policy");
         let mut session = RSession::new();
+        session
+            .configure_paths(
+                root.join("files").to_str().expect("utf8 files"),
+                root.join("cache").to_str().expect("utf8 cache"),
+                None,
+            )
+            .expect("android paths");
         for (expr, entrypoint) in [
             (".Call(\"native_symbol\")", ".Call"),
             (".C(\"native_symbol\", 1L)", ".C"),
@@ -1589,6 +1597,7 @@ stop("after-echo")
                 other => panic!("expected native policy error for {expr}, got {other:?}"),
             }
         }
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

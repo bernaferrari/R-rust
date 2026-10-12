@@ -448,9 +448,23 @@ pub(super) unsafe fn invoke(
                     "native routine has a different registered interface",
                 ));
             }
-            if super::native_extension_policy_enabled() {
+            // The pure-R Android policy error belongs only to sessions
+            // running the Android app runtime policy; ordinary sessions
+            // with extensions disabled keep the bundled-registry error,
+            // and enabled sessions fall through to host libraries.
+            let android_pure_r_policy =
+                crate::sexp::instance::with_current_instance(|inst| unsafe {
+                    (*inst).path_policy.is_android_runtime()
+                })
+                .unwrap_or(false);
+            if android_pure_r_policy {
                 return Err(failure(format!(
                     "{interface} calls native extension code, which is disabled in this pure-R Android runtime; package authors should use Rust-ported internals or a host-owned native-library policy"
+                )));
+            }
+            if super::native_extension_policy_enabled() {
+                return Err(failure(format!(
+                    "{interface} native routine is not implemented by the bundled Rust registry"
                 )));
             }
             let list = operands.foreign_list(&allocator, &domain)?;
