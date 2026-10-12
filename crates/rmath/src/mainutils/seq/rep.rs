@@ -1171,13 +1171,18 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         ans = rep4(x, times, len, each, nt);
 
         // Date / POSIXct class restoration: rep4 replicates the raw payload,
-        // so re-attach the datetime class (and tzone) like stock R's
-        // rep.Date / rep.POSIXct S3 methods do.
+        // so re-attach the datetime class like stock R's rep.Date/rep.POSIXct
+        // (`y <- NextMethod(); class(y) <- oldClass(x)`) — the FULL oldClass,
+        // so an AsIs marker (I(Sys.time())) survives, plus tzone.
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
-            let tz = crate::mainutils::essentials::posixct_tzone_string(x);
-            crate::mainutils::essentials::set_posixct_class(ans, &tz);
+            setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
+            let tz = crate::sexp::symbol::Rf_install(c"tzone".as_ptr());
+            let tza = getAttrib(x, tz);
+            if !tza.is_null() && tza != R_NilValue() {
+                setAttrib(ans, tz, tza);
+            }
         } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
-            crate::mainutils::essentials::set_single_class(ans, "Date");
+            setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
         } else if crate::mainutils::essentials::sexp_has_class(x, "difftime") {
             setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
             let units = crate::sexp::symbol::Rf_install(c"units".as_ptr());

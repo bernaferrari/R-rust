@@ -5269,6 +5269,23 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 );
                 return handler(s, R_NilValue(), evaluated_args.as_raw(), env);
             }
+            // GNU .Internal resolves strictly through R_FunTab; the port
+            // also accepts handlers registered in the evaluated-builtin
+            // table (topenv, bindingIsLocked, makeActiveBinding,
+            // normalizePath, ...) when no INTERNAL slot or funtab entry
+            // exists.
+            if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(&name_str) {
+                let actual_args = CDR(s);
+                let evaluated_args = crate::eval::dispatch::evalList(
+                    factory
+                        .wrap(actual_args)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    env_owner.clone(),
+                    Some(call_owner.clone()),
+                    -1,
+                );
+                return handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+            }
             panic_any(RError {
                 message: format!("there is no .Internal function '{}'", name_str),
             });
@@ -5442,7 +5459,21 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
 
         "load" => Some(crate::mainutils::saveload::do_load),
         "strptime" => Some(crate::mainutils::datetime::do_strptime),
+        "isNamespaceEnv" => Some(crate::mainutils::essentials::s4::do_isNamespace),
+        "mkUnbound" => Some(do_mkunbound),
         _ => None,
+    }
+}
+
+/// GNU `do_mkunbound` (envir.c): `.Internal(mkUnbound(name))` sets the
+/// symbol's value cell to R_UnboundValue.
+pub unsafe fn do_mkunbound(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let sym = CAR(args);
+        if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
+            crate::sexp::accessors::SET_SYMVALUE(sym, crate::sexp::globals::R_UnboundValue());
+        }
+        R_NilValue()
     }
 }
 pub unsafe fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

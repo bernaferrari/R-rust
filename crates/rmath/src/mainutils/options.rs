@@ -955,6 +955,8 @@ fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<
     options.insert("max.print".to_string(), pi(99999)?);
     options.insert("show.error.messages".to_string(), pl(TRUE)?);
     options.insert("scipen".to_string(), pi(0)?);
+    // profile/Common.R sets this at startup; the default mirrors GNU.
+    options.insert("encoding".to_string(), pm("native.enc")?);
     options.insert("height".to_string(), pi(60)?);
     options.insert("add.smooth".to_string(), pl(TRUE)?);
     options.insert(

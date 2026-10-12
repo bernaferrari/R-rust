@@ -38,6 +38,7 @@ pub mod session;
 pub mod symbol;
 pub(crate) mod transfer;
 pub(crate) mod tsp;
+pub(crate) mod upstream_base;
 
 // Re-export commonly used types at the module level
 #[allow(unused_imports)]

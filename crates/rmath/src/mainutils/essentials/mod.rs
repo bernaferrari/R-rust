@@ -37,7 +37,7 @@ pub(crate) mod print;
 mod registry;
 mod runtime;
 mod s3;
-mod s4;
+pub(crate) mod s4;
 mod sets;
 mod shared;
 mod strings;

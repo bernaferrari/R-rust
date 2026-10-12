@@ -912,25 +912,33 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             "weeks" => 7.0 * 86_400.0,
             _ => 1.0,
         };
-        let mut max_abs = 0.0;
+        // GNU difftime(units="auto") picks the unit from the SMALLEST
+        // finite |z| (all-NA => secs): zz <- min(abs(z), na.rm = TRUE).
+        let mut min_abs: Option<f64> = None;
         for i in 0..n {
             let a = difftime_seconds_at(time1, if n1 == 0 { 0 } else { i % n1 });
             let b = difftime_seconds_at(time2, if n2 == 0 { 0 } else { i % n2 });
             let z = a - b;
-            if z.abs() > max_abs {
-                max_abs = z.abs();
+            if z.is_finite() {
+                min_abs = Some(match min_abs {
+                    Some(current) => current.min(z.abs()),
+                    None => z.abs(),
+                });
             }
             *REAL(result).add(i as usize) = z;
         }
         let units = if units == "auto" {
-            if !max_abs.is_finite() || max_abs < 60.0 {
-                "secs".to_string()
-            } else if max_abs < 3600.0 {
-                "mins".to_string()
-            } else if max_abs < 86400.0 {
-                "hours".to_string()
-            } else {
-                "days".to_string()
+            match min_abs {
+                Some(zz) if zz.is_finite() && zz >= 60.0 => {
+                    if zz < 3600.0 {
+                        "mins".to_string()
+                    } else if zz < 86400.0 {
+                        "hours".to_string()
+                    } else {
+                        "days".to_string()
+                    }
+                }
+                _ => "secs".to_string(),
             }
         } else {
             units
@@ -999,7 +1007,44 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 };
                 *REAL(result).add(i as usize) = secs;
             }
-            let u = Rf_mkString(c"secs".as_ptr());
+            // GNU as.difftime(<character>) routes through difftime(...,
+            // units = "auto"): the unit is chosen from the SMALLEST finite
+            // |z| (all-NA => secs), so e.g. c("0:3:20","11:23:15") prints
+            // in mins, not secs.
+            let mut min_abs: Option<f64> = None;
+            for i in 0..n as usize {
+                let z = *REAL(result).add(i);
+                if z.is_finite() {
+                    min_abs = Some(match min_abs {
+                        Some(current) => current.min(z.abs()),
+                        None => z.abs(),
+                    });
+                }
+            }
+            let units = match min_abs {
+                Some(zz) if zz.is_finite() && zz >= 60.0 => {
+                    if zz < 3600.0 {
+                        "mins"
+                    } else if zz < 86400.0 {
+                        "hours"
+                    } else {
+                        "days"
+                    }
+                }
+                _ => "secs",
+            };
+            if units != "secs" {
+                let div = match units {
+                    "mins" => 60.0,
+                    "hours" => 3600.0,
+                    "days" => 86_400.0,
+                    _ => 1.0,
+                };
+                for i in 0..n as usize {
+                    *REAL(result).add(i) /= div;
+                }
+            }
+            let u = Rf_mkString(std::ffi::CString::new(units).unwrap_or_default().as_ptr());
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::symbol::Rf_install(c"units".as_ptr()),

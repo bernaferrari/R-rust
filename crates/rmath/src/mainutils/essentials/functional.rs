@@ -3090,6 +3090,10 @@ pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> 
                 _ => return x,
             }
         }
+        // GNU recycling preserves the column's attributes (class — e.g. the
+        // AsIs marker on I(x) columns — tsp, units, ...); only names/dim/
+        // dimnames are dropped, exactly copyMostAttrib semantics.
+        crate::mainutils::array::copyMostAttrib(x, out);
         out
     }
 }

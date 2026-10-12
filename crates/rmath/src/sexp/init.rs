@@ -1150,6 +1150,8 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             "format.default",
             include_str!("gnu_format_default.R"),
         );
+        eval_base_binding(base_env, "format.AsIs", include_str!("gnu_format_asis.R"));
+        eval_base_binding(base_env, "print.AsIs", include_str!("gnu_print_asis.R"));
         eval_base_binding(base_env, "prettyNum", include_str!("gnu_prettyNum.R"));
         eval_base_binding(
             base_env,
@@ -3269,6 +3271,10 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         alias_visible_primitive(base_env, "as.numeric", "as.double");
         alias_visible_primitive(base_env, "is.name", "is.symbol");
         retarget_base_closure_envs(base_env);
+        // Upstream base-package sources: runs after `.BaseNamespaceEnv`
+        // points at the shared namespace frame so staged closures resolve
+        // free variables the way GNU base closures do.
+        super::upstream_base::load_upstream_base_sources(base_env);
     }
 }
 

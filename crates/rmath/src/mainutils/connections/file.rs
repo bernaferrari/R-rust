@@ -36,8 +36,8 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let default_method = Rf_mkString(c"default".as_ptr());
         let scmd = positional_or(args, 0, empty);
         let sopen = positional_or(args, 1, empty);
-        let _enc = arg_by_name_or_position(args, 2, &["encoding"], native);
-        let _block = positional_or(args, 3, Rf_ScalarLogical(crate::sexp::ffi::TRUE));
+        let _enc = arg_by_name_or_position(args, 3, &["encoding"], native);
+        let _block = arg_by_name_or_position(args, 2, &["blocking"], Rf_ScalarLogical(crate::sexp::ffi::TRUE));
         let _method = positional_or(args, 4, default_method);
         let raw = check_logical_arg(
             positional_or(args, 5, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),
@@ -49,7 +49,17 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             description = crate::mainutils::essentials::resolve_package_relative_path(description);
         }
         let open = check_string_arg(sopen, "open");
-        let encoding = check_string_arg(_enc, "encoding");
+        // GNU's file() closure resolves `encoding = getOption("encoding")`;
+        // when that option is unset the argument arrives as NULL, which
+        // means the native encoding.
+        let encoding = if _enc.is_null()
+            || _enc == R_NilValue()
+            || (TYPEOF(_enc) == SEXPTYPE::STRSXP && LENGTH(_enc) == 0)
+        {
+            "native.enc".to_string()
+        } else {
+            check_string_arg(_enc, "encoding")
+        };
         if encoding == "unknown" {
             r_error("invalid connection");
         }

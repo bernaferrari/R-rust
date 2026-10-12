@@ -4699,33 +4699,53 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(c"".as_ptr());
         }
-        // Upstream `format` is a UseMethod generic: dispatch to closure
-        // methods registered by loaded packages (R6's
-        // format.R6ClassGenerator) before the default formatting.
-        if let Some(result) =
-            crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
+        // Upstream `format` is a UseMethod generic; its .Internal core
+        // (do_format) never dispatches — GNU reaches the internal only via
+        // `format.default`'s .Internal(format(...)), and S3 dispatch already
+        // happened at the generic. Skip closure AND builtin-class dispatch
+        // when invoked from inside the `format` generic or `format.default`
+        // (NextMethod frames keep the generic-name sys.call, so they match)
+        // so `format.default` on a classed object cannot re-dispatch into
+        // e.g. `format.AsIs` (infinite recursion) and
+        // format.default(POSIXct) formats the raw number like GNU. Direct
+        // Rust callers that stand in for the generic (print/output column
+        // formatting) and other contexts still dispatch.
+        let inside_format_default = called_from_format_generic_or_default();
+        if !inside_format_default
+            && let Some(result) =
+                crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
         {
             return result;
         }
-        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != FALSE {
+        if !inside_format_default
+            && crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != FALSE
+        {
             return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
         }
-        if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != FALSE
-            || crate::mainutils::objects::inherits2(x, c"POSIXt".as_ptr()) != FALSE
+        if !inside_format_default
+            && (crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != FALSE
+                || crate::mainutils::objects::inherits2(x, c"POSIXt".as_ptr()) != FALSE)
         {
             return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
         }
-        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != FALSE {
+        if !inside_format_default
+            && crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != FALSE
+        {
             return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
         }
-        if crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != FALSE {
+        if !inside_format_default
+            && crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != FALSE
+        {
             return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
         }
-
-        if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
+        if !inside_format_default
+            && crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE
+        {
             return format_mode_ints(x, true);
         }
-        if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
+        if !inside_format_default
+            && crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE
+        {
             return format_mode_ints(x, false);
         }
         // format.default: environments render as their display form
@@ -4776,10 +4796,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         // parameters across the whole vector, encode each element with the
         // Encode* printers, and right-justify to the shared width.
         let x_type_now = TYPEOF(x);
-        if matches!(x_type_now, 10 | 13 | 14 | 15)
-            && !sexp_has_class(x, "POSIXct")
-            && !sexp_has_class(x, "Date")
-        {
+        if matches!(x_type_now, 10 | 13 | 14 | 15) {
             return format_numeric_vector(x, n, args);
         }
         if x_type_now == SEXPTYPE::STRSXP {
@@ -4788,11 +4805,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
-                if sexp_has_class(x, "POSIXct") {
-                    posix_seconds_to_iso(v, false).unwrap_or_else(|| "NA".to_string())
-                } else if sexp_has_class(x, "Date") {
-                    date_days_to_iso(v).unwrap_or_else(|| "NA".to_string())
-                } else if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     "NA".to_string()
                 } else if nsmall > 0 {
                     format!("{:.*}", nsmall, v)
@@ -4818,6 +4831,40 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         result
     }
 }
+
+/// True when an enclosing function context is the `format` generic or
+/// `format.default` (NextMethod keeps the generic-name sys.call, so method
+/// frames invoked from the generic match too). GNU's .Internal(format(...))
+/// invokes the C entry directly regardless of R-level bindings; S3 dispatch
+/// already happened at the generic, so re-dispatching here would loop
+/// format.AsIs -> format.default -> .Internal(format) -> format.AsIs.
+unsafe fn called_from_format_generic_or_default() -> bool {
+    unsafe {
+        let mut ctx = crate::sexp::context::R_GlobalContext();
+        while !ctx.is_null() {
+            if (*ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                let call = (*ctx).call.as_raw();
+                if !call.is_null()
+                    && TYPEOF(call) == SEXPTYPE::LANGSXP
+                    && TYPEOF(CAR(call)) == SEXPTYPE::SYMSXP
+                {
+                    let pname = PRINTNAME(CAR(call));
+                    if !pname.is_null() {
+                        let name = std::ffi::CStr::from_ptr(CHAR(pname))
+                            .to_string_lossy()
+                            .into_owned();
+                        if name == "format" || name == "format.default" {
+                            return true;
+                        }
+                    }
+                }
+            }
+            ctx = (*ctx).nextcontext;
+        }
+        false
+    }
+}
+
 /// GNU `format.default` for atomic numeric vectors: shared width/digits
 /// across the vector, honoring `digits`, `trim`, `nsmall`, `width`, and
 /// `scientific` (TRUE/FALSE/NA/numeric → scipen -99/310/keep/value).

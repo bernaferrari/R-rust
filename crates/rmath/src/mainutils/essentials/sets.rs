@@ -1910,7 +1910,11 @@ fn cut_interval_labels(breaks: &[f64], right: bool, include_lowest: bool) -> Vec
 }
 
 fn format_cut_number(value: f64) -> String {
-    if value.is_finite() && value.fract() == 0.0 {
+    if value.is_nan() {
+        "NaN".to_string()
+    } else if value.is_infinite() {
+        if value > 0.0 { "Inf" } else { "-Inf" }.to_string()
+    } else if value.fract() == 0.0 {
         format!("{}", value as i64)
     } else {
         format!("{}", value)

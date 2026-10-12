@@ -3020,8 +3020,27 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let matched = match_named_then_positional(call, args, &["x", "fill.only", "classed"]);
 
         let x = matched[0];
-        let fill_only = logical_arg_true(matched[1], false);
-        let keep_class = logical_arg_true(matched[2], true);
+        // GNU do_balancePOSIXlt branches on PRIMVAL(op): code 1 is
+        // unCfillPOSIXlt(x), i.e. fill-only and unclassed.
+        let offset_code = if _op.is_null() {
+            0
+        } else {
+            let idx = crate::sexp::accessors::PRIMOFFSET(_op);
+            crate::mainutils::names::R_FunTab
+                .get(idx as usize)
+                .map(|entry| entry.offset)
+                .unwrap_or(0)
+        };
+        let fill_only = if offset_code == 1 {
+            true
+        } else {
+            logical_arg_true(matched[1], false)
+        };
+        let keep_class = if offset_code == 1 {
+            false
+        } else {
+            logical_arg_true(matched[2], true)
+        };
 
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {

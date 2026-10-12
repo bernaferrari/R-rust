@@ -825,34 +825,46 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             CADR, CAR, LENGTH, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
         };
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXPTYPE, TRUE};
+        use crate::sexp::globals::{R_NaString, R_NilValue};
         use std::fs;
 
         let files = CAR(args);
-        let extra_cols = CADR(args);
-        let _ = extra_cols;
+        let extra_arg = CADR(args);
+        // GNU file.info's R wrapper defaults extra_cols to TRUE and the
+        // internal rejects NA. This builtin binds `file.info` directly, so
+        // both behaviors live here.
+        let mut extras = if extra_arg.is_null()
+            || extra_arg == R_NilValue()
+            || extra_arg == crate::sexp::globals::R_MissingArg()
+        {
+            true
+        } else {
+            let flag = crate::main::coerce::asLogical(extra_arg);
+            if flag == NA_LOGICAL {
+                crate::mainutils::essentials::base_error("invalid 'extra_cols' argument");
+            }
+            flag != 0
+        };
+        // The uid/gid/uname/grname block is Unix-only (GNU UNIX_EXTRAS);
+        // there is never an `exe` column off Windows.
+        #[cfg(not(unix))]
+        {
+            extras = false;
+        }
 
         let n = LENGTH(files);
-        // Build a named list (VECSXP) with columns: size, isdir, mode, mtime, ctime, atime, exe
-        let ncols = 7i32;
+        let n_xlen = n as crate::sexp::ffi::R_xlen_t;
+        let ncols: i32 = if extras { 10 } else { 6 };
         let mut guards = Vec::new();
-        let ans = Rf_allocVector3(
-            SEXPTYPE::VECSXP.as_c_int(),
-            ncols as crate::sexp::ffi::R_xlen_t,
-        );
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP.as_c_int(), ncols as crate::sexp::ffi::R_xlen_t);
         guards.push(protect(ans));
 
-        let size_col = Rf_allocVector3(
-            SEXPTYPE::REALSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        );
+        let size_col = Rf_allocVector3(SEXPTYPE::REALSXP.as_c_int(), n_xlen);
         guards.push(protect(size_col));
-        let isdir_col =
-            Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let isdir_col = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n_xlen);
         guards.push(protect(isdir_col));
-        let mode_col =
-            Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let mode_col = Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n_xlen);
         guards.push(protect(mode_col));
         let mode_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
         guards.push(protect(mode_class));
@@ -862,23 +874,41 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             crate::eval::attrib_core::R_ClassSymbol(),
             mode_class,
         );
-        let mtime_col = Rf_allocVector3(
-            SEXPTYPE::REALSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        );
+        let mtime_col = Rf_allocVector3(SEXPTYPE::REALSXP.as_c_int(), n_xlen);
         guards.push(protect(mtime_col));
-        let ctime_col = Rf_allocVector3(
-            SEXPTYPE::REALSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        );
+        let ctime_col = Rf_allocVector3(SEXPTYPE::REALSXP.as_c_int(), n_xlen);
         guards.push(protect(ctime_col));
-        let atime_col = Rf_allocVector3(
-            SEXPTYPE::REALSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        );
+        let atime_col = Rf_allocVector3(SEXPTYPE::REALSXP.as_c_int(), n_xlen);
         guards.push(protect(atime_col));
-        let exe_col = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        guards.push(protect(exe_col));
+        #[cfg(unix)]
+        let (uid_col, gid_col, uname_col, grname_col) = {
+            let uid_col = Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n_xlen);
+            guards.push(protect(uid_col));
+            let gid_col = Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n_xlen);
+            guards.push(protect(gid_col));
+            let uname_col = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n_xlen);
+            guards.push(protect(uname_col));
+            let grname_col = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n_xlen);
+            guards.push(protect(grname_col));
+            (uid_col, gid_col, uname_col, grname_col)
+        };
+
+        // Fill one row's extras columns with NAs (used when a stat tier has
+        // no owner information).
+        #[cfg(unix)]
+        macro_rules! extras_na {
+            ($i:expr) => {{
+                let i: usize = $i;
+                *crate::sexp::accessors::INTEGER(uid_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                *crate::sexp::accessors::INTEGER(gid_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                SET_STRING_ELT(uname_col, i as crate::sexp::ffi::R_xlen_t, R_NaString());
+                SET_STRING_ELT(grname_col, i as crate::sexp::ffi::R_xlen_t, R_NaString());
+            }};
+        }
+        #[cfg(not(unix))]
+        macro_rules! extras_na {
+            ($i:expr) => {{ let _ = $i; }};
+        }
 
         for i in 0..n as usize {
             let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
@@ -889,92 +919,109 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
                 *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
                 *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                *crate::sexp::accessors::LOGICAL(exe_col).add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                let path = c.to_str().unwrap_or("");
-                if crate::library::datasets::path_exists(path) {
-                    let is_directory = crate::library::datasets::is_directory(path);
-                    *crate::sexp::accessors::REAL(size_col).add(i) =
-                        crate::library::datasets::file_bytes(path)
-                            .map_or(0.0, |bytes| bytes.len() as f64);
+                extras_na!(i);
+                continue;
+            }
+            let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
+            let path = c.to_str().unwrap_or("");
+            if crate::library::datasets::path_exists(path) {
+                let is_directory = crate::library::datasets::is_directory(path);
+                *crate::sexp::accessors::REAL(size_col).add(i) =
+                    crate::library::datasets::file_bytes(path)
+                        .map_or(0.0, |bytes| bytes.len() as f64);
+                *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
+                    if is_directory { TRUE } else { FALSE };
+                *crate::sexp::accessors::INTEGER(mode_col).add(i) =
+                    if is_directory { 0o555 } else { 0o444 };
+                *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                extras_na!(i);
+                continue;
+            }
+            if let Some(info) = crate::mainutils::browser_files::info_current(path) {
+                *crate::sexp::accessors::REAL(size_col).add(i) = info.size as f64;
+                *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = FALSE;
+                *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0o644;
+                *crate::sexp::accessors::REAL(mtime_col).add(i) = info.mtime;
+                *crate::sexp::accessors::REAL(ctime_col).add(i) = info.ctime;
+                *crate::sexp::accessors::REAL(atime_col).add(i) = info.atime;
+                extras_na!(i);
+                continue;
+            }
+            if crate::mainutils::browser_files::enabled() {
+                *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
+                *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                extras_na!(i);
+                continue;
+            }
+            match fs::metadata(path) {
+                Ok(meta) => {
+                    *crate::sexp::accessors::REAL(size_col).add(i) = meta.len() as f64;
                     *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
-                        if is_directory { TRUE } else { FALSE };
-                    *crate::sexp::accessors::INTEGER(mode_col).add(i) =
-                        if is_directory { 0o555 } else { 0o444 };
-                    *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = FALSE;
-                    continue;
-                }
-                if let Some(info) = crate::mainutils::browser_files::info_current(path) {
-                    *crate::sexp::accessors::REAL(size_col).add(i) = info.size as f64;
-                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = FALSE;
-                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0o644;
-                    *crate::sexp::accessors::REAL(mtime_col).add(i) = info.mtime;
-                    *crate::sexp::accessors::REAL(ctime_col).add(i) = info.ctime;
-                    *crate::sexp::accessors::REAL(atime_col).add(i) = info.atime;
-                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = FALSE;
-                    continue;
-                }
-                if crate::mainutils::browser_files::enabled() {
-                    *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
-                        crate::sexp::ffi::NA_INTEGER;
-                    *crate::sexp::accessors::INTEGER(mode_col).add(i) =
-                        crate::sexp::ffi::NA_INTEGER;
-                    *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                    *crate::sexp::accessors::LOGICAL(exe_col).add(i) = crate::sexp::ffi::NA_INTEGER;
-                    continue;
-                }
-                match fs::metadata(path) {
-                    Ok(meta) => {
-                        *crate::sexp::accessors::REAL(size_col).add(i) = meta.len() as f64;
-                        *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
-                            if meta.is_dir() { TRUE } else { FALSE };
-                        // Mode: use 0 on non-unix, or get from metadata
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::MetadataExt;
-                            *crate::sexp::accessors::INTEGER(mode_col).add(i) =
-                                (meta.mode() & 0o777) as c_int;
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0;
-                        }
-                        let mtime = meta.modified().ok();
-                        let ctime = meta.created().ok();
-                        let atime = meta.accessed().ok();
-                        *crate::sexp::accessors::REAL(mtime_col).add(i) = mtime
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as f64)
-                            .unwrap_or(crate::sexp::ffi::NA_REAL);
-                        *crate::sexp::accessors::REAL(ctime_col).add(i) = ctime
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as f64)
-                            .unwrap_or(crate::sexp::ffi::NA_REAL);
-                        *crate::sexp::accessors::REAL(atime_col).add(i) = atime
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as f64)
-                            .unwrap_or(crate::sexp::ffi::NA_REAL);
-                        *crate::sexp::accessors::LOGICAL(exe_col).add(i) = FALSE;
-                    }
-                    Err(_) => {
-                        *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
-                        *crate::sexp::accessors::LOGICAL(isdir_col).add(i) =
-                            crate::sexp::ffi::NA_INTEGER;
+                        if meta.is_dir() { TRUE } else { FALSE };
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::MetadataExt;
                         *crate::sexp::accessors::INTEGER(mode_col).add(i) =
-                            crate::sexp::ffi::NA_INTEGER;
-                        *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                        *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                        *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
-                        *crate::sexp::accessors::LOGICAL(exe_col).add(i) =
-                            crate::sexp::ffi::NA_INTEGER;
+                            (meta.mode() & 0o777) as c_int;
+                        // GNU sums st_[acm]tim seconds and nanoseconds.
+                        *crate::sexp::accessors::REAL(mtime_col).add(i) =
+                            meta.mtime() as f64 + meta.mtime_nsec() as f64 / 1e9;
+                        *crate::sexp::accessors::REAL(ctime_col).add(i) =
+                            meta.ctime() as f64 + meta.ctime_nsec() as f64 / 1e9;
+                        *crate::sexp::accessors::REAL(atime_col).add(i) =
+                            meta.atime() as f64 + meta.atime_nsec() as f64 / 1e9;
+                        let uid = meta.uid() as c_int;
+                        let gid = meta.gid() as c_int;
+                        *crate::sexp::accessors::INTEGER(uid_col).add(i) = uid;
+                        *crate::sexp::accessors::INTEGER(gid_col).add(i) = gid;
+                        let pw = libc::getpwuid(uid as libc::uid_t);
+                        SET_STRING_ELT(
+                            uname_col,
+                            i as crate::sexp::ffi::R_xlen_t,
+                            if pw.is_null() {
+                                R_NaString()
+                            } else {
+                                Rf_mkChar((*pw).pw_name)
+                            },
+                        );
+                        let gr = libc::getgrgid(gid as libc::gid_t);
+                        SET_STRING_ELT(
+                            grname_col,
+                            i as crate::sexp::ffi::R_xlen_t,
+                            if gr.is_null() {
+                                R_NaString()
+                            } else {
+                                Rf_mkChar((*gr).gr_name)
+                            },
+                        );
                     }
+                    #[cfg(not(unix))]
+                    {
+                        *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0;
+                        let dur = |t: Option<std::time::SystemTime>| {
+                            t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs_f64())
+                                .unwrap_or(crate::sexp::ffi::NA_REAL)
+                        };
+                        *crate::sexp::accessors::REAL(mtime_col).add(i) = dur(meta.modified().ok());
+                        *crate::sexp::accessors::REAL(ctime_col).add(i) = dur(meta.created().ok());
+                        *crate::sexp::accessors::REAL(atime_col).add(i) = dur(meta.accessed().ok());
+                    }
+                }
+                Err(_) => {
+                    *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                    *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
+                    extras_na!(i);
                 }
             }
         }
@@ -985,10 +1032,54 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         SET_VECTOR_ELT(ans, 3, mtime_col);
         SET_VECTOR_ELT(ans, 4, ctime_col);
         SET_VECTOR_ELT(ans, 5, atime_col);
-        SET_VECTOR_ELT(ans, 6, exe_col);
+        #[cfg(unix)]
+        if extras {
+            SET_VECTOR_ELT(ans, 6, uid_col);
+            SET_VECTOR_ELT(ans, 7, gid_col);
+            SET_VECTOR_ELT(ans, 8, uname_col);
+            SET_VECTOR_ELT(ans, 9, grname_col);
+        }
 
-        // Set row names (file paths)
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        // GNU's R wrapper wraps the three time columns with .POSIXct():
+        // class c("POSIXct", "POSIXt"), no tzone attribute.
+        for col in [mtime_col, ctime_col, atime_col] {
+            let posix_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 2);
+            guards.push(protect(posix_class));
+            SET_STRING_ELT(posix_class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+            SET_STRING_ELT(posix_class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            crate::eval::attrib_core::setAttrib(
+                col,
+                crate::eval::attrib_core::R_ClassSymbol(),
+                posix_class,
+            );
+        }
+
+        let name_lits: &[&std::ffi::CStr] = if extras {
+            &[
+                c"size",
+                c"isdir",
+                c"mode",
+                c"mtime",
+                c"ctime",
+                c"atime",
+                c"uid",
+                c"gid",
+                c"uname",
+                c"grname",
+            ]
+        } else {
+            &[c"size", c"isdir", c"mode", c"mtime", c"ctime", c"atime"]
+        };
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), ncols as crate::sexp::ffi::R_xlen_t);
+        guards.push(protect(names));
+        for (j, lit) in name_lits.iter().enumerate() {
+            SET_STRING_ELT(names, j as crate::sexp::ffi::R_xlen_t, Rf_mkChar(lit.as_ptr()));
+        }
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
+
+        // attr(res, "row.names") <- fn : character row names, no automatic
+        // integer compression.
+        let rn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n_xlen);
         guards.push(protect(rn));
         for i in 0..n as usize {
             let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
@@ -1002,21 +1093,6 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 SET_STRING_ELT(rn, i as crate::sexp::ffi::R_xlen_t, elt);
             }
         }
-
-        // Set column names
-        let cn = Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            ncols as crate::sexp::ffi::R_xlen_t,
-        );
-        guards.push(protect(cn));
-        SET_STRING_ELT(cn, 0, Rf_mkChar(b"size\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(b"isdir\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(b"mode\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(b"mtime\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 4, Rf_mkChar(b"ctime\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 5, Rf_mkChar(b"atime\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 6, Rf_mkChar(b"exe\0".as_ptr() as *const _));
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_RowNamesSymbol(), rn);
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);

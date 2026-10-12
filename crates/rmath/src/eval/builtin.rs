@@ -181,26 +181,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::graphics_highlevel::do_hist_default,
         restore_visibility_always: false,
     },
-    UnevaluatedBuiltin {
-        name: "hist.Date",
-        handler: crate::mainutils::graphics_highlevel::do_hist_Date,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
-        name: "hist.POSIXt",
-        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
-        name: "hist.POSIXlt",
-        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
-        restore_visibility_always: false,
-    },
-    UnevaluatedBuiltin {
-        name: "hist.POSIXct",
-        handler: crate::mainutils::graphics_highlevel::do_hist_POSIXt,
-        restore_visibility_always: false,
-    },
+    // hist.Date / hist.POSIXt / hist.POSIXlt / hist.POSIXct are intentionally
+    // NOT builtins: the authenticated graphics namespace image already owns
+    // the GNU closures, and S3 dispatch must resolve them there. A base-env
+    // builtin copy shadows that environment and breaks calls the GNU bodies
+    // make into their own namespace (axis.POSIXct, axis.Date, ...).
     UnevaluatedBuiltin {
         name: "barplot",
         handler: crate::mainutils::graphics_highlevel::do_barplot,
@@ -3434,6 +3419,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "as.POSIXlt",
         handler: crate::mainutils::datetime::do_as_POSIXlt,
+    },
+    EvaluatedBuiltin {
+        name: "Date2POSIXlt",
+        handler: crate::mainutils::datetime::do_D2POSIXlt,
+    },
+    EvaluatedBuiltin {
+        name: "POSIXlt2Date",
+        handler: crate::mainutils::datetime::do_POSIXlt2D,
+    },
+    EvaluatedBuiltin {
+        name: "balancePOSIXlt",
+        handler: crate::mainutils::datetime::do_balancePOSIXlt,
     },
     EvaluatedBuiltin {
         name: "as.Date.POSIXct",

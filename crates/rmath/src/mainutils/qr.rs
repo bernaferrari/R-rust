@@ -133,6 +133,13 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 R_ClassSymbol(),
                 Rf_mkString(b"qr\0".as_ptr() as *const c_char),
             );
+            // GNU qr.default returns structure(..., useLAPACK = TRUE, class = "qr")
+            // for complex input.
+            setAttrib(
+                decomposed,
+                Rf_install(b"useLAPACK\0".as_ptr() as *const c_char),
+                Rf_ScalarLogical(1),
+            );
             return decomposed;
         }
         let lapack = lapack_arg.map_or(false, |value| {
