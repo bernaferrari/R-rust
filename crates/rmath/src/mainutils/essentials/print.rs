@@ -2794,7 +2794,7 @@ pub unsafe fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         {
             return do_print_default(_call, _op, args, _rho);
         }
-        emit_print_text("eigen() decomposition");
+        emit_print_text("eigen() decomposition\n");
         let unclassed = crate::mainutils::duplicate::Rf_duplicate(x);
         let _u_guard = protect(unclassed);
         crate::sexp::attrib_core::setAttrib(
@@ -3460,32 +3460,26 @@ pub unsafe fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let t = TYPEOF(x);
         if t == SEXPTYPE::LANGSXP {
             let op = CAR(x);
-            if !op.is_null() {
-                let pname = crate::sexp::accessors::PRINTNAME(op);
-                if !pname.is_null() {
-                    let s = crate::sexp::accessors::CHAR(pname);
-                    if !s.is_null() {
-                        let op_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("?");
-                        if op_str == "~" {
-                            // Formula: print left ~ right
-                            let lhs = CAR(CDR(x));
-                            let rhs = CDR(CDR(x));
-                            let lhs_str = if lhs.is_null() {
-                                String::new()
-                            } else {
-                                elt_to_string(lhs, 0)
-                            };
-                            let rhs_str = if rhs.is_null() {
-                                String::new()
-                            } else {
-                                elt_to_string(CAR(rhs), 0)
-                            };
-                            println!("{} ~ {}", lhs_str, rhs_str);
-                            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                            return x;
-                        }
+            if !op.is_null()
+                && TYPEOF(op) == SEXPTYPE::SYMSXP
+                && std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(op),
+                ))
+                .to_bytes()
+                    == b"~"
+            {
+                // GNU print.formula: print.default(unclass(x)) — the
+                // language object is deparsed at the default width cutoff
+                // (60), so long formulas wrap across lines.
+                let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
+                let _d = protect(deparsed);
+                if !deparsed.is_null() && TYPEOF(deparsed) == SEXPTYPE::STRSXP {
+                    for i in 0..XLENGTH(deparsed) {
+                        emit_print_text(&format!("{}\n", elt_to_string(deparsed, i)));
                     }
                 }
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                return x;
             }
         }
         do_print(_call, _op, args, _rho)

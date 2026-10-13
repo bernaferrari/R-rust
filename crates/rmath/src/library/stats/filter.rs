@@ -7096,7 +7096,36 @@ fn formula_response_name(form: SEXP) -> String {
         if rhs.is_null() || rhs == R_NilValue() {
             return "y".to_string();
         }
-        let name = symbol_print_name(CAR(rhs));
+        let lhs = CAR(rhs);
+        if lhs.is_null() || lhs == R_NilValue() {
+            return "y".to_string();
+        }
+        if TYPEOF(lhs) == SEXPTYPE::SYMSXP {
+            let name = symbol_print_name(lhs);
+            return if name.is_empty() {
+                "y".to_string()
+            } else {
+                name
+            };
+        }
+        // GNU terms.c names non-symbol responses (e.g. a cbind(...) LHS)
+        // by deparsing the expression.
+        let deparsed = crate::mainutils::deparse::deparse1WithCutoff(
+            lhs,
+            false,
+            500,
+            true,
+            crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
+            0,
+        );
+        if deparsed.is_null()
+            || deparsed == R_NilValue()
+            || TYPEOF(deparsed) != SEXPTYPE::STRSXP
+            || XLENGTH(deparsed) == 0
+        {
+            return "y".to_string();
+        }
+        let name = crate::mainutils::essentials::elt_to_string(deparsed, 0);
         if name.is_empty() {
             "y".to_string()
         } else {
@@ -8321,6 +8350,141 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// GNU stats/R/contrast.R + main/model.c: resolve a factor's contrast
+/// matrix. The "contrasts" attribute may be a matrix (used as-is) or a
+/// contrast-function name (resolved and called with the levels); when
+/// unset, the default from `getOption("contrasts")` applies (ordered
+/// factors take the second entry). Returns a protected matrix.
+unsafe fn resolve_contrast_matrix(colx: SEXP) -> Option<SEXP> {
+    unsafe {
+        let assigned = crate::sexp::attrib_core::getAttrib(
+            colx,
+            crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+        );
+        let is_matrix = !assigned.is_null()
+            && assigned != R_NilValue()
+            && (TYPEOF(assigned) == SEXPTYPE::REALSXP || TYPEOF(assigned) == SEXPTYPE::INTSXP)
+            && {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    assigned,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                !dim.is_null()
+                    && dim != R_NilValue()
+                    && TYPEOF(dim) == SEXPTYPE::INTSXP
+                    && XLENGTH(dim) == 2
+            };
+        if is_matrix {
+            return Some(assigned);
+        }
+        let name = if !assigned.is_null()
+            && assigned != R_NilValue()
+            && TYPEOF(assigned) == SEXPTYPE::STRSXP
+            && XLENGTH(assigned) > 0
+        {
+            crate::mainutils::essentials::elt_to_string(assigned, 0)
+        } else {
+            let contrasts_opt = crate::mainutils::options::GetOption1(
+                crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
+            );
+            if contrasts_opt.is_null()
+                || contrasts_opt == R_NilValue()
+                || TYPEOF(contrasts_opt) != SEXPTYPE::STRSXP
+            {
+                return None;
+            }
+            let ordered = crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0;
+            let idx = if ordered { 1 } else { 0 };
+            if XLENGTH(contrasts_opt) <= idx {
+                return None;
+            }
+            crate::mainutils::essentials::elt_to_string(contrasts_opt, idx)
+        };
+        if name.is_empty() {
+            return None;
+        }
+        let levels =
+            crate::sexp::attrib_core::getAttrib(colx, crate::sexp::attrib_core::R_LevelsSymbol());
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let nlev = XLENGTH(levels) as i32;
+        if nlev < 2 {
+            return None;
+        }
+        let n_s = Rf_ScalarInteger(nlev);
+        let _ns = protect(n_s);
+        let targs = Rf_cons(n_s, R_NilValue());
+        let _ta = protect(targs);
+        // Dispatch natively to the built-in contrast generators (no R
+        // closure evaluation: this runs inside model-matrix construction
+        // where arbitrary evaluation contexts are unavailable).
+        let mat = match name.as_str() {
+            "contr.treatment" => Some(do_contr_treatment(
+                R_NilValue(),
+                R_NilValue(),
+                targs,
+                R_NilValue(),
+            )),
+            "contr.helmert" => Some(do_contr_helmert(
+                R_NilValue(),
+                R_NilValue(),
+                targs,
+                R_NilValue(),
+            )),
+            "contr.sum" => Some(do_contr_sum(
+                R_NilValue(),
+                R_NilValue(),
+                targs,
+                R_NilValue(),
+            )),
+            "contr.poly" => Some(do_contr_poly(
+                R_NilValue(),
+                R_NilValue(),
+                targs,
+                R_NilValue(),
+            )),
+            "contr.SAS" => Some(do_contr_sas(
+                R_NilValue(),
+                R_NilValue(),
+                targs,
+                R_NilValue(),
+            )),
+            _ => None,
+        };
+        let result = mat?;
+        let _guard = protect(result);
+        // GNU contrast functions are called with the level names, so their
+        // dimnames carry them; mirror that here for the native generators,
+        // which only see the level count.
+        let dn = crate::sexp::attrib_core::getAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) == 2
+        {
+            SET_VECTOR_ELT(dn, 0, levels);
+            if name == "contr.treatment" {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                    let nc = *INTEGER(dim).add(1) as i64;
+                    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, nc);
+                    let _cn = protect(cn);
+                    for c in 0..nc {
+                        SET_STRING_ELT(cn, c, STRING_ELT(levels, c + 1));
+                    }
+                    SET_VECTOR_ELT(dn, 1, cn);
+                }
+            }
+        }
+        // The caller must protect the result before further allocation.
+        Some(result)
+    }
+}
+
 /// Contrast columns for a factor. An assigned `contrasts` matrix is used
 /// as-is; otherwise treatment contrasts drop the first level.
 fn factor_contrast_columns(colx: SEXP, full: bool) -> Vec<Vec<f64>> {
@@ -8351,6 +8515,40 @@ fn factor_contrast_columns(colx: SEXP, full: bool) -> Vec<Vec<f64>> {
                         .collect()
                 })
                 .collect();
+        }
+        // An explicit (non-default) "contrasts" attribute — a matrix or a
+        // contrast-function name — is resolved and used as-is.
+        if !assigned.is_null()
+            && assigned != R_NilValue()
+            && let Some(assigned) = resolve_contrast_matrix(colx)
+        {
+            let _guard = protect(assigned);
+            if assigned != R_NilValue() {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    assigned,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                    let nr = *INTEGER(dim) as usize;
+                    let nc = *INTEGER(dim).add(1) as usize;
+                    let mut cols = Vec::with_capacity(nc);
+                    for c in 0..nc {
+                        let mut column = vec![0.0; n];
+                        for (i, &code) in codes.iter().enumerate() {
+                            if code >= 1 && (code as usize) <= nr {
+                                let v = if TYPEOF(assigned) == SEXPTYPE::REALSXP {
+                                    *REAL(assigned).add((code as usize - 1) + c * nr)
+                                } else {
+                                    *INTEGER(assigned).add((code as usize - 1) + c * nr) as f64
+                                };
+                                column[i] = v;
+                            }
+                        }
+                        cols.push(column);
+                    }
+                    return cols;
+                }
+            }
         }
         if !assigned.is_null()
             && assigned != R_NilValue()
@@ -8517,6 +8715,46 @@ fn contrast_suffixes(colx: SEXP, prefix: &str, full: bool) -> Vec<String> {
             colx,
             crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
         );
+        // An explicit (non-default) "contrasts" attribute resolves through
+        // the contrast function when given by name; names come from the
+        // resulting matrix dimnames.
+        if !full
+            && !assigned.is_null()
+            && assigned != R_NilValue()
+            && let Some(assigned) = resolve_contrast_matrix(colx)
+        {
+            let _guard = protect(assigned);
+            if assigned != R_NilValue() {
+                let dim = crate::sexp::attrib_core::getAttrib(
+                    assigned,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                );
+                if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+                    let nc = *INTEGER(dim).add(1) as i64;
+                    let dn = crate::sexp::attrib_core::getAttrib(
+                        assigned,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    );
+                    let colnames =
+                        if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                            VECTOR_ELT(dn, 1)
+                        } else {
+                            R_NilValue()
+                        };
+                    let mut out = Vec::new();
+                    for c in 0..nc {
+                        let suffix =
+                            if TYPEOF(colnames) == SEXPTYPE::STRSXP && c < XLENGTH(colnames) {
+                                crate::mainutils::essentials::elt_to_string(colnames, c)
+                            } else {
+                                (c + 1).to_string()
+                            };
+                        out.push(format!("{prefix}{suffix}"));
+                    }
+                    return out;
+                }
+            }
+        }
         if !assigned.is_null()
             && assigned != R_NilValue()
             && (TYPEOF(assigned) == SEXPTYPE::REALSXP || TYPEOF(assigned) == SEXPTYPE::INTSXP)
@@ -9116,8 +9354,19 @@ pub unsafe fn do_contrasts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             x,
             crate::sexp::symbol::Rf_install(c"contrasts".as_ptr()),
         );
-        if !stored.is_null() && stored != R_NilValue() {
+        let stored_is_matrix = !stored.is_null()
+            && stored != R_NilValue()
+            && (TYPEOF(stored) == SEXPTYPE::REALSXP || TYPEOF(stored) == SEXPTYPE::INTSXP);
+        if stored_is_matrix {
             return stored;
+        }
+        // GNU contrast.R: a character "contrasts" attribute (or none) is
+        // resolved through the contrast function named there (or the
+        // getOption default), evaluated with the factor's levels.
+        if let Some(resolved) = resolve_contrast_matrix(x) {
+            if resolved != R_NilValue() {
+                return resolved;
+            }
         }
         let levels =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());

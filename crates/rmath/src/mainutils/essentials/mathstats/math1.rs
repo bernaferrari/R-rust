@@ -1,0 +1,714 @@
+//! Math1 builtins (abs..bessel), charToRaw/rawToChar — extracted verbatim from essentials/mathstats.rs.
+
+use super::*;
+
+/// Checked original-owner native boundary for GNU `charToRaw(x)`.
+pub unsafe fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::owner::OwnerToken;
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let arguments = owner
+        .sexp(args)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let call = owner
+        .sexp(call)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("charToRaw requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            char_to_raw::evaluate(access, arguments, call)
+        })
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
+            crate::sexp::context::r_error(message)
+        }
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+#[path = "char_to_raw.rs"]
+mod char_to_raw;
+
+/// GNU `rawToChar(x)` copies raw bytes, stripping trailing nuls.
+pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
+            std::panic::panic_any(RError {
+                message: "argument 'x' must be a raw vector".to_string(),
+            });
+        }
+        let n = XLENGTH(x);
+        let data = RAW(x);
+        let mut last = -1i32;
+        for i in 0..n {
+            if *data.add(i as usize) != 0 {
+                last = i as i32;
+            }
+        }
+        let nc = last + 1;
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _o = protect(out);
+        let ch = crate::sexp::constructors::Rf_mkCharLen(data as *const std::os::raw::c_char, nc);
+        SET_STRING_ELT(out, 0, ch);
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_abs — absolute value
+// ---------------------------------------------------------------------------
+
+/// R's `abs(x)` — absolute value of numeric vector.
+///
+/// Preserves integer/logical inputs as integer vectors and real inputs as
+/// real vectors. Non-numeric arguments (and factors, via Math.factor)
+/// error like stock Math1.
+unsafe fn math_factor_error(call: SEXP, name: &str) -> ! {
+    unsafe {
+        let method_call = crate::sexp::constructors::Rf_lang2(
+            Rf_install(c"Math.factor".as_ptr()),
+            CAR(CDR(call)),
+        );
+        let _guard = protect(method_call);
+        crate::mainutils::errors::errorcall_str(
+            method_call,
+            &format!("'{name}' not meaningful for factors"),
+        );
+    }
+}
+
+fn math_nonnum_error() -> ! {
+    std::panic::panic_any(RError {
+        message: "non-numeric argument to mathematical function".to_string(),
+    })
+}
+
+/// GNU math1: SHALLOW_DUPLICATE_ATTRIB copies dim/dimnames/names.
+unsafe fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+            let dn = crate::sexp::attrib_core::getAttrib(
+                src,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dn.is_null() && dn != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dn,
+                );
+            }
+        } else {
+            let names =
+                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() {
+                crate::sexp::attrib_core::setAttrib(
+                    dst,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+    }
+}
+
+pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
+        let x_arg = CAR(args);
+        if x_arg.is_null() {
+            return R_NilValue();
+        }
+        if x_arg == R_NilValue() {
+            // stock Math1: NULL is not numeric and errors
+            math_nonnum_error();
+        }
+        if sexp_has_class(x_arg, "factor") {
+            math_factor_error(call, "abs");
+        }
+        let t = TYPEOF(x_arg);
+        if t == SEXPTYPE::CPLXSXP {
+            let result = crate::eval::complex_arith::complex_abs_vec(x_arg);
+            if !result.is_null() && result != R_NilValue() {
+                crate::mainutils::array::copyMostAttrib(x_arg, result);
+                math1_copy_dim_and_names(x_arg, result);
+            }
+            return result;
+        }
+        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
+            math_nonnum_error();
+        }
+        let n = XLENGTH(x_arg);
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _result_guard = protect(result);
+            let dst = INTEGER(result);
+            for i in 0..n {
+                let value = *INTEGER(x_arg).add(i as usize);
+                *dst.add(i as usize) = if value == NA_INTEGER || value == c_int::MIN {
+                    NA_INTEGER
+                } else {
+                    value.abs()
+                };
+            }
+            crate::mainutils::array::copyMostAttrib(x_arg, result);
+            math1_copy_dim_and_names(x_arg, result);
+            return result;
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            let v = *REAL(x_arg).add(i as usize);
+            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                v
+            } else {
+                v.abs()
+            };
+        }
+        crate::mainutils::array::copyMostAttrib(x_arg, result);
+        math1_copy_dim_and_names(x_arg, result);
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_sign — sign of values
+// ---------------------------------------------------------------------------
+
+/// R's `sign(x)` — sign of numeric vector (-1, 0, or 1).
+///
+/// Returns REALSXP. Preserves NA and NaN.
+pub unsafe fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
+        let x_arg = CAR(args);
+        if x_arg.is_null() {
+            return R_NilValue();
+        }
+        if x_arg == R_NilValue() {
+            // stock Math1: NULL is not numeric and errors
+            math_nonnum_error();
+        }
+        if sexp_has_class(x_arg, "factor") {
+            math_factor_error(call, "sign");
+        }
+        let t = TYPEOF(x_arg);
+        if t == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
+        }
+        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
+            math_nonnum_error();
+        }
+        let n = XLENGTH(x_arg);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            let v = if t == SEXPTYPE::REALSXP {
+                *REAL(x_arg).add(i as usize)
+            } else {
+                let iv = *INTEGER(x_arg).add(i as usize);
+                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+            };
+            *dst.add(i as usize) = if v.is_nan() {
+                v // preserve NaN/NA
+            } else if v == 0.0 {
+                0.0
+            } else if v > 0.0 {
+                1.0
+            } else {
+                -1.0
+            };
+        }
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Complete special functions for libRmath coverage
+// ---------------------------------------------------------------------------
+
+/// Helper to apply a scalar function to a numeric vector, preserving NA/NaN.
+/// Returns REALSXP.
+unsafe fn apply_unary_scalar_fn(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    scalar_fn: impl Fn(f64) -> f64,
+) -> SEXP {
+    unsafe {
+        let mut dispatched = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            c"Math".as_ptr(),
+            call,
+            op,
+            args,
+            rho,
+            &mut dispatched,
+        ) != 0
+        {
+            return dispatched;
+        }
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        let mut naflag = false;
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                let out = scalar_fn(val);
+                *dst.add(i as usize) = out;
+                if out.is_nan() && !val.is_nan() {
+                    naflag = true;
+                }
+            }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        }
+        result
+    }
+}
+
+/// Helper to apply a binary scalar function to two numeric vectors with recycling.
+/// Returns REALSXP.
+unsafe fn apply_binary_scalar_fn(
+    call: SEXP,
+    x: SEXP,
+    y: SEXP,
+    scalar_fn: impl Fn(f64, f64) -> f64,
+) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+            return R_NilValue();
+        }
+        let x_len = XLENGTH(x);
+        let y_len = XLENGTH(y);
+        let n = if x_len == 0 || y_len == 0 {
+            0
+        } else {
+            x_len.max(y_len)
+        };
+        let tx = TYPEOF(x);
+        let ty = TYPEOF(y);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        if x_len == 0 || y_len == 0 {
+            if x_len == 0 {
+                copy_all_attribs(result, x);
+            }
+            return result;
+        }
+        let dst = REAL(result);
+        let mut naflag = false;
+        for i in 0..n {
+            let xi = if x_len > 0 { i % x_len } else { 0 };
+            let yi = if y_len > 0 { i % y_len } else { 0 };
+            let val_x = if tx == SEXPTYPE::REALSXP {
+                *REAL(x).add(xi as usize)
+            } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(xi as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            let val_y = if ty == SEXPTYPE::REALSXP {
+                *REAL(y).add(yi as usize)
+            } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(y).add(yi as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                let out = scalar_fn(val_x, val_y);
+                *dst.add(i as usize) = out;
+                if out.is_nan() && !val_x.is_nan() && !val_y.is_nan() {
+                    naflag = true;
+                }
+            }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        }
+        if n == x_len {
+            copy_all_attribs(result, x);
+        } else if n == y_len {
+            copy_all_attribs(result, y);
+        }
+        result
+    }
+}
+
+pub unsafe fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) }
+}
+
+/// R's `gamma(x)` — gamma function.
+pub unsafe fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) }
+}
+
+/// R's `digamma(x)` — digamma (psi) function.
+pub unsafe fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) }
+}
+
+/// R's `trigamma(x)` — trigamma function.
+pub unsafe fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) }
+}
+
+/// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
+pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let deriv_arg = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || deriv_arg.is_null() || deriv_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        apply_binary_scalar_fn(call, x, deriv_arg, crate::special::polygamma::psigamma)
+    }
+}
+
+/// R's `beta(a, b)` — beta function.
+pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let a = CAR(args);
+        let b = CAR(CDR(args));
+        if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
+        }
+        apply_binary_scalar_fn(call, a, b, |x, y| crate::special::lbeta::lbeta(x, y).exp())
+    }
+}
+
+/// R's `lbeta(a, b)` — log beta function.
+pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let a = CAR(args);
+        let b = CAR(CDR(args));
+        if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
+        }
+        apply_binary_scalar_fn(call, a, b, crate::special::lbeta::lbeta)
+    }
+}
+
+/// R's `choose(n, k)` — binomial coefficient.
+pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_arg = CAR(args);
+        let k_arg = CAR(CDR(args));
+        if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::choose)
+    }
+}
+
+/// R's `lchoose(n, k)` — log of absolute value of binomial coefficient.
+pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_arg = CAR(args);
+        let k_arg = CAR(CDR(args));
+        if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::lchoose)
+    }
+}
+
+/// R's `factorial(n)` — factorial n!
+pub unsafe fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        apply_unary_scalar_fn(call, op, args, rho, |v| {
+            crate::special::gamma::gammafn(v + 1.0)
+        })
+    }
+}
+
+/// R's `lfactorial(n)` — log factorial.
+pub unsafe fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        apply_unary_scalar_fn(call, op, args, rho, |v| {
+            crate::special::gamma::lgammafn(v + 1.0)
+        })
+    }
+}
+
+/// R's `besselI(x, nu)` — modified Bessel function of the first kind.
+pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let nu_arg = CAR(CDR(args));
+        let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
+        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        let nu = real_or_default(nu_arg, 0.0);
+        let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
+            let e = real_or_default(expo_arg, 0.0);
+            e != 0.0
+        } else {
+            false
+        };
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                *dst.add(i as usize) =
+                    crate::special::bessel_i::bessel_i(val, nu, if expo { 2.0 } else { 1.0 });
+            }
+        }
+        result
+    }
+}
+
+/// R's `besselJ(x, nu)` — Bessel function of the first kind.
+pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        // Mathlib warnings raised inside bessel_j attribute to this call
+        // (upstream resolves it by walking out of the builtin context).
+        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
+        let x = CAR(args);
+        let nu_arg = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        let nu = real_or_default(nu_arg, 0.0);
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let mut naflag = false;
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.to_bits() == na_bit {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                let b = crate::special::bessel_j::bessel_j(val, nu);
+                *dst.add(i as usize) = b;
+                if b.is_nan() && !val.is_nan() {
+                    naflag = true;
+                }
+            }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        }
+        result
+    }
+}
+
+/// R's `besselK(x, nu)` — modified Bessel function of the second kind.
+pub unsafe fn do_besselK(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let nu_arg = CAR(CDR(args));
+        let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
+        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        let nu = real_or_default(nu_arg, 0.0);
+        let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
+            let e = real_or_default(expo_arg, 0.0);
+            e != 0.0
+        } else {
+            false
+        };
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                *dst.add(i as usize) =
+                    crate::special::bessel_k::bessel_k(val, nu, if expo { 2.0 } else { 1.0 });
+            }
+        }
+        result
+    }
+}
+
+/// R's `besselY(x, nu)` — Bessel function of the second kind.
+pub unsafe fn do_besselY(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
+        let x = CAR(args);
+        let nu_arg = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        let nx = XLENGTH(x);
+        let nnu = XLENGTH(nu_arg);
+        let n = nx.max(nnu);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
+        for i in 0..n {
+            let val = bessel_real_at(x, if nx == 0 { 0 } else { i % nx });
+            let nu = bessel_real_at(nu_arg, if nnu == 0 { 0 } else { i % nnu });
+            if val.to_bits() == na_bit || nu.to_bits() == na_bit {
+                *dst.add(i as usize) = NA_REAL;
+            } else {
+                *dst.add(i as usize) = crate::special::bessel_y::bessel_y(val, nu);
+            }
+        }
+        result
+    }
+}
+
+fn bessel_real_at(v: SEXP, i: i64) -> f64 {
+    unsafe {
+        if v.is_null() || v == R_NilValue() || XLENGTH(v) == 0 {
+            return NA_REAL;
+        }
+        let t = TYPEOF(v);
+        if t == SEXPTYPE::REALSXP {
+            *REAL(v).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let x = *INTEGER(v).add(i as usize);
+            if x == NA_INTEGER { NA_REAL } else { x as f64 }
+        } else {
+            NA_REAL
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Final additions: commonly used missing functions
+// ---------------------------------------------------------------------------

@@ -1882,8 +1882,56 @@ fn cut_interval_code(value: f64, breaks: &[f64], right: bool, include_lowest: bo
 }
 
 fn cut_interval_labels(breaks: &[f64], right: bool, include_lowest: bool) -> Vec<String> {
-    let mut labels = Vec::with_capacity(breaks.len().saturating_sub(1));
-    for interval in 0..breaks.len().saturating_sub(1) {
+    // GNU base/cut.R: labels are paste0(bracket, ch.br[-nb], ",", ch.br[-1L],
+    // bracket) where ch.br <- formatC(0+breaks, digits = dig, width = 1L).
+    // formatC replaces non-finite values via as.character() and then
+    // right-justifies that subset to its common width (format.default), so
+    // e.g. c(-Inf, 0, Inf) formats to "-Inf", "0", " Inf".
+    let n_breaks = breaks.len();
+    let ch_br: Vec<String> = {
+        let raw: Vec<String> = breaks
+            .iter()
+            .map(|&v| {
+                if v.is_nan() {
+                    "NA".to_string()
+                } else if v.is_infinite() {
+                    if v > 0.0 { "Inf" } else { "-Inf" }.to_string()
+                } else {
+                    format_cut_number(v)
+                }
+            })
+            .collect();
+        let special_width = raw
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                let v = breaks[*i];
+                v.is_nan() || v.is_infinite()
+            })
+            .map(|(_, s)| s.chars().count())
+            .max()
+            .unwrap_or(0);
+        raw.into_iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let v = breaks[i];
+                if v.is_nan() || v.is_infinite() {
+                    let len = s.chars().count();
+                    if len < special_width {
+                        let mut padded = " ".repeat(special_width - len);
+                        padded.push_str(&s);
+                        padded
+                    } else {
+                        s
+                    }
+                } else {
+                    s
+                }
+            })
+            .collect()
+    };
+    let mut labels = Vec::with_capacity(n_breaks.saturating_sub(1));
+    for interval in 0..n_breaks.saturating_sub(1) {
         let left_bracket = if right && include_lowest && interval == 0 {
             "["
         } else if right {
@@ -1891,7 +1939,7 @@ fn cut_interval_labels(breaks: &[f64], right: bool, include_lowest: bool) -> Vec
         } else {
             "["
         };
-        let right_bracket = if !right && include_lowest && interval + 2 == breaks.len() {
+        let right_bracket = if !right && include_lowest && interval + 2 == n_breaks {
             "]"
         } else if right {
             "]"
@@ -1901,8 +1949,8 @@ fn cut_interval_labels(breaks: &[f64], right: bool, include_lowest: bool) -> Vec
         labels.push(format!(
             "{}{},{}{}",
             left_bracket,
-            format_cut_number(breaks[interval]),
-            format_cut_number(breaks[interval + 1]),
+            ch_br[interval],
+            ch_br[interval + 1],
             right_bracket
         ));
     }
