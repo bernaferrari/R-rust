@@ -1088,7 +1088,10 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let mut leaves: Vec<SEXP> = Vec::new();
-        let mut leaf_names: Vec<String> = Vec::new();
+        // GNU as.matrix.data.frame in a single-byte locale treats names as
+        // opaque bytes; keep them as raw bytes so native (non-UTF-8) column
+        // names survive the flatten/relabel round-trip.
+        let mut leaf_names: Vec<Vec<u8>> = Vec::new();
         let frame_names =
             crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
         let mut changed = false;
@@ -1101,14 +1104,14 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             {
                 let ch = STRING_ELT(frame_names, j);
                 if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                    String::new()
+                    Vec::new()
                 } else {
                     std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned()
+                        .to_bytes()
+                        .to_vec()
                 }
             } else {
-                String::new()
+                Vec::new()
             };
             let dim = crate::sexp::attrib_core::getAttrib(
                 column,
@@ -1159,10 +1162,10 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                         std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(STRING_ELT(
                             cnames, k,
                         )))
-                        .to_string_lossy()
-                        .into_owned()
+                        .to_bytes()
+                        .to_vec()
                     } else {
-                        format!("{}", k + 1)
+                        format!("{}", k + 1).into_bytes()
                     };
                     let labeled = TYPEOF(cnames) == SEXPTYPE::STRSXP;
                     leaf_names.push(if mc == 1 {
@@ -1174,7 +1177,7 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                     } else if outer.is_empty() {
                         inner
                     } else {
-                        format!("{outer}.{inner}")
+                        [outer.as_slice(), b".", inner.as_slice()].concat()
                     });
                 }
                 continue;
@@ -1193,17 +1196,17 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
                     {
                         let ch = STRING_ELT(inner_names, k);
                         std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
-                            .to_string_lossy()
-                            .into_owned()
+                            .to_bytes()
+                            .to_vec()
                     } else {
-                        String::new()
+                        Vec::new()
                     };
                     leaf_names.push(if inner.is_empty() {
                         outer.clone()
                     } else if outer.is_empty() {
                         inner
                     } else {
-                        format!("{outer}.{inner}")
+                        [outer.as_slice(), b".", inner.as_slice()].concat()
                     });
                 }
             } else {
@@ -1217,7 +1220,7 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             let nm = Rf_allocVector3(SEXPTYPE::STRSXP, leaves.len() as i64);
             for (i, (col, name)) in leaves.iter().zip(leaf_names.iter()).enumerate() {
                 SET_VECTOR_ELT(flat, i as i64, *col);
-                let cs = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+                let cs = std::ffi::CString::new(name.as_slice()).unwrap_or_default();
                 SET_STRING_ELT(
                     nm,
                     i as i64,

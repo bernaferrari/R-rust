@@ -10,6 +10,13 @@
 //! rather than shadowing working primitives with closures that would fail
 //! when called. Sources come from `docs/export-dependency-backlog.tsv`.
 //!
+//! Dependency consistency: an S3 generic is only published together with a
+//! reachable `name.default` (bound in base or staged); generics whose
+//! default method is blocked or failed to load are skipped at copy time and
+//! purged from staging afterwards (`purge_stale_generics`) so staged
+//! siblings fall through to the port's native builtins instead of failing
+//! dispatch.
+//!
 //! Loading is a fixpoint: each pass re-evaluates only the top-level
 //! expressions that failed in the previous pass, so files may appear in any
 //! order while cross-file load-time dependencies still converge.
@@ -1136,14 +1143,16 @@ const MAX_PASSES: usize = 8;
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
 pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
-    // Default off: the always-on configuration regresses 35 corpus cases
-    // (generics bound without their blocked default methods — chol finds
-    // no chol.default; encodeString/uniroot divergences). Opt back in with
-    // RPORT_UPSTREAM_BASE=1; the 35-case backlog is tracked for the next
-    // cycle.
+    // Default off: 17 corpus cases still regress with the loader on
+    // (seq.Date staging-visibility family, model.matrix *vtmp* family,
+    // scattered row/gettext/iconvlist/quade). Opt in with
+    // RPORT_UPSTREAM_BASE=1; the 35-case dependency-consistency filter
+    // landed (generics without default methods stay native) and the
+    // remaining 17 are the tracked backlog.
     if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
         return;
     }
+
     unsafe {
         let namespace = R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv"));
         if namespace.is_null() || namespace == R_UnboundValue() {
@@ -1170,7 +1179,7 @@ unsafe fn load_files(base_env: SEXP, staging: SEXP) {
         }
         let _swallow = crate::sexp::protect::protect(swallow);
         let try_catch = Rf_install_in_current("tryCatch");
-        let mut failed: Vec<Vec<bool>> = UPSTREAM_FILES.iter().map(|_| Vec::new()).collect();
+        let failed: Vec<Vec<bool>> = UPSTREAM_FILES.iter().map(|_| Vec::new()).collect();
         for pass in 0..MAX_PASSES {
             let mut bound_any = false;
             for (index, file) in UPSTREAM_FILES.iter().enumerate() {
@@ -1223,13 +1232,14 @@ unsafe fn load_files(base_env: SEXP, staging: SEXP) {
                         failed_now[position] = true;
                     }
                 }
-                failed[index] = failed_now;
                 bound_any |= copy_exports(base_env, staging, file.exports);
             }
             if !bound_any {
                 break;
             }
         }
+
+        purge_stale_generics(base_env, staging);
     }
 }
 
@@ -1256,6 +1266,14 @@ unsafe fn error_swallowing_handler(staging: SEXP) -> SEXP {
 }
 
 /// Copy `names` bound in `staging` but still unbound in `base_env`.
+///
+/// Dependency-consistency filter: an S3 generic is copied ONLY IF its
+/// primary default method (`name.default`) is either already bound in
+/// `base_env` or also available in `staging` (and thus being copied). A
+/// generic published without its default method makes every dispatch fail
+/// with "no applicable method" — worse than leaving the port's native
+/// builtin in place. When the default is blocked or failed to load, the
+/// generic joins the skip set; the load fixpoint retries it on later
 unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
     let mut copied = false;
     for name in names {
@@ -1268,6 +1286,9 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
             if value.is_null() || value == R_UnboundValue() {
                 continue;
             }
+            if calls_use_method(value) && !default_method_reachable(base_env, staging, name) {
+                continue;
+            }
             defineVar(symbol, value, base_env);
             // GNU defineVar publishes closures on the symbol value cell;
             // deparse and primitives.R introspection rely on that slot.
@@ -1276,6 +1297,95 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
         }
     }
     copied
+}
+
+/// Remove staged S3 generics whose default method never became reachable.
+///
+/// A generic that is not copied (its `name.default` is blocked or failed to
+/// load) may still linger in the staging frame: staged siblings such as
+/// `svd` calling `t` reach it through their shared closure environment and
+/// then fail dispatch ("no applicable method") instead of falling through
+/// to the port's native builtin in the base frame. Sweep every whitelisted
+/// export still staged, dropping generics whose default is neither bound
+/// in `base_env` nor staged; repeat until stable so chained generics
+/// (a default that is itself an orphaned generic) converge.
+unsafe fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
+    unsafe {
+        loop {
+            let mut removed = false;
+            for file in UPSTREAM_FILES {
+                for name in file.exports {
+                    let symbol = Rf_install_in_current(name);
+                    let value = R_findVarInFrame(staging, symbol);
+                    if value.is_null() || value == R_UnboundValue() {
+                        continue;
+                    }
+                    if calls_use_method(value) && !default_method_reachable(base_env, staging, name)
+                    {
+                        crate::sexp::envir::remove_binding_raw(staging, symbol);
+                        removed = true;
+                    }
+                }
+            }
+            if !removed {
+                break;
+            }
+        }
+    }
+}
+
+/// Whether `value` is a closure whose body dispatches via `UseMethod`,
+/// i.e. the staged definition is an S3 generic.
+unsafe fn calls_use_method(value: SEXP) -> bool {
+    unsafe {
+        if super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP {
+            return false;
+        }
+        body_calls(super::accessors::BODY(value))
+    }
+}
+
+/// Recursive scan of a closure body for a call to the `UseMethod` symbol.
+unsafe fn body_calls(expr: SEXP) -> bool {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return false;
+        }
+        let kind = super::accessors::TYPEOF(expr);
+        if kind == crate::sexp::ffi::SEXPTYPE::LANGSXP {
+            let head = super::accessors::CAR(expr);
+            if super::accessors::TYPEOF(head) == crate::sexp::ffi::SEXPTYPE::SYMSXP
+                && let Some(name) = symbol_name(head)
+                && name == "UseMethod"
+            {
+                return true;
+            }
+        }
+        if kind != crate::sexp::ffi::SEXPTYPE::LANGSXP
+            && kind != crate::sexp::ffi::SEXPTYPE::LISTSXP
+        {
+            return false;
+        }
+        let mut cell = if kind == crate::sexp::ffi::SEXPTYPE::LANGSXP {
+            super::accessors::CDR(expr)
+        } else {
+            expr
+        };
+        while !cell.is_null() && cell != R_NilValue() {
+            if body_calls(super::accessors::CAR(cell)) {
+                return true;
+            }
+            cell = super::accessors::CDR(cell);
+        }
+        false
+    }
+}
+
+/// Whether the generic's primary default method `name.default` is bound in
+/// `base_env` (native builtin or previously copied) or staged for copy.
+unsafe fn default_method_reachable(base_env: SEXP, staging: SEXP, name: &str) -> bool {
+    let default = format!("{name}.default");
+    (unsafe { defined_in(base_env, &default) }) || (unsafe { defined_in(staging, &default) })
 }
 
 /// Closures present in the oracle base image whose upstream sources are not

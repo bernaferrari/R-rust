@@ -3,12 +3,12 @@
 #![forbid(unsafe_code)]
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Length {
+pub(crate) enum Length {
     Fixed(f64),
     Null(f64),
 }
 
-pub(super) struct Axis {
+pub(crate) struct Axis {
     pub lengths: Vec<f64>,
     weights: Vec<f64>,
     remaining: f64,

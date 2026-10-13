@@ -743,6 +743,12 @@ unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP 
             sub_args.push((CAR(current), TAG(current)));
             current = CDR(current);
         }
+        // NOTE: GNU's grammar keeps `x[]` as `[`(x, R_MissingArg), so its
+        // replacement call carries one missing subscript (nargs() == 3 in
+        // `[<-.data.frame` for `df[] <- v`). rport's parser and replacement
+        // dispatch do not tolerate a missing-arg subscript yet; adding it
+        // breaks bootstrap (numeric_version). Pending that support, `df[] <-
+        // v` dispatches with a bare (x, value) list.
         for (arg, tag) in sub_args.into_iter().rev() {
             let cell = crate::sexp::constructors::Rf_cons(arg, tail);
             if !tag.is_null() {

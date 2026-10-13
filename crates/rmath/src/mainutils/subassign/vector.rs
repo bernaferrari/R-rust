@@ -60,9 +60,34 @@ pub(crate) unsafe fn getNames(x: SEXP) -> SEXP {
 pub(crate) unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
     unsafe {
         let len = XLENGTH(x);
-        if super::support::IS_GROWABLE(x) && newlen <= super::support::XTRUELENGTH(x) {
+        if !super::support::MAYBE_SHARED(x)
+            && super::support::IS_GROWABLE(x)
+            && newlen <= super::support::XTRUELENGTH(x)
+        {
             SET_STDVEC_LENGTH(x, newlen);
-            crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
+            // GNU EnlargeVector keeps the attribute list, enlarging names
+            // and dropping dim/dimnames. Dropping everything (the old
+            // behavior) silently lost names on in-place growth.
+            if !isNull(ATTRIB(x)) {
+                let names = getNames(x);
+                if !isNull(names) {
+                    let enlarged_v = EnlargeNames(names, len, newlen);
+                    let _enlarged_guard = protect(enlarged_v);
+                    if enlarged_v != names {
+                        setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), enlarged_v);
+                    }
+                }
+                if !isNull(getAttrib(x, crate::eval::attrib_core::R_DimSymbol())) {
+                    setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), R_NilValue());
+                }
+                if !isNull(getAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol())) {
+                    setAttrib(
+                        x,
+                        crate::eval::attrib_core::R_DimNamesSymbol(),
+                        R_NilValue(),
+                    );
+                }
+            }
             return x;
         }
         let newtruelen: R_xlen_t;

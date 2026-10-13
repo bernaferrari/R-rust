@@ -58,11 +58,16 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for (idx, entry) in entries.iter().enumerate() {
             match result_type {
                 t if t == SEXPTYPE::STRSXP => {
-                    let charsxp = if matches!(entry.value, UnlistValue::NaString) {
-                        crate::sexp::globals::R_NaString()
-                    } else {
-                        let cstr = CString::new(entry.value.as_string()).unwrap_or_default();
-                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                    let charsxp = match &entry.value {
+                        UnlistValue::NaString => crate::sexp::globals::R_NaString(),
+                        UnlistValue::String(bytes) => {
+                            let cstr = CString::new(bytes.as_slice()).unwrap_or_default();
+                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                        }
+                        other => {
+                            let cstr = CString::new(other.as_string()).unwrap_or_default();
+                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                        }
                     };
                     if !charsxp.is_null() {
                         crate::sexp::accessors::SET_STRING_ELT(result, idx as R_xlen_t, charsxp);
@@ -172,7 +177,9 @@ pub(super) enum UnlistValue {
     Integer(i32),
     Real(f64),
     Complex(Rcomplex),
-    String(String),
+    /// Raw charsxp bytes — kept undecoded so native (non-UTF-8) strings
+    /// survive the flatten round-trip, as in GNU's single-byte locales.
+    String(Vec<u8>),
     Raw(u8),
     NaString,
     Object(SEXP),
@@ -273,7 +280,7 @@ impl UnlistValue {
                 if value.i < 0.0 { "" } else { "+" },
                 value.i
             ),
-            Self::String(value) => value.clone(),
+            Self::String(value) => String::from_utf8_lossy(value).into_owned(),
             Self::NaString => "NA".to_string(),
             Self::Object(value) => elt_to_string(*value, 0),
             Self::Raw(value) => format!("{value:02x}"),
@@ -499,12 +506,10 @@ pub(super) unsafe fn collect_unlist_entries(
                     if string.is_null() || string == crate::sexp::globals::R_NaString() {
                         UnlistValue::NaString
                     } else {
-                        UnlistValue::String(
-                            CStr::from_ptr(CHAR(string)).to_string_lossy().into_owned(),
-                        )
+                        UnlistValue::String(CStr::from_ptr(CHAR(string)).to_bytes().to_vec())
                     }
                 }
-                _ => UnlistValue::String(elt_to_string(x, i)),
+                _ => UnlistValue::String(elt_to_string(x, i).into_bytes()),
             };
             out.push(UnlistEntry { value, name });
         }

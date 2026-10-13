@@ -382,11 +382,21 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// R's `nargs()` — number of arguments in the current call.
-pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let Some(context) = current_function_context() else {
-            base_error("'nargs' used outside a function");
-        };
-        Rf_ScalarInteger(pairlist_len((*context).promiseargs.as_raw()))
+        // GNU util.c do_nargs: the first CTXT_FUNCTION context whose cloenv
+        // is the calling environment supplies the promised-argument count;
+        // callers under other frames (e.g. inside a builtin's promise
+        // forcing) see their own closure, and no match yields NA.
+        let mut cptr = crate::sexp::context::R_GlobalContext();
+        while !cptr.is_null() {
+            if (*cptr).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
+                && (*cptr).cloenv.as_raw() == rho
+            {
+                return Rf_ScalarInteger(pairlist_len((*cptr).promiseargs.as_raw()));
+            }
+            cptr = (*cptr).nextcontext;
+        }
+        Rf_ScalarInteger(NA_INTEGER as c_int)
     }
 }

@@ -116,6 +116,25 @@ fn make_names_is_valid(name: &str) -> bool {
     !MAKE_NAMES_KEYWORDS.contains(&name)
 }
 
+/// `.Internal(make.names(names, allow_))` wrapper: the GNU internal
+/// contract (character.R) passes `allow_` as the second argument and no
+/// `unique` flag — the closure handles uniqueness itself via `make.unique`.
+/// The public `make.names` handler instead parses the closure-visible
+/// positional order `(names, unique, allow_)`. Tag the second evaluated
+/// argument so both shapes resolve identically.
+pub unsafe fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let second = CDR(args);
+        if !second.is_null() && second != R_NilValue() {
+            let cstring = std::ffi::CString::new("allow_").unwrap_or_default();
+            crate::sexp::accessors::SETTAG(
+                second,
+                crate::sexp::symbol::Rf_install(cstring.as_ptr()),
+            );
+        }
+        do_make_names(call, op, args, rho)
+    }
+}
 /// GNU `make.names(names, unique=FALSE, allow_=TRUE)`.
 pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

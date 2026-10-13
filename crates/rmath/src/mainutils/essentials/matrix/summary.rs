@@ -698,43 +698,43 @@ pub unsafe fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t
 
 /// R's `col(x)` — column indices for a matrix.
 pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
-            std::panic::panic_any(RError {
-                message: "a matrix-like object is required as argument to 'col'".to_string(),
-            });
-        }
-        let nrow = *INTEGER(dim_attr) as R_xlen_t;
-        let ncol = if LENGTH(dim_attr) >= 2 {
-            *INTEGER(dim_attr).add(1) as R_xlen_t
-        } else {
-            1
-        };
-        let total = nrow * ncol;
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, total);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = INTEGER(result);
-        for j in 0..ncol {
-            for i in 0..nrow {
-                let idx = (j * nrow + i) as usize;
-                *dst.add(idx) = (j + 1) as c_int;
-            }
-        }
-        set_two_dim_attr(result, nrow, ncol);
-        result
-    }
+    unsafe { rowcol_from_matrix_arg(args, false) }
 }
 
 /// R's `row(x)` — row indices for a matrix.
 pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { rowcol_from_matrix_arg(args, true) }
+}
+
+/// `.Internal(col(dim(x)))` / `.Internal(row(dim(x)))` wrapper: the GNU
+/// internal contract passes the integer dim VECTOR itself (see matrix.R's
+/// `col <- function(x, as.factor=FALSE) ... .Internal(col(dim(x)))` and
+/// `.row`/`.col`), while the public `col(x)`/`row(x)` handlers receive the
+/// matrix-like object and read its dim attribute.
+pub unsafe fn do_col_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { rowcol_dispatch_internal_arg(args, false) }
+}
+
+/// `.Internal(row(dim(x)))` wrapper; see `do_col_internal`.
+pub unsafe fn do_row_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { rowcol_dispatch_internal_arg(args, true) }
+}
+
+unsafe fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
+    unsafe {
+        let la = CAR(args);
+        if !la.is_null() && la != R_NilValue() && TYPEOF(la) == SEXPTYPE::INTSXP && LENGTH(la) >= 1
+        {
+            let dim_attr = crate::sexp::attrib_core::getAttrib(la, Rf_install(c"dim".as_ptr()));
+            if dim_attr.is_null() || dim_attr == R_NilValue() {
+                return rowcol_indices(INTEGER(la), LENGTH(la), is_row);
+            }
+        }
+        rowcol_from_matrix_arg(args, is_row)
+    }
+}
+
+unsafe fn rowcol_from_matrix_arg(args: SEXP, is_row: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -743,12 +743,22 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
-                message: "a matrix-like object is required as argument to 'row'".to_string(),
+                message: format!(
+                    "a matrix-like object is required as argument to '{}'",
+                    if is_row { "row" } else { "col" }
+                ),
             });
         }
-        let nrow = *INTEGER(dim_attr) as R_xlen_t;
-        let ncol = if LENGTH(dim_attr) >= 2 {
-            *INTEGER(dim_attr).add(1) as R_xlen_t
+        rowcol_indices(INTEGER(dim_attr), LENGTH(dim_attr), is_row)
+    }
+}
+
+/// Build the row/col index matrix from an integer dim vector.
+unsafe fn rowcol_indices(dims: *mut c_int, len: c_int, is_row: bool) -> SEXP {
+    unsafe {
+        let nrow = *dims as R_xlen_t;
+        let ncol = if len >= 2 {
+            *dims.add(1) as R_xlen_t
         } else {
             1
         };
@@ -762,7 +772,7 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for j in 0..ncol {
             for i in 0..nrow {
                 let idx = (j * nrow + i) as usize;
-                *dst.add(idx) = (i + 1) as c_int;
+                *dst.add(idx) = (if is_row { i + 1 } else { j + 1 }) as c_int;
             }
         }
         set_two_dim_attr(result, nrow, ncol);

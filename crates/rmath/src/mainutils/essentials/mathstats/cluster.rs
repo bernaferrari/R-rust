@@ -412,21 +412,28 @@ pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             let leaf = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
             *INTEGER(leaf) = id;
             let _leaf = protect(leaf);
+            let members_v = Rf_ScalarInteger(1);
+            let height_v = Rf_ScalarReal(h0);
+            let isleaf_v = Rf_ScalarLogical(crate::sexp::ffi::TRUE);
+            let _g1 = protect(members_v);
+            let _g2 = protect(height_v);
+            let _g3 = protect(isleaf_v);
             crate::sexp::attrib_core::setAttrib(
                 leaf,
                 crate::sexp::symbol::Rf_install(c"members".as_ptr()),
-                Rf_ScalarInteger(1),
+                members_v,
             );
             crate::sexp::attrib_core::setAttrib(
                 leaf,
                 crate::sexp::symbol::Rf_install(c"height".as_ptr()),
-                Rf_ScalarReal(h0),
+                height_v,
             );
             crate::sexp::attrib_core::setAttrib(
                 leaf,
                 crate::sexp::symbol::Rf_install(c"leaf".as_ptr()),
-                Rf_ScalarLogical(crate::sexp::ffi::TRUE),
+                isleaf_v,
             );
+
             if !labels.is_null()
                 && labels != R_NilValue()
                 && TYPEOF(labels) == SEXPTYPE::STRSXP
@@ -435,6 +442,7 @@ pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             {
                 let s = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
                 SET_STRING_ELT(s, 0, STRING_ELT(labels, (id as i64) - 1));
+                let _s = protect(s);
                 crate::sexp::attrib_core::setAttrib(
                     leaf,
                     crate::sexp::symbol::Rf_install(c"label".as_ptr()),
@@ -444,20 +452,26 @@ pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             leaf
         };
         let set_node = |node: SEXP, members: i32, midpoint: f64, h: f64| {
+            let m_v = Rf_ScalarInteger(members);
+            let mp_v = Rf_ScalarReal(midpoint);
+            let hh_v = Rf_ScalarReal(h);
+            let _g1 = protect(m_v);
+            let _g2 = protect(mp_v);
+            let _g3 = protect(hh_v);
             crate::sexp::attrib_core::setAttrib(
                 node,
                 crate::sexp::symbol::Rf_install(c"members".as_ptr()),
-                Rf_ScalarInteger(members),
+                m_v,
             );
             crate::sexp::attrib_core::setAttrib(
                 node,
                 crate::sexp::symbol::Rf_install(c"midpoint".as_ptr()),
-                Rf_ScalarReal(midpoint),
+                mp_v,
             );
             crate::sexp::attrib_core::setAttrib(
                 node,
                 crate::sexp::symbol::Rf_install(c"height".as_ptr()),
-                Rf_ScalarReal(h),
+                hh_v,
             );
         };
 

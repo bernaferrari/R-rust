@@ -2,13 +2,13 @@
 //! Stable root leases, independent of native pointer representations.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct SlotId {
+pub(crate) struct SlotId {
     pub(super) index: usize,
     pub(super) generation: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum StorageError {
+pub(crate) enum StorageError {
     Allocation,
     GenerationExhausted,
 }
@@ -21,7 +21,7 @@ struct Entry<T> {
 
 /// Every occupied slot has one lease generation. Vacancies have no lease;
 /// releasing a value therefore needs neither allocation nor a new generation.
-pub(super) struct RootStorage<T> {
+pub(crate) struct RootStorage<T> {
     entries: Vec<Entry<T>>,
     free: Vec<usize>,
     next_generation: u64,

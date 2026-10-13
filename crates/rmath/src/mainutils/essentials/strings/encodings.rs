@@ -130,6 +130,32 @@ pub unsafe fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// `.Internal(encodeString(x, width, quote, justify, na.encode))` wrapper:
+/// the GNU internal contract passes `justify` (already reduced to its
+/// 0-3 integer code by the closure) BEFORE `na.encode`, while the shared
+/// `do_encodeString` handler parses the closure-visible positional order
+/// `encodeString(x, width, quote, na.encode, justify)`. Tag the two
+/// trailing arguments by name so both shapes resolve identically.
+pub unsafe fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut cell = crate::sexp::accessors::CDR(args);
+        let mut index = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            if index >= 2 {
+                let label = if index == 2 { "justify" } else { "na.encode" };
+                let cstring = std::ffi::CString::new(label).unwrap_or_default();
+                crate::sexp::accessors::SETTAG(
+                    cell,
+                    crate::sexp::symbol::Rf_install(cstring.as_ptr()),
+                );
+            }
+            cell = crate::sexp::accessors::CDR(cell);
+            index += 1;
+        }
+        do_encodeString(call, op, args, rho)
+    }
+}
+
 /// GNU `Encoding(x)` — per-element "unknown"/"latin1"/"UTF-8"/"bytes".
 pub unsafe fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

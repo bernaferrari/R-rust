@@ -240,7 +240,9 @@ fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
 }
 
 fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
-    let d = if digits < 0 { 6 } else { digits as usize };
+    // GNU util.c str_signif: dig = abs(digits); a negative `digits` is the
+    // R-level flag ("#") signal to keep trailing zeros (digits >= 0 strips).
+    let d = digits.unsigned_abs() as usize;
     match format {
         "f" => format!("{v:.d$}"),
         "e" => formatc_exp(v, d, false),
@@ -294,18 +296,26 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
             if v == 0.0 || d == 0 {
                 return "0".to_string();
             }
-            let exp = v.abs().log10().floor() as i32;
+            // GNU adds a 1e-12 fuzz before the floor so values like 99.5
+            // (log10 just below 2) still land on the intended decade.
+            let exp = (v.abs().log10() + 1e-12).floor() as i32;
             let scale = 10f64.powi(d as i32 - 1 - exp);
             let rounded = (v * scale).round() / scale;
             let exp2 = if rounded == 0.0 {
                 exp
             } else {
-                rounded.abs().log10().floor() as i32
+                (rounded.abs().log10() + 1e-12).floor() as i32
             };
             let decimals = (d as i32 - 1 - exp2).max(0) as usize;
             let s = format!("{rounded:.decimals$}");
-            if !alt && s.contains('.') {
+            // Strip trailing zeros iff digits >= 0 (no "#" flag); GNU util.c
+            // keys this on the sign of `digits`, not on the flag string.
+            if digits >= 0 && s.contains('.') {
                 s.trim_end_matches('0').trim_end_matches('.').to_string()
+            } else if !s.contains('.') {
+                // "%#g" keeps the decimal point even without fractional
+                // digits: formatC(123.456, 2, "fg", "#") is "123.".
+                format!("{s}.")
             } else {
                 s
             }

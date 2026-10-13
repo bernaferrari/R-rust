@@ -592,7 +592,19 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 }
                 continue;
             }
-            let s = elt_to_string(x_arg, i);
+            // GNU sub/gsub in a single-byte locale treats native strings as
+            // opaque bytes; keep them lossless via the Latin-1 round-trip.
+            let (s, latin1) = if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+                let ch = STRING_ELT(x_arg, i);
+                let bytes = if ch.is_null() {
+                    &[][..]
+                } else {
+                    std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes()
+                };
+                native_bytes_to_string(bytes)
+            } else {
+                (elt_to_string(x_arg, i), false)
+            };
             let replaced = if fixed && global {
                 s.replace(&pattern, &replacement)
             } else if fixed {
@@ -613,7 +625,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             } else {
                 s
             };
-            let cstr = CString::new(replaced).unwrap_or_default();
+            let cstr = CString::new(string_to_native_bytes(&replaced, latin1)).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
@@ -622,5 +634,28 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         // GNU sub/gsub copy x's attributes (names, dim, dimnames) to the result.
         crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
         result
+    }
+}
+
+/// Decode string bytes for regex work. Valid UTF-8 passes through; native
+/// (single-byte locale) strings are decoded Latin-1, a lossless
+/// byte<->char bijection, so sub/gsub never corrupts them to U+FFFD the
+/// way a lossy UTF-8 decode would.
+fn native_bytes_to_string(bytes: &[u8]) -> (String, bool) {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => (s.to_string(), false),
+        Err(_) => (bytes.iter().map(|&b| b as char).collect(), true),
+    }
+}
+
+/// Re-encode a regex result, undoing the Latin-1 decoding when the source
+/// element needed it.
+fn string_to_native_bytes(s: &str, latin1: bool) -> Vec<u8> {
+    if latin1 {
+        s.chars()
+            .map(|c| if (c as u32) < 0x100 { c as u8 } else { b'?' })
+            .collect()
+    } else {
+        s.as_bytes().to_vec()
     }
 }

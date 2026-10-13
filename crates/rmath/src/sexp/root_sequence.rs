@@ -4,7 +4,7 @@
 use super::root_storage::StorageError;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct SequenceLease(u64);
+pub(crate) struct SequenceLease(u64);
 
 struct Entry<T> {
     lease: SequenceLease,
@@ -14,7 +14,7 @@ struct Entry<T> {
 /// Ordered native roots retain their push identity even when removal shifts
 /// their index. A callback snapshot therefore cannot rewrite a newly pushed
 /// root merely because its value or native address matches the old occupant.
-pub(super) struct RootSequence<T> {
+pub(crate) struct RootSequence<T> {
     entries: Vec<Entry<T>>,
     next_lease: u64,
 }

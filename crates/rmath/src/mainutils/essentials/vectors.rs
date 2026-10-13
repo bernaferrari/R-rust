@@ -618,6 +618,31 @@ pub unsafe fn do_pmax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_pminmax(args, false) }
 }
 
+/// `.Internal(pmax(na.rm, ...))` wrapper: the GNU internal contract passes
+/// the `na.rm` flag as the first, untagged argument, while the shared
+/// `do_pminmax` handler parses the closure-visible signature
+/// `pmax(..., na.rm=)` by tag. Retag the first evaluated argument so the
+/// flag is recognized instead of being folded into the data.
+pub unsafe fn do_pmax_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_pmax(call, op, retag_internal_narm(args), rho) }
+}
+
+/// `.Internal(pmin(na.rm, ...))` wrapper; see `do_pmax_internal`.
+pub unsafe fn do_pmin_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_pmin(call, op, retag_internal_narm(args), rho) }
+}
+
+/// Tag the leading `na.rm` flag of a GNU internal pmin/pmax argument list.
+unsafe fn retag_internal_narm(args: SEXP) -> SEXP {
+    unsafe {
+        if !args.is_null() && args != R_NilValue() {
+            let cstring = std::ffi::CString::new("na.rm").unwrap_or_default();
+            crate::sexp::accessors::SETTAG(args, crate::sexp::symbol::Rf_install(cstring.as_ptr()));
+        }
+        args
+    }
+}
+
 unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
     unsafe {
         let na_rm = named_logical_arg(args, "na.rm").unwrap_or(false);

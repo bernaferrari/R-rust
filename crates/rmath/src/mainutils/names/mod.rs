@@ -810,7 +810,12 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
-        "mapply" => Some(crate::mainutils::mapply::do_mapply_internal),
+        "encodeString" => Some(crate::mainutils::essentials::do_encodeString_internal),
+        "pmax" => Some(crate::mainutils::essentials::do_pmax_internal),
+        "pmin" => Some(crate::mainutils::essentials::do_pmin_internal),
+        "col" => Some(crate::mainutils::essentials::do_col_internal),
+        "row" => Some(crate::mainutils::essentials::do_row_internal),
+        "make.names" => Some(crate::mainutils::essentials::do_make_names_internal),
         "regexec" => Some(crate::mainutils::essentials::do_regexec_internal),
         "do.call" => Some(crate::mainutils::essentials::do_do_call_internal),
         "prmatrix" => Some(crate::mainutils::print::do_prmatrix),
