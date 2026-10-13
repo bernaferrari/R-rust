@@ -11,7 +11,7 @@ use crate::sexp::{
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum TraceError {
+pub enum TraceError {
     UnownedProjection(usize),
     ForeignHeap(usize),
     StaleAllocation(usize),
@@ -103,7 +103,7 @@ impl TraceNode {
     }
 }
 
-pub(super) struct TraceWorklist {
+pub struct TraceWorklist {
     context: Rc<TraceContext>,
     pending: Vec<TraceNode>,
 }

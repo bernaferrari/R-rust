@@ -4,7 +4,7 @@ use crate::sexp::ffi::{NA_INTEGER, SEXPTYPE};
 use crate::sexp::object::Sexp;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) struct OwnedSwitch {
+pub struct OwnedSwitch {
     call: Sexp<'static>,
     names: Option<Vec<Sexp<'static>>>,
     characters: Vec<usize>,
