@@ -27,7 +27,7 @@ struct Slot {
 }
 
 #[derive(Default)]
-pub(super) struct RetainedValues {
+pub(crate) struct RetainedValues {
     namespace: Option<u64>,
     slots: Vec<Slot>,
 }

@@ -45,27 +45,27 @@ mod tables;
 #[cfg(test)]
 mod tests;
 mod vectors;
-pub use self::conditions::*;
-pub use self::functional::*;
-pub use self::io::*;
-pub use self::mathstats::*;
-pub use self::matrix::*;
-pub use self::print::*;
-pub use self::runtime::*;
-pub use self::s3::*;
-pub use self::s4::*;
-pub use self::sets::*;
-pub use self::shared::*;
-pub use self::strings::*;
-pub use self::tables::*;
-pub use self::vectors::*;
+pub(crate) use self::conditions::*;
+pub(crate) use self::functional::*;
+pub(crate) use self::io::*;
+pub(crate) use self::mathstats::*;
+pub(crate) use self::matrix::*;
+pub(crate) use self::print::*;
+pub(crate) use self::runtime::*;
+pub(crate) use self::s3::*;
+pub(crate) use self::s4::*;
+pub(crate) use self::sets::*;
+pub(crate) use self::shared::*;
+pub(crate) use self::strings::*;
+pub(crate) use self::tables::*;
+pub(crate) use self::vectors::*;
 pub(crate) use sets::collate_str;
 
 // ---------------------------------------------------------------------------
 // Core vector/scalar helpers live in `essentials_basic`.
 // ---------------------------------------------------------------------------
 
-pub use super::essentials_basic::*;
+pub(crate) use super::essentials_basic::*;
 
 // ---------------------------------------------------------------------------
 // Distribution-function builtins live in the `distributions` submodule and are
@@ -73,9 +73,9 @@ pub use super::essentials_basic::*;
 // stay valid. See rport-btb7 for the incremental decomposition plan.
 // ---------------------------------------------------------------------------
 pub mod distributions;
-pub use self::distributions::*;
+pub(crate) use self::distributions::*;
 pub mod environment_bindings;
-pub use self::environment_bindings::*;
+pub(crate) use self::environment_bindings::*;
 
 // ---------------------------------------------------------------------------
 // Register essentials builtins

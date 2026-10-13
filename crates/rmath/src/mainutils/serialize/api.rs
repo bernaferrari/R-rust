@@ -522,7 +522,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 /// The runtime's lazy-load hook is Rust control flow with an actual owning
 /// environment. External C stream callbacks keep their separate ABI contract.
 #[derive(Clone)]
-pub(super) struct LazyLoadRestore {
+pub(crate) struct LazyLoadRestore {
     data: crate::sexp::object::Sexp<'static>,
 }
 
