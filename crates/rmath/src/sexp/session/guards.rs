@@ -179,41 +179,41 @@ impl Drop for CurrentInstanceGuard {
 /// the recording survives a draw call, so recordPlot can snapshot it reentrantly.
 #[cfg(feature = "renderplot-device")]
 pub(crate) struct RecordingTarget<'a> {
-    target: &'a mut dyn r_graphics_engine::DrawTarget,
-    recording: std::rc::Rc<std::cell::RefCell<r_graphics_engine::Scene>>,
+    pub(crate) target: &'a mut dyn r_graphics_engine::DrawTarget,
+    pub(crate) recording: std::rc::Rc<std::cell::RefCell<r_graphics_engine::Scene>>,
 }
 #[cfg(feature = "renderplot-device")]
 impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
-    pub(crate) fn dimensions(&self) -> (u32, u32) {
+    fn dimensions(&self) -> (u32, u32) {
         self.target.dimensions()
     }
-    pub(crate) fn measure_text(
+    fn measure_text(
         &self,
         text: &str,
         params: &r_graphics_engine::PlotParameters,
     ) -> r_graphics_engine::TextMetrics {
         self.target.measure_text(text, params)
     }
-    pub(crate) fn measure_math_text(
+    fn measure_math_text(
         &self,
         text: &str,
         params: &r_graphics_engine::PlotParameters,
     ) -> r_graphics_engine::TextMetrics {
         self.target.measure_math_text(text, params)
     }
-    pub(crate) fn clear(&mut self, color: r_graphics_engine::Color) {
+    fn clear(&mut self, color: r_graphics_engine::Color) {
         self.recording.borrow_mut().clear(color);
         self.target.clear(color);
     }
-    pub(crate) fn set_clip(&mut self, clip: Option<[f32; 4]>) {
+    fn set_clip(&mut self, clip: Option<[f32; 4]>) {
         self.recording.borrow_mut().set_clip(clip);
         self.target.set_clip(clip);
     }
-    pub(crate) fn draw_path(&mut self, path: &r_graphics_engine::Path) {
+    fn draw_path(&mut self, path: &r_graphics_engine::Path) {
         self.recording.borrow_mut().draw_path(path);
         self.target.draw_path(path);
     }
-    pub(crate) fn draw_image(
+    fn draw_image(
         &mut self,
         image: &r_graphics_engine::RasterImage,
         transform: [f64; 6],
@@ -224,7 +224,7 @@ impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
             .draw_image(image, transform, interpolate);
         self.target.draw_image(image, transform, interpolate);
     }
-    pub(crate) fn draw_text(
+    fn draw_text(
         &mut self,
         text: &str,
         point: r_graphics_engine::Point,
