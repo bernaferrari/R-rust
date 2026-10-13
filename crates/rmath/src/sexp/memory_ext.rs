@@ -28,7 +28,7 @@ use super::memory;
 /// This is the equivalent of R's `NewEnvironment()` in memory.c.
 pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     unsafe {
-        memory::with_arena(|arena| {
+        let env = memory::with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
             if !env.is_null() {
                 crate::sexp::accessors::SET_FRAME(env, frame);
@@ -36,7 +36,11 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
                 crate::sexp::accessors::SET_HASHTAB(env, hashtab);
             }
             env
-        })
+        });
+        // Under a bounded arena, a failed node allocation is a budget
+        // exhaustion, which GNU R reports as a catchable allocation error
+        // rather than a silent NULL that evaluates to R_NilValue.
+        super::constructors::require_allocation(env)
     }
 }
 
@@ -75,7 +79,7 @@ pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP)
 /// This is the equivalent of R's `mkPROMISE()` in memory.c.
 pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        memory::with_arena(|arena| {
+        let prom = memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
                 crate::sexp::accessors::SET_PRVALUE(prom, R_UnboundValue());
@@ -83,7 +87,8 @@ pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
                 crate::sexp::accessors::SET_PRENV(prom, env);
             }
             prom
-        })
+        });
+        super::constructors::require_allocation(prom)
     }
 }
 

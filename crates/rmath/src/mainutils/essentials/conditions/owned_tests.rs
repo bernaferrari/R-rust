@@ -1,3 +1,4 @@
+#![allow(unused_imports)] // lib target flags this; the test target chains through it
 use super::*;
 
 #[cfg(test)]

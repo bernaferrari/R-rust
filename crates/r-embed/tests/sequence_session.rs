@@ -6,6 +6,8 @@ fn warning_count(session: &mut RSession, expression: &str) -> String {
             "n <- 0L; withCallingHandlers({expression}, warning=function(e) {{ n <<- n+1L; invokeRestart('muffleWarning') }}); n"
         ))
         .unwrap()
+        .trim()
+        .to_string()
 }
 
 #[test]

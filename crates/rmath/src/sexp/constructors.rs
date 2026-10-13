@@ -16,7 +16,7 @@ use super::memory::{self};
 // FFI-compatible constructor functions
 // ---------------------------------------------------------------------------
 
-unsafe fn require_allocation(value: SEXP) -> SEXP {
+pub(crate) unsafe fn require_allocation(value: SEXP) -> SEXP {
     if !value.is_null() {
         return value;
     }

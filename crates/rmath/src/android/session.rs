@@ -359,10 +359,16 @@ impl RSession {
             max_execution_time_ms: limits.max_execution_time_ms,
             max_alloc_bytes: saturating_usize(limits.max_alloc_bytes),
         });
+        let node_cap = saturating_usize(limits.max_arena_nodes);
         self.core.set_arena_budget(ArenaBudget::new(
             saturating_usize(limits.max_alloc_bytes),
-            saturating_usize(limits.max_arena_nodes),
+            node_cap,
         ));
+        // The node guard is cumulative (never refunded by collection): a
+        // host that caps `max_arena_nodes` must see churn-heavy workloads
+        // fail with a catchable error instead of silently recycling
+        // garbage-collected nodes under the cap forever.
+        self.core.with_arena(|arena| arena.set_node_guard(node_cap));
     }
 
     /// Return true when a package exists in this session's configured library paths.

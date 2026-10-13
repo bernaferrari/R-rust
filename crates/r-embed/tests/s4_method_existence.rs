@@ -37,7 +37,13 @@ fn method_existence_respects_argument_names_registry_and_any_defaults() {
           !existsMethod('registryProbe',c('numeric','character'),where=.GlobalEnv),
           existsMethod('anyProbe'),hasMethod('anyProbe'))
     })").unwrap();
-    assert_eq!(result.trim(), "[1] TRUE TRUE TRUE TRUE TRUE");
+    // GNU R oracle (bac583951b, R-devel 2026-08-27, stable across runs) prints
+    // FALSE TRUE FALSE TRUE TRUE for this exact body: existsMethod/hasMethod
+    // respect named signature arguments (the registry reorders y/x correctly)
+    // and ANY defaults exist, but a generic defined via eval(quote(...), e)
+    // registers its methods in .GlobalEnv's table, so the where=e lookup
+    // misses while the .GlobalEnv lookup finds them.
+    assert_eq!(result.trim(), "[1] FALSE  TRUE FALSE  TRUE  TRUE");
 }
 
 #[test]

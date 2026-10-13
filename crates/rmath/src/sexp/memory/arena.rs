@@ -42,6 +42,14 @@ pub struct RArena {
     bytes_at_last_gc: usize,
     /// Optional budget to limit arena growth.
     pub(super) budget: ArenaBudget,
+    /// Host-level node guard: cumulative node admissions (fresh slab slot
+    /// or free-list reuse) charged while `guard_max_nodes > 0`. Unlike
+    /// `budget.max_nodes` (live-node cap for raw arena clients), the guard
+    /// is never refunded by collection, so a bounded session cannot churn
+    /// unbounded nodes through GC recycling. Only session resource limits
+    /// arm it.
+    pub(super) guard_max_nodes: usize,
+    pub(super) guard_nodes_admitted: usize,
 }
 
 impl RArena {
@@ -225,6 +233,8 @@ impl RArena {
             nodes_at_last_gc: 0,
             bytes_at_last_gc: 0,
             budget,
+            guard_max_nodes: 0,
+            guard_nodes_admitted: 0,
         };
 
         a.alloc_new_page();
@@ -288,6 +298,7 @@ impl RArena {
     }
 
     fn register_new_node(&mut self, ptr: SEXP) -> SEXP {
+        self.guard_nodes_admitted = self.guard_nodes_admitted.saturating_add(1);
         self.track_node_active(ptr);
         ptr
     }
@@ -404,7 +415,18 @@ impl RArena {
     }
 
     fn can_activate_node(&self) -> bool {
-        self.budget.max_nodes == 0 || self.node_count() < self.budget.max_nodes
+        if self.budget.max_nodes != 0 && self.node_count() >= self.budget.max_nodes {
+            return false;
+        }
+        self.guard_max_nodes == 0 || self.guard_nodes_admitted < self.guard_max_nodes
+    }
+
+    /// Arm the host-level cumulative node guard (see `guard_max_nodes`).
+    /// Charging starts from the currently active nodes, so a cap of
+    /// `active_nodes + N` grants exactly N further node admissions.
+    pub fn set_node_guard(&mut self, max_nodes: usize) {
+        self.guard_max_nodes = max_nodes;
+        self.guard_nodes_admitted = self.node_count();
     }
 
     pub(super) fn can_grow_bytes_by(&self, bytes: usize) -> bool {

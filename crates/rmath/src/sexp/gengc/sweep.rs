@@ -200,10 +200,6 @@ pub(crate) fn update_instance_roots_in(
                 (package, (dir, namespace))
             })
             .collect();
-        update_field(&mut (*instance).unwrap_methods_ns, old_to_new);
-        for clos in &mut (*instance).unwrap_methods_closures {
-            update_field(clos, old_to_new);
-        }
 
         // The binding tables are keyed by raw node addresses. Entries whose keyed
         // node was reclaimed this cycle must be dropped before `free_node` puts

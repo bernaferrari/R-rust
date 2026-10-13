@@ -25,8 +25,6 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).preserve_stack.clear();
         (*instance).base_wrappers.borrow_mut().clear();
         (*instance).package_namespace_cache.clear();
-        (*instance).unwrap_methods_ns = nil;
-        (*instance).unwrap_methods_closures.clear();
         (*instance).active_bindings.clear();
         (*instance).objects_state.deferred_default_object = instance::RuntimeValue::empty();
         (*instance).objects_state.s4_validity.clear();

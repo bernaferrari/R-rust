@@ -500,10 +500,6 @@ pub struct RInstance {
     /// Plain strings only; this cache retains no interpreter graph.
     pub(crate) namespace_directives_cache:
         HashMap<std::path::PathBuf, crate::mainutils::essentials::NamespaceDirectives>,
-    /// Methods closures whose GNU bytecode is unwrapped at apply time.
-    /// Aliases of methods-namespace bindings; rebuilt when that ns changes.
-    pub(crate) unwrap_methods_ns: SEXP,
-    pub(crate) unwrap_methods_closures: Vec<SEXP>,
 
     /// Package source directory currently being sourced into a namespace
     /// (set for the duration of `source_package_r_files`): relative file
@@ -667,8 +663,6 @@ impl RInstance {
             fexact_state: crate::library::stats::fexact::FexactState::default(),
             package_namespace_cache: HashMap::new(),
             namespace_directives_cache: HashMap::new(),
-            unwrap_methods_ns: std::ptr::null_mut(),
-            unwrap_methods_closures: Vec::new(),
 
             loading_package_dir: None,
             namespace_loads_in_progress: Vec::new(),

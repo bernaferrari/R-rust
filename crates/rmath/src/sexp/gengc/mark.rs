@@ -204,10 +204,6 @@ pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
         for &(_, namespace) in (*instance).package_namespace_cache.values() {
             mark_reachable(namespace);
         }
-        mark_reachable((*instance).unwrap_methods_ns);
-        for &clos in &(*instance).unwrap_methods_closures {
-            mark_reachable(clos);
-        }
 
         // Active-binding functions must live as long as their entry. The (env,
         // symbol) key addresses are deliberately not marked: bindings belong to
