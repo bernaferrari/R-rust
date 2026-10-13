@@ -6761,17 +6761,13 @@ mod fixed_perl_warning_tests {
             },
         );
         let regexec = "argument 'perl = TRUE' will be ignored|match.length,index.type,useBytes|1|2";
-        // gregexec's attribute order is config-dependent: the upstream
-        // loader's GNU closure attaches match.length,useBytes,index.type,dim
-        // while the port builtin (default config) uses the port order.
-        // Assert regexec exactly and gregexec's attributes as a presence
-        // set rather than one config's ordering.
-        assert!(report.starts_with(&format!("{regexec}||")), "{report}");
-        let second = &report[regexec.len() + 2..];
-        assert!(second.contains("1|2"), "{report}");
-        for attr in ["match.length", "index.type", "useBytes"] {
-            assert!(second.contains(attr), "{attr} missing: {report}");
-        }
+        // Default (loader-off) config: the port builtin serves gregexec
+        // and emits the port attribute order. Exact strings, not a
+        // presence set — the loader-on GNU order (match.length,useBytes,
+        // index.type,dim) would be a divergence to fix, not accept.
+        let gregexec =
+            "argument 'perl = TRUE' will be ignored|match.length,index.type,useBytes|1|2";
+        assert_eq!(report, format!("{regexec}||{gregexec}"));
     }
 
     fn script_string(raw: crate::sexp::ffi::SEXP) -> String {

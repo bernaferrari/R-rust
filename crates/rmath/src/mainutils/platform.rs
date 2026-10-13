@@ -834,7 +834,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // GNU file.info's R wrapper defaults extra_cols to TRUE and the
         // internal rejects NA. This builtin binds `file.info` directly, so
         // both behaviors live here.
-        #[allow(unused_mut)] // mutated only in the non-Unix extras block
+        #[cfg_attr(unix, allow(unused_mut))] // mutated only in the non-Unix extras block
         let mut extras = if extra_arg.is_null()
             || extra_arg == R_NilValue()
             || extra_arg == crate::sexp::globals::R_MissingArg()

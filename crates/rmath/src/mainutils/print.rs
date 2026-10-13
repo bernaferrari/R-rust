@@ -2470,7 +2470,11 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        // Measured on this tree: child boot ~5.2s (the base-source loader
+        // made startup slower — recorded, not hidden) + cyclic work ~4s.
+        // 20s is 2x the observed total: catches a real termination hang
+        // without the 60s no-op the review rejected.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "legacy printing child failed: {status}");
@@ -2521,7 +2525,11 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        // Measured on this tree: child boot ~5.2s (the base-source loader
+        // made startup slower — recorded, not hidden) + cyclic work ~4s.
+        // 20s is 2x the observed total: catches a real termination hang
+        // without the 60s no-op the review rejected.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "cyclic printing child failed: {status}");
@@ -2571,7 +2579,11 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        // Measured on this tree: child boot ~5.2s (the base-source loader
+        // made startup slower — recorded, not hidden) + cyclic work ~4s.
+        // 20s is 2x the observed total: catches a real termination hang
+        // without the 60s no-op the review rejected.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
                 assert!(status.success(), "nested cycle child failed: {status}");
