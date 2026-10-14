@@ -106,6 +106,8 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let mut object_arg = R_NilValue();
         let mut file_arg = R_NilValue();
         let mut ascii_arg = R_NilValue();
+        let mut version_arg = R_NilValue();
+        let mut compress_arg = R_NilValue(); // GNU default: compress = TRUE
         let mut positional: Vec<SEXP> = Vec::new();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -121,6 +123,8 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     "object" => object_arg = value,
                     "file" => file_arg = value,
                     "ascii" => ascii_arg = value,
+                    "version" => version_arg = value,
+                    "compress" => compress_arg = value,
                     _ => {}
                 }
             } else {
@@ -133,6 +137,8 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 0 if object_arg == R_NilValue() => object_arg = value,
                 1 if file_arg == R_NilValue() => file_arg = value,
                 2 if ascii_arg == R_NilValue() => ascii_arg = value,
+                3 if version_arg == R_NilValue() => version_arg = value,
+                4 if compress_arg == R_NilValue() => compress_arg = value,
                 _ => {}
             }
         }
@@ -140,11 +146,65 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             eprintln!("saveRDS: file argument is required");
             return R_NilValue();
         }
+
+        // GNU's R-level saveRDS() dispatches compress= to a container
+        // connection: logical TRUE -> gzip, FALSE -> plain, or a codec name.
+        let mut compress: Option<&'static str> = None; // None = uncompressed
+        if !crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            let arg = if compress_arg.is_null() || compress_arg == R_NilValue() {
+                crate::sexp::constructors::Rf_ScalarLogical(crate::sexp::ffi::TRUE)
+            } else {
+                compress_arg
+            };
+            match <SEXPTYPE as std::convert::From<c_int>>::from(TYPEOF(arg)) {
+                SEXPTYPE::LGLSXP => {
+                    let v = crate::sexp::accessors::LOGICAL_ELT(arg, 0);
+                    if v == crate::sexp::ffi::TRUE {
+                        compress = Some("gzip");
+                    } else if v == crate::sexp::ffi::FALSE {
+                        compress = None;
+                    } else {
+                        std::panic::panic_any(RError {
+                            message: "invalid 'compress' argument: NA".to_string(),
+                        });
+                    }
+                }
+                SEXPTYPE::STRSXP => {
+                    let name = elt_to_string(arg, 0);
+                    match name.as_str() {
+                        "gzip" | "bzip2" | "xz" => {
+                            compress = Some(match name.as_str() {
+                                "gzip" => "gzip",
+                                "bzip2" => "bzip2",
+                                _ => "xz",
+                            })
+                        }
+                        other => {
+                            std::panic::panic_any(RError {
+                                message: format!("invalid 'compress' argument: {other}"),
+                            });
+                        }
+                    }
+                }
+                _ => {
+                    let shown = crate::mainutils::deparse::deparse1(arg, false, 0);
+                    let shown = if XLENGTH(shown) > 0 {
+                        elt_to_string(shown, 0)
+                    } else {
+                        "?".to_string()
+                    };
+                    std::panic::panic_any(RError {
+                        message: format!("invalid 'compress' argument: {shown}"),
+                    });
+                }
+            }
+        }
+
         let raw = crate::mainutils::serialize::R_serialize(
             object_arg,
             R_NilValue(),
             ascii_arg,
-            R_NilValue(),
+            version_arg,
             R_NilValue(),
         );
         if raw.is_null() || TYPEOF(raw) != SEXPTYPE::RAWSXP {
@@ -155,13 +215,33 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _raw_guard = protect(raw);
 
         let len = XLENGTH(raw) as usize;
-        let bytes = std::slice::from_raw_parts(RAW(raw), len);
+        let plain = std::slice::from_raw_parts(RAW(raw), len);
+        let payload: Vec<u8> = match compress {
+            None => plain.to_vec(),
+            Some("gzip") => crate::mainutils::zlib::gzip_compress(plain, 6).unwrap_or_else(|e| {
+                std::panic::panic_any(RError {
+                    message: format!("cannot compress file: {e}"),
+                })
+            }),
+            Some("bzip2") => {
+                let mut encoder =
+                    bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::best());
+                use std::io::Write as _;
+                encoder.write_all(plain).ok();
+                encoder.finish().unwrap_or_default()
+            }
+            Some(_) => crate::mainutils::serialize::xz_compress_gnu(plain).unwrap_or_else(|e| {
+                std::panic::panic_any(RError {
+                    message: format!("cannot compress file: {e}"),
+                })
+            }),
+        };
         if crate::mainutils::connections::inherits_class(file_arg, "connection") {
             let idx = crate::mainutils::coerce::asInteger(file_arg);
-            crate::mainutils::connections::connection_write_bytes(idx, bytes);
+            crate::mainutils::connections::connection_write_bytes(idx, &payload);
         } else {
             let file_path = elt_to_string(file_arg, 0);
-            if let Err(err) = std::fs::write(&file_path, bytes) {
+            if let Err(err) = std::fs::write(&file_path, &payload) {
                 std::panic::panic_any(RError {
                     message: format!("cannot open compressed file '{}': {err}", file_path),
                 });

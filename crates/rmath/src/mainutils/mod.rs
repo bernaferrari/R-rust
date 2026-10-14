@@ -113,6 +113,7 @@ pub mod times;
 pub mod unique;
 pub mod util_main;
 pub mod version;
+pub mod zlib;
 
 pub(crate) mod base_wrappers;
 

@@ -1143,12 +1143,11 @@ const MAX_PASSES: usize = 8;
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
 pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
-    // Default off: 17 corpus cases still regress with the loader on
-    // (seq.Date staging-visibility family, model.matrix *vtmp* family,
-    // scattered row/gettext/iconvlist/quade). Opt in with
-    // RPORT_UPSTREAM_BASE=1; the 35-case dependency-consistency filter
-    // landed (generics without default methods stay native) and the
-    // remaining 17 are the tracked backlog.
+    // Default off: one corpus case still regresses with the loader on
+    // (717_cut_Date: `seq` dispatch from a staged closure reached through
+    // two R frames falls to seq.default). The former model.matrix
+    // *vtmp*, gettext, iconvlist, quade, nls and Date-family failures are
+    // fixed; opt in with RPORT_UPSTREAM_BASE=1.
     if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
         return;
     }
@@ -1163,7 +1162,31 @@ pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
         let _staging = crate::sexp::protect::protect(staging);
         load_files(base_env, staging);
         load_oracle_recovered_closures(base_env, staging);
+        load_fortran_symbol_bindings(base_env);
         load_profile_common_bindings(base_env);
+    }
+}
+
+/// GNU registers the `appl` Fortran routines as `.F_*` symbols in the base
+/// namespace (`useDynLib(base, .fixes = ".F_")`). Staged `qr.R` reaches them
+/// through `.Fortran(.F_dqrrsd, ...)`; bind each name to its routine-name
+/// string so the foreign-call interface resolves the bundled Rust kernels.
+const BASE_FORTRAN_SYMBOLS: &[&str] = &[
+    "dqrdc2", "dqrcf", "dqrqy", "dqrqty", "dqrrsd", "dqrxb", "dtrco",
+];
+
+unsafe fn load_fortran_symbol_bindings(base_env: SEXP) {
+    unsafe {
+        for routine in BASE_FORTRAN_SYMBOLS {
+            let binding = format!(".F_{routine}");
+            if defined_in(base_env, binding.as_str()) {
+                continue;
+            }
+            let symbol = Rf_install_in_current(binding.as_str());
+            let routine_name = std::ffi::CString::new(*routine).unwrap_or_default();
+            let string = crate::sexp::constructors::Rf_mkString(routine_name.as_ptr());
+            crate::sexp::envir::defineVar(symbol, string, base_env);
+        }
     }
 }
 

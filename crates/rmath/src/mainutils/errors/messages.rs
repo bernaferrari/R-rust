@@ -103,13 +103,37 @@ pub unsafe fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let n = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
-            *INTEGER(CAR(args))
-        } else {
-            crate::sexp::ffi::NA_INTEGER
+        let n = {
+            // GNU asInteger(): the staged stop.R wrapper reaches this
+            // .Internal with `n` still an unforced promise.
+            let raw = CAR(args);
+            let value = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(raw)
+            } else {
+                raw
+            };
+            if (isInteger(value) != 0 || TYPEOF(value) == SEXPTYPE::REALSXP) && LENGTH(value) >= 1 {
+                crate::mainutils::coerce::asInteger(value)
+            } else {
+                crate::sexp::ffi::NA_INTEGER
+            }
         };
-        let msg1 = CADR(args);
-        let msg2 = CADDR(args);
+        let msg1 = {
+            let v = CADR(args);
+            if TYPEOF(v) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(v)
+            } else {
+                v
+            }
+        };
+        let msg2 = {
+            let v = CADDR(args);
+            if TYPEOF(v) == SEXPTYPE::PROMSXP {
+                crate::sexp::envir::forcePromise(v)
+            } else {
+                v
+            }
+        };
 
         if n == crate::sexp::ffi::NA_INTEGER || n < 0 {
             errorcall(call, b"invalid 'n' argument\x00".as_ptr() as *const c_char);

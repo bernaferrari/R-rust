@@ -338,7 +338,9 @@ pub(crate) unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> 
                             };
                         }
                         t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, ij, R_NilValue());
+                            // GNU ExtractSubset: NA subscripts yield NA_STRING,
+                            // not NULL (`m[c(1,NA), ]` keeps is.na() TRUE).
+                            SET_STRING_ELT(result, ij, crate::sexp::globals::R_NaString());
                         }
                         t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, ij, R_NilValue());

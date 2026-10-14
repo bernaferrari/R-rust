@@ -873,6 +873,30 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 unsafe fn format_rowsum_group(group: SEXP, i: i64) -> String {
     unsafe {
+        // GNU rowsum.default converts a factor `group` to character
+        // first (`group <- as.character(group)`); the integer codes
+        // must be mapped through `levels()` for the row labels.
+        if crate::mainutils::subset::has_class_factor(group) {
+            let levels = crate::sexp::attrib_core::getAttrib(
+                group,
+                crate::sexp::attrib_core::R_LevelsSymbol(),
+            );
+            if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+                let code = *INTEGER(group).add(i as usize);
+                if code == crate::sexp::ffi::NA_INTEGER {
+                    return "NA".into();
+                }
+                if code >= 1 && (code as i64) <= XLENGTH(levels) {
+                    let s = STRING_ELT(levels, (code - 1) as i64);
+                    if !s.is_null() {
+                        return std::ffi::CStr::from_ptr(CHAR(s))
+                            .to_string_lossy()
+                            .into_owned();
+                    }
+                }
+                return String::new();
+            }
+        }
         match TYPEOF(group) {
             t if t == SEXPTYPE::STRSXP => {
                 let s = STRING_ELT(group, i);

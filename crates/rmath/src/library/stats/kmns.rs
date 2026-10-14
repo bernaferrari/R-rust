@@ -28,6 +28,9 @@ pub fn kmns(
     let n = n as usize;
     let k = k as usize;
     let imax_qtr = itran[0];
+    // GNU: iTrace = IFAULT on entry — the .Fortran() call passes
+    // as.integer(trace) through ifault.
+    let trace = *ifault;
     *ifault = 3;
     if k <= 1 || k >= m {
         return;
@@ -111,6 +114,9 @@ pub fn kmns(
         optra(
             a, m, n, c, k, ic1, ic2, nc, an1, an2, ncp, d, itran, live, &mut indx,
         );
+        if trace > 0 {
+            crate::sexp::output::emit(&format!("KMNS(*, k={}): iter={:3}, indx={}\n", k, ij, indx));
+        }
         if indx == m as i32 {
             break;
         }
@@ -131,6 +137,7 @@ pub fn kmns(
             itran,
             &mut indx,
             &mut max_qtr,
+            trace,
         );
         if max_qtr < 0 {
             *ifault = 4;
@@ -287,11 +294,24 @@ fn qtran(
     itran: &mut [i32],
     indx: &mut i32,
     imax_qtr: &mut i32,
+    trace: i32,
 ) {
     let mut icoun = 0i32;
     let mut istep = 0i32;
     loop {
         for i in 1..=m {
+            // GNU: from the second round on, report at the first point.
+            if trace > 0 && istep >= 1 && i == 1 {
+                let mut line = format!(" QTRAN(): istep={istep}, icoun={icoun}");
+                if trace >= 2 {
+                    line += &format!(", NCP[1:{k}]=");
+                    for l in 0..k {
+                        line += &format!(" {}", ncp[l]);
+                    }
+                }
+                line.push('\n');
+                crate::sexp::output::emit(&line);
+            }
             icoun += 1;
             istep += 1;
             if istep >= *imax_qtr {

@@ -12,6 +12,11 @@ for argument in "$@"; do
     fi
     previous="$argument"
 done
+# Bound native math/thread pools so cargo runs stay within ~2-3 cores
+# even when Accelerate/vecLib ignores Cargo's jobserver.
+export VECLIB_MAXIMUM_THREADS="${VECLIB_MAXIMUM_THREADS:-1}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}"
 
 cargo "$@"
 result=$?

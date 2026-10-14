@@ -202,7 +202,20 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             crate::sexp::attrib_core::R_NamesSymbol(),
             out_names,
         );
-        crate::mainutils::essentials::set_compact_row_names(result, nrow);
+        // GNU transform.data.frame assigns via `[<-`, which keeps the
+        // original row names (e.g. mtcars'); only synthesize compact
+        // ones when the input had none.
+        let row_names =
+            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_RowNamesSymbol());
+        if !row_names.is_null() && row_names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+                row_names,
+            );
+        } else {
+            crate::mainutils::essentials::set_compact_row_names(result, nrow);
+        }
         crate::mainutils::essentials::set_data_frame_class(result);
         result
     }

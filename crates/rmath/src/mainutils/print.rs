@@ -584,7 +584,10 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
         for i in 0..n {
             let elt = STRING_ELT(t, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}\n",
+                    CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?")
+                ));
             }
         }
     }
@@ -599,18 +602,18 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
         PrintLanguage(s, data);
 
         if isByteCode(BODY(s)) != 0 {
-            println!("<bytecode: {:?}>", BODY(s));
+            crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>\n", BODY(s)));
         }
         let t = CLOENV(s);
         if t != R_GlobalEnv() {
             let env_str = crate::mainutils::printutils::EncodeEnvironment(t);
             if !env_str.is_null() {
-                println!(
-                    "{}",
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}\n",
                     CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
-                );
+                ));
             } else {
-                println!("<environment>");
+                crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
             }
         }
     }
@@ -649,9 +652,9 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
             if !line.is_null() && line != R_NilValue() {
                 print!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
             }
-            println!(".Primitive(\"{}\")", nm);
+            crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
         } else {
-            println!(".Primitive(\"{}\")", nm);
+            crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
         }
     }
 }
@@ -670,7 +673,10 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
         for i in 0..n {
             let elt = STRING_ELT(u, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}\n",
+                    CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?")
+                ));
             }
         }
     }
@@ -872,7 +878,11 @@ unsafe fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
         if show_s4 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
             PrintObject(x, data);
         } else if IS_S4_OBJECT(x) != 0 {
-            print_s4_data_part(x, data);
+            // GNU do_printdefault has no separate S4-with-arguments branch:
+            // PrintValueRec prints the data part by type and then the
+            // attributes (including `attr(,"class")` and its own package
+            // attribute).
+            PrintValueRec_reroot(x, data);
         } else if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             let extras = if data.callArgs.is_null() {
                 R_NilValue()
@@ -1604,9 +1614,14 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 continue;
             }
 
-            // Build the attribute tag
-            let space = TAGBUFLEN0 - tagbuf_strlen();
-            let ptag_start = tagbuf_ptr_at(tagbuf_strlen());
+            // Build the attribute tag. GNU keeps `ptag` pointing at the
+            // start of this tag and truncates back to it (`*ptag = '\0'`)
+            // after the value prints, so nested attribute values render
+            // `attr(,"outer")attr(,"inner")` without accumulating stale
+            // tags from earlier siblings.
+            let tag_start = tagbuf_strlen();
+            let space = TAGBUFLEN0 - tag_start;
+            let ptag_start = tagbuf_ptr_at(tag_start);
 
             if !tag.is_null() && isSymbol(tag) != 0 {
                 let pname = PRINTNAME(tag);
@@ -1626,19 +1641,21 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 }
             }
 
-            println!("{}", tagbuf_string());
+            // Route the header through the console sink so captured
+            // sessions see it in order (std println! bypasses capture).
+            crate::mainutils::printutils::console_emit(format_args!("{}\n", tagbuf_string()));
 
             if tag == R_RowNamesSymbol() {
                 let val = getAttrib(s, R_RowNamesSymbol());
                 let _val_guard = protect(val);
                 PrintValueRec_inner(val, data);
-                tagbuf_set(tagbuf_strlen(), 0);
+                tagbuf_set(tag_start, 0);
                 a = CDR(a);
                 continue;
             }
 
             PrintDispatch(CAR(a), data);
-            tagbuf_set(tagbuf_strlen(), 0);
+            tagbuf_set(tag_start, 0);
             a = CDR(a);
         }
 
@@ -1663,6 +1680,28 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
     }
 }
 
+/// GNU `do_printdefault`'s else-branch — `PrintValueRec` called on an object
+/// whose `show()` wrapper is still active (methods' showDefault re-enters via
+/// `print(object, useS4 = FALSE)`). GNU has no cycle guard on this path; only
+/// true nested-element cycles (re-entry from *within* element printing) must
+/// stay recoverable errors, so temporarily lift the outer guard.
+unsafe fn PrintValueRec_reroot(s: SEXP, data: &R_PrintData) {
+    unsafe {
+        let reentered = with_print_runtime(|state| {
+            if let Some(index) = state.active_values.iter().rposition(|&value| value == s) {
+                state.active_values.remove(index);
+                true
+            } else {
+                false
+            }
+        });
+        PrintValueRec_inner(s, data);
+        if reentered {
+            with_print_runtime(|state| state.active_values.push(s));
+        }
+    }
+}
+
 unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
     unsafe {
         if s.is_null() {
@@ -1671,8 +1710,12 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
 
         // GNU showDefault's `print(object, useS4 = FALSE)` lands here.
         // Printing the data part must not re-enter show() (active_values)
-        // and must use the capture-aware printer.
-        if IS_S4_OBJECT(s) != 0 {
+        // and must use the capture-aware printer. With methods dispatch
+        // on, GNU PrintValueRec prints S4 objects by TYPEOF (deparse
+        // renders `new("Class", ...)` for closures) followed by
+        // printAttributes — so only the dispatch-off case keeps the
+        // stripped data-part shortcut.
+        if IS_S4_OBJECT(s) != 0 && isMethodsDispatchOn() == 0 {
             print_s4_data_part(s, data);
             return;
         }
@@ -1687,13 +1730,13 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
         };
 
         if isMethodsDispatchOn() == 0 && TYPEOF(s) == SEXPTYPE(25).0 {
-            println!("<object>");
+            crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
             return;
         }
 
         match TYPEOF(s) {
             t if t == SEXPTYPE::NILSXP => {
-                println!("NULL");
+                crate::mainutils::printutils::console_emit(format_args!("NULL\n"));
             }
             t if t == SEXPTYPE::SYMSXP => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
@@ -1701,14 +1744,17 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 set_current_print_data(data);
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
-                    println!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
+                    crate::mainutils::printutils::console_emit(format_args!(
+                        "{}\n",
+                        CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?")
+                    ));
                 }
             }
             t if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP => {
                 PrintSpecial(s, data);
             }
             t if t == SEXPTYPE::CHARSXP => {
-                print!("<CHARSXP: ");
+                crate::mainutils::printutils::console_emit(format_args!("<CHARSXP: "));
                 let enc = crate::mainutils::printutils::EncodeString(
                     s,
                     0,
@@ -1716,9 +1762,12 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                     crate::mainutils::printutils::Rprt_adj::none,
                 );
                 if !enc.is_null() {
-                    print!("{}", CStr::from_ptr(enc).to_str().unwrap_or(""));
+                    crate::mainutils::printutils::console_emit(format_args!(
+                        "{}",
+                        CStr::from_ptr(enc).to_str().unwrap_or("")
+                    ));
                 }
-                println!(">");
+                crate::mainutils::printutils::console_emit(format_args!(">\n"));
                 return; // skip attributes for CHARSXP
             }
             t if t == SEXPTYPE::EXPRSXP => {
@@ -1733,19 +1782,19 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             t if t == SEXPTYPE::ENVSXP => {
                 let env_str = crate::mainutils::printutils::EncodeEnvironment(s);
                 if !env_str.is_null() {
-                    println!(
-                        "{}",
+                    crate::mainutils::printutils::console_emit(format_args!(
+                        "{}\n",
                         CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
-                    );
+                    ));
                 } else {
-                    println!("<environment>");
+                    crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
                 }
             }
             t if t == SEXPTYPE::PROMSXP => {
-                println!("<promise: {:?}>", s);
+                crate::mainutils::printutils::console_emit(format_args!("<promise: {:?}>\n", s));
             }
             t if t == SEXPTYPE::DOTSXP => {
-                println!("<...>");
+                crate::mainutils::printutils::console_emit(format_args!("<...>\n"));
             }
             t if t == SEXPTYPE::VECSXP => {
                 PrintGenericVector(s, data);
@@ -1821,24 +1870,27 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 }
             }
             t if t == SEXPTYPE::EXTPTRSXP => {
-                println!("<pointer: {:?}>", s);
+                crate::mainutils::printutils::console_emit(format_args!("<pointer: {:?}>", s));
             }
             t if t == SEXPTYPE::BCODESXP => {
-                println!("<bytecode: {:?}>", s);
+                crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>", s));
             }
             t if t == SEXPTYPE::WEAKREFSXP => {
-                println!("<weak reference>");
+                crate::mainutils::printutils::console_emit(format_args!("<weak reference>\n"));
             }
             t if t == SEXPTYPE(25).0 => {
                 // OBJSXP
                 if IS_S4_OBJECT(s) != 0 {
-                    println!("<S4 Type Object>");
+                    crate::mainutils::printutils::console_emit(format_args!("<S4 Type Object>\n"));
                 } else {
-                    println!("<object>");
+                    crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
                 }
             }
             _ => {
-                println!("<unknown type {}>", TYPEOF(s));
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "<unknown type {}>",
+                    TYPEOF(s)
+                ));
             }
         }
 

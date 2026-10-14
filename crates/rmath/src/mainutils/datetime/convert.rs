@@ -224,18 +224,19 @@ pub(crate) unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
         if XLENGTH(sec) < n {
             return false;
         }
-        // GNU charToDate: only the first non-NA/non-empty string must parse;
-        // later entries may fail to NA without an error.
+        // GNU as.POSIXlt.character (2.13.0+): xx <- x[!is.na(x)] and a
+        // format is accepted only when `all(!is.na(strptime(xx, f)))`.
+        // Every non-NA string — including empty ones, which cannot parse —
+        // must yield a non-NA result.
         for i in 0..n {
             let s = STRING_ELT(x, i);
             if s.is_null() || s == R_NaString() {
                 continue;
             }
-            if CStr::from_ptr(CHAR(s)).to_bytes().is_empty() {
-                continue;
-            }
             let v = *REAL(sec).add(i as usize);
-            return R_FINITE(v);
+            if !R_FINITE(v) {
+                return false;
+            }
         }
         true
     }

@@ -594,7 +594,19 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 XLENGTH(rownames)
             };
             let t = TYPEOF(value);
-            let value_len: R_xlen_t = if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            // GNU `[[<-.data.frame` measures the replacement with
+            // `N <- NROW(value)`: an array value contributes its first
+            // dimension, not its total cell count (a 3x2 character matrix
+            // is one 3-row column, see PR#14974's data1$y <- y).
+            let dim =
+                crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+            let value_len: R_xlen_t = if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && XLENGTH(dim) >= 1
+            {
+                crate::sexp::accessors::INTEGER_ELT(dim, 0).max(0) as R_xlen_t
+            } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
                 let mut len: R_xlen_t = 0;
                 let mut p = value;
                 while !p.is_null() && p != R_NilValue() {

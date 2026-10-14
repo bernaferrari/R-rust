@@ -331,3 +331,17 @@ mod ascii_numeric_tests;
 
 #[cfg(test)]
 mod ascii_stream_tests;
+
+/// xz container at GNU `xzfile()` defaults: preset 6, CRC32 check.
+pub(crate) fn xz_compress_gnu(input: &[u8]) -> Result<Vec<u8>, String> {
+    let mut options = lzma_rust2::XzOptions::with_preset(6);
+    options.set_check_sum_type(lzma_rust2::CheckType::Crc32);
+    let mut writer = lzma_rust2::XzWriter::new(Vec::new(), options)
+        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))?;
+    writer
+        .write_all(input)
+        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))?;
+    writer
+        .finish()
+        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))
+}

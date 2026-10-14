@@ -561,7 +561,16 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+            // GNU iconv(NULL, ...): the staged base iconvlist() wrapper
+            // reaches this contract to enumerate the system conversions.
+            let names = system_iconv_names();
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+            let _o = protect(out);
+            for (i, name) in names.iter().enumerate() {
+                let c = CString::new(name.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+            }
+            return out;
         }
         if TYPEOF(x) != SEXPTYPE::STRSXP {
             crate::mainutils::errors::errorcall_str(
@@ -660,35 +669,60 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-const ICONVLIST: &[&str] = &[
-    "ASCII",
-    "BIG5",
-    "CP1252",
-    "EUC-JP",
-    "EUC-KR",
-    "GB18030",
-    "GBK",
-    "ISO-8859-1",
-    "ISO8859-1",
-    "LATIN1",
-    "SHIFT_JIS",
-    "US-ASCII",
-    "UTF-16",
-    "UTF-16BE",
-    "UTF-16LE",
-    "UTF-32",
-    "UTF-8",
-];
+/// System iconv conversion names via libiconv `iconvlist(3)`, sorted and
+/// deduplicated (GNU's R-level `iconvlist()` sorts the same enumeration).
+fn system_iconv_names() -> Vec<String> {
+    #[link(name = "iconv")]
+    unsafe extern "C" {
+        fn iconvlist(
+            do_one: Option<
+                unsafe extern "C" fn(
+                    u32,
+                    *const *const std::os::raw::c_char,
+                    *mut std::os::raw::c_void,
+                ) -> std::os::raw::c_int,
+            >,
+            data: *mut std::os::raw::c_void,
+        );
+    }
+    unsafe extern "C" fn collect(
+        count: u32,
+        names: *const *const std::os::raw::c_char,
+        data: *mut std::os::raw::c_void,
+    ) -> std::os::raw::c_int {
+        unsafe {
+            let list = &mut *(data.cast::<Vec<String>>());
+            for index in 0..count as usize {
+                let name = *names.add(index);
+                if !name.is_null() {
+                    list.push(
+                        std::ffi::CStr::from_ptr(name)
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+            }
+        }
+        0
+    }
+    let mut names: Vec<String> = Vec::new();
+    unsafe {
+        iconvlist(Some(collect), std::ptr::addr_of_mut!(names).cast());
+    }
+    names.sort();
+    names.dedup();
+    names
+}
 
-/// GNU `iconvlist()`.
+/// GNU `iconvlist()` — enumerate the system iconv conversions.
 pub unsafe fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _ = args;
-        let n = ICONVLIST.len() as i64;
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let names = system_iconv_names();
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
         let _o = protect(out);
-        for (i, name) in ICONVLIST.iter().enumerate() {
-            let c = CString::new(*name).unwrap_or_else(|_| CString::new("").unwrap());
+        for (i, name) in names.iter().enumerate() {
+            let c = CString::new(name.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
             SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
         }
         out

@@ -715,7 +715,8 @@ fn test_r_serialize_info_reports_header() {
 
         let enc = VECTOR_ELT(info, 4);
         let enc_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(enc, 0)));
-        assert_eq!(enc_s.to_bytes(), b"");
+        // GNU v3 streams carry the native encoding; we report UTF-8.
+        assert_eq!(enc_s.to_bytes(), b"UTF-8");
     }
 }
 

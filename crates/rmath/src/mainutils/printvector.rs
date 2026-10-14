@@ -153,9 +153,12 @@ fn index_width_xlen(x: R_xlen_t) -> c_int {
     d
 }
 
-/// Print a vector index label at position `i` with field width `w`.
+/// Print a vector index label "[`i']", using total width `w` (left filling
+/// blanks). GNU VectorIndex: `Rprintf("%*s[%ld]", w-IndexWidth(i)-2, "", i)`
+/// — no trailing space; the element loops supply the gap.
 fn vector_index(i: R_xlen_t, w: c_int) {
-    Rprintf!("[{:>width$}] ", i, width = (w - 3).max(0) as usize);
+    let pad = (w - index_width_xlen(i) - 2).max(0) as usize;
+    Rprintf!("{:>pad$}[{}]", "", i, pad = pad);
 }
 
 unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: c_int) -> *const c_char {

@@ -7,6 +7,45 @@ pub unsafe fn WriteItemInternal(
 ) {
     unsafe {
         let _item_guard = protect(s);
+        // GNU serializes unexpanded compact integer/real sequences as
+        // ALTREP_SXP (compact_intseq / compact_realseq) under version 3;
+        // state is a REALSXP triple (length, origin, step) and info is the
+        // class list (name symbol, package symbol, INTSXP sexp type).
+        if writer.version >= 3 && TYPEOF(s) != SEXPTYPE::ENVSXP && !s.is_null() {
+            if let Some(seq) = crate::sexp::altseq::unexpanded_int(s)
+                && let Some((from, step)) = seq.int_origin_step()
+                && (step == 1 || step == -1)
+            {
+                write_compact_sequence(
+                    s,
+                    ref_table,
+                    writer,
+                    c"compact_intseq",
+                    SEXPTYPE::INTSXP.as_c_int(),
+                    seq.len() as c_double,
+                    from as c_double,
+                    step as c_double,
+                );
+                return;
+            }
+            if let Some(seq) = crate::sexp::altseq::unexpanded_real(s) {
+                if let Some((from, step)) = seq.real_origin_step() {
+                    if step == 1.0 || step == -1.0 {
+                        write_compact_sequence(
+                            s,
+                            ref_table,
+                            writer,
+                            c"compact_realseq",
+                            SEXPTYPE::REALSXP.as_c_int(),
+                            seq.len() as c_double,
+                            from,
+                            step,
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         {
             if crate::sexp::altrep::has_extension_raw(s) {
                 let object =
@@ -283,5 +322,48 @@ pub unsafe fn WriteItemInternal(
         if hasattr != 0 {
             WriteItemInternal(ATTRIB(s), ref_table, writer);
         }
+    }
+}
+
+/// Emit one GNU ALTREP_SXP compact-sequence record: class info list, state
+/// triple, and the object's attributes.
+unsafe fn write_compact_sequence(
+    s: SEXP,
+    ref_table: &mut WriteHashTable,
+    writer: &mut BinaryWriter,
+    class_name: &CStr,
+    sexp_type: c_int,
+    length: c_double,
+    origin: c_double,
+    step: c_double,
+) {
+    unsafe {
+        let name_sym = Rf_install(class_name.as_ptr());
+        let _name = protect(name_sym);
+        let pkg_sym = Rf_install(c"base".as_ptr());
+        let _pkg = protect(pkg_sym);
+        let type_vec = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        let _tv = protect(type_vec);
+        if !type_vec.is_null() {
+            *INTEGER(type_vec) = sexp_type;
+        }
+        let info_tail = Rf_cons(type_vec, R_NilValue());
+        let _it = protect(info_tail);
+        let info_mid = Rf_cons(pkg_sym, info_tail);
+        let _im = protect(info_mid);
+        let info = Rf_cons(name_sym, info_mid);
+        let _info = protect(info);
+        let state = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        let _st = protect(state);
+        if !state.is_null() {
+            let p = REAL(state);
+            *p = length;
+            *p.add(1) = origin;
+            *p.add(2) = step;
+        }
+        writer.write_i32(PackFlags(ALTREP_SXP, LEVELS(s), OBJECT(s), 0, 0));
+        WriteItemInternal(info, ref_table, writer);
+        WriteItemInternal(state, ref_table, writer);
+        WriteItemInternal(ATTRIB(s), ref_table, writer);
     }
 }

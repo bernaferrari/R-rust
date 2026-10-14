@@ -40,7 +40,7 @@ use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
-use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
+use crate::sexp::memory_ext::{NewEnvironment, allocLang, vmaxget, vmaxset};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
@@ -532,7 +532,7 @@ pub(crate) unsafe fn tryAssignDispatch(
         while !CDR(last).is_null() && CDR(last) != R_NilValue() {
             last = CDR(last);
         }
-        let prom = mkPROMISE(CAR(last), rho);
+        let prom = crate::sexp::memory_ext::R_mkEVPROMISE(CAR(last), rhs);
         SETCAR(last, prom);
 
         let result = tryDispatch(generic, ncall, lhs, rho, pv);

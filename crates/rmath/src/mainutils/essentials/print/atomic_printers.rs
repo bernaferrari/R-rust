@@ -198,6 +198,16 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
+        // An S4-flagged closure (e.g. a MethodDefinition) must not take the
+        // srcref shortcut: GNU print.function -> print.default(useSource=)
+        // -> PrintValueRec -> PrintClosure deparses it as
+        // `new("Class", ...)` and then printAttributes nests the slot
+        // tags (`attr(,"generic")attr(,"package")`).
+        if crate::mainutils::objects::IS_S4_OBJECT(x) != 0 {
+            crate::mainutils::print::PrintValueRec(x, std::ptr::null_mut());
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         // GNU PrintClosure prints the source/deparse body, then the
         // environment line whenever CLOENV(s) != R_GlobalEnv — on both the
         // srcref-source and the deparse path.

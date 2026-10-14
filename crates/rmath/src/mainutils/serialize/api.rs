@@ -464,7 +464,7 @@ pub unsafe fn R_serialize_with_xdr(
         writer.set_ascii_body(ascii_format);
         writer.set_ascii_hex(ascii_value == crate::sexp::ffi::NA_LOGICAL);
         writer.set_xdr_body(xdr_format);
-        writer.set_persist_hook(fun);
+        writer.version = version;
 
         // Version info
         writer.write_i32(version); // version
@@ -475,7 +475,14 @@ pub unsafe fn R_serialize_with_xdr(
             R_VERSION_350
         });
         if version == 3 {
-            writer.write_i32(0); // native encoding length
+            // GNU R_Serialize writes the native encoding name; the runtime
+            // is UTF-8-native like Unix GNU R.
+            const NATIVE_ENCODING: &[u8] = b"UTF-8";
+            writer.write_i32(NATIVE_ENCODING.len() as c_int);
+            writer.write_string_bytes(
+                NATIVE_ENCODING.as_ptr() as *const c_char,
+                NATIVE_ENCODING.len() as c_int,
+            );
         }
 
         // Serialize the object
@@ -943,12 +950,31 @@ unsafe fn R_unserialize_from_stream_hooks(
             .collect();
         let data = data.as_slice();
 
-        // GNU serialize.c: gzip-compressed RDS starts with 1f 8b.
+        // GNU serialize.c: gzip-compressed RDS starts with 1f 8b; the
+        // bzip2 and xz containers written by saveRDS(compress=) sniff the
+        // same way (magic "BZh" / xz fd 37 7a 58 5a 00).
         let decompressed;
         let payload: &[u8] = if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
             let mut decoder = GzDecoder::new(data);
             let mut out = Vec::new();
             if decoder.read_to_end(&mut out).is_err() || out.is_empty() {
+                error("read error");
+            }
+            decompressed = out;
+            &decompressed
+        } else if data.len() >= 3 && &data[..3] == b"BZh" {
+            let mut decoder = bzip2::read::BzDecoder::new(data);
+            let mut out = Vec::new();
+            if decoder.read_to_end(&mut out).is_err() || out.is_empty() {
+                error("read error");
+            }
+            decompressed = out;
+            &decompressed
+        } else if data.len() >= 6 && data[..6] == [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] {
+            let mut out = Vec::new();
+            if lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut out).is_err()
+                || out.is_empty()
+            {
                 error("read error");
             }
             decompressed = out;

@@ -113,7 +113,7 @@ macro_rules! void_kernels {
 }
 void_kernels! {
     Args1(1; a), Args2(2; a,b), Args4(4; a,b,c,d), Args6(6; a,b,c,d,e,f),
-    Args7(7; a,b,c,d,e,f,g), Args9(9; a,b,c,d,e,f,g,h,i),
+    Args7(7; a,b,c,d,e,f,g), Args8(8; a,b,c,d,e,f,g,h), Args9(9; a,b,c,d,e,f,g,h,i),
     Args10(10; a,b,c,d,e,f,g,h,i,j), Args17(17; a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q),
     Args20(20; a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t),
 }
@@ -748,6 +748,7 @@ pub(crate) fn invocation_count() -> usize {
     INVOCATIONS.with(std::cell::Cell::get)
 }
 
+pub(crate) mod dqrutl;
 pub(crate) mod holtwinters;
 pub(crate) mod multi_burg;
 pub(crate) mod ppr_predict;

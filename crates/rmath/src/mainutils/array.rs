@@ -23,10 +23,11 @@ use crate::sexp::accessors::{
     TYPEOF, UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
 
+use crate::sexp::accessors::{INTEGER_ELT, LOGICAL_ELT, REAL_ELT};
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons, Rf_length};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -1569,8 +1570,15 @@ pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// `asplit(x, m)` -- split an array into a list of sub-arrays.
 ///
 /// Ported from R's `do_asplit` in array.c (line 2433).
+/// `asplit` accepts both contracts: the R-level `asplit(x, MARGIN, drop)`
+/// used when the port's builtin stands alone, and GNU's `.Internal(asplit(x,
+/// da, dc, dna, dnc, d1, d2, drop))` reached from the staged base `array.R`
+/// wrapper after the aperm shuffle (array.c `do_asplit`).
 pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        if Rf_length(_args) >= 8 {
+            return do_asplit_internal(_args);
+        }
         let matched = match_primitive_args(_args, &["x", "MARGIN"], "asplit");
         let x = matched[0];
         if x.is_null() || x == R_NilValue() {
@@ -1624,6 +1632,66 @@ pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
             SET_VECTOR_ELT(result, outer_index as R_xlen_t, element);
         }
         result
+    }
+}
+
+/// GNU `.Internal(asplit(x, da, dc, dna, dnc, d1, d2, drop))` from array.c:
+/// `x` is already permuted so the split margins are innermost; carve linear
+/// runs of `n1 = prod(d.call)` elements into `n2 = prod(d.ans)` slices.
+unsafe fn do_asplit_internal(args: SEXP) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        let mut arg = [R_NilValue(); 8];
+        for slot in arg.iter_mut() {
+            if cell.is_null() || cell == R_NilValue() {
+                array_error("asplit() internal contract requires 8 arguments");
+            }
+            *slot = CAR(cell);
+            cell = CDR(cell);
+        }
+        let (x, da, dc, dna, dnc, d1, d2, drop) = (
+            arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7],
+        );
+        let n1 = as_integer(d1);
+        let n2 = as_integer(d2);
+        if n1 < 0 || n2 < 0 {
+            array_error("asplit() invalid dimension product");
+        }
+        let havednc = !dnc.is_null() && dnc != R_NilValue() && Rf_length(dnc) > 0;
+        let keepdim = !(TYPEOF(drop) == SEXPTYPE::LGLSXP
+            && Rf_length(drop) == 1
+            && LOGICAL_ELT(drop, 0) != 0);
+        let y = Rf_allocVector3(SEXPTYPE::VECSXP, n2 as R_xlen_t);
+        setAttrib(y, R_DimSymbol(), da);
+        if !dna.is_null() && dna != R_NilValue() && Rf_length(dna) > 0 {
+            setAttrib(y, R_DimNamesSymbol(), dna);
+        }
+        let mut k = 0usize;
+        for i in 0..n2 as usize {
+            let e = Rf_allocVector3(TYPEOF(x), n1 as R_xlen_t);
+            for j in 0..n1 as usize {
+                copy_vector_element(e, j, x, k);
+                k += 1;
+            }
+            if keepdim {
+                setAttrib(e, R_DimSymbol(), dc);
+                if havednc {
+                    setAttrib(e, R_DimNamesSymbol(), dnc);
+                }
+            }
+            SET_VECTOR_ELT(y, i as R_xlen_t, e);
+        }
+        y
+    }
+}
+
+unsafe fn as_integer(x: SEXP) -> i32 {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => INTEGER_ELT(x, 0),
+            t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0) as i32,
+            _ => array_error("asplit() internal dimension must be an integer"),
+        }
     }
 }
 

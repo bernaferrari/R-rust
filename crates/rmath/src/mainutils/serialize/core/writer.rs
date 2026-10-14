@@ -3,6 +3,8 @@ use super::*;
 /// Internal serializer that writes to a Vec<u8>.
 pub struct BinaryWriter {
     pub buf: Vec<u8>,
+    /// Serialization format version (2 or 3); ALTREP wiring is v3-only.
+    pub version: c_int,
     pub ascii_body: bool,
     pub(crate) ascii_hex: bool,
     pub xdr_body: bool,
@@ -16,6 +18,7 @@ impl BinaryWriter {
     pub fn new() -> Self {
         BinaryWriter {
             buf: Vec::new(),
+            version: 3,
             ascii_body: false,
             ascii_hex: false,
             xdr_body: false,
