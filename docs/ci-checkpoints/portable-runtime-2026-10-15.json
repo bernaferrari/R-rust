@@ -1,0 +1,528 @@
+{
+  "recorded_utc": "2026-10-15T07:08:05.324178+00:00",
+  "scope": "2026-10-15 portable Rust runtime milestone; not complete GNU R, full safety certification, or a complete workspace/conformance gate.",
+  "source": {
+    "head_before_checkpoint": "3f4addacd7dd23f6dc9cd2bad98d34764581d7d0",
+    "oracle_source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "oracle_svn_revision": 90451,
+    "oracle_version": "GNU R 4.7.0 development",
+    "native_toolchain": "1.96",
+    "wasm_toolchain": "nightly-2026-08-25",
+    "wasm_bindgen": "0.2.127",
+    "wasm_optimizer": "Binaryen 133 -Oz, preserving input features",
+    "validation_note": "Builds and tests included the two listed preexisting user edits. They are preserved and uncommitted; this is not clean-checkout validation.",
+    "preexisting_dirty_tracked_inputs": {
+      "crates/rmath/src/mainutils/datetime/misc.rs": {
+        "path": "crates/rmath/src/mainutils/datetime/misc.rs",
+        "bytes": 28613,
+        "sha256": "0a16b1c7d8d31bda9ea99956f9841c2cf34fd3127ce09d941b58d283a9007ef6"
+      },
+      "crates/rmath/src/sexp/upstream_base.rs": {
+        "path": "crates/rmath/src/sexp/upstream_base.rs",
+        "bytes": 54790,
+        "sha256": "065904cc53c67519d0dfbf559fac9f936d74280d3e7d5c4bbb7fd221565b0716"
+      }
+    },
+    "preexisting_untracked_preserved": [
+      "literal one-character double-quote filename",
+      "tests/upstream-run/reg-tests-1a.pdf"
+    ],
+    "unchanged_compilation_settings": {
+      "path": ".cargo/config.toml",
+      "bytes": 530,
+      "sha256": "bc973b21b6c6ac6ed809cabcb34c4d489796b00e6b2df2291ed34ebea886cd24"
+    }
+  },
+  "milestones": [
+    "Remove unused Quartz, X11, Windows, Cairo, PicTeX and legacy bitmap implementation paths from the portable runtime.",
+    "Replace system-zlib gzip with safe portable Rust compression, preserving R framing and cross-decoding with pinned GNU R.",
+    "Enumerate supported portable Rust codecs without a system libiconv dependency.",
+    "Implement bounded session virtual filename and anonymous read-write connections with owned binary operands, connection allocation identity and GNU error/visibility/cursor ordering.",
+    "Route readRDS/saveRDS filenames through session virtual files with independent GNU fixtures and browser worker coverage.",
+    "Own coercion warning attribution and statistical permutation/robust workspaces; isolate smoother state at the runtime boundary.",
+    "Match measured GNU numeric colors, source decimal literal rounding, mget fallback diagnostics and LOESS predictor flags.",
+    "Restore strict lint/provenance/state-inventory gates and prune obsolete binaries in the selected Cargo profile.",
+    "Store complete bundled font bytes losslessly; preserve glyph coverage, metrics and byte-identical PNGs within the unchanged Wasm package budget."
+  ],
+  "wasm_final": {
+    "wasm_bytes": 25380882,
+    "package_bytes": 25414321,
+    "limit_bytes": 26214400,
+    "sha256": "284feec36c6f5f73ebf3b39e558afff79693f8eef165386fabe2d3f2c10bef2e",
+    "before_wasm_bytes": 26715286,
+    "budget_unchanged": true,
+    "package_limit_margin_bytes": 800079,
+    "package_path": "target/session-evidence/wasm-web",
+    "node_package_path": "target/session-evidence/wasm-node",
+    "raw_wasm": {
+      "path": "target/wasm-unwind/wasm32-unknown-unknown/release/r_wasm.wasm",
+      "bytes": 30711391,
+      "sha256": "5b0589fc9834ffb1b272d0f269e64d23059d00fa262d6dbf6dc926771efb43e0"
+    },
+    "node_process_exit_codes": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "node_checks": {
+      "binary": 35,
+      "anonymous": 9,
+      "serialization": 14,
+      "numeric": 67,
+      "m3_smoke": "PASS"
+    },
+    "chromium": {
+      "version": "153.0.8010.12",
+      "io_checks_passed": 15,
+      "full_byte_png_checks_passed": 2
+    },
+    "website_workers": {
+      "passed": 2,
+      "failed": 0,
+      "elapsed_seconds": 10.8,
+      "reporter": "/root"
+    },
+    "font_png_identity": [
+      {
+        "case": 0,
+        "bytes": 5360,
+        "sha256": "8a22d6539cc540801d562b4f1c8b730e15ff5f99f4540070238a574ca5a8aeb5",
+        "png_byte_identical": true
+      },
+      {
+        "case": 1,
+        "bytes": 5912,
+        "sha256": "f0eda42494a08f83d319cb6bacdc9c048083d4c5070895f12e933d7ca21d697a",
+        "png_byte_identical": true
+      }
+    ]
+  },
+  "android_final": {
+    "target": "aarch64-linux-android",
+    "profile": "release",
+    "bytes": 35492448,
+    "sha256": "1813c177f356d6a2723fdf793fc031518822e55aef28fe4e5ea14e9c7560a727",
+    "log": "/tmp/rport-session-android-font-link.log",
+    "on_device_execution": false,
+    "shared_library_path": "target/session-evidence/android/libr_uniffi.so",
+    "scope": "Real Android arm64 NDK release link. No on-device execution claim."
+  },
+  "native_focused": {
+    "final_font_tests": {
+      "passed": 7,
+      "failed": 0
+    },
+    "public_portable_io": {
+      "passed": 5,
+      "failed": 0,
+      "receipt": "target/session-evidence/native-portable-io/debug4-public.json"
+    },
+    "public_rds_files": {
+      "passed": 4,
+      "failed": 0,
+      "receipt": "target/session-evidence/current-final/native-rds.json"
+    },
+    "earlier_focused_core_tests": {
+      "passed": 69,
+      "failed": 0,
+      "receipt": "target/session-evidence/current-native-core/summary.json",
+      "scope": "Earlier source snapshot, separate from final font validation."
+    },
+    "gnu_gzip_crossdecode": {
+      "streams": 33,
+      "result": "Pinned GNU R decoded every produced stream to its original input."
+    },
+    "strict_workspace_clippy": "PASS: all targets with -D warnings",
+    "format": "PASS",
+    "upstream_source_anchors_checked": 88,
+    "android_mutable_global_inventory": "PASS; classification currency does not certify all globals as safe."
+  },
+  "scoped_miri": {
+    "runtime_coercion_warning_tests": 4,
+    "pure_numeric_color_tests": 3,
+    "pure_robust_kernel_tests": 2,
+    "pure_iconv_tests": 2,
+    "scope": "Strict provenance/default alias checks on these seams only. Runtime warning check ignores leak reporting. No claim that the full engine is Miri-clean."
+  },
+  "historical_stats_controls": {
+    "original_wasm_drivers": 12,
+    "comparison": "Exact original expected output and live pinned GNU, on the recorded pre-font snapshot.",
+    "receipt": "target/session-evidence/stats/manifest.json",
+    "final_module_trend_audit": "Original StructTS trend output and model metadata independently match pinned GNU on the final module.",
+    "loess_remaining": "Latest-model interpolation overwrite and placeholder serialized workspace metadata remain open."
+  },
+  "broad_library_run": {
+    "recorded_utc": "2026-10-15T07:04:40.179169+00:00",
+    "result": "INCOMPLETE; not a passing full-suite gate",
+    "disposition": "Stopped owned earlier-source snapshot after focused current-source platform gates completed. Full workspace validation remains tracked by rport-jm774.",
+    "command": "target/release/deps/rmath-af99e2de57ba06ce --test-threads=1",
+    "failed_lines": 0,
+    "log_sha256": "a09a73ca3c70e0ff08d8b9b4c84820693efd1a7616473d4f26ffaf6bafb7a3b8",
+    "source_scope": "Earlier runtime snapshot before final portable IO and font changes; not final HEAD validation.",
+    "exit_status": 143,
+    "termination": "SIGTERM of only owned process",
+    "observed_pass_lines": 1533,
+    "nested_subprocess_summaries": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4058 filtered out; finished in 0.02s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4058 filtered out; finished in 0.00s"
+    ],
+    "full_suite_summary_present": false,
+    "scope_note": "Two one-test footers belong to nested cycle-check subprocesses; they are not a complete main-suite summary. The running earlier image spawned those through a test executable path rebuilt later in this session."
+  },
+  "beads": {
+    "closed_today_count": 31,
+    "closed_today": [
+      {
+        "id": "rport-lx64c.1",
+        "title": "Restore the Wasm package budget with lossless bundled font compression"
+      },
+      {
+        "id": "rport-b9vfx",
+        "title": "Use platform c_char for clustering diagnostics on Android arm64"
+      },
+      {
+        "id": "rport-wszw.17",
+        "title": "Route readRDS and saveRDS filenames through the bounded session VFS"
+      },
+      {
+        "id": "rport-6u1qo",
+        "title": "Remove system libiconv name enumeration from portable runtime"
+      },
+      {
+        "id": "rport-cmnqj",
+        "title": "Refresh Android global-state classification after runtime module splits"
+      },
+      {
+        "id": "rport-eotc.1",
+        "title": "Own coercion warning attribution with the existing original-runtime scope guard"
+      },
+      {
+        "id": "rport-c4k4v",
+        "title": "Replace native-only system zlib gzip with portable Rust compression"
+      },
+      {
+        "id": "rport-9i74e",
+        "title": "Restore warnings-free runtime gates after module splits"
+      },
+      {
+        "id": "rport-9pto3",
+        "title": "Retire unregistered legacy desktop graphics backends from the portable runtime"
+      },
+      {
+        "id": "rport-brfcm",
+        "title": "Remove negative-intermediate indexing from exact permutation distributions"
+      },
+      {
+        "id": "rport-jxfp.3.12.6.3",
+        "title": "Repair ARIMA mixed and seasonal maximum-likelihood fitting divergences"
+      },
+      {
+        "id": "rport-jxfp.3.12.3.8",
+        "title": "Preserve GNU numeric color lexical and rounding semantics in pure Rust"
+      },
+      {
+        "id": "rport-0boi5",
+        "title": "Prune obsolete release executables in the selected Cargo profile"
+      },
+      {
+        "id": "rport-2z8kf",
+        "title": "Repair stale source provenance anchors after module splits"
+      },
+      {
+        "id": "rport-y2ial",
+        "title": "Triage 9 new red rmath unit tests from the 2026-10-11 parity wave"
+      },
+      {
+        "id": "rport-ppjra",
+        "title": "Match independently observed GNU decimal parsing precision at long mantissas"
+      },
+      {
+        "id": "rport-aa96.4",
+        "title": "Match GNU LOESS predictor-name flag normalization in portable admission"
+      },
+      {
+        "id": "rport-2kys1",
+        "title": "Classify and repair baseline bulk-reset retained backing assertion"
+      },
+      {
+        "id": "rport-jxfp.3.12.6.6.2",
+        "title": "Project the actual character separator before UTF8 paste translation"
+      },
+      {
+        "id": "rport-p58y5.1",
+        "title": "Fix StructTS trend original conformance workload"
+      },
+      {
+        "id": "rport-jxfp.3.12.6.12",
+        "title": "Repair density BinDist argument admission and complete workload"
+      },
+      {
+        "id": "rport-wszw.16",
+        "title": "Retain binary scratch reservations through generic source consumers"
+      },
+      {
+        "id": "rport-wszw.15",
+        "title": "Match GNU writeBin filename error ordering and truncation effects"
+      },
+      {
+        "id": "rport-wszw.14.1",
+        "title": "Reject bare callable mget fallbacks consistently with GNU coercion"
+      },
+      {
+        "id": "rport-jxfp.3.12.3.3.1",
+        "title": "Implement anonymous virtual browser read-write file connections"
+      },
+      {
+        "id": "rport-vwv0i",
+        "title": "test_environment_chain pointer identity across init"
+      },
+      {
+        "id": "rport-ie8tw",
+        "title": "test_R_do_new_object fails at HEAD"
+      },
+      {
+        "id": "rport-m1odu",
+        "title": "Pre-existing lib-suite failures: dgecon 0x0 and GC stress SIGTRAP"
+      },
+      {
+        "id": "rport-liixk",
+        "title": "R_subassign3_dflt on NULL should grow a list like GNU"
+      },
+      {
+        "id": "rport-9g2r9",
+        "title": "Configure bd dolt remote for session-close push"
+      },
+      {
+        "id": "rport-t9wq5",
+        "title": "Session GC tests no-op inside an arena lend"
+      }
+    ],
+    "remaining_count": 146,
+    "status_counts": {
+      "closed": 1810,
+      "in_progress": 76,
+      "open": 69,
+      "blocked": 1
+    },
+    "metadata_sync": "BLOCKED: no Dolt remote configured; rport-0d5o tracks the missing remote URL. Git code pushes are separate.",
+    "remaining_scope_examples": [
+      "rport-aa96.1",
+      "rport-sg9a",
+      "rport-hah9u",
+      "rport-jm774",
+      "rport-jxfp.3.12.6.16",
+      "rport-wszw.11.1",
+      "rport-sqs1h",
+      "rport-jxfp.3.12.3.3.2",
+      "rport-cvs2",
+      "rport-wszw.7.1.1.4.2",
+      "rport-2v78x"
+    ]
+  },
+  "limits": [
+    "The interpreter still contains unsafe internals and ambient runtime access. This milestone does not make the entire implementation safe Rust.",
+    "Full GNU upstream, compiler/bytecode, CRAN/native ABI and Android application acceptance remain incomplete.",
+    "Gzip streams preserve decoded bytes and R framing; compressed bytes and file sizes may differ from GNU zlib. Existing goldens were not weakened.",
+    "Portable codec listing exposes only codecs actually implemented; broad iconv raw-output/admission behavior remains tracked.",
+    "Working-memory accounting across entire numerical, compression and rendering operations remains incomplete.",
+    "No local partial broad run is reported as a completed full-suite pass."
+  ],
+  "cleanup": {
+    "recorded_utc": "2026-10-15T07:05:39.212560+00:00",
+    "proof_recorded_before_cleanup": "target/session-evidence/font-compression/final-artifacts.json",
+    "removed": [
+      {
+        "path": "target/wasm-unwind",
+        "apparent_bytes": 717747099
+      },
+      {
+        "path": "target/aarch64-linux-android",
+        "apparent_bytes": 612823745
+      }
+    ],
+    "retained": "Final Node/web packages, Android shared library, all validation receipts and reversible archived executable caches."
+  },
+  "local_evidence": {
+    "note": "Local raw logs and packages are intentionally ignored build evidence. Hashes seal the recorded files; they are not claimed as uploaded CI artifacts.",
+    "receipts": [
+      {
+        "path": "target/session-evidence/font-compression/receipts.json",
+        "sha256": "38f6aad29644bff79b55be072f3f6055d848403448ed9921463b34ff3cad4d10"
+      },
+      {
+        "path": "target/session-evidence/font-compression/budget.json",
+        "sha256": "5ac566fb5008e67146f09623a65d4016644b00219fb096f339d0e3fae8c2c0e0"
+      },
+      {
+        "path": "target/session-evidence/font-compression/final-artifacts.json",
+        "sha256": "af8c89a2d4c0c189a1bf4d4a87639bda7a8621bb7f32fd6c83e54359859196cb"
+      },
+      {
+        "path": "target/session-evidence/font-compression/node/summary.json",
+        "sha256": "18e0d1a8e591b983e55b2864caf4af0973d7bd6f451b746c5fbeec5549e4bb45"
+      },
+      {
+        "path": "target/session-evidence/font-compression/browser/portable-io-font-chromium.json",
+        "sha256": "31f35adfb999174505c026fe054415ffd8c0ed666828a488858847e2bd2c7c9c"
+      },
+      {
+        "path": "target/session-evidence/font-compression/raster.json",
+        "sha256": "993ffd64e2ceb6de2c16c5332a9de5975cc6b8021496dbdd7e918d1523f6b33b"
+      },
+      {
+        "path": "target/session-evidence/current-final/native-rds.json",
+        "sha256": "49b7a4c44c5e28bb7b2b775ffe1c9d0b66981abf9844b6786eecad510259bca7"
+      },
+      {
+        "path": "target/session-evidence/native-portable-io/debug4-public.json",
+        "sha256": "6d0b614cbf14fbcd246b0c48ffd775a62d716ec4d94197645769907c4c723ab5"
+      },
+      {
+        "path": "target/session-evidence/current-native-core/summary.json",
+        "sha256": "d1a9ff610281ce281627b80da19037dd653c8e35e1e4bbd587563e8a0bc69f56"
+      },
+      {
+        "path": "target/session-evidence/stats/manifest.json",
+        "sha256": "284c450516302a7006275e313be2ded4e716db67e40118511b25b13badd44276"
+      },
+      {
+        "path": "target/session-evidence/stats/stale-audit-manifest.json",
+        "sha256": "d2775121486f83db1970cf37e9d5df74e1052f216d5768f96aa8a672441c0254"
+      },
+      {
+        "path": "target/session-evidence/stale-beads/receipts.json",
+        "sha256": "c0d3337b70fd1748b1db7a778f26ffe1345ab8e1c0d88fa491c0a0159f64d57a"
+      },
+      {
+        "path": "target/session-evidence/partial-native-suite/receipt.json",
+        "sha256": "f4d84dcf47901efecf0a9103db02416e3a98381bb4c0d06716feaaa72b16a668"
+      },
+      {
+        "path": "target/session-evidence/temporary-target-cleanup.json",
+        "sha256": "c36912fe3ad49ae4859af534dd813a42c60463129115599303efdaadfaf7ef1c"
+      },
+      {
+        "path": "target/session-evidence/beads-final-summary.json",
+        "sha256": "cc7b2f5e762b2f665304bf83bef0c0b0cb8aa6ca04aaf4f88eccca6d5c5f2c91"
+      }
+    ],
+    "logs": [
+      {
+        "path": "target/session-evidence/font-compression/workspace-clippy.log",
+        "sha256": "aaaf58b05237f4822f374bf32d11f89cfbba29647250df419d071f39b448e213"
+      },
+      {
+        "path": "target/session-evidence/font-compression/android-release-link.log",
+        "sha256": "ad40a7b2823b4e148c81f4f84896c0131c59d0ecaa0ec8a5f852a8f4973eddb0"
+      },
+      {
+        "path": "target/session-evidence/font-compression/wasm-release-build.log",
+        "sha256": "686fea0ddd47325924b1de68c477899db0d336cfa7ec1534dd9f5f70c4a40f3a"
+      },
+      {
+        "path": "target/session-evidence/font-compression/website-workers.log",
+        "sha256": "d319ec022facd70e2923b90d505660e6d31e751db9ec1c1b5b70dc464c069fde"
+      },
+      {
+        "path": "target/session-evidence/font-compression/native-seven-font-tests.log",
+        "sha256": "74ee779da97b03e53e1358c8a8852a8dcbc1bb7bd47309b02e14cacdf3999a48"
+      },
+      {
+        "path": "target/session-evidence/font-compression/warning-strict-miri.log",
+        "sha256": "afd2fed1b0405a7be9a05d08da5358e8d6049222fa53e8dbff0dc7c2362300f0"
+      },
+      {
+        "path": "target/session-evidence/font-compression/numeric-color-strict-miri.log",
+        "sha256": "cbe74a0f0b93533f696bc38cb92b3ae46378605f263f624f6647ec68b2284422"
+      },
+      {
+        "path": "target/session-evidence/font-compression/source-provenance.log",
+        "sha256": "6f6544140329ca07f414e3cf111293a9e38c62586d11849e26aea0b09fe56935"
+      },
+      {
+        "path": "target/session-evidence/font-compression/android-globals.log",
+        "sha256": "019e76f21dc5ee128c00a53c447715c2340ba547623895ec42aec3b786ceec83"
+      },
+      {
+        "path": "target/session-evidence/font-compression/format.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "commits": [
+    {
+      "commit": "a664d2b7ded7ced1680cf722883d00e8beb2b5cc",
+      "title": "Repair source provenance paths after module splits"
+    },
+    {
+      "commit": "0e78fc96e6d9f97ba26c68aa36a917509e0c2849",
+      "title": "Own permutation workspaces and match GNU LOESS predictor selection"
+    },
+    {
+      "commit": "e164b4cbd866a4e1182697b761d74f0faec10205",
+      "title": "Match GNU mget callable fallback admission diagnostics"
+    },
+    {
+      "commit": "4b8dab5e72e014fca1bbda71886cae1e8536a45f",
+      "title": "Unify checked numeric colors and preserve GNU source literal rounding"
+    },
+    {
+      "commit": "3b62e966b34a2f9b024f96d914f3f0c56dc87e43",
+      "title": "Isolate smoother state and preserve GNU LOESS workspaces"
+    },
+    {
+      "commit": "f0121b504fcf42fd23b65b0cb5f703a44b60048f",
+      "title": "Own coercion warning attribution through nested runtime scopes"
+    },
+    {
+      "commit": "2b0d0917e0f4711a94de0954a36f01a318e535c9",
+      "title": "Prune obsolete executables in the selected Cargo profile"
+    },
+    {
+      "commit": "221cf992d768258e53da9e497b33c03148ac8f1d",
+      "title": "List supported Rust codecs without linking system iconv"
+    },
+    {
+      "commit": "3c7ebb29baa6bf79fdcbf43060ab0e5095e4a900",
+      "title": "Retire legacy desktop graphics implementations from the portable runtime"
+    },
+    {
+      "commit": "1b076a0b671c1aa47d4f27ff97593ce71177c250",
+      "title": "Replace native zlib FFI with safe portable Rust gzip"
+    },
+    {
+      "commit": "bf48a937cf7ae69fadc971dbc3058b280a7db532",
+      "title": "Restore strict runtime lint gates across pinned native and Wasm toolchains"
+    },
+    {
+      "commit": "1f2dad425d53a6008f0c560ebaa8d65cd6f5b1ca",
+      "title": "Refresh portable state inventory and use the local Cargo wrapper"
+    },
+    {
+      "commit": "98f12c7d4ba46fe4a068c6dfc6f120a1c34e16c9",
+      "title": "Use platform C character types in portable clustering diagnostics"
+    },
+    {
+      "commit": "a257a9919c87771d098d7a7fa0495c2d7927ced4",
+      "title": "Route filename serialization through bounded session VFS"
+    },
+    {
+      "commit": "760917b5d69033954047979f8c80d0c6623daeee",
+      "title": "Remove redundant delimiters from embedded upstream function sources"
+    },
+    {
+      "commit": "8696d8526f02b967f86340ff575396d16dcddb52",
+      "title": "fix(connections): own binary IO and virtual anonymous files"
+    },
+    {
+      "commit": "1849a904cf5214ad2b8faba482747b879342ab88",
+      "title": "Exercise portable files and serialization in Wasm CI and browser workers"
+    },
+    {
+      "commit": "3f4addacd7dd23f6dc9cd2bad98d34764581d7d0",
+      "title": "Store bundled fonts losslessly to meet the Wasm package budget"
+    }
+  ]
+}
