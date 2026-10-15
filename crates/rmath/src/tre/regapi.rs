@@ -286,6 +286,27 @@ pub unsafe fn tre_regnexec(
     }
 }
 
+/// Match a bounded Unicode scalar buffer. Offsets count scalar values; the
+/// UTF-8 adapter translates them back to original byte positions.
+pub(crate) unsafe fn tre_regwnexec(
+    preg: &regex_t,
+    text: &[tre_char_t],
+    matches: &mut [regmatch_t],
+    flags: c_int,
+) -> c_int {
+    unsafe {
+        tre_match(
+            preg.value as *const tre_tnfa_t,
+            text.as_ptr().cast(),
+            text.len(),
+            tre_str_type_t::STR_WIDE,
+            matches.len(),
+            matches.as_mut_ptr(),
+            flags,
+        )
+    }
+}
+
 pub unsafe fn tre_regexec(
     preg: *const regex_t,
     str: *const c_char,

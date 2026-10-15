@@ -211,6 +211,8 @@ pub unsafe fn tre_tnfa_run_backtrack(
             pos += 1;
             if len >= 0 && pos >= len {
                 next_c = 0;
+            } else if type_ == tre_str_type_t::STR_WIDE {
+                next_c = *(string as *const tre_char_t).add(pos as usize);
             } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                 next_c = *str_byte.add(pos as usize) as tre_cint_t;
             } else {
@@ -440,6 +442,19 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         }
                     } else if len - pos < bt_len {
                         result = 1;
+                    } else if type_ == tre_str_type_t::STR_WIDE && so >= 0 && bt_len >= 0 {
+                        let base = string as *const tre_char_t;
+                        result =
+                            if std::slice::from_raw_parts(base.add(so as usize), bt_len as usize)
+                                == std::slice::from_raw_parts(
+                                    base.add(pos as usize),
+                                    bt_len as usize,
+                                )
+                            {
+                                0
+                            } else {
+                                1
+                            };
                     } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                         result =
                             libc_memcmp(string as *const u8, so as usize, str_byte.sub(1), bt_len);
@@ -492,6 +507,8 @@ pub unsafe fn tre_tnfa_run_backtrack(
                         pos += 1;
                         if len >= 0 && pos >= len {
                             next_c = 0;
+                        } else if type_ == tre_str_type_t::STR_WIDE {
+                            next_c = *(string as *const tre_char_t).add(pos as usize);
                         } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                             next_c = *str_byte.add(pos as usize) as tre_cint_t;
                         } else {
@@ -580,6 +597,8 @@ pub unsafe fn tre_tnfa_run_backtrack(
                     pos += 1;
                     if len >= 0 && pos >= len {
                         next_c = 0;
+                    } else if type_ == tre_str_type_t::STR_WIDE {
+                        next_c = *(string as *const tre_char_t).add(pos as usize);
                     } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                         next_c = *str_byte.add(pos as usize) as tre_cint_t;
                     } else {

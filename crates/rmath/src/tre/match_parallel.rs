@@ -186,6 +186,8 @@ pub unsafe fn tre_tnfa_run_parallel(
             pos = 0;
             if len >= 0 && pos >= len {
                 next_c = 0;
+            } else if type_ == tre_str_type_t::STR_WIDE {
+                next_c = *(string as *const tre_char_t);
             } else if !str_byte.is_null() {
                 next_c = *str_byte as tre_cint_t;
             } else {
@@ -269,6 +271,8 @@ pub unsafe fn tre_tnfa_run_parallel(
             pos += 1;
             if len >= 0 && pos >= len {
                 next_c = 0;
+            } else if type_ == tre_str_type_t::STR_WIDE {
+                next_c = *(string as *const tre_char_t).add(pos as usize);
             } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                 next_c = *str_byte.add(pos as usize) as tre_cint_t;
             } else {

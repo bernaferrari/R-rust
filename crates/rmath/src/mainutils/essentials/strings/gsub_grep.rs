@@ -109,6 +109,8 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let value = logical_arg_by_name_or_position(args, "value", 3).unwrap_or(false);
         let invert = logical_arg_by_name_or_position(args, "invert", 7).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
+        crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
+            .unwrap_or_else(|message| base_error(&message));
         let matches = grep_match_indices(x_arg, &pattern, ignore_case, perl, fixed, invert);
 
         if value {
@@ -198,6 +200,8 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             return result;
         }
+        crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
+            .unwrap_or_else(|message| base_error(&message));
         for i in 0..n {
             if is_string_na(x_arg, i) {
                 // GNU grepl: NA in x does not match a non-missing pattern.
@@ -477,6 +481,8 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
+        crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
+            .unwrap_or_else(|message| base_error(&message));
         let pattern_is_literal = pattern.bytes().all(|b| {
             !matches!(
                 b,

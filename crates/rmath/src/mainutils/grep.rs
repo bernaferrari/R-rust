@@ -320,6 +320,7 @@ pub(crate) struct RegexMatch {
 
 struct TreRegex {
     preg: regex_t,
+    bytes: bool,
 }
 
 struct PerlRegex {
@@ -328,20 +329,24 @@ struct PerlRegex {
 
 impl TreRegex {
     fn compile(pattern: &str, ignore_case: bool) -> Result<Self, String> {
+        Self::compile_mode(pattern, ignore_case, false)
+    }
+
+    fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         unsafe {
             let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
             let mut cflags = REG_EXTENDED;
             if ignore_case {
                 cflags |= REG_ICASE;
             }
-            let rc = tre_regncomp(
-                &mut preg,
-                pattern.as_bytes().as_ptr() as *const c_char,
-                pattern.len(),
-                cflags,
-            );
+            let rc = if bytes {
+                tre_regncomp(&mut preg, pattern.as_ptr().cast(), pattern.len(), cflags)
+            } else {
+                let pattern: Vec<_> = pattern.chars().map(u32::from).collect();
+                crate::tre::compile::tre_compile(&mut preg, pattern.as_ptr(), pattern.len(), cflags)
+            };
             if rc == REG_OK {
-                Ok(Self { preg })
+                Ok(Self { preg, bytes })
             } else {
                 Err(format!("TRE compilation failed with code {rc}"))
             }
@@ -349,17 +354,46 @@ impl TreRegex {
     }
 
     fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
+        self.captures_at(text, 0)
+    }
+
+    fn captures_at(&self, original: &str, offset: usize) -> Option<Vec<Option<RegexMatch>>> {
+        let text = if self.bytes { "" } else { &original[offset..] };
+        let input = &original.as_bytes()[offset..];
         unsafe {
             let nmatch = self.preg.re_nsub.saturating_add(1).max(1);
             let mut pmatch = vec![regmatch_t::default(); nmatch];
-            let status = tre_regnexec(
-                &self.preg,
-                text.as_bytes().as_ptr() as *const c_char,
-                text.len(),
-                nmatch,
-                pmatch.as_mut_ptr(),
-                0,
-            );
+            let wide = if !self.bytes && !text.is_ascii() {
+                Some(text.chars().map(u32::from).collect::<Vec<_>>())
+            } else {
+                None
+            };
+            let flags = if offset == 0 {
+                0
+            } else {
+                crate::tre::ast::REG_NOTBOL
+            };
+            let status = if let Some(wide) = &wide {
+                crate::tre::regapi::tre_regwnexec(&self.preg, wide, &mut pmatch, flags)
+            } else {
+                tre_regnexec(
+                    &self.preg,
+                    input.as_ptr().cast(),
+                    input.len(),
+                    nmatch,
+                    pmatch.as_mut_ptr(),
+                    flags,
+                )
+            };
+            let byte_offset = |index: usize| {
+                if wide.is_some() {
+                    text.char_indices()
+                        .nth(index)
+                        .map_or(text.len(), |(i, _)| i)
+                } else {
+                    index
+                }
+            };
             if status != REG_OK {
                 return None;
             }
@@ -369,8 +403,8 @@ impl TreRegex {
                     .map(|m| {
                         if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
                             Some(RegexMatch {
-                                start: m.rm_so as usize,
-                                end: m.rm_eo as usize,
+                                start: offset + byte_offset(m.rm_so as usize),
+                                end: offset + byte_offset(m.rm_eo as usize),
                             })
                         } else {
                             None
@@ -397,15 +431,31 @@ impl Drop for TreRegex {
 
 impl PerlRegex {
     fn compile(pattern: &str, ignore_case: bool) -> Result<Self, String> {
+        Self::compile_mode(pattern, ignore_case, false)
+    }
+
+    fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         PerlRegexBuilder::new(pattern)
             .case_insensitive(ignore_case)
+            .bytes_mode(if bytes {
+                fancy_regex::BytesMode::Ascii
+            } else {
+                fancy_regex::BytesMode::Unicode
+            })
             .build()
             .map(|regex| Self { regex })
             .map_err(|err| err.to_string())
     }
 
     fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
-        let captures = self.regex.captures(text).ok()??;
+        self.captures_at(text, 0)
+    }
+
+    fn captures_at(&self, text: &str, offset: usize) -> Option<Vec<Option<RegexMatch>>> {
+        let captures = self
+            .regex
+            .captures_from_pos(text.as_bytes(), offset)
+            .ok()??;
         let mut matches = Vec::with_capacity(captures.len());
         for idx in 0..captures.len() {
             matches.push(captures.get(idx).map(|m| RegexMatch {
@@ -417,10 +467,14 @@ impl PerlRegex {
     }
 
     fn find(&self, text: &str) -> Option<RegexMatch> {
-        self.regex.find(text).ok().flatten().map(|m| RegexMatch {
-            start: m.start(),
-            end: m.end(),
-        })
+        self.regex
+            .find(text.as_bytes())
+            .ok()
+            .flatten()
+            .map(|m| RegexMatch {
+                start: m.start(),
+                end: m.end(),
+            })
     }
 }
 
@@ -832,13 +886,9 @@ pub(crate) fn ere_replace(
     ignore_case: bool,
 ) -> Option<String> {
     let regex = TreRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(
-        text,
-        replacement,
-        global,
-        pattern.starts_with('^'),
-        |remaining| regex.captures(remaining),
-    )
+    replace_with_captures(text, replacement, global, |original, offset| {
+        regex.captures_at(original, offset)
+    })
 }
 
 pub(crate) fn perl_replace(
@@ -872,49 +922,40 @@ pub(crate) fn perl_replace(
         return Some(out);
     }
     let regex = PerlRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(
-        text,
-        replacement,
-        global,
-        pattern.starts_with('^') || pattern.starts_with("\\A"),
-        |remaining| regex.captures(remaining),
-    )
+    replace_with_captures(text, replacement, global, |original, offset| {
+        regex.captures_at(original, offset)
+    })
 }
 
 fn replace_with_captures<F>(
     text: &str,
     replacement: &str,
     global: bool,
-    anchored: bool,
     mut captures_at: F,
 ) -> Option<String>
 where
-    F: FnMut(&str) -> Option<Vec<Option<RegexMatch>>>,
+    F: FnMut(&str, usize) -> Option<Vec<Option<RegexMatch>>>,
 {
     let mut result = String::with_capacity(text.len());
     let mut search_from = 0usize;
     let mut prev_nonzero = false;
     loop {
         let remaining = &text[search_from..];
-        if anchored && search_from > 0 {
-            result.push_str(remaining);
-            break;
-        }
-        let Some(captures) = captures_at(remaining) else {
+        let Some(captures) = captures_at(text, search_from) else {
             result.push_str(remaining);
             break;
         };
         let m = captures.first().and_then(|whole| *whole)?;
         let zero = m.start == m.end;
-        if zero && prev_nonzero && m.start == 0 && !remaining.is_empty() {
+        if zero && prev_nonzero && m.start == search_from && !remaining.is_empty() {
             let ch = remaining.chars().next().unwrap();
             result.push(ch);
             search_from += ch.len_utf8();
             prev_nonzero = false;
         } else {
-            result.push_str(&remaining[..m.start]);
-            append_r_replacement(&mut result, replacement, remaining, &captures);
-            search_from += m.end;
+            result.push_str(&text[search_from..m.start]);
+            append_r_replacement(&mut result, replacement, text, &captures);
+            search_from = m.end;
             if !global {
                 result.push_str(&text[search_from..]);
                 break;
@@ -972,6 +1013,82 @@ fn append_r_replacement(
     }
 }
 
+pub(crate) fn ere_find_at(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+    offset: usize,
+    bytes: bool,
+) -> Option<RegexMatch> {
+    TreRegex::compile_mode(pattern, ignore_case, bytes)
+        .ok()?
+        .captures_at(text, offset)?
+        .first()
+        .copied()
+        .flatten()
+}
+
+pub(crate) fn mode_captures(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+    perl: bool,
+    bytes: bool,
+) -> Option<Vec<Option<RegexMatch>>> {
+    if perl {
+        PerlRegex::compile_mode(pattern, ignore_case, bytes)
+            .ok()?
+            .captures(text)
+    } else {
+        TreRegex::compile_mode(pattern, ignore_case, bytes)
+            .ok()?
+            .captures(text)
+    }
+}
+
+pub(crate) fn mode_captures_all(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+    bytes: bool,
+) -> Option<Vec<Vec<Option<RegexMatch>>>> {
+    let re = PerlRegex::compile_mode(pattern, ignore_case, bytes).ok()?;
+    let mut all = Vec::new();
+    for captures in re.regex.captures_iter(text.as_bytes()) {
+        let captures = captures.ok()?;
+        all.push(
+            (0..captures.len())
+                .map(|i| {
+                    captures.get(i).map(|m| RegexMatch {
+                        start: m.start(),
+                        end: m.end(),
+                    })
+                })
+                .collect(),
+        );
+    }
+    Some(all)
+}
+
+/// Validate before any element is classified: invalid patterns are errors,
+/// including for empty input vectors, rather than successful nonmatches.
+pub(crate) fn validate_pattern(
+    pattern: &str,
+    ignore_case: bool,
+    perl: bool,
+    fixed: bool,
+) -> Result<(), String> {
+    if fixed {
+        return Ok(());
+    }
+    let result = if perl {
+        PerlRegex::compile(pattern, ignore_case).map(|_| ())
+    } else {
+        TreRegex::compile(pattern, ignore_case).map(|_| ())
+    };
+    result.map_err(|_| format!("invalid regular expression '{pattern}'"))
+}
+
 pub(crate) fn ere_find(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexMatch> {
     TreRegex::compile(pattern, ignore_case)
         .ok()
@@ -1014,7 +1131,7 @@ pub(crate) fn perl_captures_all(
 ) -> Option<Vec<Vec<Option<RegexMatch>>>> {
     let re = PerlRegex::compile(pattern, ignore_case).ok()?;
     let mut all = Vec::new();
-    for caps in re.regex.captures_iter(text) {
+    for caps in re.regex.captures_iter(text.as_bytes()) {
         let caps = caps.ok()?;
         let mut matches = Vec::with_capacity(caps.len());
         for idx in 0..caps.len() {
