@@ -321,6 +321,24 @@ fn execute(
     // names/environment/mode validation, in the original provider order.
     let fallbacks = match fallback {
         Some(value) if value.typeof_() == SEXPTYPE::VECSXP => Some(children(&value, access)?),
+        Some(value)
+            if matches!(
+                value.typeof_(),
+                SEXPTYPE::CLOSXP | SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP
+            ) =>
+        {
+            // coerceVector rejects bare functions before any per-name lookup
+            // or fallback callback. A list containing a function is admitted
+            // above and remains a genuine sequential fallback.
+            let kind = match value.typeof_() {
+                SEXPTYPE::CLOSXP => "closure",
+                SEXPTYPE::BUILTINSXP => "builtin",
+                _ => "special",
+            };
+            return Err(failure(format!(
+                "cannot coerce type '{kind}' to vector of type 'list'"
+            )));
+        }
         Some(value) => {
             let list = callback(access, || {
                 access.with_native(|token| unsafe {

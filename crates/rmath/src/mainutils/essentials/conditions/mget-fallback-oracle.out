@@ -1,0 +1,5 @@
+cannot coerce type 'closure' to vector of type 'list'|0
+attempt to use zero-length variable name|1
+cannot coerce type 'builtin' to vector of type 'list'
+cannot coerce type 'special' to vector of type 'list'
+17,19

@@ -515,6 +515,15 @@ fn owning_mget_contract_callable_fallback_collects_then_changes_later_binding() 
     );
 }
 #[test]
+fn owning_mget_bare_callable_admission_matches_original_coercion_before_callbacks() {
+    let mut session = RSession::new_for_gc_tests();
+    let (result, output, _) =
+        session.eval_script_with_output_capture(include_str!("mget-fallback-oracle.R"));
+    result.unwrap();
+    assert_eq!(output.stdout, include_str!("mget-fallback-oracle.out"));
+}
+
+#[test]
 fn owning_mget_contract_atomic_fallback_and_lengths() {
     let values = contract("mget(c('a','b'),new.env(),ifnotfound=c(17L,19L))");
     assert_eq!(
