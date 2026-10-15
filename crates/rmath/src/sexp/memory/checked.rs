@@ -37,6 +37,7 @@ pub(crate) fn automatic_roots(identity: &HeapIdentity) -> Vec<(SEXP, CheckedNode
 /// Use the input address only to select an owned slot. The returned pointer
 /// is freshly projected from that slot's canonical Cell, never from the
 /// caller's potentially provenance-free or invalidated pointer tag.
+#[inline]
 pub(crate) fn checked_projection(pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
     let (entry, slot) = find_slab_entry(pointer)?;
     entry.projection.resolve_slot(slot)
@@ -45,6 +46,7 @@ pub(crate) fn checked_projection(pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
 /// Admit an address once and snapshot the same live generation through its
 /// canonical Cell. This operation is callback-free and retains the physical
 /// page until the copied header and exact metadata identity are captured.
+#[inline]
 pub(crate) fn checked_header(pointer: SEXP) -> Option<(SEXP, CheckedNode, SexprecCore)> {
     let (entry, slot) = find_slab_entry(pointer)?;
     entry.projection.copy_slot(slot)
@@ -53,6 +55,7 @@ pub(crate) fn checked_header(pointer: SEXP) -> Option<(SEXP, CheckedNode, Sexpre
 /// Copy the canonical header through its Cell only if the caller's original
 /// allocation identity still belongs to this exact directory slot. An
 /// address reused by another generation never refreshes the expected ID.
+#[inline]
 pub(crate) fn checked_snapshot(pointer: SEXP, expected: &CheckedNode) -> Option<SexprecCore> {
     let (entry, slot) = find_slab_entry(pointer)?;
     if expected.id().slot() != slot {

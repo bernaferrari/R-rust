@@ -23,6 +23,7 @@ fn is_valid_sexp_ptr(x: SEXP) -> bool {
 
 /// A raw header read recognizes only an owned allocation or an actual
 /// immutable lease. No alignment check grants dereference authority.
+#[inline]
 fn immutable_lease(pointer: SEXP) -> Option<super::globals::SingletonLease> {
     super::globals::immutable_singleton_lease(pointer).or_else(|| {
         let owner = super::instance::current_instance_ptr()?;
@@ -55,6 +56,7 @@ impl HeaderRead {
     }
 }
 
+#[inline]
 fn header_read(pointer: SEXP, failure: &str) -> Option<HeaderRead> {
     if !is_valid_sexp_ptr(pointer) {
         return None;
@@ -73,6 +75,7 @@ fn header_read(pointer: SEXP, failure: &str) -> Option<HeaderRead> {
     })
 }
 
+#[inline]
 fn header_snapshot(pointer: SEXP) -> Option<SexprecCore> {
     header_read(pointer, "unowned header read").map(|read| read.snapshot)
 }
@@ -137,6 +140,7 @@ fn debug_assert_vector_type(x: SEXP, expected: SEXPTYPE) {
 // ---------------------------------------------------------------------------
 
 /// Get the SEXPTYPE tag of an SEXP.
+#[inline]
 pub unsafe fn TYPEOF(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.type_of().0)
 }
