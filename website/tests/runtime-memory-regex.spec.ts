@@ -10,27 +10,57 @@ const fixture = (name: string, suffix = "R") =>
     "utf8"
   )
 
-test("Unicode regex coordinates and invalid patterns match GNU in the worker", async ({
+test("Unicode regex and immutable code values match GNU in the worker", async ({
   page,
 }) => {
   await page.goto("/console/")
-  const result = await page.evaluate(async (code) => {
-    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
-    const runtime = new RRuntime()
-    try {
-      return (await runtime.run(code, "console")).output
-    } finally {
-      runtime.dispose()
+  const literalBytes = Array.from(
+    readFileSync(
+      new URL(
+        "../../crates/r-embed/tests/fixtures/gnu-bytecode-string-literals.rds",
+        import.meta.url
+      )
+    )
+  )
+  const result = await page.evaluate(
+    async ({ contracts, literalBytes }) => {
+      const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+      const runtime = new RRuntime()
+      try {
+        await runtime.importFile("literals.rds", Uint8Array.from(literalBytes))
+        await runtime.run(
+          "functions<-readRDS('literals.rds');invisible(NULL)",
+          "console"
+        )
+        const outputs = []
+        for (const code of contracts)
+          outputs.push((await runtime.run(code, "console")).output)
+        return outputs
+      } finally {
+        runtime.dispose()
+      }
+    },
+    {
+      literalBytes,
+      contracts: [
+        fixture("bytecode-string-cow-public-contract"),
+        fixture("logical-singletons-public-contract"),
+        fixture("regex-unicode-public-contract"),
+      ],
     }
-  }, fixture("regex-unicode-public-contract"))
-  expect(result).toBe("[1] TRUE\n")
+  )
+  expect(result).toEqual(["[1] TRUE\n", "[1] TRUE\n", "[1] TRUE\n"])
 })
 
-for (const warm of [false, true]) {
+for (const setup of ["fresh", "warm", "complete"] as const) {
+  const warm = setup !== "fresh"
   for (const generation of [0, 1]) {
-    test(`original S4 continuation fits the worker budget: ${warm ? "warm" : "fresh"} generation ${generation}`, async ({
+    test(`original S4 continuation fits the worker budget: ${setup} generation ${generation}`, async ({
       page,
     }) => {
+      // The complete setup runs 31 separate original workflows. Each worker
+      // request retains its unchanged 15s, 64MiB and 500000-node limits.
+      if (setup === "complete") test.setTimeout(120_000)
       const names = [
         "complex-print-public-contract",
         "stats-namespace-public-contract",
@@ -48,6 +78,39 @@ for (const warm of [false, true]) {
         "calling-error-handler-public-contract",
         "calling-warning-handler-public-contract",
       ]
+      if (setup === "complete")
+        names.push(
+          "s3-methods-public-contract",
+          "namespace-s3-startup-contract",
+          "base-print-methods-public-contract",
+          "compiled-dots-public-contract",
+          "vector-print-limits-public-contract",
+          "print-digits-public-contract",
+          "prmatrix-public-contract",
+          "condition-handler-stack-public-contract",
+          "attribute-print-public-contract"
+        )
+      const preceding = warm ? names.map((name) => fixture(name)) : []
+      if (setup === "complete")
+        preceding.unshift(
+          ...[
+            "260_length_replacement",
+            "492_rep_int_len_helpers",
+            "288_with_calling_handlers",
+            "388_no_print_summary_method_aliases",
+            "1094_cat_complex_fft",
+            "544_complex_constructor_format_str_parity",
+            "551_round_signif_complex_parity",
+          ].map((name) =>
+            readFileSync(
+              new URL(
+                `../../tests/conformance/cases/${name}.R`,
+                import.meta.url
+              ),
+              "utf8"
+            )
+          )
+        )
       await page.goto("/console/")
       const results = await page.evaluate(
         async ({ prefix, original, generation }) => {
@@ -67,7 +130,16 @@ for (const warm of [false, true]) {
               if (empty.output !== "[1] TRUE\n")
                 throw new Error("reset retained the previous session")
             }
-            for (const code of prefix) await runtime.run(code, "console")
+            const prefixMs = []
+            for (const [index, code] of prefix.entries()) {
+              const started = performance.now()
+              try {
+                await runtime.run(code, "console")
+              } catch (error) {
+                throw new Error(`S4 setup prefix ${index}: ${String(error)}`)
+              }
+              prefixMs.push(performance.now() - started)
+            }
             const started = performance.now()
             const result = await runtime.run(original, "console")
             const elapsedMs = performance.now() - started
@@ -75,6 +147,7 @@ for (const warm of [false, true]) {
             return {
               outputs: [result.output, recovery.output],
               elapsedMs,
+              prefixMs,
               generation: runtime.sessionGeneration,
             }
           } finally {
@@ -82,7 +155,7 @@ for (const warm of [false, true]) {
           }
         },
         {
-          prefix: warm ? names.map((name) => fixture(name)) : [],
+          prefix: preceding,
           original: fixture("s4-next-method-public-contract"),
           generation,
         }
@@ -94,9 +167,10 @@ for (const warm of [false, true]) {
       expect(results.generation).toBe(generation)
       console.log(
         JSON.stringify({
-          s4: warm ? "warm" : "fresh",
+          s4: setup,
           generation,
           elapsedMs: results.elapsedMs,
+          prefixMs: results.prefixMs,
         })
       )
     })

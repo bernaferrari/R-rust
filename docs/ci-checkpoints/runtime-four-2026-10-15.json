@@ -1,0 +1,542 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-15T21:07:14.512130+00:00",
+  "runtime_source_commit": "9974e9c9e06ca8d7b66819b51bd713223756cb8e",
+  "status": "verified",
+  "objective": "Repair critical interpreter-owner, production S4, memory-admission and regex-fidelity gaps for Rust browser/Android execution.",
+  "unchanged_runtime_limits": {
+    "max_execution_time_ms": 15000,
+    "max_alloc_bytes": 67108864,
+    "max_arena_nodes": 500000,
+    "wasm_linear_memory_max_bytes": 268435456,
+    "web_js_plus_wasm_release_limit_bytes": 26214400
+  },
+  "browser_replay_timeout_scope": {
+    "existing_individual_tests_ms": 45000,
+    "new_complete_setup_tests_ms": 120000,
+    "note": "The two new complete-setup tests replay 31 separate original requests. Their aggregate runner timeout does not change any 15-second runtime request limit."
+  },
+  "toolchains": {
+    "native": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "wasm": "nightly-2026-08-25",
+    "miri": "rustc 1.100.0-nightly (809936eac 2026-09-12)",
+    "binaryen": 133
+  },
+  "gnu_oracle": {
+    "schema_version": 1,
+    "source": {
+      "repository": "https://github.com/wch/r-source.git",
+      "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+      "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+      "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+    },
+    "runtime": {
+      "version": "4.7.0 Under development (unstable)",
+      "nickname": "Unsuffered Consequences",
+      "svn_revision": 90451,
+      "source_date": "2026-08-27T09:09:57Z"
+    },
+    "build": {
+      "runner_image": "ubuntu-24.04",
+      "configure_args": [
+        "--without-x",
+        "--without-recommended-packages",
+        "--disable-java",
+        "--without-blas",
+        "--without-lapack"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "package": "wasm-node",
+      "files": [
+        {
+          "name": "r_wasm.js",
+          "bytes": 20589,
+          "sha256": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3"
+        },
+        {
+          "name": "r_wasm_bg.wasm",
+          "bytes": 24767135,
+          "sha256": "3abb566eb7a977d2c739378a78c3cf1c15161c90a3d4a57343043082c3952911"
+        }
+      ],
+      "package_bytes": 24787724
+    },
+    {
+      "package": "wasm-web",
+      "files": [
+        {
+          "name": "r_wasm.js",
+          "bytes": 23896,
+          "sha256": "6e41c726b4682c12524ec920617a998d835097b59c6bdd4fa28e0d86d543aa59"
+        },
+        {
+          "name": "r_wasm_bg.wasm",
+          "bytes": 24767135,
+          "sha256": "3abb566eb7a977d2c739378a78c3cf1c15161c90a3d4a57343043082c3952911"
+        }
+      ],
+      "package_bytes": 24791031
+    }
+  ],
+  "core_validation": {
+    "native-9974-contracts.log": {
+      "path": "target/runtime-four-evidence/native-9974-contracts.log",
+      "sha256": "dc7795929ea891723b11c632ec4aaac4aab8b6ed1a0b150b9963a441345f3440",
+      "test_results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.94s",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 136.36s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.24s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 49.59s"
+      ]
+    },
+    "gc-trace-verified.log": {
+      "path": "target/runtime-four-evidence/gc-trace-verified.log",
+      "sha256": "d7189dcc851f79b4a826ac6eb5f3fcd8894243ab8693593da045686a9128321f",
+      "test_results": [
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 4028 filtered out; finished in 0.01s"
+      ]
+    },
+    "gc-remap-sealed.log": {
+      "path": "target/runtime-four-evidence/gc-remap-sealed.log",
+      "sha256": "d75832f3a84025f131146265d2797d176f6383c5029f5a84e6eedeec573c9beb",
+      "test_results": [
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 4035 filtered out; finished in 0.01s"
+      ]
+    },
+    "bytecode-string-verified.log": {
+      "path": "target/runtime-four-evidence/bytecode-string-verified.log",
+      "sha256": "2b72ce0c666c18eefaaf5776ff0b421a678fb623f8afc7f08e27189242ffd850",
+      "test_results": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4036 filtered out; finished in 0.00s"
+      ]
+    },
+    "clippy-9974.log": {
+      "path": "target/runtime-four-evidence/clippy-9974.log",
+      "sha256": "ec8b42455f7f191212c256d3e0a06454f09b31921af8b2a7f1d55916ff379600",
+      "test_results": [],
+      "passed": true
+    },
+    "android-9974.log": {
+      "path": "target/runtime-four-evidence/android-9974.log",
+      "sha256": "fdd44ac3a50c3e72c8d1c8a1a054df2590bc1e8ea53a187964a937b059dbfef0",
+      "test_results": [],
+      "passed": true
+    },
+    "fmt-verified.log": {
+      "path": "target/runtime-four-evidence/fmt-verified.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_results": [],
+      "passed": true
+    },
+    "website-lint-final.log": {
+      "path": "target/runtime-four-evidence/website-lint-final.log",
+      "sha256": "50065794771f541e33b535ac2277be66d01074f46f065780923cbf05a8a62438",
+      "test_results": [],
+      "passed": true
+    },
+    "website-format-final.log": {
+      "path": "target/runtime-four-evidence/website-format-final.log",
+      "sha256": "989a9d9681d20a3ae8aa3a93be8df1e965a00352458b8de4bcf09fe3e86999e5",
+      "test_results": [],
+      "passed": true
+    },
+    "website-types-9974.log": {
+      "path": "target/runtime-four-evidence/website-types-9974.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_results": [],
+      "passed": true
+    },
+    "loess-9974.log": {
+      "path": "target/runtime-four-evidence/loess-9974.log",
+      "sha256": "7e363bc21973fdecd7cd1cf36dd303e085153859353cc408a0554bad66a6c8a0",
+      "test_results": []
+    },
+    "rds-9974.log": {
+      "path": "target/runtime-four-evidence/rds-9974.log",
+      "sha256": "9290f11e3712a6a1c3bba01782a128f0f9bc7e95365da34fe034f3f2fed655b5",
+      "test_results": []
+    },
+    "m3-9974.log": {
+      "path": "target/runtime-four-evidence/m3-9974.log",
+      "sha256": "e70d18ebb48b81710f202407ddb54f2222e8ec24e148291b6abb02fb51e65f48",
+      "test_results": []
+    },
+    "font-png-9974.log": {
+      "path": "target/runtime-four-evidence/font-png-9974.log",
+      "sha256": "237ed168b9134f83e3b04e9c5662c5d94e6448f9e7c94e39a4243a2215112c8e",
+      "test_results": []
+    },
+    "portable-producer-9974.log": {
+      "path": "target/runtime-four-evidence/portable-producer-9974.log",
+      "sha256": "e3ba5e86fbeb0d7864ea5a1d80853a0f3ea00765b2437f5e9926e63390bde0de",
+      "test_results": []
+    },
+    "browser-complete-canary.log": {
+      "path": "target/runtime-four-evidence/browser-complete-canary.log",
+      "sha256": "67c77f9b0cb1bb7dd9cebef39bd28bb7e9121d8ac6fbf7c7ba9afc8c36b41361",
+      "test_results": []
+    }
+  },
+  "miri": {
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "target": "i686-unknown-linux-gnu",
+    "alias_checking": "default; enabled",
+    "scope": "Component regressions, not a whole-interpreter proof. Earlier component receipts precede later unrelated milestones; final constructor/literal runs exercise the new ownership and GC paths.",
+    "components": {
+      "owner_destructor_reentry": {
+        "path": "target/runtime-four-evidence/owner-miri-backend.log",
+        "sha256": "159468b6b2efbdc0472d209aa8e950cd4de6f340c6f066535fd0daa6269191b7",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3995 filtered out; finished in 415.15s"
+        ]
+      },
+      "ambient_owner_pin": {
+        "path": "target/runtime-four-evidence/ambient-pin-miri.log",
+        "sha256": "6a60b2f3c187a779183368eda6670cd0077c98efbb8651334a2eba1d38c68537",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3999 filtered out; finished in 145.13s"
+        ]
+      },
+      "compact_checked_identity": {
+        "path": "target/runtime-four-evidence/compact-heap-miri.log",
+        "sha256": "313a30b02002ca845e40ec2103ac703134a5f85e1835c6b95f3269d97dfc33e4",
+        "test_results": [
+          "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 3984 filtered out; finished in 51.01s"
+        ]
+      },
+      "logical_constructor": {
+        "path": "target/runtime-four-evidence/logical-singleton-miri.log",
+        "sha256": "7866c6b2f6a2efde57986dc038f358f50980c36aa780442d4392790022a52187",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3997 filtered out; finished in 105.36s"
+        ]
+      },
+      "full_gc_remembered_parents": {
+        "path": "target/runtime-four-evidence/gc-remembered-miri.log",
+        "sha256": "8a8fe4786b097827c1f62efbdfc21555a6e10322cc1d285b7ff2499f90910a1c",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3998 filtered out; finished in 113.93s"
+        ]
+      },
+      "decoder_pressure": {
+        "path": "target/runtime-four-evidence/decoder-pressure-miri.log",
+        "sha256": "71fa28d6f57bc64e0f7ed40b257288e4ac2ad7086177305ff31c44b3e8c6a1d0",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3999 filtered out; finished in 174.45s"
+        ]
+      },
+      "bounded_character_hints": {
+        "path": "target/runtime-four-evidence/character-cache-miri.log",
+        "sha256": "74a31ff19fa0c0f68a00c22ddd5e7059b9052f5bae5446e3b616dc263e3e4ee0",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4005 filtered out; finished in 58.47s"
+        ]
+      },
+      "owned_deparse_pressure_retry": {
+        "path": "target/runtime-four-evidence/deparse-retry-miri.log",
+        "sha256": "fc594e042fc6d02f05f95d7e9ca06b9c6e3597161a3809f49e9c912e9419274d",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4001 filtered out; finished in 151.18s"
+        ]
+      },
+      "bytecode_metadata": {
+        "path": "target/runtime-four-evidence/bytecode-metadata-miri-final.log",
+        "sha256": "bbde15911f1e06c6ce1b29e0814e4d775147592898ca86a756c25deb5efd0fd2",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4005 filtered out; finished in 184.00s"
+        ]
+      },
+      "admitted_decode_bytes": {
+        "path": "target/runtime-four-evidence/decode-buffer-miri.log",
+        "sha256": "50beb531229cfd714829c5a92cd1592e53c8cd381af04b34f39557c8bbdf078f",
+        "test_results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4005 filtered out; finished in 91.53s"
+        ]
+      },
+      "original_owner_character_names": {
+        "path": "target/runtime-four-evidence/canonical-name-miri.log",
+        "sha256": "f866a830282932fd3adcfe013899c7ff8cb87fec424a3ef026c9424e41c4243f",
+        "test_results": [
+          "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4007 filtered out; finished in 212.37s"
+        ]
+      },
+      "decoded_logical_flags_and_values": {
+        "path": "target/runtime-four-evidence/decoded-logical-miri-final.log",
+        "sha256": "3b70bf5b28edbc89ff6371d746248d8e7ddf267709952cfe049bb10560c7c22c",
+        "test_results": [
+          "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4009 filtered out; finished in 178.06s"
+        ]
+      },
+      "constructor_roots_revocation_and_pressure": {
+        "path": "target/runtime-four-evidence/constructor-pressure-miri-sealed.log",
+        "sha256": "6ec266b9ce9cc78ffe7860a5914b935ff264930804e537d16ce015f5dd159146",
+        "test_results": [
+          "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4014 filtered out; finished in 309.63s"
+        ]
+      },
+      "readonly_literal_gc_and_isolation": {
+        "path": "target/runtime-four-evidence/bytecode-string-miri-verified.log",
+        "sha256": "8e3594417136483505457f6fce44f9df6792ea06ff9686bfc57b8c38de164eb8",
+        "test_results": [
+          "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4014 filtered out; finished in 212.08s"
+        ]
+      }
+    }
+  },
+  "original_package_producer": {
+    "contracts_per_generation": 36,
+    "generations": 2,
+    "passed": 72,
+    "script": "tests/browser/portable-package-contracts.mjs",
+    "fixtures_and_goldens_changed": false,
+    "s4": [
+      {
+        "phase": "public-contract",
+        "generation": 0,
+        "source": "crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+        "elapsed_ms": 11866.693083999999,
+        "status": "pass"
+      },
+      {
+        "phase": "public-contract",
+        "generation": 1,
+        "source": "crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+        "elapsed_ms": 11758.22983299999,
+        "status": "pass"
+      }
+    ]
+  },
+  "s4_fixture": "crates/r-embed/tests/fixtures/s4-next-method-public-contract.R",
+  "scope_limits": {
+    "whole_core_alias_audit": "rport-jxfp.8",
+    "all_native_memory_accounting": "rport-cvs2",
+    "serializer_scratch": "rport-cvs2.6",
+    "permanent_symbols_and_sentinels_separate_ledger": "rport-cvs2.7",
+    "regex_native_workspaces": "rport-cvs2.8",
+    "full_pcre2_and_locale_semantics": "rport-w03x",
+    "memory_note": "Accounted arena and registered workspace bytes are not a total process/RSS/browser/GPU/AI cap. Android validation is compilation, not a device execution claim."
+  },
+  "prior_failed_or_interrupted_runs": [
+    {
+      "log": "target/runtime-four-evidence/browser-sealed-all.log",
+      "outcome": "69 passed, 2 failed; exposed pre-existing ignored serialize hooks and stale anonymous-file error expectation, both subsequently repaired."
+    },
+    {
+      "log": "target/runtime-four-evidence/portable-producer-final.log",
+      "outcome": "31 preceding contracts passed; S4 hit the unchanged node limit. Narrow 15-prefix success was insufficient and did not close the parent."
+    },
+    {
+      "log": "target/runtime-four-evidence/portable-constructor-node.log",
+      "outcome": "S4 pressure exposed a null allocation result before the readonly literal and bare-header fixes."
+    },
+    {
+      "log": "target/runtime-four-evidence/browser-final-all.log",
+      "outcome": "Intentionally interrupted early to separate CPU-heavy native tests from browser deadline measurements; not counted as passing."
+    },
+    {
+      "note": "A concurrent temporary S4 setDataPart recursion guard was observed and left untouched. It was reverted externally; the committed runtime and final packages use the original dispatch path."
+    },
+    {
+      "log": "target/runtime-four-evidence/owner-miri-final.log",
+      "outcome": "Earlier invocation failed type checking unrelated LAPACK tests (E0689); not counted as validation. The successful owner test receipt is owner-miri-backend.log."
+    }
+  ],
+  "beads_sync": {
+    "dolt_remote_configured": false,
+    "blocking_issue": "rport-0d5o",
+    "local_export": "target/runtime-four-evidence/beads-export.jsonl",
+    "note": "No alternate remote was invented and no entire board backup was published to the source Git remote.",
+    "push_receipt": {
+      "path": "target/runtime-four-evidence/beads-sync-final.log",
+      "sha256": "bb5dc598adeeee6f7e29e2d2c081c2de13eeddb1c29e250cad79fc94a298fb2b",
+      "exit_code": 1,
+      "result": "Pushing to Dolt remote...\nError: failed to push to origin/main: Error 1105 (HY000): fatal: remote 'origin' not found.\nPlease make sure the remote exists.\nHint: use 'bd dolt remote add <name> <url>' (not 'dolt remote add').\n  Running 'dolt remote add' directly may add the remote to the wrong directory.\n  Use 'bd dolt remote list' to check for discrepancies."
+    }
+  },
+  "browser": {
+    "passed": 73,
+    "receipt": {
+      "path": "target/runtime-four-evidence/browser-9974-all.log",
+      "sha256": "5a5f2fbe448e59184938a48da99b0278238543b2e70b111f5420e8b32971e301",
+      "test_results": []
+    },
+    "s4": [
+      {
+        "s4": "fresh",
+        "generation": 0,
+        "elapsedMs": 11562.299999952316,
+        "prefixMs": []
+      },
+      {
+        "s4": "fresh",
+        "generation": 1,
+        "elapsedMs": 9484.5,
+        "prefixMs": []
+      },
+      {
+        "s4": "warm",
+        "generation": 0,
+        "elapsedMs": 10461,
+        "prefixMs": [
+          2372,
+          597.9000000953674,
+          462,
+          1380.5999999046326,
+          962.4000000953674,
+          17.100000143051147,
+          426,
+          185.29999995231628,
+          922.5,
+          74.70000004768372,
+          48.5,
+          99.29999995231628,
+          493.90000009536743,
+          1018.0999999046326,
+          1310.7000000476837
+        ]
+      },
+      {
+        "s4": "warm",
+        "generation": 1,
+        "elapsedMs": 10345.099999904633,
+        "prefixMs": [
+          43.799999952316284,
+          561.7999999523163,
+          427.5,
+          1348.1000001430511,
+          905.2000000476837,
+          16.399999856948853,
+          392.60000014305115,
+          171.59999990463257,
+          841.7000000476837,
+          69,
+          43.799999952316284,
+          95.5,
+          460.90000009536743,
+          962.7999999523163,
+          1210.7000000476837
+        ]
+      },
+      {
+        "s4": "complete",
+        "generation": 0,
+        "elapsedMs": 8457.099999904633,
+        "prefixMs": [
+          2330.899999856949,
+          29.200000047683716,
+          16.59999990463257,
+          74.70000004768372,
+          10.900000095367432,
+          610.2000000476837,
+          34.39999985694885,
+          41,
+          702,
+          445.2000000476837,
+          1474.2000000476837,
+          1086,
+          18.200000047683716,
+          453.5,
+          195.19999980926514,
+          920.4000000953674,
+          74.5,
+          47,
+          100.09999990463257,
+          525.4000000953674,
+          1041.2000000476837,
+          1379.7999999523163,
+          11858.599999904633,
+          1134.7000000476837,
+          1410.0999999046326,
+          647.7999999523163,
+          993.7999999523163,
+          1307,
+          1672,
+          1579.1000001430511,
+          1967
+        ]
+      },
+      {
+        "s4": "complete",
+        "generation": 1,
+        "elapsedMs": 8019.700000047684,
+        "prefixMs": [
+          35.5,
+          30.100000143051147,
+          16.299999952316284,
+          71.90000009536743,
+          10.699999809265137,
+          590.3000001907349,
+          33.5,
+          41,
+          665.0999999046326,
+          429.5,
+          1491.7000000476837,
+          1031.3999998569489,
+          17.40000009536743,
+          440.5,
+          203.90000009536743,
+          878.0999999046326,
+          72.40000009536743,
+          44.39999985694885,
+          95.10000014305115,
+          478.19999980926514,
+          979.5,
+          1257.8000001907349,
+          10376.899999856949,
+          1076.6000001430511,
+          1302,
+          598.5999999046326,
+          965.6000001430511,
+          1279.2999999523163,
+          1676.4000000953674,
+          1527.1999998092651,
+          1923.4000000953674
+        ]
+      }
+    ]
+  },
+  "completed_beads": [
+    "rport-jxfp.8.1",
+    "rport-jxfp.8.2",
+    "rport-cvhuk",
+    "rport-cvhuk.1",
+    "rport-cvhuk.2",
+    "rport-cvhuk.3",
+    "rport-cvhuk.4",
+    "rport-cvhuk.5",
+    "rport-cvhuk.6",
+    "rport-cvhuk.7",
+    "rport-cvhuk.8",
+    "rport-cvhuk.9",
+    "rport-cvhuk.10",
+    "rport-cvhuk.11",
+    "rport-cvhuk.12",
+    "rport-cvhuk.13",
+    "rport-cvs2.3",
+    "rport-cvs2.4",
+    "rport-cvs2.5",
+    "rport-w03x.1",
+    "rport-lmvp8",
+    "rport-ci16i",
+    "rport-rbt3.1"
+  ],
+  "android_validation": {
+    "target": "aarch64-linux-android",
+    "kind": "compilation",
+    "device_execution": false
+  },
+  "cleanup": {
+    "temporary_target_directories": [
+      "target/wasm-unwind",
+      "target/ownership-loess-miri"
+    ],
+    "status": "pending_after_receipts_recorded",
+    "default_native_target_preserved": true
+  }
+}
