@@ -305,17 +305,38 @@ pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+// Keep advertised aliases and conversion admission in one table. These are
+// the codecs implemented by the portable Rust conversion kernels below.
+const UTF8_ALIASES: &[&str] = &["UTF-8", "UTF8", "utf-8", "utf8"];
+const LATIN1_ALIASES: &[&str] = &["latin1", "LATIN1", "ISO-8859-1", "ISO8859-1", "iso-8859-1"];
+const ASCII_ALIASES: &[&str] = &["ASCII", "US-ASCII", "ascii", "ANSI_X3.4-1968"];
+
 fn iconv_norm_enc(name: &str) -> &str {
-    // GNU treats `ASCII//TRANSLIT` and `UTF-8//IGNORE` as the base
-    // encoding plus a substitution policy. The base is what we can encode.
+    // Suffixes select substitution policies; they do not add codecs.
     let name = name.split("//").next().unwrap_or(name);
-    match name {
-        "" | "native.enc" => "native",
-        "UTF-8" | "UTF8" | "utf-8" | "utf8" => "UTF-8",
-        "latin1" | "LATIN1" | "ISO-8859-1" | "ISO8859-1" | "iso-8859-1" => "latin1",
-        "ASCII" | "US-ASCII" | "ascii" | "ANSI_X3.4-1968" => "ASCII",
-        other => other,
+    if matches!(name, "" | "native.enc") {
+        "native"
+    } else if UTF8_ALIASES.contains(&name) {
+        "UTF-8"
+    } else if LATIN1_ALIASES.contains(&name) {
+        "latin1"
+    } else if ASCII_ALIASES.contains(&name) {
+        "ASCII"
+    } else {
+        name
     }
+}
+
+fn supported_iconv_names() -> Vec<&'static str> {
+    let mut names: Vec<_> = UTF8_ALIASES
+        .iter()
+        .chain(LATIN1_ALIASES)
+        .chain(ASCII_ALIASES)
+        .copied()
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
 }
 
 fn iconv_charsxp_bytes(ch: SEXP) -> &'static [u8] {
@@ -561,13 +582,13 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
-            // GNU iconv(NULL, ...): the staged base iconvlist() wrapper
-            // reaches this contract to enumerate the system conversions.
-            let names = system_iconv_names();
+            // The staged base iconvlist() wrapper shares this portable codec
+            // inventory with the direct Rust iconvlist entry point.
+            let names = supported_iconv_names();
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
             let _o = protect(out);
             for (i, name) in names.iter().enumerate() {
-                let c = CString::new(name.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                let c = CString::new(*name).expect("portable encoding aliases contain no NUL");
                 SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
             }
             return out;
@@ -669,62 +690,95 @@ pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// System iconv conversion names via libiconv `iconvlist(3)`, sorted and
-/// deduplicated (GNU's R-level `iconvlist()` sorts the same enumeration).
-fn system_iconv_names() -> Vec<String> {
-    #[link(name = "iconv")]
-    unsafe extern "C" {
-        fn iconvlist(
-            do_one: Option<
-                unsafe extern "C" fn(
-                    u32,
-                    *const *const std::os::raw::c_char,
-                    *mut std::os::raw::c_void,
-                ) -> std::os::raw::c_int,
-            >,
-            data: *mut std::os::raw::c_void,
-        );
-    }
-    unsafe extern "C" fn collect(
-        count: u32,
-        names: *const *const std::os::raw::c_char,
-        data: *mut std::os::raw::c_void,
-    ) -> std::os::raw::c_int {
-        unsafe {
-            let list = &mut *(data.cast::<Vec<String>>());
-            for index in 0..count as usize {
-                let name = *names.add(index);
-                if !name.is_null() {
-                    list.push(
-                        std::ffi::CStr::from_ptr(name)
-                            .to_string_lossy()
-                            .into_owned(),
-                    );
-                }
-            }
-        }
-        0
-    }
-    let mut names: Vec<String> = Vec::new();
-    unsafe {
-        iconvlist(Some(collect), std::ptr::addr_of_mut!(names).cast());
-    }
-    names.sort();
-    names.dedup();
-    names
-}
-
-/// GNU `iconvlist()` — enumerate the system iconv conversions.
+/// Enumerate the codecs actually implemented by this Rust runtime.
 pub unsafe fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _ = args;
-        let names = system_iconv_names();
+        let names = supported_iconv_names();
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
         let _o = protect(out);
         for (i, name) in names.iter().enumerate() {
-            let c = CString::new(name.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+            let c = CString::new(*name).expect("portable encoding aliases contain no NUL");
             SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod portable_iconv_tests {
+    use super::*;
+
+    #[test]
+    fn portable_iconv_inventory_only_advertises_working_ascii_conversions() {
+        let names = supported_iconv_names();
+        assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(names.contains(&"UTF-8"));
+        assert!(names.contains(&"ASCII"));
+        assert!(names.contains(&"ISO-8859-1"));
+        assert!(!names.contains(&"UTF-16"));
+        assert!(!names.contains(&"CP1252"));
+        let expected: Vec<_> = "Portable ASCII 2026".chars().collect();
+        for alias in names {
+            let encoding = iconv_norm_enc(alias);
+            assert_eq!(
+                iconv_decode(b"Portable ASCII 2026", encoding, "unknown"),
+                Some(expected.clone()),
+                "decode {alias}"
+            );
+            assert_eq!(
+                iconv_encode(&expected, encoding, None, false),
+                Some(b"Portable ASCII 2026".to_vec()),
+                "encode {alias}"
+            );
+        }
+    }
+
+    #[test]
+    fn portable_iconv_utf8_latin1_and_ascii_character_controls() {
+        let latin = b"caf\xe9";
+        let unicode: Vec<_> = "café".chars().collect();
+        assert_eq!(
+            iconv_decode(latin, iconv_norm_enc("ISO-8859-1"), "unknown"),
+            Some(unicode.clone())
+        );
+        assert_eq!(
+            iconv_encode(&unicode, iconv_norm_enc("UTF8"), None, false),
+            Some("café".as_bytes().to_vec())
+        );
+        assert_eq!(
+            iconv_decode("café".as_bytes(), iconv_norm_enc("utf-8"), "unknown"),
+            Some(unicode.clone())
+        );
+        assert_eq!(
+            iconv_encode(&unicode, iconv_norm_enc("LATIN1"), None, false),
+            Some(latin.to_vec())
+        );
+        assert_eq!(iconv_decode(latin, "ASCII", "unknown"), None);
+        assert_eq!(iconv_decode(latin, "UTF-8", "unknown"), None);
+        assert_eq!(iconv_encode(&unicode, "ASCII", None, false), None);
+        assert_eq!(iconv_encode(&['€'], "latin1", None, false), None);
+        assert_eq!(
+            iconv_encode(&unicode, "ASCII", Some("?"), false),
+            Some(b"caf?".to_vec())
+        );
+    }
+
+    #[test]
+    fn portable_iconv_public_inventory_and_aliases_share_the_conversion_path() {
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        let (value, output, _) = session.eval_code_with_output_capture(
+            r"v <- iconvlist(); stopifnot(identical(v,iconv(NULL)),identical(v,sort(v)),!anyDuplicated(v));
+            for (enc in v) stopifnot(identical(iconv('Portable ASCII 2026',from=enc,to='UTF-8'),'Portable ASCII 2026'),identical(iconv('Portable ASCII 2026',from='UTF-8',to=enc),'Portable ASCII 2026'));
+            latin <- rawToChar(as.raw(c(99,97,102,233)));
+            u <- iconv(latin,from='ISO-8859-1',to='UTF-8');
+            stopifnot(identical(charToRaw(u),as.raw(c(99,97,102,195,169))),identical(charToRaw(iconv(u,from='UTF-8',to='latin1')),as.raw(c(99,97,102,233)))); TRUE",
+        );
+        assert_eq!(
+            value
+                .unwrap_or_else(|error| panic!("{}: {output:?}", error.message))
+                .logical_elt(0),
+            Some(1)
+        );
     }
 }
