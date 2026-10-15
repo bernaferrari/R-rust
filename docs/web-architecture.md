@@ -68,7 +68,25 @@ The Chromium test in `tests/browser/rust-runtime.cjs` exercises the real worker,
 UI, errors, nonlocal control flow, plotting, and cancellation/reset.
 
 The Node smoke exercises evaluation, errors, typed strings, continuation
-parsing, session isolation, solve/mapply contracts, and PNG rendering. It does
-not replace browser worker/UI tests or establish complete R compatibility.
+parsing, session isolation, solve/mapply contracts, PNG rendering, binary
+filename I/O, anonymous update files, and filename serialization. Independent
+pinned GNU fixtures check imported plain/gzip RDS streams and update-file
+cursor behavior. `website/tests/wasm-portable-files.spec.ts` exercises these
+file contracts through the website's actual module worker in Chromium. These
+checks do not establish complete R compatibility.
 Filesystem, native extensions, package coverage and graphics remain bounded
 by the Rust implementation's capability ledger.
+
+## Session files
+
+The browser session store supports ordinary `readBin`, `writeBin`, `readLines`,
+`writeLines`, `saveRDS`, and `readRDS` filename paths. RDS supports plain, gzip,
+bzip2 and xz containers through Rust implementations. Gzip preserves GNU's
+container metadata and decoded payload; compressed block choices and file
+sizes can differ. Exported files can be imported into another session.
+
+Named files are limited to 1 MiB each, 8 MiB per session and 128 entries.
+Invalid paths or rejected replacements preserve existing stored bytes.
+Anonymous `file("")` connections are session-owned, support GNU read/write
+cursor modes, and have the same 1 MiB per-file limit. They do not create named
+store entries. An enabled browser store never falls back to reading host files.

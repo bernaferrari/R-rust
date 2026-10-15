@@ -27,4 +27,7 @@ bash scripts/build_wasm_runtime.sh --target nodejs --release
 
 echo "Running node smoke test..."
 cd "$CRATE_DIR"
-exec node smoke.mjs
+node smoke.mjs
+node "$ROOT_DIR/crates/rmath/src/mainutils/connections/binary/filename-wasm.cjs" "$CRATE_DIR/pkg"
+node "$ROOT_DIR/crates/rmath/src/mainutils/connections/file/anonymous-wasm.cjs" "$CRATE_DIR/pkg"
+node serialization-files-smoke.cjs "$CRATE_DIR/pkg"
