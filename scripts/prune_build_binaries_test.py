@@ -52,6 +52,42 @@ class PruneTests(unittest.TestCase):
             self.assertNotEqual(self.run_prune("--apply").returncode, 0)
         self.assertTrue(all(p.exists() for p in paths))
 
+    def test_release_profile_prunes_only_selected_directory_and_honors_lock(self):
+        debug = self.binary(0)
+        self.deps = self.target / "release" / "deps"
+        self.deps.mkdir(parents=True)
+        release = [self.binary(i) for i in range(3)]
+        with (self.target / "release" / ".cargo-lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertNotEqual(self.run_prune("--profile", "release", "--apply").returncode, 0)
+        self.assertTrue(all(p.exists() for p in release))
+        self.assertEqual(self.run_prune("--profile", "release", "--apply").returncode, 0)
+        self.assertFalse(release[0].exists())
+        self.assertTrue(debug.exists())
+        self.assertTrue(all(p.exists() for p in release[1:]))
+
+    def test_profile_cannot_escape_target_directory(self):
+        for profile in ("..", ".", "../../other", "/tmp"):
+            self.assertNotEqual(self.run_prune("--profile", profile, "--apply").returncode, 0)
+
+    def test_wrapper_preserves_release_arguments_and_exit_status(self):
+        self.deps = self.target / "release" / "deps"
+        self.deps.mkdir(parents=True)
+        binaries = [self.binary(i) for i in range(3)]
+        bin_dir = Path(self.temp.name) / "bin"
+        bin_dir.mkdir()
+        recorded = Path(self.temp.name) / "arguments"
+        cargo = bin_dir / "cargo"
+        cargo.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$RECORDED"\nexit 7\n')
+        cargo.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "RECORDED": str(recorded)}
+        arguments = ["test", "--release", "--target-dir", str(self.target), "--", "chosen_test"]
+        result = subprocess.run([str(WRAPPER), *arguments], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(recorded.read_text().splitlines(), arguments)
+        self.assertFalse(binaries[0].exists())
+        self.assertTrue(all(p.exists() for p in binaries[1:]))
+
     def test_only_old_large_diagnostics_are_cleared(self):
         directory = self.target / "debug" / ".fingerprint" / "example"
         directory.mkdir(parents=True)

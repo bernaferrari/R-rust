@@ -23,15 +23,18 @@ def main():
     parser.add_argument("--artifacts-json", type=Path,
                         help="also protect filenames from cargo --message-format=json")
     parser.add_argument("--target-dir", type=Path, help="Cargo target directory (defaults to CARGO_TARGET_DIR or project target)")
+    parser.add_argument("--profile", default="debug", help="Cargo output profile directory (default: debug)")
     args = parser.parse_args()
     if args.keep < 1:
         parser.error("--keep must be at least 1")
+    if not args.profile or Path(args.profile).name != args.profile or args.profile in (".", ".."):
+        parser.error("--profile must be one directory name")
     root = Path(__file__).resolve().parent.parent
     target = args.target_dir or Path(os.environ.get("CARGO_TARGET_DIR", root / "target"))
-    debug = target.resolve() / "debug"
+    debug = target.resolve() / args.profile
     deps = debug / "deps"
     if not deps.is_dir():
-        print("No target/debug/deps directory to prune.")
+        print(f"No target/{args.profile}/deps directory to prune.")
         return
 
     protected = set()
@@ -46,7 +49,7 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            parser.exit(1, "Cargo is using target/debug; wait for it to finish.\n")
+            parser.exit(1, f"Cargo is using target/{args.profile}; wait for it to finish.\n")
         groups = collections.defaultdict(list)
         locations = [deps]
         if (debug / "examples").is_dir():
