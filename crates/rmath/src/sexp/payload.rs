@@ -11,7 +11,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     rc::Rc,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::AtomicU64,
 };
 
 use super::ffi::{NodeBody, R_xlen_t, Rcomplex, SEXPTYPE, SexprecCore};
@@ -72,11 +72,9 @@ impl std::fmt::Debug for PayloadLease {
 }
 impl PayloadLease {
     pub(crate) fn from_owned(payload: OwnedPayload) -> Result<Self, PayloadError> {
-        let raw = NEXT_PAYLOAD_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                next.checked_add(1)
-            })
-            .map_err(|_| PayloadError::IdentityExhausted)?;
+        let raw = crate::sexp::atomic_counter::update!(&NEXT_PAYLOAD_ID, |next: u64| next
+            .checked_add(1))
+        .map_err(|_| PayloadError::IdentityExhausted)?;
         let id = PayloadId(std::num::NonZeroU64::new(raw).ok_or(PayloadError::IdentityExhausted)?);
         Ok(Self(Rc::new(PayloadAllocation {
             id,

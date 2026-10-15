@@ -822,7 +822,7 @@ fn test_eval_with_limits_restores_session_state() {
     let expr = session.sexp(expr).expect("expr belongs to session");
     assert!(unsafe {
         /* SAFETY: fresh fixture with no borrowed payload views. */
-        expr.clone().set_integer_elt(0, 7)
+        crate::sexp::object::SexpMut::from_owned(expr.clone()).set_integer_elt(0, 7)
     });
     let env = session.global_env().expect("session has global env");
 
@@ -879,7 +879,7 @@ fn test_session_define_and_find_var_with_rust_str() {
     let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
     assert!(unsafe {
         /* SAFETY: fresh fixture with no borrowed payload views. */
-        sexp.set_integer_elt(0, 42)
+        crate::sexp::object::SexpMut::from_owned(sexp).set_integer_elt(0, 42)
     });
 
     let value = session.sexp(value).expect("value belongs to session");
@@ -902,7 +902,7 @@ fn test_session_define_var_interns_symbol_in_target_session() {
     let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
     assert!(unsafe {
         /* SAFETY: fresh fixture with no borrowed payload views. */
-        sexp.set_integer_elt(0, 123)
+        crate::sexp::object::SexpMut::from_owned(sexp).set_integer_elt(0, 123)
     });
 
     let value = older.sexp(value).expect("value belongs to older session");
@@ -938,7 +938,7 @@ fn test_session_rejects_interior_nul_symbol_names() {
     let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("integer vector allocation failed");
     assert!(unsafe {
         /* SAFETY: fresh fixture with no borrowed payload views. */
-        sexp.set_integer_elt(0, 99)
+        crate::sexp::object::SexpMut::from_owned(sexp).set_integer_elt(0, 99)
     });
 
     let value = session.sexp(value).expect("value belongs to session");
@@ -1102,7 +1102,7 @@ fn concurrent_sessions_are_independent() {
                         .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                         .expect("session should be active");
                     let sexp = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(value) }.expect("allocation failed");
-                    assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ sexp.set_integer_elt(0, (i + 100) as i32) });
+                    assert!(unsafe { /* SAFETY: fresh fixture with no borrowed payload views. */ crate::sexp::object::SexpMut::from_owned(sexp).set_integer_elt(0, (i + 100) as i32) });
 
                     let value = session.sexp(value).expect("value belongs to session");
                     assert!(session.define_var(&var_name, value));

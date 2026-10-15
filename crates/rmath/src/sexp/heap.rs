@@ -15,7 +15,7 @@ use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
     rc::{Rc, Weak},
-    sync::atomic::{AtomicU32, Ordering},
+    sync::atomic::AtomicU32,
 };
 
 /// Exact, nonowning graph identity. Zero heap/page identify null or an
@@ -78,12 +78,11 @@ struct BuiltinSequencePermit {
 
 static NEXT_HEAP_COOKIE: AtomicU32 = AtomicU32::new(1);
 fn issue_heap_cookie(counter: &AtomicU32) -> Option<u32> {
-    counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-            if next == 0 { None } else { next.checked_add(1) }
-        })
-        .ok()
-        .filter(|cookie| *cookie != 0)
+    crate::sexp::atomic_counter::update!(counter, |next: u32| {
+        if next == 0 { None } else { next.checked_add(1) }
+    })
+    .ok()
+    .filter(|cookie| *cookie != 0)
 }
 fn issue_page_cookie(counter: &Cell<u64>) -> Option<u64> {
     let next = counter.get();
@@ -1378,6 +1377,7 @@ impl<T: Copy> NodePage<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn materialized_altrep_retype_preserves_original_kind_body_and_cache() {

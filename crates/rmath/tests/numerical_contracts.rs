@@ -59,7 +59,7 @@ fn roundtrip_tol(q: f64, a: f64, b: f64) -> f64 {
 /// qbeta's documented accuracy is ~1e-8 relative for central p but degrades
 /// in the deep tails (p < 1e-6); scale closed-form comparisons accordingly.
 fn tail_rel(p: f64) -> f64 {
-    if p >= 1e-6 && p <= 1.0 - 1e-6 {
+    if (1e-6..=1.0 - 1e-6).contains(&p) {
         1e-7
     } else {
         1e-3

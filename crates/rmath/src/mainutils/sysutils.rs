@@ -105,12 +105,9 @@ pub fn R_tmpnam2(prefix: &str, tempdir: &str, fileext: &str) -> Option<String> {
 /// Process-wide name allocation is independent of every session's R RNG.
 /// A per-session counter collides before either session creates its file.
 fn next_tempfile_serial() -> Option<usize> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-        value.checked_add(1)
-    })
-    .ok()
+    crate::sexp::atomic_counter::update!(&NEXT, |value: usize| value.checked_add(1)).ok()
 }
 
 // ---------------------------------------------------------------------------

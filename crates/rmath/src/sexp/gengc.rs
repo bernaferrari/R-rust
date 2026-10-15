@@ -99,8 +99,6 @@ mod gc_trace;
 mod gc_trace_bridge;
 
 /// Generations for object aging.
-
-/// Generations for object aging.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Generation {
     Young = 0,

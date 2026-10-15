@@ -118,9 +118,7 @@ unsafe fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
     if env.is_null() || symbol.is_null() {
         return None;
     }
-    let Some(base) = with_current_instance(super::globals::R_BaseEnv_in) else {
-        return None;
-    };
+    let base = with_current_instance(super::globals::R_BaseEnv_in)?;
     unsafe {
         if base.is_null() || env == R_NilValue() {
             return None;

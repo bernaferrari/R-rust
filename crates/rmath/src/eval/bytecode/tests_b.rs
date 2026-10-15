@@ -1,8 +1,6 @@
 //! bytecode tests (part 2/2) — extracted verbatim from eval/bytecode.rs
 
-use super::tests_util::*;
 use super::*;
-use crate::sexp::session::RSession;
 
 #[test]
 fn gnu_dup_validator_accepts_balanced_stacks_above_legacy_cutoff() {

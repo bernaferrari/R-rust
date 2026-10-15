@@ -1,5 +1,4 @@
 //! output tests — extracted verbatim from output.rs.
-#![allow(deprecated)] // translated tests exercise the Sexp compat setters
 
 use super::*;
 use crate::sexp::session::RSession;

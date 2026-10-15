@@ -16,11 +16,13 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
+#[cfg(test)]
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
+#[cfg(test)]
 use std::rc::Rc;
 
 use crate::sexp::accessors::{
@@ -44,21 +46,26 @@ use crate::mainutils::format::{
 // Production printers use the runtime's stdout capture and connection sinks.
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 thread_local! {
     static CONSOLE_SINK: RefCell<Option<Rc<RefCell<String>>>> = const { RefCell::new(None) };
 }
 
+#[cfg(test)]
 pub(crate) fn set_console_sink(sink: Option<Rc<RefCell<String>>>) {
     CONSOLE_SINK.with(|slot| *slot.borrow_mut() = sink);
 }
 
 pub(crate) fn console_emit(args: std::fmt::Arguments<'_>) {
-    let sink = CONSOLE_SINK.with(|slot| slot.borrow().clone());
-    if let Some(buf) = sink {
-        let _ = std::fmt::Write::write_fmt(&mut *buf.borrow_mut(), args);
-    } else {
-        crate::sexp::output::emit(&args.to_string());
+    #[cfg(test)]
+    {
+        let sink = CONSOLE_SINK.with(|slot| slot.borrow().clone());
+        if let Some(buf) = sink {
+            let _ = std::fmt::Write::write_fmt(&mut *buf.borrow_mut(), args);
+            return;
+        }
     }
+    crate::sexp::output::emit(&args.to_string());
 }
 
 // ---------------------------------------------------------------------------

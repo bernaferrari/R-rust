@@ -260,8 +260,6 @@ pub(super) fn transient_reservations_share_limits_and_release_without_arena_borr
 }
 use crate::sexp::ffi::*;
 
-use super::*;
-
 #[test]
 pub(super) fn nested_arena_lend_is_rejected_and_outer_borrow_survives() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();

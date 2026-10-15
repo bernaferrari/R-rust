@@ -1,5 +1,4 @@
 use super::*;
-use super::*;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
 use std::ffi::CStr;

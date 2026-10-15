@@ -1,10 +1,7 @@
 //! eval tests (part 4/4) — extracted verbatim from eval/eval.rs
 
 use super::*;
-use crate::sexp::builder::scalar_integer_in;
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_lang2};
 use crate::sexp::session::RSession;
-use crate::sexp::symbol::Rf_install;
 
 #[cfg(test)]
 mod tests_d {

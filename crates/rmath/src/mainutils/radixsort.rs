@@ -1014,15 +1014,6 @@ pub unsafe fn get_newo() -> *mut c_int {
 // SEXP-dependent stub functions (return null pointers)
 // ---------------------------------------------------------------------------
 
-/// R's `.Internal(radixsort(...))` entry point.
-///
-/// Faithful port of R's `do_radixsort` from `src/main/radixsort.c`.
-///
-/// Argument order (from the R side): `nalast, decreasing, retGrp, sortStr, ...`
-/// where `...` are the vectors to sort.
-///
-/// Currently supports INTSXP, LGLSXP, REALSXP, and STRSXP vectors.
-
 /// GNU `.Internal(wrap_meta(vec, sorted, noNA))` (sort.c `do_wrap_meta`):
 /// attaches ALTREP "known sorted" metadata to a numeric vector. The port
 /// has no sorted-metadata ALTREP class; the wrapper is observationally
@@ -1094,6 +1085,14 @@ pub unsafe fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// R's `.Internal(radixsort(...))` entry point.
+///
+/// Faithful port of R's `do_radixsort` from `src/main/radixsort.c`.
+///
+/// Argument order (from the R side): `nalast, decreasing, retGrp, sortStr, ...`
+/// where `...` are the vectors to sort.
+///
+/// Currently supports INTSXP, LGLSXP, REALSXP, and STRSXP vectors.
 pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;

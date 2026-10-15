@@ -14,6 +14,7 @@
 pub(crate) mod accessors;
 pub mod altrep;
 pub(crate) mod altseq;
+pub(crate) mod atomic_counter;
 pub mod attrib_core;
 pub mod builder;
 pub(crate) mod constructors;

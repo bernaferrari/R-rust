@@ -1,7 +1,5 @@
 //! strings tests — extracted verbatim from essentials/strings.rs.
 
-use super::*;
-
 #[cfg(test)]
 mod fixed_perl_warning_tests {
     #[test]

@@ -9,12 +9,14 @@ unsafe extern "C" fn rosenbrock(
     f: *mut f64,
     _state: *mut std::ffi::c_void,
 ) {
-    let x = std::slice::from_raw_parts(x, 2);
+    // SAFETY: the optimizer supplies two initialized coordinates for this fixture.
+    let x = unsafe { std::slice::from_raw_parts(x, 2) };
     let (x1, x2) = (x[0], x[1]);
     let t = x2 - x1 * x1;
     let u = 1.0 - x1;
     // R: 100 * t^2 + u^2 with ^2 as R_pow's t*t — mind the grouping
-    *f = 100.0 * (t * t) + (u * u);
+    // SAFETY: f points to the optimizer's writable scalar result.
+    unsafe { *f = 100.0 * (t * t) + (u * u) };
 }
 unsafe extern "C" fn rosenbrock_g(
     _n: std::os::raw::c_int,
@@ -22,9 +24,11 @@ unsafe extern "C" fn rosenbrock_g(
     g: *mut f64,
     _state: *mut std::ffi::c_void,
 ) {
-    let x = std::slice::from_raw_parts(x, 2);
+    // SAFETY: the optimizer supplies two initialized coordinates for this fixture.
+    let x = unsafe { std::slice::from_raw_parts(x, 2) };
     let (x1, x2) = (x[0], x[1]);
-    let g = std::slice::from_raw_parts_mut(g, 2);
+    // SAFETY: the optimizer supplies a disjoint two-element gradient output.
+    let g = unsafe { std::slice::from_raw_parts_mut(g, 2) };
     g[0] = -400.0 * x1 * (x2 - x1 * x1) - 2.0 * (1.0 - x1);
     g[1] = 200.0 * (x2 - x1 * x1);
 }
@@ -35,10 +39,12 @@ unsafe extern "C" fn rosenbrock_h(
     h: *mut f64,
     _state: *mut std::ffi::c_void,
 ) {
-    let x = std::slice::from_raw_parts(x, 2);
+    // SAFETY: the optimizer supplies two initialized coordinates for this fixture.
+    let x = unsafe { std::slice::from_raw_parts(x, 2) };
     let (x1, x2) = (x[0], x[1]);
     let nr = nr as usize;
-    let h = std::slice::from_raw_parts_mut(h, 4);
+    // SAFETY: the optimizer supplies a disjoint 2-by-2 Hessian output.
+    let h = unsafe { std::slice::from_raw_parts_mut(h, 4) };
     h[0] = 2.0 - 400.0 * x2 + 1200.0 * x1 * x1;
     h[1] = -400.0 * x1;
     h[0 + 1 * nr] = -400.0 * x1;
@@ -50,12 +56,14 @@ unsafe extern "C" fn helical(
     f: *mut f64,
     _state: *mut std::ffi::c_void,
 ) {
-    let x = std::slice::from_raw_parts(x, 3);
+    // SAFETY: the optimizer supplies three initialized coordinates for this fixture.
+    let x = unsafe { std::slice::from_raw_parts(x, 3) };
     let theta = x[1].atan2(x[0]) / (2.0 * std::f64::consts::PI);
     let f1 = 10.0 * (x[2] - 10.0 * theta);
     let f2 = 10.0 * ((x[0] * x[0] + x[1] * x[1]).sqrt() - 1.0);
     let f3 = x[2];
-    *f = f1 * f1 + f2 * f2 + f3 * f3;
+    // SAFETY: f points to the optimizer's writable scalar result.
+    unsafe { *f = f1 * f1 + f2 * f2 + f3 * f3 };
 }
 struct Outcome {
     fpls: f64,
@@ -83,35 +91,39 @@ unsafe fn run_nlm(
     let mut code = 0;
     let mut itncnt = 0;
     let mut msg: std::os::raw::c_int = 9; // print.level 0 default
-    optif9(
-        n as std::os::raw::c_int,
-        n as std::os::raw::c_int,
-        x.as_mut_ptr(),
-        fcn,
-        d1fcn,
-        d2fcn,
-        std::ptr::null_mut(),
-        typsiz.as_mut_ptr(),
-        1.0,                             // fscale
-        1,                               // method: line search
-        if iahflg != 0 { 0 } else { 1 }, // iexp
-        &mut msg,
-        12,  // ndigit
-        100, // iterlim
-        iagflg,
-        iahflg,
-        1.0,  // dlt
-        1e-6, // gradtol
-        0.0,  // stepmax -> auto
-        1e-6, // steptol
-        xpls.as_mut_ptr(),
-        &mut fpls,
-        gpls.as_mut_ptr(),
-        &mut code,
-        a.as_mut_ptr(),
-        wrk.as_mut_ptr(),
-        &mut itncnt,
-    );
+    // SAFETY: all workspace extents match optif9; callback buffers are disjoint
+    // and remain live for the entire call.
+    unsafe {
+        optif9(
+            n as std::os::raw::c_int,
+            n as std::os::raw::c_int,
+            x.as_mut_ptr(),
+            fcn,
+            d1fcn,
+            d2fcn,
+            std::ptr::null_mut(),
+            typsiz.as_mut_ptr(),
+            1.0,                             // fscale
+            1,                               // method: line search
+            if iahflg != 0 { 0 } else { 1 }, // iexp
+            &mut msg,
+            12,  // ndigit
+            100, // iterlim
+            iagflg,
+            iahflg,
+            1.0,  // dlt
+            1e-6, // gradtol
+            0.0,  // stepmax -> auto
+            1e-6, // steptol
+            xpls.as_mut_ptr(),
+            &mut fpls,
+            gpls.as_mut_ptr(),
+            &mut code,
+            a.as_mut_ptr(),
+            wrk.as_mut_ptr(),
+            &mut itncnt,
+        )
+    };
     assert_eq!(msg, 0);
     Outcome {
         fpls,

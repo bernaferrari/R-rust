@@ -1,14 +1,8 @@
 //! gengc tests — extracted verbatim from gengc.rs.
 
-use crate::sexp::protect::push_protect_in;
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use super::super::memory::{ArenaBudget, with_arena};
-use super::super::protect::with_protected_objects;
+use super::super::memory::with_arena;
 use crate::sexp::session::RSession;
 
-use super::test_support::reset_gc_test_arena;
 use super::*;
 
 fn preamble_unwind_detaches_incidental_roots(safe_point: bool) {

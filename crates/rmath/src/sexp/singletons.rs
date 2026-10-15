@@ -5,7 +5,7 @@ use super::super::ffi::{NodeBody, SEXP, SEXPTYPE, SexprecCore, Vecsxp};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::AtomicU64,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,11 +106,11 @@ impl SingletonLease {
         }
         Self(Rc::new(Singleton {
             kind,
-            identity_cookie: NEXT_IDENTITY_COOKIE
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                    next.checked_add(1)
-                })
-                .expect("singleton identity exhausted"),
+            identity_cookie: crate::sexp::atomic_counter::update!(
+                &NEXT_IDENTITY_COOKIE,
+                |next: u64| { next.checked_add(1) }
+            )
+            .expect("singleton identity exhausted"),
             header: Cell::new(header),
             payload: logical,
         }))

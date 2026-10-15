@@ -1,4 +1,3 @@
-use super::*;
 use crate::sexp::instance::RInstance;
 #[test]
 fn lbfgsb_state_is_owned_by_instance() {

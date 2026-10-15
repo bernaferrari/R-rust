@@ -111,7 +111,7 @@ fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>,
                     let mut atom_nodes: Vec<SEXP> = Vec::new();
                     for (label, node) in base_labels.iter().zip(base_nodes.iter().copied()) {
                         for part in label.split(':') {
-                            if !atoms.iter().any(|&a| a == part) {
+                            if !atoms.contains(&part) {
                                 atoms.push(part);
                                 atom_nodes.push(node);
                             }

@@ -1,5 +1,4 @@
 use super::*;
-use super::*;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::instance::{RInstance, current_instance_ptr, replace_current_instance};
 use crate::sexp::session::RSession;

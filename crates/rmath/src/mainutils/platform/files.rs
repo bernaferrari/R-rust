@@ -295,7 +295,9 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         };
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXPTYPE, TRUE};
-        use crate::sexp::globals::{R_NaString, R_NilValue};
+        #[cfg(unix)]
+        use crate::sexp::globals::R_NaString;
+        use crate::sexp::globals::R_NilValue;
         use std::fs;
 
         let files = CAR(args);
@@ -303,8 +305,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // GNU file.info's R wrapper defaults extra_cols to TRUE and the
         // internal rejects NA. This builtin binds `file.info` directly, so
         // both behaviors live here.
-        #[cfg_attr(unix, allow(unused_mut))] // mutated only in the non-Unix extras block
-        let mut extras = if extra_arg.is_null()
+        let requested_extras = if extra_arg.is_null()
             || extra_arg == R_NilValue()
             || extra_arg == crate::sexp::globals::R_MissingArg()
         {
@@ -318,10 +319,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         };
         // The uid/gid/uname/grname block is Unix-only (GNU UNIX_EXTRAS);
         // there is never an `exe` column off Windows.
-        #[cfg(not(unix))]
-        {
-            extras = false;
-        }
+        let extras = cfg!(unix) && requested_extras;
 
         let n = LENGTH(files);
         let n_xlen = n as crate::sexp::ffi::R_xlen_t;

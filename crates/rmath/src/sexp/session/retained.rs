@@ -5,7 +5,7 @@ use crate::sexp::{
     object::{Sexp, SexpError, SexpValue},
     owner::{RuntimeAccess, with_runtime},
 };
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 
 static NEXT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
 
@@ -66,11 +66,9 @@ impl RetainedValues {
     fn prepare(&mut self) -> RResult<()> {
         if self.namespace.is_none() {
             self.namespace = Some(
-                NEXT_NAMESPACE
-                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                        current.checked_add(1)
-                    })
-                    .map_err(|_| error("retained value session identities exhausted"))?,
+                crate::sexp::atomic_counter::update!(&NEXT_NAMESPACE, |current: u64| current
+                    .checked_add(1))
+                .map_err(|_| error("retained value session identities exhausted"))?,
             );
         }
         if !self

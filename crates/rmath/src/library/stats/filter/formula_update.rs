@@ -55,7 +55,7 @@ unsafe fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
         // Wrap a `.` operand's replacement in parentheses when the value's
         // top operator binds looser than the operand position.
         let wrap = |is_dot: bool, loose: &[SEXP]| -> Option<SEXP> {
-            if is_dot && loose.iter().any(|&s| s == op) {
+            if is_dot && loose.contains(&op) {
                 Some(crate::sexp::constructors::Rf_lang2(
                     paren,
                     crate::mainutils::duplicate::Rf_duplicate(value),

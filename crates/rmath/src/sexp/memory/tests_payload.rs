@@ -1,6 +1,5 @@
 //! Payload/resource/scheduling tests extracted from the former inline `mod tests`.
 
-use super::*;
 pub(super) fn native_payload(pointer: super::SEXP) -> *mut u8 {
     let (_, node) = super::checked_projection(pointer).expect("fixture allocation");
     node.heap_identity()

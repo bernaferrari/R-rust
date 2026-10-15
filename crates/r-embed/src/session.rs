@@ -296,11 +296,23 @@ impl RSession {
     fn construct(
         constructor: impl FnOnce() -> rmath::android::RSession,
     ) -> Result<Self, RSessionError> {
-        let session_id = NEXT_SESSION_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                current.checked_add(1)
-            })
-            .map_err(|_| RSessionError::InitFailed("session identities exhausted".into()))?;
+        // Preserve the pinned toolchain's checked fetch-update semantics
+        // without the name deprecated by the newer Wasm toolchain.
+        let mut current = NEXT_SESSION_ID.load(Ordering::Relaxed);
+        let session_id = loop {
+            let next = current
+                .checked_add(1)
+                .ok_or_else(|| RSessionError::InitFailed("session identities exhausted".into()))?;
+            match NEXT_SESSION_ID.compare_exchange_weak(
+                current,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(previous) => break previous,
+                Err(observed) => current = observed,
+            }
+        };
         Ok(RSession {
             session_id,
             active: true,
