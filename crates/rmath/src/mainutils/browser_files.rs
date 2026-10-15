@@ -111,13 +111,33 @@ pub fn copy_current(from: &str, to: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn write_text_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+/// Write binary or text data using the current session's existing file policy.
+pub fn write_bytes_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
     let enabled = with_current_instance(|instance| unsafe { (*instance).browser_files_enabled })
         .unwrap_or(false);
     if contains_current(path) || enabled {
+        BrowserFileStore::validate_file(path, bytes.len()).map_err(io::Error::other)?;
+        let _copy = reserve(bytes.len())?;
         return write_current(path, bytes).map_err(std::io::Error::other);
     }
     std::fs::write(path, bytes)
+}
+
+pub fn write_text_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    write_bytes_or_host(path, bytes)
+}
+
+/// Retain native input-byte admission through its consumer's callbacks.
+pub(crate) struct FileBytes {
+    bytes: Vec<u8>,
+    _reservation: Option<crate::sexp::memory::TransientReservation>,
+}
+
+impl std::ops::Deref for FileBytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 /// Text whose native allocation stays admitted until the caller finishes
@@ -235,7 +255,7 @@ impl io::Write for TextBuffer {
     }
 }
 
-pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
+fn read_buffer_or_host(path: &str) -> io::Result<TextBuffer> {
     let browser = enabled();
     let limit = if browser {
         MAX_SESSION_BYTES
@@ -269,6 +289,20 @@ pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
         }
         input.read_from(std::fs::File::open(path)?)?;
     }
+    Ok(input)
+}
+
+pub(crate) fn read_admitted_bytes_or_host(path: &str) -> io::Result<FileBytes> {
+    let input = read_buffer_or_host(path)?;
+    Ok(FileBytes {
+        bytes: input.bytes,
+        _reservation: input.reservation,
+    })
+}
+
+pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
+    let input = read_buffer_or_host(path)?;
+    let limit = input.limit;
     let bytes = &input.bytes;
     let mut output = TextBuffer::new(limit);
     if bytes.starts_with(&[0x1f, 0x8b]) {
@@ -346,14 +380,19 @@ impl BrowserFileStore {
         true
     }
 
-    pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
+    fn validate_file(path: &str, length: usize) -> Result<(), String> {
         Self::validate_path(path)?;
-        if bytes.len() > MAX_FILE_BYTES {
+        if length > MAX_FILE_BYTES {
             return Err(format!(
                 "browser file exceeds {} byte limit",
                 MAX_FILE_BYTES
             ));
         }
+        Ok(())
+    }
+
+    pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        Self::validate_file(path, bytes.len())?;
         let old = self.files.get(path).map_or(0, |file| file.bytes.len());
         if old == 0 && !self.files.contains_key(path) && self.files.len() >= MAX_FILE_COUNT {
             return Err(format!(
@@ -419,6 +458,27 @@ impl BrowserFileStore {
 mod tests {
     use super::*;
     use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+    #[test]
+    fn binary_file_bytes_remain_admitted_and_rejected_replacement_preserves_store() {
+        let mut session = RSession::new_for_gc_tests();
+        session.enable_browser_files();
+        session.put_browser_file("saved.rds", &[1, 2, 3]).unwrap();
+        let baseline = session
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        session.set_arena_budget(ArenaBudget::new(baseline + 3, 0));
+        session.with_active(|| {
+            let bytes = read_admitted_bytes_or_host("saved.rds").unwrap();
+            assert_eq!(&*bytes, &[1, 2, 3]);
+            assert!(reserve(1).is_err());
+            drop(bytes);
+            assert!(write_bytes_or_host("saved.rds", &[4, 5, 6, 7]).is_err());
+            assert_eq!(read_current("saved.rds").unwrap(), [1, 2, 3]);
+            write_bytes_or_host("saved.rds", &[7, 8]).unwrap();
+            assert_eq!(&*read_admitted_bytes_or_host("saved.rds").unwrap(), &[7, 8]);
+        });
+    }
     use std::io::Write;
 
     #[test]

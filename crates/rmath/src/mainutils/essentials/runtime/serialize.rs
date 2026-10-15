@@ -61,9 +61,27 @@ pub unsafe fn do_Random_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// R's `loadRDS(file, refhook)` — load a single serialized R object.
 pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _arguments = owner
+            .sexp(args)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let file_arg = CAR(args);
+        let _file = owner
+            .sexp(file_arg)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let connection_bytes;
+        let file_bytes;
         let bytes = if crate::mainutils::connections::inherits_class(file_arg, "connection") {
             let idx = crate::mainutils::coerce::asInteger(file_arg);
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let mut bytes = Vec::new();
             loop {
                 let b = crate::mainutils::connections::connection_fgetc(idx);
@@ -72,19 +90,27 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 }
                 bytes.push(b as u8);
             }
-            bytes
+            connection_bytes = bytes;
+            connection_bytes.as_slice()
         } else {
             let file_path = elt_to_string(file_arg, 0);
-            let read = crate::library::datasets::file_bytes(&file_path)
-                .map(|bytes| Ok(bytes.to_vec()))
-                .unwrap_or_else(|| std::fs::read(&file_path));
-            match read {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    std::panic::panic_any(RError {
-                        message: format!("cannot open compressed file '{}': {err}", file_path),
-                    });
-                }
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if let Some(bytes) = crate::library::datasets::file_bytes(&file_path) {
+                bytes
+            } else {
+                file_bytes = match crate::mainutils::browser_files::read_admitted_bytes_or_host(
+                    &file_path,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        std::panic::panic_any(RError {
+                            message: format!("cannot open compressed file '{}': {err}", file_path),
+                        });
+                    }
+                };
+                &file_bytes[..]
             }
         };
 
@@ -96,13 +122,26 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if !bytes.is_empty() {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw_vec), bytes.len());
         }
-        crate::mainutils::serialize::R_unserialize(raw_vec, R_NilValue())
+        let result = crate::mainutils::serialize::R_unserialize(raw_vec, R_NilValue());
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result
     }
 }
 
 /// R's `saveRDS(object, file, ascii, ...)` — save a single R object.
 pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _arguments = owner
+            .sexp(args)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let mut object_arg = R_NilValue();
         let mut file_arg = R_NilValue();
         let mut ascii_arg = R_NilValue();
@@ -146,11 +185,33 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             eprintln!("saveRDS: file argument is required");
             return R_NilValue();
         }
+        // Selected operands and the filename survive serializer/provider
+        // callbacks even if the argument graph or caller bindings change.
+        let _selected = [object_arg, file_arg, ascii_arg, version_arg, compress_arg].map(|value| {
+            owner
+                .sexp(value)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+        let is_connection = crate::mainutils::connections::inherits_class(file_arg, "connection");
+        let connection = if is_connection {
+            let index = crate::mainutils::coerce::asInteger(file_arg);
+            Some(
+                crate::mainutils::connections::connection_token(index)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error)),
+            )
+        } else {
+            None
+        };
+        let file_path = (!is_connection).then(|| elt_to_string(file_arg, 0));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
         // GNU's R-level saveRDS() dispatches compress= to a container
         // connection: logical TRUE -> gzip, FALSE -> plain, or a codec name.
         let mut compress: Option<&'static str> = None; // None = uncompressed
-        if !crate::mainutils::connections::inherits_class(file_arg, "connection") {
+        if !is_connection {
             let arg = if compress_arg.is_null() || compress_arg == R_NilValue() {
                 crate::sexp::constructors::Rf_ScalarLogical(crate::sexp::ffi::TRUE)
             } else {
@@ -213,6 +274,9 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             });
         }
         let _raw_guard = protect(raw);
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
         let len = XLENGTH(raw) as usize;
         let plain = std::slice::from_raw_parts(RAW(raw), len);
@@ -236,12 +300,16 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 })
             }),
         };
-        if crate::mainutils::connections::inherits_class(file_arg, "connection") {
-            let idx = crate::mainutils::coerce::asInteger(file_arg);
+        if let Some(connection) = connection {
+            let idx = connection
+                .require_current()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error));
             crate::mainutils::connections::connection_write_bytes(idx, &payload);
         } else {
-            let file_path = elt_to_string(file_arg, 0);
-            if let Err(err) = std::fs::write(&file_path, &payload) {
+            let file_path = file_path.as_deref().expect("selected RDS filename");
+            if let Err(err) =
+                crate::mainutils::browser_files::write_bytes_or_host(file_path, &payload)
+            {
                 std::panic::panic_any(RError {
                     message: format!("cannot open compressed file '{}': {err}", file_path),
                 });
