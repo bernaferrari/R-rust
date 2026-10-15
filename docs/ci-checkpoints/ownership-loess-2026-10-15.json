@@ -1,0 +1,376 @@
+{
+  "recorded_utc": "2026-10-15T16:19:23.332392+00:00",
+  "scope": "Model-local LOESS interpolation and original-owner closure visibility cleanup. Not a full interpreter safety or GNU R conformance result.",
+  "commits": {
+    "concurrent_initial_checkpoint": "6cf867cee9698c0b0eaa53128adb23bce4686b68",
+    "model_isolation": "b73975b1",
+    "ownership_controls": "a4b42519",
+    "source_head": "a4b425193a3cbf6b6876adeb070f93c34314973b"
+  },
+  "source_notes": [
+    "Concurrent commit 6cf867ce captured partial work and unrelated user S4 changes; it was preserved.",
+    "Wasm production code matches this milestone. Later closure fixture text/formatting changes construct a bound integer instead of invoking numeric-parser assembly; they do not change Wasm production behavior.",
+    "Cargo settings and dependency selections were not changed."
+  ],
+  "repairs": {
+    "loess": "Publish genuine GNU pruned KD data and decode the selected model statelessly. Remove latest-model/pseudovalue skip state. Registered interpolation uses an owned Rust handler that forbids unsafe code.",
+    "closure": "Retain original physical visibility state with RAII, check original active owner before callbacks/publication, and preserve original error/panic when ambient runtime attribution is unavailable."
+  },
+  "baseline": {
+    "loess": "Earlier production Wasm changes first-model predictions after fitting a second model: 10.18418 versus pinned GNU zero. Mixed-width regression also fails with argument7 extent mismatch.",
+    "closure": "Genuine collecting on.exit close/drop: original visibility0 instead of1, plus inactive-runtime panic. Final fixture keeps the same closure/GC behavior using a runtime-constructed integer."
+  },
+  "oracle": {
+    "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "revision": 90451,
+    "surface_dimensions": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "observations_per_surface": 40,
+    "structural_arrays": "Exact integer parameter/a agreement; all xi/vert/vval entries compared.",
+    "numeric_array_tolerance": "2e-10 * (1 + abs(expected))",
+    "public_gnu_import_tolerance": 1e-09,
+    "same_model_repeat_and_rust_serialization": "Exact identical predictions",
+    "regeneration": "Pinned Rscript --vanilla tests/loess/isolated-surface-oracle.R SURFACES_JSON crates/r-embed/tests/fixtures/gnu-loess-surface.rds",
+    "regenerated_json_matches_committed_fixture": true
+  },
+  "native": {
+    "focused_library_passed": 53,
+    "focused_library_failed": 0,
+    "public_isolation_passed": 3,
+    "public_isolation_failed": 0,
+    "public_isolation_seconds": 167.87,
+    "focused_receipt": "target/ownership-loess-evidence/focused-native-final.json",
+    "broad_attribute_filter": "An earlier overly broad attribut filter matched unrelated attribute tests and timed out at180s. No complete pass is claimed; final exact focused groups completed."
+  },
+  "miri": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "alias_checker": "default",
+    "closure": {
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "seconds": 476.97
+    },
+    "owned_interpolation": {
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0,
+      "seconds": 88.76
+    },
+    "limits": [
+      "Scoped fixtures only, no whole-engine proof.",
+      "Preliminary aarch64 and i686 attempts stopped on unsupported libm FMA/CPUID assembly in the numeric parser, not an undefined-behavior diagnosis.",
+      "Final fixtures construct integers through the same runtime API on native and Miri; no cfg skip, fake provider, weakened alias checker, or production arithmetic change."
+    ]
+  },
+  "wasm": {
+    "wasm_bytes": 26173427,
+    "package_bytes": 26206355,
+    "limit_bytes": 26214400,
+    "margin_bytes": 8045,
+    "sha256": "663a7cbdb6544d87d82e25c754b0fc09edbc1b2dd0304b426610ba63a16d3287",
+    "node_and_web_input_wasm_identical": true,
+    "budget_unchanged": true,
+    "node_isolation_checks": 9,
+    "original_m3_smoke": "PASS",
+    "chromium_worker_tests_passed": 4,
+    "chromium_worker_tests_failed": 0,
+    "chromium_worker_seconds": 17.8,
+    "browser_test_scope": [
+      "model refits/serialization",
+      "independent GNU model import",
+      "portable binary/anonymous files",
+      "RDS codec/session isolation"
+    ],
+    "package_paths": [
+      "target/ownership-loess-evidence/wasm-web",
+      "target/ownership-loess-evidence/wasm-node"
+    ]
+  },
+  "android": {
+    "target": "aarch64-linux-android",
+    "command": "scripts/cargo_dev.sh check -p r-uniffi --target aarch64-linux-android",
+    "result": "PASS",
+    "seconds": 66,
+    "linked_artifact": false,
+    "on_device_execution": false
+  },
+  "quality": {
+    "strict_workspace_all_target_clippy": "PASS (2m09s), before final fixture-only rewrite",
+    "final_rmath_all_target_renderplot_clippy": "PASS (1m03s)",
+    "android_mutable_global_inventory": "PASS",
+    "upstream_port_map": "PASS (88 anchors)",
+    "shell_syntax": "PASS wasm_m3_smoke.sh",
+    "format": "PASS: scripts/cargo_dev.sh fmt --all -- --check",
+    "diff_whitespace": "PASS"
+  },
+  "beads": {
+    "closed": [
+      "rport-hah9u.32.6",
+      "rport-g5kdh",
+      "rport-aa96.1.1"
+    ],
+    "broader_open": [
+      "rport-aa96.1",
+      "rport-sg9a",
+      "rport-hah9u",
+      "rport-cvs2"
+    ],
+    "dolt_sync": "No remote configured; local Beads commit/push attempt handled in session close."
+  },
+  "remaining_limits": [
+    "LOESS raw diagonal output and complete low-level workspace/native ABI parity remain outside this isolation milestone.",
+    "Unsafe interpreter internals, ambient TLS and full-runtime borrowing work remain open.",
+    "Restored numerical workspace admission does not account for all process, serializer or rendering memory.",
+    "The unchanged Wasm package budget passes with only 8,045 bytes of measured local headroom; recorded under rport-rbt3."
+  ],
+  "source_manifest": {
+    "head": "a4b425193a3cbf6b6876adeb070f93c34314973b",
+    "files": [
+      {
+        "path": "Cargo.lock",
+        "bytes": 69604,
+        "sha256": "a7f2d5efc313d5290ce7f214cd922586c9ef46c319e9dee6f144a25eb494457d"
+      },
+      {
+        "path": ".cargo/config.toml",
+        "bytes": 530,
+        "sha256": "bc973b21b6c6ac6ed809cabcb34c4d489796b00e6b2df2291ed34ebea886cd24"
+      },
+      {
+        "path": "crates/rmath/src/eval/closure.rs",
+        "bytes": 58725,
+        "sha256": "6f6dfe84ce90324424f1d21708c0389af63edb4c100cffc7cf4be0e9420ba536"
+      },
+      {
+        "path": "crates/rmath/src/eval/runtime.rs",
+        "bytes": 4525,
+        "sha256": "407a6b42b7c2305c1c2572822190d8ab694ac39130ece336099d43ba3316b868"
+      },
+      {
+        "path": "crates/rmath/src/mainutils/errors/render.rs",
+        "bytes": 54056,
+        "sha256": "2731983b8d75e727d3f2829d34f75c1ced7817749c619f2ba6271d18a4f8c03d"
+      },
+      {
+        "path": "crates/rmath/src/library/stats/loess/pruned.rs",
+        "bytes": 7937,
+        "sha256": "b977ffc38b3a75ef5689a6b42811f881ef997ac572010b0ebac0d1ae767b7998"
+      },
+      {
+        "path": "crates/rmath/src/library/stats/loess/pruned_tests.rs",
+        "bytes": 5643,
+        "sha256": "7509559efc1f1b94240c526e6fbc936b73700a22697b09ddca580416bba97453"
+      },
+      {
+        "path": "crates/rmath/src/library/stats/loess/surface.rs",
+        "bytes": 11739,
+        "sha256": "d5199e6eac562d307e33caf06f368f45e45b6d9fa3047cce20c61ac4292292da"
+      },
+      {
+        "path": "crates/rmath/src/library/stats/loessc.rs",
+        "bytes": 40333,
+        "sha256": "80cc4482016f28eea67edd3fb0e00e43efa73ac2227b2af20251830930484e9b"
+      },
+      {
+        "path": "crates/rmath/src/mainutils/native_routines/buffers.rs",
+        "bytes": 33867,
+        "sha256": "f0230cbb252f4f47d81c2550f945385b3ea9f6e3a87d820c1a32c0b8216c348f"
+      },
+      {
+        "path": "crates/rmath/src/mainutils/native_routines/buffers/loess_ifit.rs",
+        "bytes": 4931,
+        "sha256": "f3223ab9edce8956c94697526cca43220bf1fc0a9c525d3a07a196c7e5f36d54"
+      },
+      {
+        "path": "crates/rmath/src/library/tools/native_calls.rs",
+        "bytes": 17118,
+        "sha256": "85697c883c92373fd65e6cac157809f40fb95c8e3c67f558e74f94f147dcfd2b"
+      },
+      {
+        "path": "crates/r-embed/tests/loess_isolation.rs",
+        "bytes": 1781,
+        "sha256": "590b5d174a8c9065d39a9c700ae49431a0039754a748f556c4555494cd081298"
+      },
+      {
+        "path": "crates/r-wasm/loess-isolation-smoke.mjs",
+        "bytes": 2204,
+        "sha256": "76cb251d3a8ce50d77f11d759984217948e5e694becca749e10a9c86a67edb83"
+      },
+      {
+        "path": "website/tests/wasm-loess-isolation.spec.ts",
+        "bytes": 1447,
+        "sha256": "7af185bcd1f344c18c2d8c234376d07c060c35ecdba8677e9701baad4f0c0721"
+      }
+    ]
+  },
+  "evidence": {
+    "directory": "target/ownership-loess-evidence",
+    "note": "Local ignored logs and packages, not uploaded CI artifacts.",
+    "receipts": [
+      {
+        "path": "target/ownership-loess-evidence/focused-native-final.json",
+        "bytes": 3004,
+        "sha256": "bd9a93ca6558d00e3a7de57bf72fda47373cb439702a1b20e69624457a917604"
+      },
+      {
+        "path": "target/ownership-loess-evidence/node.json",
+        "bytes": 577,
+        "sha256": "8effaf18cd12b6b5861a7aaf805a553f203cc8487aae4707518dcc14a3635756"
+      },
+      {
+        "path": "target/ownership-loess-evidence/budget.json",
+        "bytes": 262,
+        "sha256": "ec679ccab7a74d285e923757587813ab92576623c2295f147d04d851edf687da"
+      },
+      {
+        "path": "target/ownership-loess-evidence/source.json",
+        "bytes": 2708,
+        "sha256": "301268d46ff4f967600e1cff56f8d72956b77be9ba2d13df50880b802d8e5978"
+      },
+      {
+        "path": "target/ownership-loess-evidence/raw-wasm.json",
+        "bytes": 179,
+        "sha256": "efcaff60db2216eb4f1527df1a8644d4078c861ecb705589809a652bf52f001b"
+      }
+    ],
+    "logs": [
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-red.log",
+        "bytes": 4508,
+        "sha256": "e12e6740e3a2959542ff670c1798ca5386faa32af99c587cc039db2bd019bcf6"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-green.log",
+        "bytes": 1338,
+        "sha256": "0706610152b92ef1a771d4240021b9da4a9cb301c93149372084a552af9e59c8"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-green2.log",
+        "bytes": 1105,
+        "sha256": "e3f632e83ddcfc2faa10da9bdb13d8f8602b1167d9718f836a017ec49b82f199"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-native-final.log",
+        "bytes": 693,
+        "sha256": "dd7a17ffad6c4b209ee5d5de6b8cc98824d29008ab570248c5a662e3c44bcf0a"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-miri.log",
+        "bytes": 8110,
+        "sha256": "ae765b730eb0b94925678047ef82174da3b86d05a02292a34f55d20b23b65c57"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-miri-i686.log",
+        "bytes": 9748,
+        "sha256": "0b0de56d8748c937ea39f9c5fafd872f2718634318276fbebc7b008ac89706fb"
+      },
+      {
+        "path": "target/ownership-loess-evidence/closure-visibility-miri-final.log",
+        "bytes": 1753,
+        "sha256": "4a96c700f8e2ced30bc0495a00c12db19ae8a47b3658cd7abae0c8b6ff814fa0"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-ifit-miri.log",
+        "bytes": 1913,
+        "sha256": "3f7bbee327e7bbe487de1ea2de7e9cdd0c28838fe8e5780dfa4a3dd2b3ae8793"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-pruned-first.log",
+        "bytes": 1420,
+        "sha256": "3168e6cf65025e5e56517940f08d7f7a54cccf8e0854c53054e3266376b7d2d7"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-pruned-green2.log",
+        "bytes": 903,
+        "sha256": "4b81ba80363f00ed5003f4372b06431c0ebd48740fd2bdf60e83aa5bc18d7803"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-isolation-native-final.log",
+        "bytes": 802,
+        "sha256": "6a8d3b3c7255666cf8ddf7880138dc47d4ac3f9d4c598fd8dae7c919fa3f35cf"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-focused-native.log",
+        "bytes": 2164,
+        "sha256": "86469375a7a177137f85a1b54fa6f50cc8fa0a56487c7deacded08edcbbce37e"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-focused-final.log",
+        "bytes": 1165,
+        "sha256": "3cff4d83b0846fe53af51e9fecfc9e70d4bac14315668d863f055879a4b026e1"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-clippy.log",
+        "bytes": 6792,
+        "sha256": "622f4d71220ddf2ce3cdf385432bc1df25eaf18b6ac36d61b11b59438d2464ec"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-clippy-final.log",
+        "bytes": 1428,
+        "sha256": "c5afb6438a10b6cea736f8da816e4afc59a881b43eb23e798a84f6597e63c059"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-isolation-wasm-build.log",
+        "bytes": 6514,
+        "sha256": "53bab3bb840972fc8435f6fda869f9a490fe08c44331631c1254e93c58c5a902"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-isolation-wasm-optimize.log",
+        "bytes": 67,
+        "sha256": "8757f1a467f797add8c33a8c02b2dcb0a236c6875e7297c62f17ddb9e906e2f6"
+      },
+      {
+        "path": "target/ownership-loess-evidence/loess-isolation-wasm-red.log",
+        "bytes": 848,
+        "sha256": "7fdfd17b10c6ee4e260580a3ae816205050ad21ad1312b6b64905a4c7bf35922"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-browser.log",
+        "bytes": 1212,
+        "sha256": "e2bdf6bdeebcad2991154459122e39a654ef8cd939b99fee81f06d5bd08b89c3"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-browser-prepare.log",
+        "bytes": 109,
+        "sha256": "49c0c1bf2b95fa84f342bf7f4d3c53b8aa71d7f72ce07c81b56a065138717312"
+      },
+      {
+        "path": "target/ownership-loess-evidence/ownership-loess-android.log",
+        "bytes": 5191,
+        "sha256": "6bc0d855278c82d662dda1c346f967689b26bf8f04b87c74a32b859f1f5715c9"
+      }
+    ]
+  },
+  "cleanup": {
+    "recorded_utc": "2026-10-15T16:20:30.629736+00:00",
+    "removed": [
+      {
+        "path": "target/wasm-unwind",
+        "apparent_bytes": 537609718
+      },
+      {
+        "path": "target/ownership-loess-miri",
+        "apparent_bytes": 445722198
+      },
+      {
+        "path": "target/ownership-android-check",
+        "apparent_bytes": 260335449
+      }
+    ],
+    "retained": [
+      "target/debug and target/release user caches",
+      "target/ownership-loess-evidence packages, logs and manifests",
+      "website generated runtime assets"
+    ],
+    "proof_before_cleanup": "docs/ci-checkpoints/ownership-loess-2026-10-15.json and target/ownership-loess-evidence/raw-wasm.json"
+  }
+}
