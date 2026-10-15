@@ -218,7 +218,18 @@ pub unsafe fn Rf_mkNAString() -> SEXP {
 
 /// Create a scalar logical value.
 pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
-    unsafe { scalar(SEXPTYPE::LGLSXP, |value| value.try_set_logical_elt(0, x)) }
+    // Pinned GNU Rinlinedfuns.h ScalarLogical shares immutable scalars and
+    // normalizes every nonzero, non-NA input. Writable callers allocate a
+    // logical vector or duplicate before attaching attributes or changing it.
+    unsafe {
+        if x == super::ffi::NA_LOGICAL {
+            super::globals::R_LogicalNA()
+        } else if x != 0 {
+            super::globals::R_True()
+        } else {
+            super::globals::R_False()
+        }
+    }
 }
 
 /// Create a scalar integer value.
@@ -563,6 +574,37 @@ mod tests {
             assert!(!s.is_null());
             let data = super::super::accessors::REAL(s);
             assert!((*data - 3.14).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn scalar_logical_shares_original_bank_normalizes_and_allocates_no_arena_nodes() {
+        let mut session = RSession::new_for_gc_tests();
+        let before = session.with_arena(|arena| arena.node_count()).unwrap();
+        let mut retained = Vec::new();
+        for (input, expected) in [
+            (0, 0),
+            (1, 1),
+            (42, 1),
+            (-7, 1),
+            (super::super::ffi::NA_LOGICAL, super::super::ffi::NA_LOGICAL),
+        ] {
+            let raw = unsafe { Rf_ScalarLogical(input) };
+            let again = unsafe { Rf_ScalarLogical(input) };
+            assert_eq!(raw, again);
+            let value = session.sexp(raw).unwrap().into_owned().unwrap();
+            assert_eq!(value.try_logical_elt(0).unwrap(), expected);
+            assert!(super::super::object::SexpMut::try_from_checked(value.clone()).is_err());
+            retained.push((value, expected));
+        }
+        assert_eq!(
+            session.with_arena(|arena| arena.node_count()).unwrap(),
+            before
+        );
+        super::super::globals::close_immutable_singletons_for_test();
+        for (value, expected) in retained {
+            assert_eq!(value.try_logical_elt(0).unwrap(), expected);
+            assert_ne!(value.as_raw(), unsafe { Rf_ScalarLogical(expected) });
         }
     }
 

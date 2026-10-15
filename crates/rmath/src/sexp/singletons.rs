@@ -17,6 +17,7 @@ pub(crate) enum SingletonKind {
     True,
     False,
     NaString,
+    LogicalNa,
 }
 
 impl SingletonKind {
@@ -29,6 +30,7 @@ impl SingletonKind {
             Self::True => 5,
             Self::False => 6,
             Self::NaString => 7,
+            Self::LogicalNa => 8,
         }
     }
 
@@ -41,6 +43,7 @@ impl SingletonKind {
             5 => Self::True,
             6 => Self::False,
             7 => Self::NaString,
+            8 => Self::LogicalNa,
             _ => return None,
         })
     }
@@ -75,6 +78,9 @@ impl SingletonLease {
             SingletonKind::Restart => (SEXPTYPE::SPECIALSXP, true, None),
             SingletonKind::True => (SEXPTYPE::LGLSXP, false, Some(1)),
             SingletonKind::False => (SEXPTYPE::LGLSXP, false, Some(0)),
+            SingletonKind::LogicalNa => {
+                (SEXPTYPE::LGLSXP, false, Some(crate::sexp::ffi::NA_LOGICAL))
+            }
             SingletonKind::NaString => (SEXPTYPE::CHARSXP, false, None),
         };
         let logical = logical.map(|value| {
@@ -142,7 +148,7 @@ impl SingletonLease {
 }
 
 struct SingletonPool {
-    values: [SingletonLease; 7],
+    values: [SingletonLease; 8],
 }
 
 /// Checked heap handles retain their sentinel bank so graph edges remain valid
@@ -167,6 +173,7 @@ impl SingletonPoolLease {
                 SingletonLease::new(SingletonKind::True),
                 SingletonLease::new(SingletonKind::False),
                 SingletonLease::new(SingletonKind::NaString),
+                SingletonLease::new(SingletonKind::LogicalNa),
             ],
         }))
     }
@@ -238,6 +245,9 @@ pub(super) fn restart() -> SEXP {
 }
 pub(super) fn logical(value: bool) -> SEXP {
     pool().0.values[if value { 4 } else { 5 }].projection()
+}
+pub(super) fn logical_na() -> SEXP {
+    pool().0.values[7].projection()
 }
 pub(super) fn na_string() -> SEXP {
     pool().0.values[6].projection()

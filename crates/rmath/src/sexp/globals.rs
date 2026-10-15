@@ -245,6 +245,10 @@ pub unsafe fn R_True() -> SEXP {
 pub unsafe fn R_False() -> SEXP {
     singletons::logical(false)
 }
+/// Get a pointer to the immutable logical NA scalar.
+pub unsafe fn R_LogicalNA() -> SEXP {
+    singletons::logical_na()
+}
 /// Get a pointer to the immutable NA_STRING character sentinel.
 pub unsafe fn R_NaString() -> SEXP {
     singletons::na_string()
