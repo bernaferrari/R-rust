@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_utc": "2026-10-15T21:07:14.512130+00:00",
+  "recorded_utc": "2026-10-15T21:13:37.713920+00:00",
   "runtime_source_commit": "9974e9c9e06ca8d7b66819b51bd713223756cb8e",
   "status": "verified",
   "objective": "Repair critical interpreter-owner, production S4, memory-admission and regex-fidelity gaps for Rust browser/Android execution.",
@@ -536,7 +536,19 @@
       "target/wasm-unwind",
       "target/ownership-loess-miri"
     ],
-    "status": "pending_after_receipts_recorded",
-    "default_native_target_preserved": true
+    "status": "complete",
+    "default_native_target_preserved": true,
+    "receipts": [
+      {
+        "path": "target/runtime-four-evidence/cleanup-wasm.log",
+        "sha256": "298eb1cb4bbc1e5e55c15d8b254f91c2c9c06ff3b67530dc5b96537a03b67b58",
+        "result": "Removed 1469 files, 680.3MiB total"
+      },
+      {
+        "path": "target/runtime-four-evidence/cleanup-miri.log",
+        "sha256": "3329829ef7381a8c14ef28a66865b32d1ebd4064d8cd82003b167d10611e130c",
+        "result": "Removed 1019 files, 241.7MiB total"
+      }
+    ]
   }
 }
