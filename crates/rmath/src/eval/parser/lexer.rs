@@ -472,7 +472,10 @@ impl Lexer {
             return Token::Invalid;
         }
 
-        let Ok(v) = s.parse::<f64>() else {
+        // NumericValue in GNU gram.y uses R_atof for source literals too.
+        // Its long-mantissa rounding and underflow differ from C strtod and
+        // Rust's correctly rounded parser; reuse our bounded GNU seam.
+        let Some(v) = crate::mainutils::coerce::parse_double_str(&s) else {
             return Token::Invalid;
         };
         if self.peek_char() == Some('i') {

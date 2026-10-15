@@ -142,9 +142,14 @@ mod tests {
 #[path = "colors/owned_decode_tests.rs"]
 mod owned_decode_tests;
 
+#[cfg(test)]
+#[path = "colors/numeric_tests.rs"]
+mod numeric_tests;
+
 mod builtins;
 mod converters;
 mod names_table;
+mod numeric;
 mod palette;
 
 pub use builtins::*;

@@ -1,7 +1,8 @@
 # Independent controls for GNU R scalar numeric text conversion.
 # Regenerate: pinned Rscript --vanilla number-coercion.R > number-coercion.tsv
 inputs <- c("", " ", "\t\n", "0", "-0", "+0", "1", "-2.5", ".5", "1.",
-            "  +1.25e2 ", "3.141592653589793", "1e-308", "5e-324", "1e309",
+            "  +1.25e2 ", "3.141592653589793", "0.99999999999999978",
+            "0.99999999999999977", "0.99999999999999979", "1e-308", "5e-324", "1e309",
             "1e999999999999", "0e999999999999", "-0e999999999999", "1e-999999999999",
             "NaN", "nan", "NAN", "-NaN", "+NaN", "Inf", "infinity", "-INF", "+Infinity",
             "NA", "nan(payload)", "NaNx", "Infinityx", "1e", "1e+", "1e-", "1junk", ".", "+", "-",

@@ -177,14 +177,17 @@ pub(crate) fn parse_number(input: &[u8], decimal: u8, allow_na: bool, exact: i32
     let mut digits = 0_i64;
     let mut power = 0_i64;
     while let Some(byte @ b'0'..=b'9') = input.get(cursor) {
-        mantissa = 10.0 * mantissa + f64::from(*byte - b'0');
+        // Pinned GNU's compiled decimal accumulator contracts 10*ans+digit
+        // to one rounded operation. Spell it explicitly so Wasm and native
+        // retain the same long-mantissa behavior without compiler FP flags.
+        mantissa = libm::fma(mantissa, 10.0, f64::from(*byte - b'0'));
         digits = digits.saturating_add(1);
         cursor += 1;
     }
     if input.get(cursor) == Some(&decimal) {
         cursor += 1;
         while let Some(byte @ b'0'..=b'9') = input.get(cursor) {
-            mantissa = 10.0 * mantissa + f64::from(*byte - b'0');
+            mantissa = libm::fma(mantissa, 10.0, f64::from(*byte - b'0'));
             digits = digits.saturating_add(1);
             power = power.saturating_sub(1);
             cursor += 1;

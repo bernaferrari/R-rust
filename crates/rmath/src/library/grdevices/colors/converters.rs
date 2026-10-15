@@ -498,21 +498,14 @@ pub(crate) unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
             return rgb2col(s);
         }
         if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
-            let mut ptr: *mut c_char = std::ptr::null_mut();
-            #[cfg(not(target_arch = "wasm32"))]
-            let indx = libc::strtod(s, &mut ptr) as c_int;
-            // wasm32: no libc; the palette-index path parses plain
-            // integers, which the engine's R_strtod reads identically.
-            #[cfg(target_arch = "wasm32")]
-            let indx = crate::mainutils::util_main::R_strtod(s, &mut ptr) as c_int;
-            if !ptr.is_null() && *ptr != 0 {
-                Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
-            }
+            let token = std::ffi::CStr::from_ptr(s).to_bytes();
+            let indx = super::numeric::palette_index(token)
+                .unwrap_or_else(|| crate::sexp::context::r_error("invalid color specification"));
             if indx == 0 {
                 return bg;
             }
             let ps = with_color_state(|state| state.palette_size) as usize;
-            let idx = (indx as usize).wrapping_sub(1) % ps;
+            let idx = (indx - 1) % ps;
             with_color_state(|state| state.palette[idx])
         } else {
             name2col(s)

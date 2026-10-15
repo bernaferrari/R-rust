@@ -322,6 +322,45 @@ fn test_raw_string_delimiters_and_dashes() {
 }
 
 #[test]
+fn gnu_decimal_source_literals_preserve_original_long_mantissa_and_underflow_precision() {
+    let session = RSession::new_for_gc_tests();
+    let decode = |hex: &str| {
+        hex.as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let mut cases = 0;
+    for row in include_str!("numeric-oracle.tsv").lines() {
+        let columns = row.split('|').collect::<Vec<_>>();
+        let source = String::from_utf8(decode(columns[0])).unwrap();
+        let expected = decode(columns[2]);
+        let value = must(parse_str(&session, &source));
+        match columns[1] {
+            "double" => assert_eq!(
+                value.try_real_elt(0).unwrap().to_le_bytes().as_slice(),
+                expected,
+                "original GNU source {source}"
+            ),
+            "integer" => assert_eq!(
+                value.try_integer_elt(0).unwrap().to_le_bytes().as_slice(),
+                expected,
+                "original GNU source {source}"
+            ),
+            "complex" => {
+                let actual = value.try_complex_elt(0).unwrap();
+                let mut bytes = actual.r.to_le_bytes().to_vec();
+                bytes.extend_from_slice(&actual.i.to_le_bytes());
+                assert_eq!(bytes, expected, "original GNU source {source}");
+            }
+            other => panic!("unexpected original literal type {other}"),
+        }
+        cases += 1;
+    }
+    assert_eq!(cases, 21);
+}
+
+#[test]
 fn test_numeric_overflow_and_malformed_literals_match_supported_r_behavior() {
     let session = RSession::new_for_gc_tests();
     for input in ["1e9999", "0x1p1024"] {
