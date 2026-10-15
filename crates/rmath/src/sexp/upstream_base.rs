@@ -1427,12 +1427,12 @@ const ORACLE_RECOVERED_SOURCES: &[(&str, &str)] = &[
     ),
     (
         "Funcall",
-        r#"Funcall <- function (f, ...)
-f(...)"#,
+        r"Funcall <- function (f, ...)
+f(...)",
     ),
     (
         "Partial",
-        r#"Partial <- function (f, ...)
+        r"Partial <- function (f, ...)
 {
     f <- match.fun(f)
     args <- list(...)
@@ -1440,7 +1440,7 @@ f(...)"#,
     {
         do.call(f, c(args, list(...)))
     }
-}"#,
+}",
     ),
     (
         ".enc2utf8_sub",
