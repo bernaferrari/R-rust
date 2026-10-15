@@ -18,15 +18,17 @@ use std::{
     sync::atomic::AtomicU32,
 };
 
-/// Exact, nonowning graph identity. Zero heap/page identify null or an
-/// original immutable lease; managed nodes use nonzero heap/page cookies.
+/// Exact, nonowning graph identity. Zero heap identifies null or an original
+/// immutable lease; managed nodes use nonzero heap and page cookies.
+/// Managed page and generation components retire before 32-bit exhaustion;
+/// the zero-heap variant preserves an immutable lease's complete 64-bit cookie.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(align(8))]
 pub(crate) struct NodeLink {
     heap_cookie: u32,
     slot: u32,
-    page_cookie: u64,
-    generation: u64,
+    page_cookie: u32,
+    generation: u32,
 }
 impl NodeLink {
     pub(crate) const NULL: Self = Self {
@@ -42,21 +44,24 @@ impl NodeLink {
         self == Self::NULL
     }
     pub(crate) fn page_cookie(self) -> u64 {
-        self.page_cookie
+        u64::from(self.page_cookie)
     }
     fn singleton(kind: SingletonKind, cookie: u64) -> Option<Self> {
         (cookie != 0).then_some(Self {
             heap_cookie: 0,
             slot: kind.link_tag(),
-            page_cookie: 0,
-            generation: cookie,
+            // Zero heap distinguishes immutable leases, leaving both words
+            // available for the complete original 64-bit singleton cookie.
+            page_cookie: (cookie >> 32) as u32,
+            generation: cookie as u32,
         })
     }
     fn singleton_identity(self) -> Option<(SingletonKind, u64)> {
-        if self.heap_cookie != 0 || self.page_cookie != 0 || self.generation == 0 {
+        let cookie = (u64::from(self.page_cookie) << 32) | u64::from(self.generation);
+        if self.heap_cookie != 0 || cookie == 0 {
             return None;
         }
-        Some((SingletonKind::from_link_tag(self.slot)?, self.generation))
+        Some((SingletonKind::from_link_tag(self.slot)?, cookie))
     }
 }
 
@@ -87,7 +92,7 @@ fn issue_heap_cookie(counter: &AtomicU32) -> Option<u32> {
 fn issue_page_cookie(counter: &Cell<u64>) -> Option<u64> {
     let next = counter.get();
     let successor = next.checked_add(1)?;
-    if next == 0 {
+    if next == 0 || next > u64::from(u32::MAX) {
         return None;
     }
     counter.set(successor);
@@ -759,8 +764,8 @@ impl NodeId {
         NodeLink {
             heap_cookie: self.heap.0.cookie,
             slot: u32::try_from(self.slot).expect("checked page slot fits link"),
-            page_cookie: self.page_cookie,
-            generation: self.generation,
+            page_cookie: u32::try_from(self.page_cookie).expect("live page fits compact link"),
+            generation: u32::try_from(self.generation).expect("live generation fits compact link"),
         }
     }
 }
@@ -931,7 +936,7 @@ impl PageMetadata {
         self.cookie
     }
     fn id_from_link(&self, link: NodeLink) -> Option<NodeId> {
-        if link.heap_cookie != self.heap.0.cookie || link.page_cookie != self.cookie {
+        if link.heap_cookie != self.heap.0.cookie || u64::from(link.page_cookie) != self.cookie {
             return None;
         }
         let id = NodeId {
@@ -939,7 +944,7 @@ impl PageMetadata {
             page: self.page,
             page_cookie: self.cookie,
             slot: link.slot as usize,
-            generation: link.generation,
+            generation: u64::from(link.generation),
         };
         self.validates(&id).then_some(id)
     }
@@ -974,7 +979,7 @@ impl PageMetadata {
         !self.retired.get()
             && slot < self.slots
             && !self.is_live(slot)
-            && self.generations[slot].get() != u64::MAX
+            && self.generations[slot].get() < u64::from(u32::MAX)
     }
     fn bit(&self, old: bool, slot: usize, on: bool) {
         let words = if old { &self.old } else { &self.live };
@@ -999,6 +1004,7 @@ impl PageMetadata {
         let generation = self.generations[slot]
             .get()
             .checked_add(1)
+            .filter(|generation| u32::try_from(*generation).is_ok())
             .ok_or(HeapError::RetiredSlot)?;
         self.generations[slot].set(generation);
         self.epochs[slot].set(0);
@@ -1125,7 +1131,7 @@ impl PageMetadata {
         self.root_bit(id.slot, false);
         self.epochs[id.slot].set(0);
         let generation = &self.generations[id.slot];
-        generation.set(generation.get().saturating_add(1));
+        generation.set(generation.get().saturating_add(1).min(u64::from(u32::MAX)));
         true
     }
     pub(crate) fn set_old(&self, slot: usize, old: bool) {
@@ -1418,6 +1424,20 @@ mod tests {
     }
 
     #[test]
+    fn compact_singleton_links_preserve_full_original_bank_cookie() {
+        for cookie in [1, u64::from(u32::MAX), 1_u64 << 32, u64::MAX] {
+            let link = NodeLink::singleton(SingletonKind::Nil, cookie).unwrap();
+            assert_eq!(
+                link.singleton_identity(),
+                Some((SingletonKind::Nil, cookie))
+            );
+            assert!(!link.is_null());
+        }
+        assert!(NodeLink::singleton(SingletonKind::Nil, 0).is_none());
+        assert!(NodeLink::NULL.singleton_identity().is_none());
+    }
+
+    #[test]
     fn cookies_exhaust_without_wrapping_or_issuing_reserved_zero() {
         let heap_counter = AtomicU32::new(u32::MAX - 1);
         assert_eq!(issue_heap_cookie(&heap_counter), Some(u32::MAX - 1));
@@ -1426,10 +1446,10 @@ mod tests {
         let reserved = AtomicU32::new(0);
         assert_eq!(issue_heap_cookie(&reserved), None);
         assert_eq!(reserved.load(Ordering::Relaxed), 0);
-        let page_counter = Cell::new(u64::MAX - 1);
-        assert_eq!(issue_page_cookie(&page_counter), Some(u64::MAX - 1));
+        let page_counter = Cell::new(u64::from(u32::MAX));
+        assert_eq!(issue_page_cookie(&page_counter), Some(u64::from(u32::MAX)));
         assert_eq!(issue_page_cookie(&page_counter), None);
-        assert_eq!(page_counter.get(), u64::MAX);
+        assert_eq!(page_counter.get(), u64::from(u32::MAX) + 1);
         let reserved = Cell::new(0);
         assert_eq!(issue_page_cookie(&reserved), None);
         assert_eq!(reserved.get(), 0);
@@ -1457,7 +1477,7 @@ mod tests {
         assert!(second.resolve_link(next).is_none());
         // Metadata-only pages never create a second physical heap authority.
         assert!(heap.resolve_link(recreated).is_none());
-        assert_eq!(std::mem::size_of::<NodeLink>(), 24);
+        assert_eq!(std::mem::size_of::<NodeLink>(), 16);
         assert_eq!(std::mem::align_of::<NodeLink>(), 8);
     }
     #[test]
@@ -1626,10 +1646,13 @@ mod tests {
     #[test]
     fn generation_exhaustion_retires_storage_without_aliasing_old_ids() {
         let page = NodePage::try_new(HeapIdentity::new(), 0, 1, || 0).unwrap();
-        page.metadata.force_generation(0, u64::MAX - 1);
+        page.metadata.force_generation(0, u64::from(u32::MAX) - 1);
         page.replace_inactive(0, 7).unwrap();
         let last = page.metadata.activate(0, false).unwrap();
+        let last_link = last.link();
+        assert!(page.resolve_link(last_link).is_some());
         assert!(page.metadata.release(&last));
+        assert!(page.resolve_link(last_link).is_none());
         assert_eq!(page.resolve(&last), None);
         assert_eq!(
             page.metadata.activate(0, false),
