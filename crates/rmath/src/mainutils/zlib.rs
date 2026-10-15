@@ -1,125 +1,92 @@
-//! System-zlib gzip compression.
+#![forbid(unsafe_code)]
+
+//! Portable gzip compression through the Rust zlib implementation.
 //!
-//! GNU R's `gzfile()` connections compress through the zlib C API. Its
-//! deflate output (and gzip container header OS byte) differs from pure-Rust
-//! deflate implementations, so files written for byte parity with GNU R —
-//! `saveRDS(compress=)` in particular — must be deflated by zlib itself.
-//! The system library is linked directly; there is no Rust build-time
-//! dependency. Not available on wasm32, where no caller links file
-//! compression.
+//! GNU R uses a zero timestamp, no filename, and Unix OS byte in its gzip
+//! containers. The same safe implementation serves native, Android and Wasm
+//! callers without a system library or platform-dependent C structure layout.
 
-use std::os::raw::{c_char, c_int};
+use std::io::Write;
 
-#[repr(C)]
-struct ZStream {
-    next_in: *mut u8,
-    avail_in: c_int,
-    total_in: u64,
-    next_out: *mut u8,
-    avail_out: c_int,
-    total_out: u64,
-    msg: *mut c_char,
-    state: *mut u8,
-    zalloc: *mut u8,
-    zfree: *mut u8,
-    opaque: *mut u8,
-    data_type: c_int,
-    adler: u64,
-    reserved: u64,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[link(name = "z")]
-unsafe extern "C" {
-    fn deflateInit2_(
-        strm: *mut ZStream,
-        level: c_int,
-        method: c_int,
-        window_bits: c_int,
-        mem_level: c_int,
-        strategy: c_int,
-        version: *const c_char,
-        stream_size: c_int,
-    ) -> c_int;
-    fn deflate(strm: *mut ZStream, flush: c_int) -> c_int;
-    fn deflateEnd(strm: *mut ZStream) -> c_int;
-}
-
-const Z_DEFLATED: c_int = 8;
-const Z_DEFAULT_STRATEGY: c_int = 0;
-const Z_FINISH: c_int = 4;
-const Z_STREAM_END: c_int = 1;
-
-/// Deflate `data` into a gzip container with zlib's default memory level
-/// (8), matching `gzwrite()` output for the given compression level.
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn gzip_compress(data: &[u8], level: c_int) -> Result<Vec<u8>, String> {
-    let version = c"1.2.11";
-    let mut stream = ZStream {
-        next_in: std::ptr::null_mut(),
-        avail_in: 0,
-        total_in: 0,
-        next_out: std::ptr::null_mut(),
-        avail_out: 0,
-        total_out: 0,
-        msg: std::ptr::null_mut(),
-        state: std::ptr::null_mut(),
-        zalloc: std::ptr::null_mut(),
-        zfree: std::ptr::null_mut(),
-        opaque: std::ptr::null_mut(),
-        data_type: 0,
-        adler: 0,
-        reserved: 0,
+/// Compress with GNU's default deflate window, memory level and strategy.
+pub(crate) fn gzip_compress(data: &[u8], level: i32) -> Result<Vec<u8>, String> {
+    let level = match level {
+        -1 => flate2::Compression::default(),
+        0..=9 => flate2::Compression::new(level as u32),
+        _ => return Err(format!("invalid gzip compression level: {level}")),
     };
-    // 15-bit window + 16 selects the gzip wrapper.
-    let rc = unsafe {
-        deflateInit2_(
-            &mut stream,
-            level,
-            Z_DEFLATED,
-            15 + 16,
-            8,
-            Z_DEFAULT_STRATEGY,
-            version.as_ptr(),
-            std::mem::size_of::<ZStream>() as c_int,
-        )
-    };
-    if rc != 0 {
-        return Err(format!("deflateInit2 failed: {rc}"));
-    }
-    let mut input = data.to_vec();
-    stream.next_in = input.as_mut_ptr();
-    stream.avail_in = data.len() as c_int;
-    let mut out = Vec::with_capacity(data.len() / 2 + 64);
-    let mut chunk = [0u8; 64 * 1024];
-    loop {
-        stream.next_out = chunk.as_mut_ptr();
-        stream.avail_out = chunk.len() as c_int;
-        let rc = unsafe { deflate(&mut stream, Z_FINISH) };
-        let produced = chunk.len() - stream.avail_out as usize;
-        out.extend_from_slice(&chunk[..produced]);
-        if rc == Z_STREAM_END {
-            break;
-        }
-        if rc != 0 {
-            unsafe { deflateEnd(&mut stream) };
-            return Err(format!("deflate failed: {rc}"));
-        }
-        if stream.avail_out != 0 {
-            // No progress possible without more input.
-            break;
-        }
-    }
-    unsafe { deflateEnd(&mut stream) };
-    // GNU gzfile writes OS byte 3 (Unix); system zlib may emit 0. The
-    // gzip header is 10 bytes when FLG=0, and we never set FNAME/FCOMMENT.
-    if out.len() >= 10 && out[3] == 0 {
-        out[9] = 0x03;
-    }
-    Ok(out)
+    let mut encoder = flate2::GzBuilder::new()
+        .mtime(0)
+        .operating_system(3)
+        .write(Vec::new(), level);
+    encoder.write_all(data).map_err(|error| error.to_string())?;
+    let mut output = encoder.finish().map_err(|error| error.to_string())?;
+    // GNU R's gzio.h writes zero xflags at every level, independently of
+    // the deflater. flate2 labels the fastest and smallest levels instead.
+    *output.get_mut(8).ok_or("incomplete gzip header")? = 0;
+    Ok(output)
 }
 
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn gzip_compress(_data: &[u8], _level: c_int) -> Result<Vec<u8>, String> {
-    Err("gzip compression requires the native zlib library".to_string())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    fn data(kind: &str) -> Vec<u8> {
+        match kind {
+            "empty" => Vec::new(),
+            "text" => "R belongs everywhere.\n\u{e9}\n".as_bytes().to_vec(),
+            "bytes" => (0..=255).collect(),
+            "window" => (0..100_000)
+                .map(|i| ((i * 17 + i / 256) % 256) as u8)
+                .collect(),
+            _ => panic!("unknown oracle payload"),
+        }
+    }
+
+    #[test]
+    fn portable_gzip_preserves_independent_gnu_headers_and_payloads() {
+        for row in include_str!("zlib/gnu-gzip.tsv").lines() {
+            let columns: Vec<_> = row.split('\t').collect();
+            let level: i32 = columns[1].parse().unwrap();
+            let expected: Vec<u8> = columns[2]
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+                .collect();
+            let input = data(columns[0]);
+            let compressed = gzip_compress(&input, level).unwrap();
+            assert_eq!(
+                &compressed[..10],
+                &expected[..10],
+                "{} level {level}",
+                columns[0]
+            );
+            // Deflate block choices depend on the compressor implementation.
+            // The independent GNU stream and our Rust stream must both
+            // preserve the exact original bytes, including empty and raw data.
+            for container in [&expected, &compressed] {
+                let mut decoded = Vec::new();
+                flate2::read::GzDecoder::new(container.as_slice())
+                    .read_to_end(&mut decoded)
+                    .unwrap();
+                assert_eq!(decoded, input, "{} level {level}", columns[0]);
+            }
+        }
+    }
+
+    #[test]
+    fn portable_gzip_validates_levels_and_default_matches_six() {
+        assert_eq!(
+            gzip_compress(b"R", -1).unwrap(),
+            gzip_compress(b"R", 6).unwrap()
+        );
+        for level in [-2, 10, i32::MIN, i32::MAX] {
+            assert!(
+                gzip_compress(b"R", level)
+                    .unwrap_err()
+                    .contains("invalid gzip compression level")
+            );
+        }
+    }
 }

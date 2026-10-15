@@ -27,7 +27,7 @@ rmath-nmath = { path = "../nmath" }
 libm = "0.2"
 num = "0.4"
 hashbrown.workspace = true
-flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 bzip2 = "0.6"
 lzma-rs = "0.3"
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "encoder"] }

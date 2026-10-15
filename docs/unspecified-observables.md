@@ -6,6 +6,21 @@ compatibility (operation-specific tolerances and invariants) is the product
 contract; exact-build reproduction against the pinned oracle is separate,
 narrower evidence.
 
+## Gzip compressor block choices
+
+Gzip files now use the Rust zlib implementation on native, Android and Wasm.
+Their GNU R container metadata (zero timestamp and flags, no filename, Unix
+OS byte) and decoded bytes are preserved. Deflate block choices and compressed
+file sizes can differ from a particular GNU R system-zlib build. This includes
+incompressible byte vectors at low compression levels; byte-identical compressed
+files are not claimed. R serialization inside the container is unchanged.
+
+The independent pinned GNU fixtures in
+`crates/rmath/src/mainutils/zlib/gnu-gzip.tsv` cover every compression level,
+empty/text/raw inputs and inputs larger than a deflate window. Tests require
+exact header and decoded-payload agreement for both implementations. Original
+whole-driver comparisons retain their existing exact-build dispositions.
+
 ## Global-environment enumeration order (`ls()` / `as.list(.GlobalEnv)` unsorted)
 
 GNU R documents the unsorted enumeration order of environment contents as
