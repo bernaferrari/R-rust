@@ -317,7 +317,11 @@ impl<'session> StoredOwner<'session> {
             {
                 return Err(SexpError::OwnerNotActive);
             }
-            Ok(unsafe { super::memory::with_arena_in(pointer, f) })
+            let result = unsafe { super::memory::with_arena_in(pointer, f) };
+            if super::instance::current_instance_ptr() != Some(pointer) {
+                return Err(SexpError::OwnerNotActive);
+            }
+            Ok(result)
         })
     }
 
@@ -390,6 +394,7 @@ impl<'session> OwnerToken<'session> {
         if let Some(pin) = &_pin {
             pin.require_live()?;
         }
+        self.require_active()?;
         Ok(result)
     }
 
@@ -450,6 +455,7 @@ impl<'session> OwnerToken<'session> {
         if let Some(pin) = &_pin {
             pin.require_live()?;
         }
+        self.require_active()?;
         Ok(result)
     }
 
@@ -461,6 +467,7 @@ impl<'session> OwnerToken<'session> {
         if let Some(pin) = &_pin {
             pin.require_live()?;
         }
+        self.require_active()?;
         Ok(result)
     }
 }
@@ -474,6 +481,55 @@ mod tests {
         object::SexpMut,
     };
     use std::cell::Cell;
+
+    #[test]
+    fn checked_owner_operations_reject_resource_destructor_runtime_replacement() {
+        struct ReplaceOnDrop(Rc<std::cell::RefCell<Option<RSession>>>);
+        impl Drop for ReplaceOnDrop {
+            fn drop(&mut self) {
+                *self.0.borrow_mut() = Some(RSession::new_for_gc_tests());
+            }
+        }
+        for operation in 0..4 {
+            let session = RSession::new_for_gc_tests();
+            let owner = session.owner_token().unwrap();
+            let stored = StoredOwner::from_token(owner);
+            let replacement = Rc::new(std::cell::RefCell::new(None));
+            let pointer = owner
+                .with_arena(|arena| {
+                    let pointer = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+                    let node = arena.node_token(pointer).unwrap();
+                    arena
+                        .heap_identity()
+                        .attach_resource(&node, Rc::new(ReplaceOnDrop(replacement.clone())))
+                        .unwrap();
+                    pointer
+                })
+                .unwrap();
+            let result = match operation {
+                0 => owner.with_arena(|arena| unsafe {
+                    arena.free_node(pointer);
+                }),
+                1 => stored.with_arena(|arena| unsafe {
+                    arena.free_node(pointer);
+                }),
+                2 => owner.minor_gc().map(|_| ()),
+                _ => owner.full_gc().map(|_| ()),
+            };
+            assert!(
+                matches!(result, Err(SexpError::OwnerNotActive)),
+                "operation {operation} published success after owner replacement: {result:?}"
+            );
+            let other = replacement
+                .borrow_mut()
+                .take()
+                .expect("resource destructor ran");
+            assert!(other.is_active());
+            assert!(session.is_active());
+            drop(other);
+            drop(session);
+        }
+    }
 
     #[test]
     fn owned_value_preserves_original_graph_after_runtime_close_and_drop_without_cycle() {
