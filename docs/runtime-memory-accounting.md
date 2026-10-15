@@ -23,6 +23,12 @@ workspace estimates and a bounded XZ decoder reservation remain alive until
 codec teardown. These charges remain with the original session across R
 restoration hooks and unwind. Connection streaming remains a separate path.
 
+Production serialization writers use the same admitted buffer. Its reservation
+survives the allocation and copy into the final R raw vector, or the external
+stream callback, so source values, native output and the destination compete
+for the session's one byte limit. Reference tables and saveRDS compressor scratch
+are still tracked separately in `rport-cvs2.6`.
+
 `max_arena_nodes` limits simultaneously live nodes. Reclaimed slots remain
 reusable, as in GNU R; a live-node cap is not also charged as a cumulative
 allocation quota. Execution time and cancellation independently bound work.

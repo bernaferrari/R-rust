@@ -9,6 +9,9 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         if stream.is_null() {
             return;
         }
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let out_ref = &mut *stream;
         // Use OutFormat
         match out_ref.type_ {
@@ -51,7 +54,7 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         // GNU R_Serialize calls stream->OutPersistHookFunc for eligible
         // reference objects even when hook data is not an R function.
         // Keep the R-function path when only hook data is a closure.
-        let mut writer = BinaryWriter::new();
+        let mut writer = BinaryWriter::admitted(&owner);
         let hook_data = out_ref.OutPersistHookData;
         if let Some(func) = out_ref.OutPersistHookFunc {
             writer.set_c_persist_hook(Some(func), hook_data);
@@ -62,7 +65,7 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         WriteItemInternal(s, &mut ref_table, &mut writer);
 
         // Stream out the serialized bytes
-        let data = writer.into_vec();
+        let data = writer.into_output();
         if !data.is_empty()
             && let Some(out_bytes) = (*stream).OutBytes
         {
@@ -214,10 +217,13 @@ pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
         if stream.is_null() {
             return;
         }
-        let mut writer = BinaryWriter::new();
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        let mut writer = BinaryWriter::admitted(&owner);
         let mut ref_table = WriteHashTable::new();
         WriteItemInternal(s, &mut ref_table, &mut writer);
-        let data = writer.into_vec();
+        let data = writer.into_output();
         if !data.is_empty()
             && let Some(out_bytes) = (*stream).OutBytes
         {
@@ -455,7 +461,7 @@ pub unsafe fn R_serialize_with_xdr(
             !ascii_format && (xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0);
 
         // Build the header
-        let mut writer = BinaryWriter::new();
+        let mut writer = BinaryWriter::admitted(&owner);
         writer.set_persist_hook(fun);
         writer.write_byte(if ascii_format {
             b'A'
@@ -497,9 +503,12 @@ pub unsafe fn R_serialize_with_xdr(
             .require_active()
             .unwrap_or_else(|e| error(&e.to_string()));
         // Create RAWSXP from the serialized bytes
-        let data = writer.into_vec();
+        let data = writer.into_output();
         let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
-        if !raw.is_null() && !data.is_empty() {
+        if raw.is_null() {
+            error("serialize exceeds session memory limit");
+        }
+        if !data.is_empty() {
             let raw_ptr = RAW(raw);
             ptr::copy_nonoverlapping(data.as_ptr(), raw_ptr, data.len());
         }

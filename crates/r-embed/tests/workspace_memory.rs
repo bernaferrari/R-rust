@@ -130,3 +130,35 @@ fn unserialize_copy_and_decoded_value_compete_for_one_memory_budget_and_recover(
         "[1] 20000\n"
     );
 }
+
+#[test]
+fn serialize_native_output_and_final_raw_value_share_admission_and_recover() {
+    let mut session = session();
+    session
+        .eval("payload <- raw(80000L); gc(); invisible(NULL)")
+        .unwrap();
+    let before = session.memory_usage().unwrap();
+    let mut limits = session.resource_limits();
+    limits.max_alloc_bytes = before.total_bytes + 205_000;
+    session.set_resource_limits(limits).unwrap();
+    assert!(
+        session.eval("invisible(serialize(payload, NULL))").is_err(),
+        "native writer storage and final R raw vector escaped aggregate admission"
+    );
+    assert_eq!(
+        session.memory_usage().unwrap().workspace_bytes,
+        before.workspace_bytes
+    );
+    limits.max_alloc_bytes = 0;
+    session.set_resource_limits(limits).unwrap();
+    assert_eq!(
+        session
+            .eval("identical(unserialize(serialize(payload,NULL)), payload)")
+            .unwrap(),
+        "[1] TRUE\n"
+    );
+    assert_eq!(
+        session.memory_usage().unwrap().workspace_bytes,
+        before.workspace_bytes
+    );
+}
