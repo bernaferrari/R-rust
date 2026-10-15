@@ -31,3 +31,4 @@ node smoke.mjs
 node "$ROOT_DIR/crates/rmath/src/mainutils/connections/binary/filename-wasm.cjs" "$CRATE_DIR/pkg"
 node "$ROOT_DIR/crates/rmath/src/mainutils/connections/file/anonymous-wasm.cjs" "$CRATE_DIR/pkg"
 node serialization-files-smoke.cjs "$CRATE_DIR/pkg"
+node loess-isolation-smoke.mjs "$CRATE_DIR/pkg"

@@ -25,28 +25,6 @@ use crate::sexp::instance::with_required_current_instance;
 
 const GAUSSIAN: c_int = 1;
 const SYMMETRIC: c_int = 0;
-use std::rc::Rc;
-
-/// Snapshot the active runtime's owned model before entering numerical work.
-/// Returning an Rc ends the runtime field lend before prediction or callbacks.
-fn predict_model_snapshot() -> Result<Rc<super::loess::Model>, String> {
-    crate::sexp::instance::with_current_instance(|instance| unsafe {
-        (*instance).loess_workspace_state.predict_model.clone()
-    })
-    .flatten()
-    .ok_or_else(|| "no LOESS model for the original runtime".to_owned())
-}
-
-/// Called after all R/provider callbacks and immediately before interpolation.
-pub(crate) fn checked_predictor_width() -> Result<usize, String> {
-    predict_model_snapshot()?
-        .x
-        .first()
-        .map(Vec::len)
-        .filter(|width| *width > 0)
-        .ok_or_else(|| "no LOESS model to interpolate".to_owned())
-}
-
 fn column_major_rows(x: *mut c_double, n: usize, d: usize) -> Vec<Vec<f64>> {
     unsafe {
         (0..n)
@@ -118,15 +96,6 @@ fn fit_loess_model(
         config,
         &super::loess::Execution::new(&|| Ok(())),
     )
-}
-
-fn store_predict_model(model: super::loess::Model) {
-    with_loess_workspace_state(|state| {
-        let skip = std::mem::replace(&mut state.skip_predict_store, false);
-        if !skip {
-            state.predict_model = Some(Rc::new(model));
-        }
-    });
 }
 
 fn write_fit(dest: *mut c_double, values: &[f64]) {
@@ -295,6 +264,10 @@ fn engine_loess_raw(
     surf_stat: *mut *mut c_char,
     surface: *mut c_double,
     parameter: *mut c_int,
+    a: *mut c_int,
+    xi: *mut c_double,
+    vert: *mut c_double,
+    vval: *mut c_double,
     tr_l: *mut c_double,
     one_delta: *mut c_double,
     two_delta: *mut c_double,
@@ -344,16 +317,22 @@ fn engine_loess_raw(
         if !two_delta.is_null() {
             *two_delta = if no_statistics { 0.0 } else { model.delta2 };
         }
-        if !parameter.is_null() {
-            *parameter = *d;
-            *parameter.add(1) = *n;
-            *parameter.add(2) = 1;
-            *parameter.add(3) = 1;
-            *parameter.add(4) = 1;
-            *parameter.add(5) = 1;
-            *parameter.add(6) = 1;
+        if model.config.interpolate {
+            let surface = super::loess::pruned::PrunedSurface::fit(
+                &model,
+                &super::loess::Execution::new(&|| Ok(())),
+            )
+            .unwrap_or_else(|message| fail_loess(&message));
+            for (i, value) in surface.parameter.iter().enumerate() {
+                *parameter.add(i) = *value;
+            }
+            for (i, value) in surface.a.iter().enumerate() {
+                *a.add(i) = *value;
+            }
+            write_fit(xi, &surface.xi);
+            write_fit(vert, &surface.vert);
+            write_fit(vval, &surface.vval);
         }
-        store_predict_model(model);
     }
 }
 
@@ -399,15 +378,39 @@ fn engine_loess_dfit(
     }
 }
 
-fn engine_loess_ifit(m: *mut c_int, x_evaluate: *mut c_double, fit: *mut c_double) {
-    let model = predict_model_snapshot().unwrap_or_else(|message| fail_loess(&message));
+fn engine_loess_ifit(
+    parameter: *mut c_int,
+    a: *mut c_int,
+    xi: *mut c_double,
+    vert: *mut c_double,
+    vval: *mut c_double,
+    m: *mut c_int,
+    x_evaluate: *mut c_double,
+    fit: *mut c_double,
+) {
     unsafe {
-        let d = model.x.first().map(Vec::len).unwrap_or(0);
-        let queries = column_major_rows(x_evaluate, *m as usize, d);
-        match predict_model(&model, &queries) {
-            Ok(values) => write_fit(fit, &values),
-            Err(message) => fail_loess(&message),
-        }
+        // The checked .C adapter admits every extent before deriving these
+        // pointers. Foreign C callers retain their ordinary unsafe ABI duties.
+        let parameters = std::slice::from_raw_parts(parameter, 7);
+        let shape =
+            super::loess::pruned::shape(parameters).unwrap_or_else(|message| fail_loess(&message));
+        let m =
+            usize::try_from(*m).unwrap_or_else(|_| fail_loess("negative LOESS prediction count"));
+        let execution = super::loess::Execution::new(&|| Ok(()));
+        super::loess::pruned::admit_predictions(&shape, m, &execution)
+            .unwrap_or_else(|message| fail_loess(&message));
+        let queries = column_major_rows(x_evaluate, m, shape.d);
+        let result = super::loess::pruned::PrunedSurface::predict(
+            parameters,
+            std::slice::from_raw_parts(a, shape.nc),
+            std::slice::from_raw_parts(xi, shape.nc),
+            std::slice::from_raw_parts(vert, 2 * shape.d),
+            std::slice::from_raw_parts(vval, (shape.d + 1) * shape.nv),
+            &queries,
+            &execution,
+        )
+        .unwrap_or_else(|message| fail_loess(&message));
+        write_fit(fit, &result);
     }
 }
 
@@ -451,13 +454,9 @@ pub unsafe extern "C-unwind" fn c_lowesp(
             *iwork.cast::<c_int>().add(i) = *value;
         }
     }
-    with_loess_workspace_state(|state| state.skip_predict_store = true);
 }
 
 pub(crate) struct LoessWorkspaceState {
-    predict_model: Option<Rc<super::loess::Model>>,
-    /// lowesp's pseudovalue refit preserves this runtime's interpolation model.
-    skip_predict_store: bool,
     iv: Vec<c_int>,
     v: Vec<c_double>,
     liv: c_int,
@@ -468,8 +467,6 @@ pub(crate) struct LoessWorkspaceState {
 impl Default for LoessWorkspaceState {
     fn default() -> Self {
         Self {
-            predict_model: None,
-            skip_predict_store: false,
             iv: Vec::new(),
             v: Vec::new(),
             liv: 0,
@@ -693,6 +690,10 @@ pub unsafe extern "C-unwind" fn loess_raw(
             surf_stat,
             surface,
             parameter,
+            a,
+            xi,
+            vert,
+            vval,
             trL,
             one_delta,
             two_delta,
@@ -822,8 +823,7 @@ pub unsafe extern "C-unwind" fn loess_ifit(
     fit: *mut c_double,
 ) {
     unsafe {
-        let _ = (parameter, a, xi, vert, vval);
-        engine_loess_ifit(m, x_evaluate, fit);
+        engine_loess_ifit(parameter, a, xi, vert, vval, m, x_evaluate, fit);
     }
 }
 
@@ -1274,84 +1274,33 @@ pub unsafe fn ehg184a(
 mod tests {
     use super::*;
 
-    fn linear_model(offset: f64) -> super::super::loess::Model {
-        use super::super::loess::{Config, Execution, Model};
-        let x: Vec<Vec<f64>> = (0..12).map(|i| vec![i as f64]).collect();
-        let y = (0..12).map(|i| offset + 2.0 * i as f64).collect();
-        Model::fit_with_execution(
-            x,
-            y,
-            vec![1.0; 12],
-            Config {
-                span: 1.0,
-                degree: 1,
-                normalize: false,
-                parametric: vec![false],
-                drop_square: vec![false],
-                interpolate: true,
-                cell: 0.2,
-                iterations: 1,
-                exact: false,
-                approximate_trace: false,
-            },
-            &Execution::new(&|| Ok(())),
-        )
-        .unwrap()
-    }
-
     #[test]
-    fn loess_prediction_model_and_pseudovalue_skip_are_runtime_local() {
+    fn loess_legacy_workspaces_are_runtime_local() {
         use crate::sexp::session::RSession;
         let first = RSession::new_for_gc_tests();
         let second = RSession::new_for_gc_tests();
-        let first_model = first.with_active(|| {
-            store_predict_model(linear_model(10.0));
-            let saved = predict_model_snapshot().unwrap();
-            // The real lowesp bridge marks only its original runtime's next
-            // pseudovalue refit to preserve the original interpolation model.
-            let mut n = 3i32;
-            let mut y = [1.0, 3.0, 5.0];
-            let mut fitted = [1.0, 2.0, 4.0];
-            let mut weights = [1.0; 3];
-            let mut robust = [1.0; 3];
-            let mut work = [0i32; 3];
-            let mut pseudo = [0.0; 3];
-            unsafe {
-                c_lowesp(
-                    (&mut n as *mut i32).cast(),
-                    y.as_mut_ptr().cast(),
-                    fitted.as_mut_ptr().cast(),
-                    weights.as_mut_ptr().cast(),
-                    robust.as_mut_ptr().cast(),
-                    work.as_mut_ptr().cast(),
-                    pseudo.as_mut_ptr().cast(),
-                );
-            }
-            second.with_active(|| {
-                assert!(checked_predictor_width().is_err());
-                store_predict_model(linear_model(100.0));
-                let second = predict_model_snapshot().unwrap();
-                assert!((second.fitted[0] - 100.0).abs() < 1e-10);
-            });
-            assert!(Rc::ptr_eq(&saved, &predict_model_snapshot().unwrap()));
-            store_predict_model(linear_model(1000.0));
-            assert!(Rc::ptr_eq(&saved, &predict_model_snapshot().unwrap()));
-            assert_eq!(checked_predictor_width().unwrap(), 1);
-            saved
+        first.with_active(|| {
+            with_loess_workspace_state(|state| {
+                state.allocate(64, 64);
+                state.iv[10] = 37;
+                state.v[10] = 2.5;
+            })
         });
         second.with_active(|| {
-            assert!((predict_model_snapshot().unwrap().fitted[0] - 100.0).abs() < 1e-10);
+            with_loess_workspace_state(|state| {
+                assert!(state.iv.is_empty());
+                state.allocate(64, 64);
+                state.iv[10] = 73;
+            })
         });
-        let weak = Rc::downgrade(&first_model);
-        drop(first_model);
+        first.with_active(|| {
+            with_loess_workspace_state(|state| {
+                assert_eq!(state.iv[10], 37);
+                assert_eq!(state.v[10], 2.5);
+            })
+        });
         drop(first);
-        assert!(
-            weak.upgrade().is_none(),
-            "model ownership ends with its runtime"
-        );
-        second.with_active(|| {
-            assert!((predict_model_snapshot().unwrap().fitted[0] - 100.0).abs() < 1e-10);
-        });
+        second.with_active(|| with_loess_workspace_state(|state| assert_eq!(state.iv[10], 73)));
     }
 
     #[test]

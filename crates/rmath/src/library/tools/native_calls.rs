@@ -358,12 +358,7 @@ pub(crate) fn lookup_buffer(
                 buffers::loess_dfit,
                 LoessKernel::Dfit(crate::library::stats::loessc::loess_dfit),
             ),
-            "loess_ifit" => BufferRoutine::numeric(
-                "stats",
-                BufferInterface::C,
-                buffers::loess_ifit,
-                LoessKernel::Ifit(crate::library::stats::loessc::loess_ifit),
-            ),
+            "loess_ifit" => buffers::loess_ifit::ROUTINE,
             "loess_ise" => BufferRoutine::numeric(
                 "stats",
                 BufferInterface::C,

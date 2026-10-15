@@ -1,7 +1,7 @@
 # Run with pinned GNU R bac583951b728e97b9786804d3b4081f0fe18df5.
 # No port output is used to create these pruned native interpolation surfaces.
 args <- commandArgs(TRUE)
-stopifnot(length(args) == 1L)
+stopifnot(length(args) %in% 1:2)
 number <- function(x) if (is.integer(x)) paste(x,collapse=",") else
     paste(format(x, digits=17, scientific=TRUE, trim=TRUE), collapse=",")
 array <- function(x) paste0("[", number(x), "]")
@@ -21,3 +21,10 @@ cases <- vapply(1:4, function(d) {
 }, "")
 cat('{"oracle_source_commit":"bac583951b728e97b9786804d3b4081f0fe18df5",',
     '"cases":[',paste(cases,collapse=","),']}\n',file=args[[1]],sep="")
+if (length(args) == 2L) {
+    x <- seq(0,1,length.out=30)
+    y <- sin(5*x)
+    f <- loess(y~x)
+    q <- c(.15,.45,.75)
+    saveRDS(list(model=f,q=q,expected=predict(f,q)),args[[2]],version=3,compress=FALSE)
+}

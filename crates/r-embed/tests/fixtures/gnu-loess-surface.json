@@ -1,0 +1,12 @@
+{
+  "oracle_source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "oracle_svn_revision": 90451,
+  "capture_date": "2026-10-15",
+  "format_version": 3,
+  "compression": false,
+  "regenerate": "pinned Rscript --vanilla tests/loess/isolated-surface-oracle.R SURFACES_JSON crates/r-embed/tests/fixtures/gnu-loess-surface.rds",
+  "source_script_sha256": "8ce3cc5add4a5ccdfed7b491166dda2283eda8730a22c0c65f40e56b8b8fdd7f",
+  "bytes": 4329,
+  "sha256": "a11555079a2f80fc8b9a5b3d02b4ce6e6c071801264b3de30d29c94b064d3f0e",
+  "scope": "Ordinary GNU loess object, explicit query coordinates and independently computed predictions; no port model cache or output participates."
+}

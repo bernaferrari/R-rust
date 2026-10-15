@@ -143,7 +143,6 @@ macro_rules! numeric_kernels {
 numeric_kernels! {
     Raw(a:R,b:R,c:R,d:R,e:I,f:I,g:R,h:I,i:I,j:I,k:I,l:R,m:C,n:R,o:I,p:I,q:R,r:R,s:R,t:R,u:R,v:R,w:R,x:I),
     Dfit(a:R,b:R,c:R,d:R,e:R,f:I,g:I,h:I,i:I,j:I,k:I,l:I,m:R),
-    Ifit(a:I,b:I,c:R,d:R,e:R,f:I,g:R,h:R),
     Ise(a:R,b:R,c:R,d:R,e:R,f:I,g:I,h:I,i:I,j:R,k:I,l:I,m:I,n:R,o:R),
     Dfitse(a:R,b:R,c:R,d:R,e:R,f:I,g:R,h:I,i:I,j:I,k:I,l:I,m:I,n:I,o:R,p:R),
 }
@@ -686,6 +685,13 @@ pub(crate) fn loess_raw(b: &[NativeBuffer]) -> Result<(), BufferError> {
     minimum(b, unused, 1)?;
     minimum(b, 13, n)?;
     minimum(b, 14, 7)?;
+    if surfaces[0].starts_with(b"interpolate/") {
+        let max_kd = n.max(200);
+        minimum(b, 15, max_kd)?;
+        minimum(b, 16, max_kd)?;
+        minimum(b, 17, product(&[2, d])?)?;
+        minimum(b, 18, product(&[d + 1, max_kd])?)?;
+    }
     Ok(())
 }
 pub(crate) fn loess_dfit(b: &[NativeBuffer]) -> Result<(), BufferError> {
@@ -726,15 +732,7 @@ pub(crate) fn loess_dfitse(b: &[NativeBuffer]) -> Result<(), BufferError> {
     minimum(b, 15, product(&[m, n])?)?;
     Ok(())
 }
-pub(crate) fn loess_ifit(b: &[NativeBuffer]) -> Result<(), BufferError> {
-    let m = dimension(b, 5, 0)?;
-    // The actual kernel derives width from its retained model, not parameter.
-    let width =
-        crate::library::stats::loessc::checked_predictor_width().map_err(BufferError::new)?;
-    minimum(b, 6, product(&[m, width])?)?;
-    minimum(b, 7, m)?;
-    Ok(())
-}
+pub(crate) mod loess_ifit;
 
 #[cfg(test)]
 thread_local! { static INVOCATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
@@ -910,6 +908,10 @@ mod registration_tests {
             buffers[7] = NativeBuffer::Integer(vec![1]);
             buffers[8] = NativeBuffer::Integer(vec![1]);
             buffers[14] = NativeBuffer::Integer(vec![0; 7]);
+            buffers[15] = NativeBuffer::Integer(vec![0; 200]);
+            buffers[16] = NativeBuffer::Real(vec![0.; 200]);
+            buffers[17] = NativeBuffer::Real(vec![0.; 2]);
+            buffers[18] = NativeBuffer::Real(vec![0.; 400]);
             let selected = if mode.ends_with("/none") { 3 } else { 2 };
             buffers[selected] = NativeBuffer::Real(vec![1.0; 4]);
             assert!(

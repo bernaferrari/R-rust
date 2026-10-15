@@ -16,6 +16,19 @@ rows, while explicit `newdata` and `se=TRUE` retain GNU R's distinct behavior.
 Unavailable predictions preserve R's NA sentinel rather than computational NaN. Fitted objects contain
 ordinary R values and can cross serialization boundaries without Rust pointers.
 
+Interpolated models retain their own GNU-format pruned KD surface: parameters,
+split axes/locations, bounds and value/derivative jets. Prediction restores the
+selected object's surface through an owned Rust handler, without consulting a
+runtime's latest fit or retaining its training data in a separate model cache.
+Later fits, robust pseudovalue refits and closing the original session therefore
+cannot replace an earlier model's predictions. Independent GNU surfaces cover
+one through four predictors, including their serialized vertex ordering. A
+GNU-produced RDS model can be imported and predicted in a fresh runtime.
+Malformed dimensions, truncated arrays and invalid split geometry return errors
+before output publication; restored storage is bounded and prediction polls
+cancellation. These checks do not establish complete low-level workspace or
+native-package ABI parity.
+
 ```r
 x <- seq(0, 1, length.out=30)
 y <- sin(5*x) + cos(31*x)/8

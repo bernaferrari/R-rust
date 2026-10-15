@@ -39,7 +39,10 @@ pub(super) struct Tree {
 // ehg125 creates split-plane vertices in this order, which matters when jets
 // are serialized (especially interior split axes with three/four predictors).
 pub(super) fn split_corners(
-    parent: &[usize], axis: usize, cut: f64, vertices: &mut Vec<Vec<f64>>,
+    parent: &[usize],
+    axis: usize,
+    cut: f64,
+    vertices: &mut Vec<Vec<f64>>,
 ) -> (Vec<usize>, Vec<usize>) {
     let stride = 1 << axis;
     let mut left = parent.to_vec();
@@ -52,7 +55,10 @@ pub(super) fn split_corners(
             point[axis] = cut;
             let vertex = match vertices.iter().position(|v| *v == point) {
                 Some(index) => index,
-                None => { vertices.push(point); vertices.len() - 1 }
+                None => {
+                    vertices.push(point);
+                    vertices.len() - 1
+                }
             };
             left[upper] = vertex;
             right[lower] = vertex;
@@ -168,14 +174,22 @@ pub(super) fn build_tree(model: &Model, execution: &super::Execution<'_>) -> Res
         }
         next += 1;
     }
-    Ok(Tree { vertices, cells, leaves })
+    Ok(Tree {
+        vertices,
+        cells,
+        leaves,
+    })
 }
 
 pub(super) fn interpolate(
-    model: &Model, queries: &[Vec<f64>], weights: &[f64], execution: &super::Execution<'_>,
+    model: &Model,
+    queries: &[Vec<f64>],
+    weights: &[f64],
+    execution: &super::Execution<'_>,
 ) -> Result<Vec<Vec<f64>>, String> {
     let tree = build_tree(model, execution)?;
-    let coefficients: Vec<_> = tree.vertices
+    let coefficients: Vec<_> = tree
+        .vertices
         .iter()
         .map(|q| model.local(q, weights, execution))
         .collect::<Result<_, _>>()?;
@@ -184,106 +198,108 @@ pub(super) fn interpolate(
 
 impl Tree {
     pub(super) fn evaluate(
-        &self, queries: &[Vec<f64>], coefficients: &[Vec<Vec<f64>>],
+        &self,
+        queries: &[Vec<f64>],
+        coefficients: &[Vec<Vec<f64>>],
         execution: &super::Execution<'_>,
     ) -> Result<Vec<Vec<f64>>, String> {
         let (vertices, cells, leaves) = (&self.vertices, &self.cells, &self.leaves);
         let d = vertices[0].len();
         let vc = 1 << d;
         let n = coefficients[0][0].len();
-    let mut output = Vec::with_capacity(queries.len());
-    for q in queries {
-        let cell = leaves
-            .iter()
-            .map(|i| &cells[*i])
-            .find(|c| (0..d).all(|j| q[j] >= c.lo[j] && q[j] <= c.hi[j]))
-            .ok_or("extrapolation is not allowed with interpolated LOESS")?;
-        let mut row = vec![0.; n];
-        for obs in 0..n {
-            if obs % 64 == 0 {
-                execution.checkpoint()?;
-            }
-            let mut g: Vec<Vec<_>> = cell
-                .corners
+        let mut output = Vec::with_capacity(queries.len());
+        for q in queries {
+            let cell = leaves
                 .iter()
-                .map(|i| coefficients[*i].iter().map(|r| r[obs]).collect())
-                .collect();
-            let mut size = vc;
-            for axis in (0..d).rev() {
-                size /= 2;
-                let width = cell.hi[axis] - cell.lo[axis];
-                let t = (q[axis] - cell.lo[axis]) / width;
-                for i in 0..size {
-                    g[i][0] = hermite(
-                        t,
-                        width,
-                        g[i][0],
-                        g[i + size][0],
-                        g[i][axis + 1],
-                        g[i + size][axis + 1],
-                    );
-                    for j in 1..=axis {
-                        g[i][j] = (1. - t).powi(2) * (1. + 2. * t) * g[i][j]
-                            + t * t * (3. - 2. * t) * g[i + size][j];
+                .map(|i| &cells[*i])
+                .find(|c| (0..d).all(|j| q[j] >= c.lo[j] && q[j] <= c.hi[j]))
+                .ok_or("extrapolation is not allowed with interpolated LOESS")?;
+            let mut row = vec![0.; n];
+            for obs in 0..n {
+                if obs % 64 == 0 {
+                    execution.checkpoint()?;
+                }
+                let mut g: Vec<Vec<_>> = cell
+                    .corners
+                    .iter()
+                    .map(|i| coefficients[*i].iter().map(|r| r[obs]).collect())
+                    .collect();
+                let mut size = vc;
+                for axis in (0..d).rev() {
+                    size /= 2;
+                    let width = cell.hi[axis] - cell.lo[axis];
+                    let t = (q[axis] - cell.lo[axis]) / width;
+                    for i in 0..size {
+                        g[i][0] = hermite(
+                            t,
+                            width,
+                            g[i][0],
+                            g[i + size][0],
+                            g[i][axis + 1],
+                            g[i + size][axis + 1],
+                        );
+                        for j in 1..=axis {
+                            g[i][j] = (1. - t).powi(2) * (1. + 2. * t) * g[i][j]
+                                + t * t * (3. - 2. * t) * g[i + size][j];
+                        }
                     }
                 }
-            }
-            let tensor = g[0][0];
-            row[obs] = if d == 2 {
-                // Coons blending: evaluate each edge using the finest adjacent
-                // subdivision, so T-junctions share the same boundary curve.
-                let edge = |axis: usize, side: usize| {
-                    let normal = 1 - axis;
-                    let fixed = if side == 0 {
-                        cell.lo[normal]
-                    } else {
-                        cell.hi[normal]
+                let tensor = g[0][0];
+                row[obs] = if d == 2 {
+                    // Coons blending: evaluate each edge using the finest adjacent
+                    // subdivision, so T-junctions share the same boundary curve.
+                    let edge = |axis: usize, side: usize| {
+                        let normal = 1 - axis;
+                        let fixed = if side == 0 {
+                            cell.lo[normal]
+                        } else {
+                            cell.hi[normal]
+                        };
+                        let mut vs: Vec<_> = (0..vertices.len())
+                            .filter(|i| {
+                                vertices[*i][normal] == fixed
+                                    && vertices[*i][axis] >= cell.lo[axis]
+                                    && vertices[*i][axis] <= cell.hi[axis]
+                            })
+                            .collect();
+                        vs.sort_by(|a, b| vertices[*a][axis].total_cmp(&vertices[*b][axis]));
+                        let pair = vs
+                            .windows(2)
+                            .find(|p| {
+                                q[axis] >= vertices[p[0]][axis] && q[axis] <= vertices[p[1]][axis]
+                            })
+                            .unwrap();
+                        let (a, b) = (pair[0], pair[1]);
+                        let width = vertices[b][axis] - vertices[a][axis];
+                        let t = (q[axis] - vertices[a][axis]) / width;
+                        let value = hermite(
+                            t,
+                            width,
+                            coefficients[a][0][obs],
+                            coefficients[b][0][obs],
+                            coefficients[a][axis + 1][obs],
+                            coefficients[b][axis + 1][obs],
+                        );
+                        let derivative =
+                            (1. - t).powi(2) * (1. + 2. * t) * coefficients[a][normal + 1][obs]
+                                + t * t * (3. - 2. * t) * coefficients[b][normal + 1][obs];
+                        (value, derivative)
                     };
-                    let mut vs: Vec<_> = (0..vertices.len())
-                        .filter(|i| {
-                            vertices[*i][normal] == fixed
-                                && vertices[*i][axis] >= cell.lo[axis]
-                                && vertices[*i][axis] <= cell.hi[axis]
-                        })
-                        .collect();
-                    vs.sort_by(|a, b| vertices[*a][axis].total_cmp(&vertices[*b][axis]));
-                    let pair = vs
-                        .windows(2)
-                        .find(|p| {
-                            q[axis] >= vertices[p[0]][axis] && q[axis] <= vertices[p[1]][axis]
-                        })
-                        .unwrap();
-                    let (a, b) = (pair[0], pair[1]);
-                    let width = vertices[b][axis] - vertices[a][axis];
-                    let t = (q[axis] - vertices[a][axis]) / width;
-                    let value = hermite(
-                        t,
-                        width,
-                        coefficients[a][0][obs],
-                        coefficients[b][0][obs],
-                        coefficients[a][axis + 1][obs],
-                        coefficients[b][axis + 1][obs],
-                    );
-                    let derivative =
-                        (1. - t).powi(2) * (1. + 2. * t) * coefficients[a][normal + 1][obs]
-                            + t * t * (3. - 2. * t) * coefficients[b][normal + 1][obs];
-                    (value, derivative)
+                    let (s, ds) = edge(0, 0);
+                    let (north, dn) = edge(0, 1);
+                    let (w, dw) = edge(1, 0);
+                    let (e, de) = edge(1, 1);
+                    let tx = (q[0] - cell.lo[0]) / (cell.hi[0] - cell.lo[0]);
+                    let ty = (q[1] - cell.lo[1]) / (cell.hi[1] - cell.lo[1]);
+                    hermite(ty, cell.hi[1] - cell.lo[1], s, north, ds, dn)
+                        + hermite(tx, cell.hi[0] - cell.lo[0], w, e, dw, de)
+                        - tensor
+                } else {
+                    tensor
                 };
-                let (s, ds) = edge(0, 0);
-                let (north, dn) = edge(0, 1);
-                let (w, dw) = edge(1, 0);
-                let (e, de) = edge(1, 1);
-                let tx = (q[0] - cell.lo[0]) / (cell.hi[0] - cell.lo[0]);
-                let ty = (q[1] - cell.lo[1]) / (cell.hi[1] - cell.lo[1]);
-                hermite(ty, cell.hi[1] - cell.lo[1], s, north, ds, dn)
-                    + hermite(tx, cell.hi[0] - cell.lo[0], w, e, dw, de)
-                    - tensor
-            } else {
-                tensor
-            };
+            }
+            output.push(row);
         }
-        output.push(row);
-    }
-    Ok(output)
+        Ok(output)
     }
 }
