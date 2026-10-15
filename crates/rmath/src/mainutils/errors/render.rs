@@ -607,9 +607,24 @@ pub(crate) fn attribute_handler_errors<F>(call: SEXP, f: F) -> SEXP
 where
     F: FnOnce() -> SEXP,
 {
+    let original = crate::sexp::instance::current_instance_ptr();
+    // Retain physical bytes, but never use this lease to reactivate a revoked
+    // owner or attribute its failure to a replacement runtime.
+    let _pin = original.and_then(|instance| unsafe {
+        crate::sexp::context::pin_context_owner_in(instance)
+    });
+    let availability = original.map(|instance| unsafe {
+        crate::sexp::instance::instance_liveness(instance)
+    });
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(value) => value,
         Err(payload) => {
+            if original.is_none()
+                || original != crate::sexp::instance::current_instance_ptr()
+                || !availability.as_ref().is_some_and(|owner| owner.is_live())
+            {
+                std::panic::resume_unwind(payload);
+            }
             if let Some(err) = payload.downcast_ref::<RError>() {
                 let message = err.message.clone();
                 if !error_was_last_rendered(&message) {

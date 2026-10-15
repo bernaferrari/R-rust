@@ -113,6 +113,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         let instance = crate::sexp::instance::current_instance_ptr()
             .unwrap_or_else(|| crate::sexp::context::r_error("no active closure owner"));
         let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
+        let mut visibility = super::runtime::VisibilityGuard::new();
         let factory = super::dispatch::active_argument_factory();
         let arguments_owner = super::dispatch::argument_value(&factory, arglist);
         let environment_owner = super::dispatch::argument_value(&factory, rho);
@@ -171,6 +172,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(body, newrho)
         }));
+        visibility.capture_original();
 
         // Each outcome owns its original value independently of mutable context
         // fields. A targeted return is consumed only by its original context cell.
@@ -219,9 +221,9 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
 
         // Preserve visibility and keep both the original context and the outcome
         // alive while on.exit expressions allocate, collect, or replace fields.
-        let mut saved_visible = super::runtime::visible();
         loop {
             let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                require_closure_owner(instance, owner_pin.as_ref());
                 crate::eval::context::R_run_onexits_for_context(ctx);
             }));
             match onexit {
@@ -233,7 +235,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
                             // A return stops this handler, replaces the pending
                             // outcome and its visibility, then runs the remaining
                             // handlers saved in conexit (GNU endcontext).
-                            saved_visible = super::runtime::visible();
+                            visibility.capture_original();
                             true
                         }
                         BodyOutcome::Signal(payload) => {
@@ -245,7 +247,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
                     if !continue_handlers || (*ctx).conexit.as_raw() == R_NilValue() {
                         break;
                     }
-                    crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+                    require_closure_owner(instance, owner_pin.as_ref());
                     // Collection callbacks can detach the stack. Retaining
                     // the original outcome does not authorize more handlers
                     // after its context has left that stack.
@@ -255,7 +257,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
                 }
             }
         }
-        super::runtime::set_visible(saved_visible);
+        drop(visibility);
         let value = match &outcome {
             BodyOutcome::Value(value) => value.clone(),
             BodyOutcome::Returned(lease) => {
@@ -275,10 +277,20 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
                 std::panic::resume_unwind(payload)
             }
         };
-        crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+        require_closure_owner(instance, owner_pin.as_ref());
         let result = super::jit::handle_exec_continuation(value.as_raw());
-        crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+        require_closure_owner(instance, owner_pin.as_ref());
         result
+    }
+}
+
+fn require_closure_owner(
+    instance: *mut crate::sexp::instance::RInstance,
+    pin: Option<&crate::sexp::owner::OwnerPin>,
+) {
+    crate::sexp::context::require_context_owner_live(pin);
+    if crate::sexp::instance::current_instance_ptr() != Some(instance) {
+        crate::sexp::context::r_error("closure owner is not active");
     }
 }
 
@@ -902,6 +914,134 @@ mod owned_matcher_tests {
     use crate::sexp::accessors::SETCDR;
     use crate::sexp::session::RSession;
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn owned_closure_visibility_cleanup_preserves_live_onexit_panic() {
+        #[derive(Debug, PartialEq)]
+        struct ExitPanic(u32);
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = SessionNodeFactory::new(owner);
+        let global = session.global_env().unwrap();
+        let expression = owner.with_arena(|arena| crate::eval::parser::parse(
+            "(function() { on.exit(.Internal(gc(FALSE,FALSE,TRUE))); 314L })()",
+            arena, factory.clone())).unwrap().unwrap();
+        let called = Rc::new(Cell::new(false));
+        let observed = called.clone();
+        session.with_active_in(|instance| unsafe {
+            (*instance).eval_state.jit_enabled = 0;
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.get() { return; }
+                let context = crate::sexp::context::R_GlobalContext_in(instance);
+                if context.is_null() { return; }
+                let value = (*context).returnValue.as_raw();
+                if value.is_null() || TYPEOF(value) != SEXPTYPE::INTSXP
+                    || XLENGTH(value) != 1 || *crate::sexp::accessors::INTEGER(value) != 314
+                { return; }
+                observed.set(true);
+                crate::sexp::globals::set_R_Visible_in(instance, 0);
+                std::panic::panic_any(ExitPanic(73));
+            }));
+        });
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.with_active(|| unsafe { Rf_eval(expression.as_raw(),global.as_raw()) })
+        }));
+        assert!(called.get());
+        assert_eq!(*outcome.unwrap_err().downcast::<ExitPanic>().unwrap(),ExitPanic(73));
+        session.with_active_in(|instance| unsafe {
+            assert_eq!(crate::sexp::globals::R_Visible_in(instance),1);
+            assert!((*instance).context_stack.is_empty());
+        });
+    }
+
+    #[test]
+    fn owned_closure_visibility_cleanup_survives_onexit_owner_replacement() {
+        use crate::sexp::globals::{R_Visible_in, set_R_Visible_in};
+        use std::cell::RefCell;
+
+        for (close, replace, visible) in [(true, false, 1), (true, true, 1), (false, true, 0)] {
+            let session = RSession::new_for_gc_tests();
+            let weak = session.owner_token().unwrap().weak_owner().unwrap();
+            let pin = weak.pin().unwrap();
+            let instance = pin.as_ptr();
+            let factory = weak.node_factory().unwrap();
+            let body = if visible == 0 { "invisible(314L)" } else { "314L" };
+            let source = format!(
+                "(function() {{ on.exit(.Internal(gc(FALSE,FALSE,TRUE))); {body} }})()"
+            );
+            let expression = session.owner_token().unwrap()
+                .with_arena(|arena| crate::eval::parser::parse(&source, arena, factory.clone()))
+                .unwrap().unwrap().into_owned().unwrap();
+            let global = session.global_env().unwrap().into_owned().unwrap();
+            let sessions = Rc::new(RefCell::new((Some(session), None)));
+            let retained = sessions.clone();
+            let called = Rc::new(Cell::new(false));
+            let observed = called.clone();
+            unsafe {
+                (*instance).eval_state.jit_enabled = 0;
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if observed.get() { return; }
+                    let context = crate::sexp::context::R_GlobalContext_in(instance);
+                    if context.is_null() { return; }
+                    let value = (*context).returnValue.as_raw();
+                    if value.is_null() || TYPEOF(value) != SEXPTYPE::INTSXP
+                        || XLENGTH(value) != 1 || *crate::sexp::accessors::INTEGER(value) != 314
+                    { return; }
+                    observed.set(true);
+                    set_R_Visible_in(instance, 1 - visible);
+                    if close {
+                        let mut original = retained.borrow_mut().0.take().unwrap();
+                        original.close();
+                        drop(original);
+                    }
+                    if replace {
+                        let other = RSession::new_for_gc_tests();
+                        other.with_active_in(|other| set_R_Visible_in(other, 1 - visible));
+                        retained.borrow_mut().1 = Some(other);
+                    }
+                }));
+            }
+            // No facade borrow crosses the callback that closes/drops it.
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                Rf_eval(expression.as_raw(), global.as_raw())
+            }));
+            assert!(called.get(), "on.exit must execute the collecting callback");
+            assert_eq!(outcome.is_err(), close,
+                "revoked owners refuse results; live owners resume after nested session construction");
+            assert_eq!(unsafe { R_Visible_in(instance) }, visible,
+                "cleanup restores the original body visibility, close={close}, replace={replace}");
+            if replace {
+                sessions.borrow().1.as_ref().unwrap().with_active_in(|other| {
+                    assert_eq!(unsafe { R_Visible_in(other) }, 1 - visible,
+                        "original cleanup must not change a replacement runtime");
+                });
+            }
+            if let Err(payload) = outcome {
+                let message = payload.downcast_ref::<crate::sexp::context::RError>()
+                    .map(|error| error.message.as_str())
+                    .or_else(|| match payload.downcast_ref::<crate::sexp::context::RSignal>() {
+                        Some(crate::sexp::context::RSignal::Error { message }) => Some(message.as_str()),
+                        _ => None,
+                    });
+                assert!(message.is_some(),
+                    "revocation must preserve a typed refusal rather than an ambient-runtime panic");
+            }
+            // Break the test callback's facade-holder cycle before measuring
+            // the final physical allocation release.
+            let (original, replacement) = {
+                let mut held = sessions.borrow_mut();
+                (held.0.take(), held.1.take())
+            };
+            drop(original);
+            drop(replacement);
+            drop(sessions);
+            drop(expression);
+            drop(global);
+            drop(factory);
+            drop(pin);
+            assert_eq!(weak.allocation_strong_count(), 0);
+        }
+    }
 
     #[test]
     fn owned_closure_outcomes_survive_collecting_onexit_context_teardown() {

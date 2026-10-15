@@ -80,15 +80,28 @@ impl VisibilityGuard {
             }
         })
     }
+
+    /// Capture the completed body's visibility from the original physical
+    /// owner. No ambient lookup, provider, or liveness-dependent callback is
+    /// permitted here: a body or exit handler may already have revoked it.
+    pub(crate) fn capture_original(&mut self) {
+        if let Some(instance) = self.original_instance() {
+            self.saved = unsafe { R_Visible_in(instance) };
+        }
+    }
+
+    fn original_instance(&self) -> Option<*mut crate::sexp::instance::RInstance> {
+        match &self.pin {
+            Some(pin) => Some(pin.as_ptr()),
+            None if self.availability.is_live() => Some(self.instance),
+            None => None,
+        }
+    }
 }
 
 impl Drop for VisibilityGuard {
     fn drop(&mut self) {
-        let instance = match &self.pin {
-            Some(pin) => pin.as_ptr(),
-            None if self.availability.is_live() => self.instance,
-            None => return,
-        };
+        let Some(instance) = self.original_instance() else { return };
         // Cleanup belongs to the original pinned owner even after revocation,
         // and must not dispatch through a newer or absent ambient runtime.
         unsafe {

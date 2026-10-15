@@ -17,6 +17,7 @@
 //! in the pinned R stats/src/loessf.f. No interpreter pointers enter this module.
 #![forbid(unsafe_code)]
 mod diagnostics;
+pub(crate) mod pruned;
 pub(crate) mod robust;
 mod surface;
 

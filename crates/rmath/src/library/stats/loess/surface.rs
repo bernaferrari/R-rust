@@ -16,11 +16,12 @@
 //! KD-cell interpolation and the two-dimensional blending correction.
 use super::Model;
 
-struct Cell {
-    lo: Vec<f64>,
-    hi: Vec<f64>,
-    observations: Vec<usize>,
-    corners: Vec<usize>,
+pub(super) struct Cell {
+    pub lo: Vec<f64>,
+    pub hi: Vec<f64>,
+    pub observations: Vec<usize>,
+    pub corners: Vec<usize>,
+    pub split: Option<(usize, f64)>,
 }
 
 pub(super) fn hermite(t: f64, width: f64, a: f64, b: f64, da: f64, db: f64) -> f64 {
@@ -29,12 +30,38 @@ pub(super) fn hermite(t: f64, width: f64, a: f64, b: f64, da: f64, db: f64) -> f
         + width * (t * (1. - t).powi(2) * da + t * t * (t - 1.) * db)
 }
 
-pub(super) fn interpolate(
-    model: &Model,
-    queries: &[Vec<f64>],
-    weights: &[f64],
-    execution: &super::Execution<'_>,
-) -> Result<Vec<Vec<f64>>, String> {
+pub(super) struct Tree {
+    pub vertices: Vec<Vec<f64>>,
+    pub cells: Vec<Cell>,
+    pub leaves: Vec<usize>,
+}
+
+// ehg125 creates split-plane vertices in this order, which matters when jets
+// are serialized (especially interior split axes with three/four predictors).
+pub(super) fn split_corners(
+    parent: &[usize], axis: usize, cut: f64, vertices: &mut Vec<Vec<f64>>,
+) -> (Vec<usize>, Vec<usize>) {
+    let stride = 1 << axis;
+    let mut left = parent.to_vec();
+    let mut right = parent.to_vec();
+    for i in 0..stride {
+        for j in 0..parent.len() / (2 * stride) {
+            let lower = i + 2 * stride * j;
+            let upper = lower + stride;
+            let mut point = vertices[parent[lower]].clone();
+            point[axis] = cut;
+            let vertex = match vertices.iter().position(|v| *v == point) {
+                Some(index) => index,
+                None => { vertices.push(point); vertices.len() - 1 }
+            };
+            left[upper] = vertex;
+            right[lower] = vertex;
+        }
+    }
+    (left, right)
+}
+
+pub(super) fn build_tree(model: &Model, execution: &super::Execution<'_>) -> Result<Tree, String> {
     let n = model.x.len();
     let d = model.divisor.len();
     let vc = 1 << d;
@@ -73,6 +100,7 @@ pub(super) fn interpolate(
         hi,
         observations: (0..n).collect(),
         corners: rootcorners,
+        split: None,
     }];
     let mut leaves = vec![];
     let mut next = 0;
@@ -119,29 +147,50 @@ pub(super) fn interpolate(
             lefthi[axis] = cut;
             let (mut rightlo, righthi) = (cell.lo.clone(), cell.hi.clone());
             rightlo[axis] = cut;
-            let lc = corners(&leftlo, &lefthi, &mut vertices);
-            let rc = corners(&rightlo, &righthi, &mut vertices);
+            let (lc, rc) = split_corners(&cell.corners, axis, cut, &mut vertices);
+            cells[next].split = Some((axis, cut));
             cells.push(Cell {
                 lo: leftlo,
                 hi: lefthi,
                 observations: indices[..=split].to_vec(),
                 corners: lc,
+                split: None,
             });
             cells.push(Cell {
                 lo: rightlo,
                 hi: righthi,
                 observations: indices[split + 1..].to_vec(),
                 corners: rc,
+                split: None,
             });
         } else {
             leaves.push(next);
         }
         next += 1;
     }
-    let coefficients: Vec<_> = vertices
+    Ok(Tree { vertices, cells, leaves })
+}
+
+pub(super) fn interpolate(
+    model: &Model, queries: &[Vec<f64>], weights: &[f64], execution: &super::Execution<'_>,
+) -> Result<Vec<Vec<f64>>, String> {
+    let tree = build_tree(model, execution)?;
+    let coefficients: Vec<_> = tree.vertices
         .iter()
         .map(|q| model.local(q, weights, execution))
         .collect::<Result<_, _>>()?;
+    tree.evaluate(queries, &coefficients, execution)
+}
+
+impl Tree {
+    pub(super) fn evaluate(
+        &self, queries: &[Vec<f64>], coefficients: &[Vec<Vec<f64>>],
+        execution: &super::Execution<'_>,
+    ) -> Result<Vec<Vec<f64>>, String> {
+        let (vertices, cells, leaves) = (&self.vertices, &self.cells, &self.leaves);
+        let d = vertices[0].len();
+        let vc = 1 << d;
+        let n = coefficients[0][0].len();
     let mut output = Vec::with_capacity(queries.len());
     for q in queries {
         let cell = leaves
@@ -236,4 +285,5 @@ pub(super) fn interpolate(
         output.push(row);
     }
     Ok(output)
+    }
 }
