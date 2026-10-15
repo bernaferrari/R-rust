@@ -908,15 +908,11 @@ impl CurrentRuntime {
 
     fn projection(&self) -> Option<*mut RInstance> {
         match self {
-            Self::Managed(owner) => owner.pin().ok().map(|pin| pin.as_ptr()),
+            // This is an identity observation only: no callback or field
+            // access occurs here. Dereferencing operations acquire a pin in
+            // with_current_instance before releasing the TLS borrow.
+            Self::Managed(owner) => owner.is_live().then(|| owner.identity_ptr()),
             Self::Borrowed { pointer, liveness } => liveness.is_live().then_some(*pointer),
-        }
-    }
-
-    fn pin(&self) -> Option<super::owner::OwnerPin> {
-        match self {
-            Self::Managed(owner) => owner.pin().ok(),
-            Self::Borrowed { .. } => None,
         }
     }
 }
@@ -1055,23 +1051,22 @@ pub fn with_current_instance<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(*mut RInstance) -> R,
 {
-    // Copy the installed pointer before arbitrary runtime code executes. A
-    // callback may activate another owner; no TLS RefCell borrow may survive
-    // that reentry. Field lends remain governed by acquire_instance_mut's
-    // depth monitor and the arena guard.
-    let current = CURRENT_INSTANCE.with(|ci| ci.borrow().clone())?;
-    // A callback can drop its session handle. The original shared allocation
-    // stays physically owned until this operation and every cleanup finish.
-    let pin = current.pin();
-    let pointer = match &current {
-        CurrentRuntime::Managed(_) => pin.as_ref()?.as_ptr(),
-        CurrentRuntime::Borrowed { pointer, liveness } => {
-            if !liveness.is_live() {
-                return None;
+    // Pin the selected allocation while the TLS capability is borrowed, then
+    // end that borrow before arbitrary runtime code. The operation needs no
+    // clone of unrelated heap/singleton capabilities. Its strong pin still
+    // retains original storage through callback teardown and cleanup unwind.
+    let (pointer, _pin) = CURRENT_INSTANCE.with(|ci| {
+        let current = ci.borrow();
+        match current.as_ref()? {
+            CurrentRuntime::Managed(owner) => {
+                let pin = owner.pin().ok()?;
+                Some((pin.as_ptr(), Some(pin)))
             }
-            *pointer
+            CurrentRuntime::Borrowed { pointer, liveness } => {
+                liveness.is_live().then_some((*pointer, None))
+            }
         }
-    };
+    })?;
     Some(acquire_instance_mut(pointer, f))
 }
 
