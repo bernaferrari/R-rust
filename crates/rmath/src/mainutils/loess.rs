@@ -251,14 +251,24 @@ unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
     }
 }
 unsafe fn predictor_columns(expressions: &[SEXP], env: SEXP) -> Vec<Vec<f64>> {
+    unsafe { predictor_data(expressions, env).0 }
+}
+
+/// Match the column labels produced by GNU's as.matrix(model.frame(...)).
+unsafe fn predictor_data(expressions: &[SEXP], env: SEXP) -> (Vec<Vec<f64>>, Vec<String>) {
     unsafe {
         let mut columns = vec![];
+        let mut names = vec![];
         for expr in expressions {
             let value = crate::eval::eval::Rf_eval(*expr, env);
+            let _value = protect(value);
             let values = numeric(value);
+            let label = crate::mainutils::deparse::deparse1line(*expr, false);
+            let label = elt_to_string(label, 0);
             let dim = getAttrib(value, R_DimSymbol());
             if dim == R_NilValue() {
                 columns.push(values);
+                names.push(label);
                 continue;
             }
             if TYPEOF(dim) != SEXPTYPE::INTSXP
@@ -273,13 +283,59 @@ unsafe fn predictor_columns(expressions: &[SEXP], env: SEXP) -> Vec<Vec<f64>> {
             if n.checked_mul(d) != Some(values.len()) {
                 base_error("invalid LOESS predictor dimensions");
             }
+            let dimnames = getAttrib(value, crate::sexp::attrib_core::R_DimNamesSymbol());
+            let colnames = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) == 2 {
+                VECTOR_ELT(dimnames, 1)
+            } else {
+                R_NilValue()
+            };
             for j in 0..d {
                 columns.push(values[j * n..(j + 1) * n].to_vec());
+                names.push(if d == 1 {
+                    label.clone()
+                } else {
+                    let column =
+                        if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == d as i64 {
+                            elt_to_string(colnames, j as i64)
+                        } else {
+                            (j + 1).to_string()
+                        };
+                    format!("{label}.{column}")
+                });
             }
         }
-        columns
+        (columns, names)
     }
 }
+
+/// GNU interprets these arguments as subscripts into a named predictor vector,
+/// then matches the selected names back to the original names. Use the same R
+/// operations so logical recycling, numeric exclusion, missing indices and
+/// character selection retain their ordinary subscript semantics.
+unsafe fn selected_flags(selection: SEXP, names: &[String], rho: SEXP) -> Vec<bool> {
+    unsafe {
+        let labels = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+        let _labels = protect(labels);
+        for (i, name) in names.iter().enumerate() {
+            let name = std::ffi::CString::new(name.as_str()).unwrap();
+            SET_STRING_ELT(labels, i as i64, Rf_mkChar(name.as_ptr()));
+        }
+        let tail = Rf_cons(selection, R_NilValue());
+        let _tail = protect(tail);
+        let args = Rf_cons(labels, tail);
+        let _args = protect(args);
+        let normalized = crate::mainutils::base_wrappers::apply(
+            ".rport_loess_predictor_flags",
+            "function(nmx, selected) { names(nmx) <- nmx; match(nmx, nmx[selected], 0L) > 0L }",
+            args,
+            rho,
+            true,
+        );
+        let _normalized = protect(normalized);
+        flags(normalized, names.len())
+    }
+}
+
 unsafe fn flags(x: SEXP, d: usize) -> Vec<bool> {
     unsafe {
         let v = numeric(x);
@@ -311,7 +367,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _y_value = protect(y_value);
         let y = numeric(y_value);
         let n = y.len();
-        let cols = predictor_columns(&expressions, env);
+        let (cols, predictor_names) = predictor_data(&expressions, env);
         let d = cols.len();
         if !(1..=4).contains(&d) {
             base_error("only 1-4 predictors are allowed");
@@ -351,7 +407,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             base_error("'degree' must be 0, 1 or 2");
         }
         let mut span = scalar(a[4]);
-        let drops = flags(a[8], d);
+        let drops = selected_flags(a[8], &predictor_names, rho);
         if a[5] != R_NilValue() {
             let target = scalar(a[5]);
             if target <= 0. {
@@ -371,7 +427,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             span,
             degree: degree as usize,
             normalize: scalar(a[9]) != 0.,
-            parametric: flags(a[7], d),
+            parametric: selected_flags(a[7], &predictor_names, rho),
             drop_square: drops,
             interpolate: surface == "interpolate",
             cell: scalar(field(control, "cell")),
@@ -1018,5 +1074,61 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         SET_VECTOR_ELT(result, 1, yout);
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
+    }
+}
+
+#[cfg(test)]
+mod predictor_flag_tests {
+    use crate::{mainutils::paths::RuntimePathPolicy, sexp::session::RSession};
+
+    // Independently verified with the pinned GNU R 4.7 oracle. The public
+    // arguments select predictor names through ordinary vector subscripting.
+    const PUBLIC_SELECTIONS: &str = r"
+        x <- seq(0, 1, length.out=40); z <- cos(7*x); y <- sin(5*x)+z
+        ctl <- loess.control(surface='direct', statistics='none')
+        cases <- list(NA, NA_integer_, NaN, Inf, NULL, FALSE,
+                      c(TRUE,FALSE,TRUE), 1, 2.9, -1, 'z', 'absent')
+        expected <- list(c(FALSE,FALSE),c(FALSE,FALSE),c(FALSE,FALSE),
+                         c(FALSE,FALSE),c(FALSE,FALSE),c(FALSE,FALSE),
+                         c(TRUE,FALSE),c(TRUE,FALSE),c(FALSE,TRUE),
+                         c(FALSE,TRUE),c(FALSE,TRUE),c(FALSE,FALSE))
+        for (i in seq_along(cases)) {
+            f <- loess(y~x+z, parametric=cases[[i]], control=ctl)
+            g <- loess(y~x+z, drop.square=cases[[i]], control=ctl)
+            stopifnot(identical(as.logical(f$pars$parametric),expected[[i]]),
+                      identical(as.logical(g$pars$drop.square),expected[[i]]),
+                      all(is.finite(f$fitted)),all(is.finite(g$fitted)))
+        }
+        stopifnot(inherits(tryCatch(loess(y~x+z,parametric=TRUE,control=ctl),error=function(e)e),'error'),
+                  inherits(tryCatch(loess(y~x+z,parametric=c(-1,NA),control=ctl),error=function(e)e),'error'))
+        X <- cbind(u=x,v=z)
+        f <- loess(y~X,parametric='X.v',drop.square='X.u',control=ctl)
+        stopifnot(identical(as.logical(f$pars$parametric),c(FALSE,TRUE)),
+                  identical(as.logical(f$pars$drop.square),c(TRUE,FALSE)))
+        TRUE
+    ";
+
+    #[test]
+    fn loess_predictor_flag_selection_matches_gnu_under_both_package_policies() {
+        for policy in ["native", "portable", "builtin"] {
+            let mut session = match policy {
+                "portable" => {
+                    RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "/tmp"))
+                }
+                "builtin" => RSession::new_without_default_packages(),
+                _ => RSession::new(),
+            };
+            let (value, output, _) = session.eval_code_with_output_capture(PUBLIC_SELECTIONS);
+            assert_eq!(
+                value
+                    .unwrap_or_else(|error| panic!(
+                        "policy={policy}: {}: {output:?}",
+                        error.message
+                    ))
+                    .logical_elt(0),
+                Some(1),
+                "policy={policy}: {output:?}"
+            );
+        }
     }
 }
