@@ -1,7 +1,10 @@
 //! Bounded, nonowning hints for immutable ASCII characters in this arena.
 #![forbid(unsafe_code)]
 use super::{NodeLink, PayloadLink, RArena, SEXP, SEXPTYPE};
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, VecDeque},
+    rc::Rc,
+};
 
 const MAX_ENTRIES: usize = 4096;
 const MAX_KEY_BYTES: usize = 256 * 1024;
@@ -15,7 +18,10 @@ struct CachedCharacter {
 
 #[derive(Default)]
 pub(super) struct CharacterCache {
-    entries: HashMap<Vec<u8>, CachedCharacter>,
+    entries: HashMap<Rc<[u8]>, CachedCharacter>,
+    // The FIFO shares key storage with the map. Original node links keep
+    // stale queue entries from evicting a later generation of the same key.
+    order: VecDeque<(Rc<[u8]>, NodeLink)>,
     key_bytes: usize,
 }
 
@@ -49,7 +55,7 @@ impl RArena {
         })();
         if live.is_none() {
             self.character_cache.entries.remove(bytes);
-            self.character_cache.key_bytes -= bytes.len();
+            // Its FIFO entry still owns this key until bounded eviction.
         }
         live
     }
@@ -65,30 +71,39 @@ impl RArena {
         let Some(header) = self.backing.node_snapshot(node.id()) else {
             return;
         };
-        if self.character_cache.entries.len() >= MAX_ENTRIES
+        while self.character_cache.order.len() >= MAX_ENTRIES
             || self.character_cache.key_bytes + bytes.len() > MAX_KEY_BYTES
         {
-            // Plain identities and byte keys cannot retain a graph or invoke
-            // a destructor callback. A full hint table can safely start over.
-            self.character_cache.entries.clear();
-            self.character_cache.key_bytes = 0;
+            let Some((key, original)) = self.character_cache.order.pop_front() else {
+                return;
+            };
+            self.character_cache.key_bytes -= key.len();
+            if self
+                .character_cache
+                .entries
+                .get(key.as_ref())
+                .is_some_and(|entry| entry.node == original)
+            {
+                self.character_cache.entries.remove(key.as_ref());
+            }
         }
         let mut key = Vec::new();
         if key.try_reserve_exact(bytes.len()).is_err()
             || self.character_cache.entries.try_reserve(1).is_err()
+            || self.character_cache.order.try_reserve(1).is_err()
         {
             return; // Cache admission must never reject a completed allocation.
         }
         key.extend_from_slice(bytes);
-        let previous = self.character_cache.entries.insert(
+        let key: Rc<[u8]> = Rc::from(key.into_boxed_slice());
+        self.character_cache.key_bytes += key.len();
+        self.character_cache.order.push_back((key.clone(), link));
+        self.character_cache.entries.insert(
             key,
             CachedCharacter {
                 node: link,
                 payload: header.payload,
             },
         );
-        if previous.is_none() {
-            self.character_cache.key_bytes += bytes.len();
-        }
     }
 }

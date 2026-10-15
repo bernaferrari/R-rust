@@ -90,3 +90,20 @@ fn character_cache_does_not_root_discarded_values_through_collection() {
         })
         .unwrap();
 }
+
+#[test]
+fn character_cache_overflow_preserves_unrelated_recent_live_hints() {
+    let mut arena = RArena::new();
+    let mut recent = std::ptr::null_mut();
+    for index in 0..4096 {
+        recent = arena.alloc_charsxp(format!("bounded-character-{index}").as_bytes());
+        assert!(!recent.is_null());
+    }
+    let overflow = arena.alloc_charsxp(b"one-new-character");
+    assert!(!overflow.is_null());
+    assert_eq!(
+        arena.alloc_charsxp(b"bounded-character-4095"),
+        recent,
+        "one cache overflow discarded an unrelated live immutable character"
+    );
+}
