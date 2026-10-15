@@ -12,7 +12,7 @@ use crate::library::stats::supsmu::{self, Input, Output, Parameters};
 // Labelled COMMON blocks (block data bkppr / bksupsmu defaults)
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Common {
     // /pprpar/
     pub ifl: i32,
@@ -54,23 +54,51 @@ const DEFAULTS: Common = Common {
     trace: false,
 };
 
-static COMMON: std::sync::Mutex<Common> = std::sync::Mutex::new(DEFAULTS);
+impl Default for Common {
+    fn default() -> Self {
+        DEFAULTS
+    }
+}
+
+/// Copy settings before a numerical invocation; no runtime lend survives it.
+pub(crate) fn settings() -> Common {
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        (*instance).ppr_settings.get()
+    })
+}
+
+fn update_settings(update: impl FnOnce(&mut Common)) {
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        let mut settings = (*instance).ppr_settings.get();
+        update(&mut settings);
+        (*instance).ppr_settings.set(settings);
+    });
+}
+
+/// GNU setsmu resets only the spline method and trace switch.
+pub(crate) fn setsmu(trace: i32) {
+    update_settings(|settings| {
+        settings.ismethod = 0;
+        settings.trace = trace != 0;
+    });
+}
 
 /// `subroutine setppr` — store ppr parameters into the COMMON blocks.
 pub(crate) fn setppr(span1: f64, alpha1: f64, optlevel: i32, ism: i32, df1: f64, gcvpen1: f64) {
-    let mut c = COMMON.lock().unwrap_or_else(|e| e.into_inner());
-    c.span = span1;
-    c.lf = optlevel;
-    c.alpha = alpha1;
-    if ism >= 0 {
-        c.ismethod = ism;
-        c.trace = false;
-    } else {
-        c.ismethod = -(ism + 1);
-        c.trace = true;
-    }
-    c.df = df1;
-    c.gcvpen = gcvpen1;
+    update_settings(|c| {
+        c.span = span1;
+        c.lf = optlevel;
+        c.alpha = alpha1;
+        if ism >= 0 {
+            c.ismethod = ism;
+            c.trace = false;
+        } else {
+            c.ismethod = -(ism + 1);
+            c.trace = true;
+        }
+        c.df = df1;
+        c.gcvpen = gcvpen1;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +131,7 @@ fn rchkusr() {
 /// `subroutine smart` — pack the model header and dispatch to `smart1`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn smart(
+    mut par: Common,
     m: usize,
     mu: usize,
     p: usize,
@@ -117,7 +146,6 @@ pub(crate) fn smart(
     dp: &mut [f64],
     edf: &mut [f64],
 ) -> Result<(), String> {
-    let mut par = *COMMON.lock().unwrap_or_else(|e| e.into_inner());
     smod[0] = m as f64;
     smod[1] = p as f64;
     smod[2] = q as f64;
@@ -581,6 +609,7 @@ fn oneone(
         let _c3_c12 = parts.pop().unwrap_or(&mut [][..]);
         let mut d_slice = parts.pop().unwrap_or(&mut [][..]);
         pprdir(
+            par,
             p,
             n,
             w,
@@ -727,6 +756,7 @@ fn oneone(
             let c6 = parts.pop().unwrap_or(&mut [][..]);
             let c1_c5 = parts.pop().unwrap_or(&mut [][..]);
             pprdir(
+                par,
                 p,
                 n,
                 w,
@@ -766,6 +796,7 @@ fn oneone(
 
 /// `subroutine pprdir` — optimal projection direction via conjugate gradients.
 fn pprdir(
+    par: &Common,
     p: usize,
     n: usize,
     w: &[f64],
@@ -801,18 +832,10 @@ fn pprdir(
             g[k - 1] = s / sw;
         }
     }
-    ppconj(p, g, par_cjeps(), par_mitcj());
+    ppconj(p, g, par.cjeps, par.mitcj);
     for i in 0..p {
         e[i] = g[m2 + i];
     }
-}
-
-// Current /pprz01/ conjugate-gradient controls (read-only snapshots).
-fn par_cjeps() -> f64 {
-    COMMON.lock().unwrap_or_else(|e| e.into_inner()).cjeps
-}
-fn par_mitcj() -> i32 {
-    COMMON.lock().unwrap_or_else(|e| e.into_inner()).mitcj
 }
 
 /// `subroutine ppconj` — conjugate gradient solution of g·x = c.
@@ -1477,5 +1500,57 @@ fn sort(v: &mut [f64], a: &mut [f64], ii: usize, jj: usize) {
             },
             _ => unreachable!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn ppr_settings_are_original_runtime_owned_and_snapshots_stay_immutable() {
+        let first = RSession::new_for_gc_tests();
+        let second = RSession::new_for_gc_tests();
+        let original = first.with_active(|| {
+            assert_eq!(settings(), Common::default());
+            setppr(0.3, 2.0, 1, -2, 5.0, 1.5);
+            let saved = settings();
+            assert_eq!(saved.ismethod, 1);
+            assert!(saved.trace);
+            second.with_active(|| {
+                assert_eq!(settings(), Common::default());
+                setppr(0.8, 7.0, 3, 2, 8.0, 2.5);
+                assert_eq!(settings().span, 0.8);
+            });
+            assert_eq!(
+                settings(),
+                saved,
+                "nested runtime restores original settings"
+            );
+            setsmu(0);
+            let reset = settings();
+            assert_eq!(reset.ismethod, 0);
+            assert!(!reset.trace);
+            assert_eq!(reset.span, saved.span);
+            assert_eq!(reset.alpha, saved.alpha);
+            assert_eq!(reset.lf, saved.lf);
+            assert_eq!(reset.df, saved.df);
+            assert_eq!(reset.gcvpen, saved.gcvpen);
+            setsmu(-1);
+            assert!(settings().trace);
+            assert_eq!(saved.ismethod, 1, "the invocation snapshot cannot change");
+            saved
+        });
+        second.with_active(|| {
+            let saved = settings();
+            assert_eq!(saved.span, 0.8);
+            assert_eq!(saved.ismethod, 2);
+            assert!(!saved.trace);
+        });
+        drop(first);
+        assert_eq!(original.span, 0.3);
+        assert_eq!(original.ismethod, 1);
+        second.with_active(|| assert_eq!(settings().span, 0.8));
     }
 }

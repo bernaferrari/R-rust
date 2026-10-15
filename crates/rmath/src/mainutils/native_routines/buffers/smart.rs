@@ -122,5 +122,6 @@ fn smart_invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     else {
         return Err(BufferError::new("invalid SMART buffer types"));
     };
-    smart::smart(m, mu, p, q, n, w, x, y, ww, smod, sp, dp, edf).map_err(BufferError::new)
+    let settings = smart::settings();
+    smart::smart(settings, m, mu, p, q, n, w, x, y, ww, smod, sp, dp, edf).map_err(BufferError::new)
 }

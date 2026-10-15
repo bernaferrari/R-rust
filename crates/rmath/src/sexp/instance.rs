@@ -474,6 +474,8 @@ pub struct RInstance {
     pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
     /// Per-session nmath math state (sampler caches and rank memo tables).
     pub(crate) math_state: rmath_nmath::MathState,
+    /// Original-runtime projection-pursuit and spline smoother settings.
+    pub(crate) ppr_settings: Cell<crate::library::stats::smart::Common>,
     /// Per-instance stats::loess workspace buffers.
     pub(crate) loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState,
     /// Per-instance stats::bspline recurrence continuation state.
@@ -658,6 +660,7 @@ impl RInstance {
             locked_bindings: HashSet::new(),
             active_bindings: HashMap::new(),
             math_state: rmath_nmath::MathState::default(),
+            ppr_settings: Cell::new(crate::library::stats::smart::Common::default()),
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),

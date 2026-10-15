@@ -437,11 +437,6 @@ pub(crate) fn renctest(b: &[NativeBuffer]) -> Result<(), BufferError> {
     minimum(b, 0, 1)
 }
 
-/// Trace unit recorded by `.Fortran(C_setsmu, as.integer(trace))`. The GNU
-/// Fortran `setsmu` only stores the unit for optional trace printing.
-pub(crate) static SMU_TRACE_UNIT: std::sync::atomic::AtomicI32 =
-    std::sync::atomic::AtomicI32::new(0);
-
 pub(crate) fn setsmu(b: &[NativeBuffer]) -> Result<(), BufferError> {
     match b {
         [unit] if unit.len() == 1 && unit.kind() == BufferType::Integer => Ok(()),

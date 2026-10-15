@@ -146,8 +146,7 @@ unsafe extern "C-unwind" fn c_setsmu(iunit: *mut std::ffi::c_void) {
             return;
         }
         let unit = *(iunit as *mut i32);
-        crate::mainutils::native_routines::buffers::SMU_TRACE_UNIT
-            .store(unit, std::sync::atomic::Ordering::Relaxed);
+        crate::library::stats::smart::setsmu(unit);
     }
 }
 
