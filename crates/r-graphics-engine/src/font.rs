@@ -143,23 +143,26 @@ pub fn normalized_size(size: f32) -> f32 {
     }
 }
 
-/// Inflate only the original font length and one byte to detect excess data.
-/// The original vendored files remain available as independent test fixtures.
-fn decompress_bundled_font(compressed: &[u8], expected_len: usize) -> io::Result<Vec<u8>> {
-    let limit = expected_len
-        .checked_add(1)
+/// Stream each original face without retaining a second uncompressed archive.
+/// The dictionary and total output are bounded independently of stream headers.
+fn decompress_bundled_fonts(compressed: &[u8], lengths: [usize; 4]) -> io::Result<[Vec<u8>; 4]> {
+    let total = lengths
+        .into_iter()
+        .try_fold(0usize, usize::checked_add)
+        .filter(|total| *total <= 2_741_468)
         .ok_or_else(|| io::Error::other("bundled font length overflow"))?;
-    let mut input = flate2::read::GzDecoder::new(compressed).take(limit as u64);
-    let mut bytes = Vec::new();
-    bytes
-        .try_reserve_exact(expected_len)
-        .map_err(io::Error::other)?;
-    bytes.resize(expected_len, 0);
-    input.read_exact(&mut bytes)?;
+    let mut input =
+        lzma_rust2::XzReader::new_mem_limit(compressed, false, 2048).take(total as u64 + 1);
+    let mut faces: [Vec<u8>; 4] = std::array::from_fn(|_| Vec::new());
+    for (face, length) in faces.iter_mut().zip(lengths) {
+        face.try_reserve_exact(length).map_err(io::Error::other)?;
+        face.resize(length, 0);
+        input.read_exact(face)?;
+    }
     if input.read(&mut [0])? != 0 {
         return Err(io::Error::other("bundled font length mismatch"));
     }
-    Ok(bytes)
+    Ok(faces)
 }
 
 /// Deterministic bundled font shared by every platform and renderer.
@@ -167,22 +170,11 @@ fn decompress_bundled_font(compressed: &[u8], expected_len: usize) -> io::Result
 pub fn default_font_book() -> &'static FontBook {
     static FONT: OnceLock<FontBook> = OnceLock::new();
     FONT.get_or_init(|| {
-        let decode = |compressed: &[u8], length| {
-            decompress_bundled_font(compressed, length)
-                .expect("bundled DejaVu Sans gzip preserves the original font bytes")
-        };
-        let bytes = [
-            decode(include_bytes!("../assets/DejaVuSans.ttf.gz"), 757_076),
-            decode(include_bytes!("../assets/DejaVuSans-Bold.ttf.gz"), 705_684),
-            decode(
-                include_bytes!("../assets/DejaVuSans-Oblique.ttf.gz"),
-                635_416,
-            ),
-            decode(
-                include_bytes!("../assets/DejaVuSans-BoldOblique.ttf.gz"),
-                643_292,
-            ),
-        ];
+        let bytes = decompress_bundled_fonts(
+            include_bytes!("../assets/DejaVuSans.faces.xz"),
+            [757_076, 705_684, 635_416, 643_292],
+        )
+        .expect("bundled archive preserves every original DejaVu font byte");
         let parse = |bytes: &Vec<u8>| {
             Arc::new(
                 fontdue::Font::from_bytes(bytes.clone(), fontdue::FontSettings::default())
@@ -232,11 +224,22 @@ mod tests {
     }
 
     #[test]
-    fn bundled_font_decode_rejects_wrong_lengths_and_truncated_gzip() {
-        let compressed = include_bytes!("../assets/DejaVuSans.ttf.gz");
-        assert!(decompress_bundled_font(compressed, 757_075).is_err());
-        assert!(decompress_bundled_font(compressed, 757_077).is_err());
-        assert!(decompress_bundled_font(&compressed[..compressed.len() - 1], 757_076).is_err());
+    fn bundled_font_decode_rejects_wrong_lengths_and_truncated_archive() {
+        let compressed = include_bytes!("../assets/DejaVuSans.faces.xz");
+        assert!(
+            decompress_bundled_fonts(compressed, [757_075, 705_684, 635_416, 643_292]).is_err()
+        );
+        assert!(
+            decompress_bundled_fonts(compressed, [757_077, 705_684, 635_416, 643_292]).is_err()
+        );
+        assert!(
+            decompress_bundled_fonts(
+                &compressed[..compressed.len() - 1],
+                [757_076, 705_684, 635_416, 643_292]
+            )
+            .is_err()
+        );
+        assert!(decompress_bundled_fonts(compressed, [usize::MAX, 0, 0, 0]).is_err());
     }
 
     #[test]

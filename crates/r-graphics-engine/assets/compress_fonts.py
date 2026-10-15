@@ -1,47 +1,33 @@
 #!/usr/bin/env python3
-"""Regenerate lossless embedded fonts from the retained, licensed TTF originals."""
+"""Pack all original licensed font bytes using a bounded shared dictionary."""
 
-import gzip
 import hashlib
 import json
+import lzma
 from pathlib import Path
-import sys
-import zlib
 
 
 def main():
     directory = Path(__file__).resolve().parent
+    names = ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVuSans-Oblique.ttf", "DejaVuSans-BoldOblique.ttf"]
+    originals = [(directory / name).read_bytes() for name in names]
+    payload = b"".join(originals)
+    compressed = lzma.compress(payload, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64,
+        filters=[{"id": lzma.FILTER_LZMA2, "preset": 9, "dict_size": 1024 * 1024}])
+    assert lzma.decompress(compressed) == payload
+    (directory / "DejaVuSans.faces.xz").write_bytes(compressed)
     metadata = {
         "purpose": "Lossless storage only; every original TTF byte is preserved.",
         "regenerate": "python3 crates/r-graphics-engine/assets/compress_fonts.py",
-        "compression": "gzip level 9, mtime 0, OS 255; deflate output may vary by zlib version",
-        "python": sys.version.split()[0],
-        "zlib": zlib.ZLIB_VERSION,
+        "compression": "XZ LZMA2 preset 9, fixed 1 MiB dictionary, CRC64",
         "license": "DejaVu-LICENSE.txt",
-        "files": {},
+        "archive_bytes": len(compressed),
+        "archive_sha256": hashlib.sha256(compressed).hexdigest(),
+        "files": {name: {"original_bytes": len(data), "original_sha256": hashlib.sha256(data).hexdigest()}
+            for name, data in zip(names, originals)},
     }
-    for name in [
-        "DejaVuSans.ttf",
-        "DejaVuSans-Bold.ttf",
-        "DejaVuSans-Oblique.ttf",
-        "DejaVuSans-BoldOblique.ttf",
-    ]:
-        original = (directory / name).read_bytes()
-        compressed = bytearray(gzip.compress(original, compresslevel=9, mtime=0))
-        compressed[9] = 255
-        compressed = bytes(compressed)
-        assert gzip.decompress(compressed) == original
-        (directory / (name + ".gz")).write_bytes(compressed)
-        metadata["files"][name] = {
-            "original_bytes": len(original),
-            "original_sha256": hashlib.sha256(original).hexdigest(),
-            "gzip_bytes": len(compressed),
-            "gzip_sha256": hashlib.sha256(compressed).hexdigest(),
-        }
-    (directory / "compressed-fonts.json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
-    print("BUNDLED_FONT_BYTES_PASS faces=4")
+    (directory / "compressed-fonts.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    print(f"BUNDLED_FONT_BYTES_PASS faces=4 archive_bytes={len(compressed)} dictionary_bytes=1048576")
 
 
 if __name__ == "__main__":
