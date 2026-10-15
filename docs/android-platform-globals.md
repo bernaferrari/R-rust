@@ -7,8 +7,11 @@ sessionized, so every source file with mutable global patterns is classified in
 
 This check verifies that declarations are inventoried. A passing inventory does
 not approve `sessionize` or `platform-replace` entries as safe. The remaining
-condition/warning pointers, source-location state, warning-once flag and process
-environment policy are tracked in `rport-eotc`.
+condition class filters, parser warnings, formatting and dispatch context,
+device recursion flags, elapsed-time origin, translation directories and
+process environment policy are tracked in `rport-eotc`. The inventory names
+their actual declaration files after the module splits and distinguishes
+test-only instrumentation from production state.
 
 The checked policy is:
 
@@ -17,6 +20,8 @@ The checked policy is:
 - `allow-immutable`: immutable process sentinels or caches. These must not hold
   session-varying values.
 - `allow-test`: test-only locks used to serialize global fallback tests.
+- `allow-process`: intentional process resources, including panic-hook setup
+  and collision-free temporary-name allocation across independent sessions.
 - `sessionize`: real runtime state that must move into `RInstance` before the
   corresponding feature is Android-facing.
 - `platform-replace`: platform state that must be provided by an Android host
@@ -29,6 +34,12 @@ The scanner ignores declarations inside `#[cfg(test)] mod tests`,
 tree. The compiled root modules (`src/graphapp`, `src/intl`, `src/tzone`) own
 the Android-relevant state and are already wired through `RInstance`; the
 support mirror is not part of the crate root module graph.
+
+Standalone test files and `#[cfg(test)]` declarations outside an inline
+`mod tests` remain visible to the conservative text scanner. Their inventory
+entries explicitly record their test-only module or declaration scope.
+The PPR settings and native LOESS prediction state now live in their original
+runtime; they require no process-global classification.
 
 Run the ratchet with:
 

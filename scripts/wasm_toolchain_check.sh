@@ -22,7 +22,7 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Dwarnings"* ]]; then
 fi
 
 run_cargo() {
-    env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo "$@"
+    env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" "$@"
 }
 
 run_cargo check --target "$TARGET" \

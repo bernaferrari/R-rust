@@ -14,7 +14,7 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
 fi
 
 run_cargo() {
-    env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo "$@"
+    env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" "$@"
 }
 
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"

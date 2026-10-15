@@ -4,9 +4,38 @@
 crates/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
 crates/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
 crates/rmath/src/mainutils/connections/tests.rs	test-lock	allow-test	rport-tqz2	Loaded only by cfg(test) mod tests; standalone test module file is visible to the text scanner.
-crates/rmath/src/mainutils/errors/render.rs	warning-context	sessionize	rport-eotc	Thread-local warning handler flag and raw mathlib call pointer; nested/same-thread session isolation still requires audit.
-crates/rmath/src/mainutils/essentials/conditions.rs	condition-context	sessionize	rport-eotc	Thread-local handler classes and preserved raw condition pointer must move to session-owned state.
-crates/rmath/src/mainutils/essentials/runtime/sys.rs	process-environment	platform-replace	rport-eotc	Process environ and environment mutation require an explicit host policy; this classification does not establish concurrent safety.
-crates/rmath/src/mainutils/seq/sequence.rs	warning-once	sessionize	rport-eotc	Process AtomicBool implements a warning documented as once per session; move the flag into RInstance.
-crates/rmath/src/mainutils/srcref.rs	statement-location	sessionize	rport-eotc	Thread-local current source location is cleared per statement but still needs nested-session ownership.
-crates/rmath/src/sexp/memory.rs	arena-borrow-monitor	allow-session-dispatch	rport-tqz2	Thread-local set keyed by instance address rejects overlapping mutable arena borrows; RAII removes entries on unwind.
+crates/rmath/src/eval/parser/support.rs	literal-warning-context	sessionize	rport-eotc	Pending and per-expression literal warning queues are thread-local; nested runtime ownership remains pending.
+crates/rmath/src/library/grdevices/device_registry.rs	device-opening-guard	sessionize	rport-eotc	Process atomic prevents recursive default-device opening; independent sessions must not share this flag.
+crates/rmath/src/library/stats/starma_api.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/debug.rs	builtin-try-context	sessionize	rport-eotc	Thread-local synthetic try frames still need original-runtime scopes.
+crates/rmath/src/mainutils/dotcode/foreign_registration_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/errors/state.rs	condition-class-filters	sessionize	rport-eotc	Thread-local warning/message class filter stacks remain separate from the session-owned depth counters.
+crates/rmath/src/mainutils/essentials/conditions/warning_signal.rs	warning-handler-context	sessionize	rport-eotc	Thread-local handler-ran flag needs original-runtime ownership across reentry.
+crates/rmath/src/mainutils/essentials/mathstats/files_regex.rs	elapsed-time-origin	sessionize	rport-eotc	proc.time elapsed origin is currently process-wide; runtime-local elapsed-time policy remains pending.
+crates/rmath/src/mainutils/essentials/print/str.rs	str-format-context	sessionize	rport-eotc	Thread-local str digits override must restore its previous original-runtime value after nested calls.
+crates/rmath/src/mainutils/essentials/runtime/sys/env.rs	process-environment	platform-replace	rport-eotc	Native environ access is process-wide and mutation requires explicit session capability; inventory is not concurrency certification.
+crates/rmath/src/mainutils/essentials/s4.rs	s4-data-part-context	sessionize	rport-eotc	Thread-local get/set data-part recursion flags need original-runtime guards.
+crates/rmath/src/mainutils/essentials/shared.rs	s4-cache-context	sessionize	rport-eotc	Thread-local attached-S4 cache recursion flag must be isolated across runtime reentry.
+crates/rmath/src/mainutils/essentials/strings/gettext.rs	translation-directory-map	sessionize	rport-eotc	Mutex protects the map from data races but domain directory bindings are shared between sessions.
+crates/rmath/src/mainutils/memory_finalizer_batch_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/native_routines/buffers.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/printutils.rs	test-console-sink	allow-test	rport-cmnqj	Declaration and setter are cfg(test); only the seq test module installs this sink. Production output uses the session capture.
+crates/rmath/src/mainutils/serialize/persistence_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/serialize/tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/mainutils/subset/mod.rs	subscript-error-context	sessionize	rport-eotc	Thread-local out-of-bounds index crosses error unwinding and must be original-runtime scoped.
+crates/rmath/src/mainutils/sysutils.rs	temporary-name-allocator	allow-process	rport-cmnqj	Checked atomic serial supplies process-wide unique temporary names across independent sessions without consuming R RNG.
+crates/rmath/src/sexp/constructor_lifetime_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/envir.rs	missingness-recursion-context	sessionize	rport-eotc	Thread-local recursion depth limits propagated missingness; original-runtime and unwind restoration remain pending.
+crates/rmath/src/sexp/gc_finalizer_graph_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/gc_owner_teardown_tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/gc_trace.rs	trace-context	allow-session-dispatch	rport-hah9u	RAII trace scope owns heap identity and epoch, restores outer scope and releases before notification callbacks.
+crates/rmath/src/sexp/gengc/mark.rs	gc-diagnostic-context	allow-session-dispatch	rport-hah9u	Thread-local diagnostic label contains only static text, with no R values or runtime authority.
+crates/rmath/src/sexp/memory/arena.rs	arena-borrow-monitor	allow-session-dispatch	rport-jxfp.8	Thread-local instance-keyed lend set and owning ledger enforce original arena admission; RAII unwinds scopes.
+crates/rmath/src/sexp/memory/layout.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/memory/slab.rs	checked-page-directory	allow-session-dispatch	rport-hah9u	Thread-local checked page metadata directory/cache/epoch authenticates canonical provenance; registrations remove their original identity.
+crates/rmath/src/sexp/memory/tests_payload.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/output/capture.rs	show-error-output	sessionize	rport-eotc	Thread-local stdout saved across failed S4 show calls still needs original-runtime ownership.
+crates/rmath/src/sexp/output/dispatch.rs	print-argument-context	sessionize	rport-eotc	Thread-local raw print extras need owning original-runtime storage and cleanup scopes.
+crates/rmath/src/sexp/protect/tests.rs	test-instrumentation	allow-test	rport-cmnqj	Declaration is cfg(test) or lives in a module included only by cfg(test); absent from Android production builds.
+crates/rmath/src/sexp/singletons.rs	immutable-singleton-pool	allow-immutable	rport-hah9u	Thread-local pool leases immutable canonical singleton storage; mutable copies use separate checked allocations.
+crates/rmath/src/sexp/transfer.rs	owning-transfer-scope	allow-session-dispatch	rport-hah9u	RAII transfer scopes retain checked values under original weak-owner identity and reject mismatched thread/scope tickets.
