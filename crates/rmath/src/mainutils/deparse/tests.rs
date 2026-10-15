@@ -486,3 +486,57 @@ fn owned_deparse_buffer_error_unwind_preserves_line_and_allows_actual_error_rend
         assert_eq!(result.string_value_elt(0), Some(Some("\"\"".into())));
     });
 }
+
+#[test]
+fn bounded_deparse_reclaims_discarded_nodes_but_still_rejects_a_retained_full_heap() {
+    use crate::sexp::{memory::ArenaBudget, object::SexpMut};
+    for keep_alive in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let value = factory
+            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        SexpMut::try_from_checked(value.clone())
+            .unwrap()
+            .try_set_integer_elt(0, 7)
+            .unwrap();
+        let garbage: Vec<_> = (0..30)
+            .map(|_| {
+                factory
+                    .allocate(|a| Some(a.alloc_node(SEXPTYPE::LISTSXP)))
+                    .unwrap()
+            })
+            .collect();
+        let witnesses: Vec<_> = garbage
+            .iter()
+            .map(|v| v.allocation().unwrap().clone())
+            .collect();
+        let retained = keep_alive.then_some(garbage);
+        let cap = owner
+            .with_arena(|a| {
+                let cap = a.node_count();
+                a.set_budget(ArenaBudget::new(usize::MAX, cap));
+                cap
+            })
+            .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            deparse1WithCutoff(value.as_raw(), false, DEFAULT_CUTOFF, true, 0, 0)
+        }));
+        if keep_alive {
+            assert!(
+                result.is_err(),
+                "a retained full heap must still reject admission"
+            );
+            assert!(witnesses.iter().all(|v| v.is_live()));
+        } else {
+            let output = owner
+                .sexp(result.expect("discarded nodes should make room for deparse"))
+                .unwrap();
+            assert_eq!(output.string_value_elt(0), Some(Some("7".into())));
+            assert!(witnesses.iter().all(|v| !v.is_live()));
+        }
+        assert_eq!(owner.with_arena(|a| a.budget().max_nodes).unwrap(), cap);
+        drop(retained);
+    }
+}

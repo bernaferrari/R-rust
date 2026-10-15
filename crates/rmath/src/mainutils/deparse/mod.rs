@@ -59,6 +59,7 @@ pub mod elements;
 pub mod entry;
 pub mod local_parse_data;
 mod owned_line_buffer;
+mod owned_output;
 pub mod predicates;
 pub mod srcref;
 

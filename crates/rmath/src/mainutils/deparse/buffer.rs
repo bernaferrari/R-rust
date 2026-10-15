@@ -49,18 +49,20 @@ pub unsafe fn writeline(data: *mut LocalParseData) {
         // Capture the output's owning token before allocating the character.
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
-        let factory = owner.node_factory();
-        let output = factory
-            .wrap(data.strvec)
-            .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
-        let character = factory
-            .allocate(|arena| Some(arena.alloc_charsxp(data.buffer.bytes())))
-            .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
-        output
-            .try_set_string_elt(data.linenumber as R_xlen_t, character)
-            .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
+        let runtime = owner
+            .weak_owner()
+            .unwrap_or_else(|| buffer_error(LineBufferError::Allocation));
+        crate::sexp::owner::with_runtime(&runtime, |access| {
+            let domain = access.domain();
+            let output = domain.wrap(data.strvec)?;
+            let mut output = crate::sexp::object::SexpMut::try_from_checked(output)?;
+            let allocator = super::owned_output::OutputAllocator::new(access, &domain)?;
+            let character =
+                allocator.allocate(|arena| Some(arena.alloc_charsxp(data.buffer.bytes())))?;
+            output.try_set_string_elt(data.linenumber as R_xlen_t, character)
+        })
+        .and_then(|result| result)
+        .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
     }
     data.linenumber = data
         .linenumber

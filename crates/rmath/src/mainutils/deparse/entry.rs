@@ -99,8 +99,7 @@ pub unsafe fn deparse1WithCutoff(
             let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
             // Install the original owning lease before mutating print state.
             let _restore = RestorePrint::enter(original_pin);
-            let allocator = access
-                .allocator(&domain)
+            let allocator = super::owned_output::OutputAllocator::new(access, &domain)
                 .unwrap_or_else(|_| allocation_error());
 
             let mut local_data = LocalParseData::default();
