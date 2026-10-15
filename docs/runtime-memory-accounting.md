@@ -16,6 +16,13 @@ between commands and releases on scene discard or session closure. Canvas and
 scene reservations therefore compete with the actual R heap and numerical
 reservations rather than passing independent limits in isolation.
 
+Raw unserialization reserves its native input snapshot before copying cells.
+Compressed input expands through an admitted streaming byte buffer. Replacement
+buffers are charged together while both allocations coexist; gzip and bzip2
+workspace estimates and a bounded XZ decoder reservation remain alive until
+codec teardown. These charges remain with the original session across R
+restoration hooks and unwind. Connection streaming remains a separate path.
+
 `max_arena_nodes` limits simultaneously live nodes. Reclaimed slots remain
 reusable, as in GNU R; a live-node cap is not also charged as a cumulative
 allocation quota. Execution time and cancellation independently bound work.

@@ -312,6 +312,7 @@ mod compress;
 mod core;
 mod lazyload;
 mod membuf;
+mod owned_input;
 mod stream;
 
 pub use self::api::*;

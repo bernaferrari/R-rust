@@ -104,3 +104,29 @@ fn garbage_collected_nodes_are_reusable_while_live_node_cap_stays_enforced() {
         limits.max_arena_nodes
     );
 }
+
+#[test]
+fn unserialize_copy_and_decoded_value_compete_for_one_memory_budget_and_recover() {
+    let mut session = session();
+    session
+        .eval("payload <- serialize(integer(20000L), NULL); gc(); invisible(NULL)")
+        .unwrap();
+    let before = session.memory_usage().unwrap();
+    let mut limits = session.resource_limits();
+    limits.max_alloc_bytes = before.total_bytes + 100_000;
+    session.set_resource_limits(limits).unwrap();
+    assert!(
+        session.eval("invisible(unserialize(payload))").is_err(),
+        "raw input copy and decoded vector passed independent byte limits"
+    );
+    assert_eq!(
+        session.memory_usage().unwrap().workspace_bytes,
+        before.workspace_bytes
+    );
+    limits.max_alloc_bytes = 0;
+    session.set_resource_limits(limits).unwrap();
+    assert_eq!(
+        session.eval("length(unserialize(payload))").unwrap(),
+        "[1] 20000\n"
+    );
+}

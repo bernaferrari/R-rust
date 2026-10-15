@@ -941,47 +941,31 @@ unsafe fn R_unserialize_from_stream_hooks(
             .unwrap_or_else(|| error("raw input has no initialized payload"));
         // Copy canonical cells before any restoration callback. The reader
         // cannot alias an R payload that reentrant code may resize or mutate.
-        let data: Vec<u8> = (0..len)
-            .map(|i| {
-                lease
-                    .byte_elt(i)
-                    .unwrap_or_else(|| error("invalid raw input payload"))
-            })
-            .collect();
-        let data = data.as_slice();
-
-        // GNU serialize.c: gzip-compressed RDS starts with 1f 8b; the
-        // bzip2 and xz containers written by saveRDS(compress=) sniff the
-        // same way (magic "BZh" / xz fd 37 7a 58 5a 00).
-        let decompressed;
-        let payload: &[u8] = if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-            let mut decoder = GzDecoder::new(data);
-            let mut out = Vec::new();
-            if decoder.read_to_end(&mut out).is_err() || out.is_empty() {
-                error("read error");
-            }
-            decompressed = out;
-            &decompressed
-        } else if data.len() >= 3 && &data[..3] == b"BZh" {
-            let mut decoder = bzip2::read::BzDecoder::new(data);
-            let mut out = Vec::new();
-            if decoder.read_to_end(&mut out).is_err() || out.is_empty() {
-                error("read error");
-            }
-            decompressed = out;
-            &decompressed
-        } else if data.len() >= 6 && data[..6] == [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] {
-            let mut out = Vec::new();
-            if lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut out).is_err()
-                || out.is_empty()
-            {
-                error("read error");
-            }
-            decompressed = out;
-            &decompressed
-        } else {
-            data
+        let reserve = |bytes| {
+            owner
+                .with_arena(|arena| arena.reserve_workspace(bytes))
+                .map_err(|error| std::io::Error::other(error.to_string()))?
+                .ok_or_else(super::owned_input::memory_error)
         };
+        let reservation = reserve(len).unwrap_or_else(|failure| error(&failure.to_string()));
+        let mut data = super::owned_input::InputBytes::new(reservation, len)
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        for index in 0..len {
+            std::io::Write::write_all(
+                &mut data,
+                &[lease
+                    .byte_elt(index)
+                    .unwrap_or_else(|| error("invalid raw input payload"))],
+            )
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        }
+        let decompressed = super::owned_input::expand(&data, reserve).unwrap_or_else(|failure| {
+            if failure.kind() == std::io::ErrorKind::OutOfMemory {
+                error(&failure.to_string());
+            }
+            error("read error")
+        });
+        let payload = decompressed.as_deref().unwrap_or(&data);
 
         let mut reader = BinaryReader::new(payload);
         reader.lazy_restore = lazy_restore;
