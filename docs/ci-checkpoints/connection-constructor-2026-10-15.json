@@ -4,10 +4,10 @@
   "status": "verified_milestone",
   "base_commit": "12a22c9fb381b8aa150057a91ba3cb65e4af18f3",
   "source_sha256": {
-    "crates/rmath/src/mainutils/connections/file.rs": "7ef09fce6a2e0edb0e3999965c1ba57a4db28abf9915dfad4e8b1601727a9519",
+    "crates/rmath/src/mainutils/connections/file.rs": "2c9661689c5a0eab3200fa293be7c5ea77c5285f059cab556ff1c5071add7aa5",
     "crates/rmath/src/mainutils/connections/file/constructor.rs": "74ca58b9842e673676734c6cfa65b96b5b2705b1b3e23d0fa5b8bd7aa1c666f8",
     "crates/rmath/src/mainutils/connections/file/constructor_tests.rs": "10c0a1f6195d967fc8d35db7b396acd9a0163a7c88f2f1300a77d8f8361d7f4f",
-    "crates/rmath/src/mainutils/connections/file/constructor-contract.R": "20237f530ff5ec92f51326281525b7e792f370cfd7ac30438daf798ab33bdaf3",
+    "crates/rmath/src/mainutils/connections/file/constructor-contract.R": "4b0a47c21b74339c31c4497c3c9b612079e50ca4ae370eed161b64d81ecad8b1",
     "crates/r-embed/tests/file_constructor_admission.rs": "394186c2e1182eba3bdcf8de26fb7dcfc2a01f330ac5bfd1dbba474248720f6e"
   },
   "evidence_directory": "target/connection-stream-evidence",
@@ -19,7 +19,9 @@
     "gnu": "constructor-gnu.log: TRUE; pinned oracle bac583951b728e97b9786804d3b4081f0fe18df5",
     "public": "constructor-public.log: anonymous 2 and deferred 4 passed; constructor-public-final.log: scalar/logical admission 1 passed",
     "miri": "constructor-miri-final.log: 7 passed, strict provenance i686, default alias checks, leaks ignored; predates final safe named argument selection refinement; sealed repeat running",
-    "clippy": "constructor-clippy.log: warnings denied, passed"
+    "clippy": "constructor-clippy.log: warnings denied, passed",
+    "public_marker": "constructor-object-marker.log: 1 passed, including is.object/inherits and serialize/unserialize on anonymous file; constructor-gnu-marker.log TRUE"
   },
-  "scope": "do_file constructor defaults, complete operand snapshots, original-owner pin/checks across providers and unwind, owning result/class before slot publication; broader runtime and other constructors remain outside this bead"
+  "scope": "do_file constructor defaults, complete operand snapshots, original-owner pin/checks across providers and unwind, owning result/class before slot publication; broader runtime and other constructors remain outside this bead",
+  "followup": "Broader sequential stream fixture caught missing OBJECT class marker in d5ed4fb6. Fixed with checked header adapter; public and pinned GNU regression passed. Initial Miri 7/7 predates this callback-free marker write; fresh full ownership repeat pending."
 }

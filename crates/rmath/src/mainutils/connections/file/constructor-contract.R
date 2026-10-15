@@ -10,10 +10,12 @@ local({
                   "'length = 2' in coercion to 'logical(1)'")
     )
     con <- file("deferred", blocking = "TRUE", raw = 0L)
-    stopifnot(!isOpen(con))
+    stopifnot(!isOpen(con), is.object(con), inherits(con, "connection"))
     close(con)
     con <- file("", open = "w+b", blocking = 1L, raw = 0L)
     stopifnot(isOpen(con, "r"), isOpen(con, "w"))
+    invisible(serialize(7L, con))
+    stopifnot(identical(unserialize(con), 7L))
     close(con)
     TRUE
 })

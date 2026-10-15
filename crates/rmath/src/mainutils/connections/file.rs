@@ -92,6 +92,8 @@ unsafe fn file_value(
     let attrs = allocator.pairlist_cell(&classes, &domain.nil(), &symbol)?;
     let mut ans = SexpMut::try_from_checked(ans)?;
     ans.try_set_attribute(&attrs)?;
+    // Installing the attribute edge directly also requires GNU's class marker.
+    unsafe { SET_OBJECT(ans.as_raw(), 1) };
     Ok(ans)
 }
 
