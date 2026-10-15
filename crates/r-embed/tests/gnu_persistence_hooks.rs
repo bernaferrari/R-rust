@@ -120,6 +120,26 @@ fn atomic_values_do_not_invoke_refhook_and_all_formats_restore() {
 }
 
 #[test]
+fn gnu_internal_serialization_preserves_format_version_and_hook() {
+    let mut session = RSession::new().unwrap();
+    for (format, magic) in [(0, "X"), (1, "A"), (2, "A"), (3, "B")] {
+        for version in [2, 3] {
+            let wire_version = if format == 1 || format == 2 {
+                "as.integer(strsplit(rawToChar(r),'\\n')[[1L]][2L])"
+            } else if format == 0 {
+                "readBin(r[3:6],'integer',n=1L,size=4L,endian='big')"
+            } else {
+                "readBin(r[3:6],'integer',n=1L,size=4L,endian=.Platform$endian)"
+            };
+            let code = format!(
+                "local({{e<-new.env();hits<-0L;r<-.Internal(serialize(list(e,e),NULL,{format}L,{version}L,function(x){{hits<<-hits+1L;invisible(gc());'token'}}));z<-unserialize(r,refhook=function(x)e);identical(rawToChar(r[1L]),'{magic}')&&identical(hits,2L)&&identical(z[[1L]],e)&&identical(z[[2L]],e)&&identical({wire_version},{version}L)}})"
+            );
+            assert_eq!(session.eval(&code).unwrap().trim(), "[1] TRUE", "{code}");
+        }
+    }
+}
+
+#[test]
 fn restore_hooks_can_return_null_or_quoted_language_values() {
     let mut session = RSession::new().unwrap();
     assert_eq!(session.eval("local({r<-serialize(new.env(),NULL,refhook=function(x)'token');identical(unserialize(r,refhook=function(x)NULL),NULL)&&identical(unserialize(r,refhook=function(x)quote(a+b)),quote(a+b))})").unwrap().trim(), "[1] TRUE");
@@ -139,7 +159,7 @@ fn persistent_writer_matches_the_gnu_wire_fixture() {
     // persistent-record payload after the version-3 header on each side.
     let encoding_len = i32::from_be_bytes(bytes[14..18].try_into().unwrap()) as usize;
     let payload = &bytes[18 + encoding_len..];
-    let value = session.eval(&format!("r<-serialize(new.env(),NULL,version=3,refhook=function(x)'token');identical(r[-(1:18)],{})", raw_expression(payload))).unwrap();
+    let value = session.eval(&format!("r<-serialize(new.env(),NULL,version=3,refhook=function(x)'token');identical(r[-seq_len(18L+readBin(r[15:18],'integer',n=1L,size=4L,endian='big'))],{})", raw_expression(payload))).unwrap();
     assert_eq!(
         value.trim(),
         "[1] TRUE",

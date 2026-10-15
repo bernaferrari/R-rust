@@ -430,6 +430,9 @@ pub unsafe fn R_serialize_with_xdr(
             error("read error");
         }
 
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let _object_guard = protect(object);
         let _hook_guard = protect(fun);
         let version = if Sversion == R_NilValue() {
@@ -453,6 +456,7 @@ pub unsafe fn R_serialize_with_xdr(
 
         // Build the header
         let mut writer = BinaryWriter::new();
+        writer.set_persist_hook(fun);
         writer.write_byte(if ascii_format {
             b'A'
         } else if xdr_format {
@@ -489,6 +493,9 @@ pub unsafe fn R_serialize_with_xdr(
         let mut ref_table = WriteHashTable::new();
         WriteItemInternal(object, &mut ref_table, &mut writer);
 
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
         // Create RAWSXP from the serialized bytes
         let data = writer.into_vec();
         let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
@@ -1152,6 +1159,34 @@ pub unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, 
 // ---------------------------------------------------------------------------
 // do_serialize (dispatch for serialize/unserialize builtins)
 // ---------------------------------------------------------------------------
+
+/// GNU base's wrapper supplies `(object, connection, type, version, refhook)`.
+/// Keep this adapter separate from the public six-argument builtin contract.
+pub unsafe fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let object = require_arg(args, 0);
+        let conn = require_arg(args, 1);
+        let format = asInteger(require_arg(args, 2));
+        let version = require_arg(args, 3);
+        let hook = require_arg(args, 4);
+        let (ascii, xdr) = match format {
+            0 => (0, 1),
+            1 => (1, 0),
+            2 => (crate::sexp::ffi::NA_LOGICAL, 0),
+            3 => (0, 0),
+            _ => error("invalid serialization format"),
+        };
+        let ascii = Rf_ScalarLogical(ascii);
+        let xdr = Rf_ScalarLogical(xdr);
+        let raw = R_serialize_with_xdr(object, conn, ascii, xdr, version, hook);
+        if TYPEOF(conn) == SEXPTYPE::INTSXP {
+            let bytes = std::slice::from_raw_parts(RAW(raw), XLENGTH(raw) as usize);
+            crate::mainutils::connections::connection_write_bytes(asInteger(conn), bytes);
+            return R_NilValue();
+        }
+        raw
+    }
+}
 
 pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
