@@ -684,7 +684,11 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     Some(call_owner.clone()),
                     -1,
                 );
-                return handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                // No funtab entry: honor the stock-invisible list (GNU marks
+                // these via the eval column we cannot read here).
+                resolve_internal_visibility(&name_str, 2);
+                return ans;
             }
             // GNU .Internal resolves strictly through R_FunTab; the port
             // also accepts handlers registered in the evaluated-builtin
@@ -701,7 +705,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     Some(call_owner.clone()),
                     -1,
                 );
-                return handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                resolve_internal_visibility(&name_str, 2);
+                return ans;
             }
             panic_any(RError {
                 message: format!("there is no .Internal function '{}'", name_str),
@@ -810,6 +816,9 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        // GNU internal contract `(expr, functions, max.names, unique)`;
+        // the R-level all.vars/all.names wrappers pass distinct flags.
+        "all.names" => Some(crate::mainutils::list::do_allnames),
         "encodeString" => Some(crate::mainutils::essentials::do_encodeString_internal),
         "pmax" => Some(crate::mainutils::essentials::do_pmax_internal),
         "pmin" => Some(crate::mainutils::essentials::do_pmin_internal),

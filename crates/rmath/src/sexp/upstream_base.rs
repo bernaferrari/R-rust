@@ -1143,11 +1143,12 @@ const MAX_PASSES: usize = 8;
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
 pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
-    // Default off: loader-on corpus shards regress beyond 717_cut_Date
-    // (fixed): 1026_arima_d_and_D (arima_native panic), 620_wilcox_test
-    // (permdist overflow), 282_environment_binding_locks divergence and a
-    // 528_onexit_gc_return_value timeout. Opt in with RPORT_UPSTREAM_BASE=1.
-    if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
+    // Default ON since the loader-on corpus reached 1181/1181 strict
+    // (visibility fix for stock-invisible internals, all.names internal
+    // contract; the earlier arima/permdist panics were mid-edit artifacts
+    // and the 528 timeout was a debug-profile harness default). Opt out
+    // with RPORT_UPSTREAM_BASE=0 (diagnostic escape hatch).
+    if std::env::var_os("RPORT_UPSTREAM_BASE").as_deref() == Some(std::ffi::OsStr::new("0")) {
         return;
     }
 
