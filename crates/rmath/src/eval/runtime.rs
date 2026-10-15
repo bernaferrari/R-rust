@@ -101,7 +101,9 @@ impl VisibilityGuard {
 
 impl Drop for VisibilityGuard {
     fn drop(&mut self) {
-        let Some(instance) = self.original_instance() else { return };
+        let Some(instance) = self.original_instance() else {
+            return;
+        };
         // Cleanup belongs to the original pinned owner even after revocation,
         // and must not dispatch through a newer or absent ambient runtime.
         unsafe {

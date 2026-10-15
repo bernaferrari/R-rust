@@ -610,12 +610,10 @@ where
     let original = crate::sexp::instance::current_instance_ptr();
     // Retain physical bytes, but never use this lease to reactivate a revoked
     // owner or attribute its failure to a replacement runtime.
-    let _pin = original.and_then(|instance| unsafe {
-        crate::sexp::context::pin_context_owner_in(instance)
-    });
-    let availability = original.map(|instance| unsafe {
-        crate::sexp::instance::instance_liveness(instance)
-    });
+    let _pin = original
+        .and_then(|instance| unsafe { crate::sexp::context::pin_context_owner_in(instance) });
+    let availability =
+        original.map(|instance| unsafe { crate::sexp::instance::instance_liveness(instance) });
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(value) => value,
         Err(payload) => {

@@ -923,33 +923,63 @@ mod owned_matcher_tests {
         let owner = session.owner_token().unwrap();
         let factory = SessionNodeFactory::new(owner);
         let global = session.global_env().unwrap();
-        let expression = owner.with_arena(|arena| crate::eval::parser::parse(
-            "(function() { on.exit(.Internal(gc(FALSE,FALSE,TRUE))); 314L })()",
-            arena, factory.clone())).unwrap().unwrap();
+        // Integer construction is unrelated to closure cleanup. Avoid routing
+        // this fixture through libm's parser FMA assembly, unsupported by Miri.
+        unsafe {
+            let value = factory
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(314))
+                .unwrap();
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::Rf_install(c"sentinel".as_ptr()),
+                value.as_raw(),
+                global.as_raw(),
+            );
+        }
+        let expression = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "(function() { on.exit(.Internal(gc(FALSE,FALSE,TRUE))); sentinel })()",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
         let called = Rc::new(Cell::new(false));
         let observed = called.clone();
         session.with_active_in(|instance| unsafe {
             (*instance).eval_state.jit_enabled = 0;
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                if observed.get() { return; }
+                if observed.get() {
+                    return;
+                }
                 let context = crate::sexp::context::R_GlobalContext_in(instance);
-                if context.is_null() { return; }
+                if context.is_null() {
+                    return;
+                }
                 let value = (*context).returnValue.as_raw();
-                if value.is_null() || TYPEOF(value) != SEXPTYPE::INTSXP
-                    || XLENGTH(value) != 1 || *crate::sexp::accessors::INTEGER(value) != 314
-                { return; }
+                if value.is_null()
+                    || TYPEOF(value) != SEXPTYPE::INTSXP
+                    || XLENGTH(value) != 1
+                    || *crate::sexp::accessors::INTEGER(value) != 314
+                {
+                    return;
+                }
                 observed.set(true);
                 crate::sexp::globals::set_R_Visible_in(instance, 0);
                 std::panic::panic_any(ExitPanic(73));
             }));
         });
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            session.with_active(|| unsafe { Rf_eval(expression.as_raw(),global.as_raw()) })
+            session.with_active(|| unsafe { Rf_eval(expression.as_raw(), global.as_raw()) })
         }));
         assert!(called.get());
-        assert_eq!(*outcome.unwrap_err().downcast::<ExitPanic>().unwrap(),ExitPanic(73));
+        assert_eq!(
+            *outcome.unwrap_err().downcast::<ExitPanic>().unwrap(),
+            ExitPanic(73)
+        );
         session.with_active_in(|instance| unsafe {
-            assert_eq!(crate::sexp::globals::R_Visible_in(instance),1);
+            assert_eq!(crate::sexp::globals::R_Visible_in(instance), 1);
             assert!((*instance).context_stack.is_empty());
         });
     }
@@ -965,14 +995,32 @@ mod owned_matcher_tests {
             let pin = weak.pin().unwrap();
             let instance = pin.as_ptr();
             let factory = weak.node_factory().unwrap();
-            let body = if visible == 0 { "invisible(314L)" } else { "314L" };
-            let source = format!(
-                "(function() {{ on.exit(.Internal(gc(FALSE,FALSE,TRUE))); {body} }})()"
-            );
-            let expression = session.owner_token().unwrap()
+            let body = if visible == 0 {
+                "invisible(sentinel)"
+            } else {
+                "sentinel"
+            };
+            let source =
+                format!("(function() {{ on.exit(.Internal(gc(FALSE,FALSE,TRUE))); {body} }})()");
+            let expression = session
+                .owner_token()
+                .unwrap()
                 .with_arena(|arena| crate::eval::parser::parse(&source, arena, factory.clone()))
-                .unwrap().unwrap().into_owned().unwrap();
+                .unwrap()
+                .unwrap()
+                .into_owned()
+                .unwrap();
             let global = session.global_env().unwrap().into_owned().unwrap();
+            unsafe {
+                let value = factory
+                    .wrap(crate::sexp::constructors::Rf_ScalarInteger(314))
+                    .unwrap();
+                crate::sexp::envir::defineVar(
+                    crate::sexp::symbol::Rf_install(c"sentinel".as_ptr()),
+                    value.as_raw(),
+                    global.as_raw(),
+                );
+            }
             let sessions = Rc::new(RefCell::new((Some(session), None)));
             let retained = sessions.clone();
             let called = Rc::new(Cell::new(false));
@@ -980,13 +1028,21 @@ mod owned_matcher_tests {
             unsafe {
                 (*instance).eval_state.jit_enabled = 0;
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                    if observed.get() { return; }
+                    if observed.get() {
+                        return;
+                    }
                     let context = crate::sexp::context::R_GlobalContext_in(instance);
-                    if context.is_null() { return; }
+                    if context.is_null() {
+                        return;
+                    }
                     let value = (*context).returnValue.as_raw();
-                    if value.is_null() || TYPEOF(value) != SEXPTYPE::INTSXP
-                        || XLENGTH(value) != 1 || *crate::sexp::accessors::INTEGER(value) != 314
-                    { return; }
+                    if value.is_null()
+                        || TYPEOF(value) != SEXPTYPE::INTSXP
+                        || XLENGTH(value) != 1
+                        || *crate::sexp::accessors::INTEGER(value) != 314
+                    {
+                        return;
+                    }
                     observed.set(true);
                     set_R_Visible_in(instance, 1 - visible);
                     if close {
@@ -1006,25 +1062,46 @@ mod owned_matcher_tests {
                 Rf_eval(expression.as_raw(), global.as_raw())
             }));
             assert!(called.get(), "on.exit must execute the collecting callback");
-            assert_eq!(outcome.is_err(), close,
-                "revoked owners refuse results; live owners resume after nested session construction");
-            assert_eq!(unsafe { R_Visible_in(instance) }, visible,
-                "cleanup restores the original body visibility, close={close}, replace={replace}");
+            assert_eq!(
+                outcome.is_err(),
+                close,
+                "revoked owners refuse results; live owners resume after nested session construction"
+            );
+            assert_eq!(
+                unsafe { R_Visible_in(instance) },
+                visible,
+                "cleanup restores the original body visibility, close={close}, replace={replace}"
+            );
             if replace {
-                sessions.borrow().1.as_ref().unwrap().with_active_in(|other| {
-                    assert_eq!(unsafe { R_Visible_in(other) }, 1 - visible,
-                        "original cleanup must not change a replacement runtime");
-                });
+                sessions
+                    .borrow()
+                    .1
+                    .as_ref()
+                    .unwrap()
+                    .with_active_in(|other| {
+                        assert_eq!(
+                            unsafe { R_Visible_in(other) },
+                            1 - visible,
+                            "original cleanup must not change a replacement runtime"
+                        );
+                    });
             }
             if let Err(payload) = outcome {
-                let message = payload.downcast_ref::<crate::sexp::context::RError>()
+                let message = payload
+                    .downcast_ref::<crate::sexp::context::RError>()
                     .map(|error| error.message.as_str())
-                    .or_else(|| match payload.downcast_ref::<crate::sexp::context::RSignal>() {
-                        Some(crate::sexp::context::RSignal::Error { message }) => Some(message.as_str()),
-                        _ => None,
-                    });
-                assert!(message.is_some(),
-                    "revocation must preserve a typed refusal rather than an ambient-runtime panic");
+                    .or_else(
+                        || match payload.downcast_ref::<crate::sexp::context::RSignal>() {
+                            Some(crate::sexp::context::RSignal::Error { message }) => {
+                                Some(message.as_str())
+                            }
+                            _ => None,
+                        },
+                    );
+                assert!(
+                    message.is_some(),
+                    "revocation must preserve a typed refusal rather than an ambient-runtime panic"
+                );
             }
             // Break the test callback's facade-holder cycle before measuring
             // the final physical allocation release.
