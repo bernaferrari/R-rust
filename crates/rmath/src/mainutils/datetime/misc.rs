@@ -284,6 +284,15 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
+        // GNU tail: propagate names from the year component and attach the
+        // "Date" class (do_POSIXlt2D in datetime.c).
+        let nm = getAttrib(VECTOR_ELT(x, 5), R_NamesSymbol());
+        if !nm.is_null() && nm != R_NilValue() {
+            setAttrib(ans, R_NamesSymbol(), nm);
+        }
+        let klass = crate::sexp::constructors::Rf_mkString(c"Date".as_ptr());
+        let _klass_guard = protect(klass);
+        setAttrib(ans, R_ClassSymbol(), klass);
         ans
     }
 }

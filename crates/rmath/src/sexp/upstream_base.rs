@@ -1143,11 +1143,10 @@ const MAX_PASSES: usize = 8;
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
 pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
-    // Default off: one corpus case still regresses with the loader on
-    // (717_cut_Date: `seq` dispatch from a staged closure reached through
-    // two R frames falls to seq.default). The former model.matrix
-    // *vtmp*, gettext, iconvlist, quade, nls and Date-family failures are
-    // fixed; opt in with RPORT_UPSTREAM_BASE=1.
+    // Default off: loader-on corpus shards regress beyond 717_cut_Date
+    // (fixed): 1026_arima_d_and_D (arima_native panic), 620_wilcox_test
+    // (permdist overflow), 282_environment_binding_locks divergence and a
+    // 528_onexit_gc_return_value timeout. Opt in with RPORT_UPSTREAM_BASE=1.
     if std::env::var_os("RPORT_UPSTREAM_BASE").is_none() {
         return;
     }
