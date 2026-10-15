@@ -77,3 +77,5 @@ pub use self::warn::*;
 mod number_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod warning_ownership_tests;

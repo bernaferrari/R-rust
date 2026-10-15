@@ -226,8 +226,7 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                         value
                     },
                 );
-                crate::main::coerce::set_coercion_warning_call(call);
-                Some(crate::main::coerce::CoercionWarningCallGuard)
+                Some(crate::mainutils::errors::warning_call_guard(call))
             } else {
                 None
             };

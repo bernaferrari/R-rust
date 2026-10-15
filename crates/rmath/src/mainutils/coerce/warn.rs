@@ -322,80 +322,57 @@ pub unsafe fn CLEAR_ATTRIB(x: SEXP) {
 
 // ---------------------------------------------------------------------------
 // CoercionWarning
-thread_local! {
-    static COERCION_WARN_CALL: std::cell::Cell<SEXP> =
-        const { std::cell::Cell::new(std::ptr::null_mut()) };
-}
-
-/// Attribute the next coercion warnings to `call` (GNU attributes them to
-/// the dynamic R call, e.g. `storage.mode(x) <- "double"` in qr.default).
-/// The call is protected for the scope of the override.
-pub unsafe fn set_coercion_warning_call(call: SEXP) {
-    unsafe {
-        let previous = COERCION_WARN_CALL.get();
-        if !previous.is_null() {
-            crate::sexp::protect::unprotect_count(1);
-        }
-        if !call.is_null() {
-            crate::sexp::protect::protect(call);
-        }
-        COERCION_WARN_CALL.set(call);
-    }
-}
-
-/// Drop the coercion warning call override.
-pub unsafe fn clear_coercion_warning_call() {
-    unsafe {
-        set_coercion_warning_call(std::ptr::null_mut());
-    }
-}
-
-/// Clears the override when dropped, including on R-error unwind.
-pub struct CoercionWarningCallGuard;
-
-impl Drop for CoercionWarningCallGuard {
-    fn drop(&mut self) {
-        unsafe {
-            clear_coercion_warning_call();
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 
 /// Issue coercion warnings based on the warning flags.
 ///
 /// This is the equivalent of R's `CoercionWarning()` from coerce.c.
 pub unsafe fn CoercionWarning(warn: c_int) {
-    // Route through the warnings machinery (like stock's warningcall) so
-    // handlers such as suppressWarnings()/withCallingHandlers() see them.
-    // GNU `options()` is a closure, so warning() attributes to that call;
-    // the port's primitive uses this override to keep the same `In options(...)`.
-    let override_call = COERCION_WARN_CALL.get();
-    let emit = |msg: &[u8]| {
-        if !override_call.is_null() {
-            unsafe {
-                crate::mainutils::errors::warningcall(
-                    override_call,
-                    msg.as_ptr() as *const core::ffi::c_char,
-                )
-            };
-        } else {
-            unsafe {
-                crate::mainutils::errors::Rf_warning(msg.as_ptr() as *const core::ffi::c_char)
-            };
-        }
-    };
-    if warn & WARN_NA != 0 {
-        emit(b"NAs introduced by coercion\0");
+    if warn & (WARN_NA | WARN_INT_NA | WARN_IMAG | WARN_RAW) == 0 {
+        return;
     }
-    if warn & WARN_INT_NA != 0 {
-        emit(b"NAs introduced by coercion to integer range\0");
-    }
-    if warn & WARN_IMAG != 0 {
-        emit(b"imaginary parts discarded in coercion\0");
-    }
-    if warn & WARN_RAW != 0 {
-        emit(b"out-of-range values treated as 0 in coercion to raw\0");
-    }
+    let result: crate::sexp::object::SexpResult<()> = (|| {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
+            .weak_owner()
+            .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            // The existing session-local warning scope owns the override.
+            // Also retain this actual call across every handler: a nested
+            // scope may replace the slot or revoke the original runtime.
+            let attributed = access.with_native(|token| {
+                let call = crate::mainutils::errors::warning_call_override();
+                if call.is_null() {
+                    Ok(None)
+                } else {
+                    unsafe { token.sexp(call)?.into_owned().map(Some) }
+                }
+            })?;
+            for (flag, message) in [
+                (WARN_NA, c"NAs introduced by coercion"),
+                (WARN_INT_NA, c"NAs introduced by coercion to integer range"),
+                (WARN_IMAG, c"imaginary parts discarded in coercion"),
+                (
+                    WARN_RAW,
+                    c"out-of-range values treated as 0 in coercion to raw",
+                ),
+            ] {
+                if warn & flag != 0 {
+                    access.with_native(|_| {
+                        unsafe {
+                            if let Some(call) = &attributed {
+                                crate::mainutils::errors::warningcall(
+                                    call.as_raw(),
+                                    message.as_ptr(),
+                                );
+                            } else {
+                                crate::mainutils::errors::Rf_warning(message.as_ptr());
+                            }
+                        }
+                        Ok(())
+                    })?;
+                }
+            }
+            Ok(())
+        })?
+    })();
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 }
