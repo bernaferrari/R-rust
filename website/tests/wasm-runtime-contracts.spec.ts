@@ -872,17 +872,15 @@ test("named virtual file constructors avoid host process assumptions", async ({
         "con<-file('named-open.txt',open='w');writeLines('hello',con);close(con);identical(readLines('named-open.txt',warn=FALSE),'hello')",
         "console"
       )
-      let anonymousError = ""
-      try {
-        await runtime.run("file('')", "console")
-      } catch (error) {
-        anonymousError = String(error)
-      }
+      const anonymous = await runtime.run(
+        "local({con<-file('');on.exit(close(con));writeLines('anonymous',con);identical(readLines(con,warn=FALSE),'anonymous')})",
+        "console"
+      )
       const recovery = await runtime.run("1+1", "console")
       return {
         deferred: deferred.output,
         opened: opened.output,
-        anonymousError,
+        anonymous: anonymous.output,
         recovery: recovery.output,
       }
     } finally {
@@ -891,7 +889,6 @@ test("named virtual file constructors avoid host process assumptions", async ({
   })
   expect(result.deferred).toBe("[1] TRUE\n")
   expect(result.opened).toBe("[1] TRUE\n")
-  expect(result.anonymousError).toContain("anonymous browser file connections")
-  expect(result.anonymousError).not.toContain("Unexpected interpreter panic")
+  expect(result.anonymous).toBe("[1] TRUE\n")
   expect(result.recovery).toBe("[1] 2\n")
 })
