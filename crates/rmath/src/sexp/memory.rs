@@ -19,6 +19,7 @@
 //! stack, remembered-set edges). Dropping roots because "there is no GC" is
 //! use-after-free — do not treat this module as GC-free.
 
+mod bytecode_strings;
 mod characters;
 
 use super::ffi::{NodeBody, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
@@ -45,6 +46,10 @@ mod retention_tests;
 #[cfg(test)]
 #[path = "memory/character_cache_tests.rs"]
 mod character_cache_tests;
+
+#[cfg(test)]
+#[path = "memory/bytecode_string_tests.rs"]
+mod bytecode_string_tests;
 
 mod arena;
 mod budget;

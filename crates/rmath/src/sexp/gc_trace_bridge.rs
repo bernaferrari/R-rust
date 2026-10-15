@@ -154,12 +154,31 @@ fn remap_fields(
             .expect("GC vector length fits its reference allocation"),
         None => Vec::new(),
     };
+    // Nonmoving sweep may clear retired children in an unreachable readonly
+    // code literal. Arbitrary remaps and generic immutable vectors retain
+    // their normal transactional rejection before any header is published.
+    let literal_cleanup = header.sxpinfo.type_of() == crate::sexp::ffi::SEXPTYPE::STRSXP
+        && header_changes
+            .iter()
+            .map(|(_, child)| child)
+            .chain(vector_changes.iter().map(|(_, child)| child))
+            .all(|child| match heap.resolve_link(*child) {
+                Some(crate::sexp::heap::ResolvedLink::Null) => true,
+                Some(crate::sexp::heap::ResolvedLink::Singleton(value)) => {
+                    value.kind() == crate::sexp::globals::SingletonKind::Nil
+                }
+                _ => false,
+            });
     if !vector_changes.is_empty() {
-        vector_payload
+        let payload = vector_payload
             .as_ref()
-            .expect("GC reference changes have an allocation")
-            .validate_sparse(&vector_changes)
-            .expect("GC reference changes require writable bounded cells");
+            .expect("GC reference changes have an allocation");
+        (if literal_cleanup {
+            payload.validate_collector_remap(&vector_changes)
+        } else {
+            payload.validate_sparse(&vector_changes)
+        })
+        .expect("GC reference changes require bounded cells");
     }
     // Validate the entire plan before publishing any header or payload change.
     // Default HashMap lookup and Cell reads invoke no callbacks or storage loans.
@@ -181,11 +200,15 @@ fn remap_fields(
             .expect("GC parent remains live");
     }
     if !vector_changes.is_empty() {
-        vector_payload
+        let payload = vector_payload
             .as_ref()
-            .expect("GC reference changes have an allocation")
-            .replace_sparse(&vector_changes)
-            .expect("GC reference positions remain bounded");
+            .expect("GC reference changes have an allocation");
+        (if literal_cleanup {
+            payload.commit_collector_remap(&vector_changes)
+        } else {
+            payload.replace_sparse(&vector_changes)
+        })
+        .expect("GC reference positions remain bounded");
     }
 }
 
@@ -439,40 +462,48 @@ mod tests {
 
     #[test]
     fn immutable_reference_transaction_rejects_before_publishing_attribute() {
-        let mut arena = RArena::new();
-        let parent = checked_projection(arena.alloc_vector(SEXPTYPE::VECSXP, 1))
+        for kind in [SEXPTYPE::VECSXP, SEXPTYPE::STRSXP] {
+            let mut arena = RArena::new();
+            let parent = checked_projection(arena.alloc_vector(kind, 1)).unwrap().1;
+            let child = checked_projection(if kind == SEXPTYPE::STRSXP {
+                arena.alloc_charsxp(b"original")
+            } else {
+                arena.alloc_node(SEXPTYPE::LISTSXP)
+            })
             .unwrap()
             .1;
-        let child = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
+            let replacement = checked_projection(if kind == SEXPTYPE::STRSXP {
+                arena.alloc_charsxp(b"replacement")
+            } else {
+                arena.alloc_node(SEXPTYPE::LISTSXP)
+            })
             .unwrap()
             .1;
-        let replacement = checked_projection(arena.alloc_node(SEXPTYPE::LISTSXP))
-            .unwrap()
-            .1;
-        let heap = parent.heap_identity();
-        heap.set_edge(&parent, EdgeField::Attribute, ReferenceChild::Node(&child))
-            .unwrap();
-        heap.set_reference_elt(&parent, 0, ReferenceChild::Node(&child))
-            .unwrap();
-        let payload = heap.payload_lease(&parent).unwrap();
-        payload.make_immutable();
-        let original = child.link().unwrap();
-        let target = replacement.link().unwrap();
-        for callback in [true, false] {
-            let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if callback {
-                    rewrite_children(&parent, true, |link| {
-                        if *link == original {
-                            *link = target;
-                        }
-                    });
-                } else {
-                    remap_children(&parent, &HashMap::from([(original, target)]));
-                }
-            }));
-            assert!(rejected.is_err());
-            assert_eq!(heap.edge(&parent, EdgeField::Attribute), Some(original));
-            assert_eq!(heap.reference_link_elt(&parent, 0), Some(original));
+            let heap = parent.heap_identity();
+            heap.set_edge(&parent, EdgeField::Attribute, ReferenceChild::Node(&child))
+                .unwrap();
+            heap.set_reference_elt(&parent, 0, ReferenceChild::Node(&child))
+                .unwrap();
+            let payload = heap.payload_lease(&parent).unwrap();
+            payload.make_immutable();
+            let original = child.link().unwrap();
+            let target = replacement.link().unwrap();
+            for callback in [true, false] {
+                let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    if callback {
+                        rewrite_children(&parent, true, |link| {
+                            if *link == original {
+                                *link = target;
+                            }
+                        });
+                    } else {
+                        remap_children(&parent, &HashMap::from([(original, target)]));
+                    }
+                }));
+                assert!(rejected.is_err());
+                assert_eq!(heap.edge(&parent, EdgeField::Attribute), Some(original));
+                assert_eq!(heap.reference_link_elt(&parent, 0), Some(original));
+            }
         }
     }
 

@@ -89,7 +89,17 @@ fn mutate_header(pointer: SEXP, update: impl FnOnce(&mut SexprecCore)) {
     let mut header = super::memory::checked_snapshot(projection, &node)
         .unwrap_or_else(|| super::context::r_error("stale header write"));
     let original_kind = header.sxpinfo.type_of();
+    // Executable string literals may share readonly cells. Their sharing
+    // state cannot be cleared by argument-link or setter bookkeeping.
+    let readonly_string = original_kind == SEXPTYPE::STRSXP
+        && node
+            .heap_identity()
+            .payload_lease(&node)
+            .is_some_and(|payload| payload.is_immutable());
     update(&mut header);
+    if readonly_string {
+        header.sxpinfo.set_named(3);
+    }
     if header.sxpinfo.type_of() != original_kind {
         super::context::r_error("header mutation cannot change kind");
     }

@@ -10,6 +10,7 @@ use super::*;
 pub struct RArena {
     /// Nonowning ASCII hints, capped at 4096 entries and 256 KiB of keys.
     pub(super) character_cache: characters::CharacterCache,
+    pub(super) bytecode_string_cache: bytecode_strings::BytecodeStringCache,
     /// Owned pages of interior cells keep legacy header projections stable.
     /// Node identities and collector metadata are independent of raw headers.
     pub(super) backing: Rc<ArenaBacking>,
@@ -217,6 +218,7 @@ impl RArena {
         let retired_resources = backing_owners.resource_drop_queue();
         let mut a = RArena {
             character_cache: characters::CharacterCache::default(),
+            bytecode_string_cache: bytecode_strings::BytecodeStringCache::default(),
             backing,
             _backing_owners: backing_owners,
             retired_resources,

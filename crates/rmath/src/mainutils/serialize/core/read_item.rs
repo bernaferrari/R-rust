@@ -898,6 +898,21 @@ pub(crate) unsafe fn read_strings_item(
     } = item;
     unsafe {
         let len = reader.read_vector_length(4)?;
+        if reader.bc_source_depth > 0 && len == 1 && levs == 0 && isobj == 0 && hasattr == 0 {
+            let character = ReadItemInternal(reader, ref_table)?;
+            if TYPEOF(character) != SEXPTYPE::CHARSXP {
+                return Err("invalid character scalar in GNU bytecode".into());
+            }
+            let _character = protect(character);
+            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            let value = owner
+                .with_arena(|arena| arena.immutable_bytecode_string(character))
+                .map_err(|e| e.to_string())?;
+            if value.is_null() {
+                return Err("cannot allocate GNU bytecode string literal".into());
+            }
+            return Ok(value);
+        }
         let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
         let _s_guard = protect(s);
         for i in 0..len {

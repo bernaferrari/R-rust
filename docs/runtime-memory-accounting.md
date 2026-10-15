@@ -29,6 +29,13 @@ stream callback, so source values, native output and the destination compete
 for the session's one byte limit. Reference tables and saveRDS compressor scratch
 are still tracked separately in `rport-cvs2.6`.
 
+Imported executable code may share plain readonly string literals through
+8192 nonowning cache slots. The fixed native slot array is admitted before
+allocation and never grows; a rejected cache reservation leaves decoding
+available without caching. Entries hold checked generation links rather than
+GC roots. Ordinary serialized data and literals with metadata keep their
+separate decoding paths, and R mutation duplicates shared readonly values.
+
 `max_arena_nodes` limits simultaneously live nodes. Reclaimed slots remain
 reusable, as in GNU R; a live-node cap is not also charged as a cumulative
 allocation quota. Execution time and cancellation independently bound work.
@@ -43,3 +50,6 @@ ledger. The canvas reservation is a conservative admission estimate rather than
 an allocator-level measurement. Browser linear-memory containment and host
 worker cancellation remain separate controls. Bead `rport-cvs2` tracks completion
 of the remaining allocation paths; this change does not close that parent.
+In particular, the permanent symbol/sentinel store still has a separate ledger
+(`rport-cvs2.7`), and serializer reference tables and compression scratch remain
+under `rport-cvs2.6`.

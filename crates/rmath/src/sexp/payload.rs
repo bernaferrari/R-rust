@@ -363,6 +363,21 @@ impl ReferencePayloadLease {
         Some(())
     }
 
+    /// Collector-only remapping of exact retired identities. Readonly code
+    /// cells still need dead-edge cleanup. Cell reads expose copied links,
+    /// never Rust references; semantic mutation keeps using validate_sparse.
+    pub(crate) fn validate_collector_remap(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
+        (!changes.iter().any(|(index, _)| *index >= self.cells.len())).then_some(())
+    }
+
+    pub(crate) fn commit_collector_remap(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
+        self.validate_collector_remap(changes)?;
+        for (index, link) in changes {
+            self.cells[*index].set(*link);
+        }
+        Some(())
+    }
+
     pub(crate) fn replace_sparse(&self, changes: &[(usize, NodeLink)]) -> Option<()> {
         self.validate_sparse(changes)?;
         for (index, link) in changes {
