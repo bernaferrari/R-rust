@@ -1,0 +1,34 @@
+{
+  "purpose": "Lossless storage only; every original TTF byte is preserved.",
+  "regenerate": "python3 crates/r-graphics-engine/assets/compress_fonts.py",
+  "compression": "gzip level 9, mtime 0, OS 255; deflate output may vary by zlib version",
+  "python": "3.15.0",
+  "zlib": "1.2.12",
+  "license": "DejaVu-LICENSE.txt",
+  "files": {
+    "DejaVuSans.ttf": {
+      "original_bytes": 757076,
+      "original_sha256": "7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954",
+      "gzip_bytes": 379453,
+      "gzip_sha256": "a8b1b3fb4c352ccb63bef615bfbb9999fe27241a403202ab9a816cad334c1a59"
+    },
+    "DejaVuSans-Bold.ttf": {
+      "original_bytes": 705684,
+      "original_sha256": "e6476c1b80502924294eed40894c5b18e06c181444ca953e5334262df9c27724",
+      "gzip_bytes": 350433,
+      "gzip_sha256": "6690d799b71af10ea4c825184b23411315713f0e3bf24afbebb44a25ffcaf285"
+    },
+    "DejaVuSans-Oblique.ttf": {
+      "original_bytes": 635416,
+      "original_sha256": "4af75fa16ee6d3ad43e1ecec41862c24954af26a55c6bb1ebb27bd486a50f5f4",
+      "gzip_bytes": 325883,
+      "gzip_sha256": "95eddfce425f9b47a444a04827143489ca425872c196ed401fe07070bf0f4506"
+    },
+    "DejaVuSans-BoldOblique.ttf": {
+      "original_bytes": 643292,
+      "original_sha256": "eb436dca0c2594b73d8b603b892e374fdfd8d885d25ffb4f18df4c4c0b49e50f",
+      "gzip_bytes": 328880,
+      "gzip_sha256": "6b0e7a4269bb3fcd9f5b79d78ac1f747439cfdc305c76e595a4b30a3d2d4de29"
+    }
+  }
+}

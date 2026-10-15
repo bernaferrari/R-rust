@@ -4,6 +4,7 @@
 //! bold-oblique faces. Custom one-face books use that face for every logical
 //! style. Complex-script shaping is not provided here.
 use crate::{FontFace, TextMetrics};
+use std::io::{self, Read};
 use std::sync::{Arc, OnceLock};
 
 /// Ink bounds for one glyph in baseline coordinates.  Advances and line
@@ -142,16 +143,45 @@ pub fn normalized_size(size: f32) -> f32 {
     }
 }
 
+/// Inflate only the original font length and one byte to detect excess data.
+/// The original vendored files remain available as independent test fixtures.
+fn decompress_bundled_font(compressed: &[u8], expected_len: usize) -> io::Result<Vec<u8>> {
+    let limit = expected_len
+        .checked_add(1)
+        .ok_or_else(|| io::Error::other("bundled font length overflow"))?;
+    let mut input = flate2::read::GzDecoder::new(compressed).take(limit as u64);
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(expected_len)
+        .map_err(io::Error::other)?;
+    bytes.resize(expected_len, 0);
+    input.read_exact(&mut bytes)?;
+    if input.read(&mut [0])? != 0 {
+        return Err(io::Error::other("bundled font length mismatch"));
+    }
+    Ok(bytes)
+}
+
 /// Deterministic bundled font shared by every platform and renderer.
 /// DejaVu Sans covers the mathematical operators used by plotmath.
 pub fn default_font_book() -> &'static FontBook {
     static FONT: OnceLock<FontBook> = OnceLock::new();
     FONT.get_or_init(|| {
+        let decode = |compressed: &[u8], length| {
+            decompress_bundled_font(compressed, length)
+                .expect("bundled DejaVu Sans gzip preserves the original font bytes")
+        };
         let bytes = [
-            include_bytes!("../assets/DejaVuSans.ttf").to_vec(),
-            include_bytes!("../assets/DejaVuSans-Bold.ttf").to_vec(),
-            include_bytes!("../assets/DejaVuSans-Oblique.ttf").to_vec(),
-            include_bytes!("../assets/DejaVuSans-BoldOblique.ttf").to_vec(),
+            decode(include_bytes!("../assets/DejaVuSans.ttf.gz"), 757_076),
+            decode(include_bytes!("../assets/DejaVuSans-Bold.ttf.gz"), 705_684),
+            decode(
+                include_bytes!("../assets/DejaVuSans-Oblique.ttf.gz"),
+                635_416,
+            ),
+            decode(
+                include_bytes!("../assets/DejaVuSans-BoldOblique.ttf.gz"),
+                643_292,
+            ),
         ];
         let parse = |bytes: &Vec<u8>| {
             Arc::new(
@@ -171,6 +201,44 @@ pub fn default_font_book() -> &'static FontBook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bundled_fonts_preserve_original_ttf_bytes_for_all_faces() {
+        let book = default_font_book();
+        for (face, original) in [
+            (
+                FontFace::Plain,
+                include_bytes!("../assets/DejaVuSans.ttf").as_slice(),
+            ),
+            (
+                FontFace::Bold,
+                include_bytes!("../assets/DejaVuSans-Bold.ttf").as_slice(),
+            ),
+            (
+                FontFace::Italic,
+                include_bytes!("../assets/DejaVuSans-Oblique.ttf").as_slice(),
+            ),
+            (
+                FontFace::BoldItalic,
+                include_bytes!("../assets/DejaVuSans-BoldOblique.ttf").as_slice(),
+            ),
+        ] {
+            let bytes = book.bytes_for_face(face);
+            assert_eq!(bytes.as_slice(), original, "{face:?}");
+            assert!(Arc::ptr_eq(
+                &bytes,
+                &default_font_book().bytes_for_face(face)
+            ));
+        }
+    }
+
+    #[test]
+    fn bundled_font_decode_rejects_wrong_lengths_and_truncated_gzip() {
+        let compressed = include_bytes!("../assets/DejaVuSans.ttf.gz");
+        assert!(decompress_bundled_font(compressed, 757_075).is_err());
+        assert!(decompress_bundled_font(compressed, 757_077).is_err());
+        assert!(decompress_bundled_font(&compressed[..compressed.len() - 1], 757_076).is_err());
+    }
+
     #[test]
     fn metrics_use_actual_advances_and_baseline() {
         let font = FontBook::default();

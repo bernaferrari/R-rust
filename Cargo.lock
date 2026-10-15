@@ -1676,6 +1676,7 @@ dependencies = [
 name = "r-graphics-engine"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "fontdue",
  "serde",
  "serde_json",
