@@ -11,5 +11,10 @@ local({
     missing <- as.logical(NA_integer_)
     missing[1L] <- TRUE
     stopifnot(identical(missing, TRUE), identical(as.logical(NA_integer_), NA))
+    decoded <- unserialize(serialize(TRUE, NULL))
+    names(decoded) <- "decoded"
+    decoded[1L] <- FALSE
+    stopifnot(identical(decoded, structure(FALSE, names = "decoded")),
+              identical(unserialize(serialize(TRUE, NULL)), TRUE))
     TRUE
 })

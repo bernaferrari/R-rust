@@ -325,6 +325,9 @@ pub use self::stream::*;
 mod tests;
 
 #[cfg(test)]
+mod logical_scalar_tests;
+
+#[cfg(test)]
 mod promise_tests;
 
 #[cfg(test)]

@@ -125,6 +125,40 @@ pub(crate) fn symbol_name_bytes_equal(left: SEXP, right: SEXP) -> bool {
 // Symbol interning
 // ---------------------------------------------------------------------------
 
+/// Reuse a character already retained by this interpreter's symbol table.
+/// This adds no permanent allocations and grants no authority through a byte
+/// key: the original checked header and immutable payload must still agree.
+pub(crate) fn interned_ascii_character(bytes: &[u8]) -> Option<SEXP> {
+    if !bytes.is_ascii() {
+        return None;
+    }
+    let name = std::str::from_utf8(bytes).ok()?;
+    super::instance::with_current_instance(|instance| unsafe {
+        // The ambient entry pins this original instance; only its symbol-map
+        // field is borrowed, and no allocation or callback occurs here.
+        let symbol = *(*instance).symbols.get(name)?;
+        let pointer = PRINTNAME(symbol);
+        let value = super::object::Sexp::try_from_raw(pointer).ok()?;
+        let header = value.header();
+        let NodeBody::Vector(vector) = header.body else {
+            return None;
+        };
+        (header.sxpinfo.type_of() == SEXPTYPE::CHARSXP
+            && header.sxpinfo.gp() == 1 << 6
+            && !header.sxpinfo.alt()
+            && !header.sxpinfo.obj()
+            && header.attrib.is_null()
+            && vector.truelength == 0
+            && matches!(vector.metadata, super::ffi::VectorMetadata::None)
+            && header
+                .payload_lease()
+                .is_some_and(|payload| payload.is_immutable())
+            && header.char_eq(bytes))
+        .then_some(pointer)
+    })
+    .flatten()
+}
+
 /// Install a symbol name into the symbol table.
 ///
 /// If the name already exists, returns the existing symbol.
@@ -364,6 +398,54 @@ mod tests {
 
         assert_eq!(left_a, left_b);
         assert_ne!(left_a, right_a);
+    }
+
+    #[test]
+    fn canonical_character_decode_reuses_only_its_original_interpreters_symbol_name() {
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        let decode = |session: &RSession| {
+            session.with_active(|| unsafe {
+                use crate::sexp::{
+                    accessors::STRING_ELT, constructors::Rf_ScalarString, globals::R_NilValue,
+                    protect::protect,
+                };
+                let name = PRINTNAME(Rf_install(c"shared_decoded_name".as_ptr()));
+                let source = Rf_ScalarString(name);
+                let _source = protect(source);
+                let wire = crate::mainutils::serialize::R_serialize(
+                    source,
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                );
+                let _wire = protect(wire);
+                let decoded = crate::mainutils::serialize::R_unserialize(wire, R_NilValue());
+                assert_eq!(STRING_ELT(decoded, 0), name);
+                name
+            })
+        };
+        let left_name = decode(&left);
+        let right_name = decode(&right);
+        assert_ne!(left_name, right_name);
+    }
+
+    #[test]
+    fn canonical_character_lookup_rejects_modified_headers_and_non_ascii_names() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let name = PRINTNAME(Rf_install(c"changed_decoded_name".as_ptr()));
+            assert_eq!(
+                interned_ascii_character(b"changed_decoded_name"),
+                Some(name)
+            );
+            crate::sexp::accessors::SETLEVELS(name, 1);
+            assert_eq!(interned_ascii_character(b"changed_decoded_name"), None);
+            Rf_install(c"café".as_ptr());
+            assert_eq!(interned_ascii_character("café".as_bytes()), None);
+            assert_eq!(interned_ascii_character(b"not_interned"), None);
+        });
     }
 
     #[test]

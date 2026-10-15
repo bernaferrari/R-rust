@@ -771,6 +771,9 @@ pub(crate) unsafe fn read_character_item(
             Ok(s)
         } else {
             let bytes = reader.read_string_bytes(len as usize)?;
+            if let Some(name) = crate::sexp::symbol::interned_ascii_character(&bytes) {
+                return Ok(name);
+            }
             let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
             Ok(s)
         }
@@ -792,6 +795,18 @@ pub(crate) unsafe fn read_integer_item(
     } = item;
     unsafe {
         let len = reader.read_vector_length(4)?;
+        // Plain logical scalars may share GNU's immutable singleton bank.
+        // Serialized metadata and noncanonical integer representations still
+        // require their own vector and must survive an exact wire round trip.
+        if stype == SEXPTYPE::LGLSXP && len == 1 && levs == 0 && isobj == 0 && hasattr == 0 {
+            let value = reader.read_i32()?;
+            if matches!(value, 0 | 1 | crate::sexp::ffi::NA_LOGICAL) {
+                return Ok(Rf_ScalarLogical(value));
+            }
+            let s = Rf_allocVector3(stype, 1);
+            SET_LOGICAL_ELT(s, 0, value);
+            return Ok(s);
+        }
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
         let int_data = INTEGER(s);

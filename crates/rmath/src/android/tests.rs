@@ -1104,12 +1104,47 @@ fn test_sample_matches_core_r_shape_and_type_rules() {
 #[test]
 #[ignore = "diagnostic; complete package graph census, no performance claim"]
 fn complete_producer_graph_census() {
-    let mut session = RSession::new();
+    let mut session = RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "tmp"));
     session.enable_browser_files();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for path in ["tests/conformance/cases/260_length_replacement.R","tests/conformance/cases/492_rep_int_len_helpers.R","tests/conformance/cases/288_with_calling_handlers.R","tests/conformance/cases/388_no_print_summary_method_aliases.R","tests/conformance/cases/1094_cat_complex_fft.R","tests/conformance/cases/544_complex_constructor_format_str_parity.R","tests/conformance/cases/551_round_signif_complex_parity.R","crates/r-embed/tests/fixtures/complex-print-public-contract.R","crates/r-embed/tests/fixtures/stats-namespace-public-contract.R","crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R","crates/r-embed/tests/fixtures/correlation-public-contract.R","crates/r-embed/tests/fixtures/palette-public-contract.R","crates/r-embed/tests/fixtures/tempfile-public-contract.R","crates/r-embed/tests/fixtures/bincode-public-contract.R","crates/r-embed/tests/fixtures/print-gap-public-contract.R","crates/r-embed/tests/fixtures/arima0-public-contract.R","crates/r-embed/tests/fixtures/utils-console-public-contract.R","crates/r-embed/tests/fixtures/mapply-public-contract.R","crates/r-embed/tests/fixtures/sample-condition-contract.R","crates/r-embed/tests/fixtures/rep-len-admission-contract.R","crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R","crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R","crates/r-embed/tests/fixtures/s3-methods-public-contract.R","crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R","crates/r-embed/tests/fixtures/base-print-methods-public-contract.R","crates/r-embed/tests/fixtures/compiled-dots-public-contract.R","crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R","crates/r-embed/tests/fixtures/print-digits-public-contract.R","crates/r-embed/tests/fixtures/prmatrix-public-contract.R","crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R","crates/r-embed/tests/fixtures/attribute-print-public-contract.R"] {
+    for path in [
+        "tests/conformance/cases/260_length_replacement.R",
+        "tests/conformance/cases/492_rep_int_len_helpers.R",
+        "tests/conformance/cases/288_with_calling_handlers.R",
+        "tests/conformance/cases/388_no_print_summary_method_aliases.R",
+        "tests/conformance/cases/1094_cat_complex_fft.R",
+        "tests/conformance/cases/544_complex_constructor_format_str_parity.R",
+        "tests/conformance/cases/551_round_signif_complex_parity.R",
+        "crates/r-embed/tests/fixtures/complex-print-public-contract.R",
+        "crates/r-embed/tests/fixtures/stats-namespace-public-contract.R",
+        "crates/r-embed/tests/fixtures/get-lazy-mode-public-contract.R",
+        "crates/r-embed/tests/fixtures/correlation-public-contract.R",
+        "crates/r-embed/tests/fixtures/palette-public-contract.R",
+        "crates/r-embed/tests/fixtures/tempfile-public-contract.R",
+        "crates/r-embed/tests/fixtures/bincode-public-contract.R",
+        "crates/r-embed/tests/fixtures/print-gap-public-contract.R",
+        "crates/r-embed/tests/fixtures/arima0-public-contract.R",
+        "crates/r-embed/tests/fixtures/utils-console-public-contract.R",
+        "crates/r-embed/tests/fixtures/mapply-public-contract.R",
+        "crates/r-embed/tests/fixtures/sample-condition-contract.R",
+        "crates/r-embed/tests/fixtures/rep-len-admission-contract.R",
+        "crates/r-embed/tests/fixtures/calling-error-handler-public-contract.R",
+        "crates/r-embed/tests/fixtures/calling-warning-handler-public-contract.R",
+        "crates/r-embed/tests/fixtures/s3-methods-public-contract.R",
+        "crates/r-embed/tests/fixtures/namespace-s3-startup-contract.R",
+        "crates/r-embed/tests/fixtures/base-print-methods-public-contract.R",
+        "crates/r-embed/tests/fixtures/compiled-dots-public-contract.R",
+        "crates/r-embed/tests/fixtures/vector-print-limits-public-contract.R",
+        "crates/r-embed/tests/fixtures/print-digits-public-contract.R",
+        "crates/r-embed/tests/fixtures/prmatrix-public-contract.R",
+        "crates/r-embed/tests/fixtures/condition-handler-stack-public-contract.R",
+        "crates/r-embed/tests/fixtures/attribute-print-public-contract.R",
+    ] {
         let result = session.eval(&std::fs::read_to_string(root.join(path)).unwrap());
-        assert!(!matches!(result.typed,RValue::Error(_)), "{path}: {result:?}");
+        assert!(
+            !matches!(result.typed, RValue::Error(_)),
+            "{path}: {result:?}"
+        );
         session.eval("invisible(gc())");
         println!("CENSUS {path}: {:?}", session.arena_stats());
     }
