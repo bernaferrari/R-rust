@@ -299,13 +299,13 @@ pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
     unsafe {
         let n = crate::sexp::accessors::XLENGTH(m);
         if n < 2 {
-            crate::main::errors::Rf_error(b"length(m) must be at least two\0".as_ptr() as *const i8);
+            crate::main::errors::Rf_error(c"length(m) must be at least two".as_ptr());
         }
         if crate::sexp::accessors::TYPEOF(sx) != SEXPTYPE::REALSXP
             || crate::sexp::accessors::XLENGTH(sx) != n - 1
         {
             crate::main::errors::Rf_error(
-                b"Argument Sx must be numeric vector one shorter than m[]\0".as_ptr() as *const i8,
+                c"Argument Sx must be numeric vector one shorter than m[]".as_ptr(),
             );
         }
         let val = crate::mainutils::duplicate::Rf_duplicate(m);
