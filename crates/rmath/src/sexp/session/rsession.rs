@@ -275,6 +275,9 @@ impl RSession {
         // GNU sessions start with R_Visible = TRUE; the package-loading
         // dance above can leave the flag FALSE (e.g. invisible detach()).
         session.with_active(|| crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE));
+        // Package bootstrap creates temporary method and syntax graphs. Hand
+        // the host a collected live graph before it installs resource limits.
+        session.collect_full_gc().expect("live bootstrap owner");
 
         session
     }
@@ -1333,6 +1336,25 @@ impl RSession {
         self.with_active(|| {
             let _scope = ProtectScope::new(self.instance_ptr());
             f()
+        })
+    }
+
+    /// Collect all generations at a host quiescent point, retaining the
+    /// original owner through resource destructors and rejecting revocation.
+    pub(crate) fn collect_full_gc(&self) -> RResult<()> {
+        if !self.is_active() {
+            return Err(REvalError {
+                message: "session is closed".into(),
+            });
+        }
+        self.with_active_in(|_| {
+            self.owner_token()
+                .expect("active full collection owner")
+                .full_gc()
+                .map(|_| ())
+                .map_err(|error| REvalError {
+                    message: error.to_string(),
+                })
         })
     }
 

@@ -58,7 +58,13 @@ fn exhausted_node_budget_never_reports_a_successful_null_result() {
     let mut limits = session.resource_limits();
     limits.max_arena_nodes = session.arena_stats().active_nodes + 100;
     session.set_resource_limits(limits).unwrap();
-    assert!(session.eval("for (i in 1:1000) new.env()").is_err());
+    // Retain the objects so this reaches the live-node cap. Discarded
+    // environments can legitimately be reclaimed and recycled by GC.
+    assert!(
+        session
+            .eval("held <- vector('list',1000); for (i in 1:1000) held[[i]] <- new.env()")
+            .is_err()
+    );
     session.close();
     let mut fresh = RSession::new().unwrap();
     assert_eq!(fresh.eval("1+1").unwrap(), "[1] 2\n");

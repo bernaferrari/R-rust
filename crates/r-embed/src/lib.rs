@@ -19,8 +19,8 @@ mod packages;
 mod session;
 
 pub use rmath::android::{
-    RArenaStats, RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
-    RuntimePathPolicy,
+    RArenaStats, RAttribute, RComplexValue, RMemoryUsage, RMetadata, RResourceLimits, RRuntimeInfo,
+    RValue, RWorkspaceReservation, RuntimePathPolicy,
 };
 
 pub use packages::RPackageInfo;

@@ -27,6 +27,7 @@ pub struct RSession {
     /// Interactive graphics are recorded into a session-owned scene so a
     /// later command (for example `lines()`) can draw on the prior plot.
     interactive_scene: Option<r_graphics_engine::Scene>,
+    interactive_scene_reservation: Option<rmath::android::RWorkspaceReservation>,
 }
 
 /// Owned result of an evaluation.
@@ -48,14 +49,19 @@ struct TrackingDrawTarget<'a> {
     target: &'a mut dyn r_graphics_engine::DrawTarget,
     drew: bool,
     retained_bytes: usize,
+    reservation: &'a mut rmath::android::RWorkspaceReservation,
     budget_exceeded: bool,
 }
 
 impl TrackingDrawTarget<'_> {
-    fn new(target: &mut r_graphics_engine::Scene) -> TrackingDrawTarget<'_> {
+    fn new<'a>(
+        target: &'a mut r_graphics_engine::Scene,
+        reservation: &'a mut rmath::android::RWorkspaceReservation,
+    ) -> TrackingDrawTarget<'a> {
         TrackingDrawTarget {
             retained_bytes: scene_retained_bytes(target),
             target,
+            reservation,
             drew: false,
             budget_exceeded: false,
         }
@@ -66,7 +72,7 @@ impl TrackingDrawTarget<'_> {
             self.budget_exceeded = true;
             return false;
         };
-        if total > INTERACTIVE_SCENE_BUDGET {
+        if total > INTERACTIVE_SCENE_BUDGET || self.reservation.try_resize(total).is_err() {
             self.budget_exceeded = true;
             false
         } else {
@@ -82,6 +88,11 @@ fn scene_retained_bytes(scene: &r_graphics_engine::Scene) -> usize {
         .iter()
         .map(operation_retained_bytes)
         .fold(0usize, |total, bytes| total.saturating_add(bytes))
+        .max(if scene.operations().is_empty() {
+            0
+        } else {
+            4 * std::mem::size_of::<r_graphics_engine::DrawOperation>()
+        })
 }
 
 fn operation_retained_bytes(operation: &r_graphics_engine::DrawOperation) -> usize {
@@ -114,8 +125,13 @@ impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
         self.target.dimensions()
     }
     fn clear(&mut self, background: Color) {
+        let bytes = 4 * std::mem::size_of::<r_graphics_engine::DrawOperation>();
+        if self.reservation.try_resize(bytes).is_err() {
+            self.budget_exceeded = true;
+            return;
+        }
         self.target.clear(background);
-        self.retained_bytes = 2 * std::mem::size_of::<r_graphics_engine::DrawOperation>();
+        self.retained_bytes = bytes;
     }
     fn set_clip(&mut self, rect: Option<[f32; 4]>) {
         if self.reserve(2 * std::mem::size_of::<r_graphics_engine::DrawOperation>()) {
@@ -318,6 +334,7 @@ impl RSession {
             active: true,
             inner: constructor(),
             interactive_scene: None,
+            interactive_scene_reservation: None,
         })
     }
 
@@ -474,6 +491,19 @@ impl RSession {
     }
 
     /// Return a snapshot of this session's arena allocator.
+    pub fn memory_usage(&mut self) -> Option<rmath::android::RMemoryUsage> {
+        self.inner.memory_usage()
+    }
+
+    pub fn reserve_workspace(
+        &mut self,
+        bytes: usize,
+    ) -> Result<rmath::android::RWorkspaceReservation, RSessionError> {
+        self.inner
+            .reserve_workspace(bytes)
+            .map_err(RSessionError::EvalError)
+    }
+
     pub fn arena_stats(&mut self) -> RArenaStats {
         self.inner.arena_stats()
     }
@@ -566,6 +596,12 @@ impl RSession {
                 "plot width and height must be at least 32 pixels".into(),
             ));
         }
+        let bytes = AndroidHeadlessRenderer::workspace_bytes(width, height)
+            .map_err(RSessionError::RenderError)?;
+        let _workspace = self
+            .inner
+            .reserve_workspace(bytes)
+            .map_err(RSessionError::RenderError)?;
         let mut renderer =
             AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
         self.render_to(code, &mut renderer)?;
@@ -591,13 +627,30 @@ impl RSession {
             ));
         }
         // Validate canvas limits before evaluating user code or retaining a scene.
+        let bytes = AndroidHeadlessRenderer::workspace_bytes(width, height)
+            .map_err(RSessionError::RenderError)?;
+        let _workspace = self
+            .inner
+            .reserve_workspace(bytes)
+            .map_err(RSessionError::RenderError)?;
         let mut renderer =
             AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
+        if self.interactive_scene_reservation.is_none() {
+            self.interactive_scene_reservation = Some(
+                self.inner
+                    .reserve_workspace(0)
+                    .map_err(RSessionError::RenderError)?,
+            );
+        }
+        let reservation = self
+            .interactive_scene_reservation
+            .as_mut()
+            .expect("reserved scene");
         let scene = self
             .interactive_scene
             .get_or_insert_with(|| r_graphics_engine::Scene::new(width, height));
         let (result, budget_exceeded, drew) = {
-            let mut target = TrackingDrawTarget::new(scene);
+            let mut target = TrackingDrawTarget::new(scene, reservation);
             let result = self
                 .inner
                 .eval_script_with_renderplot_backend(code, &mut target);
@@ -607,6 +660,7 @@ impl RSession {
             // A partial retained scene at the budget is unusable for future
             // drawing. Drop it before returning so a new plot can recover.
             self.interactive_scene = None;
+            self.interactive_scene_reservation = None;
             return Err(RSessionError::RenderError(
                 "interactive graphics scene exceeds the 16 MiB memory budget".into(),
             ));
@@ -801,6 +855,7 @@ local({{
         if self.active {
             self.inner.close();
             self.interactive_scene = None;
+            self.interactive_scene_reservation = None;
             self.active = false;
         }
     }

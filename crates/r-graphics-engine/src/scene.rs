@@ -98,7 +98,9 @@ impl DisplayList {
 
     /// Discard all commands recorded for the current page.
     pub fn reset(&mut self) {
-        self.operations.clear();
+        // A new page releases its previous backing, not just its elements.
+        // Hosts can therefore release the old page's memory reservation.
+        self.operations = Vec::new();
     }
 
     /// Replay in the original device coordinate space.

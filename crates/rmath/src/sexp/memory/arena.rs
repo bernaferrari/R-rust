@@ -45,9 +45,9 @@ pub struct RArena {
     /// Host-level node guard: cumulative node admissions (fresh slab slot
     /// or free-list reuse) charged while `guard_max_nodes > 0`. Unlike
     /// `budget.max_nodes` (live-node cap for raw arena clients), the guard
-    /// is never refunded by collection, so a bounded session cannot churn
-    /// unbounded nodes through GC recycling. Only session resource limits
-    /// arm it.
+    /// is never refunded by collection. This optional work quota is separate
+    /// from live-node admission; app hosts use execution time and cancellation
+    /// to bound work without denying reuse of collected nodes.
     pub(super) guard_max_nodes: usize,
     pub(super) guard_nodes_admitted: usize,
 }
@@ -209,7 +209,7 @@ impl RArena {
             page_cookies: RefCell::new(HashMap::new()),
             identity: heap_identity.clone(),
             allocated_bytes: allocated_bytes.clone(),
-            max_bytes: Cell::new(budget.max_bytes),
+            max_bytes: Rc::new(Cell::new(budget.max_bytes)),
             header_bytes: Cell::new(0),
             transient_bytes: transient_bytes.clone(),
         });
@@ -330,6 +330,18 @@ impl RArena {
         )
     }
 
+    pub(crate) fn workspace_bytes(&self) -> usize {
+        self.transient_bytes.get()
+    }
+
+    pub(crate) fn reserve_workspace(&mut self, bytes: usize) -> Option<WorkspaceReservation> {
+        Some(WorkspaceReservation {
+            reservation: self.try_reserve_transient(bytes)?,
+            allocated: self.allocated_bytes.clone(),
+            limit: self.backing.max_bytes.clone(),
+        })
+    }
+
     fn add_accounted_bytes(&mut self, bytes: usize) {
         self.allocated_bytes.set(
             self.allocated_bytes
@@ -421,9 +433,8 @@ impl RArena {
         self.guard_max_nodes == 0 || self.guard_nodes_admitted < self.guard_max_nodes
     }
 
-    /// Arm the host-level cumulative node guard (see `guard_max_nodes`).
-    /// Charging starts from the currently active nodes, so a cap of
-    /// `active_nodes + N` grants exactly N further node admissions.
+    /// Arm an optional cumulative allocation-work guard. Charging starts
+    /// from current live nodes; zero disables it independently of live caps.
     pub fn set_node_guard(&mut self, max_nodes: usize) {
         self.guard_max_nodes = max_nodes;
         self.guard_nodes_admitted = self.node_count();
@@ -1066,6 +1077,36 @@ impl RArena {
             }
             true
         });
+    }
+}
+
+/// Resizable host workspace admission sharing the arena's actual byte ledger.
+/// Resizing never allocates, enters R, or borrows a runtime or payload.
+pub(crate) struct WorkspaceReservation {
+    reservation: TransientReservation,
+    allocated: Rc<Cell<usize>>,
+    limit: Rc<Cell<usize>>,
+}
+
+impl WorkspaceReservation {
+    pub(crate) fn bytes(&self) -> usize {
+        self.reservation.bytes
+    }
+
+    pub(crate) fn try_resize(&mut self, bytes: usize) -> Option<()> {
+        let others = self
+            .reservation
+            .counter
+            .get()
+            .checked_sub(self.reservation.bytes)?;
+        let reserved = others.checked_add(bytes)?;
+        let total = self.allocated.get().checked_add(reserved)?;
+        if bytes > self.reservation.bytes && self.limit.get() != 0 && total > self.limit.get() {
+            return None;
+        }
+        self.reservation.counter.set(reserved);
+        self.reservation.bytes = bytes;
+        Some(())
     }
 }
 

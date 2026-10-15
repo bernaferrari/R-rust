@@ -40,6 +40,27 @@ impl VelloRenderer {
     pub fn new(width: u32, height: u32) -> Self {
         Self::try_new(width.max(1), height.max(1)).expect("invalid Vello canvas dimensions")
     }
+    /// Conservative canvas/PNG admission: raster output, encoded output,
+    /// filter/compression buffers and canvas-scale raster scratch. Path and
+    /// glyph storage are charged separately by the recording host.
+    pub fn workspace_bytes(width: u32, height: u32) -> Result<usize, String> {
+        if width == 0
+            || height == 0
+            || width > u16::MAX as u32
+            || height > u16::MAX as u32
+            || u64::from(width) * u64::from(height) > 16_777_216
+        {
+            return Err(
+                "plot canvas exceeds Vello limits (65535 per dimension, 16777216 pixels)".into(),
+            );
+        }
+        (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|pixels| pixels.checked_mul(12))
+            .and_then(|bytes| bytes.checked_add(1024 * 1024))
+            .ok_or_else(|| "plot workspace size overflow".into())
+    }
+
     pub fn try_new(width: u32, height: u32) -> Result<Self, String> {
         if width == 0
             || height == 0

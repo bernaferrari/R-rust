@@ -311,6 +311,37 @@ impl RSession {
         }
     }
 
+    /// Reserve external workspace before allocating it. No runtime borrow
+    /// survives this call; the returned guard can span evaluation and unwind.
+    pub fn reserve_workspace(&mut self, bytes: usize) -> Result<RWorkspaceReservation, String> {
+        let owner = self
+            .core
+            .owner_token()
+            .and_then(|owner| owner.weak_owner())
+            .ok_or_else(|| "session is closed".to_string())?;
+        let reservation = self
+            .core
+            .with_arena(|arena| arena.reserve_workspace(bytes))
+            .flatten()
+            .ok_or_else(|| "session memory budget exceeded by native workspace".to_string())?;
+        if !owner.is_live() {
+            return Err("session is closed".into());
+        }
+        Ok(RWorkspaceReservation::new(reservation, owner))
+    }
+
+    pub fn memory_usage(&mut self) -> Option<RMemoryUsage> {
+        self.core.with_arena(|arena| {
+            let arena_bytes = arena.total_bytes_allocated() as u64;
+            let workspace_bytes = arena.workspace_bytes() as u64;
+            RMemoryUsage {
+                arena_bytes,
+                workspace_bytes,
+                total_bytes: arena_bytes.saturating_add(workspace_bytes),
+            }
+        })
+    }
+
     pub fn arena_stats(&mut self) -> RArenaStats {
         self.core
             .with_arena(|arena| RArenaStats {
@@ -364,11 +395,10 @@ impl RSession {
             saturating_usize(limits.max_alloc_bytes),
             node_cap,
         ));
-        // The node guard is cumulative (never refunded by collection): a
-        // host that caps `max_arena_nodes` must see churn-heavy workloads
-        // fail with a catchable error instead of silently recycling
-        // garbage-collected nodes under the cap forever.
-        self.core.with_arena(|arena| arena.set_node_guard(node_cap));
+        // This is a live-node cap, not a cumulative allocation quota.
+        // Reclaimed nodes remain reusable; execution time and cancellation
+        // bound work independently without rejecting valid GC-heavy R code.
+        self.core.with_arena(|arena| arena.set_node_guard(0));
     }
 
     /// Return true when a package exists in this session's configured library paths.
@@ -589,12 +619,39 @@ impl RSession {
         self.eval_script_export(code, None, false)
     }
 
+    /// Reclaim at a host quiescent point while preserving the session's
+    /// live-node and byte caps across requests.
+    fn prepare_request_memory(&mut self) {
+        // This is a host quiescent point: no parsed arguments or Rust payload
+        // loans exist yet. Reclaim old temporary graphs to make space for
+        // the new request, rather than waiting until
+        // a deep method-dispatch allocation has exhausted admission space.
+        let pressure = self
+            .core
+            .with_arena(|arena| {
+                let budget = arena.budget();
+                let near = |used: usize, limit: usize| limit != 0 && used > limit - limit / 4;
+                near(arena.node_count(), budget.max_nodes)
+                    || near(
+                        arena
+                            .total_bytes_allocated()
+                            .saturating_add(arena.workspace_bytes()),
+                        budget.max_bytes,
+                    )
+            })
+            .unwrap_or(false);
+        if pressure {
+            let _ = self.core.collect_full_gc();
+        }
+    }
+
     fn eval_script_export(
         &mut self,
         code: &str,
         token: Option<CancellationToken>,
         export_value: bool,
     ) -> RResult {
+        self.prepare_request_memory();
         let limit = self.result_limit;
         let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
         let previous = self.core.replace_cancellation_token(token);
@@ -635,6 +692,7 @@ impl RSession {
         // internal backend slot is restored before returning, so the raw
         // pointer stored by the activation layer never dangles.
         let backend = backend as *mut (dyn r_graphics_engine::DrawTarget + 'session);
+        self.prepare_request_memory();
         let limit = self.result_limit;
         let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
         self.core.eval_script_with_output_capture_then_renderplot(

@@ -34,6 +34,8 @@ use crate::sexp::session::CancellationToken;
 pub use crate::sexp::session::RetainedValueId;
 pub use crate::sexp::session::TopLevelEvaluationMode;
 
+mod resources;
+pub use resources::{RMemoryUsage, RWorkspaceReservation};
 mod session;
 mod values;
 

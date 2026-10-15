@@ -60,6 +60,8 @@ pub struct RResourceLimits {
     pub max_eval_depth: u64,
     pub max_execution_time_ms: u64,
     pub max_alloc_bytes: u64,
+    /// Maximum simultaneously live arena nodes. Garbage-collected slots may
+    /// be reused; execution time and cancellation bound cumulative work.
     pub max_arena_nodes: u64,
 }
 

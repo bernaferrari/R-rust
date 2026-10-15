@@ -20,7 +20,7 @@ pub(crate) struct ArenaBacking {
     pub(super) page_cookies: RefCell<HashMap<u64, usize>>,
     pub(super) identity: HeapIdentity,
     pub(super) allocated_bytes: Rc<Cell<usize>>,
-    pub(super) max_bytes: Cell<usize>,
+    pub(super) max_bytes: Rc<Cell<usize>>,
     pub(super) header_bytes: Cell<usize>,
     pub(super) transient_bytes: Rc<Cell<usize>>,
 }
