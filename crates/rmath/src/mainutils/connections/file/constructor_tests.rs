@@ -83,23 +83,51 @@ fn named_browser_file_is_deferred_without_creating_a_host_file() {
 }
 
 #[test]
-fn anonymous_browser_file_reports_controlled_unsupported_error_and_recovers() {
+fn anonymous_browser_file_is_owned_open_read_write_and_recovers_after_budget_rejection() {
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
     let args = arguments(&session, "", "");
-    let error =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| construct(&session, &args)))
-            .expect_err(
-                "anonymous update connections are not implemented by the virtual file backend",
-            );
-    let error = error
-        .downcast_ref::<RError>()
-        .expect("an R error, not a host panic");
+    let connection = construct(&session, &args);
+    let index = connection.try_integer_elt(0).unwrap() as usize;
+    session.with_active(|| {
+        let table = connection_table();
+        let connection = table[index].as_ref().unwrap();
+        assert!(matches!(connection.kind, ConnKind::AnonymousFile(_)));
+        assert!(
+            connection.isopen && connection.canread && connection.canwrite && connection.canseek
+        );
+        assert_eq!(connection.description, "");
+        assert_eq!(connection.mode, "w+");
+    });
+    session.with_active_in(|instance| unsafe {
+        let arena = &mut (*instance).arena;
+        arena.set_budget(crate::sexp::memory::ArenaBudget::new(
+            arena.total_bytes_allocated() + 3,
+            0,
+        ));
+    });
+    session.with_active(|| connection_write_bytes(index as c_int, &[1, 2, 3]));
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        session.with_active(|| connection_write_bytes(index as c_int, &[4]));
+    }))
+    .expect_err("replacement capacity and original storage must both be admitted");
     assert!(
-        error.message.contains("anonymous browser file connections"),
-        "{}",
-        error.message
+        error
+            .downcast_ref::<RError>()
+            .unwrap()
+            .message
+            .contains("session memory limit")
     );
+    session.with_active_in(|instance| unsafe {
+        (*instance)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+    });
+    session.with_active(|| {
+        crate::sexp::gengc::full_gc();
+        assert_eq!(connection_read_all(index as c_int), [1, 2, 3]);
+        connection_table()[index] = None;
+    });
     assert!(session.list_browser_files().is_empty());
     let recovered = session.eval_code_with_output_capture("1+1").0.unwrap();
     assert_eq!(recovered.try_real_elt(0).unwrap(), 2.0);

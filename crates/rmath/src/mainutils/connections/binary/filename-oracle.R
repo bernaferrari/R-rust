@@ -15,5 +15,44 @@ stopifnot(is.null(visible$value),!visible$visible)
 writeBin(c(1L,256L),output,size=2L,endian='big')
 stopifnot(identical(readBin(output,'raw',n=4L),as.raw(c(0,1,1,0))),
           identical(readBin(output,'integer',n=2L,size=2L,endian='big'),c(1L,256L)))
+operations <- list(
+    list(quote(writeBin(1L,output,endian='bad')), "invalid 'endian' argument", 2),
+    list(quote(writeBin(list(1L),output)), "can only write vector objects", 2),
+    list(quote(writeBin(structure(1L,x=2L),output)), "can only write vector objects", 2),
+    list(quote(writeBin(1L,output,size=3L)), "size 3 is unknown on this machine", 0),
+    list(quote(writeBin(as.raw(1),output,size=2L)), "size changing is not supported for raw vectors", 0),
+    list(quote(writeBin(1+2i,output,size=8L)), "size changing is not supported for complex vectors", 0),
+    list(quote(writeBin(1L,output,useBytes=NA)), "invalid 'useBytes' argument", 0),
+    list(quote((function(){old<-options(warn=2);on.exit(options(old));writeBin(1L,output,size='x',useBytes=NA)})()), "(converted from warning) NAs introduced by coercion", 0),
+    list(quote((function(){old<-options(warn=2);on.exit(options(old));writeBin('a',output,size='x')})()), "(converted from warning) NAs introduced by coercion", 0))
+for (operation in operations) {
+    writeBin(as.raw(c(7,8)),output)
+    message <- tryCatch(eval(operation[[1]]),error=function(e){gc();conditionMessage(e)})
+    stopifnot(identical(message,operation[[2]]), file.info(output)$size == operation[[3]])
+}
+writeBin(integer(),output,size=3L)
+stopifnot(identical(readBin(output,'raw',n=8L),raw()))
+writeBin('a',output,size=3L)
+stopifnot(identical(readBin(output,'raw',n=8L),as.raw(c(97,0))))
+stopifnot(identical(tryCatch(writeBin(1L,raw(),size=3L),error=function(e)conditionMessage(e)),
+                    'size 3 is unknown on this machine'))
+writeBin(as.raw(c(7,8)),output); connection<-file(output,'ab')
+message<-tryCatch(writeBin(1L,connection,size=3L),error=function(e)conditionMessage(e)); close(connection)
+stopifnot(identical(message,'size 3 is unknown on this machine'),
+          identical(readBin(output,'raw',n=8L),as.raw(c(7,8))))
+connection<-file(output,'w')
+stopifnot(identical(tryCatch(readBin(connection,'raw',n=1L),error=function(e)conditionMessage(e)),
+                    'can only read from a binary connection'),
+          identical(tryCatch(writeBin(1L,connection,size=3L),error=function(e)conditionMessage(e)),
+                    'can only write to a binary connection'))
+close(connection)
+visible<-withVisible(writeBin(as.raw(c(1,2)),raw()))
+stopifnot(visible$visible,identical(visible$value,as.raw(c(1,2))))
+writeBin(c('a','b'),output); connection<-file(output,'rb')
+stopifnot(identical(readBin(connection,'character',n=0L),character()),
+          identical(readBin(connection,'character',n=1L),'a'),
+          identical(readBin(connection,'character',n=1L),'b'),
+          identical(readBin(connection,'character',n=1L),character()))
+close(connection)
 unlink(directory,recursive=TRUE)
 cat('GNU_BINARY_FILENAME_CONTRACT_PASS\n')

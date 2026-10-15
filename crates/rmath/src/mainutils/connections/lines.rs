@@ -117,6 +117,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         conn.incomplete = false;
         let mut lines: Vec<String> = Vec::new();
+        let mut anonymous_reservations = Vec::new();
         while lines.len() < n {
             let Some(line) = read_pushback_line(conn, skip_nul) else {
                 break;
@@ -125,7 +126,17 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         }
         let backend_limit = n.saturating_sub(lines.len());
 
-        match &conn.kind {
+        match &mut conn.kind {
+            ConnKind::AnonymousFile(file) => {
+                for _ in 0..backend_limit {
+                    let result = file.read_line().unwrap_or_else(|message| r_error(&message));
+                    let Some((bytes, reservation)) = result else {
+                        break;
+                    };
+                    lines.push(nul_normalized_line(bytes, skip_nul));
+                    anonymous_reservations.push(reservation);
+                }
+            }
             ConnKind::File => {
                 if conn.mode.contains('+') {
                     if let Some(writer) = conn.writer.as_mut() {
@@ -335,6 +346,33 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                 }
                 return R_NilValue();
             }
+        }
+        let anonymous = {
+            let table = connection_table();
+            table[i]
+                .as_ref()
+                .is_some_and(|conn| matches!(conn.kind, ConnKind::AnonymousFile(_)))
+        };
+        if anonymous {
+            let token = connection_token(i as c_int).unwrap_or_else(|message| r_error(&message));
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let text = owner
+                .sexp(text)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let (chunks, _reservations) = super::file::anonymous::text_chunks(&text, &sep_str)
+                .unwrap_or_else(|message| r_error(&message));
+            for chunk in chunks {
+                let index = token
+                    .require_current()
+                    .unwrap_or_else(|message| r_error(&message));
+                connection_write_bytes(index, &chunk);
+            }
+            if let Some(guard) = auto_guard.as_mut() {
+                guard.close();
+            }
+            return R_NilValue();
         }
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {

@@ -28,6 +28,297 @@ struct NumericProvider {
     length: i64,
     kind: SEXPTYPE,
 }
+
+struct RawProvider(Rc<dyn Fn()>);
+impl AltrepClass for RawProvider {
+    fn vector_type(&self) -> SEXPTYPE {
+        SEXPTYPE::RAWSXP
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(4)
+    }
+    fn element<'s>(&self, _: &AltrepContext<'s>, index: i64) -> SexpResult<AltrepElement<'s>> {
+        (self.0)();
+        Ok(AltrepElement::Raw(index as u8 + 1))
+    }
+}
+
+struct ConnectionProvider {
+    kind: SEXPTYPE,
+    callback: Rc<dyn Fn()>,
+}
+impl AltrepClass for ConnectionProvider {
+    fn vector_type(&self) -> SEXPTYPE {
+        self.kind
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(1)
+    }
+    fn element<'s>(&self, context: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+        (self.callback)();
+        Ok(if self.kind == SEXPTYPE::INTSXP {
+            AltrepElement::Integer(1)
+        } else {
+            AltrepElement::String(context.string("data")?)
+        })
+    }
+}
+
+fn replace_connection(index: usize) {
+    let mut replacement = RConn::new(
+        "rawConnection",
+        "replacement",
+        "w+b",
+        ConnKind::RawConnection,
+    );
+    replacement.isopen = true;
+    replacement.text = false;
+    replacement.canread = true;
+    replacement.canwrite = true;
+    replacement.raw_data = vec![71, 72];
+    connection_table()[index] = Some(Box::new(replacement));
+}
+
+fn assert_replacement_untouched(session: &RSession, index: usize) {
+    session.with_active(|| {
+        let table = connection_table();
+        let replacement = table[index].as_ref().unwrap();
+        assert_eq!(replacement.raw_data, [71, 72]);
+        assert_eq!(replacement.raw_pos, 0);
+    });
+}
+
+#[test]
+fn owned_binary_connection_token_rejects_slot_reuse_from_size_and_character_providers() {
+    for kind in [SEXPTYPE::INTSXP, SEXPTYPE::STRSXP] {
+        let mut session = session();
+        let con = session
+            .eval_script_with_output_capture("file('', 'w+b')")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let index = con.try_integer_elt(0).unwrap() as usize;
+        let calls = Rc::new(Cell::new(0));
+        let callback_calls = calls.clone();
+        let class = session
+            .register_altrep_class(
+                "binary.connection.replace",
+                ConnectionProvider {
+                    kind,
+                    callback: Rc::new(move || {
+                        callback_calls.set(callback_calls.get() + 1);
+                        replace_connection(index);
+                        crate::sexp::gengc::full_gc();
+                    }),
+                },
+            )
+            .unwrap();
+        let provider = AltrepBuilder::new(class)
+            .build()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let values = if kind == SEXPTYPE::INTSXP {
+            let object = session
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            vec![object, con, provider]
+        } else {
+            vec![provider, con]
+        };
+        let error = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            filename_owned::write(arguments(&session, &values))
+        })) {
+            Ok(result) => result.unwrap_err(),
+            Err(payload) => payload.downcast::<RError>().unwrap().message,
+        };
+        assert!(
+            error.contains("original connection is no longer available"),
+            "{error}"
+        );
+        assert_eq!(calls.get(), 1);
+        assert_replacement_untouched(&session, index);
+        assert_eq!(
+            session
+                .eval_code_with_output_capture("1+1")
+                .0
+                .unwrap()
+                .try_real_elt(0)
+                .unwrap(),
+            2.0
+        );
+    }
+}
+
+#[test]
+fn owned_binary_connection_token_rejects_slot_reuse_from_count_provider_without_reading_replacement()
+ {
+    let mut session = session();
+    let con = session
+        .eval_script_with_output_capture("file('', 'w+b')")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let index = con.try_integer_elt(0).unwrap() as usize;
+    let class = session
+        .register_altrep_class(
+            "binary.connection.read.replace",
+            ConnectionProvider {
+                kind: SEXPTYPE::INTSXP,
+                callback: Rc::new(move || {
+                    replace_connection(index);
+                    crate::sexp::gengc::full_gc();
+                }),
+            },
+        )
+        .unwrap();
+    let count = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let error = filename_owned::read(read_arguments(&session, con, Some(count))).unwrap_err();
+    assert!(
+        error.contains("original connection is no longer available"),
+        "{error}"
+    );
+    assert_replacement_untouched(&session, index);
+}
+
+#[test]
+fn owned_anonymous_write_lines_token_rejects_slot_reuse_from_character_provider() {
+    let mut session = session();
+    let con = session
+        .eval_script_with_output_capture("file('')")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let index = con.try_integer_elt(0).unwrap() as usize;
+    let class = session
+        .register_altrep_class(
+            "anonymous.lines.replace",
+            ConnectionProvider {
+                kind: SEXPTYPE::STRSXP,
+                callback: Rc::new(move || {
+                    replace_connection(index);
+                    crate::sexp::gengc::full_gc();
+                }),
+            },
+        )
+        .unwrap();
+    let text = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let separator = session
+        .owner_token()
+        .unwrap()
+        .node_factory()
+        .strings(&["\n"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let use_bytes = session
+        .owner_token()
+        .unwrap()
+        .node_factory()
+        .domain()
+        .logical(false)
+        .into_owned()
+        .unwrap();
+    let args = arguments(&session, &[text, con, separator, use_bytes]);
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        session.with_active(|| unsafe {
+            do_writeLines(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                args.as_raw(),
+                ptr::null_mut(),
+            )
+        })
+    }))
+    .expect_err("a replaced connection must not receive lines");
+    let error = &payload.downcast_ref::<RError>().unwrap().message;
+    assert!(
+        error.contains("original connection is no longer available"),
+        "{error}"
+    );
+    assert_replacement_untouched(&session, index);
+}
+
+#[test]
+fn owned_anonymous_seek_token_rejects_slot_reuse_from_each_parameter_provider() {
+    for position in 1..=3 {
+        let mut session = session();
+        let con = session
+            .eval_script_with_output_capture("file('', 'w+b')")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let index = con.try_integer_elt(0).unwrap() as usize;
+        let class = session
+            .register_altrep_class(
+                "anonymous.seek.replace",
+                ConnectionProvider {
+                    kind: SEXPTYPE::INTSXP,
+                    callback: Rc::new(move || {
+                        replace_connection(index);
+                        crate::sexp::gengc::full_gc();
+                    }),
+                },
+            )
+            .unwrap();
+        let provider = AltrepBuilder::new(class)
+            .build()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let zero = session
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let mut values = [con, zero.clone(), zero.clone(), zero];
+        values[position] = provider;
+        let args = arguments(&session, &values);
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.with_active(|| unsafe {
+                do_seek(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    args.as_raw(),
+                    ptr::null_mut(),
+                )
+            })
+        }))
+        .expect_err("a replaced connection must not be sought");
+        let error = &payload.downcast_ref::<RError>().unwrap().message;
+        assert_eq!(error, "original connection is no longer available");
+        assert_replacement_untouched(&session, index);
+        assert_eq!(
+            session
+                .eval_code_with_output_capture("1+1")
+                .0
+                .unwrap()
+                .try_real_elt(0)
+                .unwrap(),
+            2.0
+        );
+    }
+}
 impl AltrepClass for NumericProvider {
     fn vector_type(&self) -> SEXPTYPE {
         self.kind
@@ -86,6 +377,121 @@ fn filename(session: &RSession) -> Sexp<'static> {
         .unwrap()
         .into_owned()
         .unwrap()
+}
+
+fn budget_headroom(session: &RSession, bytes: usize) {
+    session.with_active_in(|instance| unsafe {
+        let arena = &mut (*instance).arena;
+        arena.set_budget(crate::sexp::memory::ArenaBudget::new(
+            arena.total_bytes_allocated() + bytes,
+            0,
+        ));
+    });
+}
+
+#[test]
+fn owned_binary_generic_sources_retain_admission_until_consumer_drop() {
+    let mut session = session();
+    let factory = session.owner_token().unwrap().node_factory();
+    let raw = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 4)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let connection = session
+        .eval_script_with_output_capture("rawConnection(as.raw(c(1,2,3,4)), 'rb')")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let owner = raw.runtime_owner.as_ref().unwrap().clone();
+    for (source, admitted) in [(filename(&session), 4), (raw, 4), (connection, 7)] {
+        budget_headroom(&session, admitted);
+        let buffer = filename_owned::source_bytes(source.clone(), Some(4)).unwrap();
+        assert_eq!(buffer.len(), 4);
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            assert!(filename_owned::reserve(access, 1).is_err());
+        })
+        .unwrap();
+        drop(buffer);
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            assert!(filename_owned::reserve(access, admitted).is_ok());
+        })
+        .unwrap();
+    }
+}
+
+#[test]
+fn owned_binary_generic_decoder_keeps_source_and_workspace_admitted_together() {
+    let session = session();
+    let source = filename(&session);
+    let parameters = FilenameReadParameters {
+        kind: BinaryKind::Integer,
+        count: 1,
+        size: 4,
+        signed: true,
+        order: ByteOrder::Little,
+    };
+    budget_headroom(&session, 7);
+    let buffer = filename_owned::source_bytes(source.clone(), Some(4)).unwrap();
+    assert!(
+        filename_owned::decode_source(source.clone(), &parameters, &buffer)
+            .unwrap_err()
+            .contains("memory limit")
+    );
+    drop(buffer);
+    session.with_active_in(|instance| unsafe {
+        (*instance)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+    });
+    let buffer = filename_owned::source_bytes(source.clone(), Some(4)).unwrap();
+    let result = filename_owned::decode_source(source, &parameters, &buffer).unwrap();
+    assert_eq!(result.try_integer_elt(0).unwrap(), 0x06070809);
+}
+
+#[test]
+fn owned_binary_generic_raw_admits_before_provider_and_recovers_from_collecting_panic() {
+    let session = session();
+    let calls = Rc::new(Cell::new(0));
+    let panic_next = Rc::new(Cell::new(true));
+    let callback_calls = calls.clone();
+    let callback_panic = panic_next.clone();
+    let class = session
+        .register_altrep_class(
+            "binary.raw.gc",
+            RawProvider(Rc::new(move || {
+                callback_calls.set(callback_calls.get() + 1);
+                crate::sexp::gengc::full_gc();
+                if callback_panic.replace(false) {
+                    std::panic::panic_any(734_u32);
+                }
+            })),
+        )
+        .unwrap();
+    let source = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    budget_headroom(&session, 3);
+    assert!(filename_owned::source_bytes(source.clone(), Some(4)).is_err());
+    assert_eq!(calls.get(), 0);
+    budget_headroom(&session, 4);
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        filename_owned::source_bytes(source.clone(), Some(4))
+    }))
+    .err()
+    .expect("exact provider panic");
+    assert_eq!(*payload.downcast::<u32>().unwrap(), 734);
+    budget_headroom(&session, 4);
+    let buffer = filename_owned::source_bytes(source, Some(4)).unwrap();
+    assert_eq!(&*buffer, &[1, 2, 3, 4]);
+    assert_eq!(calls.get(), 5);
+    // The admission tokens own their ledger, so late buffer destruction
+    // does not dereference the destroyed session or re-enter its arena.
+    drop(session);
+    drop(buffer);
 }
 
 #[test]

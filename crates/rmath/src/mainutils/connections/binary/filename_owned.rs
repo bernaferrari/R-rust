@@ -7,7 +7,11 @@ use crate::sexp::{
     object::{Sexp, SexpError},
     owner::{RuntimeAccess, StoredOwner, with_runtime},
 };
-use std::{collections::HashSet, fs::File, io::Read};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{Read, Write},
+};
 
 struct Arguments(Vec<(Sexp<'static>, Sexp<'static>)>);
 
@@ -152,14 +156,127 @@ pub(super) fn reserve(
         .ok_or_else(|| "binary file buffer exceeds session memory limit".into())
 }
 
-struct Buffer {
+/// Native source bytes and their original session's admission tokens.
+/// Consumers retain this value through decoding and result publication.
+pub struct Buffer {
     bytes: Vec<u8>,
     _reservations: Vec<TransientReservation>,
+}
+
+impl std::ops::Deref for Buffer {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl Buffer {
+    fn empty() -> Self {
+        Self {
+            bytes: Vec::new(),
+            _reservations: Vec::new(),
+        }
+    }
+
+    fn grow(&mut self, access: &RuntimeAccess, capacity: usize) -> Result<(), String> {
+        if capacity <= self.bytes.capacity() {
+            return Ok(());
+        }
+        // The old allocation and its admission remain live while the
+        // replacement is allocated and copied. No arena loan spans growth.
+        let reservation = reserve(access, capacity)?;
+        let mut replacement = Vec::new();
+        replacement
+            .try_reserve_exact(capacity)
+            .map_err(|_| "allocation failed while reading binary source")?;
+        replacement.extend_from_slice(&self.bytes);
+        self._reservations
+            .try_reserve(1)
+            .map_err(|_| "allocation failed while admitting binary source")?;
+        self.bytes = replacement;
+        self._reservations.push(reservation);
+        Ok(())
+    }
 }
 
 enum Source {
     Browser(Buffer),
     Host(File),
+}
+
+enum Sink {
+    Raw,
+    Connection(super::ConnectionToken),
+    Browser(String),
+    Host(File),
+}
+
+impl Sink {
+    fn open(
+        access: &RuntimeAccess,
+        con: &Sexp<'static>,
+        original: Option<super::ConnectionToken>,
+    ) -> Result<Self, String> {
+        access.domain().link(con).map_err(|e| e.to_string())?;
+        if con.typeof_() == SEXPTYPE::RAWSXP {
+            return Ok(Self::Raw);
+        }
+        if con.typeof_() != SEXPTYPE::STRSXP {
+            let selected =
+                super::binary_connection_index(access, con, true).map_err(|e| e.to_string())?;
+            if let Some(original) = original {
+                if !original.same_connection(&selected) {
+                    return Err("original connection is no longer available".into());
+                }
+                return Ok(Self::Connection(original));
+            }
+            return Ok(Self::Connection(selected));
+        }
+        let path = filename(con, access)?;
+        let browser = access
+            .with_native(|_| {
+                Ok(crate::mainutils::browser_files::enabled()
+                    || crate::mainutils::browser_files::contains_current(&path))
+            })
+            .map_err(|e| e.to_string())?;
+        if browser {
+            access
+                .with_native(|_| {
+                    crate::mainutils::browser_files::write_current(&path, &[])
+                        .map_err(|message| SexpError::EvaluationFailed { message })
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(Self::Browser(path))
+        } else {
+            File::create(path)
+                .map(Self::Host)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    fn write(mut self, access: &RuntimeAccess, bytes: &[u8]) -> Result<Sexp<'static>, String> {
+        match &mut self {
+            Self::Raw => return super::raw_sink_result(access, bytes).map_err(|e| e.to_string()),
+            Self::Connection(token) => access
+                .with_native(|_| {
+                    let index = token
+                        .require_current()
+                        .map_err(|message| SexpError::EvaluationFailed { message })?;
+                    super::connection_write_bytes(index, bytes);
+                    Ok(())
+                })
+                .map_err(|e| e.to_string()),
+            Self::Browser(path) => access
+                .with_native(|_| {
+                    crate::mainutils::browser_files::write_current(path, bytes)
+                        .map_err(|message| SexpError::EvaluationFailed { message })
+                })
+                .map_err(|e| e.to_string()),
+            Self::Host(file) => file.write_all(bytes).map_err(|e| e.to_string()),
+        }?;
+        Ok(access.domain().nil())
+    }
 }
 
 impl Source {
@@ -195,11 +312,33 @@ impl Source {
             .map_err(|error| format!("cannot open file '{path}': {error}"))
     }
 
-    fn read(self, access: &RuntimeAccess, limit: Option<usize>) -> Result<Buffer, String> {
+    fn read(
+        self,
+        access: &RuntimeAccess,
+        limit: Option<usize>,
+        strings: Option<usize>,
+    ) -> Result<Buffer, String> {
         match self {
             Self::Browser(mut buffer) => {
                 if let Some(limit) = limit {
                     buffer.bytes.truncate(limit);
+                }
+                if let Some(mut strings) = strings {
+                    let count = if strings == 0 {
+                        0
+                    } else {
+                        buffer
+                            .bytes
+                            .iter()
+                            .position(|byte| {
+                                if *byte == 0 {
+                                    strings -= 1;
+                                }
+                                strings == 0
+                            })
+                            .map_or(buffer.bytes.len(), |index| index + 1)
+                    };
+                    buffer.bytes.truncate(count);
                 }
                 Ok(buffer)
             }
@@ -220,6 +359,7 @@ impl Source {
                     .map_err(|_| "allocation failed while admitting binary file bytes")?;
                 buffer._reservations.push(stack);
                 let mut admitted = 0usize;
+                let mut remaining_strings = strings;
                 let mut chunk = [0u8; 8192];
                 loop {
                     let remaining = limit.map_or(chunk.len(), |limit| {
@@ -228,12 +368,25 @@ impl Source {
                     if remaining == 0 {
                         break;
                     }
-                    let count = match file.read(&mut chunk[..remaining]) {
+                    let mut count = match file.read(&mut chunk[..remaining]) {
                         Ok(0) => break,
                         Ok(count) => count,
                         Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                         Err(error) => return Err(error.to_string()),
                     };
+                    if let Some(remaining) = &mut remaining_strings {
+                        if *remaining == 0 {
+                            break;
+                        }
+                        if let Some(index) = chunk[..count].iter().position(|byte| {
+                            if *byte == 0 {
+                                *remaining -= 1;
+                            }
+                            *remaining == 0
+                        }) {
+                            count = index + 1;
+                        }
+                    }
                     let peak = buffer
                         .bytes
                         .len()
@@ -252,6 +405,9 @@ impl Source {
                     buffer._reservations.push(reservation);
                     buffer.bytes.extend_from_slice(&chunk[..count]);
                     admitted = peak;
+                    if remaining_strings == Some(0) {
+                        break;
+                    }
                 }
                 Ok(buffer)
             }
@@ -263,8 +419,19 @@ pub(super) fn read(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
     run(arguments, |access, arguments| {
         let domain = access.domain();
         let con = arguments.select(0, &["con"], &domain.nil(), access)?;
-        let path = filename(&con, access)?;
-        let source = Source::open(access, &path)?;
+        let mut connection = None;
+        let source = if con.typeof_() == SEXPTYPE::STRSXP {
+            let path = filename(&con, access)?;
+            Some(Source::open(access, &path)?)
+        } else {
+            if con.typeof_() != SEXPTYPE::RAWSXP {
+                connection = Some(
+                    super::binary_connection_index(access, &con, false)
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+            None
+        };
         let one = integer(access, 1)?;
         let na = integer(access, crate::sexp::ffi::NA_INTEGER)?;
         let what = arguments.select(1, &["what"], &domain.nil(), access)?;
@@ -275,7 +442,12 @@ pub(super) fn read(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
         let parameters =
             super::filename_read_parameters(access, [&what, &count, &size, &signed, &endian])
                 .map_err(|e| e.to_string())?;
-        let buffer = source.read(access, parameters.limit())?;
+        let buffer = match source {
+            Some(source) => source.read(access, parameters.limit(), parameters.strings())?,
+            None => {
+                source_bytes_bounded(con, parameters.limit(), parameters.strings(), connection)?
+            }
+        };
         let _workspace = reserve(access, parameters.workspace(buffer.bytes.len())?)?;
         super::filename_decode(access, &parameters, &buffer.bytes).map_err(|e| e.to_string())
     })
@@ -286,32 +458,129 @@ pub(super) fn write(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
         let domain = access.domain();
         let object = arguments.select(0, &["object"], &domain.nil(), access)?;
         let con = arguments.select(1, &["con"], &domain.nil(), access)?;
-        let path = filename(&con, access)?;
         let na = integer(access, crate::sexp::ffi::NA_INTEGER)?;
         let size = arguments.select(2, &["size"], &na, access)?;
         let endian = arguments.select(3, &["endian", "swap"], &domain.missing(), access)?;
         let use_bytes = arguments.select(4, &["useBytes"], &domain.logical(false), access)?;
-        let (bytes, _reservations) =
-            super::filename_encode(access, [&object, &size, &endian, &use_bytes])
-                .map_err(|e| e.to_string())?;
-        access
-            .with_native(|_| {
-                crate::mainutils::browser_files::write_text_or_host(&path, &bytes).map_err(
-                    |error| SexpError::EvaluationFailed {
-                        message: error.to_string(),
-                    },
-                )?;
+        let mut sink = None;
+        let original = std::cell::RefCell::new(None);
+        let (bytes, _reservations) = super::filename_encode_staged(
+            access,
+            [&object, &size, &endian, &use_bytes],
+            || {
+                if !matches!(con.typeof_(), SEXPTYPE::RAWSXP | SEXPTYPE::STRSXP) {
+                    let token = super::binary_connection_index(access, &con, true)
+                        .map_err(|e| e.to_string())?;
+                    *original.borrow_mut() = Some(token);
+                }
                 Ok(())
-            })
-            .map_err(|e| e.to_string())?;
-        Ok(domain.nil())
+            },
+            || {
+                let original = original.borrow().clone();
+                sink = Some(Sink::open(access, &con, original)?);
+                Ok(())
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        sink.ok_or("binary sink was not opened")?
+            .write(access, &bytes)
     })
 }
 
-pub(super) fn source_bytes(con: Sexp<'static>, limit: Option<usize>) -> Result<Vec<u8>, String> {
+pub(super) fn source_bytes(con: Sexp<'static>, limit: Option<usize>) -> Result<Buffer, String> {
+    source_bytes_bounded(con, limit, None, None)
+}
+
+fn source_bytes_bounded(
+    con: Sexp<'static>,
+    limit: Option<usize>,
+    strings: Option<usize>,
+    original: Option<super::ConnectionToken>,
+) -> Result<Buffer, String> {
     execute(&con, |access| {
-        let path = filename(&con, access)?;
-        Ok(Source::open(access, &path)?.read(access, limit)?.bytes)
+        access.domain().link(&con).map_err(|e| e.to_string())?;
+        if con.typeof_() == SEXPTYPE::STRSXP {
+            let path = filename(&con, access)?;
+            return Source::open(access, &path)?.read(access, limit, strings);
+        }
+        let mut buffer = Buffer::empty();
+        if con.typeof_() == SEXPTYPE::RAWSXP {
+            let count = usize::try_from(con.len()).map_err(|_| "binary source is too large")?;
+            let count = limit.map_or(count, |limit| limit.min(count));
+            if strings.is_none() {
+                buffer.grow(access, count)?;
+            }
+            let mut remaining_strings = strings;
+            for index in 0..count {
+                if remaining_strings == Some(0) {
+                    break;
+                }
+                if strings.is_some() {
+                    let next = index.checked_add(1).ok_or("binary source is too large")?;
+                    let capacity = next.checked_next_power_of_two().unwrap_or(next).min(count);
+                    buffer.grow(access, capacity)?;
+                }
+                buffer.bytes.push(
+                    con.try_raw_elt(index as crate::sexp::ffi::R_xlen_t)
+                        .map_err(|e| e.to_string())?,
+                );
+                if buffer.bytes.last() == Some(&0)
+                    && let Some(remaining) = &mut remaining_strings
+                {
+                    *remaining -= 1;
+                }
+                access.require_active().map_err(|e| e.to_string())?;
+            }
+            return Ok(buffer);
+        }
+        let selected = super::source_connection_index(access, &con).map_err(|e| e.to_string())?;
+        let token = if let Some(original) = original {
+            if !original.same_connection(&selected) {
+                return Err("original connection is no longer available".into());
+            }
+            original
+        } else {
+            selected
+        };
+        let mut remaining_strings = strings;
+        while limit.is_none_or(|limit| buffer.bytes.len() < limit) && remaining_strings != Some(0) {
+            let next = buffer
+                .bytes
+                .len()
+                .checked_add(1)
+                .ok_or("binary source is too large")?;
+            let capacity = next.checked_next_power_of_two().unwrap_or(next);
+            buffer.grow(access, limit.map_or(capacity, |limit| capacity.min(limit)))?;
+            let byte = access
+                .with_native(|_| {
+                    let index = token
+                        .require_current()
+                        .map_err(|message| SexpError::EvaluationFailed { message })?;
+                    Ok(super::connection_fgetc(index))
+                })
+                .map_err(|e| e.to_string())?;
+            if byte < 0 {
+                break;
+            }
+            buffer.bytes.push(byte as u8);
+            if byte == 0
+                && let Some(remaining) = &mut remaining_strings
+            {
+                *remaining -= 1;
+            }
+        }
+        Ok(buffer)
+    })
+}
+
+pub(super) fn decode_source(
+    con: Sexp<'static>,
+    parameters: &super::FilenameReadParameters,
+    buffer: &Buffer,
+) -> Result<Sexp<'static>, String> {
+    execute(&con, |access| {
+        let _workspace = reserve(access, parameters.workspace(buffer.bytes.len())?)?;
+        super::filename_decode(access, parameters, &buffer.bytes).map_err(|e| e.to_string())
     })
 }
 

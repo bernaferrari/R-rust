@@ -9,6 +9,7 @@ use std::os::raw::{c_double, c_int};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::ptr;
+use std::rc::Rc;
 
 use bzip2::Compression as BzCompression;
 use bzip2::read::BzDecoder;
@@ -44,6 +45,7 @@ pub const R_EOF: c_int = -1;
 pub enum ConnKind {
     File,
     BrowserFile,
+    AnonymousFile(super::file::AnonymousFile),
     Pipe,
     Url,
     Fifo,
@@ -61,6 +63,7 @@ pub enum ConnKind {
 /// This mirrors R's `Rconn` struct from Rconnections.h, but uses Rust
 /// types for the I/O handles instead of raw C FILE* pointers.
 pub struct RConn {
+    identity: Rc<()>,
     /// Connection class name (e.g. "file", "pipe", "textConnection").
     pub class: String,
     /// Human-readable description.
@@ -118,6 +121,7 @@ pub struct RConn {
 impl RConn {
     pub fn new(class: &str, description: &str, mode: &str, kind: ConnKind) -> Self {
         RConn {
+            identity: Rc::new(()),
             class: class.to_string(),
             description: description.to_string(),
             mode: mode.to_string(),
@@ -189,6 +193,49 @@ impl RConn {
             self.text_published = complete;
         }
     }
+}
+
+/// Allocation identity is retained across providers, without retaining the
+/// connection or its runtime. The retained Rc prevents allocator-address ABA.
+#[derive(Clone)]
+pub(crate) struct ConnectionToken {
+    index: c_int,
+    identity: Rc<()>,
+}
+
+impl ConnectionToken {
+    pub(crate) fn same_connection(&self, other: &Self) -> bool {
+        self.index == other.index && Rc::ptr_eq(&self.identity, &other.identity)
+    }
+
+    pub(crate) fn require_current(&self) -> Result<c_int, String> {
+        let matches = {
+            let table = connection_table();
+            usize::try_from(self.index)
+                .ok()
+                .and_then(|index| table.get(index))
+                .and_then(Option::as_ref)
+                .is_some_and(|connection| Rc::ptr_eq(&self.identity, &connection.identity))
+        };
+        if matches {
+            Ok(self.index)
+        } else {
+            Err("original connection is no longer available".into())
+        }
+    }
+}
+
+pub(crate) fn connection_token(index: c_int) -> Result<ConnectionToken, String> {
+    let table = connection_table();
+    let connection = usize::try_from(index)
+        .ok()
+        .and_then(|index| table.get(index))
+        .and_then(Option::as_ref)
+        .ok_or("invalid connection")?;
+    Ok(ConnectionToken {
+        index,
+        identity: connection.identity.clone(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +517,13 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
 
     let mut byte = [0u8; 1];
     let result = match &mut conn.kind {
+        ConnKind::AnonymousFile(file) => match file.read_byte() {
+            Some(value) => {
+                byte[0] = value;
+                Ok(1)
+            }
+            None => Ok(0),
+        },
         ConnKind::File if conn.mode.contains('+') => {
             if let Some(writer) = conn.writer.as_mut() {
                 let _ = writer.flush();
@@ -666,6 +720,11 @@ pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
     if !conn.canread {
         r_error("cannot read from this connection");
     }
+    if let ConnKind::AnonymousFile(file) = &mut conn.kind {
+        let result = file.read_all();
+        drop(table);
+        return result.unwrap_or_else(|message| r_error(&message));
+    }
     if matches!(
         conn.kind,
         ConnKind::RawConnection
@@ -728,6 +787,11 @@ fn append_text_connection_write(conn: &mut RConn, bytes: &[u8]) {
 
 pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
     match &mut conn.kind {
+        ConnKind::AnonymousFile(file) => {
+            if let Err(message) = file.write(bytes) {
+                r_error(&message);
+            }
+        }
         ConnKind::File => {
             if let Some(writer) = conn.writer.as_mut()
                 && let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush())

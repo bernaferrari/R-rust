@@ -287,7 +287,6 @@ pub fn internal_result_invisible(name: &str) -> bool {
             | "pushBack"
             | "sys.source"
             | "writeLines"
-            | "writeBin"
             | "writeChar"
             | "write.table"
             | "write.csv2"

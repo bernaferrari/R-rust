@@ -25,6 +25,9 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
 use crate::sexp::protect::*;
 
+pub(super) mod anonymous;
+pub use anonymous::AnonymousFile;
+
 // ---------------------------------------------------------------------------
 // do_file — file(description, open = "", mode = "r", raw = FALSE)
 // ---------------------------------------------------------------------------
@@ -75,9 +78,6 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             (*instance).browser_files_enabled
         })
         .unwrap_or(false);
-        if anonymous && (browser_mode || cfg!(target_arch = "wasm32")) {
-            r_error("anonymous browser file connections are not implemented");
-        }
         // GNU file("") is an anonymous temporary opened read/write.
         if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
@@ -87,7 +87,9 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 .unwrap_or_default();
                 crate::mainutils::errors::Rf_warning(msg.as_ptr());
             }
-            description = anonymous_temp_path();
+            if !browser_mode && !cfg!(target_arch = "wasm32") {
+                description = anonymous_temp_path();
+            }
         }
         let deferred = open.is_empty() && !anonymous;
         let open_mode = if anonymous {
@@ -102,6 +104,39 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             open
         };
 
+        let virtual_anonymous = anonymous && (browser_mode || cfg!(target_arch = "wasm32"));
+        if virtual_anonymous {
+            // Finish allocating the actual connection object before choosing
+            // a table slot. GC/provider callbacks cannot observe or reuse a
+            // half-published anonymous connection.
+            let ans = Rf_ScalarInteger(0);
+            let _ans_guard = protect(ans);
+            set_connection_class(ans, "file");
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let value = owner
+                .sexp(ans)
+                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let anchor = value
+                .allocation()
+                .cloned()
+                .unwrap_or_else(|_| r_error("anonymous file backing is unavailable"));
+            let ncon = next_connection();
+            let mut conn = RConn::new(
+                "file",
+                "",
+                &open_mode,
+                ConnKind::AnonymousFile(AnonymousFile::new(anchor)),
+            );
+            conn.canseek = raw == 0;
+            conn.text = !open_mode.contains('b');
+            conn.isopen = true;
+            conn.canread = true;
+            conn.canwrite = true;
+            SET_INTEGER_ELT(ans, 0, ncon as c_int);
+            connection_table()[ncon] = Some(Box::new(conn));
+            return ans;
+        }
         let ncon = next_connection();
         let browser_bytes = crate::mainutils::browser_files::read_current(&description);
         let kind = if browser_bytes.is_some() || browser_mode {
@@ -1068,14 +1103,99 @@ pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 // do_seek — seek(con, where = NA, origin = "start", rw = "")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let scon = CAR(args);
-        args = CDR(args);
-        let where_val = as_real(CAR(args));
-        args = CDR(args);
-        let origin_arg = CAR(args);
-        let origin = if TYPEOF(origin_arg) == SEXPTYPE::STRSXP {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let _arguments = owner
+            .sexp(args)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        // Evaluated public calls keep argument tags and omit defaults. Match
+        // named arguments before filling the remaining formal positions.
+        let names = ["con", "where", "origin", "rw"];
+        let mut selected = [R_NilValue(); 4];
+        let mut matched = [false; 4];
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(tag) = connection_arg_tag_name(cell)
+                && let Some(index) = names.iter().position(|name| *name == tag)
+            {
+                if matched[index] {
+                    r_error(&format!(
+                        "formal argument \"{}\" matched by multiple actual arguments",
+                        names[index]
+                    ));
+                }
+                selected[index] = CAR(cell);
+                matched[index] = true;
+            }
+            cell = CDR(cell);
+        }
+        let exact = matched;
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(tag) = connection_arg_tag_name(cell)
+                && !names.iter().any(|name| *name == tag)
+                && let Some(index) = names
+                    .iter()
+                    .enumerate()
+                    .position(|(index, name)| !exact[index] && name.starts_with(tag.as_str()))
+            {
+                if matched[index] {
+                    r_error(&format!(
+                        "formal argument \"{}\" matched by multiple actual arguments",
+                        names[index]
+                    ));
+                }
+                selected[index] = CAR(cell);
+                matched[index] = true;
+            }
+            cell = CDR(cell);
+        }
+        let mut position = 0;
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if connection_arg_tag_name(cell).is_none() {
+                while position < matched.len() && matched[position] {
+                    position += 1;
+                }
+                if position < matched.len() {
+                    selected[position] = CAR(cell);
+                    matched[position] = true;
+                }
+            }
+            cell = CDR(cell);
+        }
+        let selected = selected.map(|value| {
+            owner
+                .sexp(value)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|error| r_error(&error.to_string()))
+        });
+        let [scon, where_arg, origin_arg, rw_arg] = selected.each_ref().map(|value| value.as_raw());
+        if !inherits_class(scon, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let index = as_integer(scon);
+        owner
+            .require_active()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let token = connection_token(index).unwrap_or_else(|message| r_error(&message));
+        let where_val = if where_arg == R_NilValue() || where_arg == R_MissingArg() {
+            NA_REAL
+        } else {
+            as_real(where_arg)
+        };
+        owner
+            .require_active()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let origin = if origin_arg == R_NilValue() || origin_arg == R_MissingArg() {
+            1
+        } else if TYPEOF(origin_arg) == SEXPTYPE::STRSXP {
             match CStr::from_ptr(CHAR(STRING_ELT(origin_arg, 0)))
                 .to_string_lossy()
                 .as_ref()
@@ -1088,13 +1208,16 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         } else {
             as_integer(origin_arg)
         };
-        args = CDR(args);
-        let rw = as_integer(CAR(args));
-
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(scon) as usize;
+        owner
+            .require_active()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let rw = connection_rw_mode(rw_arg);
+        owner
+            .require_active()
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let i = token
+            .require_current()
+            .unwrap_or_else(|message| r_error(&message)) as usize;
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
@@ -1105,6 +1228,14 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         }
 
         match &mut conn.kind {
+            ConnKind::AnonymousFile(file) => {
+                let result = file.seek(where_val, origin, rw);
+                if !where_val.is_nan() {
+                    conn.pushback.clear();
+                }
+                drop(table);
+                return Rf_ScalarReal(result.unwrap_or_else(|message| r_error(&message)));
+            }
             ConnKind::File => {
                 if let Some(writer) = conn.writer.as_mut() {
                     let _ = writer.flush();
