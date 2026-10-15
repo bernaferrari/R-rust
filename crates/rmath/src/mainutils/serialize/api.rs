@@ -1030,11 +1030,16 @@ unsafe fn decode_stream_object(
             }
         }
 
-        // No partially decoded graph exists yet. Reclaim the original owner's
-        // garbage before a bounded decoder starts allocating; the input and
-        // restoration hook are owning roots across collection callbacks.
+        // No partially decoded graph exists yet. At pressure, collect only
+        // after actual growth since the previous collection. A large live
+        // namespace otherwise triggers a full trace before every tiny lazy
+        // record, even when the preceding trace reclaimed nothing. Admission
+        // caps still apply to every allocation; input and restoration hooks
+        // remain owning roots across collection callbacks.
         let collect = owner
-            .with_arena(|arena| arena.budget_pressure_warrants_full_gc())
+            .with_arena(|arena| {
+                arena.budget_pressure_warrants_full_gc() && arena.growth_warrants_gc()
+            })
             .unwrap_or_else(|e| error(&e.to_string()));
         if collect {
             owner.full_gc().unwrap_or_else(|e| error(&e.to_string()));

@@ -188,3 +188,51 @@ fn lazy_persistence_rollback_keeps_original_and_callback_bindings_after_revocati
     );
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn bounded_small_decodes_do_not_retrace_an_unchanged_high_live_heap() {
+    use crate::sexp::{gengc::get_gc_stats, memory::ArenaBudget, session::RSession};
+    let mut session = RSession::new_for_gc_tests();
+    session.set_arena_budget(ArenaBudget::new(usize::MAX, 222));
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let retained: Vec<_> = (0..200)
+        .map(|_| {
+            factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap()
+        })
+        .collect();
+    owner.full_gc().unwrap();
+    // A complete XDR version-2 RDS integer scalar. Repeating this small read
+    // near the node cap must leave room for useful work between full traces.
+    let mut bytes = b"X\n".to_vec();
+    for value in [2_i32, 0x40700, 0x20300, 13, 1, 7] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    let before = get_gc_stats().collections;
+    for _ in 0..3 {
+        let mut reader = BinaryReader::new(&bytes);
+        let value = unsafe { decode_stream_object(&owner, &mut reader) };
+        assert_eq!(owner.sexp(value).unwrap().integer_elt(0), Some(7));
+    }
+    assert_eq!(
+        get_gc_stats().collections,
+        before,
+        "small decodes retraced the same retained graph"
+    );
+    // Continued garbage growth must still trigger collection before the
+    // unchanged cap is reached; amortization must not disable reclamation.
+    for _ in 0..30 {
+        let mut reader = BinaryReader::new(&bytes);
+        let value = unsafe { decode_stream_object(&owner, &mut reader) };
+        assert_eq!(owner.sexp(value).unwrap().integer_elt(0), Some(7));
+    }
+    let collections = get_gc_stats().collections - before;
+    assert!(
+        (1..=4).contains(&collections),
+        "unexpected traces: {collections}"
+    );
+    assert_eq!(retained.len(), 200);
+    assert_eq!(session.arena_budget().max_nodes, 222);
+}
