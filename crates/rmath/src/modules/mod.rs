@@ -1,4 +1,4 @@
-//! R modules (internet, lapack, X11)
+//! Portable R modules (internet and linear algebra).
 
 pub(crate) mod internet;
 #[allow(
@@ -10,13 +10,3 @@ pub(crate) mod internet;
     non_camel_case_types
 )]
 pub mod lapack;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-pub(crate) mod x11;

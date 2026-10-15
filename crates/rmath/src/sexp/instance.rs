@@ -408,9 +408,6 @@ pub struct RInstance {
     /// Per-instance embedded HTTP server socket, worker, and handler state.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
-    /// Per-instance X11 graphics defaults and device counters.
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    pub(crate) x11_state: crate::modules::x11::dev_x11::X11RuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
     /// Per-instance Unix platform scratch buffer and process timing state.
@@ -541,9 +538,6 @@ pub struct RInstance {
     pub(crate) color_dispatch_state: crate::mainutils::colors::ColorDispatchState,
     /// Per-instance grDevices PostScript/PDF font registry state.
     pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
-    /// Per-instance grDevices Windows backend scratch state.
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    pub(crate) windows_device_state: crate::library::grdevices::devwindows::WindowsDeviceState,
     /// Per-instance grid runtime state.
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
     /// Per-instance graphics::plot3d scratch transformation state.
@@ -633,8 +627,6 @@ impl RInstance {
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             #[cfg(not(target_arch = "wasm32"))]
             httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
-            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-            x11_state: crate::modules::x11::dev_x11::X11RuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
@@ -691,9 +683,6 @@ impl RInstance {
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
-            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-            windows_device_state:
-                crate::library::grdevices::devwindows::WindowsDeviceState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
             dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
