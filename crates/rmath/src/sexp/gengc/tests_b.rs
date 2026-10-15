@@ -1990,3 +1990,50 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
         assert_eq!(RUNS.load(Ordering::SeqCst), 1);
     });
 }
+
+#[test]
+fn full_gc_reclaims_unreachable_remembered_parents_in_one_cycle() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let parent = factory
+        .pairlist_cell(&factory.nil(), &factory.nil(), &factory.nil())
+        .unwrap();
+    let parent_node = parent.allocation().unwrap().clone();
+    owner.minor_gc().unwrap();
+    let child = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap();
+    let child_node = child.allocation().unwrap().clone();
+    SexpMut::try_from_checked(parent.clone())
+        .unwrap()
+        .try_set_pairlist_car(&child)
+        .unwrap();
+    assert!(with_gc_state(|state| state.remembered_set.len()) > 0);
+    drop(child);
+    drop(parent);
+    // Minor collection conservatively retains old parents and their children.
+    owner.minor_gc().unwrap();
+    assert!(parent_node.is_live());
+    assert!(child_node.is_live());
+    // Re-add the old parent, just as an old-to-young write would, without
+    // introducing an owning root. Full collection must ignore this hint.
+    with_gc_state(|state| {
+        state.remembered_set.add(
+            parent_node
+                .heap_identity()
+                .node_projection(&parent_node)
+                .unwrap(),
+        )
+    });
+    owner.full_gc().unwrap();
+    assert!(
+        !parent_node.is_live(),
+        "remembered hint retained a dead parent"
+    );
+    assert!(
+        !child_node.is_live(),
+        "dead remembered graph survived full GC"
+    );
+}

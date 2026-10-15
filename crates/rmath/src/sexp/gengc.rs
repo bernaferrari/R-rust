@@ -51,9 +51,10 @@
 //!   every explicit `gc()`; upstream: the level counters).
 //! - The write barrier (`write_barrier`) records old-parent/young-child
 //!   edges in `RememberedSet` — the analog of upstream's `OldToNew` lists.
-//!   Minor and full collections mark remembered parents so their young
-//!   children stay reachable, then clear the set; survivors are promoted by
-//!   the sweep, matching upstream's aging of `OldToNew` entries.
+//!   Minor collections mark remembered parents so their young children
+//!   survive, then clear the set as survivors are promoted. Full collection
+//!   traces actual roots rather than treating these hints as old-generation
+//!   roots, allowing unreachable remembered parents to be reclaimed.
 //! - The arena is a non-moving slab with a free list; `free_node` recycles
 //!   slots exactly like upstream's `Free`-pointer reset. Node addresses are
 //!   stable for the node's lifetime in BOTH implementations: R's C code and

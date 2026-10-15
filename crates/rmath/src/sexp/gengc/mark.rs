@@ -491,7 +491,11 @@ pub(crate) fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
 
 pub(crate) fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe {
-        mark_from_all_roots_in(instance);
+        // Remembered parents are conservative roots only while collecting
+        // the young generation. Full collection establishes old reachability
+        // from actual roots; retaining the hints here pins dead method graphs
+        // until another full cycle and can exhaust bounded sessions.
+        mark_instance_roots(instance);
         let mut freed_count = 0;
         let mut promoted_count = 0;
         let mut to_free = Vec::new();
