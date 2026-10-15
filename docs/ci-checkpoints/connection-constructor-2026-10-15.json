@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-15",
+  "issue": "rport-jxfp.3.12.3.3.2",
+  "status": "verified_milestone",
+  "base_commit": "12a22c9fb381b8aa150057a91ba3cb65e4af18f3",
+  "source_sha256": {
+    "crates/rmath/src/mainutils/connections/file.rs": "7ef09fce6a2e0edb0e3999965c1ba57a4db28abf9915dfad4e8b1601727a9519",
+    "crates/rmath/src/mainutils/connections/file/constructor.rs": "74ca58b9842e673676734c6cfa65b96b5b2705b1b3e23d0fa5b8bd7aa1c666f8",
+    "crates/rmath/src/mainutils/connections/file/constructor_tests.rs": "10c0a1f6195d967fc8d35db7b396acd9a0163a7c88f2f1300a77d8f8361d7f4f",
+    "crates/rmath/src/mainutils/connections/file/constructor-contract.R": "20237f530ff5ec92f51326281525b7e792f370cfd7ac30438daf798ab33bdaf3",
+    "crates/r-embed/tests/file_constructor_admission.rs": "394186c2e1182eba3bdcf8de26fb7dcfc2a01f330ac5bfd1dbba474248720f6e"
+  },
+  "evidence_directory": "target/connection-stream-evidence",
+  "regressions_before": [
+    "constructor-red-details.log: 0 passed, 2 failed; unowned header read after provider detachment and invalid description with forced-GC omitted defaults"
+  ],
+  "validation": {
+    "native_constructor": "constructor-native.log: 10 passed before final named selection refinement; constructor-connections.log repeats current constructor tests within broader connections run",
+    "gnu": "constructor-gnu.log: TRUE; pinned oracle bac583951b728e97b9786804d3b4081f0fe18df5",
+    "public": "constructor-public.log: anonymous 2 and deferred 4 passed; constructor-public-final.log: scalar/logical admission 1 passed",
+    "miri": "constructor-miri-final.log: 7 passed, strict provenance i686, default alias checks, leaks ignored; predates final safe named argument selection refinement; sealed repeat running",
+    "clippy": "constructor-clippy.log: warnings denied, passed"
+  },
+  "scope": "do_file constructor defaults, complete operand snapshots, original-owner pin/checks across providers and unwind, owning result/class before slot publication; broader runtime and other constructors remain outside this bead"
+}

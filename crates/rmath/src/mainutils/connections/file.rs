@@ -32,60 +32,92 @@ pub use anonymous::AnonymousFile;
 // do_file — file(description, open = "", mode = "r", raw = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let empty = Rf_mkString(c"".as_ptr());
-        let native = Rf_mkString(c"native.enc".as_ptr());
-        let default_method = Rf_mkString(c"default".as_ptr());
-        let scmd = positional_or(args, 0, empty);
-        let sopen = positional_or(args, 1, empty);
-        let _enc = arg_by_name_or_position(args, 3, &["encoding"], native);
-        let _block = arg_by_name_or_position(
-            args,
-            2,
-            &["blocking"],
-            Rf_ScalarLogical(crate::sexp::ffi::TRUE),
-        );
-        let _method = positional_or(args, 4, default_method);
-        let raw = check_logical_arg(
-            positional_or(args, 5, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),
-            "raw",
-        );
+mod constructor;
 
-        let mut description = check_string_arg(scmd, "description");
+pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    use crate::sexp::owner::{OwnerToken, with_runtime};
+    let owner = unsafe { OwnerToken::current() }.unwrap_or_else(|e| r_error(&e.to_string()));
+    let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| r_error("file requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_runtime(&weak, |access| {
+            let arguments = owner.sexp(args)?.into_owned()?;
+            let options = constructor::prepare(access, arguments)?;
+            unsafe { construct_file(access, options) }
+        })
+    }));
+    // Check even on unwind, while the original allocation is still pinned.
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    match outcome {
+        Ok(result) => result
+            .and_then(|value| value)
+            .unwrap_or_else(|e| r_error(&e.to_string()))
+            .as_raw(),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+fn file_logical(
+    access: &crate::sexp::owner::RuntimeAccess,
+    value: &crate::sexp::Sexp<'static>,
+    check_length: bool,
+) -> crate::sexp::object::SexpResult<c_int> {
+    access.domain().link(value)?;
+    access.with_native(|_| unsafe {
+        Ok(crate::mainutils::coerce::asLogical2(
+            value.as_raw(),
+            check_length as c_int,
+            R_NilValue(),
+        ))
+    })
+}
+
+unsafe fn file_value(
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> crate::sexp::object::SexpResult<crate::sexp::SexpMut<'static>> {
+    use crate::sexp::SexpMut;
+    let domain = access.domain();
+    let allocator = access.allocator(&domain)?;
+    let ans = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))?;
+    let classes = allocator.strings(&["file", "connection"])?;
+    let symbol = access.with_native(|owner| unsafe {
+        owner
+            .sexp(crate::eval::attrib_core::R_ClassSymbol())?
+            .into_owned()
+    })?;
+    let attrs = allocator.pairlist_cell(&classes, &domain.nil(), &symbol)?;
+    let mut ans = SexpMut::try_from_checked(ans)?;
+    ans.try_set_attribute(&attrs)?;
+    Ok(ans)
+}
+
+unsafe fn construct_file(
+    access: &crate::sexp::owner::RuntimeAccess,
+    options: constructor::FileOptions,
+) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
+    unsafe {
+        let constructor::FileOptions {
+            mut description,
+            open,
+            raw,
+        } = options;
         if !description.is_empty() {
             description = crate::mainutils::essentials::resolve_package_relative_path(description);
         }
-        let open = check_string_arg(sopen, "open");
-        // GNU's file() closure resolves `encoding = getOption("encoding")`;
-        // when that option is unset the argument arrives as NULL, which
-        // means the native encoding.
-        let encoding = if _enc.is_null()
-            || _enc == R_NilValue()
-            || (TYPEOF(_enc) == SEXPTYPE::STRSXP && LENGTH(_enc) == 0)
-        {
-            "native.enc".to_string()
-        } else {
-            check_string_arg(_enc, "encoding")
-        };
-        if encoding == "unknown" {
-            r_error("invalid connection");
-        }
-        // GNU identifies anonymous files from the original empty description,
-        // not a generated path or a host process identifier.
         let anonymous = description.is_empty();
-        let browser_mode = crate::sexp::instance::with_current_instance(|instance| unsafe {
-            (*instance).browser_files_enabled
-        })
-        .unwrap_or(false);
-        // GNU file("") is an anonymous temporary opened read/write.
+        let browser_mode =
+            with_current_instance(|instance| (*instance).browser_files_enabled).unwrap_or(false);
         if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
-                let msg = std::ffi::CString::new(
-                    "file(\"\") only supports open = \"w+\" and open = \"w+b\": using the former",
-                )
-                .unwrap_or_default();
-                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                crate::mainutils::errors::Rf_warning(
+                    c"file(\"\") only supports open = \"w+\" and \"w+b\": using the former"
+                        .as_ptr(),
+                );
+                access.require_active()?;
             }
             if !browser_mode && !cfg!(target_arch = "wasm32") {
                 description = anonymous_temp_path();
@@ -94,77 +126,57 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let deferred = open.is_empty() && !anonymous;
         let open_mode = if anonymous {
             if open == "w+b" {
-                "w+b".to_string()
+                "w+b".into()
             } else {
-                "w+".to_string()
+                "w+".into()
             }
         } else if open.is_empty() {
-            "r".to_string()
+            "r".into()
         } else {
             open
         };
 
+        // Every R allocation, including class attributes, finishes before
+        // selecting a table slot. No provider sees a half-published resource.
+        let mut ans = file_value(access)?;
         let virtual_anonymous = anonymous && (browser_mode || cfg!(target_arch = "wasm32"));
-        if virtual_anonymous {
-            // Finish allocating the actual connection object before choosing
-            // a table slot. GC/provider callbacks cannot observe or reuse a
-            // half-published anonymous connection.
-            let ans = Rf_ScalarInteger(0);
-            let _ans_guard = protect(ans);
-            set_connection_class(ans, "file");
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| r_error(&error.to_string()));
-            let value = owner
-                .sexp(ans)
-                .unwrap_or_else(|error| r_error(&error.to_string()));
-            let anchor = value
-                .allocation()
-                .cloned()
-                .unwrap_or_else(|_| r_error("anonymous file backing is unavailable"));
-            let ncon = next_connection();
+        let mut conn = if virtual_anonymous {
+            let anchor = access.domain().wrap(ans.as_raw())?.allocation()?.clone();
             let mut conn = RConn::new(
                 "file",
                 "",
                 &open_mode,
                 ConnKind::AnonymousFile(AnonymousFile::new(anchor)),
             );
-            conn.canseek = raw == 0;
-            conn.text = !open_mode.contains('b');
             conn.isopen = true;
             conn.canread = true;
             conn.canwrite = true;
-            SET_INTEGER_ELT(ans, 0, ncon as c_int);
-            connection_table()[ncon] = Some(Box::new(conn));
-            return ans;
-        }
-        let ncon = next_connection();
-        let browser_bytes = crate::mainutils::browser_files::read_current(&description);
-        let kind = if browser_bytes.is_some() || browser_mode {
-            ConnKind::BrowserFile
+            conn
         } else {
-            ConnKind::File
-        };
-        let mut conn = RConn::new("file", &description, &open_mode, kind);
-        conn.canseek = raw == 0;
-        conn.text = !open_mode.contains('b');
-
-        // Open immediately if open mode is non-empty
-        if !deferred {
-            if matches!(&conn.kind, ConnKind::BrowserFile) {
-                open_browser_file(&mut conn, &open_mode);
-            } else if let Err(e) = open_maybe_compressed(&mut conn, &open_mode) {
-                r_error(&format!("cannot open file '{}': {}", description, e));
+            let kind = if crate::mainutils::browser_files::read_current(&description).is_some()
+                || browser_mode
+            {
+                ConnKind::BrowserFile
+            } else {
+                ConnKind::File
+            };
+            let mut conn = RConn::new("file", &description, &open_mode, kind);
+            if !deferred {
+                if matches!(&conn.kind, ConnKind::BrowserFile) {
+                    open_browser_file(&mut conn, &open_mode);
+                } else if let Err(e) = open_maybe_compressed(&mut conn, &open_mode) {
+                    r_error(&format!("cannot open file '{}': {}", description, e));
+                }
             }
-        }
-
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
-
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "file");
-        ans
+            conn
+        };
+        conn.canseek = !raw;
+        conn.text = !open_mode.contains('b');
+        access.require_active()?;
+        let ncon = next_connection();
+        ans.try_set_integer_elt(0, ncon as c_int)?;
+        connection_table()[ncon] = Some(Box::new(conn));
+        Ok(ans.freeze())
     }
 }
 
