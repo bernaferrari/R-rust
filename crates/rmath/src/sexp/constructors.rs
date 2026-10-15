@@ -12,6 +12,10 @@ use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::{self};
 
+#[cfg(test)]
+#[path = "constructor_pressure_tests.rs"]
+mod pressure_tests;
+
 // ---------------------------------------------------------------------------
 // FFI-compatible constructor functions
 // ---------------------------------------------------------------------------
@@ -34,6 +38,39 @@ pub(crate) unsafe fn require_allocation(value: SEXP) -> SEXP {
     value
 }
 
+/// These constructors are repeatable and retain every R input. The ambient
+/// entry pins the original interpreter through collection and root cleanup;
+/// only actual allocation failure permits one full collection and retry.
+///
+/// # Safety
+/// Inputs belong to the active heap or immutable storage. The closure only
+/// allocates and initializes fresh nodes, retains no arena loan, and lists
+/// every captured R input in `inputs`. No borrowed R payload spans this call.
+#[inline]
+pub(crate) unsafe fn allocate_with_gc_retry<const N: usize>(
+    inputs: [SEXP; N],
+    mut allocate: impl FnMut(&mut memory::RArena) -> SEXP,
+) -> SEXP {
+    super::instance::with_required_current_instance(|instance| unsafe {
+        let owner = super::owner::OwnerToken::from_raw(instance);
+        let _inputs = inputs.map(|value| super::protect::protect(value));
+        let mut value = memory::with_arena_in(instance, &mut allocate);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| super::context::r_error(e.to_string()));
+        if value.is_null() {
+            owner
+                .full_gc()
+                .unwrap_or_else(|e| super::context::r_error(e.to_string()));
+            value = memory::with_arena_in(instance, &mut allocate);
+            owner
+                .require_active()
+                .unwrap_or_else(|e| super::context::r_error(e.to_string()));
+        }
+        require_allocation(value)
+    })
+}
+
 unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
     unsafe {
         // GNU allocVector also accepts pairlists/calls, but those need a
@@ -49,7 +86,7 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
         if sexptype == SEXPTYPE::LISTSXP || sexptype == SEXPTYPE::LANGSXP {
             let n = c_int::try_from(length)
                 .unwrap_or_else(|_| super::context::r_error("invalid length for pairlist"));
-            let list = memory::with_arena(|arena| {
+            let list = allocate_with_gc_retry([], |arena| {
                 let list = arena.alloc_list_chain(n);
                 if n > 0 && !list.is_null() && sexptype == SEXPTYPE::LANGSXP {
                     crate::sexp::accessors::SET_TYPEOF(list, SEXPTYPE::LANGSXP.as_c_int());
@@ -62,9 +99,7 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
                 require_allocation(list)
             };
         }
-        require_allocation(memory::with_arena(|arena| {
-            arena.alloc_vector(sexptype, length)
-        }))
+        allocate_with_gc_retry([], |arena| arena.alloc_vector(sexptype, length))
     }
 }
 
@@ -81,18 +116,14 @@ pub unsafe fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> S
 }
 
 pub unsafe fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe {
-        require_allocation(memory::with_arena(|arena| {
-            arena.cons(car, cdr, ptr::null_mut())
-        }))
-    }
+    unsafe { allocate_with_gc_retry([car, cdr], |arena| arena.cons(car, cdr, ptr::null_mut())) }
 }
 
 /// Allocate and finish a call graph before deferred collection can observe it.
 /// Every input becomes reachable from the fresh head within the same lend.
-unsafe fn language(items: &[SEXP]) -> SEXP {
+unsafe fn language<const N: usize>(items: [SEXP; N]) -> SEXP {
     unsafe {
-        require_allocation(memory::with_arena(|arena| {
+        allocate_with_gc_retry(items, |arena| {
             let mut head = R_NilValue();
             for &item in items.iter().rev() {
                 head = arena.cons(item, head, ptr::null_mut());
@@ -102,32 +133,32 @@ unsafe fn language(items: &[SEXP]) -> SEXP {
             }
             crate::sexp::accessors::SET_TYPEOF(head, SEXPTYPE::LANGSXP.as_c_int());
             head
-        }))
+        })
     }
 }
 
 /// Create a two-element call.
 pub unsafe fn Rf_lang2(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe { language(&[car, cdr]) }
+    unsafe { language([car, cdr]) }
 }
 
 /// Create a three-element call.
 pub unsafe fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
-    unsafe { language(&[car, cdr, tag]) }
+    unsafe { language([car, cdr, tag]) }
 }
 
 /// Create a four-element call.
 pub unsafe fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
-    unsafe { language(&[car, a2, a3, a4]) }
+    unsafe { language([car, a2, a3, a4]) }
 }
 
 /// Create a five-element call.
 pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
-    unsafe { language(&[car, a2, a3, a4, a5]) }
+    unsafe { language([car, a2, a3, a4, a5]) }
 }
 /// Allocate a pairlist chain of n NILSXP elements.
 pub unsafe fn Rf_allocList(n: c_int) -> SEXP {
-    let value = unsafe { memory::with_arena(|arena| arena.alloc_list_chain(n)) };
+    let value = unsafe { allocate_with_gc_retry([], |arena| arena.alloc_list_chain(n)) };
     if n == 0 {
         value
     } else {

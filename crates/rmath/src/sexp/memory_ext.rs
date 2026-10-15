@@ -119,19 +119,21 @@ pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `allocSExp()`.
 pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
-    unsafe { memory::with_arena(|arena| arena.alloc_node(sexptype)) }
+    unsafe { super::constructors::allocate_with_gc_retry([], |arena| arena.alloc_node(sexptype)) }
 }
 
 /// Create a PROMSXP binding an expression to an environment.
 pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let p = allocSExp(SEXPTYPE::PROMSXP);
-        if !p.is_null() {
-            crate::sexp::accessors::SET_PRVALUE(p, R_UnboundValue());
-            crate::sexp::accessors::SET_PRCODE(p, expr);
-            crate::sexp::accessors::SET_PRENV(p, env);
-        }
-        p
+        super::constructors::allocate_with_gc_retry([expr, env], |arena| {
+            let p = arena.alloc_node(SEXPTYPE::PROMSXP);
+            if !p.is_null() {
+                crate::sexp::accessors::SET_PRVALUE(p, R_UnboundValue());
+                crate::sexp::accessors::SET_PRCODE(p, expr);
+                crate::sexp::accessors::SET_PRENV(p, env);
+            }
+            p
+        })
     }
 }
 

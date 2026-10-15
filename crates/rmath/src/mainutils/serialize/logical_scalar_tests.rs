@@ -59,7 +59,10 @@ fn decoded_logical_metadata_and_attributes_never_modify_shared_singletons() {
                 assert_eq!(OBJECT(decoded), 1);
             } else {
                 let names = crate::eval::attrib_core::getAttrib(decoded, R_NamesSymbol());
-                assert_eq!(CStr::from_ptr(CHAR(STRING_ELT(names, 0))).to_bytes(), b"kept");
+                assert_eq!(
+                    CStr::from_ptr(CHAR(STRING_ELT(names, 0))).to_bytes(),
+                    b"kept"
+                );
             }
             let attributes = ATTRIB(Rf_ScalarLogical(1));
             assert!(attributes.is_null() || attributes == R_NilValue());
