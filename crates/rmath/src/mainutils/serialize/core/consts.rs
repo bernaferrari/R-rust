@@ -122,6 +122,7 @@ pub struct SerializeRuntimeState {
     pub cache_names: [*mut c_char; NC],
     pub cache_ptrs: [*mut c_char; NC],
     pub read_item_depth: c_int,
+    pub(crate) imported_bytecode_metadata: [crate::sexp::instance::RuntimeValue; 2],
 }
 
 impl Default for SerializeRuntimeState {
@@ -131,6 +132,9 @@ impl Default for SerializeRuntimeState {
             cache_names: [ptr::null_mut(); NC],
             cache_ptrs: [ptr::null_mut(); NC],
             read_item_depth: 0,
+            imported_bytecode_metadata: std::array::from_fn(|_| {
+                crate::sexp::instance::RuntimeValue::empty()
+            }),
         }
     }
 }

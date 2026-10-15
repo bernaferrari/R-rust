@@ -236,3 +236,50 @@ fn bounded_small_decodes_do_not_retrace_an_unchanged_high_live_heap() {
     assert_eq!(retained.len(), 200);
     assert_eq!(session.arena_budget().max_nodes, 222);
 }
+
+#[test]
+fn imported_bytecode_reuses_private_metadata_within_one_original_owner() {
+    use crate::sexp::{object::SexpMut, session::RSession};
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../r-embed/tests/fixtures/gnu-bytecode-metadata-sharing.rds"
+    ));
+    let input = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::RAWSXP, bytes.len() as _)))
+        .unwrap();
+    let mut input = SexpMut::try_from_checked(input).unwrap();
+    for (index, byte) in bytes.iter().enumerate() {
+        input.try_set_raw_elt(index as _, *byte).unwrap();
+    }
+    let input = input.freeze();
+    let result = unsafe { R_unserialize(input.as_raw(), R_NilValue()) };
+    let result = owner.sexp(result).unwrap();
+    unsafe {
+        let left = BODY(VECTOR_ELT(result.as_raw(), 0));
+        let right = BODY(VECTOR_ELT(result.as_raw(), 1));
+        assert_eq!(TYPEOF(left), SEXPTYPE::BCODESXP);
+        assert_eq!(TYPEOF(right), SEXPTYPE::BCODESXP);
+        assert_eq!(
+            VECTOR_ELT(left, 3),
+            VECTOR_ELT(right, 3),
+            "duplicate private bytecode dialect markers"
+        );
+        assert_eq!(
+            VECTOR_ELT(left, 2),
+            VECTOR_ELT(right, 2),
+            "duplicate private imported stack hints"
+        );
+        owner.full_gc().unwrap();
+        assert_eq!(
+            owner.sexp(VECTOR_ELT(left, 2)).unwrap().integer_elt(0),
+            Some(4)
+        );
+        assert_eq!(
+            owner.sexp(VECTOR_ELT(right, 3)).unwrap().integer_elt(0),
+            Some(crate::eval::bytecode::GNU_BC_DIALECT_MARKER)
+        );
+    }
+}

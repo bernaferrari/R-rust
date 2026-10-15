@@ -34,6 +34,67 @@ pub(crate) unsafe fn read_item_in_context(
     result
 }
 
+/// These two values describe the port's imported bytecode representation,
+/// not user constants. Share their owned original-session cells rather than
+/// allocating two additional R nodes for every imported closure.
+type ImportedMetadata = [crate::sexp::object::Sexp<'static>; 2];
+
+unsafe fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
+    use crate::sexp::{instance::RuntimeValue, object::SexpError, owner::OwnerToken};
+    let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
+    if owner.weak_owner().is_none() {
+        return Ok(None); // Explicitly borrowed native fixtures retain their old path.
+    }
+    let _pin = owner.pin().map_err(|e| e.to_string())?;
+    let pointer = owner.as_ptr();
+    // No state loan crosses allocation, collection, or provider callbacks.
+    let cached = unsafe {
+        (*pointer)
+            .serialize_state
+            .imported_bytecode_metadata
+            .clone()
+    };
+    if let [Some(marker), Some(hint)] = cached.map(|value| value.owned()) {
+        return Ok(Some([marker, hint]));
+    }
+    let factory = owner.node_factory();
+    let make = |number| {
+        let value = factory
+            .allocate(|arena| {
+                crate::sexp::builder::scalar_integer_in(arena, number).map(|value| value.as_raw())
+            })?
+            .into_owned()?;
+        let node = value.allocation()?;
+        let heap = node.heap_identity();
+        let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+        header.sxpinfo.set_named(3);
+        heap.replace_node(node, header)
+            .ok_or(SexpError::StaleAllocation)?;
+        Ok::<_, SexpError>(value)
+    };
+    let marker = make(crate::eval::bytecode::GNU_BC_DIALECT_MARKER).map_err(|e| e.to_string())?;
+    let hint = make(4).map_err(|e| e.to_string())?;
+    owner.require_active().map_err(|e| e.to_string())?;
+    // Allocation callbacks may have initialized this same owner's cache.
+    // Preserve that publication and release our redundant temporary cells.
+    let published = unsafe {
+        (*pointer)
+            .serialize_state
+            .imported_bytecode_metadata
+            .clone()
+    };
+    if let [Some(marker), Some(hint)] = published.map(|value| value.owned()) {
+        return Ok(Some([marker, hint]));
+    }
+    unsafe {
+        (*pointer).serialize_state.imported_bytecode_metadata = [
+            RuntimeValue::from_owned(marker.clone()),
+            RuntimeValue::from_owned(hint.clone()),
+        ];
+    }
+    Ok(Some([marker, hint]))
+}
+
 // Read GNU compiler constants completely and retain the instruction stream in
 // an explicitly tagged internal BCODESXP. Standalone GNU bytecode remains
 // rejected below; this path is reached only for executable closure bodies or promise expressions.
@@ -89,9 +150,15 @@ pub(crate) unsafe fn read_bc_source(
         let source = VECTOR_ELT(constants, 0);
         SET_NAMED(source, 3);
         let _source = protect(source);
-        let marker = Rf_ScalarInteger(crate::eval::bytecode::GNU_BC_DIALECT_MARKER);
+        let metadata = imported_bytecode_metadata()?;
+        let marker = metadata.as_ref().map_or_else(
+            || Rf_ScalarInteger(crate::eval::bytecode::GNU_BC_DIALECT_MARKER),
+            |values| values[0].as_raw(),
+        );
         let _marker = protect(marker);
-        let stack_hint = Rf_ScalarInteger(4);
+        let stack_hint = metadata
+            .as_ref()
+            .map_or_else(|| Rf_ScalarInteger(4), |values| values[1].as_raw());
         let _stack_hint = protect(stack_hint);
         let bcode = Rf_allocVector(SEXPTYPE::BCODESXP, 5);
         let _bcode = protect(bcode);
