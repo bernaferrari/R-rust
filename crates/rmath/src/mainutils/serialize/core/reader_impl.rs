@@ -224,6 +224,20 @@ impl<'a> BinaryReader<'a> {
         vector_length_fits(len, self.remaining(), binary_element_bytes, self.ascii_body)
     }
 
+    /// Connection object vectors are decoded incrementally before allocating
+    /// their final payload. Reading a lower bound for every later child here
+    /// would advance the connection past restoration callbacks in early children.
+    pub(crate) fn read_object_vector_length(&mut self) -> Result<i32, String> {
+        if self.pull.is_none() {
+            return self.read_vector_length(4);
+        }
+        let len = self.read_i32()?;
+        if len < 0 {
+            return Err("read error: negative vector length".into());
+        }
+        Ok(len)
+    }
+
     pub fn read_string_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
         if !self.ascii_body {
             return self.read_bytes(len).map(|bytes| bytes.to_vec());
@@ -282,9 +296,6 @@ impl<'a> BinaryReader<'a> {
                 other => out.push(other),
             }
         }
-        if self.peek_byte() == Some(b'\n') {
-            self.pos += 1;
-        }
         Ok(out)
     }
 
@@ -304,6 +315,14 @@ impl<'a> BinaryReader<'a> {
             return Err("read error: missing ASCII token".to_string());
         }
         let token = self.src()[start..self.pos].to_vec();
+        // GNU InWord reads and discards the first terminating whitespace.
+        // It does not leave that delimiter in stream pushback.
+        if self
+            .peek_byte()
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            self.pos += 1;
+        }
         std::str::from_utf8(&token)
             .map(|s| s.to_string())
             .map_err(|_| "read error: invalid ASCII token".to_string())

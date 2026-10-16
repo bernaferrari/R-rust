@@ -1003,8 +1003,15 @@ unsafe fn decode_stream_object(
 ) -> SEXP {
     unsafe {
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
-        let fmt1 = reader.read_byte().unwrap_or(0);
-        let fmt2 = reader.read_byte().unwrap_or(0);
+        let mut fmt1 = reader.read_byte().unwrap_or(0);
+        let mut fmt2 = reader.read_byte().unwrap_or(0);
+        // GNU InFormat accepts exactly the newline left by an ASCII string,
+        // followed by the next ASCII header. Other leading whitespace and
+        // newlines before binary/XDR headers remain invalid.
+        if fmt1 == b'\n' && fmt2 == b'A' {
+            fmt1 = b'A';
+            fmt2 = reader.read_byte().unwrap_or(0);
+        }
         if (fmt1 != b'A' && fmt1 != b'B' && fmt1 != b'X') || fmt2 != b'\n' {
             error("unknown input format");
         }
@@ -1079,61 +1086,47 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
             .require_active()
             .unwrap_or_else(|e| error(&e.to_string()));
 
-        // Sniff exactly the two gzip magic bytes before committing to a
-        // streaming decode.
-        let first = crate::mainutils::connections::connection_fgetc(index);
-        if first < 0 {
-            error("read error");
-        }
-        let second = crate::mainutils::connections::connection_fgetc(index);
-        if second < 0 {
-            error("read error");
-        }
-
-        let result;
-        if first == 0x1f && second == 0x8b {
-            // Compressed stream: gather the remainder, decompress, and decode
-            // from the slice. The connection is left at end of stream.
-            let mut compressed = vec![first as u8, second as u8];
-            compressed.extend(crate::mainutils::connections::connection_read_all(index));
-            let mut decompressed = Vec::new();
-            let mut decoder = GzDecoder::new(compressed.as_slice());
-            if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_err()
-                || decompressed.is_empty()
-            {
-                error("read error");
-            }
-            let mut reader = BinaryReader::new(&decompressed);
-            configure_conn_hooks(&owner, &mut reader, hook);
-            result = decode_stream_object(&owner, &mut reader);
-        } else {
-            // Pull bytes from the connection only as the decoder asks for
-            // them; a read is never larger than the decoder's request.
-            let mut seed = vec![first as u8, second as u8];
-            let mut fill = |buf: &mut Vec<u8>, need: usize| -> bool {
-                while buf.len() < need {
-                    let byte = if !seed.is_empty() {
-                        seed.remove(0)
-                    } else {
-                        match crate::mainutils::connections::connection_fgetc(index) {
-                            c if c >= 0 => c as u8,
-                            _ => return false,
-                        }
-                    };
-                    buf.push(byte);
+        let hook = owner
+            .sexp(hook)
+            .and_then(|s| s.into_owned())
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let token = crate::mainutils::connections::connection_token(index)
+            .unwrap_or_else(|message| error(&message));
+        let mut fill = |buf: &mut Vec<u8>, need: usize| -> bool {
+            // Validate even if the reader already has the requested bytes.
+            // A restoration hook can close/reuse a slot between reads.
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let index = token
+                .require_current()
+                .unwrap_or_else(|message| error(&message));
+            while buf.len() < need {
+                match crate::mainutils::connections::connection_fgetc(index) {
+                    byte if byte >= 0 => buf.push(byte as u8),
+                    _ => return false,
                 }
-                true
-            };
-            let mut reader = BinaryReader::new_pull(&mut fill);
-            configure_conn_hooks(&owner, &mut reader, hook);
-            result = decode_stream_object(&owner, &mut reader);
-            // ASCII lookahead may have buffered bytes past the object; hand
-            // them back so trailing data is not lost.
-            let leftover = reader.take_leftover();
-            if !leftover.is_empty() {
-                crate::mainutils::connections::connection_pushback(index, &leftover);
             }
+            true
+        };
+        // Compression belongs to the connection (gzfile/gzcon), as in GNU.
+        // Sniffing and buffering a gzip payload here consumed later objects
+        // and made hook-observed cursor positions describe the wrong stream.
+        let mut reader = BinaryReader::new_pull(&mut fill);
+        configure_conn_hooks(&owner, &mut reader, hook.as_raw());
+        let result = decode_stream_object(&owner, &mut reader);
+        let result = owner.sexp(result).unwrap_or_else(|e| error(&e.to_string()));
+        let leftover = reader.take_leftover();
+        if !leftover.is_empty() {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            let index = token
+                .require_current()
+                .unwrap_or_else(|message| error(&message));
+            crate::mainutils::connections::connection_pushback(index, &leftover);
         }
+        let result = result.as_raw();
         result
     }
 }
@@ -1425,3 +1418,7 @@ pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SE
 #[cfg(test)]
 #[path = "persistence_tests.rs"]
 mod persistence_tests;
+
+#[cfg(test)]
+#[path = "connection_stream_tests.rs"]
+mod connection_stream_tests;

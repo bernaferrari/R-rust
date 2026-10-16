@@ -24,7 +24,7 @@ use std::slice;
 use bzip2::read::BzDecoder;
 use bzip2::write::BzEncoder;
 use flate2::Compression;
-use flate2::read::{GzDecoder, ZlibDecoder};
+use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 
 use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
@@ -314,6 +314,7 @@ mod lazyload;
 mod membuf;
 mod owned_input;
 mod stream;
+mod stream_values;
 
 pub use self::api::*;
 pub use self::compress::*;

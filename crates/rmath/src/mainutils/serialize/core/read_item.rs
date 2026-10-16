@@ -465,12 +465,40 @@ pub(crate) unsafe fn read_references_item(
         ..
     } = flags;
     unsafe {
-        let len = reader.read_vector_length(4)?;
+        let len = reader.read_object_vector_length()?;
+        let staged = if reader.pull.is_some() {
+            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            let _pin = owner.pin().map_err(|e| e.to_string())?;
+            let reservation = owner
+                .with_arena(|arena| arena.reserve_workspace(0))
+                .map_err(|e| e.to_string())?
+                .ok_or("unserialize exceeds session memory limit")?;
+            let mut values = super::super::stream_values::StreamValues::new(reservation);
+            for _ in 0..len {
+                let value = ReadItemInternal(reader, ref_table)?;
+                owner.require_active().map_err(|e| e.to_string())?;
+                values.push(
+                    owner
+                        .sexp(value)
+                        .and_then(|s| s.into_owned())
+                        .map_err(|e| e.to_string())?,
+                )?;
+            }
+            Some(values)
+        } else {
+            None
+        };
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
-        for i in 0..len {
-            let elt = ReadItemInternal(reader, ref_table)?;
-            SET_VECTOR_ELT(s, i as R_xlen_t, elt);
+        if let Some(values) = &staged {
+            for (i, value) in values.iter().enumerate() {
+                SET_VECTOR_ELT(s, i as R_xlen_t, value.as_raw());
+            }
+        } else {
+            for i in 0..len {
+                let elt = ReadItemInternal(reader, ref_table)?;
+                SET_VECTOR_ELT(s, i as R_xlen_t, elt);
+            }
         }
         restore_serialized_gp(s, levs, isobj);
         if hasattr != 0 {
