@@ -5,6 +5,33 @@
 This is an experimental, embeddable Rust R runtime. Entries are curated;
 compatibility claims are defined by the maintained docs and executable checks.
 
+### LOESS edge contracts completed (2026-10-16)
+
+- The owned LOESS kernel now reproduces GNU's warn-and-continue semantics
+  for degenerate neighborhoods instead of erroring: duplicate/zero-span
+  neighborhoods, all-zero weights and underdetermined (`k > nf-1`) local
+  models emit the full ehg127 diagnostic stream (`span too small…`,
+  `at`/`radius`/`all data on boundary…`, `pseudoinverse used at`,
+  `neighborhood radius`, `reciprocal condition number`, `There are other
+  near singularities as well.`, `zero-width neighborhood…`) with GNU's
+  `%.5g` formatting, emission order and cumulative sing/rcond state, and
+  flush to GNU's outcomes (zero coefficients, NaN coefficients for
+  underdetermined zero-weight neighborhoods, `enp = n - delta1` via
+  ehg141's z-clamp at zero trace). Diagnostics are recorded in a warning
+  buffer on `loess::Execution` and replayed as R warnings by the `.C`
+  bridge and the portable fit path; documented residuals (LINPACK rounding
+  debris in rcond digits, zero-width vertex presence on identical
+  predictors) live in docs/numerical-contracts.md.
+- `getCurrentCall` now applies GNU's rule that bytecode-expression
+  attribution applies only when no function frame is on the stack, so
+  warnings raised inside `.C`-bridged numerics attribute to the enclosing
+  closure (e.g. `In simpleLoess(...)`), matching the oracle byte-for-byte.
+- New oracle-verified regressions in crates/r-embed/tests/loess.rs for
+  call/terms metadata (model.frame, update, predict newdata, `(weights)`
+  naming), degenerate flush outcomes, and the singular-neighborhood
+  warning stream.
+
+
 ### Loader-independent base datetime/format/sink bindings (2026-10-12)
 
 - The four conformance failures exposed by running with the upstream base

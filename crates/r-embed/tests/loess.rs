@@ -147,3 +147,66 @@ fn unavailable_loess_predictions_are_na_not_nan() {
     let mut s = RSession::new().unwrap();
     assert_eq!(s.eval("x<-seq(0,1,length.out=30);y<-sin(x);f<-loess(y~x);p<-predict(f,c(NA,NaN,Inf,-1),se=TRUE);c(all(is.na(p$fit)),any(is.nan(p$fit)),all(is.na(p$se.fit)),any(is.nan(p$se.fit)))").unwrap(), "[1]  TRUE FALSE  TRUE FALSE\n");
 }
+
+#[test]
+fn loess_call_terms_and_degenerate_contracts_match_gnu() {
+    let mut s = RSession::new().unwrap();
+    // Family 1: call/terms metadata, model.frame, update, predict newdata.
+    assert_eq!(
+        s.eval("d<-data.frame(x=seq(0,1,length.out=30),y=sin(5*seq(0,1,length.out=30)));f<-loess(y~x,data=d,span=0.8,degree=2);paste(deparse(f$call),attr(f$terms,'term.labels'),paste(names(model.frame(f)),collapse='+'),update(f,span=0.5)$pars$span,format(predict(f,newdata=data.frame(x=0.5)),digits=15))").unwrap(),
+        "[1] \"loess(formula = y ~ x, data = d, span = 0.8, degree = 2) x y+x 0.5 0.594098590362032\"\n"
+    );
+    assert_eq!(
+        s.eval("f2<-withCallingHandlers(loess(y~poly(x,2),data=d),warning=function(w) invokeRestart('muffleWarning'));paste(attr(f2$terms,'term.labels'),paste(names(model.frame(withCallingHandlers(loess(y~x,data=cbind(d,w=rep(1:2,15)),weights=w),warning=function(w) invokeRestart('muffleWarning')))),collapse=','))").unwrap(),
+        "[1] \"poly(x, 2) y,x,(weights)\"\n"
+    );
+    // Family 3: duplicate predictors and zero weights warn and continue
+    // like GNU (fitted/enp/s flush semantics), instead of erroring.
+    let muffle = "withCallingHandlers({<FIT>},warning=function(w) invokeRestart('muffleWarning'))";
+    // enp/s carry the documented ≤2e-4 relative residual on rank-deficient
+    // neighborhoods (docs/numerical-contracts.md); fitted values are exact.
+    assert_eq!(
+        s.eval(&muffle.replace("<FIT>", "g<-loess(c(1,2,3,4,5)~c(1,1,1,2,3),span=0.9,degree=1);paste(abs(g$enp-2.54058122313728)<1e-3,abs(g$s-1.13939077180239)<1e-3,paste(format(head(fitted(g),3),digits=15),collapse='|'))")).unwrap(),
+        "[1] \"TRUE TRUE 2|2|2\"\n"
+    );
+    assert_eq!(
+        s.eval(&muffle.replace("<FIT>", "set.seed(11);n<-60;x<-runif(n);z<-loess(sin(4*x)~x,weights=rep(0,n));paste(format(z$enp,digits=15),format(z$s,digits=15),paste(format(head(fitted(z),3),digits=15),collapse='|'))")).unwrap(),
+        "[1] \"0 0 0|0|0\"\n"
+    );
+    // p > n locally still errors like GNU, and the session recovers.
+    assert!(
+        s.eval(&muffle.replace(
+            "<FIT>",
+            "tryCatch(loess(c(1,2,3)~c(1,2,3),degree=2),error=function(e) conditionMessage(e))"
+        ))
+        .unwrap()
+        .contains("invalid 'x'")
+    );
+    assert_eq!(s.eval("2+2").unwrap(), "[1] 4\n");
+}
+
+#[test]
+fn loess_singular_neighborhood_warnings_match_gnu() {
+    let mut s = RSession::new().unwrap();
+    // GNU's ehg127 diagnostics (pseudoinverse triplet + other near
+    // singularities), replayed in emission order with %.5g formatting.
+    let warnings = s
+        .eval("w<-character(0);g<-withCallingHandlers(loess(c(1,2,3,4,5)~c(1,1,1,2,3),span=0.9,degree=1),warning=function(err){w<<-c(w,sub('^In .*:[[:space:]]*','',conditionMessage(err)));invokeRestart('muffleWarning')});paste(sub('reciprocal condition number  [^ |]*','reciprocal condition number  <RCOND>',w),collapse=' || ')").unwrap();
+    // The rcond digits are LINPACK rounding debris (documented residual);
+    // everything else must byte-match GNU's stream.
+    assert_eq!(
+        warnings,
+        "[1] \"pseudoinverse used at 0.99 || neighborhood radius 1.01 || reciprocal condition number  <RCOND> || There are other near singularities as well. 1\"\n",
+        "{warnings}"
+    );
+    let rcond = s
+        .eval("w<-character(0);g<-withCallingHandlers(loess(c(1,2,3,4,5)~c(1,1,1,2,3),span=0.9,degree=1),warning=function(err){w<<-c(w,conditionMessage(err));invokeRestart('muffleWarning')});sub('.*reciprocal condition number  ([^ |]*).*','\\\\1',w[3])").unwrap();
+    let value: f64 = rcond
+        .trim()
+        .trim_start_matches("[1]")
+        .trim()
+        .trim_matches('"')
+        .parse()
+        .expect("rcond parses as a number");
+    assert!(value == 0. || value.abs() < 1e-15, "rcond {value}");
+}

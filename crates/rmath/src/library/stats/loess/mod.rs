@@ -66,16 +66,92 @@ mod kani_proofs {
 pub(crate) struct Execution<'a> {
     workspace_limit: usize,
     check: &'a dyn Fn() -> Result<(), String>,
+    // GNU's ehg131 keeps `sing`/`rcond` in saved state for a whole fit and
+    // emits its singularity diagnostics through R's warning(); the recorded
+    // messages are replayed by the R-facing bridges after a successful fit.
+    warnings: std::cell::RefCell<Vec<String>>,
+    sing: std::cell::Cell<usize>,
+    rcond: std::cell::Cell<f64>,
+    span_warned: std::cell::Cell<bool>,
 }
 impl<'a> Execution<'a> {
     pub fn new(check: &'a dyn Fn() -> Result<(), String>) -> Self {
         Self {
             workspace_limit: 256 * 1024 * 1024,
             check,
+            warnings: std::cell::RefCell::default(),
+            sing: std::cell::Cell::new(0),
+            rcond: std::cell::Cell::new(1.),
+            span_warned: std::cell::Cell::new(false),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_workspace_limit(
+        workspace_limit: usize,
+        check: &'a dyn Fn() -> Result<(), String>,
+    ) -> Self {
+        Self {
+            workspace_limit,
+            check,
+            warnings: std::cell::RefCell::default(),
+            sing: std::cell::Cell::new(0),
+            rcond: std::cell::Cell::new(1.),
+            span_warned: std::cell::Cell::new(false),
         }
     }
     fn checkpoint(&self) -> Result<(), String> {
         (self.check)()
+    }
+
+    /// Record a GNU-format diagnostic; order matches ehg131's emission.
+    pub fn warn(&self, message: impl Into<String>) {
+        self.warnings.borrow_mut().push(message.into());
+    }
+
+    /// Drain recorded diagnostics (the caller replays them as R warnings).
+    pub fn take_warnings(&self) -> Vec<String> {
+        std::mem::take(&mut *self.warnings.borrow_mut())
+    }
+
+    /// ehg184-style message: prefix followed by one ` %.5g` value per entry.
+    fn warn_values(&self, prefix: &str, values: &[f64]) {
+        let mut message = String::from(prefix);
+        for value in values {
+            message.push(' ');
+            message.push_str(&format_g5(*value));
+        }
+        self.warn(message);
+    }
+
+    /// loesswarn(104): emitted once per fit when the local model needs more
+    /// degrees of freedom than the span supplies.
+    fn warn_span_too_small(&self, terms: usize, neighborhood: usize) {
+        if terms > neighborhood.saturating_sub(1) && !self.span_warned.replace(true) {
+            self.warn("span too small.   fewer data values than degrees of freedom.");
+        }
+    }
+
+    /// ehg131's cumulative near-singularity diagnostics.
+    fn note_singular(&self, ratio: f64, q: &[f64], rho: f64) {
+        // gfortran's min() keeps the previous value when the new ratio is
+        // NaN (0/0 from an exactly zero design), and so do we.
+        if !ratio.is_nan() {
+            self.rcond.set(self.rcond.get().min(ratio));
+        }
+        // GNU: tol = sigma(1) * 100 * machep; singular when sigma(k) <= tol.
+        if ratio > 100. * f64::EPSILON {
+            return;
+        }
+        let sing = self.sing.get() + 1;
+        self.sing.set(sing);
+        if sing == 1 {
+            self.warn_values("pseudoinverse used at", q);
+            self.warn_values("neighborhood radius", &[rho.sqrt()]);
+            self.warn_values("reciprocal condition number ", &[self.rcond.get()]);
+        } else if sing == 2 {
+            self.warn_values("There are other near singularities as well.", &[rho]);
+        }
     }
 
     fn workspace(
@@ -97,6 +173,36 @@ impl<'a> Execution<'a> {
             ));
         }
         self.checkpoint()
+    }
+}
+
+/// Format like C's `%.5g` (loessc.c's ehg184a diagnostic values).
+fn format_g5(x: f64) -> String {
+    if x == 0. {
+        return "0".into();
+    }
+    if !x.is_finite() {
+        return format!("{x}");
+    }
+    let exponent = x.abs().log10().floor() as i32;
+    if (-4..5).contains(&exponent) {
+        let decimals = (4 - exponent).max(0) as usize;
+        let mut s = format!("{:.*}", decimals, x);
+        if s.contains('.') {
+            while s.ends_with('0') {
+                s.pop();
+            }
+            if s.ends_with('.') {
+                s.pop();
+            }
+        }
+        s
+    } else {
+        let s = format!("{:.4e}", x);
+        let (mantissa, power) = s.split_once('e').unwrap_or((s.as_str(), ""));
+        let sign = if power.starts_with('-') { "-" } else { "+" };
+        let digits = power.trim_start_matches(['+', '-']);
+        format!("{mantissa}e{sign}{digits:0>2}")
     }
 }
 
@@ -500,6 +606,7 @@ impl Model {
         if nf == 0 {
             return Err("span is too small".into());
         }
+        execution.warn_span_too_small(self.basis(q).len(), nf);
         let mut order: Vec<_> = self
             .x
             .iter()
@@ -517,23 +624,39 @@ impl Model {
             })
             .collect();
         order.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
-        let radius = order[nf - 1].1 * self.config.span.max(1.);
-        if !radius.is_finite() || radius <= 0. {
-            return Err("LOESS neighborhood has zero width".into());
+        // GNU's ehg131 calls this `rho` (a squared distance) and only warns
+        // when it degenerates; the fit continues through the singular paths.
+        let rho = order[nf - 1].1 * self.config.span.max(1.);
+        if rho.is_finite() && rho <= 0. {
+            execution.warn("zero-width neighborhood. make span bigger");
         }
         let k = self.basis(q).len();
         let mut a = vec![vec![0.; k]; nf];
         let mut w = vec![0.; nf];
         for i in 0..nf {
             let (index, dist) = order[i];
-            w[i] = (weights[index] * (1. - (dist / radius).sqrt().powi(3)).max(0.).powi(3)).sqrt();
+            // kernel = tricube on sqrt(dist/rho); rho == 0 propagates the
+            // 0/0 NaN exactly as GNU's Fortran does.
+            let t = if rho > 0. {
+                (dist / rho).sqrt()
+            } else {
+                f64::NAN
+            };
+            w[i] = (weights[index] * (1. - t.powi(3)).powi(3)).sqrt();
             let delta: Vec<_> = self.x[index].iter().zip(q).map(|(x, q)| x - q).collect();
             for (j, b) in self.basis(&delta).iter().enumerate() {
                 a[i][j] = w[i] * b;
             }
         }
+        if w.iter().any(|w| w.is_nan()) {
+            // GNU's NaN kernel weights fail every tol/sigma comparison in
+            // ehg127, which flushes the whole coefficient vector to zero.
+            return Ok(vec![vec![0.; n]; d + 1]);
+        }
         if w.iter().all(|w| *w == 0.) {
-            return Err("all LOESS neighborhood weights are zero".into());
+            execution.warn_values("at ", q);
+            execution.warn_values("radius ", &[rho]);
+            execution.warn("all data on boundary of neighborhood. make span bigger");
         }
         let scale: Vec<_> = (0..k)
             .map(|j| {
@@ -550,7 +673,14 @@ impl Model {
             }
         }
         execution.checkpoint()?;
-        let pinv = pseudoinverse(&a)?;
+        let (pinv, ratio) = pseudoinverse_with_condition(&a)?;
+        execution.note_singular(ratio, q, rho);
+        // loesswarn(104)'s condition: with more terms than observations the
+        // underdetermined solve is rank deficient, and GNU's dqrsl leaves
+        // NaN coefficients for that neighborhood.
+        if k > nf - 1 && w.iter().all(|w| *w == 0.) {
+            return Ok(vec![vec![f64::NAN; n]; d + 1]);
+        }
         execution.checkpoint()?;
         let mut output = vec![vec![0.; n]; d + 1];
         for j in 0..(d + 1).min(k) {
@@ -579,7 +709,7 @@ fn median(mut values: Vec<f64>) -> f64 {
 }
 
 #[cfg(feature = "rust-backend")]
-fn pseudoinverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, String> {
+fn pseudoinverse_with_condition(a: &[Vec<f64>]) -> Result<(Vec<Vec<f64>>, f64), String> {
     let (m, n) = (a.len(), a[0].len());
     let matrix = faer::Mat::from_fn(m, n, |i, j| a[i][j]);
     let svd = matrix
@@ -589,24 +719,33 @@ fn pseudoinverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, String> {
     let u = svd.U();
     let v = svd.V();
     let tolerance = s[0] * 100. * f64::EPSILON;
-    Ok((0..n)
-        .map(|i| {
-            (0..m)
-                .map(|j| {
-                    (0..m.min(n))
-                        .filter(|k| s[*k] > tolerance)
-                        .map(|k| v[(i, k)] * u[(j, k)] / s[k])
-                        .sum()
-                })
-                .collect()
-        })
-        .collect())
+    // GNU's rcond candidate: sigma(k)/sigma(1) of the equilibrated design.
+    let ratio = if s[0] > 0. {
+        s[m.min(n) - 1] / s[0]
+    } else {
+        f64::NAN
+    };
+    Ok((
+        (0..n)
+            .map(|i| {
+                (0..m)
+                    .map(|j| {
+                        (0..m.min(n))
+                            .filter(|k| s[*k] > tolerance)
+                            .map(|k| v[(i, k)] * u[(j, k)] / s[k])
+                            .sum()
+                    })
+                    .collect()
+            })
+            .collect(),
+        ratio,
+    ))
 }
 
 // One-sided Jacobi SVD keeps this owned kernel available with the system
 // backend too, without raw LAPACK calls or squaring the condition number.
 #[cfg(not(feature = "rust-backend"))]
-fn pseudoinverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, String> {
+fn pseudoinverse_with_condition(a: &[Vec<f64>]) -> Result<(Vec<Vec<f64>>, f64), String> {
     let (m, n) = (a.len(), a[0].len());
     let mut b = a.to_vec();
     let mut v: Vec<Vec<f64>> = (0..n)
@@ -650,18 +789,29 @@ fn pseudoinverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, String> {
         .map(|j| b.iter().map(|r| r[j] * r[j]).sum::<f64>())
         .collect();
     let tolerance = sigma.iter().copied().fold(0., f64::max) * (100. * f64::EPSILON).powi(2);
-    Ok((0..n)
-        .map(|i| {
-            (0..m)
-                .map(|j| {
-                    (0..n)
-                        .filter(|k| sigma[*k] > tolerance)
-                        .map(|k| v[i][k] * b[j][k] / sigma[k])
-                        .sum()
-                })
-                .collect()
-        })
-        .collect())
+    // Columns hold squared singular values; GNU's rcond is sigma(k)/sigma(1).
+    let max = sigma.iter().copied().fold(0., f64::max);
+    let min = sigma.iter().copied().fold(f64::INFINITY, f64::min);
+    let ratio = if max > 0. {
+        (min / max).sqrt()
+    } else {
+        f64::NAN
+    };
+    Ok((
+        (0..n)
+            .map(|i| {
+                (0..m)
+                    .map(|j| {
+                        (0..n)
+                            .filter(|k| sigma[*k] > tolerance)
+                            .map(|k| v[i][k] * b[j][k] / sigma[k])
+                            .sum()
+                    })
+                    .collect()
+            })
+            .collect(),
+        ratio,
+    ))
 }
 
 #[cfg(test)]

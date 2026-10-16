@@ -503,14 +503,21 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             .collect();
         let y: Vec<_> = complete.iter().map(|i| y[*i]).collect();
         let weights: Vec<_> = complete.iter().map(|i| weights[*i]).collect();
-        let mut model = Model::fit_with_execution(
-            x.clone(),
-            y.clone(),
-            weights.clone(),
-            config,
-            &Execution::new(&check_execution),
-        )
-        .unwrap_or_else(|e| base_error(e));
+        let execution = Execution::new(&check_execution);
+        let mut model =
+            Model::fit_with_execution(x.clone(), y.clone(), weights.clone(), config, &execution)
+                .unwrap_or_else(|e| base_error(e));
+        // GNU's ehg131 diagnostics surface as R warnings during the fit,
+        // attributed to the calling closure (GNU .C pushes no
+        // warning-visible context).
+        for message in execution.take_warnings() {
+            let mut bytes = message.into_bytes();
+            bytes.push(0);
+            crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::findCall(),
+                bytes.as_ptr() as *const std::ffi::c_char,
+            );
+        }
         if statistics == "none" {
             model.trace = 0.;
             model.delta1 = 0.;

@@ -52,6 +52,66 @@ portable contract; the portable tests must pass with contraction removed.
 | `nls` port-algorithm trace + `TukeyHSD` bounds (reg-tests-1b.R, `crates/rmath` nls / `ptukey`-`qtukey` paths) | GNU `nls(.., algorithm="port", trace=TRUE)` iterates via `nlminb`; TukeyHSD confidence bounds via `qtukey` | **No — classified platform-dependent; digits are NOT fused.** | Iteration count and convergence code identical to the oracle; fitted parameters within 1e-5 relative; RSS agrees at displayed precision; TukeyHSD bounds within 1 ulp of displayed digits. | reg-tests-1b.R diff (2026-10-13, oracle r90451, report `/tmp/up-report-1brev-fresh2`): nls trace last-digit drift (`78907.68 (2.04e+00): par = (-0.02991565 93.57375 171.0867)` vs `-0.02991561 93.57374 171.0866`; tolerance `1.178e-06` vs `1.165e-06`), same iteration count (7) and RSS `13187`/`1319`; TukeyHSD warpbreaks `lwr` `6.642382` vs `6.642383`. |
 | Compressed temp-file sizes in reg-tests-1b.R save/read.table blocks (`file.info(tf)$size` for `gzfile`/`bzfile`/`xzfile` writers) | Deflate/bzip2/xz encoders backing rport's connections | **No — platform-dependent by nature** (encoder version/level choices change byte counts, not contents). | Round-trip readback identical to what was written; decompressed contents byte-identical to the oracle's. | reg-tests-1b.R diff (2026-10-13): `582`/`482` identical, xz-family `476` (oracle) vs `2176` (rport) — readback `stopifnot(identical(read.table(tf), morley))` passes in both engines. |
 
+### LOESS edge contracts (families: metadata, tracing, degeneracy, memory, cancellation)
+
+Oracle-verified 2026-10-16 against `r90451` with differential probes
+(`/tmp` scratch, reproduced by the checked-in regressions below):
+
+1. **Call/terms metadata** — byte-match. `loess(y~x, data=…)` stores the
+   call and `terms` exactly as GNU: deparsed call, `term.labels`
+   (incl. `poly(x, 2)`), `predvars`/`dataClasses`, `model.frame()` column
+   order with the `(weights)` name, `update(fit, …)` and
+   `predict(fit, newdata=…)`. Regression:
+   `loess_call_terms_and_degenerate_contracts_match_gnu`
+   (`crates/r-embed/tests/loess.rs`).
+2. **Iteration tracing** — byte-match. `print.loess` headers for
+   `family="symmetric"` (Residual Scale Estimate) vs gaussian (Residual
+   Standard Error), under `surface="direct"/"interpolate"` ×
+   `trace.hat="exact"/"approximate"`, agree with the oracle to all printed
+   digits (robust iteration arithmetic already covered by pinned fixtures).
+3. **Singular/degenerate fixtures** — GNU *warns and continues*; rport now
+   reproduces the whole `ehg127` diagnostic stream (`span too small…`,
+   `at`/`radius`/`all data on boundary…`, `pseudoinverse used at`,
+   `neighborhood radius`, `reciprocal condition number`,
+   `There are other near singularities as well.`, `zero-width
+   neighborhood…`) with GNU's `%.5g` formatting, emission order and
+   cumulative `sing`/`rcond` state, and the flush semantics for outcomes:
+   zero-width (0/0) neighborhoods yield zero coefficients, all-zero-weight
+   underdetermined (`k > nf-1`) neighborhoods yield NaN, zero traces pin
+   `ehg141`'s `z` clamp so `enp = n - delta1` (e.g. zero weights →
+   `enp = 0, s = 0`; `loess(rep(3,5)~rep(1,5), degree=0)` → `s = 3`), and
+   `p > n` still errors with `invalid 'x'`. Regressions:
+   `loess_call_terms_and_degenerate_contracts_match_gnu`,
+   `loess_singular_neighborhood_warnings_match_gnu`.
+   Classified **platform-dependent residuals** (rounding debris of LINPACK
+   `dqrdc`/`dsvdc` on rank-deficient designs, which rport's Jacobi SVD does
+   not reproduce): (a) the printed `reciprocal condition number` digits on
+   *near*-singular but non-degenerate neighborhoods (oracle `1.1553e-16`,
+   rport `5.4160e-24` — both flag the same singularity); (b) on
+   all-identical predictors the oracle's k-d tree contains a zero-width
+   vertex rport's tree does not, so the trailing `zero-width neighborhood`
+   warning can be absent; (c) which fitted entries are NaN on
+   heavy-duplicate degree-2 fits can differ at one boundary point, and
+   `enp`/`trace.hat` differ by ≤ 2e-4 relative on rank-deficient
+   neighborhoods (e.g. oracle `5.93360844394144` vs rport
+   `5.93256659639691`).
+4. **Dense influence-matrix memory budget** — **intentional divergence**
+   (bead `rport-aa96`): before any dense allocation, `loess_workspace_bytes`
+   admits a conservative estimate of `8·(n·(4n + 2·queries +
+   vertices·(d+1) + 256) + 16·queries)` bytes (vertices = 0 for direct
+   surfaces) against a 256 MiB per-operation ceiling; beyond it
+   the fit/predict errors with `LOESS workspace limit exceeded (256 MiB);
+   reduce observations or prediction rows` and the session stays usable.
+   For `surface="direct"` fits (queries = n) this rejects `n ≥ 2344` where
+   GNU R would happily allocate the `n×n` influence matrix until process
+   limits. Regression: `loess_workspace_error_preserves_the_session`.
+5. **Cancellation during numerical loops** — cooperative contract: the
+   owned kernel polls the session's cancellation token at checkpoints in
+   fitting, interpolation, prediction and exact diagnostics; an interrupt
+   unwinds with a recoverable `operation cancelled` error and a live
+   session. Regression:
+   `loess_can_be_cancelled_without_poisoning_the_session`.
+
 ## Reference matrix
 
 The external review asked for a four-row reference matrix. Status against

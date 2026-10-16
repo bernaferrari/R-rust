@@ -89,13 +89,36 @@ fn fit_loess_model(
         exact,
         approximate_trace,
     };
-    super::loess::Model::fit_with_execution(
+    let execution = super::loess::Execution::new(&|| Ok(()));
+    let model = super::loess::Model::fit_with_execution(
         column_major_rows(x, n, d),
         copy_vec(y, n),
         copy_vec(weights, n),
         config,
-        &super::loess::Execution::new(&|| Ok(())),
-    )
+        &execution,
+    );
+    match model {
+        Ok(model) => {
+            // GNU emits ehg131's diagnostics through warning() during the
+            // fit; replay the recorded stream in emission order.
+            for message in execution.take_warnings() {
+                let mut bytes = message.into_bytes();
+                bytes.push(0);
+                unsafe {
+                    // GNU's .C pushes no warning-visible context, so
+                    // warning() inside the routine attributes to the
+                    // calling closure (findCall = simpleLoess(...)),
+                    // not the .C(...) expression.
+                    crate::mainutils::errors::warningcall(
+                        crate::mainutils::errors::findCall(),
+                        bytes.as_ptr() as *const core::ffi::c_char,
+                    );
+                }
+            }
+            Ok(model)
+        }
+        Err(message) => Err(message),
+    }
 }
 
 fn write_fit(dest: *mut c_double, values: &[f64]) {

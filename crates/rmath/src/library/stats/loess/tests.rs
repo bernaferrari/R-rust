@@ -2525,10 +2525,7 @@ fn weighted_parametric_degree_2_interpolate() {
 #[test]
 fn execution_rejects_workspace_before_fitting() {
     let x = (0..20).map(|i| vec![i as f64]).collect();
-    let execution = Execution {
-        workspace_limit: 1,
-        check: &|| Ok(()),
-    };
+    let execution = Execution::with_workspace_limit(1, &|| Ok(()));
     let error = Model::fit_with_execution(
         x,
         vec![1.; 20],
@@ -2606,10 +2603,7 @@ fn execution_cancels_inside_exact_diagnostics() {
 fn prediction_checks_workspace_including_query_rows() {
     let x: Vec<_> = (0..20).map(|i| vec![i as f64]).collect();
     let model = Model::fit(x, vec![1.; 20], vec![1.; 20], config(false, true)).unwrap();
-    let execution = Execution {
-        workspace_limit: 100_000,
-        check: &|| Ok(()),
-    };
+    let execution = Execution::with_workspace_limit(100_000, &|| Ok(()));
     // Training fits this budget; a much larger prediction batch does not.
     execution.workspace(20, 1, 20, false).unwrap();
     let error = model

@@ -57,11 +57,18 @@ const NODES: [(f64, f64, f64); 10] = [
     (1.005, -0.010856, -0.7736),
 ];
 pub(super) fn approximate(n: usize, d: usize, tau: usize, trace: f64) -> (f64, f64) {
-    if n == tau || !trace.is_finite() || trace <= 0. {
+    if n == tau || !trace.is_finite() {
         return (f64::NAN, f64::NAN);
     }
     let cor = (tau as f64 / n as f64).sqrt();
-    let z = (((tau as f64 / trace).sqrt() - cor) / (1. - cor)).clamp(0., 1.);
+    // GNU's ehg141 computes z = (sqrt(k/trl) - corx)/(1 - corx) and clamps
+    // it into [0, 1]; a zero trace pins z to its upper clamp, so the
+    // correction factor is finite and the deltas reduce to n (minus trL=0).
+    let z = if trace > 0. {
+        (((tau as f64 / trace).sqrt() - cor) / (1. - cor)).clamp(0., 1.)
+    } else {
+        1.
+    };
     let pair = NODES
         .windows(2)
         .find(|p| z >= p[0].0 && z <= p[1].0)
