@@ -65,8 +65,7 @@ fn scratch_payload_tail_storage_is_charged_through_its_final_lease() {
 
 #[test]
 fn checked_raw_payload_denies_chunk_tail_before_native_allocation() {
-    let page = std::mem::size_of::<SexprecCore>()
-        + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
+    let page = RArena::minimum_page_bytes();
     let chunk = std::mem::size_of::<ByteChunk>();
     let mut arena = RArena::with_budget(ArenaBudget::new(page + chunk - 1, 0));
     let attempts = crate::sexp::memory::buffer_allocation_attempts();

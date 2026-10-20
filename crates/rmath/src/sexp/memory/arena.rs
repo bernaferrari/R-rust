@@ -93,6 +93,12 @@ impl RArena {
         let Some(admission) = self.reserve_workspace(bytes) else {
             return false;
         };
+        let Some(index_bytes) = super::payload_index::PayloadSlots::requested_bytes(slots) else {
+            return false;
+        };
+        let Some(index_admission) = self.reserve_workspace(index_bytes) else {
+            return false;
+        };
         if self.backing.node_pages.borrow_mut().try_reserve(1).is_err()
             || self
                 .backing
@@ -109,6 +115,10 @@ impl RArena {
             slots,
             || SexprecCore::new(SEXPTYPE::NILSXP),
         ) else {
+            return false;
+        };
+        let Some(payloads) = super::payload_index::PayloadSlots::try_new(slots, index_admission)
+        else {
             return false;
         };
         let Some(charge) = admission.commit_allocation() else {
@@ -128,7 +138,7 @@ impl RArena {
             storage,
             meta,
             _registration: registration,
-            payloads: RefCell::new(HashMap::new()),
+            payloads: RefCell::new(payloads),
         });
         self.slab_page = pages.len() - 1;
         self.slab_offset = 0;
@@ -334,7 +344,16 @@ impl RArena {
             .then_some((metadata.page(), slot))
     }
 
-    fn fresh_header_bytes(&self) -> usize {
+    /// Minimum complete backing for a new one-slot arena page, excluding
+    /// the vector/character payload itself. Existing slots are already prepaid.
+    pub(crate) fn minimum_page_bytes() -> usize {
+        NODE_BYTES
+            + PageMetadata::requested_array_bytes(1).expect("one-slot metadata layout")
+            + super::payload_index::PayloadSlots::requested_bytes(1)
+                .expect("one-slot payload index layout")
+    }
+
+    fn minimum_fresh_backing_bytes(&self) -> usize {
         if self.slab_offset < self.current_page_capacity()
             || self
                 .free_list
@@ -344,7 +363,7 @@ impl RArena {
         {
             0
         } else {
-            NODE_BYTES + PageMetadata::requested_array_bytes(1).expect("one-slot metadata layout")
+            Self::minimum_page_bytes()
         }
     }
 
@@ -504,7 +523,7 @@ impl RArena {
     fn can_allocate_node_with_payload(&self, bytes: usize) -> bool {
         self.can_activate_node()
             && bytes
-                .checked_add(self.fresh_header_bytes())
+                .checked_add(self.minimum_fresh_backing_bytes())
                 .is_some_and(|total| self.can_grow_bytes_by(total))
     }
 
@@ -617,7 +636,7 @@ impl RArena {
 
         let data_bytes = layout.size();
         let total_increase = data_bytes
-            .checked_add(self.fresh_header_bytes())
+            .checked_add(self.minimum_fresh_backing_bytes())
             .ok_or(ArenaError::InvalidLength)?;
 
         // Check byte budget
@@ -1121,7 +1140,7 @@ impl RArena {
     fn verify_invariants(&self) {
         debug_assert!({
             for page in &*self.backing.node_pages.borrow() {
-                for (&slot, lease) in &*page.payloads.borrow() {
+                for (slot, lease) in page.payloads.borrow().iter() {
                     debug_assert!(page.storage.token(slot).is_some());
                     debug_assert!(lease.belongs_to(&self.heap_identity));
                 }

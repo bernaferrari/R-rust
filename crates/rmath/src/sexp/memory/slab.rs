@@ -9,7 +9,7 @@ pub(super) struct SlabPage {
     pub(super) storage: NodePage<SexprecCore>,
     pub(super) meta: Rc<PageMetadata>,
     pub(super) _registration: NodePageRegistration,
-    pub(super) payloads: RefCell<HashMap<usize, PayloadLease>>,
+    pub(super) payloads: RefCell<super::payload_index::PayloadSlots>,
 }
 
 /// Canonical physical storage shared by the allocator facade and owning
@@ -88,7 +88,6 @@ impl ArenaBacking {
         if !lease.matches_header(&header) {
             return None;
         }
-        payloads.try_reserve(1).ok()?;
         self.admit_payload(lease)?;
         page.storage.replace_live(id, header).ok()?;
         payloads.insert(id.slot(), lease.clone());

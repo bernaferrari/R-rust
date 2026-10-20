@@ -18,12 +18,17 @@ pub(super) fn retained_page_bytes(arena: &RArena) -> usize {
             .node_pages
             .borrow()
             .iter()
-            .map(|page| PageMetadata::requested_array_bytes(page.meta.slots()).unwrap())
+            .map(|page| {
+                PageMetadata::requested_array_bytes(page.meta.slots()).unwrap()
+                    + page.payloads.borrow().allocation_size()
+            })
             .sum::<usize>()
 }
 
 pub(super) fn minimum_page_bytes() -> usize {
-    NODE_BYTES + PageMetadata::requested_array_bytes(1).unwrap()
+    NODE_BYTES
+        + PageMetadata::requested_array_bytes(1).unwrap()
+        + std::mem::size_of::<Option<PayloadLease>>()
 }
 
 #[test]
@@ -81,7 +86,13 @@ fn physical_header_charge_follows_detached_backing_until_its_final_owner_drops()
     let root = node.root_lease().unwrap();
     let counter = arena.allocated_bytes.clone();
     let requested = header_backing_bytes(&arena);
-    let metadata_requested = retained_page_bytes(&arena) - requested;
+    let metadata_requested = arena
+        .backing
+        .node_pages
+        .borrow()
+        .iter()
+        .map(|page| PageMetadata::requested_array_bytes(page.meta.slots()).unwrap())
+        .sum::<usize>();
     drop(arena);
     assert!(node.is_live());
     assert!(

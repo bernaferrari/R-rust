@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.5",
+  "source_base": "1c65a1e1f34dd0c49f4b827a577ebd3c139300f9",
+  "behavior": [
+    "Replace each SlabPage hashbrown payload table with one safe fixed PayloadSlots Vec<Option<PayloadLease>> matching canonical header capacity. Header storage/projections and collector identity remain unchanged.",
+    "Admit complete initialized index layout with an independent original-heap ticket before constructing the index. Its data field drops before its AllocationCharge; retirement/reuse do not release a retained page buffer prematurely.",
+    "Payload publication and replacement now perform checked direct slot access without growing a native table. Actual payload binding, immutable characters, old-header matching and generation checks remain in the existing owner boundary.",
+    "Include the index in minimum fresh backing preflight, retain prepaid free slots, and preserve independent live-node and cumulative work quotas.",
+    "One index pointer per header slot is prepaid, including empty slots; this trades predictable per-page storage for removal of incremental table allocation and hashing. No measured speedup claim."
+  ],
+  "red": {
+    "native_failed": 4,
+    "old_first_payload_index_actual_hashbrown_bytes": 76,
+    "old_accounted_first_node_bytes": 443912,
+    "actual_requested_including_index": 443988,
+    "cases": [
+      "first retained index data/control allocation absent from ledger",
+      "original one-slot byte limit admitted an unfunded index",
+      "reclaimed empty table retained physical data without a charge",
+      "detached page backing did not retain its actual index charge"
+    ]
+  },
+  "fixture_updates": [
+    "Keep the original physical lower-bound, exact cutoff, stale-generation, reuse and final-owner assertions; allocation_size now measures the canonical fixed index actual Vec layout rather than the removed table.",
+    "Existing whole-page test helpers now include the independent index buffer. Metadata-after-final-header-drop expectations still count only actual metadata readers.",
+    "Use complete minimum page layout in encoding, raw-tail and nested-transient fixture setup while preserving original8/32-byte payload headroom, one-byte denials, callback/unwind and owner assertions. Permanent NodePages have no arena index and keep their original layouts."
+  ],
+  "validation": {
+    "native_distinct_total": 179,
+    "native_suites": {
+      "native-memory": 109,
+      "native-payload-final": 29,
+      "native-transient": 18,
+      "native-encoding-tags": 4,
+      "native-permanent-module": 15,
+      "native-permanent-final": 18,
+      "native-nested-transient-final": 1
+    },
+    "native_filter_correction": "Initial sexp::persistent:: filter matched0; corrected to sexp::instance::persistent:: and separately permanent_ (both pass). Zero-test run excluded from counts.",
+    "strict_isolated_i686_miri": {
+      "suites": {
+        "index-green": 4,
+        "headers": 4,
+        "prepared": 1,
+        "initializer": 1,
+        "reuse": 1,
+        "encoding-tags": 4,
+        "nested-transient": 1
+      },
+      "distinct_total": 16,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt_git_whitespace": "PASS",
+    "production_wasm_checks": 274,
+    "wasm_node_checks": {
+      "filepath-encoding": 4,
+      "encoding-tags": 4,
+      "quote-options": 8,
+      "loess-native-outputs": 86,
+      "internal-dput": 4,
+      "regex-workspace": 8,
+      "gnu-opcode-contracts": 28,
+      "s4-cache-new": 8,
+      "permanent-ledger": 14,
+      "checked-exhaustion": 12,
+      "serialization-workspace": 14
+    },
+    "web_binding_checks": 84
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29670636,
+      "sha256": "31325e50abda25126afc4bad1ec61e811680962f24cd703ffe3e1c02d18c06f6"
+    },
+    "output": {
+      "bytes": 25398214,
+      "sha256": "6bc3fd21ef90ec4e4e2ff812abd1bd8e5dce53da3bf4451df73472869f43536e"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/encoding_tag_tests.rs": "3e8690e29fd23ab03120cf52024e628258b9a63536fe963bb7a18cdd456e0051",
+    "crates/rmath/src/sexp/memory.rs": "87df87f2378da916584027feae93280b4897705809f8ebae2c193dffe10e75a9",
+    "crates/rmath/src/sexp/memory/arena.rs": "75cc58fc13ea2218748ccc07f7fe0b7d33e00335b5c4b38609d2a56f21319ded",
+    "crates/rmath/src/sexp/memory/slab.rs": "aef9636c4cf0e5dc9bd3fbce3487aa1ce7e47007bb964bdbc71656fe9384293c",
+    "crates/rmath/src/sexp/memory/tests_physical_headers.rs": "161849984bf64dd63f74d8f1eab99b1332707eeae1679c090e62339055f3f7a4",
+    "crates/rmath/src/sexp/memory_ext.rs": "c126b337ad67fd0aec5483735f1e48bf67493b2f0d8feadda5130bc9c9719bd7",
+    "crates/rmath/src/sexp/payload_storage_tests.rs": "38d58e9d42d81f165281552b6fc9cd044d2282d2d21bca1a09f3bcbbdfb247cc",
+    "crates/rmath/src/sexp/memory/payload_index.rs": "5023dad5584285ef690d9bcc7fd8527171637d7f9ebda54397b03460327a5cbe",
+    "crates/rmath/src/sexp/memory/tests_payload_index.rs": "2fcee96893053e12199000051d5fe5ce5583f706953cb9848f34e478b4d5bed6"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/slab-payload-index-evidence/",
+  "limits": [
+    "Original browser64MiB session and256MiB Wasm linear-memory caps retained.",
+    "Active/free membership sets, page/cookie/root/iterator collections, Rc/weak controls, allocator rounding and other native workspaces remain active parent scope. No whole-memory or process/RSS claim.",
+    "Validation checkout contains the listed uncommitted user graphics files, excluded from this commit. Fixture and arena-documentation edits followed the Wasm build without changing runtime behavior; no immutable full-build or whole CI completion claim."
+  ],
+  "evidence_log_sha256": {
+    "android-20261020.log": "f1d0446f33f5de217e26f36ee537f22eeca4d1458231eefdaed0278f91f1f89b",
+    "clippy-20261020.log": "fd48f8c6ddc1419a2e0bc56c85557361bae37c25bc65b55b59ac679836ee7f8d",
+    "miri-encoding-tags-20261020.log": "d3b583047bc8e8d0d0b0eb5fd90ebd6b53ef864f55fd885e849490b77a72dd88",
+    "miri-headers-20261020.log": "908d7ec75cd72f32037446a98f1c4331749101af62a4e7192d3b05ed12873d7d",
+    "miri-index-green-20261020.log": "bb1dc2d71d78220e59f26438313bc397e2d4be1e7a1d5bfa7bdc674cd15325bb",
+    "miri-initializer-20261020.log": "0628ad7f7c57a17f4b366ad72ab9e0ee87f9b6c95da25e91e562199cf0828117",
+    "miri-nested-transient-20261020.log": "d242787e5bc6dd365dc55d2d82238e7dbf1c927d16ac899a2b23e10494b081b7",
+    "miri-prepared-20261020.log": "3f246e48dc4754ff2181bd9fc0d8e79f8dbd630cec66b7fc2a38813fb330ea92",
+    "miri-reuse-20261020.log": "aa14bbcd624b176eb13d5746aaff226b946ac1bda9055bbae9b98e3454c5d39f",
+    "native-encoding-tags-20261020.log": "21304ceec871cf239237ea9036daced952b4faa69dbc102757da2f522abbde87",
+    "native-green-20261020.log": "5ddbf722e011ca2b251c2577798771ecf12cbfd440cefe1d1b2bf810fa61c58f",
+    "native-memory-20261020.log": "eb0f433d440f19a664b31ae7fcd281d31c31e94af7db0477be6c07dfabd5daa0",
+    "native-nested-transient-final-20261020.log": "2718991e74e4ec58ccd7b21c1122f09ff6e70c89db6fb0f1132e00ac1692fe15",
+    "native-payload-20261020.log": "7197de26d8b46270068db8db3d2d14bf42b3c0b08f7c98c9e4afd498c30ad922",
+    "native-payload-final-20261020.log": "a02f07ee5a47254bb20d4e1ef2e05baed67243d0749bc3a5b85179dd9e9225bb",
+    "native-permanent-20261020.log": "483b4cbe8c7fbd5d8915ba9b767f3a206ca0d52e43781b7a45acb11e4de719f8",
+    "native-permanent-final-20261020.log": "33aaba29867af7c8081f020c846ad6077bf8f47f9c3b60a2e442aa8bbc4d625e",
+    "native-permanent-module-20261020.log": "89edff24542b788534de5435407b731c5653d976f5129d86a60070b9f8f5ae44",
+    "native-red-20261020.log": "543574fd1786898533915e891e1be3a4fb2cdb9aaa36f141bfd92a8e2f74a8cb",
+    "native-transient-20261020.log": "1df406a06526557f01d1628d3a644bb69b3ceac5f59c75a9f7d4c269297741ab",
+    "wasm-build-20261020.log": "779baa9e1cba0d1edde22eaeb7a1d57230471004810d25da5727f3bf49707f6a",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags-20261020.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding-20261020.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize-20261020.log": "14b03b9449d81848812ef10b92e09e3093316348f8d8644d26890a7ccb2de8af",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts-20261020.log": "dc88071c2dd173b74e56c32eccf3141794e76cd58c97839f4ad9a941ba904d58"
+  }
+}

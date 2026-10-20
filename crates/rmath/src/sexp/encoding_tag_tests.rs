@@ -1,11 +1,8 @@
 use super::*;
-use crate::sexp::{
-    heap::PageMetadata,
-    memory::{ArenaBudget, RArena},
-};
+use crate::sexp::memory::{ArenaBudget, RArena};
 
 fn assert_tag(kind: &str, gnu: i32, gp: u16) {
-    let page = std::mem::size_of::<SexprecCore>() + PageMetadata::requested_array_bytes(1).unwrap();
+    let page = RArena::minimum_page_bytes();
     let mut arena = RArena::with_budget(ArenaBudget::new(page + 8, 1));
     let pointer = arena.alloc_charsxp(&[0xc3, 0xa9]);
     let node = arena.node_token(pointer).unwrap();

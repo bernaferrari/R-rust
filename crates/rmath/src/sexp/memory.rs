@@ -57,6 +57,7 @@ mod checked;
 mod gc;
 mod layout;
 mod ledger;
+mod payload_index;
 mod slab;
 
 #[cfg(test)]
@@ -67,6 +68,9 @@ mod tests_physical_headers;
 
 #[cfg(test)]
 mod tests_payload;
+
+#[cfg(test)]
+mod tests_payload_index;
 
 #[allow(unused_imports)]
 pub use self::arena::*;

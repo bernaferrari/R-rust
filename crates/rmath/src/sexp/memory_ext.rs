@@ -494,8 +494,7 @@ mod tests {
         let mut right = RInstance::new_for_gc_tests();
         let left_before = left.arena.total_bytes_allocated();
         let right_before = right.arena.total_bytes_allocated();
-        let page_bytes = std::mem::size_of::<SexprecCore>()
-            + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
+        let page_bytes = memory::RArena::minimum_page_bytes();
         left.arena
             .set_budget(memory::ArenaBudget::new(left_before + page_bytes + 32, 0));
         right
