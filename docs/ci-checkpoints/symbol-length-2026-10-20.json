@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-8sqqr",
+  "status": "verified",
+  "implementation_commit": "34369be0",
+  "source_sha256": {
+    "crates/rmath/src/sexp/symbol.rs": "7c580011a996338328374bd12287b8b8c3c4fb422ff1b348b9c40bcfc23d19de",
+    "crates/r-embed/tests/workspace_memory.rs": "82a356275368e875dc5643d712f73b035bebdc205abe22da457a86f6278b74c1",
+    "tests/browser/permanent-ledger.cjs": "8ecbd6fd14944f145dee76942f5ac8c8884194d91844158dc2eff12b0ef803f0",
+    "tests/symbols/length-oracle.R": "3fa214a76880f14d91dc6a80daa3037cd29a2ae5e9298990e722507681229e97"
+  },
+  "evidence_directory": "target/symbol-length-evidence",
+  "regressions_before": [
+    "Native1pass3fail: both symbol entry points accepted10001bytes; boundedUTF8name returned memory error instead of GNU length error",
+    "Legal-name production memory probe against saved cvs2.6 Wasm failed its public byte-ledger growth assertion; this RED predates adding shared GNU boundary controls to the same script"
+  ],
+  "behavior": [
+    "Reject symbol names beyond10000bytes before owned native String or permanent-node allocation",
+    "Both null-terminated and explicit-length entry points share the same limit and GNU error",
+    "Allow exactly10000ASCIIbytes or5000two-byteUTF8characters and preserve interned reuse",
+    "Validate length before session admission; denied names publish no nodes or charges",
+    "Replace oversized memory probes with legal10000-byte native input and legal9990-byte-prefix Wasm symbols; permanent bytes appear in public usage and compete with native workspace"
+  ],
+  "validation": {
+    "native_boundaries": {
+      "passed": 4,
+      "log": "green-20261020.log"
+    },
+    "public_native": {
+      "passed": 2,
+      "scope": "shared GNU4controls plus legal symbol admission under unchanged12KiB headroom",
+      "log": "public-final-native-20261020.log"
+    },
+    "miri": {
+      "passed": 4,
+      "seconds": 276.08,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "log": "miri-final-20261020.log"
+    },
+    "clippy": {
+      "crates": 4,
+      "all_targets": true,
+      "warnings_denied": true,
+      "exit_code": 0,
+      "log": "clippy-final-20261020.log",
+      "final_public_test_log": "public-clippy-final-20261020.log"
+    },
+    "android": {
+      "crate": "r-uniffi",
+      "target": "aarch64-linux-android",
+      "exit_code": 0,
+      "log": "android-final-20261020.log"
+    },
+    "gnu": {
+      "manifest": "oracle/r-oracle.json",
+      "svn_revision": 90451,
+      "controls": 4,
+      "exit_code": 0,
+      "log": "gnu-verified-20261020.log"
+    },
+    "production_wasm": {
+      "checks": 14,
+      "recreated_sessions": 2,
+      "failures": 0,
+      "session_bytes": 67108864,
+      "linear_memory_bytes": 268435456,
+      "optimized_asset_bytes": 24865352,
+      "log": "wasm-verified-20261020.log"
+    }
+  },
+  "scope_limits": [
+    "Dense arena payload construction peaks are separately tracked by rport-cvs2.10; allocator metadata and total physical retention remain parent scope",
+    "Production Wasm runs under Node; Android is cross-compilation, not device execution",
+    "No full GNU syntax/encoding or whole-engine memory-safety claim",
+    "Unrelated shared graphics changes remain outside this milestone"
+  ],
+  "log_sha256": {
+    "valid-red-20261020.log": "4ea4d96486e35f838d30657df7890b7ca1b76082a28b397e555d63078f8bd511",
+    "green-20261020.log": "1bc1e2afd98f1cf209181ef1444bbcfbd23ed9a80a79fe9c060659aebcab417c",
+    "legal-ledger-public-valid-red-20261020.log": "fa4ae3ad992202d8fc50992c35a6869cf2d34e038c8157028a3eedc518371a98",
+    "public-final-native-20261020.log": "9f7acf8ba5846969c449d0e022c1b5cc2426e0945d244bef69c35e845abcde29",
+    "miri-final-20261020.log": "e423352570fd8ac1e8c66af7f7ec3876d6bd0e5b2793ce6ef1032b5606c04180",
+    "clippy-final-20261020.log": "cc2083973409f76e54e02acd3fd77c007c30b0bd9296ea3565f7177d44be26f3",
+    "public-clippy-final-20261020.log": "33311d79361e3e22ddcb7fca776d5d65688a530a5fb9724a08dde11662a54d78",
+    "android-final-20261020.log": "0f77e1d0d2b3992f4a40b848cd331507889ff4c6a2ba5265afbe1f0e71f57453",
+    "gnu-verified-20261020.log": "f80a82fbb82c539b21378a5c90f205a3a7b54142ea565c88ce765b4bfd040cea",
+    "wasm-build-20261020.log": "af03aee2e33c75a42c4fe1d8eab86b6f82a7cac083d7ae40dedb31428952ce61",
+    "wasm-optimization-20261020.log": "0de42895adca360949356e0a91c2655dbf54fb8f394249b9b81933140b99c748",
+    "wasm-verified-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407"
+  },
+  "wasm_sha256": {
+    "r_wasm_bg.wasm.d.ts": "a77fac0781251574087e7e147b55b78d645e79589dfff6ab4daa59d3406a0add",
+    "r_wasm_bg.wasm": "613c90cc989c00dbfa03effb9dee7510f29583ce16dfce52945c4fb220494c5b",
+    "r_wasm.js": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3",
+    "r_wasm.d.ts": "7e3cf2cab7e0429022809e7925982a262edda8052eca9f4d7f4826b5db50c4ae"
+  }
+}

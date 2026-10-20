@@ -172,11 +172,11 @@ fn permanent_symbols_share_public_memory_limit_and_recover_without_raising_it() 
         .eval("symbol_name <- 'seed'; invisible(as.name(symbol_name))")
         .unwrap();
     session
-        .eval("symbol_name <- strrep('x', 300000L); gc(); invisible(NULL)")
+        .eval("symbol_name <- strrep('x', 10000L); gc(); invisible(NULL)")
         .unwrap();
     let before = session.memory_usage().unwrap();
     let mut limits = session.resource_limits();
-    limits.max_alloc_bytes = before.total_bytes + 128 * 1024;
+    limits.max_alloc_bytes = before.total_bytes + 12 * 1024;
     session.set_resource_limits(limits).unwrap();
     let error = session.eval("invisible(as.name(symbol_name))").unwrap_err();
     assert!(
@@ -184,7 +184,7 @@ fn permanent_symbols_share_public_memory_limit_and_recover_without_raising_it() 
         "{error}"
     );
     let after = session.memory_usage().unwrap();
-    assert!(after.total_bytes < before.total_bytes + 128 * 1024);
+    assert!(after.total_bytes < before.total_bytes + 12 * 1024);
     assert_eq!(after.workspace_bytes, before.workspace_bytes);
     assert_eq!(
         session
@@ -196,4 +196,11 @@ fn permanent_symbols_share_public_memory_limit_and_recover_without_raising_it() 
         session.resource_limits().max_alloc_bytes,
         limits.max_alloc_bytes
     );
+}
+
+#[test]
+fn gnu_symbol_length_uses_bytes_before_permanent_allocation() {
+    let mut session = session();
+    let program = include_str!("../../../tests/symbols/length-oracle.R");
+    assert_eq!(session.eval(program).unwrap(), "[1] TRUE\n");
 }
