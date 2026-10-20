@@ -203,6 +203,7 @@
     "Original release compilation and thread-pool defaults retained; three alternating trials reduce host timing noise, no machine-dependent test threshold",
     "Baseline has the header-reader optimization but no link-reader optimization; candidate adds only weak link-reader resolution and a null fast path",
     "A subsequent extra foreign-page-cookie regression changes test source only, not measured production behavior",
-    "No full S4 PASS, total collection speedup, or browser timing inferred from this mark-phase ratio"
+    "No full S4 PASS, total collection speedup, or browser timing inferred from this mark-phase ratio",
+    "Both frozen test binaries include the cfg(test) backing-lookup counter. Avoided lookups also avoid its bookkeeping, so the measured ratio is instrumented mark timing and must not be presented as an uninstrumented production speedup."
   ]
 }

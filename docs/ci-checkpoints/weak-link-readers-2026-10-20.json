@@ -100,6 +100,7 @@
     "Native gates preserve unrelated user graphics edits; the production S4 artifact was built from clean frozen3e6331c8 with exact archived R reference source",
     "Wasm Node/web bindings use an identical optimized module after verifying bindgen input SHA identity",
     "Subsequent S4 class-cache/new fidelity work is independent and not part of this artifact",
-    "Private cache physical metadata admission remains within cvs2.11"
+    "Private cache physical metadata admission remains within cvs2.11",
+    "The fixed-live benchmark includes cfg(test) backing-lookup counting; its ratio is an instrumented diagnostic measurement, not an uninstrumented production timing claim."
   ]
 }
