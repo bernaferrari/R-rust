@@ -16,6 +16,34 @@ pub(super) fn lzma_options(input_length: usize) -> lzma_rust2::LzmaOptions {
     options
 }
 
+pub(super) fn lzma_workspace(dict_size: u32) -> Result<usize, String> {
+    let dict = dict_size as usize;
+    if !(4096..=8 * 1024 * 1024).contains(&dict) || !dict.is_power_of_two() {
+        return Err("unsupported LZMA dictionary size".into());
+    }
+    // lzma-rust2 0.21.0's public estimator adds get_buf_size bytes to KiB
+    // counts. Audit the actual preset-6/Bt4 allocations instead: input window,
+    // Hash234's three i32 arrays, and the two-i32-per-slot binary tree.
+    // Two MiB additionally cover the 4096 Optimum cells, probability/price
+    // models, match vectors, 64 KiB range buffer, and container bookkeeping.
+    let before = (65536usize.saturating_sub(dict)).max(4096);
+    let window = dict
+        .checked_add(before)
+        .and_then(|n| n.checked_add(4096 + 273))
+        .and_then(|n| n.checked_add(dict / 2 + 256 * 1024));
+    let hash = (dict / 2)
+        .max(65536)
+        .checked_add(1024 + 65536)
+        .and_then(|n| n.checked_mul(std::mem::size_of::<i32>()));
+    let tree = dict
+        .checked_add(1)
+        .and_then(|n| n.checked_mul(2 * std::mem::size_of::<i32>()));
+    [window, hash, tree, Some(2 * 1024 * 1024)]
+        .into_iter()
+        .try_fold(0usize, |sum, bytes| sum.checked_add(bytes?))
+        .ok_or_else(super::workspace::memory_error)
+}
+
 pub(crate) fn compress_container(
     owner: &OwnerToken<'_>,
     input: &[u8],
@@ -23,16 +51,13 @@ pub(crate) fn compress_container(
 ) -> Result<InputBytes, String> {
     // Pinned Cargo.lock implementations: zlib-rs uses one state/window/hash/
     // pending allocation; libbz2-rs uses two 900k u32 arrays plus ftab/state.
-    // The envelopes include their writer buffers. XZ exposes its preset's
-    // encoder estimate; an additional MiB covers container/filter bookkeeping.
+    // The envelopes include their writer buffers. XZ uses the checked bound
+    // above rather than the dependency's mixed-unit memory estimate.
     let lzma = lzma_options(input.len());
     let workspace = match codec {
         "gzip" => 512 * 1024,
         "bzip2" => 8 * 1024 * 1024,
-        "xz" => (lzma.get_memory_usage() as usize)
-            .checked_mul(1024)
-            .and_then(|n| n.checked_add(1024 * 1024))
-            .ok_or_else(super::workspace::memory_error)?,
+        "xz" => lzma_workspace(lzma.dict_size)?,
         _ => return Err("unsupported compression format".into()),
     };
     let _workspace = reserve(owner, workspace)?;
@@ -67,6 +92,40 @@ pub(crate) fn compress_container(
 mod tests {
     use super::*;
     use crate::sexp::{RSession, memory::ArenaBudget};
+
+    #[test]
+    fn serialization_workspace_lzma_bound_is_checked_on_extreme_input_sizes() {
+        let mut previous = 0;
+        for input in [0, 1, 4096, 65536, 1024 * 1024, 8 * 1024 * 1024, usize::MAX] {
+            let options = lzma_options(input);
+            let bytes = lzma_workspace(options.dict_size).unwrap();
+            assert!(bytes >= previous);
+            assert!(bytes >= options.dict_size as usize * 9);
+            assert!(bytes < 128 * 1024 * 1024);
+            previous = bytes;
+        }
+        assert!(lzma_workspace(0).is_err());
+        assert!(lzma_workspace(u32::MAX).is_err());
+        assert!(lzma_workspace(4096).unwrap() < 4 * 1024 * 1024);
+    }
+
+    #[test]
+    #[cfg(not(miri))]
+    fn serialization_workspace_small_xz_fits_four_mib_without_relaxing_cap() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let limit = owner
+            .with_arena(|a| a.total_bytes_allocated() + 4 * 1024 * 1024)
+            .unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(limit, 0)))
+            .unwrap();
+        let encoded = compress_container(&owner, b"small browser payload", "xz").unwrap();
+        assert!(encoded.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0]));
+        drop(encoded);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
+    }
 
     #[test]
     fn serialization_workspace_codec_scratch_denies_and_releases_under_original_cap() {

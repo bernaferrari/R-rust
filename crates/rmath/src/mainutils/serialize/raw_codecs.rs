@@ -42,10 +42,7 @@ pub(super) fn encode(owner: &OwnerToken<'_>, input: &[u8], mode: u8) -> Result<I
     let workspace = match mode {
         1 => 512 * 1024,
         2 => 8 * 1024 * 1024,
-        _ => (lzma.get_memory_usage() as usize)
-            .checked_mul(1024)
-            .and_then(|n| n.checked_add(1024 * 1024))
-            .ok_or_else(super::workspace::memory_error)?,
+        _ => super::owned_output::lzma_workspace(lzma.dict_size)?,
     };
     let workspace_guard = reserve(owner, workspace)?;
     let bytes = framed(
