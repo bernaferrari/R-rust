@@ -1,0 +1,117 @@
+{
+  "date": "2026-10-20",
+  "source_base": "69319c19",
+  "issues": {
+    "rport-cvs2.8": "verified native buffer milestone; broader issue remains open",
+    "rport-w03x.2": "verified TRE allocation alignment and overflow fix"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/grep.rs": "9fdfff3de3b52b504e460dae9d36e0ae0f821c2c59fab60de1688fbc6e3084f7",
+    "crates/rmath/src/mainutils/grep/workspace.rs": "703f62e6454b2d9ad9c81045c5eb0ffea046a60049a2f9eb9a5c3cf554f58994",
+    "crates/rmath/src/mainutils/essentials/mathstats/files_regex.rs": "e870080d87c917ad027311a99fd44df5b73aa82092ea15c63f6c242ba6541207",
+    "crates/rmath/src/tre/mem.rs": "04959aaaca05901d0924936579fa014f4fe09cf6070108160c35bd84870647a3",
+    "tests/browser/regex-workspace.cjs": "de892daf8401d2b8e2b927ff72a4fa67502b984368f2a562b30020d465eae50d"
+  },
+  "behavior": [
+    "Reserve original-session bytes before Unicode pattern/subject conversion, match tables, returned captures and repeated-match backing allocation",
+    "Returned buffers and consuming iterators retain backing charges until their actual storage drops, including across activation of another session",
+    "Growth reserves both old and replacement backing; denied growth preserves values and charge",
+    "Closed owner buffers remain readable but cannot allocate new backing",
+    "Production regex entry requires an original active owner; only standalone kernel unit tests have an unlimited test-only ledger",
+    "TRE blocks and every suballocation preserve16-byte alignment; allocation headers preserve payload alignment across realloc",
+    "Size multiplication, padding and Layout overflow return allocation failure before pointer arithmetic; failed realloc preserves the original allocation",
+    "Unused provided-block allocator branches and field removed after caller inventory found no repository users; arena destruction only releases owned blocks"
+  ],
+  "red": {
+    "native_buffer_regressions": {
+      "failed": 3,
+      "passed": 0,
+      "log": "red-20261020.log"
+    },
+    "strict_miri": "Actual Unicode compilation reached ast.rs491 with alignment1 where4 was required; tre-alignment-red-20261020.log"
+  },
+  "validation": {
+    "native_regex_tre_passed": 103,
+    "public_native_passed": 2,
+    "strict_miri_passed": 13,
+    "strict_miri": {
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "reported_test_seconds": [
+        559.9,
+        2.0
+      ]
+    },
+    "clippy": "rmath/r-embed/r-uniffi/r-wasm all targets -D warnings",
+    "android": "r-uniffi aarch64-linux-android cross-check",
+    "production_wasm": {
+      "checks": 154,
+      "breakdown": {
+        "regex-workspace": 8,
+        "gnu-opcode-contracts": 28,
+        "s4-cache-new": 4,
+        "permanent-ledger": 14,
+        "checked-exhaustion": 12,
+        "serialization-workspace": 14,
+        "portable-web-binding-contracts": 74
+      },
+      "module": {
+        "schema_version": 1,
+        "binaryen_version": "133",
+        "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+        "arguments": [
+          "-Oz"
+        ],
+        "feature_policy": "preserve input target_features",
+        "input": {
+          "bytes": 29044117,
+          "sha256": "3c3aa0f55bf857bd94432c7dcab01d4480dbebd0a3fe6c895548fc7557ebaade"
+        },
+        "output": {
+          "bytes": 24818029,
+          "sha256": "50fdf97e4720ea7ed13136af701965cd0b8bc26b217959a7a663becf92a8d71b"
+        }
+      },
+      "execution": "Node.js production Node and web bindings; no Chromium or on-device execution claimed",
+      "cap_rejection": "800000-character subject with two captures reaches explicit regex workspace memory error under original64MiB cap; same session then matches pinned GNU ASCII capture metadata and evaluates1L+1L"
+    }
+  },
+  "evidence_directory": "target/regex-workspace-evidence",
+  "evidence_sha256": {
+    "red-20261020.log": "34431b44917d5eb3c7cb8e52de9f90727c50f5ac8189c12704d3a61a7376e2a6",
+    "tre-alignment-red-20261020.log": "9df05d6315c13fdc457a1e3320766828ffab711d1761a4d8ded8587fdb525f38",
+    "native-final-20261020.log": "6cc5afa976c5a447dc3c1bdea866c4a7b01375c0b9ff0a506bcd7bf1ccfeb47d",
+    "public-final-20261020.log": "301b8de878664b6c6a70e353ddf2a5e363ff1e68f17b2ac4ff866d4a6db84d38",
+    "miri-final-20261020.log": "168f04d0a407da1eadb4e4bedd7f1e867ac276ee0acb0573eda3c50c93724085",
+    "miri-matchers-20261020.log": "fa95625f6685d16d3bc2df9a20c705a999b6bb757ec48133b9bf4e43b02d2b6a",
+    "android-final-20261020.log": "be20cf38aa429192f406b32025a050759558533f05c236ccb08aef5c7e9e36d8",
+    "clippy-final-20261020.log": "23718858b5284bc3f9888ac6e23432a7e15e6848c2c5b5c7a0590be1d5e64ae8",
+    "wasm-final-build-20261020.log": "a861e017fb75e0e2dfbc992610cc576543baf60228d76386354955be7dcb625c",
+    "wasm-optimization-20261020.log": "69c4b577367cd8ab3cc58870b2cfd105f19ea0e85e2fb4efcecfe08feb977876",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-s4-cache-new-20261020.log": "3b77f6f3c8cee02b9d2a88d7880ee9a6e98a3effb37f6a59b54f5320f46e47e4",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-portable-contracts-20261020.log": "5e4b947a3892e784ab8d530e08a5a10d4bad6ad30061d3992d2654f91c655a14"
+  },
+  "oracle_recovery": {
+    "source": "dput(regexec(\"(a)\",\"a\",perl=TRUE)[[1L]])\n",
+    "pinned_result": "structure(c(1L, 1L), match.length = c(1L, 1L), useBytes = TRUE, index.type = \"chars\")\n",
+    "manifest": "oracle/r-oracle.json"
+  },
+  "scope_limits": [
+    "rport-cvs2.8 remains open: engine compilation/matcher allocations, native replacement strings, group-name copies and facade result intermediates are not fully admitted",
+    "This does not close total physical storage accounting cvs2.11 or full PCRE2/locale fidelity w03x",
+    "TRE retains translated unsafe engine code; these checks do not certify a wholly safe regex engine",
+    "Initial400000-character Wasm stressor fit its narrower32-bit buffers, so the final stressor uses800000 without changing any cap; initial ASCII expected vector omitted GNU useBytes/index.type attributes and was corrected from the pinned oracle",
+    "No compilation profile, torture frequency, original workload or existing assertion was weakened",
+    "Unrelated user graphics changes were preserved and remain outside this source milestone"
+  ]
+}

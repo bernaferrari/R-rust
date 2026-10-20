@@ -34,7 +34,38 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
 use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
-use crate::tre::regapi::{tre_regfree, tre_regncomp, tre_regnexec};
+use crate::tre::regapi::{tre_regfree, tre_regnexec};
+
+mod workspace;
+use workspace::{RegexWorkspace, WorkspaceBuffer};
+
+pub(crate) type RegexCaptures = WorkspaceBuffer<Option<RegexMatch>>;
+pub(crate) type RegexMatches = WorkspaceBuffer<RegexCaptures>;
+
+pub(crate) fn single_capture(value: RegexMatch) -> RegexCaptures {
+    let mut captures = regex_workspace().buffer(1);
+    captures.push(Some(value));
+    captures
+}
+
+fn regex_workspace() -> RegexWorkspace {
+    // Pure kernel unit tests may run without an interpreter. Production regex
+    // entrypoints require an original active owner, rather than an unlimited fallback.
+    #[cfg(test)]
+    if crate::sexp::instance::current_instance_ptr().is_none() {
+        return RegexWorkspace::standalone();
+    }
+    unsafe {
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|_| workspace::memory_error());
+        let _pin = owner.pin().unwrap_or_else(|_| workspace::memory_error());
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap_or_else(|_| workspace::memory_error());
+        let availability = crate::sexp::instance::instance_liveness(owner.as_ptr());
+        RegexWorkspace::new(ledger, availability)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Local helper functions (matching patterns from match_mod.rs etc.)
@@ -321,10 +352,12 @@ pub(crate) struct RegexMatch {
 struct TreRegex {
     preg: regex_t,
     bytes: bool,
+    workspace: RegexWorkspace,
 }
 
 struct PerlRegex {
     regex: PerlInnerRegex,
+    workspace: RegexWorkspace,
 }
 
 impl TreRegex {
@@ -333,38 +366,58 @@ impl TreRegex {
     }
 
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
+        let workspace = regex_workspace();
         unsafe {
             let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
             let mut cflags = REG_EXTENDED;
             if ignore_case {
                 cflags |= REG_ICASE;
             }
-            let rc = if bytes {
-                tre_regncomp(&mut preg, pattern.as_ptr().cast(), pattern.len(), cflags)
+            let length = if bytes {
+                pattern.len()
             } else {
-                let pattern: Vec<_> = pattern.chars().map(u32::from).collect();
-                crate::tre::compile::tre_compile(&mut preg, pattern.as_ptr(), pattern.len(), cflags)
+                pattern.chars().count()
             };
+            let mut wide = workspace.buffer(length);
+            if bytes {
+                for byte in pattern.bytes() {
+                    wide.push(u32::from(byte));
+                }
+            } else {
+                for ch in pattern.chars() {
+                    wide.push(u32::from(ch));
+                }
+            }
+            let rc = crate::tre::compile::tre_compile(&mut preg, wide.as_ptr(), wide.len(), cflags);
             if rc == REG_OK {
-                Ok(Self { preg, bytes })
+                Ok(Self {
+                    preg,
+                    bytes,
+                    workspace,
+                })
             } else {
                 Err(format!("TRE compilation failed with code {rc}"))
             }
         }
     }
 
-    fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
+    fn captures(&self, text: &str) -> Option<RegexCaptures> {
         self.captures_at(text, 0)
     }
 
-    fn captures_at(&self, original: &str, offset: usize) -> Option<Vec<Option<RegexMatch>>> {
+    fn captures_at(&self, original: &str, offset: usize) -> Option<RegexCaptures> {
         let text = if self.bytes { "" } else { &original[offset..] };
         let input = &original.as_bytes()[offset..];
         unsafe {
             let nmatch = self.preg.re_nsub.saturating_add(1).max(1);
-            let mut pmatch = vec![regmatch_t::default(); nmatch];
+            let mut pmatch = self.workspace.buffer(nmatch);
+            pmatch.resize(nmatch, regmatch_t::default());
             let wide = if !self.bytes && !text.is_ascii() {
-                Some(text.chars().map(u32::from).collect::<Vec<_>>())
+                let mut wide = self.workspace.buffer(text.chars().count());
+                for ch in text.chars() {
+                    wide.push(u32::from(ch));
+                }
+                Some(wide)
             } else {
                 None
             };
@@ -397,21 +450,18 @@ impl TreRegex {
             if status != REG_OK {
                 return None;
             }
-            Some(
-                pmatch
-                    .into_iter()
-                    .map(|m| {
-                        if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
-                            Some(RegexMatch {
-                                start: offset + byte_offset(m.rm_so as usize),
-                                end: offset + byte_offset(m.rm_eo as usize),
-                            })
-                        } else {
-                            None
-                        }
+            let mut captures = self.workspace.buffer(nmatch);
+            for m in pmatch.iter() {
+                captures.push(if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
+                    Some(RegexMatch {
+                        start: offset + byte_offset(m.rm_so as usize),
+                        end: offset + byte_offset(m.rm_eo as usize),
                     })
-                    .collect(),
-            )
+                } else {
+                    None
+                });
+            }
+            Some(captures)
         }
     }
 
@@ -435,6 +485,7 @@ impl PerlRegex {
     }
 
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
+        let workspace = regex_workspace();
         PerlRegexBuilder::new(pattern)
             .case_insensitive(ignore_case)
             .bytes_mode(if bytes {
@@ -443,20 +494,20 @@ impl PerlRegex {
                 fancy_regex::BytesMode::Unicode
             })
             .build()
-            .map(|regex| Self { regex })
+            .map(|regex| Self { regex, workspace })
             .map_err(|err| err.to_string())
     }
 
-    fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
+    fn captures(&self, text: &str) -> Option<RegexCaptures> {
         self.captures_at(text, 0)
     }
 
-    fn captures_at(&self, text: &str, offset: usize) -> Option<Vec<Option<RegexMatch>>> {
+    fn captures_at(&self, text: &str, offset: usize) -> Option<RegexCaptures> {
         let captures = self
             .regex
             .captures_from_pos(text.as_bytes(), offset)
             .ok()??;
-        let mut matches = Vec::with_capacity(captures.len());
+        let mut matches = self.workspace.buffer(captures.len());
         for idx in 0..captures.len() {
             matches.push(captures.get(idx).map(|m| RegexMatch {
                 start: m.start(),
@@ -934,7 +985,7 @@ fn replace_with_captures<F>(
     mut captures_at: F,
 ) -> Option<String>
 where
-    F: FnMut(&str, usize) -> Option<Vec<Option<RegexMatch>>>,
+    F: FnMut(&str, usize) -> Option<RegexCaptures>,
 {
     let mut result = String::with_capacity(text.len());
     let mut search_from = 0usize;
@@ -1034,7 +1085,7 @@ pub(crate) fn mode_captures(
     ignore_case: bool,
     perl: bool,
     bytes: bool,
-) -> Option<Vec<Option<RegexMatch>>> {
+) -> Option<RegexCaptures> {
     if perl {
         PerlRegex::compile_mode(pattern, ignore_case, bytes)
             .ok()?
@@ -1051,21 +1102,19 @@ pub(crate) fn mode_captures_all(
     text: &str,
     ignore_case: bool,
     bytes: bool,
-) -> Option<Vec<Vec<Option<RegexMatch>>>> {
+) -> Option<RegexMatches> {
     let re = PerlRegex::compile_mode(pattern, ignore_case, bytes).ok()?;
-    let mut all = Vec::new();
+    let mut all = re.workspace.buffer(0);
     for captures in re.regex.captures_iter(text.as_bytes()) {
         let captures = captures.ok()?;
-        all.push(
-            (0..captures.len())
-                .map(|i| {
-                    captures.get(i).map(|m| RegexMatch {
-                        start: m.start(),
-                        end: m.end(),
-                    })
-                })
-                .collect(),
-        );
+        let mut matches = re.workspace.buffer(captures.len());
+        for i in 0..captures.len() {
+            matches.push(captures.get(i).map(|m| RegexMatch {
+                start: m.start(),
+                end: m.end(),
+            }));
+        }
+        all.push(matches);
     }
     Some(all)
 }
@@ -1101,21 +1150,13 @@ pub(crate) fn perl_find(pattern: &str, text: &str, ignore_case: bool) -> Option<
         .and_then(|regex| regex.find(text))
 }
 
-pub(crate) fn ere_captures(
-    pattern: &str,
-    text: &str,
-    ignore_case: bool,
-) -> Option<Vec<Option<RegexMatch>>> {
+pub(crate) fn ere_captures(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexCaptures> {
     TreRegex::compile(pattern, ignore_case)
         .ok()
         .and_then(|regex| regex.captures(text))
 }
 
-pub(crate) fn perl_captures(
-    pattern: &str,
-    text: &str,
-    ignore_case: bool,
-) -> Option<Vec<Option<RegexMatch>>> {
+pub(crate) fn perl_captures(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexCaptures> {
     PerlRegex::compile(pattern, ignore_case)
         .ok()
         .and_then(|regex| regex.captures(text))
@@ -1128,12 +1169,12 @@ pub(crate) fn perl_captures_all(
     pattern: &str,
     text: &str,
     ignore_case: bool,
-) -> Option<Vec<Vec<Option<RegexMatch>>>> {
+) -> Option<RegexMatches> {
     let re = PerlRegex::compile(pattern, ignore_case).ok()?;
-    let mut all = Vec::new();
+    let mut all = re.workspace.buffer(0);
     for caps in re.regex.captures_iter(text.as_bytes()) {
         let caps = caps.ok()?;
-        let mut matches = Vec::with_capacity(caps.len());
+        let mut matches = re.workspace.buffer(caps.len());
         for idx in 0..caps.len() {
             matches.push(caps.get(idx).map(|m| RegexMatch {
                 start: m.start(),
@@ -1901,6 +1942,104 @@ pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unicode_capture_buffers_reject_under_session_cap() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let regex = TreRegex::compile("(é)", false).unwrap();
+        let owner = session.owner_token().unwrap();
+        owner
+            .with_arena(|arena| {
+                let used = arena.total_bytes_allocated();
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(used + 8, 0));
+            })
+            .unwrap();
+        let rejected =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| regex.captures("ééé")));
+        let error = rejected
+            .expect_err("native capture storage must share the session cap")
+            .downcast::<RError>()
+            .expect("R memory error");
+        assert_eq!(
+            error.message,
+            "regex workspace exceeds session memory limit"
+        );
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn retained_captures_charge_original_session_until_drop() {
+        let left = crate::sexp::session::RSession::new_for_gc_tests();
+        let right = crate::sexp::session::RSession::new_for_gc_tests();
+        let left_owner = left.owner_token().unwrap();
+        let right_owner = right.owner_token().unwrap();
+        let captures = left.with_active(|| {
+            let captures = perl_captures("(a)", "a", false).unwrap();
+            assert!(
+                left_owner
+                    .with_arena(|arena| arena.workspace_bytes())
+                    .unwrap()
+                    > 0,
+                "returned capture buffers must retain their native admission"
+            );
+            captures
+        });
+        right.with_active(|| {
+            assert_eq!(
+                right_owner
+                    .with_arena(|arena| arena.workspace_bytes())
+                    .unwrap(),
+                0
+            );
+            drop(captures);
+        });
+        left.with_active(|| {
+            assert_eq!(
+                left_owner
+                    .with_arena(|arena| arena.workspace_bytes())
+                    .unwrap(),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn global_capture_buffers_reject_under_session_cap_and_recover() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let subject = "a".repeat(256);
+        owner
+            .with_arena(|arena| {
+                let used = arena.total_bytes_allocated();
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(used + 512, 0));
+            })
+            .unwrap();
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            mode_captures_all("a", &subject, false, false)
+        }));
+        let error = rejected
+            .expect_err("global native match growth must be admitted")
+            .downcast::<RError>()
+            .expect("R memory error");
+        assert_eq!(
+            error.message,
+            "regex workspace exceeds session memory limit"
+        );
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+        let recovered = mode_captures("a", "a", false, true, false).unwrap();
+        assert_eq!(recovered[0], Some(RegexMatch { start: 0, end: 1 }));
+        drop(recovered);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+    }
 
     #[test]
     fn grepraw_rejects_reference_vectors_before_reading_payload_bytes() {

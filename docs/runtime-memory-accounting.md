@@ -26,8 +26,8 @@ restoration hooks and unwind. Connection streaming remains a separate path.
 Production serialization writers use the same admitted buffer. Its reservation
 survives the allocation and copy into the final R raw vector, or the external
 stream callback, so source values, native output and the destination compete
-for the session's one byte limit. Reference tables and saveRDS compressor scratch
-are still tracked separately in `rport-cvs2.6`.
+for the session's one byte limit. Reference tables, connection streams and
+saveRDS compressor workspaces also retain their original-session reservations.
 
 Imported executable code may share plain readonly string literals through
 8192 nonowning cache slots. The fixed native slot array is admitted before
@@ -35,6 +35,15 @@ allocation and never grows; a rejected cache reservation leaves decoding
 available without caching. Entries hold checked generation links rather than
 GC roots. Ordinary serialized data and literals with metadata keep their
 separate decoding paths, and R mutation duplicates shared readonly values.
+
+Regex pattern/subject scalar buffers, native capture tables and repeated-match
+buffers reserve their backing before allocation. Returned captures and partial
+iterators retain that reservation while their backing remains alive. Replacement
+growth admits both old and new allocations until the old backing is released;
+rejection preserves the existing values and charge. These guards observe the
+original owner's closure and cannot allocate new backing afterward. Engine
+compilation/matcher allocations, native replacement strings and several facade
+intermediates remain under `rport-cvs2.8`; this is not total regex accounting.
 
 `max_arena_nodes` limits simultaneously live nodes. Reclaimed slots remain
 reusable, as in GNU R; a live-node cap is not also charged as a cumulative
@@ -50,6 +59,7 @@ ledger. The canvas reservation is a conservative admission estimate rather than
 an allocator-level measurement. Browser linear-memory containment and host
 worker cancellation remain separate controls. Bead `rport-cvs2` tracks completion
 of the remaining allocation paths; this change does not close that parent.
-In particular, the permanent symbol/sentinel store still has a separate ledger
-(`rport-cvs2.7`), and serializer reference tables and compression scratch remain
-under `rport-cvs2.6`.
+Permanent symbol/sentinel storage now shares the original heap ledger.
+Retained page capacity, allocator metadata and other physical storage overhead
+remain under `rport-cvs2.11`; closing an individual workspace gap does not close
+the total-memory parent.

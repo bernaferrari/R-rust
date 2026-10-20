@@ -1047,7 +1047,7 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let captures = if missing {
                 None
             } else if fixed {
-                fixed_find(&txt, &pat, ignore_case).map(|m| vec![Some(m)])
+                fixed_find(&txt, &pat, ignore_case).map(crate::mainutils::grep::single_capture)
             } else if perl {
                 crate::mainutils::grep::mode_captures(
                     &pat,
