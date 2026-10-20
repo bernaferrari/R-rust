@@ -71,6 +71,18 @@ impl std::fmt::Debug for PayloadLease {
         f.debug_tuple("PayloadLease").field(&self.id()).finish()
     }
 }
+
+/// The resulting lease must own every safe writer to its cells, including
+/// weak aliases that could later upgrade. Rc is single-threaded and this path
+/// performs no callbacks. Inspect counts without an exclusive cell-slice
+/// reference, preserving provenance of existing compatibility projections.
+fn unique_cell_owner<T: Copy>(cells: Rc<[Cell<T>]>) -> Result<Rc<[Cell<T>]>, PayloadError> {
+    if Rc::strong_count(&cells) != 1 || Rc::weak_count(&cells) != 0 {
+        return Err(PayloadError::AliasedStorage);
+    }
+    Ok(cells)
+}
+
 impl PayloadLease {
     pub(crate) fn from_owned(payload: OwnedPayload) -> Result<Self, PayloadError> {
         let raw = crate::sexp::atomic_counter::update!(&NEXT_PAYLOAD_ID, |next: u64| next
@@ -88,35 +100,30 @@ impl PayloadLease {
     pub(crate) fn zeroed(kind: SEXPTYPE, length: R_xlen_t) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::zeroed_vector(kind, length)?)
     }
-    pub(crate) fn from_byte_cells(mut cells: Rc<[Cell<u8>]>) -> Result<Self, PayloadError> {
-        // A later seal must cover every safe writer to these original cells.
-        // Retained strong or weak aliases could otherwise bypass the lease.
-        if Rc::get_mut(&mut cells).is_none() {
-            return Err(PayloadError::AliasedStorage);
-        }
+    pub(crate) fn from_byte_cells(cells: Rc<[Cell<u8>]>) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::from_cells(
-            Storage::ByteCells(cells),
+            Storage::ByteCells(unique_cell_owner(cells)?),
             1,
             std::mem::align_of::<u8>(),
         )?)
     }
     pub(crate) fn from_integer_cells(cells: Rc<[Cell<i32>]>) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::from_cells(
-            Storage::IntegerCells(cells),
+            Storage::IntegerCells(unique_cell_owner(cells)?),
             4,
             std::mem::align_of::<i32>(),
         )?)
     }
     pub(crate) fn from_real_cells(cells: Rc<[Cell<f64>]>) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::from_cells(
-            Storage::RealCells(cells),
+            Storage::RealCells(unique_cell_owner(cells)?),
             8,
             std::mem::align_of::<f64>(),
         )?)
     }
     pub(crate) fn from_reference_cells(cells: Rc<[Cell<NodeLink>]>) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::from_cells(
-            Storage::References(ReferenceCells::Slice(cells)),
+            Storage::References(ReferenceCells::Slice(unique_cell_owner(cells)?)),
             std::mem::size_of::<NodeLink>(),
             std::mem::align_of::<NodeLink>(),
         )?)
@@ -730,6 +737,10 @@ impl OwnedPayload {
 mod storage_tests;
 
 #[cfg(test)]
+#[path = "payload_alias_tests.rs"]
+mod alias_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -836,13 +847,11 @@ mod tests {
     #[test]
     fn cell_wrappers_keep_original_storage_and_immutable_leases_reject_writes() {
         let cells: Rc<[Cell<i32>]> = Rc::from([Cell::new(7), Cell::new(11)]);
-        let lease = PayloadLease::from_integer_cells(cells.clone()).unwrap();
-        assert_eq!(
-            lease.native_projection(),
-            cells.as_ptr().cast_mut().cast::<u8>()
-        );
+        let original = cells.as_ptr().cast_mut().cast::<u8>();
+        let lease = PayloadLease::from_integer_cells(cells).unwrap();
+        assert_eq!(lease.native_projection(), original);
         lease.set_integer_elt(1, 29).unwrap();
-        assert_eq!(cells[1].get(), 29);
+        assert_eq!(lease.integer_elt(1), Some(29));
         assert!(lease.real_elt(0).is_none());
         assert!(lease.set_integer_elt(2, 44).is_none());
         lease.make_immutable();

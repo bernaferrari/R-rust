@@ -463,6 +463,10 @@ fn vmax_len_in(instance: *mut RInstance) -> usize {
 mod tail_storage_tests;
 
 #[cfg(test)]
+#[path = "payload_adoption_projection_tests.rs"]
+mod cell_adoption_projection_controls;
+
+#[cfg(test)]
 mod tests {
     use std::ptr::addr_of_mut;
 

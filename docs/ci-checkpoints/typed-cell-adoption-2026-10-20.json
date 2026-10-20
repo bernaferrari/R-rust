@@ -1,0 +1,117 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.4",
+  "source_base": "7b422819acf415ff96d6d660f55f61bb17417330",
+  "behavior": [
+    "All byte/integer/real/reference Rc-cell constructors require exactly one strong owner and no external weak owner before adoption; reject aliases with the existing AliasedStorage error before creating/publishing a payload.",
+    "Use one safe uniqueness helper in the existing forbidunsafe payload module. Rc is single-threaded and this construction path has no callbacks; inspect its counts without creating an exclusive cell-slice reference.",
+    "Move the actual unique cell owner into the existing payload lease without copying data. All safe writers subsequently share the same immutable flag and original ledger charge; no external safe cell alias can retain data beyond its heap charge or write through a seal.",
+    "Preserve canonical source allocation/native projections across adoption, binding, sealing and final retained lease. Production permanent/singleton callers already construct fresh unique cells."
+  ],
+  "red": {
+    "native_failed": 8,
+    "external_strong_and_weak_adoption": "All three previously unchecked typed constructors accepted external aliases.",
+    "lifetime": "External integer cells remained live after the original heap storage charge was released to zero.",
+    "seal": "A safe external Cell write changed an immutable heap payload from7 to29.",
+    "projection_baseline": "The unique-cell original-projection positive control already passed under strict i686 Miri; no pre-existing projection UB claim."
+  },
+  "validation": {
+    "native_payload": 29,
+    "native_memory": 105,
+    "native_transient": 18,
+    "native_permanent": 15,
+    "native_globals": 20,
+    "native_heap": 16,
+    "native_total": 203,
+    "strict_isolated_i686_miri": {
+      "payload_including_alias_and_storage_controls": 29,
+      "original_projection_four_cell_types": 1,
+      "shared_singletons_immutability": 1,
+      "singleton_provenance": 1,
+      "distinct_total": 32,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android check PASS",
+    "scoped_rustfmt_and_git_diff_check": "PASS",
+    "production_wasm_checks": 262,
+    "wasm_node_checks": {
+      "wasm-checked-exhaustion-20261020": 12,
+      "wasm-gnu-opcode-contracts-20261020": 28,
+      "wasm-internal-dput-20261020": 4,
+      "wasm-loess-native-outputs-20261020": 86,
+      "wasm-permanent-ledger-20261020": 14,
+      "wasm-quote-options-20261020": 8,
+      "wasm-regex-workspace-20261020": 8,
+      "wasm-s4-cache-new-20261020": 8,
+      "wasm-serialization-workspace-20261020": 14
+    },
+    "web_binding_checks": 80
+  },
+  "fixture_correction": "The original cell-wrapper test now moves its unique owner and retains the original address/value/seal assertions; external cloning is covered by the new explicit rejection regressions.",
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29490157,
+      "sha256": "f3403c979cb0f98b4cd37766242ed9307a9859cc2e96e6d6144f1bba5e8efd8b"
+    },
+    "output": {
+      "bytes": 25152779,
+      "sha256": "27113c312fcc5f72ed994ba971dc7b63766edb47ed09b182c55ba7cf4d02093e"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/payload.rs": "8612f5eeea54f657c96a9889202b8900df2a806b5de7e0ed1a5b4c567d4ed5f4",
+    "crates/rmath/src/sexp/memory_ext.rs": "bf974659f3a26bf6d35464d1b89a3841eaaa1a3650a8df3c42273d6853330f77",
+    "crates/rmath/src/sexp/payload_alias_tests.rs": "8d823d3b0484e6148e0630873984b093f3be478ecb6280d4cba9d2cfdbce4e71",
+    "crates/rmath/src/sexp/payload_adoption_projection_tests.rs": "189c052cce0f473e51cc9a350604d3a621f277a2d433bd6af7eeb468b612c538"
+  },
+  "separate_uncommitted_graphics_inputs_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "log_sha256": {
+    "target/payload-alias-evidence/native-red-20261020.log": "2e1280717665d83b4956915cb7f259f31cd16991beef217beb82829892291d0a",
+    "target/payload-alias-evidence/native-payload-final-20261020.log": "1f881564ac9bf09ee9dee11e09176efb714c8c2c7b4d9cdb0952363c485277c2",
+    "target/payload-alias-evidence/native-memory-final-20261020.log": "c21956e55759f6204d067bb53c573b91389240efd7f41b0e698924046b60b59d",
+    "target/payload-alias-evidence/native-memory-ext-final-20261020.log": "c2dc4340fc2afbb231fb58ec5da1d691718e820fa36e290905ee2d1d60adda5f",
+    "target/payload-alias-evidence/native-persistent-final-20261020.log": "99c9193941d75b22b3be24af95572f314ffad1989ba59a336f25893e19b3dda0",
+    "target/payload-alias-evidence/native-globals-final-20261020.log": "e53c29aba2a20264d711fe162d9d165953ea820dcd7a10387936fd1dad964799",
+    "target/payload-alias-evidence/native-heap-final-20261020.log": "ff55285edaa75468518dcd4f5a8bfb8cb28473ecbbdcb00bb8557acd6650f2a3",
+    "target/payload-alias-evidence/miri-payload-20261020.log": "73d66609f6f8bf1f51701c3c6c123097a1e55e7b25b45e9c1b61410b7325c81e",
+    "target/payload-alias-evidence/miri-projection-20261020.log": "ee3adfb365b08cc601db0a2e562f0958a462af85f8becbedf6f7502ca141d63e",
+    "target/payload-alias-evidence/miri-shared_singletons_remain_immutable-20261020.log": "c9fdae4e2f042a2ee0ba9c567e4facc3859240fda14f479969b5cd2e10dad66b",
+    "target/payload-alias-evidence/miri-singleton_storage_preserves_provenance-20261020.log": "8a3f988992a697c51182d66f5b49c2fdd853e61a86e85001ef053e6ff8cbd2d4",
+    "target/payload-alias-evidence/miri-projection-baseline-20261020.log": "0086c807f6ba1c4abf428f748ddabbf74c95142623c21fbaa2b46435d7c9ad8f",
+    "target/payload-alias-evidence/android-20261020.log": "4affb9fde09bac1b078487e5e332baf2babced10f72b640bb602349537ed1d83",
+    "target/payload-alias-evidence/clippy-final-20261020.log": "74da5f15a54799edd7a1f1fc2e6f1bbc572080977c5c7005260bcef21963cab6",
+    "target/payload-alias-evidence/wasm-build-20261020.log": "92ab75b13b7ec0cb11d6384e71bbb36e7d4972fa8f52cefcd9ffe7d03b7a4c4d",
+    "target/payload-alias-evidence/wasm-optimize-20261020.log": "325b1b1edee73667f7049e53f45905aad3b7441f5139d2d948d8107b65fef39d",
+    "target/payload-alias-evidence/wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/payload-alias-evidence/wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "target/payload-alias-evidence/wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/payload-alias-evidence/wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/payload-alias-evidence/wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/payload-alias-evidence/wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "target/payload-alias-evidence/wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/payload-alias-evidence/wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "target/payload-alias-evidence/wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/payload-alias-evidence/wasm-portable-package-contracts-20261020.log": "e9e34e1eb09b0f8e446d739b8ef646be1be6efca402e2adcf1c77c9bd33e8fc5"
+  },
+  "limits": [
+    "Canonical cell-buffer ownership/admission is closed here. Native maps/root and iterator vectors, Rc/weak control allocation layouts and allocator rounding remain in cvs2.11; the total-memory parent remains active.",
+    "Browser64MiB/linear256MiB limits and node quotas remain unchanged. Node V8 exercises Node/web bindings; no new Chromium or Android device execution claim.",
+    "Local working-tree validation includes the separate graphics inputs above and is not an immutable clean-checkout or whole-CI result."
+  ]
+}
