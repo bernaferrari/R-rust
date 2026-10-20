@@ -80,7 +80,7 @@ fn repeated_references_invoke_hooks_and_restore_to_one_identity() {
     let mut session = RSession::new().unwrap();
     assert_eq!(
         session
-            .eval("e<-new.env();hits<-0L;r<-serialize(list(e,e),NULL,refhook=function(x){hits<<-hits+1L;'token'});replacement<-new.env();z<-unserialize(r,refhook=function(x)replacement);identical(c(hits,identical(z[[1]],z[[2]])),c(2L,TRUE))")
+            .eval("e<-new.env();hits<-0L;r<-serialize(list(e,e),NULL,refhook=function(x){hits<<-hits+1L;'token'});replacement<-new.env();restores<-0L;z<-unserialize(r,refhook=function(x){restores<<-restores+1L;replacement});identical(c(hits,restores,identical(z[[1]],z[[2]])),c(2L,2L,TRUE))")
             .unwrap()
             .trim(),
         "[1] TRUE"
