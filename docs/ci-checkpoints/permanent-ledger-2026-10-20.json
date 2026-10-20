@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.7",
+  "status": "verified",
+  "implementation_commit": "670c39f9",
+  "source_sha256": {
+    "crates/rmath/src/sexp/heap.rs": "1ee0d0e55862f0643fdeb6268d97c2eea491b16f65b37c48f3db504e003003a7",
+    "crates/rmath/src/sexp/memory.rs": "cc1c6e1dba7e07d1296b3d52b12f502c93c1add75e6ea15d2eb8dc918a3d4cf7",
+    "crates/rmath/src/sexp/memory/arena.rs": "8afe1c67828eb67ca5a698dce3fe78d2443262c58d9b7a80fcd48b30dc728941",
+    "crates/rmath/src/sexp/memory/ledger.rs": "b4185f5a3beaf723f1564277247e3165dcdea8c9d097767dd1dc0fbc88d7288a",
+    "crates/rmath/src/sexp/memory/tests_payload.rs": "0425c7fc47c147d85e606526e2710f2ef50ab4f8cb8410482347cbc7936f2d4d",
+    "crates/rmath/src/sexp/persistent.rs": "7343c69de3e719ece14c432aa6a6d23d3f9b9456a1acbe2df500378d2130aa0d",
+    "crates/rmath/src/sexp/persistent_budget_tests.rs": "c25b76361d203c1c7bf6da5372c6f207376c6482a8298d06496cfea4c0a6c6af",
+    "crates/rmath/src/sexp/payload.rs": "d5f3cbb07050fb7807219753df7153b99e244904c1fd2804cad9bb09a32cd6f4",
+    "crates/rmath/src/sexp/symbol.rs": "ed4ec0e6078f8eb60b851c81b6222098eccb1918002b828d9663571e3e1a159d",
+    "crates/r-embed/tests/workspace_memory.rs": "959c9378172489cd1d32d02537e3c319a17ca83f1d1f6ab5b3fd5c1b80deb676",
+    "tests/browser/permanent-ledger.cjs": "515f22f8c60e9f973dcd63b6295d43382d4ff56872d1ed7d1d78250f28ab25cb"
+  },
+  "evidence_directory": "target/permanent-ledger-evidence",
+  "behavior": [
+    "One original heap identity shares arena, permanent and transient counters plus the live byte limit",
+    "Permanent payload and header copy peaks are admitted before native allocation",
+    "Charges follow actual owning storage through detached roots and payload snapshots",
+    "A symbol/name pair preflights its combined peak and rolls back native allocation failure before publication",
+    "Permanent allocation denial reports an R resource error; existing symbols remain reusable even after lowering the limit below retained bytes",
+    "A payload cannot claim the same heap identity while rebinding its charge to a different counter"
+  ],
+  "validation": {
+    "native_permanent_regressions": {
+      "passed": 9,
+      "log": "symbol-and-ledger-green-20261020.log"
+    },
+    "native_arena": {
+      "passed": 101,
+      "log": "memory-final-20261020.log"
+    },
+    "native_persistent": {
+      "passed": 14,
+      "log": "persistent-final-20261020.log"
+    },
+    "public_workspace": {
+      "passed": 6,
+      "log": "public-workspace-final-20261020.log"
+    },
+    "clippy": {
+      "crates": [
+        "rmath",
+        "r-embed",
+        "r-wasm",
+        "r-uniffi"
+      ],
+      "all_targets": true,
+      "warnings_denied": true,
+      "exit_code": 0,
+      "log": "clippy-final-20261020.log"
+    },
+    "android": {
+      "target": "aarch64-linux-android",
+      "crate": "r-uniffi",
+      "exit_code": 0,
+      "log": "android-final-20261020.log"
+    },
+    "miri": {
+      "passed": 9,
+      "seconds": 401.34,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "log": "miri-permanent-final-20261020.log"
+    },
+    "production_wasm": {
+      "permanent_checks": 10,
+      "serialization_checks": 14,
+      "connection_checks": 12,
+      "failures": 0,
+      "session_bytes": 67108864,
+      "linear_memory_bytes": 268435456,
+      "optimized_asset_bytes": 24796422,
+      "optimized_asset_ceiling_bytes": 26214400
+    }
+  },
+  "scope_limits": [
+    "Native map keys, allocator metadata, rendering and regex work remain separate parent scope; no whole-process RSS guarantee",
+    "Production Wasm executed under Node; Android is a cross-compilation check, not device execution",
+    "Oversized public symbol names isolate memory admission here; GNU10000-byte name validation is separately tracked by rport-8sqqr, not claimed faithful by these memory probes",
+    "Ordinary arena exhaustion diagnostic remains tracked by rport-cvs2.9",
+    "Shared unrelated graphics edits remain uncommitted; no claim over those changes"
+  ],
+  "log_sha256": {
+    "valid-red-20261020.log": "1608356a7627f95d1192cacf8708b567c3a588ad6430d173cb6c086aa81839e5",
+    "payload-ledger-valid-red-20261020.log": "45a314e20505fc724820a98d30280c6b7cb0dbba971e7b7871865b52fa553476",
+    "symbol-valid-red-20261020.log": "6744e1af72e767dbcf944e97fed79ff68de3cd9a4978f6a33bc14b8d829d2b1f",
+    "symbol-and-ledger-green-20261020.log": "5ff34b3d3d25e7ef3f565eb166a470db42a0fb68b0bf0a15cbb6c937ec34bdce",
+    "memory-final-20261020.log": "7f42fb6e26da0a7ce36ae8bd2de2cc861fff6206eb5ed8eda96aaa4f8b55a97a",
+    "persistent-final-20261020.log": "49ab9db39343845a0a2be967666b58123aa1fc7577990db16979ebf61f107291",
+    "public-workspace-final-20261020.log": "dd024a0d0fd9bf8293b901c3614e9035e3679da5178a699671ae57e800d87050",
+    "clippy-final-20261020.log": "a02c358e7a731a2f972c3fc411cf981e6a1c479c59ac97b489042fe8f2b6365c",
+    "android-final-20261020.log": "e0accc22ec6988b7202b00e8daf41f484efbfe31d33fd685ab252890adc3d7a8",
+    "miri-permanent-final-20261020.log": "0268e93641c0e379a9924b686b90e09d27e6641e1b003c62e1560841b5916134",
+    "wasm-build-20261020.log": "a1d98d9930991cbdac216f7598d3637b423a5f4d83d7284c72f355e0fc4c10e1",
+    "wasm-optimization-20261020.log": "f87c08715b32ca06e52b0333b701904c14bae89c138fa7ae2f796928995f15f1",
+    "wasm-permanent-final-20261020.log": "ea4e1dc6d5967060776cd4613bce49297ece2915109ab231534e32ff167ac5e6",
+    "wasm-serialization-smoke-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-streams-smoke-20261020.log": "52fc1a858ea0628d74e8d2263fe5a700f786ac2d48829af088c6bcf4609ad261"
+  },
+  "wasm_sha256": {
+    "r_wasm_bg.wasm.d.ts": "a77fac0781251574087e7e147b55b78d645e79589dfff6ab4daa59d3406a0add",
+    "r_wasm_bg.wasm": "d8381dce204bdf8c090bd9d220b355e8b52b88d5fdbdc6652211eda794f8972c",
+    "r_wasm.js": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3",
+    "r_wasm.d.ts": "7e3cf2cab7e0429022809e7925982a262edda8052eca9f4d7f4826b5db50c4ae"
+  }
+}
