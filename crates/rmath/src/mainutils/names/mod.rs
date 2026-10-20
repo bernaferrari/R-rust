@@ -817,6 +817,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
         "serialize" => Some(crate::mainutils::serialize::do_serialize_internal),
+        "dput" => Some(crate::mainutils::deparse::do_dput),
         // GNU internal contract `(expr, functions, max.names, unique)`;
         // the R-level all.vars/all.names wrappers pass distinct flags.
         "all.names" => Some(crate::mainutils::list::do_allnames),

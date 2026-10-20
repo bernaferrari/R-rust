@@ -387,59 +387,8 @@ fn deparse_default_backtick(expr: SEXP) -> bool {
 ///
 /// Writes a deparsed representation of an R object to a file or connection.
 /// Port of `do_dput` in deparse.c.
-pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::relop::checkArity(_op, args);
-        let tval_raw = CAR(args);
-        let sfile = CADR(args);
-        let opts_arg = CADDR(args);
-        let opts = if isNull(opts_arg) {
-            SHOWATTRIBUTES
-        } else {
-            gnu_deparse_opts_to_port(Rf_asInteger(opts_arg))
-        };
-
-        let tval = deparse1(tval_raw, false, opts);
-        let _tval_guard = protect(tval);
-
-        // Write to stdout (connection index 1) or a connection
-        let ifile = crate::mainutils::coerce::asInteger(sfile);
-        if ifile == 1 {
-            for i in 0..LENGTH(tval) {
-                let s = CHAR(STRING_ELT(tval, i as R_xlen_t));
-                if !s.is_null() {
-                    let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-                    let line = String::from_utf8_lossy(bytes);
-                    println!("{}", line);
-                }
-            }
-        } else if ifile >= 3 {
-            // Write to a connection
-            let con_sexp = sfile;
-            let lines_sexp = tval;
-            // Build a STRSXP with newlines appended for writeLines
-            let n = LENGTH(lines_sexp);
-            let text = Rf_allocVector(SEXPTYPE::STRSXP, n);
-            let _text_guard = protect(text);
-            for i in 0..n as R_xlen_t {
-                SET_STRING_ELT(text, i, STRING_ELT(lines_sexp, i));
-            }
-            crate::mainutils::connections::do_writeLines(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                Rf_cons(
-                    text,
-                    Rf_cons(
-                        con_sexp,
-                        Rf_cons(Rf_mkString(b"\n\0".as_ptr() as *const c_char), R_NilValue()),
-                    ),
-                ),
-                R_NilValue(),
-            );
-        }
-
-        CAR(args)
-    }
+pub unsafe fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { super::owned_dput::do_dput(call, op, args, rho) }
 }
 
 /// Implementation of R's `dump()` function.

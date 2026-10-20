@@ -117,6 +117,14 @@ pub(super) const INTERNALS_FUNTAB: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"dput\0",
+        None,
+        0,
+        111,
+        3,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"quit\0",
         None,
         0,

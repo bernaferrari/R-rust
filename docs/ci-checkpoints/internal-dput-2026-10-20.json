@@ -1,0 +1,125 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-dafgw",
+  "source_base": "5a074f4d (S4 receipt-only e6063bcd also committed during validation)",
+  "status": "verified",
+  "source_sha256": {
+    "crates/rmath/src/mainutils/deparse/owned_dput.rs": "db87fc1078d51af4b1fac95de0f24d3c91ca548ff0003424207bf1b4ddeb2c1c",
+    "crates/rmath/src/mainutils/deparse/entry.rs": "fa22a96c3bb3bdc1a09b0305604f925c0439982e5671a641f76cdba81ec64bc7",
+    "crates/rmath/src/mainutils/deparse/mod.rs": "4bfa77a70222856277624bf1a2210d5fee0982a980318b4f3bc3392ca764d85c",
+    "crates/rmath/src/mainutils/names/internals.rs": "b11d365e502b77c735bee3c5db707add9257f1a13abc938875f156c31df981ef",
+    "crates/rmath/src/mainutils/names/mod.rs": "e3c3759adda4dbdfb973ab1bd1091be6ab7eaa87d1e3ee2e280f712be22b0daf",
+    "crates/rmath/src/eval/builtin/base_io.rs": "b8847026299caf4d6528d99b14e842fe623ccd3139e1ba6e7fa97b3927aa5b1f",
+    "crates/rmath/src/mainutils/essentials/registry.rs": "eedb1df7aa3241a1f4f5b8d7ca550e7ea0ee51e46452a7e8fcff1981c6d769de",
+    "crates/r-embed/tests/internal_dput_contract.rs": "e242e76e3e54f36d1924e1bf54eed70e5e5ddfd3d70bc04b92c9526d4535e54e",
+    "crates/r-embed/tests/fixtures/internal-dput-contract.R": "8626ad0b9a6963203444be981e2f20ec7e8973e8899288627b21be052fff5f50",
+    "crates/r-embed/tests/fixtures/internal-dput-contract.out": "5f1acf146ca97ca1ce75f18b7d880318f486409ff09cf0dcb86f853277d89737",
+    "tests/browser/internal-dput.cjs": "90f55426b6ed4187997debd5a35520c934a4d819b878ef97aeadcecdff4a2817",
+    "tests/browser/portable-package-contracts.mjs": "70f1e84f51c6cee8d411600da46620072835ed49043fb96d915d0c628f674d01"
+  },
+  "red": "Current production Wasm .Internal(dput()) printed NULL without the GNU0-argument arity error; exact observed source/output and assertion are in wasm-red-20261020.log. Earlier scalar-string harness rejected the successful NULL and was replaced by this direct arity regression.",
+  "behavior": [
+    "Dedicated GNU eval111/arity3 function-table descriptor and internal handler precede public builtin fallback",
+    "Original owner pin and owning value/file/control/deparsed-line/call-argument handles span deparse, connection I/O and cleanup",
+    "Closure deparse uses an owning duplicate with global environment while returning the original closure with its environment intact",
+    "Portable connection writer follows stdout sinks, preserves open text connections, opens/closes initially closed files, and rejects read-only connections",
+    "Removed native public dput binding/handler so the existing unchanged upstream dput.R file publishes its original closure and formals; dget behavior and unrelated builtins retain their bindings"
+  ],
+  "validation": {
+    "native_pinned_oracle_contract": {
+      "passed": 1,
+      "includes": [
+        "exact0/1/2/4-operand arity errors",
+        "invalid character/numeric file error",
+        "GNU public closure type/formals",
+        "stdout return identity/invisibility",
+        "closure environment preservation",
+        "NULL option semantics",
+        "text connection remains open",
+        "initially closed file returns closed after write",
+        "read-only error retains open connection",
+        "public default control and recovery"
+      ]
+    },
+    "native_minimal_ownership": {
+      "passed": 1,
+      "full_collection": "before handler and after rooting its returned value",
+      "stdout": "42\n"
+    },
+    "strict_miri": {
+      "passed": 1,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "reported_test_seconds": 132.28
+    },
+    "clippy": "rmath/r-embed/r-uniffi/r-wasm all targets -D warnings",
+    "android": "r-uniffi aarch64-linux-android cross-check",
+    "production_wasm": {
+      "checks": 160,
+      "breakdown": {
+        "internal-dput": 4,
+        "regex-workspace": 8,
+        "gnu-opcode-contracts": 28,
+        "s4-cache-new": 4,
+        "permanent-ledger": 14,
+        "checked-exhaustion": 12,
+        "serialization-workspace": 14,
+        "portable-web-binding-contracts": 76
+      },
+      "module": {
+        "schema_version": 1,
+        "binaryen_version": "133",
+        "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+        "arguments": [
+          "-Oz"
+        ],
+        "feature_policy": "preserve input target_features",
+        "input": {
+          "bytes": 29061880,
+          "sha256": "f452b5c5866fff6cb7c53dd827369c549b831621de5e69c4aefe98e59f85f935"
+        },
+        "output": {
+          "bytes": 24830465,
+          "sha256": "679d2c0f890838dd3ac6c43240b0367eb6c04277d1de2771f79c887cab6a9cb1"
+        }
+      },
+      "execution": "Node executes production Node and web bindings; no browser UI or on-device run claimed"
+    }
+  },
+  "oracle": {
+    "manifest": "oracle/r-oracle.json",
+    "command": "Pinned Rscript --vanilla crates/r-embed/tests/fixtures/internal-dput-contract.R",
+    "output_sha256": "5f1acf146ca97ca1ce75f18b7d880318f486409ff09cf0dcb86f853277d89737",
+    "source_is_repo_fixture": true
+  },
+  "evidence_directory": "target/internal-dput-evidence",
+  "evidence_sha256": {
+    "wasm-red-20261020.log": "93f09cc61ee0d02b3b86a6d6850e7acdb6cb7919c2acbfabafbdb2b3dfc5a73c",
+    "native-final-20261020.log": "99a0961d572fdcfe61a4f0e35493e16485d499f9947c4317aaa1af72de5a8fc3",
+    "owned-native-20261020.log": "5cfa017b985d843a2f9ee62fc2ee68cdf9ff7ec1b39cbbee23b3ee64af74ee21",
+    "miri-20261020.log": "3cbc0b4e8800107e8d9b128bdcae1e51b0c8191277fd0434fa3ff795d5972b70",
+    "clippy-20261020.log": "e7cb6978929fb5cf4a9ab495e3e9a7dd73b7f4622d58fa87297be12951f498bb",
+    "android-20261020.log": "ab1b7aab7f72bf5e163b20eb2537094e53fa93bcfb735e882e52c3128f7afac5",
+    "wasm-build-20261020.log": "468eb59f2e0c4c1c4a6d98f7b44523fe48e3ba28f9f71dabe80c9919d7efe6ee",
+    "wasm-optimization-20261020.log": "0c7b4b2de100024736c772e55964badd7e8a65c123ae16beb956cf508a6fffc9",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-s4-cache-new-20261020.log": "3b77f6f3c8cee02b9d2a88d7880ee9a6e98a3effb37f6a59b54f5320f46e47e4",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-portable-contracts-20261020.log": "f5a9b9f84cba43913385488aaf13721cbfc02afc14296866a410dfd282adb642"
+  },
+  "scope_limits": [
+    "No full deparse/dump or whole-engine ownership/safety claim",
+    "The separate direct Rust helper used by compiler disassembly is unchanged; R public calls use the original GNU wrapper",
+    "Native fixture uses an actual existing temporary root; the first candidate test used nonexistent relative tmp and failed file opening before that fixture correction",
+    "Unrelated user graphics changes remain preserved"
+  ]
+}

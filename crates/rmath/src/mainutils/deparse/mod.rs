@@ -25,7 +25,8 @@
 //! - do_deparse with argument extraction.
 //! - Helper functions: curlyahead, needsparens, quotify, etc.
 //! - Source reference deparsing kept as a stub (needs eval/methods).
-//! - do_dput, do_dump kept as stubs (need connections infrastructure).
+//! - do_dput uses the owning portable connection boundary; do_dump retains its
+//!   separate implementation.
 
 use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
@@ -58,6 +59,7 @@ pub mod dispatch;
 pub mod elements;
 pub mod entry;
 pub mod local_parse_data;
+mod owned_dput;
 mod owned_line_buffer;
 mod owned_output;
 pub mod predicates;

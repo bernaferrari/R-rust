@@ -540,7 +540,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "system",
     "system2",
     "deparse1",
-    "dput",
     "dget",
     "bquote",
     "packageStartupMessage",

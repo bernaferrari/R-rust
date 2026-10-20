@@ -56,6 +56,7 @@ const contracts = [
     'prmatrix-public-contract',
     'condition-handler-stack-public-contract',
     'attribute-print-public-contract',
+    'internal-dput-contract',
     's4-next-method-public-contract',
     's4-cache-new-contract',
     'gnu-compiled-source-edit-contract',

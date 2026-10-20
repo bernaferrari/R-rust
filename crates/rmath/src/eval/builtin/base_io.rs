@@ -256,10 +256,6 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_deparse1,
     },
     EvaluatedBuiltin {
-        name: "dput",
-        handler: crate::mainutils::essentials::do_dput,
-    },
-    EvaluatedBuiltin {
         name: "dump",
         handler: crate::mainutils::essentials::do_dump,
     },
