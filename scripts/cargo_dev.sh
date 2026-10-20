@@ -38,7 +38,7 @@ case "${1:-}" in
             prune_options+=(--artifacts-json "$RPORT_CARGO_ARTIFACTS_JSON")
         fi
         python3 "$ROOT_DIR/scripts/prune_build_binaries.py" \
-            "${prune_options[@]}" || \
+            "${prune_options[@]}" >&2 || \
             echo "Build-cache pruning skipped; Cargo's exit status is unchanged." >&2
         ;;
 esac
