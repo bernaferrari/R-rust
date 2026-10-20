@@ -990,3 +990,136 @@ fn owned_binary_filename_saved_character_survives_admission_slot_detachment_and_
         Some("replacement")
     );
 }
+
+fn malformed_binary_arguments(malformed: &str) {
+    let session = session();
+    let factory = session.owner_token().unwrap().node_factory();
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    let class = session
+        .register_altrep_class(
+            "binary.admission",
+            FilenameProvider(Rc::new(move || {
+                observed.set(observed.get() + 1);
+            })),
+        )
+        .unwrap();
+    let con = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let nil = factory.nil();
+    let what = factory.strings(&["raw"]).unwrap().into_owned().unwrap();
+    let con_tag = session.with_active(|| unsafe {
+        session
+            .owner_token()
+            .unwrap()
+            .sexp(crate::sexp::symbol::Rf_install(c"con".as_ptr()))
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    let bad_tag = if malformed == "tag" {
+        what.clone()
+    } else {
+        nil.clone()
+    };
+    let tail = factory
+        .pairlist_cell(&what, &nil, &bad_tag)
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = factory
+        .pairlist_cell(&con, &tail, &con_tag)
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let foreign = RSession::new_for_gc_tests();
+    let foreign_value = foreign
+        .owner_token()
+        .unwrap()
+        .node_factory()
+        .strings(&["foreign"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let node = tail.allocation().unwrap();
+    let heap = node.heap_identity();
+    let mut header = heap.node_snapshot(node).unwrap();
+    let crate::sexp::ffi::NodeBody::List(ref mut list) = header.data else {
+        unreachable!()
+    };
+    match malformed {
+        "cycle" => list.cdrval = args.allocation().unwrap().link().unwrap(),
+        "tail" => list.cdrval = what.allocation().unwrap().link().unwrap(),
+        "foreign" => list.carval = foreign_value.allocation().unwrap().link().unwrap(),
+        "tag" => (),
+        _ => unreachable!(),
+    }
+    heap.replace_node(node, header).unwrap();
+    let result = session.with_active(|| filename_owned::read(args));
+    assert_eq!(
+        calls.get(),
+        0,
+        "{malformed} reached filename provider: {result:?}"
+    );
+    let error = result.unwrap_err();
+    assert!(
+        !error.contains("activate"),
+        "fixture missed admission: {error}"
+    );
+    if malformed == "cycle" {
+        assert!(error.contains("cyclic binary argument list"), "{error}");
+    }
+}
+
+#[test]
+fn binary_admission_cycle_precedes_filename_provider() {
+    malformed_binary_arguments("cycle");
+}
+#[test]
+fn binary_admission_improper_tail_precedes_filename_provider() {
+    malformed_binary_arguments("tail");
+}
+#[test]
+fn binary_admission_improper_tag_precedes_filename_provider() {
+    malformed_binary_arguments("tag");
+}
+#[test]
+fn binary_admission_foreign_operand_precedes_filename_provider() {
+    malformed_binary_arguments("foreign");
+}
+
+#[test]
+fn binary_admission_named_con_keeps_first_unnamed_what_and_count() {
+    let session = session();
+    let factory = session.owner_token().unwrap().node_factory();
+    let con = filename(&session);
+    let what = factory.strings(&["raw"]).unwrap().into_owned().unwrap();
+    let count = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    unsafe { SET_INTEGER_ELT(count.as_raw(), 0, 2) };
+    let con_tag = session.with_active(|| unsafe {
+        session
+            .owner_token()
+            .unwrap()
+            .sexp(crate::sexp::symbol::Rf_install(c"con".as_ptr()))
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    let rest = arguments(&session, &[what, count]);
+    let args = factory
+        .pairlist_cell(&con, &rest, &con_tag)
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let output = filename_owned::read(args).unwrap();
+    assert_eq!(output.len(), 2);
+    assert_eq!(output.try_raw_elt(0).unwrap(), 9);
+    assert_eq!(output.try_raw_elt(1).unwrap(), 8);
+}

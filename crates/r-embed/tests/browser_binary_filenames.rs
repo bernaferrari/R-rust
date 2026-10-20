@@ -177,3 +177,24 @@ fn browser_binary_filename_write_matches_gnu_validation_and_truncation_stages() 
         "{writeBin(c('a','b'),'binary/output.bin');con<-file('binary/output.bin','rb');zero<-readBin(con,'character',n=0L);first<-readBin(con,'character',n=1L);second<-readBin(con,'character',n=1L);last<-readBin(con,'character',n=1L);close(con);identical(zero,character())&&identical(first,'a')&&identical(second,'b')&&identical(last,character())}",
     );
 }
+
+#[test]
+fn binary_named_arguments_leave_unnamed_arguments_in_remaining_formal_order() {
+    let mut session = portable();
+    // Pinned GNU r90451 controls, including an unnamed object after named con.
+    check(
+        &mut session,
+        "identical(readBin(con=as.raw(c(9,8,7,6)), 'raw', 2L), as.raw(c(9,8)))",
+    );
+    check(
+        &mut session,
+        "identical(writeBin(con=raw(), c(1L,256L), size=2L, endian='big'), as.raw(c(0,1,1,0)))",
+    );
+    session
+        .import_file("binary/input.bin", &[9, 8, 7, 6])
+        .unwrap();
+    check(
+        &mut session,
+        "identical(readBin(what='raw', con='binary/input.bin', 2L), as.raw(c(9,8)))",
+    );
+}

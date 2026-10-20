@@ -13,10 +13,31 @@ use std::{
     io::{Read, Write},
 };
 
-struct Arguments(Vec<(Sexp<'static>, Sexp<'static>)>);
+type Formals = &'static [&'static [&'static str]];
+const READ_FORMALS: Formals = &[
+    &["con"],
+    &["what"],
+    &["n"],
+    &["size"],
+    &["signed"],
+    &["endian", "swap"],
+];
+const WRITE_FORMALS: Formals = &[
+    &["object"],
+    &["con"],
+    &["size"],
+    &["endian", "swap"],
+    &["useBytes"],
+];
+
+struct Arguments([Option<Sexp<'static>>; 6]);
 
 impl Arguments {
-    fn capture(access: &RuntimeAccess, arguments: &Sexp<'static>) -> Result<Self, String> {
+    fn capture(
+        access: &RuntimeAccess,
+        arguments: &Sexp<'static>,
+        formals: Formals,
+    ) -> Result<Self, String> {
         let mut selected = Vec::new();
         let mut seen = HashSet::new();
         let mut cell = arguments.clone();
@@ -30,65 +51,74 @@ impl Arguments {
             selected
                 .try_reserve(1)
                 .map_err(|_| "allocation failed while selecting binary arguments")?;
-            selected.push((
-                cell.try_tag()
-                    .map_err(|e| e.to_string())?
-                    .into_owned()
-                    .map_err(|e| e.to_string())?,
-                cell.try_car()
-                    .map_err(|e| e.to_string())?
-                    .into_owned()
-                    .map_err(|e| e.to_string())?,
-            ));
+            let tag = cell
+                .try_tag()
+                .and_then(Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+            let value = cell
+                .try_car()
+                .and_then(Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+            // Admit every operand and tag before classification can invoke a
+            // filename provider. A later select must not be the first check.
+            access.domain().link(&tag).map_err(|e| e.to_string())?;
+            access.domain().link(&value).map_err(|e| e.to_string())?;
+            if !tag.is_nil() && tag.typeof_() != SEXPTYPE::SYMSXP {
+                return Err("binary argument tag must be a symbol".into());
+            }
+            selected.push((tag, value));
             cell = cell
                 .try_cdr()
                 .map_err(|e| e.to_string())?
                 .into_owned()
                 .map_err(|e| e.to_string())?;
         }
-        Ok(Self(selected))
+        // Match named actuals first, then fill the remaining formal slots
+        // with unnamed actuals in order. Named con does not consume what.
+        let mut matched: [Option<Sexp<'static>>; 6] = std::array::from_fn(|_| None);
+        for (tag, value) in selected.iter().filter(|(tag, _)| !tag.is_nil()) {
+            let name = tag.try_printname().map_err(|e| e.to_string())?;
+            let mut position = None;
+            for (index, aliases) in formals.iter().enumerate() {
+                for alias in *aliases {
+                    if name
+                        .try_char_eq(alias.as_bytes())
+                        .map_err(|e| e.to_string())?
+                    {
+                        position = Some(index);
+                    }
+                }
+            }
+            let position = position.ok_or("unused binary argument")?;
+            if matched[position].replace(value.clone()).is_some() {
+                return Err(format!(
+                    "formal argument '{}' matched by multiple actual arguments",
+                    formals[position][0]
+                ));
+            }
+        }
+        for (tag, value) in selected {
+            if tag.is_nil() {
+                let position = matched[..formals.len()]
+                    .iter()
+                    .position(Option::is_none)
+                    .ok_or("unused binary argument")?;
+                matched[position] = Some(value);
+            }
+        }
+        Ok(Self(matched))
     }
 
     fn select(
         &self,
         position: usize,
-        names: &[&str],
         default: &Sexp<'static>,
         access: &RuntimeAccess,
-    ) -> Result<Sexp<'static>, String> {
-        let domain = access.domain();
-        let mut chosen = None;
-        for (tag, value) in &self.0 {
-            domain.link(tag).map_err(|e| e.to_string())?;
-            domain.link(value).map_err(|e| e.to_string())?;
-            if tag.is_nil() {
-                continue;
-            }
-            let name = tag.try_printname().map_err(|e| e.to_string())?;
-            for candidate in names {
-                if name
-                    .try_char_eq(candidate.as_bytes())
-                    .map_err(|e| e.to_string())?
-                {
-                    chosen = Some(value);
-                    break;
-                }
-            }
-            if chosen.is_some() {
-                break;
-            }
-        }
-        let chosen = chosen.or_else(|| {
-            self.0
-                .iter()
-                .filter(|(tag, _)| tag.is_nil())
-                .nth(position)
-                .map(|(_, value)| value)
-        });
-        Ok(match chosen {
-            Some(value) if !value.is_nil() && *value != domain.missing() => value.clone(),
+    ) -> Sexp<'static> {
+        match &self.0[position] {
+            Some(value) if !value.is_nil() && *value != access.domain().missing() => value.clone(),
             _ => default.clone(),
-        })
+        }
     }
 }
 
@@ -113,10 +143,11 @@ fn execute<T>(
 
 fn run<T>(
     arguments: Sexp<'static>,
+    formals: Formals,
     operation: impl FnOnce(&RuntimeAccess, Arguments) -> Result<T, String>,
 ) -> Result<T, String> {
     execute(&arguments, |access| {
-        operation(access, Arguments::capture(access, &arguments)?)
+        operation(access, Arguments::capture(access, &arguments, formals)?)
     })
 }
 
@@ -416,9 +447,9 @@ impl Source {
 }
 
 pub(super) fn read(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
-    run(arguments, |access, arguments| {
+    run(arguments, READ_FORMALS, |access, arguments| {
         let domain = access.domain();
-        let con = arguments.select(0, &["con"], &domain.nil(), access)?;
+        let con = arguments.select(0, &domain.nil(), access);
         let mut connection = None;
         let source = if con.typeof_() == SEXPTYPE::STRSXP {
             let path = filename(&con, access)?;
@@ -434,11 +465,11 @@ pub(super) fn read(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
         };
         let one = integer(access, 1)?;
         let na = integer(access, crate::sexp::ffi::NA_INTEGER)?;
-        let what = arguments.select(1, &["what"], &domain.nil(), access)?;
-        let count = arguments.select(2, &["n"], &one, access)?;
-        let size = arguments.select(3, &["size"], &na, access)?;
-        let signed = arguments.select(4, &["signed"], &domain.logical(true), access)?;
-        let endian = arguments.select(5, &["endian", "swap"], &domain.missing(), access)?;
+        let what = arguments.select(1, &domain.nil(), access);
+        let count = arguments.select(2, &one, access);
+        let size = arguments.select(3, &na, access);
+        let signed = arguments.select(4, &domain.logical(true), access);
+        let endian = arguments.select(5, &domain.missing(), access);
         let parameters =
             super::filename_read_parameters(access, [&what, &count, &size, &signed, &endian])
                 .map_err(|e| e.to_string())?;
@@ -454,14 +485,14 @@ pub(super) fn read(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
 }
 
 pub(super) fn write(arguments: Sexp<'static>) -> Result<Sexp<'static>, String> {
-    run(arguments, |access, arguments| {
+    run(arguments, WRITE_FORMALS, |access, arguments| {
         let domain = access.domain();
-        let object = arguments.select(0, &["object"], &domain.nil(), access)?;
-        let con = arguments.select(1, &["con"], &domain.nil(), access)?;
+        let object = arguments.select(0, &domain.nil(), access);
+        let con = arguments.select(1, &domain.nil(), access);
         let na = integer(access, crate::sexp::ffi::NA_INTEGER)?;
-        let size = arguments.select(2, &["size"], &na, access)?;
-        let endian = arguments.select(3, &["endian", "swap"], &domain.missing(), access)?;
-        let use_bytes = arguments.select(4, &["useBytes"], &domain.logical(false), access)?;
+        let size = arguments.select(2, &na, access);
+        let endian = arguments.select(3, &domain.missing(), access);
+        let use_bytes = arguments.select(4, &domain.logical(false), access);
         let mut sink = None;
         let original = std::cell::RefCell::new(None);
         let (bytes, _reservations) = super::filename_encode_staged(
