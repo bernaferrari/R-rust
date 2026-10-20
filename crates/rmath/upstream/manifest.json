@@ -1,0 +1,605 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "d4cc5d9e196a144bbb087a798bb945b37121383b"
+  },
+  "generator": "scripts/vendor_embedded_r_sources.py",
+  "license": {
+    "spdx": "GPL-2.0-or-later",
+    "path": "COPYING",
+    "sha256": "e6d6a009505e345fe949e1310334fcb0747f28dae2856759de102ab66b722cb4"
+  },
+  "files": {
+    "base/R/Bessel.R": {
+      "source_path": "src/library/base/R/Bessel.R",
+      "bytes": 1129,
+      "sha256": "03011df61170574071d5cdb0dbd30433bba17a9adeecd1ff14d53711b236d0fa"
+    },
+    "base/R/Defunct.R": {
+      "source_path": "src/library/base/R/Defunct.R",
+      "bytes": 7060,
+      "sha256": "09216b1d1f1a704f974306d4d419ec29096413d061e4310240813a25eabca933"
+    },
+    "base/R/LAPACK.R": {
+      "source_path": "src/library/base/R/LAPACK.R",
+      "bytes": 2119,
+      "sha256": "c02170b77d05873890c376e1716811db9f3e20bd97263e50344a208a67b3fddd"
+    },
+    "base/R/New-Internal.R": {
+      "source_path": "src/library/base/R/New-Internal.R",
+      "bytes": 11773,
+      "sha256": "50a556de5e5fd35b4140b7a27ca1a2b37e62f79864ff00eb7a760e3998668355"
+    },
+    "base/R/RNG.R": {
+      "source_path": "src/library/base/R/RNG.R",
+      "bytes": 5795,
+      "sha256": "c19d2b09e2a9a3c73dca4f3543558bcea67c378f8ee1e3f98f248c213776bf1d"
+    },
+    "base/R/S3extensions.R": {
+      "source_path": "src/library/base/R/S3extensions.R",
+      "bytes": 995,
+      "sha256": "516a9e0ba456cb70627156f278d4ce678fac6b4a9e990663a68fa161daed2bcf"
+    },
+    "base/R/Scripts.R": {
+      "source_path": "src/library/base/R/Scripts.R",
+      "bytes": 1311,
+      "sha256": "224ab707570d36d08c2e5379e59772805e65a71db3c7fa509835df21a4cb5e86"
+    },
+    "base/R/TAOCP.R": {
+      "source_path": "src/library/base/R/TAOCP.R",
+      "bytes": 1744,
+      "sha256": "ef8976ff4390af208db07f8dfea58f874ad57a15d842f06d979f7e6d809757c8"
+    },
+    "base/R/all.equal.R": {
+      "source_path": "src/library/base/R/all.equal.R",
+      "bytes": 21206,
+      "sha256": "36ea754e12343787baa58d2c4f66e7f8662d2aaae92d737a2d005d1a4d25326a"
+    },
+    "base/R/allnames.R": {
+      "source_path": "src/library/base/R/allnames.R",
+      "bytes": 1019,
+      "sha256": "ca16f678aabaf2b9c95682e6b05198d4bffbfe17de30732c3f4edbb183ac8bc8"
+    },
+    "base/R/aperm.R": {
+      "source_path": "src/library/base/R/aperm.R",
+      "bytes": 1070,
+      "sha256": "db073b3534aa50f49cfb41741a18c04e2e30fd58ed3370574a4a5b6da2083001"
+    },
+    "base/R/array.R": {
+      "source_path": "src/library/base/R/array.R",
+      "bytes": 7966,
+      "sha256": "9572f3a28c9695c541ff6e43a78943847c62c57f0eb72ebcea7b65a66e268952"
+    },
+    "base/R/as.R": {
+      "source_path": "src/library/base/R/as.R",
+      "bytes": 3225,
+      "sha256": "9b1e2a50d48fe2a4eda43a7dd0e9de8642171fc2df036af68251c686faf0a1cb"
+    },
+    "base/R/assign.R": {
+      "source_path": "src/library/base/R/assign.R",
+      "bytes": 1190,
+      "sha256": "f4b99cbe57604d21118e99252d1956e461fb558769d4a906a6c129f41d03e0af"
+    },
+    "base/R/attach.R": {
+      "source_path": "src/library/base/R/attach.R",
+      "bytes": 9451,
+      "sha256": "fb1ac894a30814055b899f95e33515f858cfe591e89411576b50231189f23f1d"
+    },
+    "base/R/autoload.R": {
+      "source_path": "src/library/base/R/autoload.R",
+      "bytes": 1978,
+      "sha256": "bcf41932f40af3ffbb7b6f171fc9b7b1d2bb02b645662e085b2cdbbb1be8204e"
+    },
+    "base/R/backquote.R": {
+      "source_path": "src/library/base/R/backquote.R",
+      "bytes": 2424,
+      "sha256": "1117fdf6f17e487da254c2bd46914baa2ae19d233086846bb94098cb6b4b1b21"
+    },
+    "base/R/backsolve.R": {
+      "source_path": "src/library/base/R/backsolve.R",
+      "bytes": 1275,
+      "sha256": "c412766c8ca76d5daa95ea6d4564bc5cf36d074d08028413807ed120fe63775f"
+    },
+    "base/R/bindenv.R": {
+      "source_path": "src/library/base/R/bindenv.R",
+      "bytes": 1713,
+      "sha256": "a6ebf599bc6c9a972ef531cec8ee9406b0a2cb57b687e69d1f35d470363d9882"
+    },
+    "base/R/bitwise.R": {
+      "source_path": "src/library/base/R/bitwise.R",
+      "bytes": 1065,
+      "sha256": "da2fbcef02790a70c257540bc1859693cd330f51f59185c30287044e2ccdb8cb"
+    },
+    "base/R/builtins.R": {
+      "source_path": "src/library/base/R/builtins.R",
+      "bytes": 810,
+      "sha256": "a0f3c9897adeeee5c6d16a99fe0b50fb931c6a2502d86b9c49fa0f50b3cc520e"
+    },
+    "base/R/character.R": {
+      "source_path": "src/library/base/R/character.R",
+      "bytes": 6469,
+      "sha256": "576dcbd2522bd8982d8f7108a46e2a5f1ab4566583524fbc3be05f5d9447391b"
+    },
+    "base/R/chol.R": {
+      "source_path": "src/library/base/R/chol.R",
+      "bytes": 1277,
+      "sha256": "40729c2769dca0d7e631a8d18723af66c0c77670fb3185ee8d02b87cf056e8c8"
+    },
+    "base/R/colSums.R": {
+      "source_path": "src/library/base/R/colSums.R",
+      "bytes": 3391,
+      "sha256": "3d3cb115cb5cd3bf630b7f59395fe0a7bff5fd8bdbcb6161f7d0ca00873e0411"
+    },
+    "base/R/conditions.R": {
+      "source_path": "src/library/base/R/conditions.R",
+      "bytes": 14026,
+      "sha256": "2694359adaef87831abc1f58d4d415058c33720f97b7d6947b6f872cd8f40c8b"
+    },
+    "base/R/conflicts.R": {
+      "source_path": "src/library/base/R/conflicts.R",
+      "bytes": 1268,
+      "sha256": "6f4a9dd38f974647c11553b1a78a58c451e75bc9555c7f5f77b226cffdde6857"
+    },
+    "base/R/connections.R": {
+      "source_path": "src/library/base/R/connections.R",
+      "bytes": 11909,
+      "sha256": "e6e713408502b1137a2bb2914de10d13a7a1448b70c983c219dc19afda2e08f9"
+    },
+    "base/R/contributors.R": {
+      "source_path": "src/library/base/R/contributors.R",
+      "bytes": 1462,
+      "sha256": "f5cdda8931a05d2e43183ed898d4470f760093e0a66ca749e5d3bc3f709afbb1"
+    },
+    "base/R/cut.R": {
+      "source_path": "src/library/base/R/cut.R",
+      "bytes": 2925,
+      "sha256": "d756f29868f5b5c0e6957ad92b2f2d612049b2ae229c4703418d99b3a8991793"
+    },
+    "base/R/data.matrix.R": {
+      "source_path": "src/library/base/R/data.matrix.R",
+      "bytes": 1839,
+      "sha256": "a7565c2f84eabad09028263522c7ece618d306c307a0f2f3d00048d984fbb5ee"
+    },
+    "base/R/dataframe.R": {
+      "source_path": "src/library/base/R/dataframe.R",
+      "bytes": 61247,
+      "sha256": "96bce44852b6aac384ebf0ae11e65c651f12b04489174f497c8c371e5b75d6be"
+    },
+    "base/R/dates.R": {
+      "source_path": "src/library/base/R/dates.R",
+      "bytes": 16606,
+      "sha256": "6098c27e1683a87a06b63e77a5ce4d23fa65de9b36a71ff0ba70fdf3babc9b5f"
+    },
+    "base/R/datetime.R": {
+      "source_path": "src/library/base/R/datetime.R",
+      "bytes": 61279,
+      "sha256": "9bb54f3f0b6b3c6485f2944531a7643ce57a885b2127e4a95e8e19b8141ebb3a"
+    },
+    "base/R/debug.R": {
+      "source_path": "src/library/base/R/debug.R",
+      "bytes": 2251,
+      "sha256": "d748341750b0ef44f8b319be2dc6731b773b58307645778986f98fbd58da366f"
+    },
+    "base/R/diag.R": {
+      "source_path": "src/library/base/R/diag.R",
+      "bytes": 2120,
+      "sha256": "44c8930766d4d18c7da2a820b11b17d6d04f52cf426d6d02af95e1fa76c5ae90"
+    },
+    "base/R/dput.R": {
+      "source_path": "src/library/base/R/dput.R",
+      "bytes": 1209,
+      "sha256": "6e0123ac2367567d372227e7bcb84c289b65d675656fabc0353011af20ca5659"
+    },
+    "base/R/dump.R": {
+      "source_path": "src/library/base/R/dump.R",
+      "bytes": 1324,
+      "sha256": "92cc5429ea80325be71c372768987ab0b79a1d11f46e1b3597b1e611ac549fa5"
+    },
+    "base/R/duplicated.R": {
+      "source_path": "src/library/base/R/duplicated.R",
+      "bytes": 5478,
+      "sha256": "de1d2044d844340115ef50fcad89b17e3775d1d4bf6683c4e125fc7ad3d03b48"
+    },
+    "base/R/dynload.R": {
+      "source_path": "src/library/base/R/dynload.R",
+      "bytes": 6551,
+      "sha256": "26b8c97b59a1657338dd14dc63ef34a1480e4b0993a81c8750370b83dd253ae3"
+    },
+    "base/R/eapply.R": {
+      "source_path": "src/library/base/R/eapply.R",
+      "bytes": 893,
+      "sha256": "4602185d6340a8147141edc658beff124764525680d56bf3807229c657d5e655"
+    },
+    "base/R/eigen.R": {
+      "source_path": "src/library/base/R/eigen.R",
+      "bytes": 2794,
+      "sha256": "f1a2b7e84d3b565a5faeda39e577b226e1cff6c2a5fc2b4cb6a44cd079679e54"
+    },
+    "base/R/environment.R": {
+      "source_path": "src/library/base/R/environment.R",
+      "bytes": 928,
+      "sha256": "8f39721cd890a81f607a5c072df37cc05bafb2d8e4a967ae6394046718e1fe12"
+    },
+    "base/R/eval.R": {
+      "source_path": "src/library/base/R/eval.R",
+      "bytes": 2853,
+      "sha256": "280ccfa2364ed940a6ce51c13fec0e9bca07f0552d5a62618260a8bb0e8901c6"
+    },
+    "base/R/expand.grid.R": {
+      "source_path": "src/library/base/R/expand.grid.R",
+      "bytes": 2402,
+      "sha256": "9e76e7df6dbb9a8794636832744bc391686e4e066b49b6fc62c807005dcb8f9a"
+    },
+    "base/R/factor.R": {
+      "source_path": "src/library/base/R/factor.R",
+      "bytes": 12404,
+      "sha256": "54f886cb89f424db432b9bf41d48d87606a768fd0225745cda60e2695dd8d6b4"
+    },
+    "base/R/files.R": {
+      "source_path": "src/library/base/R/files.R",
+      "bytes": 9455,
+      "sha256": "4996db9e356eadf92b3d3317d0eaaa30cbd31b748f34c8d60c18be94dcb2f495"
+    },
+    "base/R/findInt.R": {
+      "source_path": "src/library/base/R/findInt.R",
+      "bytes": 1431,
+      "sha256": "f6cdce80529bd2b9c692034642dd994718e05747db9d2b42a824ad0477fcfead"
+    },
+    "base/R/format.R": {
+      "source_path": "src/library/base/R/format.R",
+      "bytes": 17123,
+      "sha256": "16c52f2cd7fb661fe15042f141496579830834dfceee7d8ef15cd434453f068b"
+    },
+    "base/R/frametools.R": {
+      "source_path": "src/library/base/R/frametools.R",
+      "bytes": 3103,
+      "sha256": "772ff8211516666dd59b52347fc7c9c714888eeff2b77effbc5dbf0cd8157d71"
+    },
+    "base/R/funprog.R": {
+      "source_path": "src/library/base/R/funprog.R",
+      "bytes": 3880,
+      "sha256": "2c3d69d6ac70a52485a91f6c8ef5a0dc8e4ed9d18475c7689eded658c8e8c699"
+    },
+    "base/R/get.R": {
+      "source_path": "src/library/base/R/get.R",
+      "bytes": 1907,
+      "sha256": "9aae1b49fed43e070213392433d1e39f0440cc8cc5373a87d331e22af930b206"
+    },
+    "base/R/getenv.R": {
+      "source_path": "src/library/base/R/getenv.R",
+      "bytes": 1828,
+      "sha256": "e9891ef1885a941ee414c4598f732e9a0478e49b7bf03224f81203341ecf7005"
+    },
+    "base/R/gl.R": {
+      "source_path": "src/library/base/R/gl.R",
+      "bytes": 1161,
+      "sha256": "91d5f98b75d6437df6617f78ece13e4b128136c15aeb3b3107ade39f7b0083ac"
+    },
+    "base/R/grep.R": {
+      "source_path": "src/library/base/R/grep.R",
+      "bytes": 22377,
+      "sha256": "4ac8374664c7ba12d38eaf248d7f72529bd6f9ca6d04d0d53f99ab05fc0ba5c4"
+    },
+    "base/R/ifelse.R": {
+      "source_path": "src/library/base/R/ifelse.R",
+      "bytes": 2165,
+      "sha256": "5f82b29c394043f69cab4269393b936e81441d263eebc36e991a1eb0535b6c3b"
+    },
+    "base/R/is.R": {
+      "source_path": "src/library/base/R/is.R",
+      "bytes": 1013,
+      "sha256": "71d461253cde3c6cfeeb356930ae8cf6ad7f6aa9c527b2c5f764325e2d1d8bfe"
+    },
+    "base/R/jitter.R": {
+      "source_path": "src/library/base/R/jitter.R",
+      "bytes": 1501,
+      "sha256": "9f661f8bb4e17dc539eb50b68ee40463ad3f3b4777ce9f43799107e94c72ef00"
+    },
+    "base/R/library.R": {
+      "source_path": "src/library/base/R/library.R",
+      "bytes": 42278,
+      "sha256": "076a6e3b109317b0290d02d4a3d97a7f6bb9b3985fe25d3d17cfbb2a3b7345bb"
+    },
+    "base/R/license.R": {
+      "source_path": "src/library/base/R/license.R",
+      "bytes": 1799,
+      "sha256": "7761e8d286383701d7c829b6bef5fa33277b531fc08b94a018abe270a2bf0dea"
+    },
+    "base/R/load.R": {
+      "source_path": "src/library/base/R/load.R",
+      "bytes": 7697,
+      "sha256": "26f8c8c71adf287388c0a8e51fa3f072bc6c81323c0e18b6e5f25287f1862f92"
+    },
+    "base/R/locales.R": {
+      "source_path": "src/library/base/R/locales.R",
+      "bytes": 1498,
+      "sha256": "b0275a396553306325f77ccf81a6c6f064c5c11c1d728058878de0a651a3fc46"
+    },
+    "base/R/mapply.R": {
+      "source_path": "src/library/base/R/mapply.R",
+      "bytes": 2689,
+      "sha256": "78775f122ede0aea541efde4c477eff7f5fcfb37606dd6308bc4fe90458ee451"
+    },
+    "base/R/match.R": {
+      "source_path": "src/library/base/R/match.R",
+      "bytes": 3808,
+      "sha256": "94e84dd554149d03c7690b4565c391df3e49bffc5de822dea31c99a75755f018"
+    },
+    "base/R/matrix.R": {
+      "source_path": "src/library/base/R/matrix.R",
+      "bytes": 4297,
+      "sha256": "e875223f22ee7ab51ccfc2d06d4eea7e2d1d3db9226a08108f460db9b5f49073"
+    },
+    "base/R/max.col.R": {
+      "source_path": "src/library/base/R/max.col.R",
+      "bytes": 961,
+      "sha256": "f1671b4aa087f744c0f429d7f359fe41546234794fa890ae65da98be7402bac6"
+    },
+    "base/R/message.R": {
+      "source_path": "src/library/base/R/message.R",
+      "bytes": 3022,
+      "sha256": "bb7b43e28f682231e26690888cd1cdd9c57517d07a4b6a09b3bc36ea8140c240"
+    },
+    "base/R/methodsSupport.R": {
+      "source_path": "src/library/base/R/methodsSupport.R",
+      "bytes": 3081,
+      "sha256": "aa61e13ecbe9bce779227e4ff1a59c8b41a752b34bfcf75e918fb0bb064adb47"
+    },
+    "base/R/mode.R": {
+      "source_path": "src/library/base/R/mode.R",
+      "bytes": 1803,
+      "sha256": "41e81f7caeb9d7a11094fad7a00a8014c9998ee59cfa6995e936e36982d8a7d1"
+    },
+    "base/R/namespace.R": {
+      "source_path": "src/library/base/R/namespace.R",
+      "bytes": 81434,
+      "sha256": "7c2c3c69a2151362ce07cbb48ce1b2ddcc3ba10daae415518d4653fe3915399f"
+    },
+    "base/R/notyet.R": {
+      "source_path": "src/library/base/R/notyet.R",
+      "bytes": 1108,
+      "sha256": "f07de43e326c3cbec911ba5da9cc05c2e3122937ac57943e17d48425bb84db3f"
+    },
+    "base/R/octhex.R": {
+      "source_path": "src/library/base/R/octhex.R",
+      "bytes": 4987,
+      "sha256": "5ccb6dddb5a754e380c671fb329172d298bede32736b3bcbb1aed89465c04441"
+    },
+    "base/R/options.R": {
+      "source_path": "src/library/base/R/options.R",
+      "bytes": 1033,
+      "sha256": "b9498b7db4831bad27a73ff8f79e7b85821be23c7649630607d183cea554d3cc"
+    },
+    "base/R/parse.R": {
+      "source_path": "src/library/base/R/parse.R",
+      "bytes": 2563,
+      "sha256": "72b696d258ccc56fce018d3db8506994e1a605223dc10f6ba3677cb479a2dfb3"
+    },
+    "base/R/pmax.R": {
+      "source_path": "src/library/base/R/pmax.R",
+      "bytes": 3923,
+      "sha256": "f7cef27e4af4873373d44e8825d3f09abdc1472a670af98ab47d41279e9f4ee9"
+    },
+    "base/R/pretty.R": {
+      "source_path": "src/library/base/R/pretty.R",
+      "bytes": 2224,
+      "sha256": "1393cdb08b502c10385c3ff0dc770c7d3380e1295ec83aeca45c34db48a53825"
+    },
+    "base/R/print.R": {
+      "source_path": "src/library/base/R/print.R",
+      "bytes": 4065,
+      "sha256": "483042851fab2325a272ce161921c28c8bd5b23eae7aba41b0c3f11636ab2c54"
+    },
+    "base/R/qr.R": {
+      "source_path": "src/library/base/R/qr.R",
+      "bytes": 8041,
+      "sha256": "bd13f0aebdf596ca9c0ed10ad6067bf18403fc3686f9d323f3424ff261fba185"
+    },
+    "base/R/quit.R": {
+      "source_path": "src/library/base/R/quit.R",
+      "bytes": 847,
+      "sha256": "457cb1bb58cd8aa1265d8f7d37ada79e5e82af366afed02edc296749743cd671"
+    },
+    "base/R/range.R": {
+      "source_path": "src/library/base/R/range.R",
+      "bytes": 1504,
+      "sha256": "ebbde622c46ad41e97a1e7a34c0f5096d3bbf45623b08ac8650e6eb80b06a39c"
+    },
+    "base/R/rank.R": {
+      "source_path": "src/library/base/R/rank.R",
+      "bytes": 1828,
+      "sha256": "0b76aae83466a73ecb1cc39a6dc1fce5fe5e5cbc626a9064c3b02acc2f1ac3cd"
+    },
+    "base/R/raw.R": {
+      "source_path": "src/library/base/R/raw.R",
+      "bytes": 1626,
+      "sha256": "8e285fab994ed40a8e4d45e374f1a2de94e5275be264300b687cf35a49cc414b"
+    },
+    "base/R/rep.R": {
+      "source_path": "src/library/base/R/rep.R",
+      "bytes": 973,
+      "sha256": "92f16708ca94255aa0087ea6fc06fe795d7e5806f5c6355bf4c6a8a3a11b4284"
+    },
+    "base/R/replicate.R": {
+      "source_path": "src/library/base/R/replicate.R",
+      "bytes": 894,
+      "sha256": "d147bbe6c0c6e037198fea58256d8111c25104f5636d21a879ee883cd8552634"
+    },
+    "base/R/rle.R": {
+      "source_path": "src/library/base/R/rle.R",
+      "bytes": 1671,
+      "sha256": "27ed1d44264575d812411a9f0fde287ee797b1c32240993f4cd9225e42db07f0"
+    },
+    "base/R/rm.R": {
+      "source_path": "src/library/base/R/rm.R",
+      "bytes": 1208,
+      "sha256": "bd04046cc6e083c834ab2d447f51cd90240c0a1cbd64a37e53ec6c7f7aab8c17"
+    },
+    "base/R/rowsum.R": {
+      "source_path": "src/library/base/R/rowsum.R",
+      "bytes": 1870,
+      "sha256": "c53c7f107c01aae3afd6671db84a7a34f5bacf81e052bd17b5d756ff6843bcab"
+    },
+    "base/R/scale.R": {
+      "source_path": "src/library/base/R/scale.R",
+      "bytes": 1885,
+      "sha256": "f211df170fe710594aedf3581e7e3a797c3728a00e13b0ee397a42fd61d45843"
+    },
+    "base/R/scan.R": {
+      "source_path": "src/library/base/R/scan.R",
+      "bytes": 2167,
+      "sha256": "5061a07b8cdef395b0d44fc431a17d5e451b9547f270e517f4924477487594c6"
+    },
+    "base/R/seq.R": {
+      "source_path": "src/library/base/R/seq.R",
+      "bytes": 6894,
+      "sha256": "3e1db4626bab164b795398faf1b0c1d71d9afa5b7a66b4f3acdef5ef4f4edb40"
+    },
+    "base/R/serialize.R": {
+      "source_path": "src/library/base/R/serialize.R",
+      "bytes": 3327,
+      "sha256": "743caa3e14825b5817c8164816387babacae95b16ebe65fd7c0a2587c9d70fb4"
+    },
+    "base/R/sets.R": {
+      "source_path": "src/library/base/R/sets.R",
+      "bytes": 3642,
+      "sha256": "acc793e5e327d47fb98e8f79f869c62d4aa234e5a0880dbcb9231d12196345c3"
+    },
+    "base/R/sink.R": {
+      "source_path": "src/library/base/R/sink.R",
+      "bytes": 1716,
+      "sha256": "9c24e9533226a762f6e49adde9e59899f019c45a354293c9839b713870e64fd2"
+    },
+    "base/R/solve.R": {
+      "source_path": "src/library/base/R/solve.R",
+      "bytes": 2231,
+      "sha256": "04b9b12bcb408d85f8e4e57b27b699ec2afbaa32c5dcbfb3c06291c57129da81"
+    },
+    "base/R/sort.R": {
+      "source_path": "src/library/base/R/sort.R",
+      "bytes": 11396,
+      "sha256": "1fb93141bae0c86d6af545411bb96eae7ca359645d6a036c30796ab39c20e65e"
+    },
+    "base/R/sort_by.R": {
+      "source_path": "src/library/base/R/sort_by.R",
+      "bytes": 1392,
+      "sha256": "027d1f86168e34621dbee989b0e25eb72bad01ec9e6dd6a24d86b2f7dbf60bd8"
+    },
+    "base/R/source.R": {
+      "source_path": "src/library/base/R/source.R",
+      "bytes": 11684,
+      "sha256": "0bb3549d51bfeceab3ea62a3ecd18757b12ffd1f2fbcc0cce46fac042cb3fdf1"
+    },
+    "base/R/split.R": {
+      "source_path": "src/library/base/R/split.R",
+      "bytes": 4002,
+      "sha256": "1661bf83c4e82fd8bb543410dcf3520c321d8e8d6aaea3c196af753779e588d1"
+    },
+    "base/R/srcfile.R": {
+      "source_path": "src/library/base/R/srcfile.R",
+      "bytes": 8415,
+      "sha256": "918e63c57b70b7ce44c340534fc9e92e91bb31d68a16d94a222a01bae469ee29"
+    },
+    "base/R/stop.R": {
+      "source_path": "src/library/base/R/stop.R",
+      "bytes": 6803,
+      "sha256": "3a3a4c255f5c9f30d4124fc29fb6c1efeac6ef8257dd5b8d1a56f61261c6c287"
+    },
+    "base/R/strwrap.R": {
+      "source_path": "src/library/base/R/strwrap.R",
+      "bytes": 7873,
+      "sha256": "1f069245a777818fa37975dd8c952648ad3ebb106fb8208e0442b0e4d7252075"
+    },
+    "base/R/svd.R": {
+      "source_path": "src/library/base/R/svd.R",
+      "bytes": 1277,
+      "sha256": "6f86d45d0ca747dd90f9ab4ead6c7964b1fa49c0fc9e87959aca231d9aebcad9"
+    },
+    "base/R/table.R": {
+      "source_path": "src/library/base/R/table.R",
+      "bytes": 10875,
+      "sha256": "4606e90fe49e41acfdced5daa27d73344a5f2fd56a42053724da0e80144044c1"
+    },
+    "base/R/tabulate.R": {
+      "source_path": "src/library/base/R/tabulate.R",
+      "bytes": 1266,
+      "sha256": "91c4f9a2b5facc7cdade7f12c65de77d52c632998ae7d6feace45bf4787e6d4c"
+    },
+    "base/R/taskCallback.R": {
+      "source_path": "src/library/base/R/taskCallback.R",
+      "bytes": 5624,
+      "sha256": "77117f5591fe3658ad844aec06a52ed4e3724b0e25dd0e5377c36b8ec7007689"
+    },
+    "base/R/temp.R": {
+      "source_path": "src/library/base/R/temp.R",
+      "bytes": 941,
+      "sha256": "1d7669c62bd9e5f31f0acad1540db11ca182750ea4d27abf96b9f9c29203ec0e"
+    },
+    "base/R/time.R": {
+      "source_path": "src/library/base/R/time.R",
+      "bytes": 1770,
+      "sha256": "e6e97efb8421982e622ae1e543bc9ba2953f812505e56f630436bb5e70443ad2"
+    },
+    "base/R/toString.R": {
+      "source_path": "src/library/base/R/toString.R",
+      "bytes": 1235,
+      "sha256": "a847b00d08945a8e6171824f2099527ecb676d6a6286b0542441b4f0c9f815a8"
+    },
+    "base/R/unix/system.unix.R": {
+      "source_path": "src/library/base/R/unix/system.unix.R",
+      "bytes": 5827,
+      "sha256": "e8ad10eefa42ae90a889b92818a91c75757378b9a492eba235b84495dcc526a2"
+    },
+    "base/R/utilities.R": {
+      "source_path": "src/library/base/R/utilities.R",
+      "bytes": 993,
+      "sha256": "6316d316d34fda38748a117c57244b1615047dfe18a33f16d5dad3e373dbb6fd"
+    },
+    "base/R/utils.R": {
+      "source_path": "src/library/base/R/utils.R",
+      "bytes": 2498,
+      "sha256": "fb02f3a06712df2837d13e0a6c5cb4809a2a7c717b8780d67f3061ed16783d14"
+    },
+    "base/R/vector.R": {
+      "source_path": "src/library/base/R/vector.R",
+      "bytes": 1586,
+      "sha256": "0a087a0093b371566d390652666bfa7ffd9b4926d4b7b7058995c8fa0fab1ce5"
+    },
+    "base/R/version.R": {
+      "source_path": "src/library/base/R/version.R",
+      "bytes": 12562,
+      "sha256": "8620abf733785540b221d362bf8a4baac10a7ba419f26279ab9f5a935955d5a5"
+    },
+    "base/R/warnings.R": {
+      "source_path": "src/library/base/R/warnings.R",
+      "bytes": 4881,
+      "sha256": "5b94b4e917dda066894ad507cf2ddfc6286ac48a039072b6fcafe80b44ec2ce3"
+    },
+    "base/R/withVisible.R": {
+      "source_path": "src/library/base/R/withVisible.R",
+      "bytes": 796,
+      "sha256": "e8f118ddc9fd0a71c5847d4a7f16b35b0c1645f0f8b1e89b03bca193eb8c1480"
+    },
+    "base/R/xor.R": {
+      "source_path": "src/library/base/R/xor.R",
+      "bytes": 779,
+      "sha256": "60c9f1ff4dd89ff27359828027411ab72d763d04921cfaef3cfc5342f53c640e"
+    },
+    "base/R/zapsmall.R": {
+      "source_path": "src/library/base/R/zapsmall.R",
+      "bytes": 1286,
+      "sha256": "8f26b359add563dab2a3cb2aa0085c70b228f259a7f8459bc4080899becbebad"
+    },
+    "base/R/zdynvars.R": {
+      "source_path": "src/library/base/R/zdynvars.R",
+      "bytes": 1961,
+      "sha256": "7e74aa67541c8e1604fc3787f3666967f2f0db906e17878f8d900adb7decdf92"
+    },
+    "base/R/zzz.R": {
+      "source_path": "src/library/base/R/zzz.R",
+      "bytes": 27241,
+      "sha256": "3f3222d6af97e4077f15f3705fd4eb1105d55b0195b9512edfdef0c35290a11f"
+    }
+  }
+}

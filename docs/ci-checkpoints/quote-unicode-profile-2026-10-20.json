@@ -116,5 +116,6 @@
     "Existing byte/native nonUTF8 fallbacks are retained; no full malformed-byte/unassigned-codepoint printing fidelity claim.",
     "Web-binding execution uses Node V8; no new Chromium or Android ondevice execution is claimed.",
     "Clean-checkout compilation still depends on ignored embedded base R inputs until rport-645io is completed. Current scoped local artifacts are not a whole-CI success claim."
-  ]
+  ],
+  "oracle_whitespace": "Raw pinned GNU .out fixtures intentionally retain trailing spaces; whitespace lint must not trim these oracle bytes."
 }

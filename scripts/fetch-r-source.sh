@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Fetch the vendored upstream R source used as the diff-and-verify reference.
 #
-# The reference tree is NOT part of the crate build and is NOT committed to
-# this repository (see .gitignore). Reproduce it exactly with this script:
+# The optional reference checkout is not a crate build input. The exact base R
+# library files embedded by Rust are committed under crates/rmath/upstream,
+# with their license and checksum manifest. This larger reference tree remains
+# ignored; reproduce it for source comparisons and asset regeneration with:
 #
 #     ./scripts/fetch-r-source.sh [destination]
 #

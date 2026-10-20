@@ -1,7 +1,7 @@
 //! Upstream GNU base-package sources loaded verbatim at initialization.
 //!
 //! The port does not build a lazy-load database for `base`; instead the
-//! upstream R sources vendored at `r-source/src/library/base/R` are evaluated
+//! upstream R sources packaged at `crates/rmath/upstream/base/R` are evaluated
 //! into a persistent staging environment (a child of `.BaseNamespaceEnv`, so
 //! file-local helpers behave like base-namespace internals) and only the
 //! backlog whitelisted exports that GNU itself attaches to `package:base`
@@ -33,331 +33,331 @@ struct UpstreamFile {
 
 const UPSTREAM_FILES: &[UpstreamFile] = &[
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/bitwise.R"),
+        source: include_str!("../../upstream/base/R/bitwise.R"),
         exports: &[],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/debug.R"),
+        source: include_str!("../../upstream/base/R/debug.R"),
         exports: &[],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/eapply.R"),
+        source: include_str!("../../upstream/base/R/eapply.R"),
         exports: &[],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/rm.R"),
+        source: include_str!("../../upstream/base/R/rm.R"),
         exports: &[],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/Scripts.R"),
+        source: include_str!("../../upstream/base/R/Scripts.R"),
         exports: &[".Script"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/TAOCP.R"),
+        source: include_str!("../../upstream/base/R/TAOCP.R"),
         exports: &[".TAOCP1997init"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/all.equal.R"),
+        source: include_str!("../../upstream/base/R/all.equal.R"),
         exports: &["all.equal.envRefClass"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/backquote.R"),
+        source: include_str!("../../upstream/base/R/backquote.R"),
         exports: &["bquote"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/builtins.R"),
+        source: include_str!("../../upstream/base/R/builtins.R"),
         exports: &["builtins"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/chol.R"),
+        source: include_str!("../../upstream/base/R/chol.R"),
         exports: &["chol"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/conflicts.R"),
+        source: include_str!("../../upstream/base/R/conflicts.R"),
         exports: &["conflicts"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/contributors.R"),
+        source: include_str!("../../upstream/base/R/contributors.R"),
         exports: &["contributors"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/data.matrix.R"),
+        source: include_str!("../../upstream/base/R/data.matrix.R"),
         exports: &["data.matrix"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/diag.R"),
+        source: include_str!("../../upstream/base/R/diag.R"),
         exports: &["diag"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/dump.R"),
+        source: include_str!("../../upstream/base/R/dump.R"),
         exports: &["dump"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/eigen.R"),
+        source: include_str!("../../upstream/base/R/eigen.R"),
         exports: &["print.eigen"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/expand.grid.R"),
+        source: include_str!("../../upstream/base/R/expand.grid.R"),
         exports: &["expand.grid"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/findInt.R"),
+        source: include_str!("../../upstream/base/R/findInt.R"),
         exports: &["findInterval"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/gl.R"),
+        source: include_str!("../../upstream/base/R/gl.R"),
         exports: &["gl"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/ifelse.R"),
+        source: include_str!("../../upstream/base/R/ifelse.R"),
         exports: &["ifelse"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/is.R"),
+        source: include_str!("../../upstream/base/R/is.R"),
         exports: &["is.vector"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/jitter.R"),
+        source: include_str!("../../upstream/base/R/jitter.R"),
         exports: &["jitter"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/max.col.R"),
+        source: include_str!("../../upstream/base/R/max.col.R"),
         exports: &["max.col"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/methodsSupport.R"),
+        source: include_str!("../../upstream/base/R/methodsSupport.R"),
         exports: &["returnValue"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/notyet.R"),
+        source: include_str!("../../upstream/base/R/notyet.R"),
         exports: &[".NotYetImplemented"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/options.R"),
+        source: include_str!("../../upstream/base/R/options.R"),
         exports: &["options"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/parse.R"),
+        source: include_str!("../../upstream/base/R/parse.R"),
         exports: &["parse"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/pretty.R"),
+        source: include_str!("../../upstream/base/R/pretty.R"),
         exports: &["pretty"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/rank.R"),
+        source: include_str!("../../upstream/base/R/rank.R"),
         exports: &["rank"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/rep.R"),
+        source: include_str!("../../upstream/base/R/rep.R"),
         exports: &["rep.factor"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/replicate.R"),
+        source: include_str!("../../upstream/base/R/replicate.R"),
         exports: &["replicate"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/rowsum.R"),
+        source: include_str!("../../upstream/base/R/rowsum.R"),
         exports: &["rowsum"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/scan.R"),
+        source: include_str!("../../upstream/base/R/scan.R"),
         exports: &["scan"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/serialize.R"),
+        source: include_str!("../../upstream/base/R/serialize.R"),
         exports: &["unserialize"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/split.R"),
+        source: include_str!("../../upstream/base/R/split.R"),
         exports: &[".formula2varlist"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/svd.R"),
+        source: include_str!("../../upstream/base/R/svd.R"),
         exports: &["svd"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/tabulate.R"),
+        source: include_str!("../../upstream/base/R/tabulate.R"),
         exports: &["tabulate"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/utilities.R"),
+        source: include_str!("../../upstream/base/R/utilities.R"),
         exports: &["mat.or.vec"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/utils.R"),
+        source: include_str!("../../upstream/base/R/utils.R"),
         exports: &[".standard_regexps"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/withVisible.R"),
+        source: include_str!("../../upstream/base/R/withVisible.R"),
         exports: &["withVisible"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/xor.R"),
+        source: include_str!("../../upstream/base/R/xor.R"),
         exports: &["xor"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/zapsmall.R"),
+        source: include_str!("../../upstream/base/R/zapsmall.R"),
         exports: &["zapsmall"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/zzz.R"),
+        source: include_str!("../../upstream/base/R/zzz.R"),
         exports: &[".S3_methods_table"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/LAPACK.R"),
+        source: include_str!("../../upstream/base/R/LAPACK.R"),
         exports: &["La_library", "La_version"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/S3extensions.R"),
+        source: include_str!("../../upstream/base/R/S3extensions.R"),
         exports: &["nameOfClass", "nameOfClass.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/allnames.R"),
+        source: include_str!("../../upstream/base/R/allnames.R"),
         exports: &["all.names", "all.vars"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/assign.R"),
+        source: include_str!("../../upstream/base/R/assign.R"),
         exports: &["assign", "list2env"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/attach.R"),
+        source: include_str!("../../upstream/base/R/attach.R"),
         exports: &[".detach", ".maskedMsg"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/autoload.R"),
+        source: include_str!("../../upstream/base/R/autoload.R"),
         exports: &["autoload", "autoloader"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/backsolve.R"),
+        source: include_str!("../../upstream/base/R/backsolve.R"),
         exports: &["backsolve", "forwardsolve"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/cut.R"),
+        source: include_str!("../../upstream/base/R/cut.R"),
         exports: &["cut", "cut.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/dput.R"),
+        source: include_str!("../../upstream/base/R/dput.R"),
         exports: &["dget", "dput"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/format.R"),
+        source: include_str!("../../upstream/base/R/format.R"),
         exports: &["format.AsIs", "formatC"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/license.R"),
+        source: include_str!("../../upstream/base/R/license.R"),
         exports: &["licence", "license"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/mapply.R"),
+        source: include_str!("../../upstream/base/R/mapply.R"),
         exports: &[".mapply", "mapply"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/quit.R"),
+        source: include_str!("../../upstream/base/R/quit.R"),
         exports: &["q", "quit"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/scale.R"),
+        source: include_str!("../../upstream/base/R/scale.R"),
         exports: &["scale", "scale.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/seq.R"),
+        source: include_str!("../../upstream/base/R/seq.R"),
         exports: &["sequence", "sequence.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/sink.R"),
+        source: include_str!("../../upstream/base/R/sink.R"),
         exports: &["sink", "sink.number"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/solve.R"),
+        source: include_str!("../../upstream/base/R/solve.R"),
         exports: &["solve", "solve.qr"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/source.R"),
+        source: include_str!("../../upstream/base/R/source.R"),
         exports: &["source", "sys.source"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/taskCallback.R"),
+        source: include_str!("../../upstream/base/R/taskCallback.R"),
         exports: &["getTaskCallbackNames", "taskCallbackManager"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/temp.R"),
+        source: include_str!("../../upstream/base/R/temp.R"),
         exports: &["tempdir", "tempfile"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/toString.R"),
+        source: include_str!("../../upstream/base/R/toString.R"),
         exports: &["toString", "toString.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/warnings.R"),
+        source: include_str!("../../upstream/base/R/warnings.R"),
         exports: &["c.warnings", "warnings"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/zdynvars.R"),
+        source: include_str!("../../upstream/base/R/zdynvars.R"),
         exports: &[".dynLibs", ".libPaths"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/RNG.R"),
+        source: include_str!("../../upstream/base/R/RNG.R"),
         exports: &["RNGkind", "RNGversion", "set.seed"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/aperm.R"),
+        source: include_str!("../../upstream/base/R/aperm.R"),
         exports: &["aperm", "aperm.default", "aperm.table"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/array.R"),
+        source: include_str!("../../upstream/base/R/array.R"),
         exports: &["array2DF", "asplit", "slice.index"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/environment.R"),
+        source: include_str!("../../upstream/base/R/environment.R"),
         exports: &["env.profile", "environment", "environmentName"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/frametools.R"),
+        source: include_str!("../../upstream/base/R/frametools.R"),
         exports: &["transform", "transform.data.frame", "transform.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/get.R"),
+        source: include_str!("../../upstream/base/R/get.R"),
         exports: &["get", "get0", "mget"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/mode.R"),
+        source: include_str!("../../upstream/base/R/mode.R"),
         exports: &["mode", "mode<-", "storage.mode"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/rle.R"),
+        source: include_str!("../../upstream/base/R/rle.R"),
         exports: &["inverse.rle", "print.rle", "rle"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/sort_by.R"),
+        source: include_str!("../../upstream/base/R/sort_by.R"),
         exports: &["sort_by", "sort_by.data.frame", "sort_by.default"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/strwrap.R"),
+        source: include_str!("../../upstream/base/R/strwrap.R"),
         exports: &["formatDL", "strtrim", "trimws"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/time.R"),
+        source: include_str!("../../upstream/base/R/time.R"),
         exports: &["date", "summary.proc_time", "system.time"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/unix/system.unix.R"),
+        source: include_str!("../../upstream/base/R/unix/system.unix.R"),
         exports: &["Sys.which", "system", "system2"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/Bessel.R"),
+        source: include_str!("../../upstream/base/R/Bessel.R"),
         exports: &["besselI", "besselJ", "besselK", "besselY"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/funprog.R"),
+        source: include_str!("../../upstream/base/R/funprog.R"),
         exports: &["Filter", "Find", "Position", "dontCheck"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/getenv.R"),
+        source: include_str!("../../upstream/base/R/getenv.R"),
         exports: &["Sys.getenv", "Sys.getpid", "Sys.setenv", "Sys.unsetenv"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/load.R"),
+        source: include_str!("../../upstream/base/R/load.R"),
         exports: &[
             "findPackageEnv",
             "save.image",
@@ -366,7 +366,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/locales.R"),
+        source: include_str!("../../upstream/base/R/locales.R"),
         exports: &[
             ".LC.categories",
             "Sys.getlocale",
@@ -375,7 +375,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/message.R"),
+        source: include_str!("../../upstream/base/R/message.R"),
         exports: &[
             ".makeMessage",
             "message",
@@ -384,19 +384,19 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/pmax.R"),
+        source: include_str!("../../upstream/base/R/pmax.R"),
         exports: &["pmax", "pmax.int", "pmin", "pmin.int"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/range.R"),
+        source: include_str!("../../upstream/base/R/range.R"),
         exports: &[".rangeNum", "range.default", "range.Date", "range.POSIXct"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/stop.R"),
+        source: include_str!("../../upstream/base/R/stop.R"),
         exports: &["bindtextdomain", "gettext", "gettextf", "ngettext"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/table.R"),
+        source: include_str!("../../upstream/base/R/table.R"),
         exports: &[
             "[.table",
             "margin.table",
@@ -405,7 +405,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/Defunct.R"),
+        source: include_str!("../../upstream/base/R/Defunct.R"),
         exports: &[
             ".__H__.cbind",
             ".__H__.rbind",
@@ -415,7 +415,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/sort.R"),
+        source: include_str!("../../upstream/base/R/sort.R"),
         exports: &[
             ".doSortWrap",
             ".doWrap",
@@ -427,7 +427,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/duplicated.R"),
+        source: include_str!("../../upstream/base/R/duplicated.R"),
         exports: &[
             "anyDuplicated.array",
             "anyDuplicated.matrix",
@@ -438,7 +438,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/eval.R"),
+        source: include_str!("../../upstream/base/R/eval.R"),
         exports: &[
             "local",
             "new.env",
@@ -449,15 +449,15 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/matrix.R"),
+        source: include_str!("../../upstream/base/R/matrix.R"),
         exports: &["col", "lower.tri", "row", "t", "t.data.frame", "upper.tri"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/qr.R"),
+        source: include_str!("../../upstream/base/R/qr.R"),
         exports: &["qr", "qr.Q", "qr.R", "qr.X", "qr.fitted", "qr.resid"],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/sets.R"),
+        source: include_str!("../../upstream/base/R/sets.R"),
         exports: &[
             ".set_ops_need_as_vector",
             "intersect",
@@ -468,7 +468,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/as.R"),
+        source: include_str!("../../upstream/base/R/as.R"),
         exports: &[
             "as.character.default",
             "as.function",
@@ -480,7 +480,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/bindenv.R"),
+        source: include_str!("../../upstream/base/R/bindenv.R"),
         exports: &[
             "bindingIsActive",
             "bindingIsLocked",
@@ -492,7 +492,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/grep.R"),
+        source: include_str!("../../upstream/base/R/grep.R"),
         exports: &[
             "agrep",
             "agrepl",
@@ -504,7 +504,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/print.R"),
+        source: include_str!("../../upstream/base/R/print.R"),
         exports: &[
             "[.listof",
             "[.noquote",
@@ -516,7 +516,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/colSums.R"),
+        source: include_str!("../../upstream/base/R/colSums.R"),
         exports: &[
             ".colMeans",
             ".colSums",
@@ -529,7 +529,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/vector.R"),
+        source: include_str!("../../upstream/base/R/vector.R"),
         exports: &[
             "character",
             "complex",
@@ -542,7 +542,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/match.R"),
+        source: include_str!("../../upstream/base/R/match.R"),
         exports: &[
             "char.expand",
             "charmatch",
@@ -558,7 +558,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/srcfile.R"),
+        source: include_str!("../../upstream/base/R/srcfile.R"),
         exports: &[
             ".isOpen",
             "close.srcfile",
@@ -575,7 +575,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/dynload.R"),
+        source: include_str!("../../upstream/base/R/dynload.R"),
         exports: &[
             "$.DLLInfo",
             "[.DLLInfoList",
@@ -593,7 +593,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/library.R"),
+        source: include_str!("../../upstream/base/R/library.R"),
         exports: &[
             ".expand_R_libs_env_var",
             ".getRequiredPackages",
@@ -611,7 +611,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/raw.R"),
+        source: include_str!("../../upstream/base/R/raw.R"),
         exports: &[
             "charToRaw",
             "intToBits",
@@ -629,7 +629,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/dataframe.R"),
+        source: include_str!("../../upstream/base/R/dataframe.R"),
         exports: &[
             "$<-.data.frame",
             "Ops.data.frame",
@@ -649,7 +649,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/character.R"),
+        source: include_str!("../../upstream/base/R/character.R"),
         exports: &[
             "abbreviate",
             "casefold",
@@ -670,7 +670,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/factor.R"),
+        source: include_str!("../../upstream/base/R/factor.R"),
         exports: &[
             "Math.factor",
             "Ops.factor",
@@ -691,7 +691,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/octhex.R"),
+        source: include_str!("../../upstream/base/R/octhex.R"),
         exports: &[
             "!.hexmode",
             "!.octmode",
@@ -712,7 +712,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/conditions.R"),
+        source: include_str!("../../upstream/base/R/conditions.R"),
         exports: &[
             ".tryResumeInterrupt",
             "allowInterrupts",
@@ -736,7 +736,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/namespace.R"),
+        source: include_str!("../../upstream/base/R/namespace.R"),
         exports: &[
             ".mergeExportMethods",
             ".mergeImportMethods",
@@ -760,7 +760,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/version.R"),
+        source: include_str!("../../upstream/base/R/version.R"),
         exports: &[
             "$.package_version",
             ".decode_numeric_version",
@@ -785,7 +785,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/files.R"),
+        source: include_str!("../../upstream/base/R/files.R"),
         exports: &[
             "Sys.chmod",
             "Sys.readlink",
@@ -822,7 +822,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/dates.R"),
+        source: include_str!("../../upstream/base/R/dates.R"),
         exports: &[
             "+.Date",
             "-.Date",
@@ -862,7 +862,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/connections.R"),
+        source: include_str!("../../upstream/base/R/connections.R"),
         exports: &[
             "bzfile",
             "closeAllConnections",
@@ -906,7 +906,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/New-Internal.R"),
+        source: include_str!("../../upstream/base/R/New-Internal.R"),
         exports: &[
             "..deparseOpts",
             ".deparseOpts",
@@ -951,7 +951,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
         ],
     },
     UpstreamFile {
-        source: include_str!("../../../../r-source/src/library/base/R/datetime.R"),
+        source: include_str!("../../upstream/base/R/datetime.R"),
         exports: &[
             "$<-.POSIXlt",
             "*.difftime",

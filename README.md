@@ -138,7 +138,10 @@ The most useful contributions close a real contract: a small R program, its GNU 
 Root configuration files are used by Cargo, formatting, CI and agent tooling.
 `.cargo` must stay here for Cargo discovery. `LICENSE`, `COPYING` and `NOTICE.md`
 preserve license discovery and upstream attribution. Generated artifacts belong
-under `target/`; `r-source/` is an ignored local upstream reference checkout.
+under `target/`; `r-source/` is an optional, ignored upstream reference checkout.
+The Rust engine embeds exact pinned base R files from `crates/rmath/upstream`,
+including their license and checksum manifest, so clean builds need no reference
+checkout. CI authenticates these inputs with `scripts/validate_embedded_r_sources.py`.
 
 Read the [architecture](docs/rust-r-port-architecture.md), [upstream port map](docs/upstream-port-map.tsv), and [contribution instructions](AGENTS.md) before changing runtime invariants. Work is tracked with `bd`.
 
