@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.10",
+  "status": "verified",
+  "implementation_commit": "d9c7be54",
+  "source_sha256": {
+    "crates/rmath/src/sexp/payload.rs": "9f070b9d2ea238bee7ba787e086c430826091d3ea449dc4af7f490eb9467e482"
+  },
+  "evidence_directory": "target/dense-payload-evidence",
+  "regressions_before": "Six genuine source-buffer identity failures: initialized raw/integer/real/complex/reference/character buffers were copied into separate Rc-slice data allocations",
+  "behavior": [
+    "Keep initialized numeric and character Vec buffers inside their existing payload owner without recopying data",
+    "Dense reference views retain the same Rc<Vec<Cell<NodeLink>>>; supplied scalar Rc-slice views retain their original identity",
+    "Preserve initialized cells, alignment, logical bounds, immutable characters, distinct allocation identity and last-owner charge lifetime",
+    "Existing pre-allocation logical-payload admission no longer omits a simultaneous dense Vec-to-Rc replacement buffer because that replacement allocation is eliminated"
+  ],
+  "validation": {
+    "native_payload": {
+      "passed": 16,
+      "log": "payload-green-20261020.log"
+    },
+    "native_arena": {
+      "passed": 101,
+      "log": "memory-final-20261020.log"
+    },
+    "miri_source_buffers": {
+      "passed": 6,
+      "seconds": 48.91,
+      "log": "miri-source-buffers-20261020.log"
+    },
+    "miri_moved_native_views": {
+      "passed": 2,
+      "seconds": 87.71,
+      "log": "miri-native-views-20261020.log"
+    },
+    "miri_detached_reference": {
+      "passed": 1,
+      "seconds": 62.63,
+      "log": "miri-reference-lifetime-20261020.log"
+    },
+    "miri_retained_charge": {
+      "passed": 1,
+      "seconds": 58.74,
+      "log": "miri-reference-charge-20261020.log"
+    },
+    "clippy": {
+      "crates": 4,
+      "all_targets": true,
+      "warnings_denied": true,
+      "exit_code": 0,
+      "log": "clippy-final-20261020.log"
+    },
+    "android": {
+      "crate": "r-uniffi",
+      "target": "aarch64-linux-android",
+      "exit_code": 0,
+      "log": "android-final-20261020.log"
+    },
+    "production_wasm": {
+      "symbol_and_memory_checks": 14,
+      "checked_exhaustion_checks": 12,
+      "serialization_checks": 14,
+      "failures": 0,
+      "session_bytes": 67108864,
+      "linear_memory_bytes": 268435456,
+      "optimized_asset_bytes": 24807673
+    }
+  },
+  "miri_configuration": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "scope_limits": [
+    "Logical byte-limit policy is unchanged; retained slab pages, typed tail padding and allocator metadata remain rport-cvs2.11",
+    "Permanent scalar-cell producers keep their separately admitted copying paths from cvs2.7",
+    "No global process/RSS/GPU/AI cap or whole-engine safety claim",
+    "Production Wasm executes under Node; Android is cross-compilation only",
+    "Unrelated shared graphics changes remain outside this milestone"
+  ],
+  "log_sha256": {
+    "valid-red-20261020.log": "4dd0072be1d71526b7eb382988292d8712d032e406903d5db8279edfcc4b7bf1",
+    "payload-green-20261020.log": "564e0d73dddf969ed83e512e6bd1590f85e238420c2d44fa2c204a5e8c8d5d29",
+    "memory-final-20261020.log": "39cc69b3387f6c712ef9099fb56936e6a1607544135ba474777af86f94475c6d",
+    "miri-source-buffers-20261020.log": "2ab1d209bb23cd96ba27d3beb8e95e3efbcf654a718e4f04129d688d6c689ff3",
+    "miri-native-views-20261020.log": "6d195865376435605c92fe955850cab130772cc3da3fea1c4d5cd1f3c8445799",
+    "miri-reference-lifetime-20261020.log": "c4b85512f656dc424ba0a3051ccfb7caaf3f1135a5522db98f828d42ea149d17",
+    "miri-reference-charge-20261020.log": "89800a8c193ac62b495d38a8a1a490f740bf440e44f8b98dfeed5a3ec6cc4142",
+    "clippy-final-20261020.log": "7378a87a26ed784153a60904ec16e0d4513ed3aa20f40dea2c957ccdba1ebbcc",
+    "android-final-20261020.log": "c92398dd844fe21756b2616392beeac15735cc0d1aef4ebb05e15ffa72fbecc1",
+    "wasm-build-20261020.log": "5f89304a85d57491e014944bd3431f350de5a4fc7f5a380e1d6cfa2e8861f58c",
+    "wasm-optimization-20261020.log": "37285f2c9a0f9f9163823fec2f4f4da571a041fe39b614c7bfeefe9e445ffb32",
+    "wasm-symbols-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-serialization-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54"
+  },
+  "wasm_sha256": {
+    "r_wasm_bg.wasm.d.ts": "a77fac0781251574087e7e147b55b78d645e79589dfff6ab4daa59d3406a0add",
+    "r_wasm_bg.wasm": "83b81b0e9c8da3f78d736686dd8fd5c1ada38e9fb3dff88bc5cdae13556c6e4f",
+    "r_wasm.js": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3",
+    "r_wasm.d.ts": "7e3cf2cab7e0429022809e7925982a262edda8052eca9f4d7f4826b5db50c4ae"
+  }
+}

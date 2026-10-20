@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-sg9a.2",
+  "status": "verified_existing_implementation",
+  "implementation_commits": [
+    "71ea9358",
+    "cbff9ce1"
+  ],
+  "source_sha256": {
+    "crates/rmath/src/sexp/root_storage.rs": "b943e37f459d039b74bf844a9a45f4b574a00ad43bed0288871ba0148cc172ee",
+    "crates/rmath/src/sexp/protect/stacks.rs": "5d0078cf4a55ff167327446d836758aa089607febd8cc9911f57075adb173e0a",
+    "crates/rmath/src/sexp/protect/guards.rs": "22b83bf256f8d2408628cdcc729c14385627afe42ec2bc07559c4594d109fd65",
+    "crates/rmath/src/sexp/protect/tests.rs": "a4eef515da81a40c4105201caefe87d138988b69db7ea3124abe28c5e2bbf84b",
+    "crates/rmath/src/sexp/object/factory.rs": "d1c4f54e5c427034f0bee44d338719aa9d8462628561b0c0ad9159428e8e9d84"
+  },
+  "evidence_directory": "target/fallible-roots-evidence",
+  "behavior": [
+    "RootStorage::try_claim checks generation and fallibly reserves entry/free-list capacity before publishing roots or advancing generation",
+    "RootTable::try_claim returns ProtectError::Allocation or GenerationExhausted through safe protect, indexed protect and RootedSexp::try_root",
+    "Failure preserves existing roots/checkpoint and cleanup/release remains usable at generation exhaustion",
+    "Canonical Sexp construction uses the original checked node root lease and returns RootUnavailable when that lease is unavailable; it does not call infallible RootTable::claim"
+  ],
+  "validation": {
+    "native_storage": {
+      "passed": 4,
+      "log": "storage-verified-native-20261020.log"
+    },
+    "native_safe_guards": {
+      "passed": 2,
+      "log": "guards-native-20261020.log"
+    },
+    "miri_storage": {
+      "passed": 4,
+      "seconds": 61.89,
+      "log": "miri-storage-20261020.log"
+    },
+    "miri_safe_guards": {
+      "passed": 2,
+      "seconds": 129.0,
+      "log": "miri-guards-20261020.log"
+    },
+    "shared_quality_gates": "Current runtime passed four-crate all-target Clippy, Android cross-check and production Wasm40 controls in dense-payload-2026-10-20.json"
+  },
+  "miri_configuration": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "scope_limits": [
+    "Read-only revalidation of an already implemented fix; no new root runtime change claimed",
+    "Capacity failure is deterministic reserve overflow, not an induced system allocator OOM",
+    "Explicitly infallible legacy adapters retain their documented panic contracts; safe fallible APIs are the verified scope",
+    "Root-table physical-storage admission remains in allocator-metadata issue cvs2.11",
+    "No Kani execution or whole-engine ownership claim",
+    "The earlier native storage filter selected zero tests; only the corrected explicit four-test run is accepted evidence"
+  ],
+  "log_sha256": {
+    "storage-verified-native-20261020.log": "860bf3237a23df1b4b5c313388de71b742b7789ec28bbb9435e0bc9f3f9e10ee",
+    "guards-native-20261020.log": "b84b654ba28ec480d6a3435bdda253c109d9e7d945caa696f84f1966cf838907",
+    "miri-storage-20261020.log": "58f2c0365c89d2d5457f4eadbac6c815f72e7384da479eea1a6c65f0d70d1f1d",
+    "miri-guards-20261020.log": "71460f9a1eb62d9a23806cbba2965545a4c1d081a8be4fb42b038c4baa4ffbfc"
+  }
+}
