@@ -1,0 +1,239 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-4m0nz.4",
+  "status": "native_verified_production_timing_pending",
+  "source_sha256": {
+    "crates/rmath/src/sexp/heap.rs": "e414fcba23313a00c7ace1e103c6a54d18738ae7a3acff0c38962c439429070c",
+    "crates/rmath/src/sexp/gc_trace.rs": "ee85a64bfe8dc7895921fe0ba4fb7dd244e9d09f35502d94c3f1e7df08a60aab"
+  },
+  "evidence_directory": "target/trace-token-evidence",
+  "behavior": [
+    "Validate context heap identity and the exact saved link heap/page/slot/generation before consulting its tracing epoch",
+    "Upgrade original weak physical storage and validate the canonical slot before returning an already-marked result",
+    "Already marked cached edges create no new CheckedNode; fresh targets retain checked construction/admission and misses retain original checked resolution",
+    "A deliberately mismatched foreign cache reader cannot authorize a foreign already-marked link",
+    "NodeId construction continues to use the saved link generation; no identity is refreshed from a current slot"
+  ],
+  "red": {
+    "log": "native-red-20261020.log",
+    "sha256": "e8e87ca57058b16531fbeac4ad9663d0f9334ccc8549ed575f78f82f84a6ef78",
+    "marked_edges": 1000,
+    "constructed_tokens": 1000,
+    "required_tokens": 0
+  },
+  "validation": {
+    "native_collector_heap": {
+      "passed": 117,
+      "log": "native-collector-heap-20261020.log",
+      "sha256": "bf379012e7105a8fa359105410e6408f92927a7f64c3faf3f851ddb35f670e69",
+      "ignored_manual_benchmarks": 1
+    },
+    "strict_miri_trace": {
+      "passed": 20,
+      "log": "miri-trace-20261020.log",
+      "sha256": "795f39f4bfe1db50057b73d0c67ff4043dfccc09149d80b88771edfb5a7757e8"
+    },
+    "strict_miri_heap": {
+      "passed": 13,
+      "log": "miri-heap-20261020.log",
+      "sha256": "0dc4975ddefbbcf6a2cf595066772cf1c1b6c907e4faf1de73192330bc358e90"
+    },
+    "clippy_four_crates_all_targets": {
+      "log": "clippy-20261020.log",
+      "sha256": "28c9ecd8a62d5f3b666ea91c5fd093a97f44ddd5d17aa1889b23cb41fe1e7b35"
+    },
+    "android_cross_check": {
+      "log": "android-20261020.log",
+      "sha256": "d9258727cd623a792fa742483ef1ca6323685f5a2f9766a617c268add58506f3"
+    }
+  },
+  "instrumented_mark_comparison": {
+    "scope": "Instrumented fixed-live mark only; both test binaries count successful CheckedNode construction and backing lookups. Avoiding that work also avoids probe bookkeeping, so this is not an uninstrumented production speedup.",
+    "runs": [
+      {
+        "artifact": "baseline",
+        "trial": 1,
+        "graph_nodes": 16384,
+        "collections": 1802,
+        "mark_ns": 3001189823,
+        "mark_ns_per_collection": 1665477,
+        "elapsed_ns": 3001649750,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 1,
+        "graph_nodes": 65536,
+        "collections": 450,
+        "mark_ns": 3003252695,
+        "mark_ns_per_collection": 6673894,
+        "elapsed_ns": 3003485958,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 1,
+        "graph_nodes": 16384,
+        "collections": 2542,
+        "mark_ns": 2999707024,
+        "mark_ns_per_collection": 1180057,
+        "elapsed_ns": 3000318750,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 1,
+        "graph_nodes": 65536,
+        "collections": 640,
+        "mark_ns": 2999970941,
+        "mark_ns_per_collection": 4687454,
+        "elapsed_ns": 3000173292,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 2,
+        "graph_nodes": 16384,
+        "collections": 2398,
+        "mark_ns": 3000605084,
+        "mark_ns_per_collection": 1251294,
+        "elapsed_ns": 3001167417,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 2,
+        "graph_nodes": 65536,
+        "collections": 603,
+        "mark_ns": 3000970994,
+        "mark_ns_per_collection": 4976734,
+        "elapsed_ns": 3001202125,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 2,
+        "graph_nodes": 16384,
+        "collections": 1998,
+        "mark_ns": 2999574591,
+        "mark_ns_per_collection": 1501288,
+        "elapsed_ns": 3000173833,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 2,
+        "graph_nodes": 65536,
+        "collections": 507,
+        "mark_ns": 3002500884,
+        "mark_ns_per_collection": 5922092,
+        "elapsed_ns": 3002697625,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 3,
+        "graph_nodes": 16384,
+        "collections": 1975,
+        "mark_ns": 3000066381,
+        "mark_ns_per_collection": 1519020,
+        "elapsed_ns": 3000577042,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 3,
+        "graph_nodes": 65536,
+        "collections": 491,
+        "mark_ns": 3001553695,
+        "mark_ns_per_collection": 6113143,
+        "elapsed_ns": 3001844084,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 3,
+        "graph_nodes": 16384,
+        "collections": 2346,
+        "mark_ns": 2999892253,
+        "mark_ns_per_collection": 1278726,
+        "elapsed_ns": 3000662000,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 3,
+        "graph_nodes": 65536,
+        "collections": 598,
+        "mark_ns": 3003120463,
+        "mark_ns_per_collection": 5021940,
+        "elapsed_ns": 3003395542,
+        "sweep_included": false
+      }
+    ],
+    "summary": [
+      {
+        "graph_nodes": 16384,
+        "baseline_median_ns": 1519020,
+        "candidate_median_ns": 1251294,
+        "instrumented_ratio": 1.214
+      },
+      {
+        "graph_nodes": 65536,
+        "baseline_median_ns": 6113143,
+        "candidate_median_ns": 4976734,
+        "instrumented_ratio": 1.2283
+      }
+    ],
+    "runtime_thread_environment": {
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "RAYON_NUM_THREADS": "2"
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "base_commit": "5ab4ee2b",
+      "scope": "Only cfg(test) token-construction counter and failing marked-edge regression added; production marked-edge shortcut absent",
+      "executable": "/Users/bernardoferrari/Downloads/rport/target/trace-token-evidence/baseline-rmath",
+      "executable_sha256": "aee6f381abcb3dea4a73dac67cb0737d9f64d38ee8c0cf0ef1acdc06efbcfd32",
+      "source_sha256": {
+        "crates/rmath/src/sexp/heap.rs": "355eca6cb466b456d6bc9bb84fdf5585fece96463ac93a0786a16410b7a9cc16",
+        "crates/rmath/src/sexp/gc_trace.rs": "80501317768ce28bbfbf19055d4df11a77cb1106f6704a829dddfb1dc202b8d1",
+        "crates/rmath/src/sexp/gengc/fixed_heap_bench.rs": "fc2b73266646511fdcfff5e5bb71566609397d054533428a4658ff570d7d682f"
+      }
+    },
+    "candidate": {
+      "base_commit": "5ab4ee2b",
+      "scope": "Validated marked cached links skip new tokens; same success-count probe and mark benchmark, plus wrong-heap cache defense regression",
+      "executable": "/Users/bernardoferrari/Downloads/rport/target/trace-token-evidence/candidate-rmath",
+      "executable_sha256": "c3639b1e5e9808c5da5b31b7bca52ff8d60dcc746b2b2c11095fb671cfefb54e",
+      "source_sha256": {
+        "crates/rmath/src/sexp/heap.rs": "e414fcba23313a00c7ace1e103c6a54d18738ae7a3acff0c38962c439429070c",
+        "crates/rmath/src/sexp/gc_trace.rs": "ee85a64bfe8dc7895921fe0ba4fb7dd244e9d09f35502d94c3f1e7df08a60aab",
+        "crates/rmath/src/sexp/gengc/fixed_heap_bench.rs": "fc2b73266646511fdcfff5e5bb71566609397d054533428a4658ff570d7d682f"
+      }
+    }
+  },
+  "miri_configuration": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "remaining": [
+    "Production Wasm build and regressions",
+    "Frozen original S4 torture test completion and timing with unchanged R program/class setup/assertion"
+  ],
+  "scope_limits": [
+    "This is a verified native source milestone, not issue completion or full S4 success",
+    "Both mark test binaries include token/backing counters; their ratios are instrumented diagnostics, not uninstrumented production speedup",
+    "No torture frequency, allocation publication point, original class setup or test assertion changed",
+    "Non-test CheckedNode construction retains the original checked expression; cfg(test) success counting does not add a production path",
+    "Unrelated user graphics changes remain preserved",
+    "Private tracing metadata accounting remains in cvs2.11"
+  ]
+}

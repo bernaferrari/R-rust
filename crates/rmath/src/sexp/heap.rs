@@ -78,10 +78,15 @@ pub(crate) enum ResolvedLink {
 #[cfg(test)]
 thread_local! {
     static TRACE_LINK_BACKING_PROBES: Cell<usize> = const { Cell::new(0) };
+    static CHECKED_NODE_CONSTRUCTIONS: Cell<usize> = const { Cell::new(0) };
 }
 #[cfg(test)]
 pub(crate) fn trace_link_backing_probe_count() -> usize {
     TRACE_LINK_BACKING_PROBES.with(Cell::get)
+}
+#[cfg(test)]
+pub(crate) fn checked_node_construction_count() -> usize {
+    CHECKED_NODE_CONSTRUCTIONS.with(Cell::get)
 }
 
 /// Primitive authority belonging to one exact class-node generation. Keeping
@@ -822,7 +827,18 @@ impl std::fmt::Debug for CheckedNode {
 }
 impl CheckedNode {
     pub(crate) fn new(metadata: Rc<PageMetadata>, id: NodeId) -> Option<Self> {
-        metadata.validates(&id).then_some(Self { metadata, id })
+        #[cfg(test)]
+        {
+            let node = metadata.validates(&id).then_some(Self { metadata, id });
+            if node.is_some() {
+                CHECKED_NODE_CONSTRUCTIONS.with(|count| count.set(count.get().wrapping_add(1)));
+            }
+            node
+        }
+        #[cfg(not(test))]
+        {
+            metadata.validates(&id).then_some(Self { metadata, id })
+        }
     }
     pub(crate) fn is_live(&self) -> bool {
         self.metadata.validates(&self.id)
@@ -951,18 +967,26 @@ impl PageMetadata {
     pub(crate) fn cookie(&self) -> u64 {
         self.cookie
     }
-    fn id_from_link(&self, link: NodeLink) -> Option<NodeId> {
-        if link.heap_cookie != self.heap.0.cookie || u64::from(link.page_cookie) != self.cookie {
+    fn live_link_slot(&self, link: NodeLink) -> Option<usize> {
+        let slot = link.slot as usize;
+        if link.heap_cookie != self.heap.0.cookie
+            || u64::from(link.page_cookie) != self.cookie
+            || !self.is_live(slot)
+            || self.generations[slot].get() != u64::from(link.generation)
+        {
             return None;
         }
-        let id = NodeId {
+        Some(slot)
+    }
+    fn id_from_link(&self, link: NodeLink) -> Option<NodeId> {
+        let slot = self.live_link_slot(link)?;
+        Some(NodeId {
             heap: self.heap.clone(),
             page: self.page,
             page_cookie: self.cookie,
-            slot: link.slot as usize,
+            slot,
             generation: u64::from(link.generation),
-        };
-        self.validates(&id).then_some(id)
+        })
     }
     pub(crate) fn slots(&self) -> usize {
         self.slots
@@ -1234,6 +1258,16 @@ pub(crate) struct NodeProjection<T> {
     values: Weak<[Cell<T>]>,
     metadata: Rc<PageMetadata>,
 }
+
+/// A marked result carries no new token, but is returned only after checking
+/// the original heap, saved generation, and live physical storage.
+pub(crate) enum TraceLinkProjection<T> {
+    Marked,
+    Unmarked {
+        projection: *mut T,
+        allocation: CheckedNode,
+    },
+}
 impl<T> Clone for NodeProjection<T> {
     fn clone(&self) -> Self {
         Self {
@@ -1246,11 +1280,33 @@ impl<T> NodeProjection<T> {
     /// Resolve the saved graph identity through this original weak page.
     /// Metadata and physical storage must both remain live; no current-slot
     /// identity is substituted for a stale generation.
-    pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<(*mut T, CheckedNode)> {
-        let id = self.metadata.id_from_link(link)?;
-        let token = CheckedNode::new(self.metadata.clone(), id)?;
+    pub(crate) fn trace_link(
+        &self,
+        heap: &HeapIdentity,
+        link: NodeLink,
+        epoch: u32,
+    ) -> Option<TraceLinkProjection<T>> {
+        if !self.metadata.belongs_to(heap) {
+            return None;
+        }
+        let slot = self.metadata.live_link_slot(link)?;
         let values = self.values.upgrade()?;
-        Some((values.get(token.id.slot)?.as_ptr(), token))
+        let projection = values.get(slot)?.as_ptr();
+        if epoch != 0 && self.metadata.epoch(slot) == Some(epoch) {
+            return Some(TraceLinkProjection::Marked);
+        }
+        let id = NodeId {
+            heap: self.metadata.heap.clone(),
+            page: self.metadata.page,
+            page_cookie: self.metadata.cookie,
+            slot,
+            generation: u64::from(link.generation),
+        };
+        let allocation = CheckedNode::new(self.metadata.clone(), id)?;
+        Some(TraceLinkProjection::Unmarked {
+            projection,
+            allocation,
+        })
     }
 
     pub(crate) fn resolve_slot(&self, slot: usize) -> Option<(*mut T, CheckedNode)> {

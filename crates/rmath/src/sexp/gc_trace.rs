@@ -4,7 +4,9 @@
 
 use crate::sexp::{
     ffi::{SEXP, SexprecCore},
-    heap::{CheckedNode, HeapIdentity, NodeLink, NodeProjection, ResolvedLink},
+    heap::{
+        CheckedNode, HeapIdentity, NodeLink, NodeProjection, ResolvedLink, TraceLinkProjection,
+    },
     memory,
     session::immutable_singleton_projection,
 };
@@ -82,9 +84,13 @@ impl TraceContext {
             .readers
             .borrow()
             .get(&link.page_cookie())
-            .and_then(|reader| reader.resolve_link(link));
+            .and_then(|reader| reader.trace_link(&self.heap, link, self.epoch));
         let resolved = match cached {
-            Some((projection, allocation)) => ResolvedLink::Node {
+            Some(TraceLinkProjection::Marked) => return Ok(None),
+            Some(TraceLinkProjection::Unmarked {
+                projection,
+                allocation,
+            }) => ResolvedLink::Node {
                 projection,
                 allocation,
             },
@@ -389,6 +395,55 @@ mod tests {
             second.addr()
         );
         assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn checked_trace_marked_cached_edges_do_not_rebuild_tokens() {
+        let mut arena = memory::RArena::new();
+        let pointer = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let link = arena.node_token(pointer).unwrap().link().unwrap();
+        let context = Rc::new(TraceContext::new(arena.heap_identity(), 63));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(pointer).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        let before = crate::sexp::heap::checked_node_construction_count();
+        for _ in 0..if cfg!(miri) { 17 } else { 1000 } {
+            worklist.enqueue_link(link).unwrap();
+        }
+        assert_eq!(
+            crate::sexp::heap::checked_node_construction_count() - before,
+            0,
+            "an already marked original allocation reconstructed checked tokens"
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn checked_trace_wrong_heap_reader_cannot_authorize_a_marked_link() {
+        let page = NodePage::try_new(HeapIdentity::new(), 0, 2, || {
+            SexprecCore::new(SEXPTYPE::LISTSXP)
+        })
+        .unwrap();
+        page.metadata().activate(0, false).unwrap();
+        let token = page.token(0).unwrap();
+        let link = token.link().unwrap();
+        assert_eq!(token.mark(67), Some(false));
+        let context = Rc::new(TraceContext::new(HeapIdentity::new(), 67));
+        // Exercise a mismatched cache entry as well as a foreign incoming
+        // link. An epoch hit cannot substitute for the context's own heap.
+        context
+            .readers
+            .borrow_mut()
+            .insert(link.page_cookie(), page.projection());
+        let mut worklist = TraceWorklist::new(context);
+        assert!(worklist.enqueue_link(link).is_err());
+        assert!(worklist.next_marked().unwrap().is_none());
+        assert_eq!(token.mark(67), Some(true));
     }
 
     #[test]
