@@ -351,7 +351,9 @@ fn root_allocation<'session>(
     arena: &mut crate::sexp::memory::RArena,
     allocation: impl FnOnce(&mut crate::sexp::memory::RArena) -> Option<SEXP>,
 ) -> SexpResult<Sexp<'session>> {
-    let pointer = allocation(arena).ok_or(SexpError::AllocationFailed { object: "R value" })?;
+    let pointer = allocation(arena)
+        .filter(|pointer| !pointer.is_null())
+        .ok_or(SexpError::AllocationFailed { object: "R value" })?;
     domain.wrap(pointer)
 }
 
@@ -472,6 +474,66 @@ mod tests {
         session::RSession,
     };
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn checked_allocation_exhaustion_reports_failure_before_wrapping_null() {
+        let session = RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        with_runtime(&owner, |access| {
+            access.with_arena(|arena| {
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(
+                    arena.total_bytes_allocated() + 1,
+                    0,
+                ));
+            })
+        })
+        .unwrap()
+        .unwrap();
+        let result = factory.strings(&["denied before wrapping"]);
+        assert!(
+            matches!(result, Err(SexpError::AllocationFailed { .. })),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn checked_allocation_exhaustion_recovers_under_the_same_live_limit() {
+        let session = RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let before = with_runtime(&owner, |access| {
+            access.with_arena(|arena| {
+                let before = arena.total_bytes_allocated();
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(before + 256, 0));
+                before
+            })
+        })
+        .unwrap()
+        .unwrap();
+        let denied = factory.character(&"x".repeat(1024));
+        assert!(
+            matches!(denied, Err(SexpError::AllocationFailed { .. })),
+            "{denied:?}"
+        );
+        with_runtime(&owner, |access| {
+            access.with_arena(|arena| {
+                assert_eq!(arena.total_bytes_allocated(), before);
+                assert_eq!(arena.workspace_bytes(), 0);
+            })
+        })
+        .unwrap()
+        .unwrap();
+        let small = factory.character("ok").unwrap();
+        assert!(small.try_char_eq(b"ok").unwrap());
+        with_runtime(&owner, |access| {
+            access.with_arena(|arena| {
+                assert_eq!(arena.budget().max_bytes, before + 256);
+            })
+        })
+        .unwrap()
+        .unwrap();
+    }
 
     #[test]
     fn explicit_allocator_rejects_foreign_original_heap() {
