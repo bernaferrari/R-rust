@@ -174,6 +174,84 @@
         "OMP_NUM_THREADS": "1",
         "RAYON_NUM_THREADS": "2"
       }
+    },
+    "linked": {
+      "ref": "3e6331c8",
+      "executable_sha256": "8b33779f76c85de8d5502fad6a6ac933c73cd5c8103579ec5c0c959dd3dc4872",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "linked-s4-next-method",
+        "--exact",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 900.862,
+      "returncode": -9,
+      "timed_out": true,
+      "passed": null,
+      "failed": null,
+      "execution_complete": false,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 30,
+      "receipt_sha256": "db92a453da92be7bbb47aadbff82622c4c73a2c1b78192fae8e5a5b00fa7a99a",
+      "log_sha256": "e764ccdf4bc88c2ddefe6070d3ade8071d3348e5853f8aa5dd1241c5e7f07b77",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
+    },
+    "linked-controls": {
+      "ref": "3e6331c8",
+      "executable_sha256": "8b33779f76c85de8d5502fad6a6ac933c73cd5c8103579ec5c0c959dd3dc4872",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "linked-s4-next-method",
+        "--skip",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 81.081,
+      "returncode": 0,
+      "timed_out": false,
+      "passed": 9,
+      "failed": 0,
+      "execution_complete": true,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 3,
+      "receipt_sha256": "2dc1041de4773c58dc0674db6f0f67a058750aed7a831af1c99f5bf1f21cd7af",
+      "log_sha256": "f98eaeb7012f6933713d6152d1db1b8e2dc9c378d6e4bece0df4fd5e1639a2c0",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
     }
   },
   "interpretation": [
@@ -182,7 +260,8 @@
     "The other nine original S4 controls pass; their workflow cases retain the original64MiB/500000-node limits and60s execution windows",
     "No torture frequency, class setup or original assertions were weakened",
     "A separate weak page-reader optimization is being evaluated next; no measured S4 speedup is claimed here",
-    "The c30e83c1 header-reader candidate also reached the unchanged900s bound (900.698s), completed0 tests and is not a PASS; remaining link lookup cost is tracked in4m0nz.3"
+    "The c30e83c1 header-reader candidate also reached the unchanged900s bound (900.698s), completed0 tests and is not a PASS; remaining link lookup cost is tracked in4m0nz.3",
+    "The frozen3e6331c8 link-reader candidate also reached the original900s bound (900.862s), with no completed torture test. Its other nine unchanged tests pass in81.081s. Checked token construction/admission remains a measured hotspot; the26% fixed-live mark gain does not establish full S4 completion."
   ],
   "scope_limits": [
     "Not a full workspace run or production browser timing claim",

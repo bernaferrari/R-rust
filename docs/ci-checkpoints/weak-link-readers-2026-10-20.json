@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-4m0nz.3",
+  "implementation_commit": "3e6331c8",
+  "status": "verified_bounded_weak_link_readers",
+  "source_sha256": {
+    "crates/rmath/src/sexp/gc_trace.rs": "0b27c1fc86b4d04a924f638017a6dc903fe229eacbbb9d60e807b08dd3b6333e",
+    "crates/rmath/src/sexp/heap.rs": "eb62b07fce12f050efe7f8e63954f776efdef7b2de0ee3b66b55d25867ccb8bc"
+  },
+  "evidence_directory": "target/trace-reader-evidence",
+  "behavior": [
+    "Already admitted weak multi-slot page readers resolve exact saved graph links without repeating physical backing selection",
+    "Every cached resolution validates original heap/page/slot/generation, upgrades original weak physical storage, and constructs a checked token before marking",
+    "Null edges return immediately; singleton/miss/stale/foreign/dead-page cases retain the original checked fallback and error routing",
+    "Warmed foreign page-cookie collision rejects even when the foreign target is already marked; stale generation and destroyed-page links reject",
+    "No cache bound, torture frequency or S4 assertion changed; no unsafe added"
+  ],
+  "measured_regression": {
+    "before_backing_lookups": 1000,
+    "after_backing_lookups": 0,
+    "edges": 1000,
+    "unique_pending_tasks": 1,
+    "red_log": "link-red-20261020.log",
+    "red_sha256": "a9f102b1456cbbcfd71c33f524798acf0bb4967989e11a3a12ac61d15c60d690"
+  },
+  "mark_measurement": "docs/ci-checkpoints/fixed-live-mark-2026-10-20.json",
+  "validation": {
+    "native_collector": {
+      "passed": 102,
+      "log": "link-collector-native-20261020.log",
+      "sha256": "b1d9a2c671cb0829b87938e777d0cfd5d612db6a6d6feb94362182ae9e2e8611",
+      "ignored_manual_benchmarks": 1
+    },
+    "strict_miri_trace": {
+      "passed": 17,
+      "log": "link-miri-20261020.log",
+      "sha256": "3617791e605cad3eb22f47b69948424285dba15527ca60f75a99ff12eb544f00"
+    },
+    "strict_miri_foreign_cookie": {
+      "passed": 1,
+      "log": "link-collision-miri-20261020.log",
+      "sha256": "4839719013ef74e52845322c4ef8583ef857715415d1f5ac94811eb2c99e8299"
+    },
+    "clippy_four_crates_all_targets": {
+      "log": "link-clippy-20261020.log",
+      "sha256": "f8e2041f2070f28e7f2430a9e0ceae0b913e2be7d2c268f70aca4eb0446092bf"
+    },
+    "android_cross_check": {
+      "log": "link-android-20261020.log",
+      "sha256": "df092e7348624b5824096fc5eb9834801a078a7092a6161d27f3e1e9b5521090"
+    },
+    "wasm_permanent": {
+      "checks": 14,
+      "log": "link-wasm-permanent-20261020.log",
+      "sha256": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407"
+    },
+    "wasm_exhaustion": {
+      "checks": 12,
+      "log": "link-wasm-exhaustion-20261020.log",
+      "sha256": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a"
+    },
+    "wasm_serialization": {
+      "checks": 14,
+      "log": "link-wasm-serialization-20261020.log",
+      "sha256": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54"
+    },
+    "wasm_web_package_contracts": {
+      "passed": 72,
+      "fresh_sessions": 2,
+      "log": "link-wasm-package-contracts-20261020.log",
+      "sha256": "7a9a0a9af1ec152aeac7071c0067352a2f1e869e5841a956581c1566c614de59",
+      "s4_elapsed_ms": [
+        9294.638665999999,
+        9542.493166999993
+      ]
+    }
+  },
+  "production_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29155839,
+      "sha256": "14141c8f766a0be7465523bacd2582bf2334a8ad4e5d0f0ebc017dcaf63d197e"
+    },
+    "output": {
+      "bytes": 24913127,
+      "sha256": "ae3cacda4749ca5b05f6f83bd588d5547c866b6cfbf15a2deb518766013b1352"
+    }
+  },
+  "s4_bound_results": "docs/ci-checkpoints/s4-torture-bounded-2026-10-20.json",
+  "scope_limits": [
+    "Full original torture remains incomplete at900s; no total S4 speedup or PASS claimed and parent4m0nz/k1236/1rlyz remain open",
+    "Fixed-live mark speedup is about1.26x and excludes lazy loading/sweep; browser public S4 uses its original15s cap",
+    "Collector102 is a completed release run, not a comparison against the earlier debug-profile collector duration",
+    "Native gates preserve unrelated user graphics edits; the production S4 artifact was built from clean frozen3e6331c8 with exact archived R reference source",
+    "Wasm Node/web bindings use an identical optimized module after verifying bindgen input SHA identity",
+    "Subsequent S4 class-cache/new fidelity work is independent and not part of this artifact",
+    "Private cache physical metadata admission remains within cvs2.11"
+  ]
+}
