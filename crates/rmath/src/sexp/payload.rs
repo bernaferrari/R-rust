@@ -136,6 +136,9 @@ impl PayloadLease {
     pub(crate) fn logical_bytes(&self) -> usize {
         self.0.payload.layout().size()
     }
+    pub(crate) fn storage_bytes(&self) -> usize {
+        self.0.payload.storage_bytes()
+    }
     pub(crate) fn accepts_kind(&self, kind: SEXPTYPE) -> bool {
         self.0.payload.accepts_kind(kind)
     }
@@ -191,7 +194,7 @@ impl PayloadLease {
         if self.0.immutable.get() {
             return None;
         }
-        let bytes = self.logical_bytes();
+        let bytes = self.storage_bytes();
         let next = total.get().checked_add(bytes)?;
         *self.0.charge.borrow_mut() = Some(PayloadCharge {
             total: total.clone(),
@@ -606,6 +609,27 @@ impl OwnedPayload {
     pub(crate) fn layout(&self) -> Layout {
         self.layout
     }
+    /// Requested data-buffer storage, including chunk tails and unused Vec
+    /// capacity. These fixed non-ZST buffers cannot grow after publication.
+    pub(crate) fn storage_bytes(&self) -> usize {
+        use std::mem::{size_of, size_of_val};
+        match &self.storage {
+            Storage::Bytes(values) => values.capacity() * size_of::<ByteChunk>(),
+            Storage::Integers(values) => values.capacity() * size_of::<IntegerChunk>(),
+            Storage::Reals(values) => values.capacity() * size_of::<RealChunk>(),
+            Storage::Complex(values) => values.capacity() * size_of::<ComplexChunk>(),
+            Storage::References(ReferenceCells::Vector(values)) => {
+                values.capacity() * size_of::<Cell<NodeLink>>()
+            }
+            Storage::References(ReferenceCells::Slice(values)) => size_of_val(values.as_ref()),
+            Storage::ByteCells(values) => size_of_val(values.as_ref()),
+            Storage::IntegerCells(values) => size_of_val(values.as_ref()),
+            Storage::RealCells(values) => size_of_val(values.as_ref()),
+        }
+    }
+    pub(crate) fn requested_byte_storage_bytes(bytes: usize) -> Result<usize, PayloadError> {
+        Ok(logical_layout(bytes, 1)?.pad_to_align().size())
+    }
     pub(crate) fn len(&self) -> usize {
         self.length
     }
@@ -700,6 +724,10 @@ impl OwnedPayload {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "payload_storage_tests.rs"]
+mod storage_tests;
 
 #[cfg(test)]
 mod tests {

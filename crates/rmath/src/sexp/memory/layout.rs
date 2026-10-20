@@ -94,6 +94,20 @@ pub(super) fn vector_layout(sexptype: SEXPTYPE, length: R_xlen_t) -> Result<Layo
         .map_err(|_| ArenaError::InvalidLength)
 }
 
+/// Fresh typed chunks have eight-byte alignment and retain the last complete
+/// chunk, while logical vector shape still uses the unpadded layout above.
+pub(super) fn vector_storage_layout(
+    sexptype: SEXPTYPE,
+    length: R_xlen_t,
+) -> Result<Layout, ArenaError> {
+    // u64 itself has four-byte alignment on i686, while every typed chunk
+    // explicitly has eight-byte alignment on every supported target.
+    let logical = vector_layout(sexptype, length)?;
+    Layout::from_size_align(logical.size(), 8)
+        .map(|layout| layout.pad_to_align())
+        .map_err(|_| ArenaError::InvalidLength)
+}
+
 #[cfg(test)]
 thread_local! {
     static BUFFER_ALLOCATION_ATTEMPTS: Cell<usize> = const { Cell::new(0) };
@@ -117,10 +131,14 @@ pub(crate) struct OwnedBuffer {
 }
 
 impl OwnedBuffer {
-    pub(crate) fn zeroed(layout: Layout) -> Option<Self> {
+    pub(crate) fn required_storage_bytes(layout: Layout) -> Option<usize> {
         if layout.size() == 0 || layout.align() > 8 {
             return None;
         }
+        OwnedPayload::requested_byte_storage_bytes(layout.size()).ok()
+    }
+    pub(crate) fn zeroed(layout: Layout) -> Option<Self> {
+        Self::required_storage_bytes(layout)?;
         #[cfg(test)]
         note_buffer_allocation_attempt();
         let allocation = OwnedPayload::zeroed_bytes(layout.size()).ok()?;

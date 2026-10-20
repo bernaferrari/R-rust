@@ -896,7 +896,7 @@ pub(super) fn test_vector_and_charsxp_account_node_once() {
     assert!(!arena.alloc_charsxp(b"abc").is_null());
     assert_eq!(
         arena.total_bytes_allocated(),
-        super::tests_physical_headers::retained_page_bytes(&arena) + 4
+        super::tests_physical_headers::retained_page_bytes(&arena) + 8
     );
 }
 

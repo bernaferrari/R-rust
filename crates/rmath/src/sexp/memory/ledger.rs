@@ -64,7 +64,7 @@ impl MemoryLedger {
         if lease.belongs_to(heap) {
             return lease.bind_to_heap(heap, &self.allocated);
         }
-        let mut reservation = self.reserve(lease.logical_bytes())?;
+        let mut reservation = self.reserve(lease.storage_bytes())?;
         reservation.bind_payload(heap, lease)
     }
 }

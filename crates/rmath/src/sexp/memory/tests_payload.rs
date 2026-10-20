@@ -93,7 +93,7 @@ pub(super) fn pinned_reference_snapshot_keeps_actual_bytes_charged_until_last_dr
 #[test]
 pub(super) fn checked_payload_publication_rejects_foreign_wrong_storage_and_budget_bypass() {
     let mut arena =
-        super::RArena::with_budget(super::ArenaBudget::new(minimum_page_bytes() + 12, 0));
+        super::RArena::with_budget(super::ArenaBudget::new(minimum_page_bytes() + 16, 0));
     let heap = arena.heap_identity();
     let parent = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
     let node = arena.node_token(parent).unwrap();
@@ -116,7 +116,7 @@ pub(super) fn checked_payload_publication_rejects_foreign_wrong_storage_and_budg
         heap.publish_payload(&node, super::PayloadLink::EMPTY, &wrong)
             .is_none()
     );
-    let oversized = super::PayloadLease::zeroed(super::SEXPTYPE::INTSXP, 4).unwrap();
+    let oversized = super::PayloadLease::zeroed(super::SEXPTYPE::INTSXP, 5).unwrap();
     assert!(
         heap.publish_payload(&node, super::PayloadLink::EMPTY, &oversized)
             .is_none()
@@ -127,7 +127,7 @@ pub(super) fn checked_payload_publication_rejects_foreign_wrong_storage_and_budg
     let valid = super::PayloadLease::zeroed(super::SEXPTYPE::INTSXP, 3).unwrap();
     heap.publish_payload(&node, super::PayloadLink::EMPTY, &valid)
         .unwrap();
-    assert_eq!(arena.total_bytes_allocated(), minimum_page_bytes() + 12);
+    assert_eq!(arena.total_bytes_allocated(), minimum_page_bytes() + 16);
     assert!(heap.payload_lease(&node).unwrap().same_allocation(&valid));
     let mut changed_provider = heap.node_snapshot(&node).unwrap();
     changed_provider.sxpinfo.set_type(super::SEXPTYPE::LGLSXP);
@@ -166,7 +166,7 @@ pub(super) fn original_heap_initializer_reentry_rejects_changed_shape_and_accoun
     assert_eq!(heap.node_snapshot(&node).unwrap().vecsxp_length(), 2);
     assert!(heap.node_snapshot(&node).unwrap().payload.is_empty());
     assert_eq!(transient.get(), 0);
-    assert_eq!(charge.get(), header_bytes + 12);
+    assert_eq!(charge.get(), header_bytes + 16);
     assert_eq!(escaped.as_ref().unwrap().integer_elt(0), Some(91));
     drop(escaped);
     assert_eq!(charge.get(), header_bytes);
@@ -419,7 +419,7 @@ pub(super) fn generic_empty_character_allocation_is_sealed_and_budgeted() {
     assert!(lease.is_immutable());
     assert_eq!(
         arena.total_bytes_allocated(),
-        retained_page_bytes(&arena) + 1
+        retained_page_bytes(&arena) + 8
     );
     let mut lazy = super::SexprecCore::new(super::SEXPTYPE::CHARSXP);
     lazy.sxpinfo.set_alt(true);
@@ -911,7 +911,7 @@ pub(super) fn reference_vector_budget_charges_actual_link_cells_and_releases_the
     assert_eq!(arena.allocated_bytes.get(), minimum_page_bytes());
     let numeric = arena.alloc_vector(super::SEXPTYPE::INTSXP, 3);
     assert_eq!(numeric, vector);
-    assert_eq!(arena.allocated_bytes.get(), minimum_page_bytes() + 12);
+    assert_eq!(arena.allocated_bytes.get(), minimum_page_bytes() + 16);
 }
 
 #[test]
@@ -1829,7 +1829,7 @@ pub(super) fn all_header_allocations_reuse_slots_and_charge_only_payload_growth(
             arena.alloc_vector(super::SEXPTYPE::INTSXP, 3)
         };
         assert_eq!(vector, first);
-        assert_eq!(arena.allocated_bytes.get(), minimum_page_bytes() + 12);
+        assert_eq!(arena.allocated_bytes.get(), minimum_page_bytes() + 16);
         assert!(!old.is_live());
         unsafe {
             arena.free_node(vector);

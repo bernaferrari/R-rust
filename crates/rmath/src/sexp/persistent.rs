@@ -239,7 +239,7 @@ impl PersistentHeap {
         let payload_growth = payload
             .as_ref()
             .filter(|lease| !lease.belongs_to(&self.identity))
-            .map_or(0, PayloadLease::logical_bytes);
+            .map_or(0, PayloadLease::storage_bytes);
         // The initialized header Vec moves into its sized Rc without a copy.
         // Metadata performs its own admission below after payload binding.
         let header_peak = std::mem::size_of::<SexprecCore>()
@@ -325,8 +325,13 @@ impl PersistentHeap {
             .ok_or(HeapError::Allocation)
     }
     pub(crate) fn allocate_header(&mut self, header: SexprecCore) -> Result<SEXP, HeapError> {
-        let admission =
-            self.admission(usize::from(header.sxpinfo.type_of() == SEXPTYPE::CHARSXP))?;
+        let payload = if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
+            crate::sexp::payload::OwnedPayload::requested_byte_storage_bytes(1)
+                .map_err(|_| HeapError::Allocation)?
+        } else {
+            0
+        };
+        let admission = self.admission(payload)?;
         self.allocate(header, None, admission)
     }
     pub(crate) fn allocate_chars(&mut self, bytes: &[u8]) -> Result<SEXP, HeapError> {

@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn character_cache_reuses_live_ascii_without_a_second_header_or_payload() {
     let mut arena = RArena::with_budget(ArenaBudget::new(
-        super::tests_physical_headers::minimum_page_bytes() + 7,
+        super::tests_physical_headers::minimum_page_bytes() + 8,
         1,
     ));
     let original = arena.alloc_charsxp(b"repeat");

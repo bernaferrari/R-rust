@@ -55,7 +55,7 @@ impl ArenaBacking {
                 .allocated_bytes
                 .get()
                 .checked_add(self.transient_bytes.get())?
-                .checked_add(lease.logical_bytes())?;
+                .checked_add(lease.storage_bytes())?;
             if self.max_bytes.get() != 0 && total > self.max_bytes.get() {
                 return None;
             }

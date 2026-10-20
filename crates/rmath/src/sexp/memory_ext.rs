@@ -385,7 +385,10 @@ pub(crate) unsafe fn R_alloc_in(
         if !with_vmax_in(instance, |vmax| vmax.try_reserve(1).is_ok()) {
             return ptr::null_mut();
         }
-        let Some(reservation) = memory::reserve_transient_in(instance, total) else {
+        let Some(storage_bytes) = memory::OwnedBuffer::required_storage_bytes(layout) else {
+            return ptr::null_mut();
+        };
+        let Some(reservation) = memory::reserve_transient_in(instance, storage_bytes) else {
             return ptr::null_mut();
         };
         let Some(buffer) = memory::OwnedBuffer::zeroed(layout) else {
@@ -456,6 +459,10 @@ fn vmax_len_in(instance: *mut RInstance) -> usize {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[path = "memory_ext_tail_tests.rs"]
+mod tail_storage_tests;
+
+#[cfg(test)]
 mod tests {
     use std::ptr::addr_of_mut;
 
@@ -481,17 +488,25 @@ mod tests {
     fn transient_allocations_are_zeroed_aligned_and_isolated_during_nested_lends() {
         let mut left = RInstance::new_for_gc_tests();
         let mut right = RInstance::new_for_gc_tests();
-        let node_bytes = std::mem::size_of::<SexprecCore>();
+        let left_before = left.arena.total_bytes_allocated();
+        let right_before = right.arena.total_bytes_allocated();
+        let page_bytes = std::mem::size_of::<SexprecCore>()
+            + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
         left.arena
-            .set_budget(memory::ArenaBudget::new(node_bytes + 32, 0));
-        right.arena.set_budget(memory::ArenaBudget::new(4, 0));
+            .set_budget(memory::ArenaBudget::new(left_before + page_bytes + 32, 0));
+        right
+            .arena
+            .set_budget(memory::ArenaBudget::new(right_before + 4, 0));
         unsafe {
             let left_ptr = addr_of_mut!(left);
             let right_ptr = addr_of_mut!(right);
             memory::with_arena_in(left_ptr, |left_arena| {
-                memory::with_arena_in(right_ptr, |_right_arena| {
+                memory::with_arena_in(right_ptr, |right_arena| {
                     assert!(!left_arena.alloc_node(SEXPTYPE::LISTSXP).is_null());
-                    left_arena.set_budget(memory::ArenaBudget::new(node_bytes + 16, 0));
+                    left_arena.set_budget(memory::ArenaBudget::new(
+                        left_arena.total_bytes_allocated() + 16,
+                        0,
+                    ));
                     // This must find the outer owner's ledger, not the top one.
                     let buffer = R_alloc_in(left_ptr, 8, 2).cast::<u64>();
                     assert!(!buffer.is_null());
@@ -501,6 +516,9 @@ mod tests {
                     assert_eq!(*buffer.add(1), 42);
                     assert!(R_alloc_in(left_ptr, 1, 1).is_null());
                     assert!(R_alloc_in(right_ptr, 1, 5).is_null());
+                    assert!(R_alloc_in(right_ptr, 1, 4).is_null());
+                    right_arena.set_budget(memory::ArenaBudget::new(right_before + 8, 0));
+                    assert!(R_alloc_in(right_ptr, 1, 9).is_null());
                     assert!(!R_alloc_in(right_ptr, 1, 4).is_null());
                 });
                 assert!(left_arena.try_reserve_transient(1).is_none());
@@ -511,6 +529,8 @@ mod tests {
             assert_eq!(vmax_len_in(right_ptr), 1);
             vmaxset_in(right_ptr, ptr::null_mut());
             assert!(right.arena.try_reserve_transient(4).is_some());
+            assert!(right.arena.try_reserve_transient(8).is_some());
+            assert!(right.arena.try_reserve_transient(9).is_none());
         }
     }
 
@@ -518,7 +538,10 @@ mod tests {
     fn transient_allocation_failure_raises_r_error_and_session_recovers() {
         let session = RSession::new_for_gc_tests();
         session.with_active_in(|instance| unsafe {
-            (*instance).arena.set_budget(memory::ArenaBudget::new(8, 0));
+            let before = (*instance).arena.total_bytes_allocated();
+            (*instance)
+                .arena
+                .set_budget(memory::ArenaBudget::new(before + 8, 0));
             for (size, count) in [(1, 9), (usize::MAX, 2), (1, isize::MAX as usize + 1)] {
                 let error = std::panic::catch_unwind(|| R_alloc(size, count)).unwrap_err();
                 assert!(
@@ -539,7 +562,10 @@ mod tests {
     fn transient_allocation_teardown_releases_original_reservation_on_unwind() {
         let result = std::panic::catch_unwind(|| {
             let mut owner = RInstance::new_for_gc_tests();
-            owner.arena.set_budget(memory::ArenaBudget::new(8, 0));
+            let before = owner.arena.total_bytes_allocated();
+            owner
+                .arena
+                .set_budget(memory::ArenaBudget::new(before + 8, 0));
             unsafe {
                 assert!(!R_alloc_in(addr_of_mut!(owner), 1, 8).is_null());
                 assert!(owner.arena.try_reserve_transient(1).is_none());
@@ -548,13 +574,17 @@ mod tests {
             let _moved = Box::new(owner);
             panic!("fixture unwind");
         });
-        assert!(result.is_err());
+        let panic = result.expect_err("fixture must reach its deliberate unwind");
+        assert_eq!(panic.downcast_ref::<&str>(), Some(&"fixture unwind"));
     }
 
     #[test]
     fn transient_allocations_share_arena_budget_and_release_at_watermark() {
         let mut owner = RInstance::new_for_gc_tests();
-        owner.arena.set_budget(memory::ArenaBudget::new(16, 0));
+        let before = owner.arena.total_bytes_allocated();
+        owner
+            .arena
+            .set_budget(memory::ArenaBudget::new(before + 16, 0));
         unsafe {
             let instance = addr_of_mut!(owner);
             let first = R_alloc_in(instance, 1, 8);

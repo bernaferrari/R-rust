@@ -158,9 +158,11 @@ impl RArena {
             return ptr::null_mut();
         }
         if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP && payload.is_none() {
+            let empty_storage = OwnedPayload::requested_byte_storage_bytes(1)
+                .expect("empty character chunk layout");
             if !header.payload.is_empty()
                 || header.data.vector().length != 0
-                || !self.can_allocate_node_with_payload(1)
+                || !self.can_allocate_node_with_payload(empty_storage)
             {
                 return ptr::null_mut();
             }
@@ -176,7 +178,7 @@ impl RArena {
         let payload_growth = payload
             .as_ref()
             .filter(|lease| !lease.belongs_to(&self.heap_identity))
-            .map_or(0, PayloadLease::logical_bytes);
+            .map_or(0, PayloadLease::storage_bytes);
         if !self.can_allocate_node_with_payload(payload_growth) {
             return ptr::null_mut();
         }
@@ -548,7 +550,7 @@ impl RArena {
     /// Returns null if allocation fails (OOM safety).
     #[inline(always)]
     pub(crate) fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
-        let Ok(layout) = vector_layout(sexptype, length) else {
+        let Ok(layout) = vector_storage_layout(sexptype, length) else {
             return ptr::null_mut();
         };
 
@@ -598,7 +600,7 @@ impl RArena {
         sexptype: SEXPTYPE,
         length: R_xlen_t,
     ) -> Result<SEXP, ArenaError> {
-        let layout = vector_layout(sexptype, length)?;
+        let layout = vector_storage_layout(sexptype, length)?;
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
@@ -686,6 +688,9 @@ impl RArena {
         let total_bytes = match (len as usize).checked_add(1) {
             Some(n) => n,
             None => return ptr::null_mut(),
+        };
+        let Ok(total_bytes) = OwnedPayload::requested_byte_storage_bytes(total_bytes) else {
+            return ptr::null_mut();
         };
         if !self.can_allocate_node_with_payload(total_bytes) {
             return ptr::null_mut();
@@ -1160,7 +1165,7 @@ impl WorkspaceReservation {
         if lease.belongs_to(heap) {
             return lease.bind_to_heap(heap, &self.allocated);
         }
-        let remaining = self.bytes().checked_sub(lease.logical_bytes())?;
+        let remaining = self.bytes().checked_sub(lease.storage_bytes())?;
         lease.bind_to_heap(heap, &self.allocated)?;
         self.try_resize(remaining)
     }
@@ -1227,7 +1232,7 @@ impl TransientReservation {
     /// Convert admission into the allocation lifetime charge before exposing
     /// its cloneable lease to an initializer. Escaping clones stay accounted.
     fn bind_payload(self, lease: &PayloadLease) -> Option<()> {
-        if lease.logical_bytes() != self.bytes {
+        if lease.storage_bytes() != self.bytes {
             return None;
         }
         let (heap, total) = self.payload_target.as_ref()?;
@@ -1462,7 +1467,7 @@ pub(crate) fn attach_initialized_payload(
     let NodeBody::Vector(vector) = original.data else {
         return None;
     };
-    let layout = vector_layout(original.sxpinfo.type_of(), vector.length).ok()?;
+    let layout = vector_storage_layout(original.sxpinfo.type_of(), vector.length).ok()?;
     // Reserve via the independent ledger even during an existing arena lend.
     let reservation = heap.reserve_payload_bytes(node, layout.size())?;
     let lease = PayloadLease::from_owned(

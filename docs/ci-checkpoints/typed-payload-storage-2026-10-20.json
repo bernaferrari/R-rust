@@ -1,0 +1,145 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.3",
+  "source_base": "505463f1d7fad15f913bd11b30f83f47688455c9",
+  "behavior": [
+    "Keep logical payload layout, vector length and native view bounds distinct from the retained data-buffer bytes. Charge actual Vec capacity times typed chunk size, including byte/odd-integer tails and unused reference-Vec capacity; adopted Rc cell slices retain their own actual data length.",
+    "Use that storage amount consistently for original-ledger admission, payload binding, workspace transfers, retained leases and final release. Preflight complete fresh vector/character/generic empty-character and prepared-payload storage.",
+    "R_alloc reserves the actual complete byte chunk before allocating its buffer, preserves requested layout/zeroing/alignment and releases its original-owner reservation at the watermark or teardown.",
+    "Explicit eight-byte chunk alignment is independent of target u64 alignment. On i686, INT3 requires16 requested bytes even though its logical12-byte layout uses four-byte u64 alignment."
+  ],
+  "red": {
+    "initial_native_failed": 7,
+    "metadata_controls_passed": 3,
+    "raw_character_scratch": {
+      "logical_bytes": 1,
+      "actual_retained_chunk_bytes": 8,
+      "old_charge_bytes": 1
+    },
+    "integer": {
+      "logical_bytes": 4,
+      "actual_retained_chunk_bytes": 8,
+      "old_charge_bytes": 4
+    },
+    "constructors": "Checked raw and R_alloc admitted insufficient unchanged byte caps.",
+    "strict_i686_candidate_failure": "Padding by align_of<u64>()=4 reserved12 bytes for an actual16-byte INT3 buffer; original prepared-payload initializer never ran, leaving shape3 instead of required callback change2. Preserve actual failing log and every original callback/shape/escape assertion; fix explicit chunk alignment without relaxing Miri.",
+    "boundary_refinement": "Final checked-raw regression grants7 bytes of headroom (one below the actual8-byte chunk), rejecting before native allocation on all targets."
+  },
+  "validation": {
+    "native_memory": 105,
+    "native_payload_including_new_storage": 21,
+    "native_transient_including_new_storage": 17,
+    "native_permanent": 15,
+    "native_heap": 16,
+    "native_total": 174,
+    "strict_isolated_i686_miri": {
+      "metadata_and_new_storage": 10,
+      "existing_payload_controls": 16,
+      "original_transient_controls": 5,
+      "prepared_shape_change_and_escaped_owner": 1,
+      "prepared_unwind_publication": 1,
+      "original_header_reuse_and_payload_growth": 1,
+      "distinct_total": 34,
+      "original_transient_harness_seconds": 303.85,
+      "final_storage_harness_seconds": 125.39,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android check PASS",
+    "scoped_rustfmt_and_git_diff_check": "PASS",
+    "production_wasm_checks": 262,
+    "wasm_node_checks": {
+      "wasm-checked-exhaustion-20261020": 12,
+      "wasm-gnu-opcode-contracts-20261020": 28,
+      "wasm-internal-dput-20261020": 4,
+      "wasm-loess-native-outputs-20261020": 86,
+      "wasm-permanent-ledger-20261020": 14,
+      "wasm-quote-options-20261020": 8,
+      "wasm-regex-workspace-20261020": 8,
+      "wasm-s4-cache-new-20261020": 8,
+      "wasm-serialization-workspace-20261020": 14
+    },
+    "web_binding_checks": 80
+  },
+  "fixture_corrections": [
+    "Original memory_ext tests set absolute caps below retained setup bytes. Caps now add their original8/16-byte headroom to measured setup storage and admit the actual one-slot page for nested lends.",
+    "Retain original five-byte scratch denial under four-byte headroom, add four-byte logical scratch denial at that same limit, then admit it at its exact eight-byte chunk headroom and deny nine bytes. Owner isolation, zero/alignment and watermark recovery assertions remain.",
+    "The unwind fixture now requires its deliberate fixture-unwind panic rather than treating a failed setup assertion as success.",
+    "The valid three-integer payload now needs16 bytes; its oversized budget-rejection control uses five integers/24 bytes. Four integers occupy the same16-byte chunk allocation as three and are not a physical-growth rejection case. Logical vector shape assertions remain unchanged."
+  ],
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29490173,
+      "sha256": "099838944395f8e877e3dd6092dedcf5e1e4a9fbaa7793188630c7b55fb210c1"
+    },
+    "output": {
+      "bytes": 25152797,
+      "sha256": "98df371e323f78e3c029eff3ece0e4646fe8a139f8007e6395e9924c934bfed9"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/payload.rs": "2a0cd801e84ca94bf2d95fdddc2724e7057c90b67d67a48a01924d6e3452b2e2",
+    "crates/rmath/src/sexp/payload_storage_tests.rs": "270e9412e1019c565f413eff9b8773d4b2cd13c3cd43e309f293561c7c484095",
+    "crates/rmath/src/sexp/memory_ext.rs": "b10b877f5451c307c84b7c4313178af6e13214e27ec8580adbf126b6067858af",
+    "crates/rmath/src/sexp/memory_ext_tail_tests.rs": "58b3103214f802077eea53fecf9320de96d2d5e57196a0e4ce78c5d9c88b2644",
+    "crates/rmath/src/sexp/persistent.rs": "52ed1f53e83f664a59428698dac2d8373ea93157601aaca7281af29ebef5c4ec",
+    "crates/rmath/src/sexp/memory/arena.rs": "6ce98d6a62c770875f45fa3cfae77fbf82210d5fa6cd5e46f48b4ef3ef00b9cc",
+    "crates/rmath/src/sexp/memory/layout.rs": "f4dafc3446e0862e446b9981551c7c998144045a0b3376e600af7733abcd1f14",
+    "crates/rmath/src/sexp/memory/ledger.rs": "fb91ceee79440137503fecffcbea6c3518f7ad0c2ffd80ad3adf5ac1d3fb7246",
+    "crates/rmath/src/sexp/memory/slab.rs": "52dd97ba76e6e0b6facad07cf68c8a7def3492e1d8eb2f5683c347f6ccd7e0bb",
+    "crates/rmath/src/sexp/memory/character_cache_tests.rs": "44bf99a928459d7d7ffb89b224bdfe3d49b5af7aef996d1b0ea0c73ce72513d8",
+    "crates/rmath/src/sexp/memory/tests_arena.rs": "f5c0e589e5f7a95a5a758e3a4ed2ed7eb98ccbb96f76b3715ff9195608722253",
+    "crates/rmath/src/sexp/memory/tests_payload.rs": "16ef06452a8072fd4ea64022f8538fafc4aa66f7dc383db12ee29ced01f1d119"
+  },
+  "separate_uncommitted_graphics_inputs_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "log_sha256": {
+    "target/payload-tail-evidence/native-red-20261020.log": "2145eb3d656f688a8b99c5c6caa11ce7a85695fb223223b27a18d4f2db4c7c0e",
+    "target/payload-tail-evidence/miri-prepared-i686-alignment-red-20261020.log": "fc0f72b5d09f3edd328b98a7d3f4ad5df5e8a9971199720af898dcc2e94d7623",
+    "target/payload-tail-evidence/native-memory-final-20261020.log": "bf5b08a3a8273adc605fc5b557bd0dc22fb21a06547c8afb891e7ce6e028c4f1",
+    "target/payload-tail-evidence/native-payload-final-20261020.log": "c9f259585ecb320c1c7aeacfcdafa56c30e88e7b9cfcf60181eab9ccd5db63da",
+    "target/payload-tail-evidence/native-memory-ext-final-20261020.log": "710a6ef21b01bf0b86368322e5b338750ad194d392f9949c2e5f0a3d6302824b",
+    "target/payload-tail-evidence/native-persistent-final-20261020.log": "231b806e34ff7c4d2a47cc3b6d814078a4197f9719fd8f9175c6fd4342c51b0b",
+    "target/payload-tail-evidence/native-heap-final-20261020.log": "1333131f154aa43e2b74d62c1c4a8da83ede4b08dafa36f12c2ccc6862d8bdb4",
+    "target/payload-tail-evidence/miri-storage-alignment-final-20261020.log": "bdc267c102a0e814fcfb93f25088ea17cf1b09288523fa1b77c1329896268349",
+    "target/payload-tail-evidence/miri-payload-20261020.log": "f06ce829100f2c9197cc9f9b0f965c6f837b3c831578aa3076b94b7343fdef7a",
+    "target/payload-tail-evidence/miri-original-transient-20261020.log": "ffcf93d71c311d96c1cbebcb2a646fcf0752db60f4ba4cdcbff5e4df9198dfb6",
+    "target/payload-tail-evidence/miri-original_heap_initializer_reentry_rejects_changed_shape_and_accounts_escaped_lease-20261020.log": "c849669544c794ea6d007f5152642a5feb30c92c303c30dfe7416e01858eb0cf",
+    "target/payload-tail-evidence/miri-prepared_payload_unwind_restores_ownership_and_budget_before_publication-20261020.log": "4ad7b234d4ecc3ebf9b7415fb503c835db6d87f26a6e5a030e6dff6823350da7",
+    "target/payload-tail-evidence/miri-all_header_allocations_reuse_slots_and_charge_only_payload_growth-20261020.log": "69cd3261728a6e1605ec942a0fb80766e136048d22530f139cf39769d85932cb",
+    "target/payload-tail-evidence/android-alignment-final-20261020.log": "c2dcf9fd6d3a8698470a6e34b802c963f5d5bb27b429d282ceb89f3290351422",
+    "target/payload-tail-evidence/clippy-alignment-final-20261020.log": "322cdafbba7f8429b6ab5a98f0d80b4bccf2685c48bac563307ee8c81d603bfc",
+    "target/payload-tail-evidence/wasm-build-alignment-final-20261020.log": "0d04c84b6123db5035eab4ce03cc34fc9632f00f7e29a05c2f6ecb7942642601",
+    "target/payload-tail-evidence/wasm-optimize-20261020.log": "8b8e3b0ac539d8a937cb1426395a623919cc6cdcff6ee9f9513e526559aa0203",
+    "target/payload-tail-evidence/wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/payload-tail-evidence/wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "target/payload-tail-evidence/wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/payload-tail-evidence/wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/payload-tail-evidence/wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/payload-tail-evidence/wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "target/payload-tail-evidence/wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/payload-tail-evidence/wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "target/payload-tail-evidence/wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/payload-tail-evidence/wasm-portable-package-contracts-20261020.log": "f4b3897088da1056415265b6d03135c60f85ca21183c8a725245700be497e2f7"
+  },
+  "limits": [
+    "This closes typed data-buffer and generic scratch tail accounting. External Rc typed-cell strong/weak aliases are tracked separately in cvs2.11.4; native maps/root and iterator vectors, Rc/weak control allocation layouts and allocator rounding remain in parent cvs2.11. No global RSS or whole-memory completion claim.",
+    "Browser64MiB and linear-memory256MiB production caps and active-node quotas remain unchanged. Tight test fixtures reflect actual allocation layouts rather than raising production limits.",
+    "Node V8 executes Node/web bindings; no new Chromium or Android device execution claim.",
+    "Local working-tree validation includes the separate graphics inputs above and is not an immutable clean-checkout or whole-CI result."
+  ]
+}
