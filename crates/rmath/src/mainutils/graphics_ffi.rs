@@ -7,9 +7,9 @@ use crate::mainutils::errors::{Rf_error, Rf_warning};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, Rboolean, SEXP, TRUE};
 use crate::sexp::globals::R_NilValue;
 
-const CE_NATIVE: c_int = 0;
-const CE_UTF8: c_int = 1;
-const CE_SYMBOL: c_int = 5;
+const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
+const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
+const CE_SYMBOL: c_int = crate::sexp::encoding::CE_SYMBOL;
 
 const GE_DEVICE: c_int = 0;
 const GE_NDC: c_int = 1;

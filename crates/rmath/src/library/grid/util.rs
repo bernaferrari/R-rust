@@ -36,7 +36,7 @@ unsafe fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c
     unreachable!()
 }
 
-const CE_SYMBOL: c_int = 5;
+const CE_SYMBOL: c_int = crate::sexp::encoding::CE_SYMBOL;
 
 /* ==================== Helper: fmax2/fmin2 ==================== */
 

@@ -32,6 +32,7 @@ const contracts = [
       : resolve(fixtures, 'complex-original-' + name + '.out'),
   ]),
   ...[
+    'encoding-tag-contract',
     'complex-print-public-contract',
     'stats-namespace-public-contract',
     'get-lazy-mode-public-contract',

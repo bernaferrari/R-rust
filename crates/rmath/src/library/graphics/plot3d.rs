@@ -54,7 +54,7 @@ type rcolor = u32;
 type cetype_t = c_int;
 
 /// CE_NATIVE constant.
-const CE_NATIVE: cetype_t = 1;
+const CE_NATIVE: cetype_t = crate::sexp::encoding::CE_NATIVE;
 
 /// R_TRANWHITE: transparent white color constant.
 const R_TRANWHITE: u32 = 0x00FFFFFF;

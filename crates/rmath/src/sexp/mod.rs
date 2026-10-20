@@ -19,6 +19,7 @@ pub mod attrib_core;
 pub mod builder;
 pub(crate) mod constructors;
 pub mod context;
+pub(crate) mod encoding;
 pub(crate) mod env_hash;
 pub mod envir;
 pub mod ffi;

@@ -3,6 +3,7 @@
 //! branch remains an explicitly unsafe host contract.
 
 use crate::mainutils::native_routines::buffers::{BufferInterface, BufferType, NativeBuffer};
+use crate::sexp::encoding::{CE_LATIN1, CE_UTF8};
 use crate::sexp::{
     ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SxpInfo},
     object::{NodeAllocator, NodeDomain, Sexp, SexpError, SexpMut, SexpResult},
@@ -233,10 +234,10 @@ fn marshal(
 /// passed through unchanged.
 fn translate_native_bytes(bytes: &[u8], ce: c_int) -> Vec<u8> {
     if crate::mainutils::platform::locale_is_utf8() {
-        if ce == 3 && bytes.is_ascii() {
+        if ce == CE_LATIN1 && bytes.is_ascii() {
             return bytes.to_vec();
         }
-        if ce != 3 {
+        if ce != CE_LATIN1 {
             return bytes.to_vec();
         }
         // latin1 in a UTF-8 locale: re-encode.
@@ -248,7 +249,7 @@ fn translate_native_bytes(bytes: &[u8], ce: c_int) -> Vec<u8> {
         return out;
     }
     let mut out = Vec::with_capacity(bytes.len());
-    if ce == 2 {
+    if ce == CE_UTF8 {
         let mut i = 0;
         while i < bytes.len() {
             let k = bytes[i];
@@ -283,7 +284,7 @@ fn translate_native_bytes(bytes: &[u8], ce: c_int) -> Vec<u8> {
                 }
             }
         }
-    } else if ce == 3 {
+    } else if ce == CE_LATIN1 {
         for &k in bytes {
             if k < 0x80 {
                 out.push(k);

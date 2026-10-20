@@ -91,7 +91,7 @@ const MAR4: GUnit = 16;
 const DEG2RAD: c_double = std::f64::consts::PI / 180.0;
 
 /// CE_SYMBOL: character encoding for symbol font.
-const CE_SYMBOL: c_int = 2;
+const CE_SYMBOL: c_int = crate::sexp::encoding::CE_SYMBOL;
 
 /* ========================================================================
  * R_Log10 -- base-10 logarithm with NA handling

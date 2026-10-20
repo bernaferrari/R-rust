@@ -25,7 +25,7 @@ use crate::mainutils::r_format::CArg;
 use crate::sexp::accessors::{
     CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar};
+use crate::sexp::constructors::{Rf_allocVector, Rf_isString};
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_FINITE, R_IsNA, R_xlen_t, SEXP};
 use crate::sexp::protect::protect;
 
@@ -40,8 +40,8 @@ const MAXLINE: usize = 8192;
 const MAXNARGS: usize = 100;
 
 /// R encoding constants.
-const CE_NATIVE: c_int = 0;
-const CE_UTF8: c_int = 1;
+const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
+const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
 
 /// R_PosInf constant.
 const R_PosInf: c_double = f64::INFINITY;
@@ -66,24 +66,12 @@ const SYMSXP: c_int = 1;
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(s) }
-}
-
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateCharUTF8(s) }
-}
-
 unsafe fn getCharCE(s: SEXP) -> c_int {
     unsafe { crate::sexp::accessors::getCharCE(s) }
 }
 
 unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     unsafe { crate::mainutils::coerce::coerceVector(s, t) }
-}
-
-unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
-    unsafe { Rf_mkChar(s) }
 }
 
 unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
@@ -315,6 +303,27 @@ unsafe fn c_strcat(dest: *mut c_char, src: *const c_char) {
 
 pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        use crate::sexp::{
+            encoding::{self, Mode, NulText, TextEncoding},
+            owner::OwnerToken,
+        };
+        let owner =
+            OwnerToken::current().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let anchor = owner
+            .sexp(args)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let text = |raw, mode| {
+            owner
+                .require_active()
+                .and_then(|()| owner.sexp(raw))
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .and_then(|v| NulText::new(&v, mode, &anchor))
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
         // Stock do_sprintf raises via error(), which attributes the error to
         // the innermost call ("Error in sprintf(...) : ..."). Attribute the
         // raise sites here to this builtin's own applied call.
@@ -411,13 +420,21 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let mut outputString = R_AllocStringBuffer(0, &mut outbuff);
             *outputString = 0;
 
-            let use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
+            let mut use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
+            if !use_UTF8 {
+                for i in 0..nargs as usize {
+                    if TYPEOF(a[i]) == STRSXP
+                        && getCharCE(STRING_ELT(a[i], ns % lens[i] as R_xlen_t)) == CE_UTF8
+                    {
+                        use_UTF8 = true;
+                        break;
+                    }
+                }
+            }
 
-            let formatString = if use_UTF8 {
-                translateCharUTF8(STRING_ELT(format, ns % nfmt as R_xlen_t))
-            } else {
-                translateChar(STRING_ELT(format, ns % nfmt as R_xlen_t))
-            };
+            let mode = if use_UTF8 { Mode::Utf8 } else { Mode::Native };
+            let format_text = text(STRING_ELT(format, ns % nfmt as R_xlen_t), mode);
+            let formatString = format_text.as_ptr();
             let n = c_strlen(formatString);
             if n > MAXLINE {
                 error(
@@ -429,6 +446,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let mut cnt: c_int = 0;
 
             while cur < n {
+                let mut argument_text = None;
                 let curFormat = formatString.add(cur);
                 let mut ss: *const c_char = ptr::null();
                 let chunk: usize;
@@ -983,13 +1001,8 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     }
 
                                     let elt = STRING_ELT(_this, ns % thislen as R_xlen_t);
-                                    ss = if elt == crate::sexp::globals::R_NaString() {
-                                        b"NA\0".as_ptr() as *const c_char
-                                    } else if use_UTF8 {
-                                        translateCharUTF8(elt)
-                                    } else {
-                                        translateChar(elt)
-                                    };
+                                    argument_text = Some(text(elt, mode));
+                                    ss = argument_text.as_ref().unwrap().as_ptr();
                                     if *fmtp.add(1) != b's' as c_char {
                                         if c_strlen(ss) > MAXLINE {
                                             warning(
@@ -1042,8 +1055,25 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if ns == 0 {
                 ans = Rf_allocVector(STRSXP, maxlen);
             }
-            let ienc = if use_UTF8 { CE_UTF8 } else { CE_NATIVE };
-            SET_STRING_ELT(ans, ns, mkCharCE(outputString, ienc));
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let encoding = if use_UTF8 {
+                TextEncoding::Utf8
+            } else {
+                TextEncoding::Native
+            };
+            let character = owner
+                .node_factory()
+                .allocate(|a| {
+                    encoding::allocate_character(
+                        a,
+                        CStr::from_ptr(outputString).to_bytes(),
+                        encoding,
+                    )
+                })
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            SET_STRING_ELT(ans, ns, character.as_raw());
         }
 
         let mut nunused: c_int = 0;
@@ -1054,7 +1084,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         if nunused > 0 {
             if nfmt == 1 {
-                let f = translateChar(STRING_ELT(format, 0));
+                let f = text(STRING_ELT(format, 0), Mode::Native);
                 if nunused == 1 {
                     warning(
                         b"one argument not used by format '%s'\0".as_ptr() as *const c_char,
@@ -1098,6 +1128,51 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owned_encoding_sprintf_native_bridge_uses_retained_converted_bytes() {
+        use crate::sexp::{
+            RSession,
+            encoding::{TextEncoding, allocate_character},
+            ffi::SEXPTYPE,
+        };
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let format = factory.strings(&["é:%s"]).unwrap();
+            let character = factory
+                .allocate(|a| allocate_character(a, &[0xe9], TextEncoding::Latin1))
+                .unwrap();
+            let argument = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))
+                .unwrap();
+            // SAFETY: the original factory owns both exact live allocations;
+            // the bridge performs bounded reads while their roots remain live.
+            unsafe {
+                SET_STRING_ELT(argument.as_raw(), 0, character.as_raw());
+            }
+            let rest = factory
+                .pairlist_cell(&argument, &factory.nil(), &factory.nil())
+                .unwrap();
+            let arguments = factory
+                .pairlist_cell(&format, &rest, &factory.nil())
+                .unwrap();
+            let result = factory
+                .wrap(unsafe {
+                    do_sprintf(
+                        factory.nil().as_raw(),
+                        factory.nil().as_raw(),
+                        arguments.as_raw(),
+                        factory.nil().as_raw(),
+                    )
+                })
+                .unwrap();
+            assert_eq!(result.try_string_value_elt(0).unwrap().unwrap(), "é:é");
+            let element = result.try_string_elt(0).unwrap();
+            assert_eq!(unsafe { getCharCE(element.as_raw()) }, CE_UTF8);
+        });
+    }
+
     use std::ffi::CString;
 
     fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {

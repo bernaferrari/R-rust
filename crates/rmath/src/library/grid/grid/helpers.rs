@@ -94,9 +94,9 @@ pub(crate) const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 pub(crate) const R_TRANWHITE: c_int = 0x7FFFFFFF;
 pub(crate) const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
-pub(crate) const CE_UTF8: c_int = 1;
-pub(crate) const CE_SYMBOL: c_int = 2;
-pub(crate) const CE_NATIVE: c_int = 0;
+pub(crate) const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
+pub(crate) const CE_SYMBOL: c_int = crate::sexp::encoding::CE_SYMBOL;
+pub(crate) const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
 
 // Symbol drawing constants
 pub(crate) const SMALL: f64 = 0.25;

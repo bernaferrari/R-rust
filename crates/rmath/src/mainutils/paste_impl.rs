@@ -37,10 +37,10 @@ use crate::mainutils::relop::PRIMVAL;
 // ---------------------------------------------------------------------------
 
 /// R encoding constants (from Rinternals.h).
-pub const CE_NATIVE: c_int = 0;
-pub const CE_UTF8: c_int = 1;
-pub const CE_LATIN1: c_int = 2;
-pub const CE_BYTES: c_int = 3;
+pub const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
+pub const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
+pub const CE_LATIN1: c_int = crate::sexp::encoding::CE_LATIN1;
+pub const CE_BYTES: c_int = crate::sexp::encoding::CE_BYTES;
 
 /// Maximum element size used in R's string buffers (from Defn.h).
 pub const MAXELTSIZE: usize = 8192;
@@ -619,45 +619,23 @@ impl owned_paste::Native for PasteNative<'_> {
         mode: owned_paste::Mode,
         parent: &owned_paste::Value,
     ) -> crate::sexp::object::SexpResult<owned_paste::Bytes> {
-        self.0.with_native(|original| {
-            let pointer = unsafe {
-                match mode {
-                    owned_paste::Mode::Native => translateChar(value.as_raw()),
-                    owned_paste::Mode::Utf8 => translateCharUTF8(value.as_raw()),
-                    owned_paste::Mode::Bytes => CHAR(value.as_raw()),
-                }
-            };
-            original.require_active()?;
-            if pointer.is_null() {
-                return Err(crate::sexp::object::SexpError::MissingData {
-                    sexptype: SEXPTYPE::CHARSXP,
-                });
-            }
-            // Translation returns an admitted immutable span; finish its copy
-            // before allocation/provider entry, retaining the original character.
-            let span = unsafe { std::ffi::CStr::from_ptr(pointer) }.to_bytes();
-            let node = parent.allocation()?;
-            let reservation = node
-                .heap_identity()
-                .reserve_payload_bytes(node, span.len())
-                .ok_or(crate::sexp::object::SexpError::AllocationFailed {
-                    object: "paste translated-byte budget",
-                })?;
-            let mut data = Vec::new();
-            data.try_reserve_exact(span.len()).map_err(|_| {
-                crate::sexp::object::SexpError::AllocationFailed {
-                    object: "paste translated bytes",
-                }
-            })?;
-            data.extend_from_slice(span);
-            Ok(owned_paste::Bytes {
-                data,
-                _reservation: reservation,
-            })
+        self.0.require_active()?;
+        self.0.domain().link(value)?;
+        self.0.domain().link(parent)?;
+        let translated = crate::sexp::encoding::translate(value, mode, parent)?;
+        self.0.require_active()?;
+        Ok(owned_paste::Bytes {
+            data: translated.data,
+            _reservation: translated.reservation,
         })
     }
-    fn flags(&self, value: &owned_paste::Value) -> (bool, bool) {
-        (IS_UTF8(value.as_raw()), IS_BYTES(value.as_raw()))
+    fn flags(
+        &self,
+        value: &owned_paste::Value,
+    ) -> crate::sexp::object::SexpResult<crate::sexp::encoding::CharacterFlags> {
+        self.0.require_active()?;
+        self.0.domain().link(value)?;
+        crate::sexp::encoding::flags(value)
     }
     fn name(&self, op: &owned_paste::Value) -> String {
         unsafe { std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op.as_raw())) }

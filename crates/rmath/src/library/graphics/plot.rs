@@ -95,13 +95,13 @@ const LINES: c_int = 7;
 const CHARS: c_int = 8;
 
 /* cetype_t constants */
-const CE_ANY: cetype_t = 0;
-const CE_NATIVE: cetype_t = 1;
-const CE_UTF8: cetype_t = 2;
-const CE_LATIN1: cetype_t = 3;
-const CE_BYTES: cetype_t = 4;
-const CE_SYMBOL: cetype_t = 5;
-const CE_ISOLATIN1: cetype_t = 6; /* alias for CE_LATIN1 */
+const CE_ANY: cetype_t = crate::sexp::encoding::CE_ANY;
+const CE_NATIVE: cetype_t = crate::sexp::encoding::CE_NATIVE;
+const CE_UTF8: cetype_t = crate::sexp::encoding::CE_UTF8;
+const CE_LATIN1: cetype_t = crate::sexp::encoding::CE_LATIN1;
+const CE_BYTES: cetype_t = crate::sexp::encoding::CE_BYTES;
+const CE_SYMBOL: cetype_t = crate::sexp::encoding::CE_SYMBOL;
+const CE_ISOLATIN1: cetype_t = CE_LATIN1; /* compatibility alias */
 
 /* GMode constants */
 const GMODE_OFF: c_int = 0;

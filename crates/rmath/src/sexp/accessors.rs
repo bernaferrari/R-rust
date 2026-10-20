@@ -1687,10 +1687,13 @@ mod tests {
 // Encoding accessors (GP bit checks)
 // ---------------------------------------------------------------------------
 
-const BYTES_MASK: u16 = 1 << 1; // 0x02
-const LATIN1_MASK: u16 = 1 << 2; // 0x04
-const UTF8_MASK: u16 = 1 << 3; // 0x08
-const IS_ASCII_MASK: u16 = 1 << 6; // 0x40
+use super::encoding::{
+    ASCII_MASK as IS_ASCII_MASK, BYTES_MASK, ENCODING_MASK, LATIN1_MASK, TextEncoding, UTF8_MASK,
+};
+
+#[cfg(test)]
+#[path = "encoding_tag_tests.rs"]
+mod encoding_tag_tests;
 
 /// IS_ASCII: check if CHARSXP has ASCII encoding marker.
 pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
@@ -1723,13 +1726,10 @@ pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
 /// Set exactly one of UTF-8 / latin1 / bytes, or clear all (native/unknown).
 pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
     mutate_header(x, |header| {
-        let mut gp = header.sxpinfo.gp() & !(UTF8_MASK | LATIN1_MASK | BYTES_MASK);
-        match kind {
-            "UTF-8" => gp |= UTF8_MASK,
-            "latin1" => gp |= LATIN1_MASK,
-            "bytes" => gp |= BYTES_MASK,
-            _ => {}
-        }
+        let gp = (header.sxpinfo.gp() & !ENCODING_MASK)
+            | TextEncoding::from_label(kind)
+                .gp_bits()
+                .expect("character encoding label");
         header.sxpinfo.set_gp(gp);
     });
 }
@@ -1796,18 +1796,10 @@ pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
 }
 
 /// getCharCE: return the character encoding of a CHARSXP.
-/// Returns CE_NATIVE (0) for native, CE_UTF8 (2) for UTF-8, etc.
+/// Uses GNU's native0/UTF8=1/Latin1=2/bytes=3 compatibility numbers.
 pub unsafe fn getCharCE(x: SEXP) -> c_int {
     let gp = header_snapshot(x).map_or(0, |header| header.sxpinfo.gp());
-    if gp & UTF8_MASK != 0 {
-        2
-    } else if gp & LATIN1_MASK != 0 {
-        3
-    } else if gp & BYTES_MASK != 0 {
-        4
-    } else {
-        0
-    }
+    TextEncoding::from_gp(gp).as_gnu()
 }
 #[test]
 fn reference_elements_reject_foreign_payloads_and_oversized_headers() {

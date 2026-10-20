@@ -301,7 +301,7 @@ pub(crate) fn grep_match_indices(
             }
             if !utf8_warned && TYPEOF(x) == SEXPTYPE::STRSXP {
                 let elt = STRING_ELT(x, i);
-                if crate::sexp::accessors::getCharCE(elt) == 2 {
+                if crate::sexp::accessors::getCharCE(elt) == crate::sexp::encoding::CE_UTF8 {
                     let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
                     if std::str::from_utf8(bytes).is_err() {
                         utf8_warned = true;

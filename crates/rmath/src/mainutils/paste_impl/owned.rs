@@ -1,18 +1,14 @@
 #![forbid(unsafe_code)]
-//! Owning paste traversal; native encoding/coercion stays at the explicit bridge.
+//! Owning paste traversal with checked encoding and explicit native coercion.
 use crate::sexp::{
+    encoding::{self, CharacterFlags, TextEncoding},
     ffi::SEXPTYPE,
     memory::TransientReservation,
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::RuntimeAccess,
 };
 pub(super) type Value = Sexp<'static>;
-#[derive(Clone, Copy)]
-pub(super) enum Mode {
-    Native,
-    Utf8,
-    Bytes,
-}
+pub(super) use crate::sexp::encoding::Mode;
 pub(super) struct Bytes {
     pub(super) data: Vec<u8>,
     pub(super) _reservation: TransientReservation,
@@ -22,7 +18,7 @@ pub(super) trait Native {
     fn boolean(&self, value: &Value, call: &Value) -> SexpResult<bool>;
     fn coerce(&self, value: &Value, env: &Value) -> SexpResult<Value>;
     fn bytes(&self, value: &Value, mode: Mode, parent: &Value) -> SexpResult<Bytes>;
-    fn flags(&self, value: &Value) -> (bool, bool);
+    fn flags(&self, value: &Value) -> SexpResult<CharacterFlags>;
     fn name(&self, op: &Value) -> String;
 }
 fn error(message: impl Into<String>) -> SexpError {
@@ -67,18 +63,16 @@ fn vector(access: &RuntimeAccess, n: i64) -> SexpResult<SexpMut<'static>> {
             .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, n)))?,
     )
 }
-fn character(access: &RuntimeAccess, bytes: &[u8]) -> SexpResult<Value> {
-    // The pre-existing mkCharCE bridge ignored the requested encoding. Keep
-    // those bytes/constructor semantics; encoding-flag parity is separate.
+fn character(access: &RuntimeAccess, bytes: &[u8], encoding: TextEncoding) -> SexpResult<Value> {
     let d = access.domain();
     access
         .allocator(&d)?
-        .allocate(|a| Some(a.alloc_charsxp(bytes)))
+        .allocate(|a| encoding::allocate_character(a, bytes, encoding))
 }
 fn zero(access: &RuntimeAccess, collapse: bool) -> SexpResult<Value> {
     let mut result = vector(access, i64::from(collapse))?;
     if collapse {
-        result.try_set_string_elt(0, character(access, b"")?)?;
+        result.try_set_string_elt(0, character(access, b"", TextEncoding::Native)?)?;
     }
     access.require_active()?;
     Ok(result.freeze())
@@ -173,6 +167,11 @@ pub(super) fn evaluate(
     } else {
         None
     };
+    if let Some(separator) = &sep {
+        // GNU validates native separator translation before argument coercion.
+        native.bytes(separator, Mode::Native, &args)?;
+    }
+    let sep_flags = sep.as_ref().map(|s| native.flags(s)).transpose()?;
     let collapse = argument(if use_sep { 2 } else { 1 })?;
     let recycle = argument(if use_sep { 3 } else { 2 })?;
     let recycle = native.boolean(&recycle, &call)?;
@@ -215,19 +214,17 @@ pub(super) fn evaluate(
     }
     let mut result = vector(access, maxlen)?;
     for i in 0..maxlen {
-        let (mut utf8, mut bytes) = if nx > 1 {
-            sep.as_ref().map_or((false, false), |s| native.flags(s))
-        } else {
-            (false, false)
-        };
+        let selected_sep_flags = if nx > 1 { sep_flags } else { None };
+        let f = selected_sep_flags.unwrap_or_default();
+        let (mut utf8, mut bytes) = (f.utf8, f.bytes);
         // Keep GNU's flag/width/copy passes and callback order. Each selected
         // character has an actual owner through translation; no borrowed span
         // crosses a provider or output-allocation callback.
         for j in 0..nx {
             if let Some(v) = select(access, &x, j, i)? {
-                let f = native.flags(&v);
-                utf8 |= f.0;
-                bytes |= f.1;
+                let f = native.flags(&v)?;
+                utf8 |= f.utf8;
+                bytes |= f.bytes;
             }
         }
         let mode = if bytes {
@@ -264,27 +261,30 @@ pub(super) fn evaluate(
         parts
             .try_reserve_exact(usize::try_from(nx).map_err(|_| allocation("paste input count"))?)
             .map_err(|_| allocation("paste row"))?;
+        let mut knowledge = Knowledge::new(selected_sep_flags);
         for j in 0..nx {
             parts.push(if let Some(v) = select(access, &x, j, i)? {
+                knowledge.add(native.flags(&v)?);
                 native.bytes(&v, mode, &args)?
             } else {
                 empty(&args)?
             });
         }
         let joined = join(&args, &parts, &separator)?;
-        let text = character(access, &joined.data)?;
+        let text = character(access, &joined.data, knowledge.encoding(mode))?;
         result.try_set_string_elt(i, text)?;
         access.require_active()?;
     }
     if do_collapse {
         let collapse = element(access, &collapse, 0)?;
         let n = result.freeze();
-        let (mut utf8, mut bytes) = native.flags(&collapse);
+        let f = native.flags(&collapse)?;
+        let (mut utf8, mut bytes) = (f.utf8, f.bytes);
         for i in 0..maxlen {
             let v = element(access, &n, i)?;
-            let f = native.flags(&v);
-            utf8 |= f.0;
-            bytes |= f.1;
+            let f = native.flags(&v)?;
+            utf8 |= f.utf8;
+            bytes |= f.bytes;
         }
         let mode = if bytes {
             Mode::Bytes
@@ -305,16 +305,54 @@ pub(super) fn evaluate(
                 usize::try_from(maxlen).map_err(|_| allocation("paste collapse length"))?,
             )
             .map_err(|_| allocation("paste collapse"))?;
+        let mut knowledge = Knowledge::new(Some(f));
         for i in 0..maxlen {
             let v = element(access, &n, i)?;
+            knowledge.add(native.flags(&v)?);
             parts.push(native.bytes(&v, mode, &args)?);
         }
         let joined = join(&args, &parts, &separator)?;
         let mut output = vector(access, 1)?;
-        output.try_set_string_elt(0, character(access, &joined.data)?)?;
+        output.try_set_string_elt(
+            0,
+            character(access, &joined.data, knowledge.encoding(mode))?,
+        )?;
         access.require_active()?;
         return Ok(output.freeze());
     }
     access.require_active()?;
     Ok(result.freeze())
+}
+
+struct Knowledge {
+    any: bool,
+    all: bool,
+}
+impl Knowledge {
+    fn new(separator: Option<CharacterFlags>) -> Self {
+        let mut result = Self {
+            any: false,
+            all: true,
+        };
+        if let Some(flags) = separator {
+            result.add(flags);
+        }
+        result
+    }
+    fn add(&mut self, flags: CharacterFlags) {
+        self.any |= flags.known;
+        self.all &= flags.known || flags.ascii;
+    }
+    fn encoding(&self, mode: Mode) -> TextEncoding {
+        match mode {
+            Mode::Bytes => TextEncoding::Bytes,
+            Mode::Utf8 => TextEncoding::Utf8,
+            Mode::Native
+                if self.any && self.all && crate::mainutils::platform::locale_is_utf8() =>
+            {
+                TextEncoding::Utf8
+            }
+            Mode::Native => TextEncoding::Native,
+        }
+    }
 }

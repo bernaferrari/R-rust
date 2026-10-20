@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-w03x.3",
+  "source_base": "e867e1324b8c91bcbddea416746f0f899a303c78",
+  "behavior": [
+    "One safe TextEncoding domain with GNU native0/UTF8=1/Latin1=2/bytes3/symbol5/any99 adapters; preserve the actual serialized GP mask bits and GNU getCharCE precedence.",
+    "Migrate all getCharCE ordinal comparisons and graphics/grid/native helper constants to that domain. Byte Rstrwid now uses GNU bytes3 and four hex columns for e9.",
+    "Use checked sealed payload leases for native-compatible text, with no extra copy; Latin1/native-C conversions own fallible exact-length buffers and original-heap transient tickets, including native terminators.",
+    "Validate original heap domains, input shape, immutable data and bounded terminators before reads. Keep actual payload data and its charge alive after original arena teardown.",
+    "Publish requested tags inside the original constructor lend before GC/provider notification; ASCII stays unknown, byte mode dominates, native/known/collapse tags follow GNU paste.",
+    "Honor UTF8 sprintf arguments as well as formats, and reject byte translations including paste separators before coercion, as GNU does."
+  ],
+  "red": {
+    "direct_strict_i686": 4,
+    "initial_native_public_fixture_failed": 1,
+    "expanded_production_wasm": {
+      "cases": 24,
+      "different": [
+        "sprintf UTF8 format Latin1 value",
+        "paste UTF8 Latin1",
+        "paste Latin1 UTF8",
+        "paste bytes UTF8",
+        "paste native UTF8 ASCII",
+        "paste Latin1 Latin1",
+        "paste native UTF8 Latin1",
+        "paste UTF8 Latin1 collapse",
+        "paste bytes UTF8 collapse",
+        "sprintf native format Latin1 value",
+        "sprintf byte value",
+        "paste byte separator",
+        "paste byte collapse"
+      ],
+      "matching": [
+        "input UTF8",
+        "input Latin1",
+        "input bytes",
+        "sprintf UTF8 format UTF8 value",
+        "grep Latin1 pattern",
+        "regexpr UTF8 Latin1",
+        "sub UTF8 Latin1",
+        "pmatch mixed tags",
+        "input native UTF8 bytes",
+        "input UTF8 after native copy",
+        "sprintf native format utf8 value"
+      ]
+    },
+    "baseline_wasm_commit": "e867e1324b8c91bcbddea416746f0f899a303c78"
+  },
+  "oracle": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "fixture_corrections": [
+    "Encoding-tag fixture explicitly clears the automatic UTF8 GP bit before asserting unknown; initial bad setup log retained separately.",
+    "Owned translation fixtures use managed RSession owners; standalone arena views correctly rejected into_owned with RootUnavailable. Initial six setup failures retained separately.",
+    "Translation workspace is measured with allocated_bytes plus workspace_bytes. The five passing Miri cases and the original one failed counter assertion remain recorded; repaired expansion/terminator boundary test independently passes strict Miri. No budget or ownership assertion removed."
+  ],
+  "validation": {
+    "native_distinct_total": 81,
+    "native_suites": {
+      "owned_translation_and_sprintf_bridge": 7,
+      "original_paste_ownership_and_provider_order": 8,
+      "sprintf_existing_helpers": 26,
+      "printutils_missing_name_control": 1,
+      "native_interface_ownership": 35,
+      "public_encoding_original_three": 3,
+      "expanded_24_case_contract": 1,
+      "public_gc_torture": 1
+    },
+    "native_note": "The original three public tests include the initial21-case fixture; the expanded24-case contract passes again and counts once in the distinct total. The unchanged forced-GC fixture passed in274.03s on the earlier candidate before the final argument-tag scan/separator-validation refinements. No immutable all-tests snapshot claim.",
+    "native_interface_ignored": 1,
+    "strict_isolated_i686_miri": {
+      "gnu_tags_and_byte_width": 4,
+      "unchanged_passing_owned_controls_from_counter_fixture_run": 5,
+      "repaired_expansion_and_nul_budget": 1,
+      "actual_sprintf_native_bridge": 1,
+      "distinct_total": 11,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "note": "Five original owned cases pass in miri-owned-workspace-counter-fixture log, alongside the one retained bad test-counter assertion; that corrected test independently passes in miri-owned-budget-green log. Original assertions, budget boundaries and retention checks remain."
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt": "PASS",
+    "source_whitespace_excluding_exact_gnu_stdout": "PASS",
+    "node_syntax": "PASS",
+    "production_wasm_checks": 268,
+    "wasm_node_checks": {
+      "encoding-tags": 4,
+      "quote-options": 8,
+      "loess-native-outputs": 86,
+      "internal-dput": 4,
+      "regex-workspace": 8,
+      "gnu-opcode-contracts": 28,
+      "s4-cache-new": 8,
+      "permanent-ledger": 14,
+      "checked-exhaustion": 12,
+      "serialization-workspace": 14
+    },
+    "web_binding_checks": 82
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29585129,
+      "sha256": "39f8bf69f40e020e644c59e490faa5cbfeb8d81cde33f0182e061b5fb0ca553e"
+    },
+    "output": {
+      "bytes": 25322102,
+      "sha256": "16245d04c57355203bf55b639356f81d3655cc71362c6d2a14f119cabb0dcb74"
+    }
+  },
+  "source_sha256": {
+    "crates/r-embed/tests/encoding.rs": "82782ba353b7a333b5b03c6de6f6ecab45ab867bb5ce92b112874a2a7d6e40f4",
+    "crates/rmath/src/library/graphics/graphics.rs": "921f3a2a4ee720b01d1c0cd6f3209a1a01d6129bfe59bd3b9a856857260fb462",
+    "crates/rmath/src/library/graphics/plot.rs": "398b1aee6a66da16257e3149668762acf76278dccb667dcdc499dcf337750dd6",
+    "crates/rmath/src/library/graphics/plot3d.rs": "b8f7662de27db3c46615da9a9b321b2254c20d1a69bb590be4130ecf69f5eb61",
+    "crates/rmath/src/library/grdevices/devps.rs": "164804d96855fd32af7a8f48f8887cdaabca7568073552f43be987a257d50a8e",
+    "crates/rmath/src/library/grid/grid/helpers.rs": "c6d8a0929f84ec19626eb4adfa40802e161882c8973e23a5af9d531f550e043e",
+    "crates/rmath/src/library/grid/util.rs": "19d665eb2f7f3426c315dc4888a048e90a4f04501a92dae08d1f88da9c9d3142",
+    "crates/rmath/src/library/tools/text.rs": "dfb4ca8b7d3e53a0954e408b7ff4775c7965cba9ced980f49b7aa7ed3e1eb006",
+    "crates/rmath/src/mainutils/dotcode/buffer_dispatch.rs": "99f9aa0b04d097d9f9554830d044a0b362ee1d9bdd9b20b331778d265ac9f0d4",
+    "crates/rmath/src/mainutils/essentials/shared/runtime_misc.rs": "eb2fbf0d8f3c998ba6247ee5c36c38752e420c57a0ab2abf6933bf8499ff1675",
+    "crates/rmath/src/mainutils/graphics_ffi.rs": "97538ca41714554e248dfde50615f4de7e56acc555c26363fe5d51334260da28",
+    "crates/rmath/src/mainutils/paste_impl.rs": "fb3d2d1ee597681c1fdabc0e0a48da5fd675d1d02c2fb0c08920285970b4dbc5",
+    "crates/rmath/src/mainutils/paste_impl/owned.rs": "a3ae8d2c837793e900b5e28e7d5984579358eaccc849fe26a137d26598bf75ce",
+    "crates/rmath/src/mainutils/printutils.rs": "be7193f3baffb5a753f8ea28664f10c4cdfbd6bdb27ab840232a0be6484c2315",
+    "crates/rmath/src/mainutils/sprintf_main.rs": "d771ce98d97215463fc29b5f7115b273c3c63a405a6ffd79a0b2223795a3522e",
+    "crates/rmath/src/mainutils/util_main.rs": "64fe8588d06984e6f7f94dcc0a996a5802613e38cb73eb7909c1506a0ed6c131",
+    "crates/rmath/src/modules/internet/sockconn.rs": "b00e0ff27441557e450ddfd34ebdb07d6fc5ca63c045e084b01d751521bb10cd",
+    "crates/rmath/src/sexp/accessors.rs": "409b4a90e3a4c2c45a36aa7bc2ca426f9f43cd6ff3b64c6825ff449c31b82d4c",
+    "crates/rmath/src/sexp/mod.rs": "e1a544695552b95b29ad07c530a447ea0918a4523a3fc4350d37344b4a73226e",
+    "tests/browser/portable-package-contracts.mjs": "23d44693d315d0859340051ddc5061775562dbe3b0cd0b103143721ee7fe0b15",
+    "crates/r-embed/tests/fixtures/encoding-tag-contract.R": "ca7ff52c646ed9f5cdd5060acf16fdba629b591b1a98aa876b2135afbc261213",
+    "crates/r-embed/tests/fixtures/encoding-tag-contract.out": "87215d91fc716c289025cb7b32362d053b2ed7ed79730106049af183daa01703",
+    "crates/rmath/src/sexp/encoding.rs": "3582fb216423d8b2e25d5b6178e02ceef706fcbb9407732ee59a5d58d358dc99",
+    "crates/rmath/src/sexp/encoding/owned.rs": "abeaf090beb228620c868be17d3ba10d26fb7e339ec5d5e1a94853231a235a40",
+    "crates/rmath/src/sexp/encoding_tag_tests.rs": "46fab7966477c2f787f03d95e548379f7baffe49026c6fe1327474a65367f2e7",
+    "tests/browser/encoding-tags.cjs": "7860580276d00b5c75b3e2198de11218ca2c06bec66bff41e7be93887f61c62b"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "limits": [
+    "Original browser64MiB session and256MiB Wasm linear-memory caps retained.",
+    "Other legacy pointer-returning translateChar adapters, full codecs/locale/PCRE fidelity and total memory accounting remain active scope.",
+    "Public/native file.path REDs are tracked by rport-w03x.4.",
+    "Tests ran in a checkout containing the listed uncommitted user graphics edits; no immutable full-build or whole CI completion claim."
+  ],
+  "evidence_directory": "target/encoding-tag-evidence/",
+  "oracle_whitespace": "Exact pinned GNU stdout intentionally ends with the blank line printed after a list. Default git diff --check reports only that oracle EOF line; source whitespace check excluding that exact .out passes. Preserve original oracle bytes.",
+  "evidence_log_sha256": {
+    "android-20261020.log": "de8cd218791d1a7acd689977409b34db7030035d5c7bdbd03c465274de30334e",
+    "android-frozen-20261020.log": "dbc4507f3a3ce2ab0b01ae54cc66e46cebfec67da218b425d95e61ccabd3cc85",
+    "clippy-20261020.log": "6e8d0a7850cc0ff67e916449628bf59b8c01b8c657b40b6cb4cac6c3a0b07157",
+    "clippy-final-20261020.log": "4012f289f0ad685467ccb0fce00877973c211b84322f65c4e9c94296a2700789",
+    "clippy-frozen-20261020.log": "6326f62578cea45b932eea002a813b06e474dbbcea016311ebcf24ce664194e9",
+    "miri-owned-budget-green-20261020.log": "d07fa9d71671325c785863a25e9d5c1e1be5163c32b1450a89223f20060f0a72",
+    "miri-owned-fixture-root-unavailable-20261020.log": "f249b732feb81f5f69234c86bf292b921b63240c7039bc89866ecc4ec7ab57d3",
+    "miri-owned-workspace-counter-fixture-20261020.log": "79803242f0094241f05be0db80ee6455d146912f12aaa479a08b321218126c65",
+    "miri-sprintf-bridge-20261020.log": "0da5715aab5b94fd43e2666ca8adf59b9feac7d565575352caf86b53225269d0",
+    "miri-tags-green-20261020.log": "253bba0bb06450ab4e67cc8914f2d3807f04c95f1ccbd4cb1d5c4add6fdab471",
+    "miri-tags-initial-setup-error-20261020.log": "081360e0e3e1268e6c208b3d78d98b3d191eb164aacfacf5836bfc76a35637c4",
+    "miri-tags-red-20261020.log": "7d3897763879119cb089bcc62d37c15b2477cacca0d5d112b9285a8e49ae2714",
+    "native-dotcode-20261020.log": "fd4e3b2f084afbda3cccf6469f775a6abcdc784a730388fd06ebdae5360f2cb1",
+    "native-expanded-public-20261020.log": "e8d6ad49e0f7be81c1172f88ce13c649f7d8b648424febdd605629376781943c",
+    "native-gc-20261020.log": "a20dd2dfe39163e8daa65c419f702881ce92b8b8314fba12b214aa351220cc05",
+    "native-owned-20261020.log": "1556ba4116503105064b7d5eebde5b1c42fec4092b871d72c6e119516cbff999",
+    "native-owned-final-20261020.log": "1e5c54507ed8ee0b5d8dba4866b470befb57d63361dd2c8b73dc28dfc2d8dc39",
+    "native-paste-20261020.log": "deb3777995d3b011110d3c8cbd52fd16314961d7de5d439faacacc161b9b60e9",
+    "native-paste-final-20261020.log": "2731166908270c5438572e1da0b9203c57bfad47e94f265959c4d7fbb04d5090",
+    "native-paste-frozen-20261020.log": "8037ce412c64c7d929e1c8bc99d189ff87bddbff0fe16974413487394cabfb7b",
+    "native-printutils-20261020.log": "58b327595f33a8b64cfe590552ee181f5c3e817c16eb5535e694383f3678e6e3",
+    "native-public-final-20261020.log": "115b9752def0d31a85759ed84fab6a162b2e5876bc89a6be5201210112701b03",
+    "native-public-green-20261020.log": "2e4653f1777a2cdaedf45c3737a7e9b224437cea167f84a5801fe40ae2c830e6",
+    "native-public-red-20261020.log": "dc6616ca238b7fff15b1b123c76486baa7a77df0999b7d237cc5b74445564fce",
+    "native-sprintf-20261020.log": "25ccbbde0a6acc1e2aff469111aa43111957d33200041a53f626e6b2ba1b7855",
+    "wasm-build-20261020.log": "f549326de00984da179b7d4fe673dff642237eec6a5b1bb001c9adc12867a67b",
+    "wasm-build-before-separator-snapshot-20261020.log": "0b5ab359256250674e46540f8f99a3cb82456d4efddfe6ef94160d227a046e7b",
+    "wasm-build-final-20261020.log": "f549326de00984da179b7d4fe673dff642237eec6a5b1bb001c9adc12867a67b",
+    "wasm-build-frozen-20261020.log": "242753b345616d3ad11ba0e1550d0b249de1a199c5e0e559a23e969f3c512495",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags-20261020.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize-20261020.log": "e66d4baf75d789010f93612e0527e1af1473320596569056d6cc63f2e2079b3d",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts-20261020.log": "147b45c31762fdb792674b4c710cb8e6d93bc22cd092f2cfda1b07a3ae9ece5e"
+  }
+}

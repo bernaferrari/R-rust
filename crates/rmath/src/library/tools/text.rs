@@ -100,7 +100,7 @@ pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
             // ASCII form (<U+XXXX>), which the match length then counts.
             let mut translated: Vec<u8>;
             let s_bytes = if !crate::mainutils::platform::locale_is_utf8()
-                && crate::sexp::accessors::getCharCE(s_elt) == 2
+                && crate::sexp::accessors::getCharCE(s_elt) == crate::sexp::encoding::CE_UTF8
             {
                 translated = Vec::new();
                 let src = CStr::from_ptr(s_ptr).to_bytes();

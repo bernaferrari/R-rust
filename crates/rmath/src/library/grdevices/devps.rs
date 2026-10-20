@@ -242,8 +242,8 @@ const fn R_TRANSPARENT(col: rcolor) -> c_int {
 const R_TRANWHITE: rcolor = 0x00FFFFFF;
 
 // CE_ encoding constants
-const CE_NATIVE: c_int = 0;
-const CE_UTF8: c_int = 1;
+const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
+const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
 
 // =========================================================================
 // AFM Parsing types and enums

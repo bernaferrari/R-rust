@@ -1281,13 +1281,13 @@ pub unsafe fn markKnown(s: *const c_char, r#ref: *const c_void) -> *const c_void
 /// Convert a multibyte string to UCS-2 (UTF-16).
 ///
 /// Simplified version that handles ASCII and basic UTF-8.
-/// For enc=1 (CE_NATIVE), uses platform bytes. For enc=2 (CE_UTF8), parses UTF-8.
+/// GNU enc=0 is native; enc=1 is UTF-8.
 pub unsafe fn mbcsToUcs2(in_: *const c_char, out: *mut u16, nout: c_int, enc: c_int) -> usize {
     unsafe {
         if in_.is_null() || out.is_null() || nout <= 0 {
             return 0;
         }
-        if enc == 2 {
+        if enc == crate::sexp::encoding::CE_UTF8 {
             // CE_UTF8: parse UTF-8 code points and emit as UCS-2
             let mut si: usize = 0;
             let mut oi: usize = 0;

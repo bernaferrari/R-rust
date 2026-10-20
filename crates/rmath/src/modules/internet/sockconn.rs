@@ -30,7 +30,7 @@ const R_EOF: c_int = -1;
 const NA_INTEGER: c_int = i32::MIN; // R's NA_INTEGER = INT_MIN
 
 /// CE_NATIVE encoding constant
-const CE_NATIVE: c_int = 0;
+const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
 
 /// TRUE/FALSE as c_int
 const R_TRUE: c_int = 1;

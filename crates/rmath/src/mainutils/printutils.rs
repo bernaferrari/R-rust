@@ -16,6 +16,7 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
+use crate::sexp::encoding::{CE_BYTES, CE_LATIN1, CE_UTF8};
 #[cfg(test)]
 use std::cell::RefCell;
 use std::ffi::CStr;
@@ -735,7 +736,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 /// Compute the display width of a string in its escaped form.
 ///
 /// `str` is the input string, `slen` is its byte length,
-/// `ienc` is the encoding (0=CE_NATIVE, 1=CE_UTF8, 2=CE_BYTES),
+/// `ienc` uses GNU encoding numbers (native0/UTF8=1/Latin1=2/bytes=3),
 /// `quote` is the quote character (0 for none).
 ///
 /// This counts the number of columns needed when the string is printed
@@ -749,8 +750,8 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
         let bytes = std::slice::from_raw_parts(str as *const u8, slen as usize);
         let quote_char = quote as u8;
 
-        // CE_BYTES = 2
-        if ienc == 2 {
+        // GNU CE_BYTES is distinct from CE_LATIN1.
+        if ienc == CE_BYTES {
             let mut len = 0i32;
             for &k in bytes {
                 if k >= 0x20 && k < 0x80 {
@@ -764,7 +765,7 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
 
         // Decode UTF-8 once without allocating. Preserve the byte fallback for
         // invalid/native non-UTF-8 data and the separate CE_BYTES path above.
-        if (ienc == 1 || crate::mainutils::platform::locale_is_utf8())
+        if (ienc == CE_UTF8 || crate::mainutils::platform::locale_is_utf8())
             && let Ok(text) = std::str::from_utf8(bytes)
         {
             return text
@@ -933,7 +934,7 @@ pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
             let len = XLENGTH(s) as usize;
             let bytes = std::slice::from_raw_parts(p as *const u8, len);
             let ce = crate::sexp::accessors::getCharCE(s);
-            if ce == 2 {
+            if ce == CE_UTF8 {
                 return len as c_int;
             }
             return escape_native_string_body(bytes, ce, quote, quote as u8).len() as c_int;
@@ -1001,7 +1002,7 @@ fn escape_native_string_body(bytes: &[u8], ce: c_int, quote: c_int, quote_char: 
         out.push(b'0' + (k & 7));
     }
     let mut out = Vec::with_capacity(bytes.len());
-    if ce == 2 {
+    if ce == CE_UTF8 {
         // UTF-8-marked: decode; non-ASCII code points become <U+XXXX>.
         let mut i = 0;
         while i < bytes.len() {
@@ -1037,7 +1038,7 @@ fn escape_native_string_body(bytes: &[u8], ce: c_int, quote: c_int, quote_char: 
                 }
             }
         }
-    } else if ce == 3 {
+    } else if ce == CE_LATIN1 {
         // latin1-marked: high bytes become <xx>.
         for &k in bytes {
             if k < 0x80 {
@@ -1128,7 +1129,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
         // Compute display width (escaped width)
         let i = match &escaped_body {
             Some(body) => {
-                if ce == 2 {
+                if ce == CE_UTF8 {
                     cnt as c_int
                 } else {
                     body.len() as c_int
