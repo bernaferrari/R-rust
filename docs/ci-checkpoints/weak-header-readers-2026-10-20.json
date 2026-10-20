@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-4m0nz.2",
+  "implementation_commit": "c30e83c1",
+  "status": "verified_bounded_weak_header_readers",
+  "source_sha256": {
+    "crates/rmath/src/sexp/gc_trace.rs": "374fee0f33a9b0d075e3ebfbbb95e2db1bd99ca3195cb896fbcaffdef484eb45",
+    "crates/rmath/src/sexp/heap.rs": "90a98aeb6e39101bd51359e70ee4bd603a872d3bda9b9fee0452dc0f37b50db6",
+    "crates/rmath/src/sexp/memory/checked.rs": "d6c2e1161cd43e4f03d925e40d6fef86a053401717d6951eafe7df688e2ad531",
+    "crates/rmath/src/sexp/memory/slab.rs": "93036cb2942068a50f6a561558d1071c9390e2e97e0f64aa9d8c384c5186c7c8"
+  },
+  "evidence_directory": "target/trace-reader-evidence",
+  "red": "17 already checked headers on one page repeated17 native directory admissions; corrected path requires1",
+  "cache": {
+    "max_entries": 128,
+    "multi_slot_pages_only": true,
+    "physical_header_ownership": "weak",
+    "allocation_failure": "original checked directory fallback"
+  },
+  "validation": {
+    "native_trace": {
+      "passed": 14,
+      "log": "trace-green-20261020.log",
+      "sha256": "cd5ad7a0cc75484df680fa809e8e7c4aaa788ae9528d60493e1172528edb369e"
+    },
+    "strict_miri_trace": {
+      "passed": 14,
+      "log": "miri-trace-20261020.log",
+      "sha256": "b4738b0259083f9dde291229060368793639bc3df80340cc0b6a744f1189d989"
+    },
+    "collector_original": {
+      "passed": 97,
+      "log": "collector-native-20261020.log",
+      "sha256": "da3e3895b513c7af05eb70c3abbd070b9fb160d6ccc76b5f5307fd3b5534153e",
+      "failed": 1,
+      "explanation": "Existing address-reuse fixture also fails on clean d9c7be54; same assertions and1024 bound pass after using a minimal GC fixture. No aggregate98-pass final run claimed."
+    },
+    "corrected_fixture_native": {
+      "passed": 1,
+      "log": "active-binding-minimal-20261020.log",
+      "sha256": "c90c43f4d25ac2c1bb366fc20e42b0d809c0a7760310155426d261be911ac33b"
+    },
+    "corrected_fixture_miri": {
+      "passed": 1,
+      "log": "miri-active-binding-20261020.log",
+      "sha256": "bc6c54b4f2ecce3c43a3ddfe22d579d7d556e9617271cbac43a8efda66571728"
+    },
+    "clippy_four_crates_all_targets": {
+      "log": "clippy-final-20261020.log",
+      "sha256": "80ce76ad6d62a57c6e27335b5d9e6fbf6b01d3b28867f4a06aa85baa561c9817"
+    },
+    "android_cross_check": {
+      "log": "android-final-20261020.log",
+      "sha256": "39dda8a81c8d1c97ec162e4b81b1031e2ce27b33508183ea01b9887e388e2fd7"
+    },
+    "wasm_permanent": {
+      "checks": 14,
+      "log": "wasm-permanent-20261020.log",
+      "sha256": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407"
+    },
+    "wasm_exhaustion": {
+      "checks": 12,
+      "log": "wasm-exhaustion-20261020.log",
+      "sha256": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a"
+    },
+    "wasm_serialization": {
+      "checks": 14,
+      "log": "wasm-serialization-20261020.log",
+      "sha256": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54"
+    },
+    "wasm_web_package_contracts": {
+      "passed": 72,
+      "fresh_sessions": 2,
+      "log": "wasm-package-contracts-20261020.log",
+      "sha256": "a597a8d2afae3d09d4d725599c83716b8c4c15a32f53641c561d37e0022fee95",
+      "s4_elapsed_ms": [
+        10468.860042,
+        11354.094084000011
+      ],
+      "original_s4_limit_seconds": 15
+    }
+  },
+  "production_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29147641,
+      "sha256": "35d7dbe8daaf333829a7b79d61771dc1dcae3838bda8b74b7caaec4709157914"
+    },
+    "output": {
+      "bytes": 24907029,
+      "sha256": "80c6445d8fcd6b75ed14291ef9dbba32a3e78e44655d1dc29670aa2bed5adfd7"
+    }
+  },
+  "torture_result": {
+    "receipt": "target/s4-bounded-evidence/cached-receipt.json",
+    "sha256": "ec6c16606ffd0677de73ba136d025d730f118ebb4fea4f8bb0bbc29f5257ce04",
+    "elapsed_seconds": 900.698,
+    "timed_out": true,
+    "valid_pass": false
+  },
+  "scope_limits": [
+    "No full S4 torture pass or overall speedup claimed; parent4m0nz/k1236/1rlyz remain open",
+    "No torture frequency, allocation points or original S4 assertions changed",
+    "Heap/page/slot/generation and canonical projection pairing remain checked on every cached read",
+    "Private bounded cache metadata admission remains in physical-storage accounting cvs2.11",
+    "Initial native gates included unrelated user graphics edits; frozen clean c30 release S4 artifact compiled from committed source with exact archived upstream reference",
+    "Strict Miri uses isolated i686 default alias checks plus strict-provenance and ignore-leaks; no unsafe added",
+    "Web and Node binding inputs had identical SHA before sharing the same optimized module"
+  ]
+}

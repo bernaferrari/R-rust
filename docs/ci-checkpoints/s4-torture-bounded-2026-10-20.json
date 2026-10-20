@@ -135,6 +135,45 @@
         "OMP_NUM_THREADS": "1",
         "RAYON_NUM_THREADS": "2"
       }
+    },
+    "cached": {
+      "ref": "c30e83c1",
+      "executable_sha256": "d46862f2d1971cf4a2c621b5fa5eb8903b729336b2204120a37fd12fad62b865",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "cached-s4-next-method",
+        "--exact",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 900.698,
+      "returncode": -9,
+      "timed_out": true,
+      "passed": null,
+      "failed": null,
+      "execution_complete": false,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 30,
+      "receipt_sha256": "ec6c16606ffd0677de73ba136d025d730f118ebb4fea4f8bb0bbc29f5257ce04",
+      "log_sha256": "e764ccdf4bc88c2ddefe6070d3ade8071d3348e5853f8aa5dd1241c5e7f07b77",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
     }
   },
   "interpretation": [
@@ -142,7 +181,8 @@
     "Both sampled stacks include lazy bytecode-source decoding and full collection tracing",
     "The other nine original S4 controls pass; their workflow cases retain the original64MiB/500000-node limits and60s execution windows",
     "No torture frequency, class setup or original assertions were weakened",
-    "A separate weak page-reader optimization is being evaluated next; no measured S4 speedup is claimed here"
+    "A separate weak page-reader optimization is being evaluated next; no measured S4 speedup is claimed here",
+    "The c30e83c1 header-reader candidate also reached the unchanged900s bound (900.698s), completed0 tests and is not a PASS; remaining link lookup cost is tracked in4m0nz.3"
   ],
   "scope_limits": [
     "Not a full workspace run or production browser timing claim",
