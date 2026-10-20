@@ -22,8 +22,8 @@ pub struct BinaryReader<'a> {
 /// Owning buffer plus a fill callback that grows `buf` to a requested
 /// absolute length by reading exactly the missing bytes from a source.
 pub(crate) struct PullInput<'a> {
-    pub(crate) buf: Vec<u8>,
-    pub(crate) fill: &'a mut dyn FnMut(&mut Vec<u8>, usize) -> bool,
+    pub(crate) buf: super::super::owned_input::InputBytes,
+    pub(crate) fill: &'a mut dyn FnMut(&mut super::super::owned_input::InputBytes, usize) -> bool,
 }
 
 /// Why a declared vector length is not admitted.
@@ -95,18 +95,20 @@ mod pull_admission_tests {
 
     #[test]
     fn pull_mode_short_stream_huge_declared_length_is_truncated() {
+        let _session = crate::sexp::RSession::new_for_gc_tests();
         // A 4-byte header declaring INT32_MAX doubles followed by end of
         // input must be rejected without attempting the payload allocation.
         let mut served = false;
-        let mut fill = move |buf: &mut Vec<u8>, need: usize| -> bool {
-            if served {
-                return false;
-            }
-            buf.extend_from_slice(&i32::MAX.to_ne_bytes());
-            served = true;
-            buf.len() >= need
-        };
-        let mut reader = BinaryReader::new_pull(&mut fill);
+        let mut fill =
+            move |buf: &mut super::super::super::owned_input::InputBytes, need: usize| -> bool {
+                if served {
+                    return false;
+                }
+                std::io::Write::write_all(buf, &i32::MAX.to_ne_bytes()).unwrap();
+                served = true;
+                buf.len() >= need
+            };
+        let mut reader = BinaryReader::new_pull(&_session.owner_token().unwrap(), &mut fill);
         let rejected = reader
             .read_vector_length(8)
             .expect_err("huge declared length must be rejected");
@@ -115,18 +117,20 @@ mod pull_admission_tests {
 
     #[test]
     fn pull_mode_declared_length_with_buffered_payload_is_admitted() {
+        let _session = crate::sexp::RSession::new_for_gc_tests();
         let mut bytes: Vec<u8> = Vec::new();
         bytes.extend_from_slice(&3_i32.to_ne_bytes());
         bytes.extend_from_slice(&[0u8; 24]);
         let mut cursor = 0usize;
-        let mut fill = move |buf: &mut Vec<u8>, need: usize| -> bool {
-            while buf.len() < need && cursor < bytes.len() {
-                buf.push(bytes[cursor]);
-                cursor += 1;
-            }
-            buf.len() >= need
-        };
-        let mut reader = BinaryReader::new_pull(&mut fill);
+        let mut fill =
+            move |buf: &mut super::super::super::owned_input::InputBytes, need: usize| -> bool {
+                while buf.len() < need && cursor < bytes.len() {
+                    std::io::Write::write_all(buf, &bytes[cursor..cursor + 1]).unwrap();
+                    cursor += 1;
+                }
+                buf.len() >= need
+            };
+        let mut reader = BinaryReader::new_pull(&_session.owner_token().unwrap(), &mut fill);
         assert_eq!(reader.read_vector_length(8).unwrap(), 3);
     }
 }

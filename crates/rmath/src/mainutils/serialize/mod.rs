@@ -315,6 +315,7 @@ mod membuf;
 mod owned_input;
 mod stream;
 mod stream_values;
+mod workspace;
 
 pub use self::api::*;
 pub use self::compress::*;

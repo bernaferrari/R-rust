@@ -61,7 +61,7 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         } else if persist_hook_is_r_function(hook_data) {
             writer.set_persist_hook(hook_data);
         }
-        let mut ref_table = WriteHashTable::new();
+        let mut ref_table = WriteHashTable::for_owner(&owner);
         WriteItemInternal(s, &mut ref_table, &mut writer);
 
         // Stream out the serialized bytes
@@ -94,10 +94,13 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 
 pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
     unsafe {
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         if stream.is_null() {
             error("read error");
         }
-        let bytes = read_stream_bytes_via_inchar(stream);
+        let bytes = read_stream_bytes_via_inchar(stream, &owner);
         if bytes.is_empty() {
             error("read error");
         }
@@ -196,15 +199,18 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 
 pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     unsafe {
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         if stream.is_null() {
             error("read error");
         }
-        let bytes = read_stream_bytes_via_inchar(stream);
+        let bytes = read_stream_bytes_via_inchar(stream, &owner);
         if bytes.is_empty() {
             error("read error");
         }
         let mut reader = BinaryReader::new(&bytes);
-        let mut ref_table = ReadRefTable::new();
+        let mut ref_table = ReadRefTable::for_owner(&owner);
         match ReadItemInternal(&mut reader, &mut ref_table) {
             Ok(v) => v,
             Err(_) => error("read error"),
@@ -221,7 +227,7 @@ pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let mut writer = BinaryWriter::admitted(&owner);
-        let mut ref_table = WriteHashTable::new();
+        let mut ref_table = WriteHashTable::for_owner(&owner);
         WriteItemInternal(s, &mut ref_table, &mut writer);
         let data = writer.into_output();
         if !data.is_empty()
@@ -245,21 +251,35 @@ pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     }
 }
 
-pub unsafe fn read_stream_bytes_via_inchar(stream: R_inpstream_t) -> Vec<u8> {
+pub(crate) unsafe fn read_stream_bytes_via_inchar(
+    stream: R_inpstream_t,
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+) -> super::owned_input::InputBytes {
     unsafe {
+        let mut out = super::owned_input::InputBytes::new(
+            super::workspace::reserve(owner, 0).unwrap_or_else(|e| error(&e)),
+            0,
+        )
+        .unwrap_or_else(|e| error(&e.to_string()));
         if stream.is_null() {
-            return Vec::new();
+            return out;
         }
         let Some(in_char) = (*stream).InChar else {
-            return Vec::new();
+            return out;
         };
-        let mut out = Vec::new();
         loop {
-            let ch = in_char(stream);
-            if ch < 0 {
+            let read = out
+                .push_from(|| {
+                    let ch = in_char(stream);
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|e| error(&e.to_string()));
+                    (ch >= 0).then_some(ch as u8)
+                })
+                .unwrap_or_else(|e| error(&e.to_string()));
+            if !read {
                 break;
             }
-            out.push(ch as u8);
         }
         out
     }
@@ -496,7 +516,7 @@ pub unsafe fn R_serialize_with_xdr(
         }
 
         // Serialize the object
-        let mut ref_table = WriteHashTable::new();
+        let mut ref_table = WriteHashTable::for_owner(&owner);
         WriteItemInternal(object, &mut ref_table, &mut writer);
 
         owner
@@ -1056,7 +1076,7 @@ unsafe fn decode_stream_object(
         }
 
         // Read the object
-        let mut ref_table = ReadRefTable::new();
+        let mut ref_table = ReadRefTable::for_owner(&owner);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             ReadItemInternal(reader, &mut ref_table)
         }));
@@ -1092,7 +1112,7 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
             .unwrap_or_else(|e| error(&e.to_string()));
         let token = crate::mainutils::connections::connection_token(index)
             .unwrap_or_else(|message| error(&message));
-        let mut fill = |buf: &mut Vec<u8>, need: usize| -> bool {
+        let mut fill = |buf: &mut super::owned_input::InputBytes, need: usize| -> bool {
             // Validate even if the reader already has the requested bytes.
             // A restoration hook can close/reuse a slot between reads.
             owner
@@ -1102,9 +1122,14 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
                 .require_current()
                 .unwrap_or_else(|message| error(&message));
             while buf.len() < need {
-                match crate::mainutils::connections::connection_fgetc(index) {
-                    byte if byte >= 0 => buf.push(byte as u8),
-                    _ => return false,
+                if !buf
+                    .push_from(|| {
+                        let byte = crate::mainutils::connections::connection_fgetc(index);
+                        (byte >= 0).then_some(byte as u8)
+                    })
+                    .unwrap_or_else(|e| error(&e.to_string()))
+                {
+                    return false;
                 }
             }
             true
@@ -1112,11 +1137,11 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
         // Compression belongs to the connection (gzfile/gzcon), as in GNU.
         // Sniffing and buffering a gzip payload here consumed later objects
         // and made hook-observed cursor positions describe the wrong stream.
-        let mut reader = BinaryReader::new_pull(&mut fill);
+        let mut reader = BinaryReader::new_pull(&owner, &mut fill);
         configure_conn_hooks(&owner, &mut reader, hook.as_raw());
         let result = decode_stream_object(&owner, &mut reader);
         let result = owner.sexp(result).unwrap_or_else(|e| error(&e.to_string()));
-        let leftover = reader.take_leftover();
+        let leftover = reader.leftover();
         if !leftover.is_empty() {
             owner
                 .require_active()
@@ -1124,7 +1149,7 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
             let index = token
                 .require_current()
                 .unwrap_or_else(|message| error(&message));
-            crate::mainutils::connections::connection_pushback(index, &leftover);
+            crate::mainutils::connections::connection_pushback(index, leftover);
         }
         result.as_raw()
     }

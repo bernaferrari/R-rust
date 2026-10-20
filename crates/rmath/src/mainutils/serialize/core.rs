@@ -23,3 +23,17 @@ pub use reader::*;
 pub use reftables::*;
 pub use write_item::*;
 pub use writer::*;
+
+// Low-level test convenience; production entry points pass their already pinned owner.
+#[cfg(test)]
+impl WriteHashTable {
+    pub fn new() -> Self {
+        Self::for_owner(&unsafe { crate::sexp::owner::OwnerToken::current().unwrap() })
+    }
+}
+#[cfg(test)]
+impl ReadRefTable {
+    pub fn new() -> Self {
+        Self::for_owner(&unsafe { crate::sexp::owner::OwnerToken::current().unwrap() })
+    }
+}

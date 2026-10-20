@@ -11,7 +11,7 @@ pub(super) fn memory_error() -> io::Error {
     )
 }
 
-pub(super) struct InputBytes {
+pub(crate) struct InputBytes {
     bytes: Vec<u8>,
     reservation: WorkspaceReservation,
 }
@@ -31,6 +31,45 @@ impl InputBytes {
             .try_reserve_exact(capacity)
             .map_err(|_| memory_error())?;
         Ok(Self { bytes, reservation })
+    }
+
+    /// Admit the next byte before invoking a source with observable position.
+    pub(super) fn push_from(&mut self, read: impl FnOnce() -> Option<u8>) -> io::Result<bool> {
+        self.reserve_len(self.bytes.len().checked_add(1).ok_or_else(memory_error)?)?;
+        if let Some(byte) = read() {
+            self.bytes.push(byte);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn reserve_len(&mut self, length: usize) -> io::Result<()> {
+        if length <= self.bytes.capacity() {
+            return Ok(());
+        }
+        let old_capacity = self.bytes.capacity();
+        let capacity = length
+            .max(8)
+            .checked_next_power_of_two()
+            .ok_or_else(memory_error)?;
+        let peak = old_capacity
+            .checked_add(capacity)
+            .ok_or_else(memory_error)?;
+        self.reservation.try_resize(peak).ok_or_else(memory_error)?;
+        let mut replacement = Vec::new();
+        if replacement.try_reserve_exact(capacity).is_err() {
+            self.reservation
+                .try_resize(old_capacity)
+                .expect("shrinking admitted input");
+            return Err(memory_error());
+        }
+        replacement.extend_from_slice(&self.bytes);
+        drop(std::mem::replace(&mut self.bytes, replacement));
+        self.reservation
+            .try_resize(capacity)
+            .expect("shrinking admitted input");
+        Ok(())
     }
 
     fn read_from(&mut self, mut reader: impl Read) -> io::Result<()> {
@@ -53,28 +92,7 @@ impl Write for InputBytes {
             .len()
             .checked_add(bytes.len())
             .ok_or_else(memory_error)?;
-        if length > self.bytes.capacity() {
-            let old_capacity = self.bytes.capacity();
-            let capacity = length.checked_next_power_of_two().unwrap_or(length);
-            // Retain the old buffer's charge until its replacement is copied
-            // and freed. No allocation or zero-fill precedes peak admission.
-            let peak = old_capacity
-                .checked_add(capacity)
-                .ok_or_else(memory_error)?;
-            self.reservation.try_resize(peak).ok_or_else(memory_error)?;
-            let mut replacement = Vec::new();
-            if replacement.try_reserve_exact(capacity).is_err() {
-                self.reservation
-                    .try_resize(old_capacity)
-                    .expect("shrinking admitted input");
-                return Err(memory_error());
-            }
-            replacement.extend_from_slice(&self.bytes);
-            drop(std::mem::replace(&mut self.bytes, replacement));
-            self.reservation
-                .try_resize(capacity)
-                .expect("shrinking admitted input");
-        }
+        self.reserve_len(length)?;
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }

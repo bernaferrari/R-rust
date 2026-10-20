@@ -21,7 +21,10 @@ impl<'a> BinaryReader<'a> {
     /// Build a reader whose bytes arrive on demand through `fill(buf, need)`,
     /// which must grow `buf` to length `need` (or return false at end of
     /// input). The source is never read beyond what the decoder asks for.
-    pub fn new_pull(fill: &'a mut dyn FnMut(&mut Vec<u8>, usize) -> bool) -> Self {
+    pub(crate) fn new_pull(
+        owner: &crate::sexp::owner::OwnerToken<'_>,
+        fill: &'a mut dyn FnMut(&mut super::super::owned_input::InputBytes, usize) -> bool,
+    ) -> Self {
         BinaryReader {
             data: &[],
             pos: 0,
@@ -35,7 +38,12 @@ impl<'a> BinaryReader<'a> {
             lazy_restore: None,
             persist_cache: std::collections::HashMap::new(),
             pull: Some(PullInput {
-                buf: Vec::new(),
+                buf: super::super::owned_input::InputBytes::new(
+                    super::super::workspace::reserve(owner, 0)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e)),
+                    0,
+                )
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
                 fill,
             }),
         }
@@ -111,15 +119,10 @@ impl<'a> BinaryReader<'a> {
     /// Pull mode only: bytes buffered but not consumed by the decode. The
     /// caller must return them to the source (e.g. connection pushback) so
     /// trailing data is not lost.
-    pub fn take_leftover(&mut self) -> Vec<u8> {
-        match self.pull.as_mut() {
-            Some(p) => {
-                let rest = p.buf[self.pos..].to_vec();
-                p.buf.clear();
-                self.pos = 0;
-                rest
-            }
-            None => Vec::new(),
+    pub(crate) fn leftover(&self) -> &[u8] {
+        match self.pull.as_ref() {
+            Some(p) => &p.buf[self.pos..],
+            None => &[],
         }
     }
 
