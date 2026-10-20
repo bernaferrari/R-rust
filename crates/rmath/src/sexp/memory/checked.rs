@@ -52,6 +52,31 @@ pub(crate) fn checked_header(pointer: SEXP) -> Option<(SEXP, CheckedNode, Sexpre
     entry.projection.copy_slot(slot)
 }
 
+/// A copied header and an optional original weak reader for a multi-slot page.
+/// Single-slot permanent pages need no collection-local reader cache.
+pub(crate) struct CheckedPageSnapshot {
+    pub(crate) projection: SEXP,
+    pub(crate) header: SexprecCore,
+    pub(crate) reader: Option<NodeProjection<SexprecCore>>,
+}
+
+pub(crate) fn checked_page_snapshot(
+    pointer: SEXP,
+    expected: &CheckedNode,
+) -> Option<CheckedPageSnapshot> {
+    let (entry, slot) = find_slab_entry(pointer)?;
+    if expected.id().slot() != slot {
+        return None;
+    }
+    let (projection, header) = entry.projection.copy_live_projected(expected.id())?;
+    let reader = (entry.meta.slots() > 1).then_some(entry.projection);
+    Some(CheckedPageSnapshot {
+        projection,
+        header,
+        reader,
+    })
+}
+
 /// Copy the canonical header through its Cell only if the caller's original
 /// allocation identity still belongs to this exact directory slot. An
 /// address reused by another generation never refreshes the expected ID.

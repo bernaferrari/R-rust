@@ -4,11 +4,14 @@
 
 use crate::sexp::{
     ffi::{SEXP, SexprecCore},
-    heap::{CheckedNode, HeapIdentity, NodeLink, ResolvedLink},
+    heap::{CheckedNode, HeapIdentity, NodeLink, NodeProjection, ResolvedLink},
     memory,
     session::immutable_singleton_projection,
 };
+use hashbrown::HashMap;
 use std::{cell::RefCell, rc::Rc};
+
+const MAX_PAGE_READERS: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TraceError {
@@ -24,11 +27,47 @@ pub enum TraceError {
 pub(super) struct TraceContext {
     heap: HeapIdentity,
     epoch: u32,
+    readers: RefCell<HashMap<u64, NodeProjection<SexprecCore>>>,
 }
 impl TraceContext {
     pub(super) fn new(heap: HeapIdentity, epoch: u32) -> Self {
         assert_ne!(epoch, 0, "collection tracing requires an active epoch");
-        Self { heap, epoch }
+        Self {
+            heap,
+            epoch,
+            readers: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn snapshot_header(&self, node: &TraceNode) -> Result<SexprecCore, TraceError> {
+        let mismatch = || TraceError::ProjectionMismatch(node.projection.addr());
+        let cookie = node.token.id().page_cookie();
+        {
+            let readers = self.readers.borrow();
+            if let Some(reader) = readers.get(&cookie) {
+                let (projection, header) = reader
+                    .copy_live_projected(node.token.id())
+                    .ok_or_else(mismatch)?;
+                if projection.addr() != node.projection.addr() {
+                    return Err(mismatch());
+                }
+                return Ok(header);
+            }
+        }
+        let captured =
+            memory::checked_page_snapshot(node.projection, &node.token).ok_or_else(mismatch)?;
+        if captured.projection.addr() != node.projection.addr() {
+            return Err(mismatch());
+        }
+        if let Some(reader) = captured.reader {
+            let mut readers = self.readers.borrow_mut();
+            // This optional bounded cache retains only weak storage readers.
+            // Low memory leaves the original checked directory path available.
+            if readers.len() < MAX_PAGE_READERS && readers.try_reserve(1).is_ok() {
+                readers.insert(cookie, reader);
+            }
+        }
+        Ok(captured.header)
     }
 
     pub(super) fn reference_links(&self, node: &TraceNode) -> Option<Vec<NodeLink>> {
@@ -94,8 +133,7 @@ impl TraceNode {
     /// No header loan or caller-supplied pointer is used to read storage.
     pub(super) fn snapshot(&self, context: &TraceContext) -> Result<SexprecCore, TraceError> {
         self.validate(context)?;
-        memory::checked_snapshot(self.projection, &self.token)
-            .ok_or(TraceError::ProjectionMismatch(self.projection as usize))
+        context.snapshot_header(self)
     }
 
     pub(super) fn address(&self) -> usize {
@@ -234,6 +272,77 @@ mod tests {
         let pointer = page.raw_slot(0).unwrap();
         let registration = register_node_page(&page);
         (page, registration, pointer)
+    }
+
+    #[test]
+    fn checked_trace_snapshots_admit_one_page_reader_for_many_headers() {
+        let mut arena = memory::RArena::new();
+        let mut worklist =
+            TraceWorklist::new(Rc::new(TraceContext::new(arena.heap_identity(), 43)));
+        for _ in 0..17 {
+            worklist
+                .enqueue(arena.alloc_node(SEXPTYPE::LISTSXP))
+                .unwrap();
+        }
+        let before = memory::projection_directory_probe_count();
+        let mut visited = 0;
+        while let Some(node) = worklist.next_marked().unwrap() {
+            assert_eq!(
+                node.snapshot(worklist.context()).unwrap().sxpinfo.type_of(),
+                SEXPTYPE::LISTSXP
+            );
+            visited += 1;
+        }
+        assert_eq!(visited, 17);
+        assert_eq!(
+            memory::projection_directory_probe_count() - before,
+            1,
+            "already checked headers on one page repeated native directory admission"
+        );
+    }
+
+    #[test]
+    fn checked_trace_cached_reader_does_not_keep_destroyed_headers_live() {
+        let heap = HeapIdentity::new();
+        let page =
+            NodePage::try_new(heap.clone(), 0, 2, || SexprecCore::new(SEXPTYPE::LISTSXP)).unwrap();
+        let _registration = register_node_page(&page);
+        let mut worklist = TraceWorklist::new(Rc::new(TraceContext::new(heap, 47)));
+        for slot in 0..2 {
+            page.metadata().activate(slot, false).unwrap();
+            worklist.enqueue(page.raw_slot(slot).unwrap()).unwrap();
+        }
+        let first = worklist.next_marked().unwrap().unwrap();
+        first.snapshot(worklist.context()).unwrap();
+        drop(page);
+        assert!(matches!(
+            worklist.next_marked(),
+            Err(TraceError::StaleAllocation(_))
+        ));
+    }
+
+    #[test]
+    fn checked_trace_cached_reader_rejects_mismatched_projection() {
+        let mut arena = memory::RArena::new();
+        let first = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let second = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let context = Rc::new(TraceContext::new(arena.heap_identity(), 49));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(first).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        let wrong = TraceNode {
+            projection: first,
+            token: arena.node_token(second).unwrap(),
+        };
+        assert!(matches!(
+            wrong.snapshot(&context),
+            Err(TraceError::ProjectionMismatch(_))
+        ));
     }
 
     #[test]

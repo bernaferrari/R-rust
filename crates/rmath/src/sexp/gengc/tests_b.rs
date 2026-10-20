@@ -1673,7 +1673,9 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
 /// free list recycles the address onto a new node.
 #[test]
 fn test_active_bindings_traced_and_dead_entries_swept() {
-    let _session = RSession::new_without_default_packages();
+    // This fixture needs no R library code. Keep its reuse bound independent
+    // of the unrelated startup objects reclaimed by the first collection.
+    let _session = RSession::new_for_gc_tests();
 
     let sym = unsafe { crate::sexp::symbol::Rf_install(b"active_probe\0".as_ptr() as *const _) };
     let env = make_detached_env();

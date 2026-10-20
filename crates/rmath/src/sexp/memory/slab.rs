@@ -214,6 +214,15 @@ thread_local! {
     pub(super) static GC_EPOCH: Cell<u32> = const { Cell::new(0) };
 }
 
+#[cfg(test)]
+thread_local! {
+    static PROJECTION_DIRECTORY_PROBES: Cell<usize> = const { Cell::new(0) };
+}
+#[cfg(test)]
+pub(crate) fn projection_directory_probe_count() -> usize {
+    PROJECTION_DIRECTORY_PROBES.with(Cell::get)
+}
+
 /// An owned directory entry for an actual owned header page. Drop removes
 /// only this page's identity, so a reused address cannot evict its successor.
 pub(crate) struct NodePageRegistration {
@@ -266,6 +275,8 @@ pub(super) fn find_slab_entry(pointer: SEXP) -> Option<(SlabMetadata, usize)> {
     if pointer.is_null() {
         return None;
     }
+    #[cfg(test)]
+    PROJECTION_DIRECTORY_PROBES.with(|count| count.set(count.get() + 1));
     let address = pointer as usize;
     let cached = SLAB_CACHE
         .try_with(|cache| {

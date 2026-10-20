@@ -1268,6 +1268,17 @@ impl<T: Copy> NodeProjection<T> {
         Some((cell.as_ptr(), token, cell.get()))
     }
 
+    /// Copy through the original weak storage while returning that same
+    /// canonical Cell projection. The expected generation is never refreshed.
+    pub(crate) fn copy_live_projected(&self, id: &NodeId) -> Option<(*mut T, T)> {
+        if !self.metadata.validates(id) {
+            return None;
+        }
+        let values = self.values.upgrade()?;
+        let cell = values.get(id.slot)?;
+        Some((cell.as_ptr(), cell.get()))
+    }
+
     pub(crate) fn copy_live(&self, id: &NodeId) -> Option<T> {
         if !self.metadata.validates(id) {
             return None;

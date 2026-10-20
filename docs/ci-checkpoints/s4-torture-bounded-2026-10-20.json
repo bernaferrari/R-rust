@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-k1236",
+    "rport-4m0nz",
+    "rport-1rlyz"
+  ],
+  "status": "bounded_torture_incomplete",
+  "test_file": "crates/r-embed/tests/s4_next_method.rs",
+  "test_sha256": "5afa744c81e556f75187d82ad1e678ddeba8366acd563a9e065b733dc5883390",
+  "original_test_unchanged": true,
+  "baseline_candidate_difference": "Only dense payload ownership in sexp/payload.rs; same R test and exact upstream source archive",
+  "upstream_compile_input": {
+    "commit": "d4cc5d9e196a144bbb087a798bb945b37121383b",
+    "archive": "target/s4-bounded-evidence/reference-source.tar.gz",
+    "archive_sha256": "c56bff97e81f2a1ae677b3f564a172ea8422a1452e03fd7bcac05d7783b6530c",
+    "tracked_source_clean": true,
+    "scope": "exact tracked upstream R sources; ignored local R test outputs excluded"
+  },
+  "evidence_directory": "target/s4-bounded-evidence",
+  "runs": {
+    "baseline": {
+      "ref": "5a6bff5f",
+      "executable_sha256": "bf9c528bf6ad2afc7af977927d62c66fc091977bf51a1f91d1d65b51e7e41ef9",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "baseline-s4-next-method",
+        "--exact",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 900.318,
+      "returncode": -9,
+      "timed_out": true,
+      "passed": null,
+      "failed": null,
+      "execution_complete": false,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 30,
+      "receipt_sha256": "84b63621aa3612c6e873740983976bebbfdbcca8ea19af7a1f5db94069865069",
+      "log_sha256": "e764ccdf4bc88c2ddefe6070d3ade8071d3348e5853f8aa5dd1241c5e7f07b77",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
+    },
+    "candidate": {
+      "ref": "d9c7be54",
+      "executable_sha256": "1347491ffa03293de003b318d46017caa0971be3bbbfe400d9595e85751f0553",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "candidate-s4-next-method",
+        "--exact",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 900.469,
+      "returncode": -9,
+      "timed_out": true,
+      "passed": null,
+      "failed": null,
+      "execution_complete": false,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 30,
+      "receipt_sha256": "be5a689261942530caae1e27aa41c6ed1322dfe33065cd79c174b0282c52e4d8",
+      "log_sha256": "e764ccdf4bc88c2ddefe6070d3ade8071d3348e5853f8aa5dd1241c5e7f07b77",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
+    },
+    "candidate-controls": {
+      "ref": "d9c7be54",
+      "executable_sha256": "1347491ffa03293de003b318d46017caa0971be3bbbfe400d9595e85751f0553",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "command": [
+        "candidate-s4-next-method",
+        "--skip",
+        "continuation_metadata_survives_gc_torture",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "target/s4-bounded-evidence",
+      "timeout_seconds": 900,
+      "elapsed_seconds": 85.578,
+      "returncode": 0,
+      "timed_out": false,
+      "passed": 9,
+      "failed": 0,
+      "execution_complete": true,
+      "observed_phases": [
+        "collection",
+        "evaluation",
+        "lazy_decode"
+      ],
+      "sample_count": 3,
+      "receipt_sha256": "71889e12f144524dbf19b81e182a90c367b3d77aa6c212052d16a49341ae5a6d",
+      "log_sha256": "ff521ca902b46be7bf7ac51754404faec647b84b5387d2b46b220fed14c74bb4",
+      "runtime_thread_environment": {
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "2"
+      }
+    }
+  },
+  "interpretation": [
+    "Both exact torture attempts reached the enforced900s bound; neither completed a test, and neither is a PASS",
+    "Both sampled stacks include lazy bytecode-source decoding and full collection tracing",
+    "The other nine original S4 controls pass; their workflow cases retain the original64MiB/500000-node limits and60s execution windows",
+    "No torture frequency, class setup or original assertions were weakened",
+    "A separate weak page-reader optimization is being evaluated next; no measured S4 speedup is claimed here"
+  ],
+  "scope_limits": [
+    "Not a full workspace run or production browser timing claim",
+    "Arena retained_bytes values in raw logs are the existing logical ledger, not processRSS",
+    "The first clean build lacked ignored r-source files and executed no tests; exact archived reference inputs were then supplied",
+    "Same isolated evidence cwd and repository release compilation settings were used for both timed attempts"
+  ]
+}
