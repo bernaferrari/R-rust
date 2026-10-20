@@ -1,0 +1,190 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.6",
+  "status": "verified",
+  "implementation_commits": [
+    "bb9886e3",
+    "bf40a596",
+    "8dcaa9fe",
+    "e6a57d1b"
+  ],
+  "source_sha256": {
+    "crates/rmath/src/mainutils/essentials/runtime/serialize.rs": "6400c972f3edfaffa68e7550e1deef544f2c75ca93cf1538b41bda0f64474036",
+    "crates/rmath/src/mainutils/essentials/runtime/serialize_workspace_tests.rs": "015a350fc540753050c1862d6d20aae99e5dcc49c0e931c6823e64b17dfb0d46",
+    "crates/rmath/src/mainutils/serialize/api.rs": "90a8da708958c6c6192b6958917e012aad49d9d5f7ec14eedb400e4cbc065710",
+    "crates/rmath/src/mainutils/serialize/compress.rs": "3442f8b5337fe620e0470900205beb9866bc751af47a7f6addc5061fb9fde359",
+    "crates/rmath/src/mainutils/serialize/core.rs": "75a28bb2a40ed13421dfe6cdf7936d7113db0f55636d2f63c02d649ce502038c",
+    "crates/rmath/src/mainutils/serialize/core/read_item.rs": "2013c2c7175ae7dfed2afe7943c6351c93ac1df1e87f5394e4555d8d7e0596a3",
+    "crates/rmath/src/mainutils/serialize/core/reader.rs": "94b6fef1c164cff5d8808a176d742be9cbe4bce923f23baa4c8730178f882b15",
+    "crates/rmath/src/mainutils/serialize/core/reader_impl.rs": "b49b813731abc9f396657ab3b33fd2a8bc88d15af8cfbbe94bc53b8b2eec7712",
+    "crates/rmath/src/mainutils/serialize/core/reftables.rs": "33170848ff014bba34ea56df4031b6464dd0ae7a39ab8699873a6bb36a9fe656",
+    "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/expected.rds": "6e1b99e1e176687fb0cf6061ce902517a556dca27233dfbb26071f79d60b1f3d",
+    "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/metadata.json": "2763541756c306e91ce749978e7ea5045600c152bff83ecee0123df184fd6003",
+    "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/mode1.bin": "c84c35fe1d3284d77ba087ca0c2cf2b27ad4f71243cb5b94d4bd8c72d031f605",
+    "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/mode2.bin": "ebfe0b0e626008b6d92092f9f8d877970ef1c38b87c8c98ec36e2df2fb1940ac",
+    "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/mode3.bin": "e338b36e513154b4c1fa8aa3c24271adb8be73f543e05ce0d3ca34454f8240bb",
+    "crates/rmath/src/mainutils/serialize/lazyload.rs": "474e71dfd33b25a0c83b450846eb500099eeb921c77656a7f2c4296c4fe2aeb2",
+    "crates/rmath/src/mainutils/serialize/mod.rs": "2c1487d2af3d4c40aaf74c80295b3591819b80c44d73fdd0e308585b54e2bd9b",
+    "crates/rmath/src/mainutils/serialize/owned_input.rs": "34fbaa18cb712b12880d2ee94f0dc749429cba79fb9312d25bf8d3298d1a01d3",
+    "crates/rmath/src/mainutils/serialize/owned_output.rs": "671e8fa26e173012101405a70302f886bb74a6f57e4f4eb50e3a7c63d8f1f6b2",
+    "crates/rmath/src/mainutils/serialize/persistence_tests.rs": "b87f7b1b836ec1ebf467e1fc69873fe8d2014f0d0f0aad3b3b62ba43e4940eb6",
+    "crates/rmath/src/mainutils/serialize/raw_codec_tests.rs": "7116568dd1f8dbc970140e9a6475af6bf7db9c3415b6d5f3834fa92c70685d11",
+    "crates/rmath/src/mainutils/serialize/raw_codecs.rs": "39a5a6639e2fd542892884a25122d2467ee8c873d851fae033f65f2293bdb120",
+    "crates/rmath/src/mainutils/serialize/tests.rs": "69b10434a72baf737ed555b3eba9fefffaa563787218b80d103b0a66ff9a7acd",
+    "crates/rmath/src/mainutils/serialize/workspace.rs": "6b9ddd3d7abd6c2dd264c55c774342854f51951516dc59d8f23bfa9c8de03fee",
+    "tests/browser/serialization-workspace.cjs": "9ce335e95cbc8b0f016d099a481db7f26fea1e35381a0107a5a7d742030a8449",
+    "tests/serialization/generate-lazy-codec-fixtures.R": "6addff0a1230cf318970131cb2e68ad4502ae883baab8c7087936caa6e6cea2e"
+  },
+  "evidence_directory": "target/serialization-workspace-evidence",
+  "oracle": {
+    "manifest": "oracle/r-oracle.json",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "svn_revision": 90451
+  },
+  "regressions_before": [
+    "admission-valid-red-20261020.log: 0 passed, 3 failed; reference roots and pull bytes bypassed the original byte limit",
+    "string-valid-red-20261020.log: 0 passed, 1 failed; decoded native string had no retained reservation",
+    "save-rds-valid-red-20261020.log: gzip saved successfully with only128KiB session headroom",
+    "raw-codec-valid-red-final-20261020.log: 0 passed, 2 failed; raw encoder/decoder scratch bypassed the cap",
+    "lazy-file-valid-red-20261020.log: native file bytes and R result coexist beyond the allowed peak",
+    "wasm-workspace-smoke-20261020.log and wasm-adaptive-workspace-smoke-20261020.log: small xz rejected under64MiB; dependency estimator mixes byte and KiB counts",
+    "xz-estimator-valid-red-20261020.log: small xz fails even with4MiB headroom; corrected by audited buffer bound"
+  ],
+  "behavior": [
+    "Reference tables use owning Sexp roots, captured original authority, and admitted native containers",
+    "Container growth admits old and replacement storage before allocation; failed admission preserves prior entries",
+    "Pull buffers admit the next byte before consuming input and borrow leftover bytes for pushback",
+    "Decoded strings, lazy-cache keys and entries retain original-session reservations; bounded ASCII tokens use stack storage",
+    "Plain saveRDS output borrows the existing R raw vector; compressed output and codec scratch share the ledger",
+    "Raw lazy-database codecs snapshot checked cells under the original pin, admit buffers and workspace, and preserve corrupt-data versus resource errors",
+    "Raw LZMA2 uses GNU preset6 coding with a dictionary bounded by available input history; GNU reads all three Rust formats",
+    "Host lazy-file native input remains charged through final R raw publication",
+    "Use checked LZMA allocation envelope from pinned input-window/hash/tree/model/range buffers instead of mixed-unit dependency estimate; small xz fits4MiB and browser cap is unchanged"
+  ],
+  "validation": {
+    "native_workspace": {
+      "log": "envelope-final-native-20261020.log",
+      "passed": 20,
+      "exit_code": 0
+    },
+    "native_previous_workspace": {
+      "log": "raw-codecs-gnu-green-20261020.log",
+      "passed": 17,
+      "exit_code": 0
+    },
+    "public_previous": {
+      "log": "public-strings-codecs-20261020.log",
+      "passed": 21,
+      "scope": "browser files4, persistence hooks12, streams5; before the raw codec/file-buffer milestone"
+    },
+    "gnu_to_rust": {
+      "fixture_metadata": "crates/rmath/src/mainutils/serialize/fixtures/gnu-lazy-codecs/metadata.json",
+      "native_log": "envelope-final-native-20261020.log",
+      "modes": 3
+    },
+    "rust_to_gnu": {
+      "log": "gnu-read-envelope-rust-raw-20261020.log",
+      "modes": 3,
+      "exit_code": 0
+    },
+    "clippy": {
+      "log": "clippy-envelope-final-20261020.log",
+      "exit_code": 0,
+      "scope": "rmath/r-embed/r-wasm/r-uniffi all targets, warnings denied"
+    },
+    "android": {
+      "log": "android-envelope-final-20261020.log",
+      "exit_code": 0,
+      "target": "aarch64-linux-android"
+    },
+    "miri_owning_storage": {
+      "log": "miri-final-20261020.log",
+      "passed": 11,
+      "seconds": 896.59,
+      "exit_code": 0,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "scope": "Final owning containers, reference roots, cache/string lifetime, original-owner revocation and raw snapshots; before later pure codec parameter/envelope correction"
+    },
+    "miri_adaptive_codec_entry": {
+      "log": "miri-adaptive-codecs-20261020.log",
+      "passed": 2,
+      "seconds": 414.21,
+      "exit_code": 0,
+      "scope": "Same strict flags/target/isolation; original-owner raw snapshots and admission denial with adaptive dictionary, before envelope correction"
+    },
+    "miri_final_envelope_arithmetic": {
+      "log": "miri-envelope-final-20261020.log",
+      "passed": 1,
+      "seconds": 76.4,
+      "exit_code": 0,
+      "scope": "Same strict flags/target/isolation; final checked allocation envelope on extreme input/dictionary sizes"
+    },
+    "production_wasm": {
+      "workspace_log": "wasm-envelope-workspace-smoke-20261020.log",
+      "workspace_checks": 14,
+      "stream_log": "wasm-envelope-streams-smoke-20261020.log",
+      "stream_checks": 12,
+      "failures": 0,
+      "exit_code": 0,
+      "scope": "Final source, default64MiB facade cap, two recreated sessions per script"
+    },
+    "native_serialization": {
+      "log": "serialization-full-20261020.log",
+      "passed": 131,
+      "seconds": 1217.84,
+      "exit_code": 0,
+      "scope": "Full serialization module before the pure LZMA parameter/envelope correction; final memory20, envelope Miri and production Wasm cover the correction"
+    }
+  },
+  "limits": {
+    "wasm_session_bytes": 67108864,
+    "wasm_linear_memory_bytes": 268435456,
+    "wasm_asset_limit_bytes": 26214400,
+    "compiler_and_budget_settings": "Unchanged"
+  },
+  "scope_limits": [
+    "Broader permanent/symbol allocation, regex, renderer and allocator metadata accounting remain separate open Beads; no whole-process RSS guarantee",
+    "Foreign caller-owned callback allocations and legacy C memory stream compatibility are outside the portable safe facade accounting scope",
+    "Android is a cross-compilation check; production Wasm runs under Node, not a browser-engine/device execution",
+    "Builds include unrelated shared graphics edits; only scoped sources are recorded and claimed"
+  ],
+  "wasm_artifact": {
+    "package": "target/serialization-workspace-evidence/wasm-node",
+    "build_log": "wasm-envelope-final-20261020.log",
+    "build_exit_code": 0,
+    "optimizer": "Binaryen133",
+    "toolchain": "nightly-2026-08-25",
+    "files": {
+      "r_wasm.js": {
+        "bytes": 20589,
+        "sha256": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3"
+      },
+      "r_wasm_bg.wasm": {
+        "bytes": 24643682,
+        "sha256": "11ea9fe00f7633cbc29fcb81c015f2eff65795b1f12ddf655e1708bf54db23b0"
+      }
+    }
+  },
+  "cleanup": "Build targets retained for reuse by next bead during this ongoing goal; tested package/logs retained separately.",
+  "evidence_sha256": {
+    "android-envelope-final-20261020.log": "c34e4c815e86b387376bd895f55ace5840c8cb311fd7ef6d14d6ec247f77fe56",
+    "clippy-envelope-final-20261020.log": "29416e1ef1dcb94ff5e9d8a231952d9beb25ed9b6666f6d84ce8a04720c5bfa6",
+    "envelope-final-native-20261020.log": "c6ff4abd83db1a270d37dacbd23c37ff9b039f19a454141fa19516fc5f30997e",
+    "gnu-read-envelope-rust-raw-20261020.log": "3c8afe675d2a5abc8da062a5cda5bc0001cf6260d8ad1c7fddfb57aa700ccb87",
+    "miri-adaptive-codecs-20261020.log": "af7c007591ee9f96925d772c9607e3a27245f20f2a1d8cb2eb514cf39473a8ff",
+    "miri-envelope-final-20261020.log": "b216b9df2e953b59a3a7dc1089220b680f848d9e57a8daa5ade07e265b6b8bd2",
+    "miri-final-20261020.log": "2d33a5001178eb3cfae9ffa9814cfde145f39e5ebdc73ffd8802660643f36738",
+    "public-strings-codecs-20261020.log": "be4b30d6b0e5c9415ff497352173e0dd772807f59f2c3f7242f548a2367e91d3",
+    "raw-codecs-gnu-green-20261020.log": "5fb8ea3fd9be1c70a7131ed14aba2cc14d8913265442e28739bc85ba6113b503",
+    "serialization-full-20261020.log": "187625a864f69a3a1f6b6cee90e6a1df143b964315b868db525ff3a157ed44c2",
+    "wasm-envelope-final-20261020.log": "9f2c69111a982fca2d48929a118df0949b9350250dcee041e7bca4a35ff0a38c",
+    "wasm-envelope-streams-smoke-20261020.log": "52fc1a858ea0628d74e8d2263fe5a700f786ac2d48829af088c6bcf4609ad261",
+    "wasm-envelope-workspace-smoke-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54"
+  }
+}
