@@ -17,8 +17,7 @@ pub(super) struct SlabPage {
 /// values. The RefCell loans cover only local storage operations; callbacks
 /// and deferred collection always run after those loans have ended.
 pub(crate) struct ArenaBacking {
-    pub(super) node_pages: RefCell<Vec<SlabPage>>,
-    pub(super) page_cookies: RefCell<HashMap<u64, usize>>,
+    pub(super) node_pages: RefCell<super::page_store::PageStore>,
     pub(super) identity: HeapIdentity,
     pub(super) allocated_bytes: Rc<Cell<usize>>,
     pub(super) max_bytes: Rc<Cell<usize>>,
@@ -107,12 +106,13 @@ impl ArenaBacking {
     }
 
     pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<(SEXP, CheckedNode)> {
-        let page = *self.page_cookies.borrow().get(&link.page_cookie())?;
-        self.node_pages
-            .borrow()
-            .get(page)?
-            .storage
-            .resolve_link(link)
+        let pages = self.node_pages.borrow();
+        // Cookies are issued monotonically by this original heap. Permanent
+        // pages may create gaps, so authenticate by cookie rather than ordinal.
+        let page = pages
+            .binary_search_by_key(&link.page_cookie(), |p| p.meta.cookie())
+            .ok()?;
+        pages[page].storage.resolve_link(link)
     }
     pub(crate) fn replace_node(&self, id: &NodeId, value: SexprecCore) -> Option<()> {
         if !value.has_valid_shape() {

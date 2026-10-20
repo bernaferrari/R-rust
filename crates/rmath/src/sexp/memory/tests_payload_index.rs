@@ -39,7 +39,10 @@ fn physical_payload_index_first_payload_accounts_for_actual_index_buffer() {
 }
 #[test]
 fn physical_payload_index_original_one_slot_budget_denies_unfunded_index() {
-    let bare = NODE_BYTES + PageMetadata::requested_array_bytes(1).unwrap() + 8;
+    let bare = NODE_BYTES
+        + PageMetadata::requested_array_bytes(1).unwrap()
+        + super::page_store::PageStore::minimum_bytes()
+        + 8;
     let mut arena = RArena::with_budget(ArenaBudget::new(bare, 1));
     assert!(
         arena.alloc_vector(SEXPTYPE::RAWSXP, 1).is_null(),

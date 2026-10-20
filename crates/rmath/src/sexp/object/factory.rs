@@ -516,10 +516,11 @@ mod tests {
         let session = RSession::new_for_gc_tests();
         let factory = session.owner_token().unwrap().node_factory();
         let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let headroom = crate::sexp::memory::RArena::minimum_page_bytes() + 256;
         let before = with_runtime(&owner, |access| {
             access.with_arena(|arena| {
                 let before = arena.total_bytes_allocated();
-                arena.set_budget(crate::sexp::memory::ArenaBudget::new(before + 256, 0));
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(before + headroom, 0));
                 before
             })
         })
@@ -542,7 +543,7 @@ mod tests {
         assert!(small.try_char_eq(b"ok").unwrap());
         with_runtime(&owner, |access| {
             access.with_arena(|arena| {
-                assert_eq!(arena.budget().max_bytes, before + 256);
+                assert_eq!(arena.budget().max_bytes, before + headroom);
             })
         })
         .unwrap()

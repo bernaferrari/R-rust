@@ -75,6 +75,11 @@ impl RArena {
         let Some(first_slot) = first_slot else {
             return false;
         };
+        let Some((descriptor_capacity, descriptor_bytes)) =
+            self.backing.node_pages.borrow().growth()
+        else {
+            return false;
+        };
         let slots = if self.budget.max_bytes == 0 {
             NODE_PAGE_SIZE
         } else {
@@ -83,6 +88,7 @@ impl RArena {
                 .max_bytes
                 .checked_sub(self.allocated_bytes.get())
                 .and_then(|n| n.checked_sub(self.transient_bytes.get()))
+                .and_then(|n| n.checked_sub(descriptor_bytes))
             else {
                 return false;
             };
@@ -109,16 +115,19 @@ impl RArena {
         let Some(index_admission) = self.reserve_workspace(index_bytes) else {
             return false;
         };
-        if self.backing.node_pages.borrow_mut().try_reserve(1).is_err()
-            || self
-                .backing
-                .page_cookies
-                .borrow_mut()
-                .try_reserve(1)
-                .is_err()
-        {
-            return false;
-        }
+        let prepared = if descriptor_bytes == 0 {
+            None
+        } else {
+            let Some(admission) = self.reserve_workspace(descriptor_bytes) else {
+                return false;
+            };
+            let Some(prepared) =
+                super::page_store::PageStore::prepare_growth(descriptor_capacity, admission)
+            else {
+                return false;
+            };
+            Some(prepared)
+        };
         let Ok(mut storage) = NodePage::try_new(
             self.heap_identity.clone(),
             self.backing.node_pages.borrow().len(),
@@ -137,19 +146,23 @@ impl RArena {
             return false;
         }
         let meta = storage.metadata();
-        self.backing
-            .page_cookies
-            .borrow_mut()
-            .insert(meta.cookie(), meta.page());
         let registration = register_node_page(&storage);
         let mut pages = self.backing.node_pages.borrow_mut();
-        pages.push(SlabPage {
-            first_slot,
-            storage,
-            meta,
-            _registration: registration,
-            payloads: RefCell::new(payloads),
-        });
+        if pages
+            .commit_page(
+                SlabPage {
+                    first_slot,
+                    storage,
+                    meta,
+                    _registration: registration,
+                    payloads: RefCell::new(payloads),
+                },
+                prepared,
+            )
+            .is_none()
+        {
+            return false;
+        }
         self.slab_page = pages.len() - 1;
         self.slab_offset = 0;
         true
@@ -278,8 +291,7 @@ impl RArena {
         } = heap_identity.byte_ledger().counters();
         limit.set(budget.max_bytes);
         let backing = Rc::new(ArenaBacking {
-            node_pages: RefCell::new(Vec::new()),
-            page_cookies: RefCell::new(HashMap::new()),
+            node_pages: RefCell::new(super::page_store::PageStore::new()),
             identity: heap_identity.clone(),
             allocated_bytes: allocated_bytes.clone(),
             max_bytes: limit,
@@ -433,17 +445,25 @@ impl RArena {
     /// Minimum complete backing for a new one-slot arena page, excluding
     /// the vector/character payload itself. Existing slots are already prepaid.
     pub(crate) fn minimum_page_bytes() -> usize {
+        Self::minimum_slot_page_bytes() + super::page_store::PageStore::minimum_bytes()
+    }
+
+    fn minimum_slot_page_bytes() -> usize {
         NODE_BYTES
             + PageMetadata::requested_array_bytes(1).expect("one-slot metadata layout")
-            + super::slab_slots::SlabSlots::requested_bytes(1)
-                .expect("one-slot payload index layout")
+            + super::slab_slots::SlabSlots::requested_bytes(1).expect("one-slot index layout")
     }
 
     fn minimum_fresh_backing_bytes(&self) -> usize {
         if self.slab_offset < self.current_page_capacity() || self.has_reusable_slot() {
             0
         } else {
-            Self::minimum_page_bytes()
+            self.backing
+                .node_pages
+                .borrow()
+                .growth()
+                .and_then(|(_, bytes)| Self::minimum_slot_page_bytes().checked_add(bytes))
+                .unwrap_or(usize::MAX)
         }
     }
 
@@ -1253,7 +1273,7 @@ impl RArena {
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for page in &*self.backing.node_pages.borrow() {
+            for page in self.backing.node_pages.borrow().iter() {
                 for (slot, lease) in page.payloads.borrow().iter() {
                     debug_assert!(page.storage.token(slot).is_some());
                     debug_assert!(lease.belongs_to(&self.heap_identity));

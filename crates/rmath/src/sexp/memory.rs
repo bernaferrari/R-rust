@@ -29,7 +29,6 @@ use super::heap::{
 };
 use super::object::Sexp;
 use super::payload::{OwnedPayload, PayloadError, PayloadLease, PayloadLink};
-use hashbrown::HashMap;
 use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -57,6 +56,7 @@ mod checked;
 mod gc;
 mod layout;
 mod ledger;
+mod page_store;
 mod slab;
 mod slab_slots;
 
@@ -74,6 +74,9 @@ mod tests_payload_index;
 
 #[cfg(test)]
 mod tests_bookkeeping;
+
+#[cfg(test)]
+mod tests_page_descriptors;
 
 #[allow(unused_imports)]
 pub use self::arena::*;

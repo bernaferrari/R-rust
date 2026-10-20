@@ -1,0 +1,158 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.7",
+  "source_base": "7fddb3cfc1d5cb74ea786e146e9653995c8c6640",
+  "behavior": [
+    "Replace the arena descriptor Vec with a forbidunsafe PageStore that admits complete physical capacity and explicit geometric growth. Preparing a replacement leaves old pages untouched; construction failure drops pending storage and its ticket.",
+    "Keep both old and complete replacement descriptor buffers funded during movement. Move descriptors without moving actual pinned headers, free the old buffer, then replace its charge; the retained buffer drops before its final-owner ticket.",
+    "Include descriptor growth in fresh backing preflight and subtract its full peak from adaptive slab headroom, so the exact one-slot and one-byte-short replacement boundaries work without stranding empty capacity.",
+    "Eliminate the cookie HashMap. Original per-heap cookies increase monotonically; verify append order and binary-search actual cookies, preserving gaps from permanent allocations and exact heap/generation checks.",
+    "Preserve stable header/payload projections, original quotas, logical free-link reuse, typed roots and original-lend callback boundaries."
+  ],
+  "red": {
+    "valid_failed": 4,
+    "corrected_positive_control": 1,
+    "old_first_node_ledger_bytes": 509440,
+    "known_retained_bytes": 510124,
+    "missing_descriptor_vector_bytes": 608,
+    "missing_cookie_table_bytes": 76,
+    "cases": [
+      "retained descriptor/cookie allocation uncharged",
+      "original bare one-slot limit admits unfunded descriptors",
+      "replacement does not admit old plus new buffer peak",
+      "detached descriptor data lacks its original storage charge"
+    ],
+    "initial_control_setup_correction": "RInstance owns three environment sentinels before this fixture; add the actual existing baseline before the cookie-gap control limit. Initial setup failure retained separately, then corrected RED4/positive1 captured before production edits."
+  },
+  "fixture_updates": [
+    "The original payload-index one-slot cutoff now funds the independent descriptor buffer while still omitting exactly the index, retaining denial, zero-state and exact recovery assertions.",
+    "Whole-page fixtures include actual descriptor capacity. Final stale metadata-reader expectations still count only actual collector arrays.",
+    "Factory recovery preserves a fixed unchanged limit across denial and small success. Its256-byte payload headroom now follows the complete first-backing minimum;1024-byte denial, exact unchanged-state, small-value and budget assertions remain. The old absolute256-byte allowance was below the newly funded minimum."
+  ],
+  "validation": {
+    "native_distinct_total": 159,
+    "native_suites": {
+      "native-memory-final": 120,
+      "native-node-factory": 8,
+      "native-heap": 16,
+      "native-permanent": 15
+    },
+    "strict_isolated_i686_miri": {
+      "distinct_total": 25,
+      "suites": {
+        "miri-bitmap-20261020.log": 1,
+        "miri-bookkeeping-20261020.log": 6,
+        "miri-descriptors-green-20261020.log": 5,
+        "miri-factory-recovery-20261020.log": 1,
+        "miri-headers-20261020.log": 4,
+        "miri-index-20261020.log": 4,
+        "miri-initializer-20261020.log": 1,
+        "miri-iterator-20261020.log": 1,
+        "miri-prepared-20261020.log": 1,
+        "miri-reuse-20261020.log": 1
+      },
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained"
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt_git_whitespace": "PASS",
+    "wasm_contracts": {
+      "node_checks": {
+        "wasm-checked-exhaustion-20261020.log": 12,
+        "wasm-encoding-tags-20261020.log": 4,
+        "wasm-filepath-encoding-20261020.log": 4,
+        "wasm-gnu-opcode-contracts-20261020.log": 28,
+        "wasm-internal-dput-20261020.log": 4,
+        "wasm-loess-native-outputs-20261020.log": 86,
+        "wasm-permanent-ledger-20261020.log": 14,
+        "wasm-quote-options-20261020.log": 8,
+        "wasm-regex-workspace-20261020.log": 8,
+        "wasm-s4-cache-new-20261020.log": 8,
+        "wasm-serialization-workspace-20261020.log": 14
+      },
+      "node_total": 190,
+      "web_generations": [
+        42,
+        42
+      ],
+      "total": 274
+    }
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29750508,
+      "sha256": "1a615ab482fc355a859a06b5e53b8dbcb0bc2bac1af8f0cb0fce7d5d87b91e24"
+    },
+    "output": {
+      "bytes": 25468744,
+      "sha256": "39466c2f2c0c3b8fa6a5d8caf1bf5abd0a22455fced5717f4306da67e705435a"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/memory.rs": "78a87785408f7adfaf0b04c52e771516b9c50025f60d5dfcc6b81acaf59c1647",
+    "crates/rmath/src/sexp/memory/arena.rs": "bb0d090cbd5d251f7cbd68f50d02562bf3e844da7b2cf087930d5ced064957a0",
+    "crates/rmath/src/sexp/memory/slab.rs": "70884b50e59677a1a69e190efa9ebdc0ab1624d4d17d9a3f6e39e85285cf6a09",
+    "crates/rmath/src/sexp/memory/tests_payload_index.rs": "0577911133f14b8c2a6aa16bfc6459e64759332fe0a3adc13d997a1a87c68dd2",
+    "crates/rmath/src/sexp/memory/tests_physical_headers.rs": "8996ee5c37cb3c43d8d8364ddd48f1f7e990ccc5507b7c30d9940411df9d4095",
+    "crates/rmath/src/sexp/object/factory.rs": "923fb7b1c65c2dbf415c6f943547b75a4a3f0cad0c1fb99a90b0ee74321f0318",
+    "crates/rmath/src/sexp/memory/page_store.rs": "b9960e62fadb93867bec04362314f2a22f2af39dce515f37dc60d7a12dbd2877",
+    "crates/rmath/src/sexp/memory/tests_page_descriptors.rs": "5fd4c23a71f586944468a619a281a183e2d165c8f31a47856a097f5b4f81ff03"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/page-descriptor-evidence/",
+  "limits": [
+    "Original browser64MiB session and256MiB Wasm linear-memory caps retained.",
+    "Thread directory, root/iterator, permanent native maps, Rc/weak control layouts, allocator rounding and other native workspaces remain parent scope. No total-memory/RSS claim.",
+    "The listed uncommitted user graphics files were present during validation and are excluded from this commit. No immutable full-build, measured speedup or whole CI completion claim."
+  ],
+  "evidence_sha256": {
+    "android-20261020.log": "3ca030b7446645277913742571f851b68a524ab0ac14b939997e008b8ef9ce72",
+    "clippy-20261020.log": "ac85c1f8a749edcd19c8663977b6303d0f41cd9ebb6519930a66604e7aab4587",
+    "miri-bitmap-20261020.log": "e19815a55d4411628d107873dae3125cb7f8bd9b9d703f4c26d8503078670358",
+    "miri-bookkeeping-20261020.log": "cfdbb9902a8375a9509052ba7aac4e273233dcc48be020d0501ff9222a1ec360",
+    "miri-descriptors-green-20261020.log": "629b451455158be6e1d441a277a6c71b266017b4c8815f8ecd6fd11db4718701",
+    "miri-factory-recovery-20261020.log": "a0c02059e0e29a269bc933d15de02181b4a4030408cda5823deb906554740343",
+    "miri-headers-20261020.log": "6302a0f61d333c538ec20a1a7acdb05af974350ae7bb9ed64a65a8934d80a9fa",
+    "miri-index-20261020.log": "5e2b5c7cb3ea40471c726af5328ece735a6a9c6784e3cdf5cefb531fc9a40c5c",
+    "miri-initializer-20261020.log": "626e970a0095da07fe6a59470f4826094e08638960ecbff11e5bf45d620f88d1",
+    "miri-iterator-20261020.log": "f3457d04fced9c6a98cac78d0ddb65370e4c6b94f49f546a086c6119b0950b15",
+    "miri-prepared-20261020.log": "b3e0e209ba84657d0f8e999d78588a3595a8095b8f642a3df07e8c0856e8a522",
+    "miri-reuse-20261020.log": "d667b1655e86daecc19298c3225177cad2316c7b4b3eb903660653886ba11410",
+    "native-factory-minimum-backing-fixture-20261020.log": "f1fb871c45aa8af54666d196713af99282dc116d46b480a4bff6b5f0a0e9565e",
+    "native-green-20261020.log": "4f3654436078d0475cbd5fff8b55609fc00b7370fe450d616d319997ad95a38d",
+    "native-heap-20261020.log": "7a9f7ed89c870ae717d47b35555e9acd703db6b605c17a5ac80b9e79c9ef0b3a",
+    "native-memory-20261020.log": "5179b9c413234810f6f22dd7dd851b388240857b49b7eb9dfe269b1533045468",
+    "native-memory-final-20261020.log": "ea74f4d2649be717b52c14ba1d841f7d038bded713ef9fcac50b2b46b2b686f1",
+    "native-memory-index-fixture-cutoff-20261020.log": "5179b9c413234810f6f22dd7dd851b388240857b49b7eb9dfe269b1533045468",
+    "native-node-factory-20261020.log": "11791131bce9052062254ccc0464be5444e246ce3afe7d2d687594706cb4a433",
+    "native-permanent-20261020.log": "c90d1b792dc966fcbfd0d5d4cd197f91d008e496163dad0fbbe29a222da25a52",
+    "native-red-20261020.log": "4b33758d77143a171e0389e315fc4167c442511d5c8f546b040b868600102d54",
+    "native-red-initial-cookie-fixture-setup-20261020.log": "0e76b68289ea2da21fd1a2e5226926e2afe3a913cf381435b5de16ad7ec5aa9b",
+    "wasm-build-20261020.log": "385ecd753d2d9f3320986f64515c303b8426923ee09ce3fb0f210c9be78b7b30",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags-20261020.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding-20261020.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize-20261020.log": "ec567f0370a301b8f9a418137509b5ed1fc5f5bcfc946608e43465710cd788b0",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts-20261020.log": "deb01081602f9441ed5b09579e2d586c292a8a460e86078464d1e01694adfbe0"
+  }
+}
