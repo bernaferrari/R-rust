@@ -3,8 +3,9 @@
 //!
 //! Numeric alignment comes from typed chunks; graph references are exact
 //! nonowning NodeLinks in their own aligned cells, never a pointer array.
-//! The owning Rc is established before a raw pointer can be projected, so
-//! transferring the owner cannot uniquely retag already published bytes.
+//! Initialized Vec buffers move into their payload owner without reallocating.
+//! Cell views read/write in place; reference views retain the original owner.
+//! Raw projections require that actual payload or scratch owner to stay live.
 
 use std::{
     alloc::Layout,
@@ -115,7 +116,7 @@ impl PayloadLease {
     }
     pub(crate) fn from_reference_cells(cells: Rc<[Cell<NodeLink>]>) -> Result<Self, PayloadError> {
         Self::from_owned(OwnedPayload::from_cells(
-            Storage::References(cells),
+            Storage::References(ReferenceCells::Slice(cells)),
             std::mem::size_of::<NodeLink>(),
             std::mem::align_of::<NodeLink>(),
         )?)
@@ -295,14 +296,41 @@ pub(crate) enum PayloadError {
 }
 
 enum Storage {
-    Bytes(Rc<[ByteChunk]>),
-    Integers(Rc<[IntegerChunk]>),
-    Reals(Rc<[RealChunk]>),
-    Complex(Rc<[ComplexChunk]>),
-    References(Rc<[Cell<NodeLink>]>),
+    Bytes(Vec<ByteChunk>),
+    Integers(Vec<IntegerChunk>),
+    Reals(Vec<RealChunk>),
+    Complex(Vec<ComplexChunk>),
+    References(ReferenceCells),
     ByteCells(Rc<[Cell<u8>]>),
     IntegerCells(Rc<[Cell<i32>]>),
     RealCells(Rc<[Cell<f64>]>),
+}
+
+/// Existing scalar slices and initialized dense vectors retain their own
+/// allocation. Rc<Vec<_>> moves the fallible buffer without the second data
+/// allocation required by Vec-to-Rc-slice conversion.
+#[derive(Clone)]
+enum ReferenceCells {
+    Slice(Rc<[Cell<NodeLink>]>),
+    Vector(Rc<Vec<Cell<NodeLink>>>),
+}
+impl ReferenceCells {
+    fn same_allocation(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Slice(left), Self::Slice(right)) => Rc::ptr_eq(left, right),
+            (Self::Vector(left), Self::Vector(right)) => Rc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+}
+impl std::ops::Deref for ReferenceCells {
+    type Target = [Cell<NodeLink>];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Slice(cells) => cells,
+            Self::Vector(cells) => cells.as_slice(),
+        }
+    }
 }
 
 /// A lease of the original canonical reference cells. Keeping this Rc alive
@@ -310,17 +338,20 @@ enum Storage {
 /// It is neither a rebuilt payload nor a second source of graph authority.
 #[derive(Clone)]
 pub(crate) struct ReferencePayloadLease {
-    cells: Rc<[Cell<NodeLink>]>,
+    cells: ReferenceCells,
     owner: Option<PayloadLease>,
 }
 
 impl ReferencePayloadLease {
     pub(crate) fn from_cells(cells: Rc<[Cell<NodeLink>]>) -> Self {
-        Self { cells, owner: None }
+        Self {
+            cells: ReferenceCells::Slice(cells),
+            owner: None,
+        }
     }
 
     pub(crate) fn same_allocation(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.cells, &other.cells)
+        self.cells.same_allocation(&other.cells)
     }
 
     pub(crate) fn element(&self, index: usize) -> Option<NodeLink> {
@@ -404,10 +435,19 @@ pub(crate) struct OwnedPayload {
     layout: Layout,
 }
 
+#[cfg(test)]
+thread_local! {
+    static LAST_SOURCE_BUFFER: Cell<usize> = const { Cell::new(0) };
+}
+#[cfg(test)]
+fn note_source_buffer<T>(values: &[T]) {
+    LAST_SOURCE_BUFFER.with(|slot| slot.set(values.as_ptr().addr()));
+}
+
 fn chunks<T, const N: usize>(
     elements: usize,
     mut initial: impl FnMut() -> T,
-) -> Result<Rc<[Chunk<T, N>]>, PayloadError> {
+) -> Result<Vec<Chunk<T, N>>, PayloadError> {
     let count = elements.div_ceil(N);
     let mut values = Vec::new();
     values
@@ -416,7 +456,9 @@ fn chunks<T, const N: usize>(
     values.resize_with(count, || Chunk {
         values: std::array::from_fn(|_| Cell::new(initial())),
     });
-    Ok(Rc::from(values.into_boxed_slice()))
+    #[cfg(test)]
+    note_source_buffer(&values);
+    Ok(values)
 }
 
 fn logical_layout(elements: usize, element_size: usize) -> Result<Layout, PayloadError> {
@@ -526,8 +568,10 @@ impl OwnedPayload {
                     .try_reserve_exact(length)
                     .map_err(|_| PayloadError::Allocation)?;
                 values.resize_with(length, || Cell::new(NodeLink::NULL));
+                #[cfg(test)]
+                note_source_buffer(&values);
                 (
-                    Storage::References(Rc::from(values.into_boxed_slice())),
+                    Storage::References(ReferenceCells::Vector(Rc::new(values))),
                     layout,
                 )
             }
@@ -548,7 +592,7 @@ impl OwnedPayload {
             .checked_add(1)
             .ok_or(PayloadError::InvalidLength)?;
         let layout = logical_layout(length, 1)?;
-        let values: Rc<[ByteChunk]> = chunks(length, || 0)?;
+        let values = chunks::<u8, 8>(length, || 0)?;
         for (index, byte) in bytes.iter().copied().enumerate() {
             values[index / 8].values[index % 8].set(byte);
         }
@@ -619,7 +663,10 @@ impl OwnedPayload {
         let Storage::References(cells) = &self.storage else {
             return None;
         };
-        Some(ReferencePayloadLease::from_cells(Rc::clone(cells)))
+        Some(ReferencePayloadLease {
+            cells: cells.clone(),
+            owner: None,
+        })
     }
 
     /// Copy graph edges from the actual typed cells. Header lengths cannot
@@ -657,6 +704,57 @@ impl OwnedPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn retains_initialized_source_buffer(payload: OwnedPayload) {
+        let source = LAST_SOURCE_BUFFER.with(Cell::get);
+        let expected_bytes = payload.layout().size();
+        let lease = PayloadLease::from_owned(payload).unwrap();
+        assert_eq!(
+            lease.native_projection().addr(),
+            source,
+            "ownership transfer copied the already initialized native buffer"
+        );
+        let retained = lease.clone();
+        drop(lease);
+        assert_eq!(retained.native_projection().addr(), source);
+        assert_eq!(retained.logical_bytes(), expected_bytes);
+    }
+    #[test]
+    fn dense_payload_admission_moves_raw_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::zeroed_vector(SEXPTYPE::RAWSXP, 31).unwrap(),
+        );
+    }
+    #[test]
+    fn dense_payload_admission_moves_integer_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::zeroed_vector(SEXPTYPE::INTSXP, 13).unwrap(),
+        );
+    }
+    #[test]
+    fn dense_payload_admission_moves_real_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::zeroed_vector(SEXPTYPE::REALSXP, 7).unwrap(),
+        );
+    }
+    #[test]
+    fn dense_payload_admission_moves_complex_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::zeroed_vector(SEXPTYPE::CPLXSXP, 5).unwrap(),
+        );
+    }
+    #[test]
+    fn dense_payload_admission_moves_reference_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 9).unwrap(),
+        );
+    }
+    #[test]
+    fn dense_payload_admission_moves_character_buffer_without_copy() {
+        retains_initialized_source_buffer(
+            OwnedPayload::characters("Rust é across chunks".as_bytes()).unwrap(),
+        );
+    }
 
     #[test]
     fn permanent_budget_payload_cannot_rebind_one_heap_to_another_counter() {
@@ -810,7 +908,10 @@ mod tests {
     fn reference_lease_retains_original_cells_and_distinguishes_equal_capacity_allocations() {
         let original = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 2).unwrap();
         let lease = original.reference_lease().unwrap();
-        let weak = Rc::downgrade(&lease.cells);
+        let ReferenceCells::Vector(cells) = &lease.cells else {
+            panic!("dense producer must retain its initialized Vec");
+        };
+        let weak = Rc::downgrade(cells);
         let same = original.reference_lease().unwrap();
         let different = OwnedPayload::zeroed_vector(SEXPTYPE::VECSXP, 2)
             .unwrap()
