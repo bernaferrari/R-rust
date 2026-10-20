@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.1",
+  "source_base": "860699e1f67fe80a0122072569c150d22934a814",
+  "behavior": [
+    "Admit all initialized header slots in each actual slab buffer before allocating the buffer; no eager uncharged constructor page.",
+    "Constrained pages consume at most half the available header capacity, with a one-slot minimum when affordable, leaving payload headroom without raising caps.",
+    "Prepaid unused and reusable header slots add no second charge; active-node and cumulative guards remain independent.",
+    "Move the initialized Vec into a sized Rc owner without the old boxed-slice to Rc-slice copy. The Vec and its original ledger charge drop together at final strong ownership, including detached roots; surviving weak projections retain only the small control block."
+  ],
+  "red": {
+    "tests_failed": 3,
+    "first_buffer_requested_bytes": 360448,
+    "old_ledger_bytes": 88,
+    "log": "target/physical-header-evidence/native-red-20261020.log"
+  },
+  "validation": {
+    "native_memory_passed": 105,
+    "native_heap_passed": 13,
+    "strict_isolated_i686_miri": {
+      "physical_storage": 4,
+      "heap_identity_roots_retirement": 13,
+      "original_projection_across_page_moves": 1,
+      "address_only_canonical_provenance": 1,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android check PASS",
+    "production_wasm_checks": 262,
+    "wasm_node_checks": {
+      "wasm-checked-exhaustion-20261020": 12,
+      "wasm-gnu-opcode-contracts-20261020": 28,
+      "wasm-internal-dput-20261020": 4,
+      "wasm-loess-native-outputs-20261020": 86,
+      "wasm-permanent-ledger-20261020": 14,
+      "wasm-quote-options-20261020": 8,
+      "wasm-regex-workspace-20261020": 8,
+      "wasm-s4-cache-new-20261020": 8,
+      "wasm-serialization-workspace-20261020": 14
+    },
+    "web_binding_contracts": 80
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29064350,
+      "sha256": "32439e4ea948e58cee76d76716c9ce5a1c628898bc88e80b29bd9a79a4f70650"
+    },
+    "output": {
+      "bytes": 24855176,
+      "sha256": "c816d22e334eaa1c26071dbb1d40267d80301f99a39acc446d8a9c671f7de2ad"
+    }
+  },
+  "limits": [
+    "This closes complete slab header-buffer admission only. PageMetadata arrays, native maps/root vectors, Rc/weak controls, allocator rounding and typed payload tail padding remain in rport-cvs2.11.",
+    "Wasm and platform builds use this local working tree, including the separate uncommitted graphics work; this is not an immutable clean-checkout or whole-CI claim. Two final source changes only clarify the admitted page-capacity comments.",
+    "Browser quota remains64MiB and linear memory maximum256MiB; Node V8 executes both Node and web bindings. No new Chromium or Android device execution claim.",
+    "Original native memory assertions now compare actual retained buffer storage rather than the obsolete per-instantiated-slot charge. No collector assertions, root/generation checks or production caps were weakened."
+  ],
+  "source_sha256": {
+    "crates/rmath/src/sexp/heap.rs": "1a498b8e087acbce2a11cfcfc42443956827eea1593ceba3afe7051a26fa9f47",
+    "crates/rmath/src/sexp/memory.rs": "b56523dc6ece0cfe268f67b23471c881b7954557f2a908879941f72a9f7fc04b",
+    "crates/rmath/src/sexp/memory/arena.rs": "be63fa8b05692d4eb6145150092035ff0ea03368b20b3537d119e0c4f71bf9de",
+    "crates/rmath/src/sexp/memory/layout.rs": "9da58e01f44858ae55b1a7b89707cd2076ed429ebd280b77ab28bbcf4e5ede24",
+    "crates/rmath/src/sexp/memory/retention_tests.rs": "342d673658b02c692a7a053a1abc866c90f933380312e35a543b7574443526bf",
+    "crates/rmath/src/sexp/memory/slab.rs": "02eb6928efacb403aa04e90b232db4660f82c5611a1a155130743f52504bb064",
+    "crates/rmath/src/sexp/memory/tests_arena.rs": "951f53b7e18ffde08f4e1b67f61b8b708ddd9e79ec70b59e415c87b2a25345f2",
+    "crates/rmath/src/sexp/memory/tests_payload.rs": "766821eae89cf658ea3e8ea567eeb217c62976739bcfcb88045cd0ee51cb7c3c",
+    "crates/rmath/src/sexp/memory/tests_physical_headers.rs": "2306a8ff4f2e663499ffc43a9bec943ece2c4d11cbfc16f1b5826def19e71eb7"
+  },
+  "log_sha256": {
+    "target/physical-header-evidence/native-red-20261020.log": "8cf70969def39d4e3c28113a90f03ed94c549e0a8f8a39b416efd367f5368dde",
+    "target/physical-header-evidence/native-memory-final-20261020.log": "828de3d26804667bbe550dbdf40da99a227eeea592372652ad2185a78c94336a",
+    "target/physical-header-evidence/native-heap-20261020.log": "c57f882ad9738d9de0f8fd9a4e8e8c5fc320eb2bacc5be4da147ba225ad5d837",
+    "target/physical-header-evidence/miri-physical-final-20261020.log": "6f7e2cc247f710ed64687da197347f9f896d881db5ea12d8d54eee8c53e58738",
+    "target/physical-header-evidence/miri-heap-20261020.log": "d62124dc86f633fd963a6770ba8d75fe8821b94e8a3bae009799a7ace60a59b0",
+    "target/physical-header-evidence/miri-legacy_node_projection_survives_owned_page_moves-20261020.log": "2e3db7ea8176732c1a185c52c29b28253e558c2d2bee7d2a0396144e5ce38ef1",
+    "target/physical-header-evidence/miri-checked_projection_recovers_canonical_provenance_from_address_only_inputs-20261020.log": "4aa723d1d1fb4b15dee8f279873f09f9aa139276b825731fba93a39e36909f91",
+    "target/physical-header-evidence/android-20261020.log": "55e01f165a30106d38b16c3088a248ebd98eded8d7e62af2c5ac76c9d6df0775",
+    "target/physical-header-evidence/clippy-20261020.log": "ee79d217c0704805c18beb00194c6e9e2e155022c6967d317b2ce0abe005cb14",
+    "target/physical-header-evidence/wasm-build-20261020.log": "779baa9e1cba0d1edde22eaeb7a1d57230471004810d25da5727f3bf49707f6a",
+    "target/physical-header-evidence/wasm-optimize-20261020.log": "5627bef472078984aadc5f1cab86d5bea596383786d9f3ec1bb8138014a27a56",
+    "target/physical-header-evidence/wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/physical-header-evidence/wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "target/physical-header-evidence/wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/physical-header-evidence/wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/physical-header-evidence/wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/physical-header-evidence/wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "target/physical-header-evidence/wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/physical-header-evidence/wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "target/physical-header-evidence/wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/physical-header-evidence/wasm-portable-package-contracts-20261020.log": "a8c4a7015dd278b6d5b98726fa8bd156bbf226cb5cbd691e1b1b9a497ea839ba"
+  }
+}

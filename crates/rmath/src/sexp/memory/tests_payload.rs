@@ -148,6 +148,7 @@ pub(super) fn original_heap_initializer_reentry_rejects_changed_shape_and_accoun
     heap.publish_lazy_length(&node, 3).unwrap();
     let charge = arena.allocated_bytes.clone();
     let transient = arena.transient_bytes.clone();
+    let header_bytes = super::tests_physical_headers::header_backing_bytes(&arena);
     drop(arena);
     let mut escaped = None;
     assert!(
@@ -162,15 +163,15 @@ pub(super) fn original_heap_initializer_reentry_rejects_changed_shape_and_accoun
     assert_eq!(heap.node_snapshot(&node).unwrap().vecsxp_length(), 2);
     assert!(heap.node_snapshot(&node).unwrap().payload.is_empty());
     assert_eq!(transient.get(), 0);
-    assert_eq!(charge.get(), super::NODE_BYTES + 12);
+    assert_eq!(charge.get(), header_bytes + 12);
     assert_eq!(escaped.as_ref().unwrap().integer_elt(0), Some(91));
     drop(escaped);
-    assert_eq!(charge.get(), super::NODE_BYTES);
+    assert_eq!(charge.get(), header_bytes);
     let lease =
         super::attach_initialized_payload(&node, |lease| lease.set_integer_elt(1, 74)).unwrap();
     assert_eq!(lease.integer_elt(1), Some(74));
     assert!(heap.payload_lease(&node).unwrap().same_allocation(&lease));
-    assert_eq!(charge.get(), super::NODE_BYTES + 8);
+    assert_eq!(charge.get(), header_bytes + 8);
     drop(root);
     assert!(!node.is_live());
     assert_eq!(lease.integer_elt(1), Some(74));
@@ -412,7 +413,10 @@ pub(super) fn generic_empty_character_allocation_is_sealed_and_budgeted() {
     assert_eq!(lease.capacity(), 1);
     assert_eq!(lease.byte_elt(0), Some(0));
     assert!(lease.is_immutable());
-    assert_eq!(arena.total_bytes_allocated(), super::NODE_BYTES + 1);
+    assert_eq!(
+        arena.total_bytes_allocated(),
+        super::tests_physical_headers::header_backing_bytes(&arena) + 1
+    );
     let mut lazy = super::SexprecCore::new(super::SEXPTYPE::CHARSXP);
     lazy.sxpinfo.set_alt(true);
     let before = arena.total_bytes_allocated();
@@ -1695,6 +1699,7 @@ pub(super) fn initialized_payload_cannot_attach_to_a_reused_header_generation() 
         super::with_arena(|arena| {
             let baseline = arena.total_bytes_allocated();
             let node = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
+            let allocated = arena.total_bytes_allocated();
             let old = arena.node_token(node).unwrap();
             let heap = old.heap_identity();
             let mut header = heap.node_snapshot(&old).unwrap();
@@ -1720,7 +1725,8 @@ pub(super) fn initialized_payload_cannot_attach_to_a_reused_header_generation() 
             );
             assert!(heap.payload_lease(&replacement_node).is_none());
             assert_eq!(arena.transient_bytes.get(), 0);
-            assert_eq!(arena.allocated_bytes.get(), baseline + super::NODE_BYTES);
+            assert!(allocated >= baseline);
+            assert_eq!(arena.allocated_bytes.get(), allocated);
         });
     });
 }

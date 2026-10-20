@@ -21,7 +21,6 @@ pub(crate) struct ArenaBacking {
     pub(super) identity: HeapIdentity,
     pub(super) allocated_bytes: Rc<Cell<usize>>,
     pub(super) max_bytes: Rc<Cell<usize>>,
-    pub(super) header_bytes: Cell<usize>,
     pub(super) transient_bytes: Rc<Cell<usize>>,
 }
 
@@ -178,17 +177,6 @@ impl ArenaBacking {
             .get(id.page())?
             .storage
             .take_resource(id)
-    }
-}
-
-impl Drop for ArenaBacking {
-    fn drop(&mut self) {
-        self.allocated_bytes.set(
-            self.allocated_bytes
-                .get()
-                .checked_sub(self.header_bytes.get())
-                .expect("header byte ledger balance"),
-        );
     }
 }
 

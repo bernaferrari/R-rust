@@ -885,18 +885,19 @@ pub(super) fn test_arena_total_bytes() {
 
 #[test]
 pub(super) fn test_vector_and_charsxp_account_node_once() {
-    let node_bytes = std::mem::size_of::<SexprecCore>();
-
     let mut arena = RArena::new();
     assert!(!arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
     assert_eq!(
         arena.total_bytes_allocated(),
-        node_bytes + std::mem::size_of::<f64>()
+        super::tests_physical_headers::header_backing_bytes(&arena) + std::mem::size_of::<f64>()
     );
 
     let mut arena = RArena::new();
     assert!(!arena.alloc_charsxp(b"abc").is_null());
-    assert_eq!(arena.total_bytes_allocated(), node_bytes + 4);
+    assert_eq!(
+        arena.total_bytes_allocated(),
+        super::tests_physical_headers::header_backing_bytes(&arena) + 4
+    );
 }
 
 #[test]

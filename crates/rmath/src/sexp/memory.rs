@@ -63,6 +63,9 @@ mod slab;
 mod tests_arena;
 
 #[cfg(test)]
+mod tests_physical_headers;
+
+#[cfg(test)]
 mod tests_payload;
 
 #[allow(unused_imports)]

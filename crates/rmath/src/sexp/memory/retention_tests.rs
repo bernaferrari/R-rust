@@ -53,6 +53,9 @@ fn retained_small_value_does_not_keep_collected_temporary_payloads() {
         .unwrap();
     session.owner_token().unwrap().full_gc().unwrap();
     let baseline_bytes = bytes.get();
+    let baseline_headers = session
+        .with_arena(|arena| super::tests_physical_headers::header_backing_bytes(arena))
+        .unwrap();
     let baseline_nodes = session.with_arena(|arena| arena.node_count()).unwrap();
     let rss_before = resident_kib();
 
@@ -99,11 +102,14 @@ fn retained_small_value_does_not_keep_collected_temporary_payloads() {
     assert_eq!(small.try_real_elt(0).unwrap(), 37.);
     let after_gc_bytes = bytes.get();
     let after_gc_nodes = session.with_arena(|arena| arena.node_count()).unwrap();
+    let after_gc_headers = session
+        .with_arena(|arena| super::tests_physical_headers::header_backing_bytes(arena))
+        .unwrap();
     assert_eq!(after_gc_nodes, baseline_nodes);
     assert_eq!(
         after_gc_bytes,
-        baseline_bytes + (count + 1) * super::NODE_BYTES,
-        "only reusable node headers may remain accounted"
+        baseline_bytes + after_gc_headers - baseline_headers,
+        "only retained header backing may remain accounted"
     );
     let rss_after_gc = resident_kib();
 

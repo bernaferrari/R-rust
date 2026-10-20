@@ -912,13 +912,17 @@ pub(crate) enum HeapError {
     InvalidShape,
 }
 
-fn cells<T>(len: usize, mut initial: impl FnMut() -> T) -> Result<Box<[Cell<T>]>, HeapError> {
+fn cell_buffer<T>(len: usize, mut initial: impl FnMut() -> T) -> Result<Vec<Cell<T>>, HeapError> {
     let mut values = Vec::new();
     values
         .try_reserve_exact(len)
         .map_err(|_| HeapError::Allocation)?;
     values.resize_with(len, || Cell::new(initial()));
-    Ok(values.into_boxed_slice())
+    Ok(values)
+}
+
+fn cells<T>(len: usize, initial: impl FnMut() -> T) -> Result<Box<[Cell<T>]>, HeapError> {
+    Ok(cell_buffer(len, initial)?.into_boxed_slice())
 }
 
 /// Shared collector metadata contains no node pointer or node borrow.
@@ -1241,12 +1245,26 @@ struct AttachedResource {
     value: Rc<dyn Any>,
 }
 
+/// Moving an initialized Vec into this sized Rc owner preserves its buffer.
+/// The large cell allocation drops with the last strong owner even if weak
+/// readers remain. Drop its backing before releasing its original byte charge.
+struct HeaderCells<T> {
+    values: Vec<Cell<T>>,
+    charge: Option<super::memory::AllocationCharge>,
+}
+impl<T> std::ops::Deref for HeaderCells<T> {
+    type Target = [Cell<T>];
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
 /// Owned pages expose only interior cells. Forming an arena reference never
 /// forms an exclusive reference over previously projected legacy node bytes.
 pub(crate) struct NodePage<T> {
     // Rc ownership permits moving the page after legacy pointers have been
     // projected. A movable Box would retag these bytes uniquely on each move.
-    values: Rc<[Cell<T>]>,
+    values: Rc<HeaderCells<T>>,
     metadata: Rc<PageMetadata>,
     resources: RefCell<HashMap<usize, AttachedResource>>,
 }
@@ -1255,7 +1273,7 @@ pub(crate) struct NodePage<T> {
 /// canonical Cell allocation. It cannot prolong header ownership or turn an
 /// address-only caller pointer into a pointer with fabricated provenance.
 pub(crate) struct NodeProjection<T> {
-    values: Weak<[Cell<T>]>,
+    values: Weak<HeaderCells<T>>,
     metadata: Rc<PageMetadata>,
 }
 
@@ -1378,11 +1396,28 @@ impl<T> NodePage<T> {
     ) -> Result<Self, HeapError> {
         let metadata = Rc::new(PageMetadata::try_new(heap, page, slots)?);
         Ok(Self {
-            values: Rc::from(cells(slots, initial)?),
+            values: Rc::new(HeaderCells {
+                values: cell_buffer(slots, initial)?,
+                charge: None,
+            }),
             metadata,
             resources: RefCell::new(HashMap::new()),
         })
     }
+    /// Only a fresh page, before publication of any weak reader, can receive
+    /// its backing charge. The charge then follows the actual Vec allocation.
+    pub(crate) fn attach_header_charge(
+        &mut self,
+        charge: super::memory::AllocationCharge,
+    ) -> Option<()> {
+        let cells = Rc::get_mut(&mut self.values)?;
+        if cells.charge.is_some() {
+            return None;
+        }
+        cells.charge = Some(charge);
+        Some(())
+    }
+
     pub(crate) fn attach_resource(&self, id: &NodeId, value: &Rc<dyn Any>) -> Option<()> {
         if !self.metadata.validates(id) {
             return None;

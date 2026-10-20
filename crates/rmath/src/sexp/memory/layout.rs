@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Each page contains 4096 canonical headers, balancing allocation frequency
-/// and locality. Its byte footprint follows the actual SexprecCore layout.
+/// Full pages contain 4096 canonical headers; constrained byte budgets use
+/// smaller admitted pages. Header bytes follow the actual SexprecCore layout.
 pub(super) const NODE_PAGE_SIZE: usize = 4096;
 
 const _: () = assert!(NODE_PAGE_SIZE % 64 == 0);

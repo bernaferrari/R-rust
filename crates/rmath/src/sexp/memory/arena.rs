@@ -19,7 +19,7 @@ pub struct RArena {
     heap_identity: HeapIdentity,
     /// Current page index for allocation (last page usually).
     slab_page: usize,
-    /// Current offset within the slab_page (0 .. NODE_PAGE_SIZE).
+    /// Current offset within the current page's admitted header capacity.
     pub(super) slab_offset: usize,
     /// Free list of reclaimed SEXP pointers available for reuse.
     pub(super) free_list: Vec<SEXP>,
@@ -54,16 +54,69 @@ pub struct RArena {
 }
 
 impl RArena {
-    /// Allocate a new page in the slab. Reserves exactly to avoid realloc (stable ptrs inside).
-    #[inline(always)]
-    fn alloc_new_page(&mut self) {
-        let storage = NodePage::try_new(
+    fn current_page_capacity(&self) -> usize {
+        self.backing
+            .node_pages
+            .borrow()
+            .get(self.slab_page)
+            .map_or(0, |page| page.meta.slots())
+    }
+
+    /// Admit a complete initialized header buffer before allocating it. Small
+    /// budgets use smaller pages; unused slots and reuse are already prepaid.
+    fn alloc_new_page(&mut self) -> bool {
+        let slots = if self.budget.max_bytes == 0 {
+            NODE_PAGE_SIZE
+        } else {
+            let Some(remaining) = self
+                .budget
+                .max_bytes
+                .checked_sub(self.allocated_bytes.get())
+                .and_then(|n| n.checked_sub(self.transient_bytes.get()))
+            else {
+                return false;
+            };
+            // Do not consume a constrained heap with speculative empty
+            // headers: leave room for later payloads. A one-header budget
+            // must still admit its single node.
+            let available = remaining / NODE_BYTES;
+            (available / 2)
+                .max(usize::from(available != 0))
+                .min(NODE_PAGE_SIZE)
+        };
+        if slots == 0 {
+            return false;
+        }
+        let Some(bytes) = slots.checked_mul(NODE_BYTES) else {
+            return false;
+        };
+        let Some(admission) = self.reserve_workspace(bytes) else {
+            return false;
+        };
+        if self.backing.node_pages.borrow_mut().try_reserve(1).is_err()
+            || self
+                .backing
+                .page_cookies
+                .borrow_mut()
+                .try_reserve(1)
+                .is_err()
+        {
+            return false;
+        }
+        let Ok(mut storage) = NodePage::try_new(
             self.heap_identity.clone(),
             self.backing.node_pages.borrow().len(),
-            NODE_PAGE_SIZE,
+            slots,
             || SexprecCore::new(SEXPTYPE::NILSXP),
-        )
-        .expect("arena node page allocation failed");
+        ) else {
+            return false;
+        };
+        let Some(charge) = admission.commit_allocation() else {
+            return false;
+        };
+        if storage.attach_header_charge(charge).is_none() {
+            return false;
+        }
         let meta = storage.metadata();
         self.backing
             .page_cookies
@@ -79,6 +132,7 @@ impl RArena {
         });
         self.slab_page = pages.len() - 1;
         self.slab_offset = 0;
+        true
     }
 
     /// Allocate a core node into the current slab page (creating new page if needed).
@@ -157,8 +211,8 @@ impl RArena {
             }
             return self.register_new_node(ptr);
         }
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
+        if self.slab_offset >= self.current_page_capacity() && !self.alloc_new_page() {
+            return ptr::null_mut();
         }
         let ptr = self.backing.node_pages.borrow()[self.slab_page]
             .storage
@@ -174,14 +228,6 @@ impl RArena {
             }
         }
         self.slab_offset += 1;
-        self.add_accounted_bytes(std::mem::size_of::<SexprecCore>());
-        self.backing.header_bytes.set(
-            self.backing
-                .header_bytes
-                .get()
-                .checked_add(NODE_BYTES)
-                .expect("header byte ledger overflow"),
-        );
         self.register_new_node(ptr)
     }
 
@@ -215,12 +261,11 @@ impl RArena {
             identity: heap_identity.clone(),
             allocated_bytes: allocated_bytes.clone(),
             max_bytes: limit,
-            header_bytes: Cell::new(0),
             transient_bytes: transient_bytes.clone(),
         });
         let backing_owners = heap_identity.retain_arena(backing.clone());
         let retired_resources = backing_owners.resource_drop_queue();
-        let mut a = RArena {
+        RArena {
             character_cache: characters::CharacterCache::default(),
             bytecode_string_cache: bytecode_strings::BytecodeStringCache::default(),
             backing,
@@ -241,10 +286,7 @@ impl RArena {
             budget,
             guard_max_nodes: 0,
             guard_nodes_admitted: 0,
-        };
-
-        a.alloc_new_page();
-        a
+        }
     }
 
     fn track_node_active(&mut self, ptr: SEXP) {
@@ -291,11 +333,12 @@ impl RArena {
     }
 
     fn fresh_header_bytes(&self) -> usize {
-        if self
-            .free_list
-            .iter()
-            .rev()
-            .any(|&pointer| self.reusable_slot(pointer).is_some())
+        if self.slab_offset < self.current_page_capacity()
+            || self
+                .free_list
+                .iter()
+                .rev()
+                .any(|&pointer| self.reusable_slot(pointer).is_some())
         {
             0
         } else {
@@ -943,7 +986,7 @@ impl RArena {
                 let used = if page_idx == self.slab_page {
                     self.slab_offset
                 } else {
-                    NODE_PAGE_SIZE
+                    page.meta.slots()
                 };
                 (0..used).map(move |i| page.storage.raw_slot(i).expect("allocated page slot"))
             })
