@@ -1,0 +1,6 @@
+Package: stats
+Version: 0.0.1
+Title: Installed Package Startup Fixture
+Description: Exercises the default installed-stats synchronization branch.
+License: MIT
+NeedsCompilation: no

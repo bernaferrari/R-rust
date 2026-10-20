@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-jxfp.3.12.6.7",
+  "status": "verified_existing_constructor_fix",
+  "verified_runtime_commit": "76a78b52",
+  "runtime_source_sha256": "92f83f7769f2912530f31d8c93bcbf361f96042380f798b46e2a4536666835fe",
+  "scope": "Ordinary constructor default package attachment using explicit installed-source fixture paths; no direct replay of the synchronization script",
+  "test": "crates/r-embed/tests/installed_package_startup.rs",
+  "source_sha256": {
+    "crates/r-embed/tests/installed_package_startup.rs": "25b1ad78e82d72bb99ba2e7b20e4f2e36fea55223a67178eb4b98251f7065c64",
+    "crates/r-embed/tests/fixtures/installed-stats-library/stats/DESCRIPTION": "891a787737ea2284f5b29bd9806e92d5640037bcf328862c706451772308486e",
+    "crates/r-embed/tests/fixtures/installed-stats-library/stats/NAMESPACE": "04da5b0c888ecb6d80d0fd38b888287e4b97e4b5c6bec894c13a7900f6148d6c",
+    "crates/r-embed/tests/fixtures/installed-stats-library/stats/R/stats.R": "843b184e881faaf1187b62cc145124aef78cecad4ab7978e5b02f2cf37a05314"
+  },
+  "evidence_directory": "target/installed-startup-evidence",
+  "validation": {
+    "public_native": {
+      "passed": 1,
+      "log": "native-final-20261020.log",
+      "sha256": "9b6ced1a866031dda3b7f477c4e20e672caa79746a0c6795c53946872ded05c6"
+    },
+    "clippy": {
+      "package": "r-embed",
+      "test": "installed_package_startup",
+      "warnings_denied": true,
+      "log": "clippy-20261020.log",
+      "sha256": "2031db006ae7bad1e2b2a6ad90d1342b89f5ba1d35945b6088572ba73eaca0ac"
+    }
+  },
+  "assertions": [
+    "Installed stats source marker proves the fixture namespace actually loaded, rather than using portable fallback",
+    "reorder and xtabs in attached stats match the original base functions",
+    "diff.ts in stats namespace and its real S3 table matches the original base function",
+    "No f/env/tab bindings leak to the global environment",
+    "Original unmodified154_ls_all_names.R output matches its checked-in golden through script mode",
+    "Explicit interactive evaluation still updates .Last.value to7L, verified separately from script mode"
+  ],
+  "scope_limits": [
+    "The local synchronization wrapper already existed; this change adds independent public regression evidence without claiming a new runtime repair",
+    "The fixture is a minimal source package named stats, not a full GNU installed stats conformance claim",
+    "Constructor follows the same default attachment branch with per-instance explicit paths, without process environment mutation",
+    "This host installed-library branch does not run in browser filesystem policy; production Wasm package contracts are separate evidence",
+    "Unrelated graphics edits remain preserved"
+  ]
+}
