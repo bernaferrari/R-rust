@@ -1,7 +1,7 @@
 {
   "date": "2026-10-20",
   "issue": "rport-4m0nz.4",
-  "status": "native_and_wasm_verified_original_s4_diagnostic_running",
+  "status": "verified",
   "source_sha256": {
     "crates/rmath/src/sexp/heap.rs": "e414fcba23313a00c7ace1e103c6a54d18738ae7a3acff0c38962c439429070c",
     "crates/rmath/src/sexp/gc_trace.rs": "ee85a64bfe8dc7895921fe0ba4fb7dd244e9d09f35502d94c3f1e7df08a60aab"
@@ -82,6 +82,18 @@
         "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
         "wasm-portable-contracts-20261020.log": "53ef77d499031d659b78c9b2f558f7a1996671b16bc7a1fe9e2a2ca40f82f5f8"
       }
+    },
+    "original_s4_workload": {
+      "candidate_ref": "383891bb",
+      "candidate_process_seconds": 2787.988,
+      "baseline_ref": "5ab4ee2b",
+      "baseline_process_seconds": 2963.889,
+      "candidate_passed": 1,
+      "baseline_passed": 1,
+      "candidate_neighbors_passed": 9,
+      "process_bound_seconds": 3600,
+      "both_incomplete_at_comparison_bound_seconds": 900,
+      "checkpoint": "docs/ci-checkpoints/s4-torture-completion-2026-10-20.json"
     }
   },
   "instrumented_mark_comparison": {
@@ -261,11 +273,9 @@
     "isolation": true,
     "default_alias_checks": true
   },
-  "remaining": [
-    "Frozen original S4 torture test completion/timing with unchanged R program/class setup/assertion; candidate and matched baseline both incomplete at900s and continuing under explicit3600s diagnostic bound."
-  ],
+  "remaining": [],
   "scope_limits": [
-    "Verified tracing and platform milestone; original S4 torture performance remains open.",
+    "Repeated-token optimization verified; broader S4 performance remains open under4m0nz because both original workloads exceed900s.",
     "Both mark test binaries include token/backing counters; their ratios are instrumented diagnostics, not uninstrumented production speedup",
     "No torture frequency, allocation publication point, original class setup or test assertion changed",
     "Non-test CheckedNode construction retains the original checked expression; cfg(test) success counting does not add a production path",

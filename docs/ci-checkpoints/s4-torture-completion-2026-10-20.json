@@ -6,7 +6,7 @@
     "rport-4m0nz",
     "rport-4m0nz.4"
   ],
-  "status": "original_candidate_passed_baseline_running_performance_open",
+  "status": "original_candidate_and_matched_baseline_passed_900s_performance_open",
   "candidate": {
     "label": "tokens-long",
     "artifact": {
@@ -59,13 +59,54 @@
       "collection": 92,
       "evaluation": 92
     },
-    "scope": "Observational stack classifications, not continuous timing percentages"
+    "scope": "Observational stack classifications, not continuous timing percentages",
+    "baseline_files": 98,
+    "baseline_observed_phase_sample_counts": {
+      "lazy_decode": 23,
+      "collection": 98,
+      "evaluation": 98
+    }
   },
   "matched_baseline": {
-    "source": "5ab4ee2b",
-    "status": "still running under same3600s bound",
-    "900s_milestone": "incomplete; not a pass",
-    "receipt": "tokens-baseline-long-receipt.json (pending)"
+    "label": "tokens-baseline-long",
+    "artifact": {
+      "ref": "5ab4ee2b",
+      "executable": "/Users/bernardoferrari/Downloads/rport/target/s4-bounded-evidence/tokens-baseline-long-s4-next-method",
+      "executable_sha256": "6217fbf273e077e95161a97000cdc49660b4a5a351a289ea264ad22733c66a76",
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      }
+    },
+    "command": [
+      "/Users/bernardoferrari/Downloads/rport/target/s4-bounded-evidence/tokens-baseline-long-s4-next-method",
+      "--exact",
+      "continuation_metadata_survives_gc_torture",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/Users/bernardoferrari/Downloads/rport/target/s4-bounded-evidence",
+    "started_utc": "2026-10-20T16:40:50.555591+00:00",
+    "timeout_seconds": 3600,
+    "comparison_bound_seconds": 900,
+    "comparison_bound_outcome": "incomplete at900s; continues under explicit3600s diagnostic bound",
+    "runtime_thread_environment": {
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "RAYON_NUM_THREADS": "2"
+    },
+    "pid": 27045,
+    "elapsed_seconds": 2963.889,
+    "returncode": 0,
+    "timed_out": false,
+    "passed": 1,
+    "failed": 0,
+    "valid_pass": true,
+    "log_sha256": "66b048ac57465ad913bac27f3fbc08aee8429a6b5d176afa8ba063024ac083b0",
+    "harness_test_seconds": 2963.03
   },
   "reference_compile_input": {
     "archive": "target/s4-bounded-evidence/reference-source.tar.gz",
@@ -81,13 +122,44 @@
     "tokens-long-artifact.json": "c1f0a40823f53a976b3674828a966034035b29b0a2adb5a96bd1cd79a5a462ff",
     "tokens-baseline-long-artifact.json": "943a5cf75e590ab43deef3ef6a7d08bfbe78006ef685f79b5e525fb4f563275a",
     "tokens-baseline-long-900s.json": "0cf54cdc50df2a80dcb69201c66bb0f916d73660fa8d3a786e49bd7679cb8101",
-    "run_test_long.py": "daecc6ed90b9ae7e725c986748ff78a5c8ee4012b44d748e6f63f088a810f1b7"
+    "run_test_long.py": "daecc6ed90b9ae7e725c986748ff78a5c8ee4012b44d748e6f63f088a810f1b7",
+    "tokens-baseline-long-receipt.json": "27b818b037cb48a5e2ed7df397c7335d896de555ef825b07673d03b1ac5f88fe",
+    "tokens-baseline-long-test.log": "66b048ac57465ad913bac27f3fbc08aee8429a6b5d176afa8ba063024ac083b0",
+    "tokens-long-neighbors-receipt.json": "1cfbea5e5d87c5e2ec0c1ac7ae38c31722ad58e06f5497a76dac1f96fc0436c3",
+    "tokens-long-neighbors.log": "d3a879543fe40e24172e33c908476e19cd368b71159beffb1081b857d56739c3"
   },
   "scope_limits": [
-    "This original test now completes under a recorded explicit3600s process profile, with no ignore attribute, skip, class-setup change, relaxed assertion or altered torture frequency",
-    "The candidate remains incomplete at900s;2788-second completion is not a900-second pass or a browser60-second result",
-    "Matched baseline completion and an end-to-end timing comparison remain pending",
-    "Original nine neighboring S4 controls have a separate9-pass receipt in s4-torture-bounded-2026-10-20.json; no new whole-S4-suite run claimed",
-    "Broader S4 performance remains under4m0nz; k1236 remains open until matched receipts are complete"
-  ]
+    "Both original unignored tests complete under a recorded explicit3600s profile with original torture/class setup/assertion. All9 other candidate cases also pass in a separate invocation of the same frozen artifact.",
+    "Both remain incomplete at900s;2788-second candidate completion is not a900-second pass or a browser60-second result.",
+    "The end-to-end ratio is an observed single pair under concurrent local load; the separate mark benchmark remains explicitly instrumented.",
+    "This closes bounded-completion/diagnosis and the repeated-token optimization, while broader S4 performance remains under4m0nz.",
+    "No new whole-S4-suite single-invocation run, production current-head rerun or relaxed assertion claimed."
+  ],
+  "candidate_neighbor_controls": {
+    "source": "383891bb",
+    "command": [
+      "/Users/bernardoferrari/Downloads/rport/target/s4-bounded-evidence/tokens-long-s4-next-method",
+      "--skip",
+      "continuation_metadata_survives_gc_torture",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/Users/bernardoferrari/Downloads/rport/target/s4-bounded-evidence",
+    "timeout_seconds": 240,
+    "elapsed_seconds": 79.238,
+    "returncode": 0,
+    "timed_out": false,
+    "artifact_sha256": "04a0ab25eade840442a996da18cc2b9291f7558eabf8d3917850ed72235f68f7",
+    "log_sha256": "d3a879543fe40e24172e33c908476e19cd368b71159beffb1081b857d56739c3",
+    "valid_pass": true,
+    "passed": 9,
+    "harness_test_seconds": 79.22
+  },
+  "observed_comparison": {
+    "baseline_process_seconds": 2963.889,
+    "candidate_process_seconds": 2787.988,
+    "ratio_baseline_over_candidate": 1.0631,
+    "candidate_time_reduction_percent": 5.935,
+    "scope": "One uncensored run per frozen artifact with original non-test runtime kernels. Other local work ran concurrently; no CPU isolation, repeatability or statistical speed guarantee claimed. Both remain incomplete at900s."
+  }
 }
