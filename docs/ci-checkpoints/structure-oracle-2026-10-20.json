@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-8xzpx",
+  "status": "obsolete_oracle_mismatch_resolved_by_existing_pin",
+  "runtime_source_commit": "76a78b52",
+  "oracle": {
+    "schema_version": 1,
+    "source": {
+      "repository": "https://github.com/wch/r-source.git",
+      "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+      "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+      "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+    },
+    "runtime": {
+      "version": "4.7.0 Under development (unstable)",
+      "nickname": "Unsuffered Consequences",
+      "svn_revision": 90451,
+      "source_date": "2026-08-27T09:09:57Z"
+    },
+    "build": {
+      "runner_image": "ubuntu-24.04",
+      "configure_args": [
+        "--without-x",
+        "--without-recommended-packages",
+        "--disable-java",
+        "--without-blas",
+        "--without-lapack"
+      ]
+    }
+  },
+  "evidence_directory": "target/structure-oracle-evidence",
+  "probe_source": "local({\n    previous <- options(useFancyQuotes=FALSE)\n    on.exit(options(previous))\n    cases <- list(.Dim=c(2L,2L), .Tsp=c(1,4,1), .Label=letters[1:4])\n    for (name in names(cases)) {\n        messages <- character()\n        withCallingHandlers(\n            do.call(structure, c(list(1:4), setNames(list(cases[[name]]), name))),\n            warning=function(w) {\n                messages <<- c(messages, conditionMessage(w))\n                invokeRestart(\"muffleWarning\")\n            })\n        stopifnot(length(messages)==1L)\n        cat(name, \": \", messages, \"\\n\", sep=\"\")\n    }\n})\n",
+  "probe_sha256": "63698eb0d845a348c1b93a6bdf850ef0a50e7e56c12abb6996103ad0e18a538c",
+  "expected_warnings": [
+    ".Dim: Replacing special names '.Dim' is deprecated; use 'dim' instead.",
+    ".Tsp: Replacing special names '.Tsp' is deprecated; use 'tsp' instead.",
+    ".Label: Replacing special names '.Label' is deprecated; use 'levels' instead."
+  ],
+  "validation": {
+    "pinned_runtime_verified": {
+      "log": "oracle-verified-20261020.log",
+      "sha256": "dfade269c4561bcd464a5e94975b972d24916545864d826677b5317d39c997ad"
+    },
+    "production_wasm_sessions": 2,
+    "attributes_per_session": 3,
+    "output_sha256": {
+      "gnu-controlled-20261020.log": "43ea8a8b74aab1df69e6d629a3177122c6a85df422928c5e5365c6fad9f5e9cb",
+      "wasm-controlled-0.log": "43ea8a8b74aab1df69e6d629a3177122c6a85df422928c5e5365c6fad9f5e9cb",
+      "wasm-controlled-1.log": "43ea8a8b74aab1df69e6d629a3177122c6a85df422928c5e5365c6fad9f5e9cb"
+    }
+  },
+  "production_wasm_sha256": "bee350d1b55ae36220884dcd831518425e74953b2bc92c1b68da7f51b8596b54",
+  "existing_whole_driver": {
+    "source": "tests/upstream-r/vendor/structure.R",
+    "sha256": "cf9c86620db36f8ebe0212c695959651a243f936cfa785da73adf3569389af03",
+    "disposition": "pass",
+    "ledger": "tests/upstream-r/dispositions.tsv",
+    "prior_evidence": "docs/capability-evidence.md and docs/ci-checkpoints/integration-stabilization-e3e26dea.json"
+  },
+  "scope_limits": [
+    "The configured immutable oracle is4.7.0 devel r90451, so the old Homebrew4.6.1 comparison is no longer the project target",
+    "All three previously missing deprecation warnings match the current pinned runtime in two fresh production Wasm sessions",
+    "The probe sets and restores useFancyQuotes FALSE to isolate deprecation behavior from platform locale quotation glyphs; the initial uncontrolled comparison differed only in those glyphs",
+    "No runtime source or original upstream assertion changed",
+    "Existing whole-driver PASS is cited from prior evidence and the current pass disposition; this is not a fresh whole structure.R execution",
+    "No broad locale-default or complete conformance claim"
+  ]
+}
