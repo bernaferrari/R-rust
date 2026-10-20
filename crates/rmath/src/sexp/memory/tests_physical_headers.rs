@@ -28,7 +28,7 @@ pub(super) fn retained_page_bytes(arena: &RArena) -> usize {
 pub(super) fn minimum_page_bytes() -> usize {
     NODE_BYTES
         + PageMetadata::requested_array_bytes(1).unwrap()
-        + std::mem::size_of::<Option<PayloadLease>>()
+        + std::mem::size_of::<super::slab_slots::SlotRecord>()
 }
 
 #[test]

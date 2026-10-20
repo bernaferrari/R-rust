@@ -48,13 +48,13 @@ fn physical_payload_index_original_one_slot_budget_denies_unfunded_index() {
     assert_eq!(arena.node_count(), 0);
     assert_eq!(arena.total_bytes_allocated(), 0);
     arena.set_budget(ArenaBudget::new(
-        bare + std::mem::size_of::<Option<PayloadLease>>(),
+        bare + std::mem::size_of::<super::slab_slots::SlotRecord>(),
         1,
     ));
     assert!(!arena.alloc_vector(SEXPTYPE::RAWSXP, 1).is_null());
     assert_eq!(
         arena.total_bytes_allocated(),
-        bare + std::mem::size_of::<Option<PayloadLease>>()
+        bare + std::mem::size_of::<super::slab_slots::SlotRecord>()
     );
 }
 #[test]

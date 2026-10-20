@@ -1,5 +1,6 @@
 //! RArena core: allocation, lending, reservations, with_arena*.
 
+use super::slab_slots::SlotOffset;
 use super::*;
 
 /// An arena allocator for R objects.
@@ -21,12 +22,10 @@ pub struct RArena {
     slab_page: usize,
     /// Current offset within the current page's admitted header capacity.
     pub(super) slab_offset: usize,
-    /// Free list of reclaimed SEXP pointers available for reuse.
-    pub(super) free_list: Vec<SEXP>,
-    /// O(1) membership for active node pointers.
-    pub(super) active_addrs: HashSet<usize>,
-    /// O(1) membership for free-list pointers.
-    pub(super) free_addrs: HashSet<usize>,
+    /// Counts and a local logical head; all per-slot links are already funded.
+    live_count: usize,
+    reclaimed_count: usize,
+    reclaimed_head: Option<SlotOffset>,
     /// Total bytes allocated for tracking.
     pub(super) allocated_bytes: Rc<Cell<usize>>,
     /// Bytes reserved by temporary native workspaces which live outside the
@@ -65,6 +64,17 @@ impl RArena {
     /// Admit a complete initialized header buffer before allocating it. Small
     /// budgets use smaller pages; unused slots and reuse are already prepaid.
     fn alloc_new_page(&mut self) -> bool {
+        let first_slot = self
+            .backing
+            .node_pages
+            .borrow()
+            .last()
+            .map_or(Some(0), |page| {
+                page.first_slot.checked_add(page.meta.slots())
+            });
+        let Some(first_slot) = first_slot else {
+            return false;
+        };
         let slots = if self.budget.max_bytes == 0 {
             NODE_PAGE_SIZE
         } else {
@@ -84,7 +94,7 @@ impl RArena {
                 .max(usize::from(available != 0))
                 .min(NODE_PAGE_SIZE)
         };
-        if slots == 0 {
+        if slots == 0 || first_slot.checked_add(slots).is_none() {
             return false;
         }
         let Some(bytes) = slots.checked_mul(NODE_BYTES) else {
@@ -93,7 +103,7 @@ impl RArena {
         let Some(admission) = self.reserve_workspace(bytes) else {
             return false;
         };
-        let Some(index_bytes) = super::payload_index::PayloadSlots::requested_bytes(slots) else {
+        let Some(index_bytes) = super::slab_slots::SlabSlots::requested_bytes(slots) else {
             return false;
         };
         let Some(index_admission) = self.reserve_workspace(index_bytes) else {
@@ -117,8 +127,7 @@ impl RArena {
         ) else {
             return false;
         };
-        let Some(payloads) = super::payload_index::PayloadSlots::try_new(slots, index_admission)
-        else {
+        let Some(payloads) = super::slab_slots::SlabSlots::try_new(slots, index_admission) else {
             return false;
         };
         let Some(charge) = admission.commit_allocation() else {
@@ -135,6 +144,7 @@ impl RArena {
         let registration = register_node_page(&storage);
         let mut pages = self.backing.node_pages.borrow_mut();
         pages.push(SlabPage {
+            first_slot,
             storage,
             meta,
             _registration: registration,
@@ -204,10 +214,10 @@ impl RArena {
             None if empty_payload_shape(&header) => {}
             _ => return ptr::null_mut(),
         }
-        while let Some(pointer) = self.free_list.pop() {
-            let Some((page, slot)) = self.reusable_slot(pointer) else {
+        while let Some((page, slot)) = self.pop_reclaimed_slot() {
+            if !self.backing.node_pages.borrow()[page].meta.reusable(slot) {
                 continue;
-            };
+            }
             let ptr = self.backing.node_pages.borrow()[page]
                 .storage
                 .replace_inactive(slot, header)
@@ -286,9 +296,9 @@ impl RArena {
             heap_identity,
             slab_page: 0,
             slab_offset: NODE_PAGE_SIZE,
-            free_list: Vec::new(),
-            active_addrs: HashSet::new(),
-            free_addrs: HashSet::new(),
+            live_count: 0,
+            reclaimed_count: 0,
+            reclaimed_head: None,
             allocated_bytes,
             transient_bytes,
             alloc_gc_torture_ticks: 0,
@@ -305,8 +315,6 @@ impl RArena {
         if ptr.is_null() {
             return;
         }
-        self.active_addrs.insert(ptr as usize);
-        self.free_addrs.remove(&(ptr as usize));
         let Some((meta, slot)) = find_slab_slot(ptr) else {
             debug_assert!(ptr.is_null(), "active node is not in a slab page");
             return;
@@ -319,29 +327,107 @@ impl RArena {
             .copy_live(&id)
             .expect("initialized owned arena node");
         meta.set_old(slot, header.sxpinfo.gcgen() == 1);
+        self.live_count = self
+            .live_count
+            .checked_add(1)
+            .expect("arena live node count");
         let allocation = CheckedNode::new(meta, id).expect("new live arena allocation");
         note_lend_allocation(std::ptr::from_ref(self).addr(), ptr, allocation);
     }
 
-    fn track_node_freed(&mut self, ptr: SEXP) {
-        if ptr.is_null() {
-            return;
-        }
-        self.active_addrs.remove(&(ptr as usize));
-        self.free_addrs.insert(ptr as usize);
-        if let Some((meta, slot)) = find_slab_slot(ptr) {
-            if let Some(id) = meta.current_id(slot) {
-                meta.release(&id);
-            }
-        }
-    }
-
-    fn reusable_slot(&self, pointer: SEXP) -> Option<(usize, usize)> {
+    fn local_slot(&self, pointer: SEXP) -> Option<(usize, usize)> {
         let (metadata, slot) = find_slab_slot(pointer)?;
         let pages = self.backing.node_pages.borrow();
         let page = pages.get(metadata.page())?;
-        (Rc::ptr_eq(&page.meta, &metadata) && metadata.reusable(slot))
-            .then_some((metadata.page(), slot))
+        Rc::ptr_eq(&page.meta, &metadata).then_some((metadata.page(), slot))
+    }
+
+    fn track_node_freed(&mut self, pointer: SEXP) {
+        let (page, slot) = self.local_slot(pointer).expect("original live arena slot");
+        let pages = self.backing.node_pages.borrow();
+        let meta = &pages[page].meta;
+        let id = meta
+            .current_id(slot)
+            .expect("retiring original live generation");
+        meta.release(&id);
+        self.live_count = self
+            .live_count
+            .checked_sub(1)
+            .expect("arena live node balance");
+    }
+
+    fn reclaimed_location(&self, offset: SlotOffset) -> Option<(usize, usize)> {
+        let index = offset.index();
+        let pages = self.backing.node_pages.borrow();
+        let page_index = pages
+            .partition_point(|p| p.first_slot <= index)
+            .checked_sub(1)?;
+        let page = &pages[page_index];
+        let slot = index.checked_sub(page.first_slot)?;
+        (slot < page.meta.slots()).then_some((page_index, slot))
+    }
+
+    fn pop_reclaimed_slot(&mut self) -> Option<(usize, usize)> {
+        let head = self.reclaimed_head?;
+        let (page, slot) = self
+            .reclaimed_location(head)
+            .expect("reclamation link belongs to original arena");
+        let pages = self.backing.node_pages.borrow();
+        let mut records = pages[page].payloads.borrow_mut();
+        self.reclaimed_head = records.next_free(slot).expect("admitted reclamation slot");
+        records
+            .set_next_free(slot, None)
+            .expect("admitted reclamation slot");
+        self.reclaimed_count = self
+            .reclaimed_count
+            .checked_sub(1)
+            .expect("reclamation slot balance");
+        Some((page, slot))
+    }
+
+    fn has_reusable_slot(&self) -> bool {
+        let mut cursor = self.reclaimed_head;
+        for _ in 0..self.reclaimed_count {
+            let Some(head) = cursor else {
+                break;
+            };
+            let Some((page, slot)) = self.reclaimed_location(head) else {
+                return false;
+            };
+            let pages = self.backing.node_pages.borrow();
+            if pages[page].meta.reusable(slot) {
+                return true;
+            }
+            cursor = pages[page].payloads.borrow().next_free(slot).flatten();
+        }
+        false
+    }
+
+    #[cfg(test)]
+    pub(super) fn reclaimed_snapshot(&self) -> Vec<SEXP> {
+        let mut result = Vec::new();
+        let mut cursor = self.reclaimed_head;
+        for _ in 0..self.reclaimed_count {
+            let head = cursor.expect("exact reclamation count");
+            let (page, slot) = self
+                .reclaimed_location(head)
+                .expect("original reclamation slot");
+            let pages = self.backing.node_pages.borrow();
+            result.push(
+                pages[page]
+                    .storage
+                    .raw_slot(slot)
+                    .expect("original header projection"),
+            );
+            cursor = pages[page]
+                .payloads
+                .borrow()
+                .next_free(slot)
+                .expect("admitted reclamation slot");
+        }
+        assert!(cursor.is_none());
+        result.reverse();
+        result
     }
 
     /// Minimum complete backing for a new one-slot arena page, excluding
@@ -349,18 +435,12 @@ impl RArena {
     pub(crate) fn minimum_page_bytes() -> usize {
         NODE_BYTES
             + PageMetadata::requested_array_bytes(1).expect("one-slot metadata layout")
-            + super::payload_index::PayloadSlots::requested_bytes(1)
+            + super::slab_slots::SlabSlots::requested_bytes(1)
                 .expect("one-slot payload index layout")
     }
 
     fn minimum_fresh_backing_bytes(&self) -> usize {
-        if self.slab_offset < self.current_page_capacity()
-            || self
-                .free_list
-                .iter()
-                .rev()
-                .any(|&pointer| self.reusable_slot(pointer).is_some())
-        {
+        if self.slab_offset < self.current_page_capacity() || self.has_reusable_slot() {
             0
         } else {
             Self::minimum_page_bytes()
@@ -857,7 +937,7 @@ impl RArena {
 
     /// Get the number of nodes allocated in this arena.
     pub fn node_count(&self) -> usize {
-        self.active_addrs.len()
+        self.live_count
     }
 
     /// Amortize tracing against the graph retained by the previous collection.
@@ -908,7 +988,7 @@ impl RArena {
         if ptr.is_null() {
             return false;
         }
-        self.active_addrs.contains(&(ptr as usize))
+        self.node_token(ptr).is_some()
     }
 
     pub(crate) fn link_from_projection(&self, pointer: SEXP) -> Option<NodeLink> {
@@ -954,17 +1034,16 @@ impl RArena {
     }
 
     pub(crate) fn node_token(&self, pointer: SEXP) -> Option<CheckedNode> {
-        if !self.contains(pointer) {
-            return None;
-        }
-        checked_node(pointer)
+        let (page, slot) = self.local_slot(pointer)?;
+        self.backing.node_pages.borrow()[page].storage.token(slot)
     }
 
     pub(crate) fn node_projection(&self, pointer: SEXP) -> Option<(SEXP, CheckedNode)> {
-        if !self.contains(pointer) {
-            return None;
-        }
-        checked_projection(pointer)
+        let node = self.node_token(pointer)?;
+        let canonical = self.backing.node_pages.borrow()[node.id().page()]
+            .storage
+            .resolve(node.id())?;
+        Some((canonical, node))
     }
 
     /// Identity of the currently live allocation at a legacy projection.
@@ -990,11 +1069,7 @@ impl RArena {
     /// arena and is not currently on the free list, tying the wrapper lifetime
     /// to the arena borrow.
     pub(crate) fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
-        if self.contains(ptr) {
-            Sexp::from_arena_raw(ptr, self).ok()
-        } else {
-            None
-        }
+        Sexp::from_arena_raw(ptr, self).ok()
     }
 
     /// Iterate over initialized arena headers, including reusable slots.
@@ -1061,13 +1136,6 @@ impl RArena {
         if ptr.is_null() {
             return;
         }
-        if self.free_addrs.contains(&(ptr as usize)) {
-            return;
-        }
-        if !self.active_addrs.contains(&(ptr as usize)) {
-            return;
-        }
-
         let Some(node) = self.node_token(ptr) else {
             return;
         };
@@ -1100,35 +1168,81 @@ impl RArena {
             .expect("retiring exact live node");
         let ptr = pointer;
 
-        self.free_list.push(ptr);
+        let page = node.id().page();
+        let slot = node.id().slot();
+        let pages = self.backing.node_pages.borrow();
+        let offset = SlotOffset::from_index(
+            pages[page]
+                .first_slot
+                .checked_add(slot)
+                .expect("admitted slot offset"),
+        )
+        .expect("admitted slot offset");
+        pages[page]
+            .payloads
+            .borrow_mut()
+            .set_next_free(slot, self.reclaimed_head)
+            .expect("admitted reclamation slot");
+        drop(pages);
+        self.reclaimed_head = Some(offset);
+        self.reclaimed_count = self
+            .reclaimed_count
+            .checked_add(1)
+            .expect("reclamation slot count");
         self.track_node_freed(ptr);
     }
 
     /// Get the fragmentation ratio among allocated node slots.
     pub fn fragmentation_ratio(&self) -> f64 {
-        let total = self.active_addrs.len() + self.free_list.len();
+        let total = self.live_count + self.reclaimed_count;
         if total == 0 {
             0.0
         } else {
-            self.free_list.len() as f64 / total as f64
+            self.reclaimed_count as f64 / total as f64
         }
     }
 
-    /// Normalize the reusable-node list and rebuild its membership index.
+    /// Rebuild a unique logical worklist from canonical initialized slots.
+    /// Spare capacity was never allocated and must not become a free node.
     pub(crate) fn normalize_free_list(&mut self) {
-        self.free_list.sort_by_key(|&p| p as usize);
-        self.free_list.dedup();
-        self.free_addrs.clear();
-        for &ptr in &self.free_list {
-            if !ptr.is_null() {
-                self.free_addrs.insert(ptr as usize);
+        let pages = self.backing.node_pages.borrow();
+        let mut head = None;
+        let mut count = 0usize;
+        for (page_index, page) in pages.iter().enumerate() {
+            let used = if page_index == self.slab_page {
+                self.slab_offset
+            } else {
+                page.meta.slots()
+            };
+            let mut records = page.payloads.borrow_mut();
+            for slot in 0..used {
+                if page.meta.reusable(slot) {
+                    records
+                        .set_next_free(slot, head)
+                        .expect("admitted reclamation slot");
+                    head = Some(
+                        SlotOffset::from_index(
+                            page.first_slot
+                                .checked_add(slot)
+                                .expect("admitted slot offset"),
+                        )
+                        .expect("admitted slot offset"),
+                    );
+                    count = count.checked_add(1).expect("reclamation slot count");
+                } else {
+                    records
+                        .set_next_free(slot, None)
+                        .expect("admitted reclamation slot");
+                }
             }
         }
+        self.reclaimed_head = head;
+        self.reclaimed_count = count;
     }
 
     /// Get the number of free slots available for reuse.
     pub fn free_count(&self) -> usize {
-        self.free_list.len()
+        self.reclaimed_count
     }
 
     /// Get total bytes allocated by this arena.
@@ -1145,9 +1259,19 @@ impl RArena {
                     debug_assert!(lease.belongs_to(&self.heap_identity));
                 }
             }
-            for &free_ptr in &self.free_list {
-                debug_assert!(!free_ptr.is_null());
+            let mut cursor = self.reclaimed_head;
+            for _ in 0..self.reclaimed_count {
+                let head = cursor.expect("exact reclamation count");
+                let (page, slot) = self
+                    .reclaimed_location(head)
+                    .expect("original reclamation slot");
+                cursor = self.backing.node_pages.borrow()[page]
+                    .payloads
+                    .borrow()
+                    .next_free(slot)
+                    .expect("admitted reclamation slot");
             }
+            debug_assert!(cursor.is_none());
             true
         });
     }

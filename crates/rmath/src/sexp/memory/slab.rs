@@ -6,10 +6,11 @@ use super::*;
 /// address is used only by the legacy projection directory; slot pointers
 /// always come from their own interior cell, never a sibling's pointer tag.
 pub(super) struct SlabPage {
+    pub(super) first_slot: usize,
     pub(super) storage: NodePage<SexprecCore>,
     pub(super) meta: Rc<PageMetadata>,
     pub(super) _registration: NodePageRegistration,
-    pub(super) payloads: RefCell<super::payload_index::PayloadSlots>,
+    pub(super) payloads: RefCell<super::slab_slots::SlabSlots>,
 }
 
 /// Canonical physical storage shared by the allocator facade and owning

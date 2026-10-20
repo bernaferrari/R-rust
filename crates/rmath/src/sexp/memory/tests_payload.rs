@@ -209,9 +209,9 @@ pub(super) fn invalid_initial_shapes_preserve_arena_budget_and_reusable_slots() 
     unsafe {
         arena.free_node(first);
     }
-    let free_slots = arena.free_list.clone();
+    let free_slots = arena.reclaimed_snapshot();
     assert!(arena.allocate_core_in_slab(|| invalid).is_null());
-    assert_eq!(arena.free_list, free_slots);
+    assert_eq!(arena.reclaimed_snapshot(), free_slots);
     assert_eq!(arena.allocated_bytes.get(), bytes);
     assert_eq!(arena.alloc_node(super::SEXPTYPE::LISTSXP), first);
 }

@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.11.6",
+  "source_base": "5f4c89e322fbc197c0d8ae91c356e4a261bab4f1",
+  "behavior": [
+    "Remove RArena active/free membership HashSets and the growable raw free-list Vec. Payload ownership and the logical next-free offset now share the already admitted fixed slab records.",
+    "Use opaque local NonZeroUsize offsets, checked cumulative page starts and binary-search location across adaptive capacities; no raw reclamation pointers, reallocation peaks or new worklist buffers during retirement.",
+    "Keep live/reclaimed counts and a logical LIFO head in the arena; canonical metadata remains the source of live/generation truth. Normalize unique free links from initialized prefixes only, leaving unused capacity unallocated.",
+    "Authenticate raw arena projections against the exact original Rc<PageMetadata> in the original arena store. Same-heap permanent stores and foreign arenas reject; capture canonical projections and generation tokens without recursive contains probes.",
+    "Remove duplicate arena-authentication probes from borrowed wrappers only after node_token performs the complete original-store authentication. Borrowed lifetime/root requirements remain unchanged.",
+    "Retain an independent test-local HashSet built from fixture expected pointers for the bitmap comparator and a genuine HashSet for the historical manual hash benchmark. Normalization tests use duplicate retirement through the API; the removed private table-corruption state is no longer representable."
+  ],
+  "red": {
+    "failed": 3,
+    "positive_controls": 2,
+    "first_live_node_known_physical_bytes": 476696,
+    "old_ledger_bytes": 476672,
+    "membership_lower_bound_missing": 24,
+    "reclamation_bookkeeping_lower_bound_before": 24,
+    "reclamation_bookkeeping_lower_bound_after": 80,
+    "remaining_failure": "reclaimed nodes retain native tables/worklist without ledger funding"
+  },
+  "fixture_updates": [
+    "Physical index cutoff helpers now measure the complete SlotRecord layout containing both payload and reclamation words, preserving exact one-slot denial/success and final-owner assertions.",
+    "The bookkeeping fixture measures actual remaining slab-record allocations after elimination of the separate containers; no zero-valued surrogate metric.",
+    "Test-only reclaimed snapshots retain the original unchanged-on-invalid-shape sequence assertions; duplicate retirement and canonical membership assertions replace direct corruption of removed private table fields.",
+    "New variable-capacity1/3-slot page regression preserves LIFO pointer reuse, exact counts, zero additional storage growth and stale-generation rejection."
+  ],
+  "validation": {
+    "native_distinct_total": 317,
+    "native_suites": {
+      "native-memory-final": 115,
+      "native-gengc": 104,
+      "native-object": 98
+    },
+    "native_gc_ignored": 1,
+    "native_gc_seconds": 475.1,
+    "native_object_seconds": 10.46,
+    "strict_isolated_i686_miri": {
+      "suites": {
+        "bookkeeping-green": 5,
+        "variable-pages": 1,
+        "bitmap": 1,
+        "iterator": 1,
+        "index": 4,
+        "headers": 4,
+        "prepared": 1,
+        "initializer": 1,
+        "reuse": 1
+      },
+      "distinct_total": 19,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt_git_whitespace": "PASS",
+    "production_wasm_checks": 274,
+    "wasm_node_checks": {
+      "filepath-encoding": 4,
+      "encoding-tags": 4,
+      "quote-options": 8,
+      "loess-native-outputs": 86,
+      "internal-dput": 4,
+      "regex-workspace": 8,
+      "gnu-opcode-contracts": 28,
+      "s4-cache-new": 8,
+      "permanent-ledger": 14,
+      "checked-exhaustion": 12,
+      "serialization-workspace": 14
+    },
+    "web_binding_checks": 84
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29554104,
+      "sha256": "539d298f8fb5613ae31297cb340f225147bcfe6d4bca36cec67f6d4683216b61"
+    },
+    "output": {
+      "bytes": 25304610,
+      "sha256": "4795ce056f5909646b05e4f647be8ed77d0b7673db14de41b403307264a1e646"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/memory.rs": "6a4711c426971db9b3dc04602a91dae099f5a08d4fc2cabb61c6e2dab615c8ee",
+    "crates/rmath/src/sexp/memory/arena.rs": "c0118e00885717f6a493fdcca69c19d55c2bab8184ab0470dfb6765eed1a5afb",
+    "crates/rmath/src/sexp/memory/slab.rs": "7b106f51e2936ed7dd809d43fdf310ba67b87e5457497cf9f26bf2c0bfb84c4f",
+    "crates/rmath/src/sexp/memory/tests_arena.rs": "187bc8dbed9373d892d60215afdc75495dd56cd6e962470ab082daebed0eb355",
+    "crates/rmath/src/sexp/memory/tests_payload.rs": "1beda32ad7681b3d78d25c374edaf4ddc797ef0bf465cca7603b499bb7bb3611",
+    "crates/rmath/src/sexp/memory/tests_payload_index.rs": "633014645ccc71efa9d916c089cf8d629e832517ace7635e76c2500d24b90e48",
+    "crates/rmath/src/sexp/memory/tests_physical_headers.rs": "1af95251d0646f93f32e5d6eda327bafb414b8f45fc69ab9971a361c0aaec61a",
+    "crates/rmath/src/sexp/object/mod.rs": "4ed9ae3ecc2ebfee8c042af8634c938f92f081bd87da151b453ebf20aa19840f",
+    "crates/rmath/src/sexp/memory/slab_slots.rs": "b6f06b837ac5d6d38fad41521236d718518949886d53d2c135cb3714b4cfe707",
+    "crates/rmath/src/sexp/memory/tests_bookkeeping.rs": "9a6b452811a4f681e715592264fc8a0ecf93101e1b06767be1d736a78840174b"
+  },
+  "deleted_sources": [
+    "crates/rmath/src/sexp/memory/payload_index.rs"
+  ],
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/arena-bookkeeping-evidence/",
+  "evidence_log_sha256": {
+    "android-20261020.log": "01ae0e7e9b1199de0e88d7f70eb5e0f26aa290bb85148a37770778cffd0332cb",
+    "clippy-20261020.log": "8a2405f3349903845a8c4658fdcd039e8d310afc4e70d58c225d203835c0c772",
+    "miri-bitmap-20261020.log": "e43e1b6d8838eb018b15726d6f904d9241ca6f98877c27f870342cce80179fef",
+    "miri-bookkeeping-green-20261020.log": "2c3cb9594204c023138606a5937a07c9b303a5bf6dfc6ce84b4b22aea88a5de6",
+    "miri-headers-20261020.log": "2b3378c8e1ebda17cabab258052fbc91340a0df0c057d364a03196599d357c89",
+    "miri-index-20261020.log": "bccaaa0d0d9c796c5ee22df5cccb3cb1c969fd0c638bf71bc5c60da338ac9636",
+    "miri-initializer-20261020.log": "d6b6fadb67f959d3bc132666299eddb049eb1e4f989d6b0e4be1ff5f78f65c8a",
+    "miri-iterator-20261020.log": "2c2ca4c058fac8a3f424f8db5d78e37cf3c55727317a224604f59654d9f66473",
+    "miri-prepared-20261020.log": "ae68396cf110a9f682aa523681b14c920d76f51b4849dfb8046cb9ee13e16062",
+    "miri-reuse-20261020.log": "ff86d472dbf6cb2028942604056ef22abd8ffb5d4ad25b87c974cf29860526f9",
+    "miri-variable-pages-20261020.log": "963586372d0a812d0c223b022c3dc7958cde69222d397f7dd98ad7054fb17003",
+    "native-final-20261020.log": "9ff3396baf94bf26369e44649c1faf2db85e803a66e637bb86092935c1a1d8ae",
+    "native-gengc-20261020.log": "db706dcd84746f848c57dec82688ab21da015b0198fa0b0626be52de98d9c227",
+    "native-green-20261020.log": "2c4fc0f84602c8b050e2f21f618d6974f169f4be8fed02bf9b0f618c7d2dc05a",
+    "native-memory-20261020.log": "1da465dd7aa3cacee9113ff49948cbf2c5133cb4a4b3b95f4300c06fbf6f935c",
+    "native-memory-final-20261020.log": "619a169b0bb0d54b22c6686a6500a7ca48f06473133845ca2858a96bb7c7761c",
+    "native-object-20261020.log": "afbe452b94265484a9fc814d2276061afd76b9944a4fabbf5556d6bf62a0f85e",
+    "native-red-20261020.log": "1e29ca734212553063a202546096e6dc337e72c8b38decc52164ef1095fa38b3",
+    "native-test-visibility-error-20261020.log": "c7623a38a32bac02360cbb314f9b1f6e33bed3c0a3e8aa8f1b1e582e38d62e4e",
+    "wasm-build-20261020.log": "0daae9c5967ea46fa6faafb18653ff0c3acb7cc4967b3a158660bec1e32d8559",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags-20261020.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding-20261020.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize-20261020.log": "6ff47a81e32ff2913c722017ef35bdfa7262a5a813049219501cef68275ef389",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts-20261020.log": "2418069dab1427486ad06602310f1bc56fe5977feb5c89dfc5f6b3ae9fbdd1e3"
+  },
+  "limits": [
+    "Original browser64MiB session and256MiB Wasm linear-memory caps retained.",
+    "Page/cookie/root/iterator collections, permanent native maps, Rc/weak control metadata, allocator rounding and other native workspaces remain parent scope. No total-memory/RSS claim.",
+    "Normalization rebuilds in canonical initialized-slot order and does not move live headers. No measured speedup or immutable full-build/whole CI completion claim.",
+    "The listed uncommitted user graphics files were present for validation and are excluded from this commit."
+  ]
+}

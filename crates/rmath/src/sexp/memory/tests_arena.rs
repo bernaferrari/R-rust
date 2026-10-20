@@ -605,21 +605,23 @@ pub(super) fn test_arena_free_node_idempotent() {
 }
 
 #[test]
-pub(super) fn test_arena_normalize_free_list_rebuilds_membership_index() {
+pub(super) fn test_arena_normalize_free_list_preserves_canonical_membership() {
     let mut arena = RArena::new();
     let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
     (unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         arena.free_node(ptr)
     });
-    arena.free_list.push(ptr);
-    arena.free_addrs.clear();
+    // Duplicate retirement cannot add another logical worklist entry.
+    unsafe {
+        arena.free_node(ptr);
+    }
 
     arena.normalize_free_list();
 
     assert_eq!(arena.free_count(), 1);
-    assert!(arena.free_addrs.contains(&(ptr as usize)));
-    assert!(!arena.active_addrs.contains(&(ptr as usize)));
+    assert_eq!(arena.reclaimed_snapshot(), vec![ptr]);
+    assert!(!arena.contains(ptr));
 }
 
 #[test]
@@ -660,10 +662,12 @@ pub(super) fn test_arena_active_nodes_excludes_free_list() {
     assert_eq!(active, vec![live]);
 }
 
-pub(super) fn membership_scan(arena: &super::RArena) -> Vec<SEXP> {
+pub(super) fn membership_scan(arena: &super::RArena, expected: &[SEXP]) -> Vec<SEXP> {
+    let membership: std::collections::HashSet<usize> =
+        expected.iter().map(|ptr| ptr.addr()).collect();
     arena
         .nodes()
-        .filter(|ptr| arena.active_addrs.contains(&(*ptr as usize)))
+        .filter(|ptr| membership.contains(&ptr.addr()))
         .collect()
 }
 
@@ -682,7 +686,7 @@ pub(super) fn active_nodes_bitmap_matches_membership_and_old_sweep_skips_young()
     assert_eq!(arena.active_nodes().collect::<Vec<_>>(), vec![a, b, c]);
     assert_eq!(
         arena.active_nodes().collect::<Vec<_>>(),
-        membership_scan(&arena)
+        membership_scan(&arena, &[a, b, c])
     );
 
     (unsafe {
@@ -732,7 +736,7 @@ pub(super) fn active_nodes_bitmap_matches_membership_and_old_sweep_skips_young()
         .collect();
     let active = arena.active_nodes().collect::<Vec<_>>();
     assert_eq!(active, expect);
-    assert_eq!(active, membership_scan(&arena));
+    assert_eq!(active, membership_scan(&arena, &expect));
     assert_eq!(active.len(), arena.node_count());
 
     unsafe {
@@ -777,6 +781,7 @@ pub(super) fn active_nodes_bitmap_matches_membership_and_old_sweep_skips_young()
     // Stand-in for the reachable graph: much smaller than the slab once
     // young garbage has piled up, which is the long torture run.
     let reachable: Vec<SEXP> = live.iter().copied().step_by(8).collect();
+    let membership: std::collections::HashSet<usize> = live.iter().map(|ptr| ptr.addr()).collect();
     let iters = 12u32;
     let mut hash_ns = 0u128;
     let mut bitmap_ns = 0u128;
@@ -785,7 +790,7 @@ pub(super) fn active_nodes_bitmap_matches_membership_and_old_sweep_skips_young()
         let started = std::time::Instant::now();
         let mut seen = 0usize;
         for ptr in arena.nodes() {
-            if arena.active_addrs.contains(&(ptr as usize)) {
+            if membership.contains(&(ptr as usize)) {
                 seen += 1;
                 std::hint::black_box(ptr);
             }

@@ -311,11 +311,6 @@ impl<'a> Sexp<'a> {
         ptr: SEXP,
         arena: &'arena crate::sexp::memory::RArena,
     ) -> SexpResult<Sexp<'arena>> {
-        if !arena.contains(ptr) {
-            return Err(SexpError::UnownedPointer {
-                address: ptr as usize,
-            });
-        }
         let token = arena.node_token(ptr).ok_or(SexpError::UnownedPointer {
             address: ptr as usize,
         })?;

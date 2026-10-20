@@ -32,7 +32,7 @@ use super::payload::{OwnedPayload, PayloadError, PayloadLease, PayloadLink};
 use hashbrown::HashMap;
 use std::alloc::Layout;
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::ptr::{self};
 use std::rc::Rc;
 
@@ -57,8 +57,8 @@ mod checked;
 mod gc;
 mod layout;
 mod ledger;
-mod payload_index;
 mod slab;
+mod slab_slots;
 
 #[cfg(test)]
 mod tests_arena;
@@ -71,6 +71,9 @@ mod tests_payload;
 
 #[cfg(test)]
 mod tests_payload_index;
+
+#[cfg(test)]
+mod tests_bookkeeping;
 
 #[allow(unused_imports)]
 pub use self::arena::*;
