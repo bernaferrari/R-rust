@@ -59,6 +59,8 @@ const contracts = [
     'internal-dput-contract',
     's4-next-method-public-contract',
     's4-cache-new-contract',
+    'quote-options-contract',
+    'unicode-print-width-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',
     'try-condition-call-public-contract',

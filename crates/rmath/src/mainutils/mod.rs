@@ -110,6 +110,7 @@ pub mod subset;
 pub mod summary;
 pub mod sysutils;
 pub mod times;
+pub(crate) mod unicode_width;
 pub mod unique;
 pub mod util_main;
 pub mod version;

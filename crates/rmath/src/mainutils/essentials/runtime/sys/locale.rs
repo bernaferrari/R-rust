@@ -22,18 +22,18 @@ const LC_MESSAGES: c_int = 5;
 const LC_ALL: c_int = 6;
 
 /// Query or set the process locale via libc `setlocale(3)`.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 #[inline]
 unsafe fn r_setlocale(category: c_int, locale: *const c_char) -> *mut c_char {
     unsafe { libc::setlocale(category, locale) }
 }
 
-/// wasm32 stub: every query resolves to the "C" locale and setting any
-/// locale leaves it unchanged ("C" is the effective locale either way).
-#[cfg(target_arch = "wasm32")]
+/// Browser and Android queries describe the immutable portable UTF-8 profile.
+/// Mutations are denied before this query-only adapter is entered.
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 #[inline]
 unsafe fn r_setlocale(_category: c_int, _locale: *const c_char) -> *mut c_char {
-    b"C\0".as_ptr() as *mut c_char
+    c"C.UTF-8".as_ptr().cast_mut()
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).eval_state.capabilities.allow_environment_mutation
         });
-        if !allowed {
+        if !allowed || crate::mainutils::platform::portable_utf8_profile() {
             return Rf_mkString(c"".as_ptr());
         }
 

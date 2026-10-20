@@ -344,10 +344,6 @@ pub(super) const MISC: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_quit,
     },
     EvaluatedBuiltin {
-        name: "sQuote",
-        handler: crate::mainutils::essentials::do_sQuote,
-    },
-    EvaluatedBuiltin {
         name: ".rport_loess_fit",
         handler: crate::mainutils::loess::do_fit,
     },

@@ -105,13 +105,34 @@ pub(crate) fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
 pub(crate) fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> String {
     match string_element_text(x, i) {
         Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(&value)),
-        Some(Some(value)) => value.to_string(),
+        Some(Some(value)) => escape_printed_text(&value, false),
         Some(None) | None => if quote { "NA" } else { "<NA>" }.to_string(),
     }
 }
 
 pub(crate) fn escape_printed_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    escape_printed_text(value, true)
+}
+
+pub(crate) fn escape_printed_text(value: &str, quote: bool) -> String {
+    use std::fmt::Write;
+    let mut output = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => output.push_str("\\\\"),
+            '"' if quote => output.push_str("\\\""),
+            '\u{7}' => output.push_str("\\a"),
+            '\u{8}' => output.push_str("\\b"),
+            '\u{c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            '\u{b}' => output.push_str("\\v"),
+            ch if ch.is_ascii_control() => write!(output, "\\{:03o}", ch as u32).unwrap(),
+            ch => output.push(ch),
+        }
+    }
+    output
 }
 
 pub(crate) fn format_string_vector(x: Sexp<'_>) -> String {

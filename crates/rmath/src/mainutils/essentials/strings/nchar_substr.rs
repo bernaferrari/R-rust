@@ -183,43 +183,7 @@ fn nchar_count(s: &str, kind: NcharKind) -> usize {
 }
 
 pub(crate) fn unicode_display_width(ch: char) -> usize {
-    let c = ch as u32;
-    if ch.is_control() {
-        return 0;
-    }
-    // Zero-width format characters. U+200B has width 0, not -1.
-    if (0x200B..=0x200F).contains(&c)
-        || (0x202A..=0x202E).contains(&c)
-        || (0x2060..=0x2064).contains(&c)
-        || (0x2066..=0x206F).contains(&c)
-        || c == 0xFEFF
-    {
-        return 0;
-    }
-    // Combining marks.
-    if (0x0300..=0x036F).contains(&c)
-        || (0x1AB0..=0x1AFF).contains(&c)
-        || (0x1DC0..=0x1DFF).contains(&c)
-        || (0x20D0..=0x20FF).contains(&c)
-        || (0xFE20..=0xFE2F).contains(&c)
-    {
-        return 0;
-    }
-    // East Asian Wide / Fullwidth (enough for GNU width of 中 = 2).
-    if (0x1100..=0x115F).contains(&c)
-        || (0x2329..=0x232A).contains(&c)
-        || (0x2E80..=0xA4CF).contains(&c) && c != 0x303F
-        || (0xAC00..=0xD7A3).contains(&c)
-        || (0xF900..=0xFAFF).contains(&c)
-        || (0xFE10..=0xFE19).contains(&c)
-        || (0xFE30..=0xFE6F).contains(&c)
-        || (0xFF00..=0xFF60).contains(&c)
-        || (0xFFE0..=0xFFE6).contains(&c)
-        || (0x20000..=0x3FFFD).contains(&c)
-    {
-        return 2;
-    }
-    1
+    crate::mainutils::unicode_width::columns(ch)
 }
 
 // ---------------------------------------------------------------------------

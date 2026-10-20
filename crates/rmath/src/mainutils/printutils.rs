@@ -762,9 +762,28 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
             return len;
         }
 
-        // For CE_NATIVE and CE_UTF8, we do a simplified ASCII-centric version
-        // that handles the common cases. Full MBCS/wchar support would require
-        // the locale infrastructure from rlocale.
+        // Decode UTF-8 once without allocating. Preserve the byte fallback for
+        // invalid/native non-UTF-8 data and the separate CE_BYTES path above.
+        if (ienc == 1 || crate::mainutils::platform::locale_is_utf8())
+            && let Ok(text) = std::str::from_utf8(bytes)
+        {
+            return text
+                .chars()
+                .map(|ch| {
+                    if ch.is_ascii() {
+                        match ch as u8 {
+                            b'\\' => 2,
+                            b'\'' | b'"' | b'`' if quote_char != 0 && ch as u8 == quote_char => 2,
+                            0x20..=0x7E => 1,
+                            0x07 | 0x08 | 0x0C | b'\n' | b'\r' | b'\t' | 0x0B | 0 => 2,
+                            _ => 4,
+                        }
+                    } else {
+                        crate::mainutils::unicode_width::columns(ch) as i32
+                    }
+                })
+                .sum();
+        }
         let mut len = 0i32;
         for &k in bytes {
             if k < 0x80 {

@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-20",
+  "source_base": "02bb89c1",
+  "issues": [
+    "rport-i3tbz",
+    "rport-k2c1i",
+    "rport-k1b1l"
+  ],
+  "source_sha256": {
+    "crates/rmath/src/eval/builtin/base_stats.rs": "1a504267c5448cda39d9d06a3156508610e95db35fd4aea19c94357190cc4262",
+    "crates/rmath/src/eval/builtin/misc.rs": "06bf29d45afc3337de0195981a09128e358e00cdead41a504e27337b93565aaa",
+    "crates/rmath/src/mainutils/essentials/registry.rs": "4dbbc8c40c1e580f853fa86128ffcb515d545e3dc419ab1a7ed9b8dee050b605",
+    "crates/rmath/src/mainutils/essentials/strings/strtools.rs": "19a51ffd7468af7ef804d6fbe139222f371209c25a108627a90a3cbdfaff925e",
+    "crates/rmath/src/mainutils/essentials/strings/nchar_substr.rs": "4bcef80ea12b0c69448ab1fb79c7853f06a39414d1c22d66048345032d2bd3eb",
+    "crates/rmath/src/mainutils/printutils.rs": "e0bec8b66760cad03848d5b00f5765113130793eac52c648b6843d0075c3f29b",
+    "crates/rmath/src/mainutils/unicode_width.rs": "37fb191643c5bfa27e4f7e7989e0bd39abd976f207815e70a6eb1a721630a2fb",
+    "crates/rmath/src/mainutils/unicode_width/tables.rs": "6f552c3d4d1d289d861cb3ed71d9ed75caf70f8f8c6b91ba62934f200c991d8b",
+    "crates/rmath/src/sexp/output/matrix.rs": "0ebeedf505d1881b023932030e512ea5be4cd23314bb023936b41b5f4a21f5b2",
+    "crates/rmath/src/sexp/output/vectors.rs": "8e8df6318bd05ac317f87ac20b6a7ca413085257c666bb359ad1e93d7d86973d",
+    "crates/rmath/src/mainutils/platform/sysinfo.rs": "67e6d76c64f1d90da6ce7cba186ad830ed68e8ff2c3d05926379bd7d770f9ab8",
+    "crates/rmath/src/mainutils/essentials/runtime/sys/locale.rs": "92a93f6842d6219c4d318c4c76b24c9b70acb7d82802d851cdf6d1e79b4ed82a",
+    "crates/r-embed/tests/quote_options_contract.rs": "436fb2c8fb1c6fb94d0b567a050232ac440a0017306e35c2a532886284f4b83a",
+    "crates/r-embed/tests/fixtures/quote-options-contract.R": "913a0d0417414e80876504f13705a168b4c4ac3b8fb11e5d6e9bfbaeedd6b724",
+    "crates/r-embed/tests/fixtures/quote-options-contract.out": "aeb81b7e1b3f640ee8d8a1ceb07772415ca21ab8b6dce095f5dca41536deec55",
+    "crates/r-embed/tests/fixtures/unicode-print-width-contract.R": "1617380de43da63935be8ebbc26c547cd3f7a80759429bae543ce67e7f217260",
+    "crates/r-embed/tests/fixtures/unicode-print-width-contract.out": "9524d652a813b9398d5549b2943d0c45de554baa2fa4a00b10cd6a107ac3f678",
+    "scripts/generate_unicode_widths.py": "57b0e07902733ec5db0af9c694173cea3ab8b40b8ab0ee14a390911fcc5bcd2f",
+    "tests/browser/quote-options.cjs": "e71692daba35560fec5498288e92f4c231c49dd781b2e78bdc762daa7f16549a",
+    "tests/browser/portable-package-contracts.mjs": "0f8fdb62d41b244d3fc92cbe214529f9dbee54053a118c4cc6c67d03c254e224"
+  },
+  "behavior": [
+    "Remove ASCII-only native sQuote/dQuote shadows so the original base character.R closures retain genuine formals, lazy q promise, NA coercion and default/TeX/custom/UTF8 options.",
+    "Decode valid UTF8 for escaped vector widths without native allocation; use shared pure-Rust default-locale GNU width intervals, including positive-width precedence over zero-width intervals.",
+    "Replace the separate heuristic nchar width ranges with that same pinned GNU table; preserve canonical column widths for combining marks, East Asian wide characters and supported emoji.",
+    "Use display columns for safe matrix geometry and padding, and escape ASCII controls consistently in quoted/unquoted character fields and matrix labels.",
+    "Browser and Android use an immutable C.UTF8 text profile for printing/l10n_info and locale queries. Locale mutation is denied even when host mutation capability is enabled. Native host behavior remains unchanged."
+  ],
+  "red": [
+    "Current production Wasm exposed native builtin quote shadows instead of original closures.",
+    "Original native quote fixture returned correct characters but wrapped curly-quote vectors by UTF8 byte length.",
+    "Extended unchanged oracle fixture exposed matrix byte-based widths, character-based alignment and literal ASCII control characters.",
+    "First portable run retained false C locale because Wasm lacks host locale environment; new immutable UTF8 profile fixes the actual branch."
+  ],
+  "width_provenance": {
+    "file": "src/main/rlocale_widths.h",
+    "source_commit": "d4cc5d9e196a144bbb087a798bb945b37121383b",
+    "oracle_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "sha256": "65957da3b164af6d5c0deaa75de99afc893e2ea385eb419ac858e5b69ef65dd7",
+    "verification": "Source header byte-identical at both pins; generated Rust data reproduced byte-for-byte."
+  },
+  "validation": {
+    "public_native_print_passed": 12,
+    "native_width_kernel_passed": 2,
+    "native_platform_passed": 3,
+    "strict_isolated_i686_miri_width_kernel_passed": 2,
+    "miri_harness_seconds": 43.75,
+    "miri_flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "production_wasm_checks": 262,
+    "wasm_breakdown": {
+      "quote_profile_options_and_unicode_print": 8,
+      "loess_native_outputs": 86,
+      "internal_dput": 4,
+      "regex_workspace": 8,
+      "gnu_opcodes": 28,
+      "s4_cache_class_name_quota": 8,
+      "permanent_ledger": 14,
+      "checked_exhaustion": 12,
+      "serialization_workspace": 14,
+      "web_binding_contracts": 80
+    }
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29107137,
+      "sha256": "265d276628d18aab3ecb77656cd28e420825d7cd84d3ddb83de2d3a848ce76e7"
+    },
+    "output": {
+      "bytes": 24895076,
+      "sha256": "b4afdb43ef608200503f794829e7de2e9a98fb620895ff8bf95a42ae5a01ce3c"
+    }
+  },
+  "log_sha256": {
+    "target/quote-contract-evidence/native-print-controls-20261020.log": "a1a2c472407288b6e93a4dc365e207b94ab4d41c71f2a12362282c82af2d05ec",
+    "target/quote-contract-evidence/native-width-kernel-20261020.log": "f162a5e83790797eb649cd8a8390350cec183f2323ab32d02eb3f623f737a112",
+    "target/quote-contract-evidence/native-platform-20261020.log": "350ea8371952e0f0db142cfd595234b71cb30d021697ac65c669da43b3baa318",
+    "target/quote-contract-evidence/miri-width-20261020.log": "2c0f965a98cd772885696265f4d1ef3e658b475205afd5f01cbc34401436c30c",
+    "target/quote-contract-evidence/clippy-utf8-20261020.log": "bebb4117d6efc529381d6730b10e02e25483d595d2e33aff3350a83b9914f50c",
+    "target/quote-contract-evidence/android-utf8-20261020.log": "c4278a79d73b8858873d3e1bba615a6f40a6469209498cb705379a7c47a37a28",
+    "target/quote-contract-evidence/wasm-utf8-final-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/quote-contract-evidence/wasm-utf8-final-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/quote-contract-evidence/wasm-utf8-final-portable-contracts-20261020.log": "894bd91700335f4461e0fd1e4f09c318ffdd8afe5af897d3647e7ed6fca6346c",
+    "target/quote-contract-evidence/wasm-utf8-final-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/quote-contract-evidence/wasm-utf8-final-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/quote-contract-evidence/wasm-utf8-final-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "target/quote-contract-evidence/wasm-utf8-final-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/quote-contract-evidence/wasm-utf8-final-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "target/quote-contract-evidence/wasm-utf8-final-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/quote-contract-evidence/wasm-utf8-final-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56"
+  },
+  "limits": [
+    "Miri covers the allocation-free width kernel, not the entire printer or portable target-specific locale branch.",
+    "The default-locale width table is pinned GNU data; CJK locale selection, general wctype classification and mixed native encoding ordinals remain outside this milestone in w03x/w03x.3.",
+    "Portable UTF8 is an explicit immutable target profile, not a mutable emulation of all native locales. No process environment/locale mutation is used for this profile.",
+    "Existing byte/native nonUTF8 fallbacks are retained; no full malformed-byte/unassigned-codepoint printing fidelity claim.",
+    "Web-binding execution uses Node V8; no new Chromium or Android ondevice execution is claimed.",
+    "Clean-checkout compilation still depends on ignored embedded base R inputs until rport-645io is completed. Current scoped local artifacts are not a whole-CI success claim."
+  ]
+}

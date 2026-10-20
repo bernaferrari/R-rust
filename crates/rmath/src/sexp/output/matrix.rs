@@ -2,6 +2,21 @@
 
 use super::*;
 
+fn display_columns(text: &str) -> usize {
+    text.chars()
+        .map(crate::mainutils::unicode_width::columns)
+        .sum()
+}
+
+fn align_columns(text: &str, width: usize, right: bool) -> String {
+    let pad = " ".repeat(width.saturating_sub(display_columns(text)));
+    if right {
+        format!("{pad}{text}")
+    } else {
+        format!("{text}{pad}")
+    }
+}
+
 pub(crate) fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(
@@ -63,7 +78,7 @@ pub(crate) fn matrix_dimname_titles(dimnames: SEXP) -> (Option<String>, Option<S
             if p.is_null() {
                 return String::new();
             }
-            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+            escape_printed_text(&std::ffi::CStr::from_ptr(p).to_string_lossy(), false)
         };
         (Some(elt(0)), Some(elt(1)))
     }
@@ -90,11 +105,23 @@ pub(crate) fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDi
             0,
         ))
         .filter(|names| names.len() >= nrow)
-        .map(|names| names.into_iter().take(nrow).collect());
+        .map(|names| {
+            names
+                .into_iter()
+                .take(nrow)
+                .map(|s| escape_printed_text(&s, false))
+                .collect()
+        });
         let col_names =
             string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
                 .filter(|names| names.len() >= ncol)
-                .map(|names| names.into_iter().take(ncol).collect());
+                .map(|names| {
+                    names
+                        .into_iter()
+                        .take(ncol)
+                        .map(|s| escape_printed_text(&s, false))
+                        .collect()
+                });
         MatrixDimnames {
             rows: row_names,
             cols: col_names,
@@ -112,10 +139,14 @@ pub(crate) fn matrix_row_geometry(
     row_title: Option<&str>,
 ) -> (usize, usize) {
     // GNU reserves the minimum index-label width even for zero-row matrices.
-    let mut row_width = row_labels.iter().map(String::len).max().unwrap_or(4);
+    let mut row_width = row_labels
+        .iter()
+        .map(|s| display_columns(s))
+        .max()
+        .unwrap_or(4);
     let mut lbloff = 0;
     if let Some(title) = row_title {
-        let rnw = title.len();
+        let rnw = display_columns(title);
         lbloff = if rnw < row_width + R_MIN_LBLOFF {
             R_MIN_LBLOFF
         } else {
@@ -386,10 +417,10 @@ where
     let mut values = vec![vec![String::new(); c_pr]; r_pr];
     let mut widths = Vec::with_capacity(c_pr);
     for c in 0..c_pr {
-        let mut width = col_labels[c].len().max(1);
+        let mut width = display_columns(&col_labels[c]).max(1);
         for r in 0..r_pr {
             let value = value_at(r, c);
-            width = width.max(value.len());
+            width = width.max(display_columns(&value));
             values[r][c] = value;
         }
         widths.push(width);
@@ -429,7 +460,7 @@ where
             if c > 0 {
                 header.push_str(&separator);
             }
-            header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
+            header.push_str(&align_columns(&col_labels[c], widths[c], true));
         }
         lines.push(header);
     } else {
@@ -438,7 +469,7 @@ where
                 lines.push(format!("{:row_width$}{cn}", ""));
             }
             let mut header = if let Some(rn) = dn.row_title.as_deref() {
-                format!("{rn:<row_width$}")
+                align_columns(rn, row_width, false)
             } else {
                 " ".repeat(row_width)
             };
@@ -446,7 +477,7 @@ where
                 header.push_str(&separator);
             }
             for c in cs..ce {
-                header.push_str(&format!("{:>width$}", col_labels[c], width = widths[c]));
+                header.push_str(&align_columns(&col_labels[c], widths[c], true));
                 if c + 1 < ce {
                     header.push_str(&separator);
                 }
@@ -454,10 +485,10 @@ where
             lines.push(header);
             for r in 0..r_pr {
                 let label = format!("{:lbloff$}{}", "", row_labels[r]);
-                let mut line = format!("{label:<row_width$}");
+                let mut line = align_columns(&label, row_width, false);
                 for c in cs..ce {
                     line.push_str(&separator);
-                    line.push_str(&format!("{:>width$}", values[r][c], width = widths[c]));
+                    line.push_str(&align_columns(&values[r][c], widths[c], true));
                 }
                 lines.push(line);
             }
@@ -504,22 +535,16 @@ where
         .collect();
     let (row_width, lbloff) = matrix_row_geometry(&row_labels, dn.row_title.as_deref());
     let right = print_right_flag();
-    let align = |text: &str, width: usize| -> String {
-        if right {
-            format!("{text:>width$}")
-        } else {
-            format!("{text:<width$}")
-        }
-    };
+    let align = |text: &str, width: usize| -> String { align_columns(text, width, right) };
     let empty_row_labs = row_labels.iter().all(|s| s.is_empty());
     let mut values = vec![vec![String::new(); c_pr]; r_pr];
     let mut widths = Vec::with_capacity(c_pr);
     for c in 0..c_pr {
-        let mut width = col_labels[c].len().max(1);
+        let mut width = display_columns(&col_labels[c]).max(1);
         // Field width includes omitted rows, as GNU printStringMatrix does.
         for r in 0..nrow {
             let value = value_at(r, c);
-            width = width.max(value.len());
+            width = width.max(display_columns(&value));
             if r < r_pr {
                 values[r][c] = value;
             }
@@ -575,7 +600,7 @@ where
         }
 
         let mut header = if let Some(rn) = dn.row_title.as_deref() {
-            format!("{rn:<row_width$}")
+            align_columns(rn, row_width, false)
         } else {
             " ".repeat(row_width)
         };
@@ -601,7 +626,7 @@ where
 
         for r in 0..displayed_rows {
             let label = format!("{:lbloff$}{}", "", row_labels[r]);
-            let mut line = format!("{label:<row_width$}");
+            let mut line = align_columns(&label, row_width, false);
             for c in cs..ce {
                 line.push_str(&separator);
                 line.push_str(&align(&values[r][c], widths[c]));

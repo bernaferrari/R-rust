@@ -302,9 +302,16 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-/// Whether the process locale is a UTF-8 codeset, approximated from the
-/// locale environment variables (LC_ALL, LC_CTYPE, LANG in precedence order).
+/// Portable hosts use immutable UTF-8 text, independent of process globals.
+pub(crate) const fn portable_utf8_profile() -> bool {
+    cfg!(any(target_arch = "wasm32", target_os = "android"))
+}
+
+/// Portable UTF-8 profile, or native host locale environment in precedence order.
 pub fn locale_is_utf8() -> bool {
+    if portable_utf8_profile() {
+        return true;
+    }
     for key in ["LC_ALL", "LC_CTYPE", "LANG"] {
         if let Ok(value) = std::env::var(key) {
             if !value.is_empty() {

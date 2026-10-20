@@ -347,8 +347,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "RNGversion",
     "q",
     "quit",
-    "sQuote",
-    "dQuote",
     "balancePOSIXlt",
     "unCfillPOSIXlt",
     "runif",

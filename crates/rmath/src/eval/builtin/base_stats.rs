@@ -161,10 +161,6 @@ pub(super) const BASE_STATS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_quit,
     },
     EvaluatedBuiltin {
-        name: "dQuote",
-        handler: crate::mainutils::essentials::do_dQuote,
-    },
-    EvaluatedBuiltin {
         name: "runif",
         handler: crate::library::stats::random::do_runif_r,
     },
