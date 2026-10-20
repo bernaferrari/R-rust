@@ -287,9 +287,16 @@ impl<'a> BinaryReader<'a> {
                         if !matches!(digit, b'0'..=b'7') {
                             break;
                         }
-                        value = value.saturating_mul(8).saturating_add(digit - b'0');
+                        value = value.wrapping_mul(8).wrapping_add(digit - b'0');
                         self.pos += 1;
                         digits += 1;
+                    }
+                    // GNU InString's local one-character lookahead reads one
+                    // byte beyond an octal escape. Its final unused byte is
+                    // consumed when that local string reader is discarded.
+                    let lookahead = self.peek_byte();
+                    if out.len() + 1 == len && lookahead.is_some() {
+                        self.pos += 1;
                     }
                     out.push(value);
                 }

@@ -143,6 +143,9 @@ impl BinaryWriter {
     }
 
     pub fn write_string_bytes(&mut self, s: *const c_char, len: i32) {
+        if self.ascii_body && len == 0 {
+            self.buf.push(b'\n');
+        }
         if len > 0 && !s.is_null() {
             // SAFETY: Caller ensures s points to at least `len` valid bytes.
             let slice = unsafe { slice::from_raw_parts(s as *const u8, len as usize) };

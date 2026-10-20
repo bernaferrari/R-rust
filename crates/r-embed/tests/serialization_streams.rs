@@ -30,3 +30,31 @@ fn restoration_hooks_can_read_next_object_and_close_exhausted_stream() {
         "../../rmath/src/mainutils/serialize/hook-reentry-contract.R"
     ));
 }
+
+#[test]
+fn compressed_streams_are_decoded_by_the_connection_and_preserve_the_next_object() {
+    let bytes = include_bytes!("fixtures/gnu-sequential-v2.rds.gz");
+    let raw = bytes
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    check(&format!(
+        "compressed <- as.raw(c({raw}));{}",
+        include_str!("../../rmath/src/mainutils/serialize/compressed-stream-contract.R")
+    ));
+}
+
+#[test]
+fn compiled_closure_restoration_observes_each_gnu_hook_cursor() {
+    let bytes = include_bytes!("fixtures/gnu-bytecode-stream-hooks-v2.rds");
+    let raw = bytes
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    check(&format!(
+        "compiled <- as.raw(c({raw}));{}",
+        include_str!("../../rmath/src/mainutils/serialize/compiled-hook-contract.R")
+    ));
+}

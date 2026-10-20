@@ -121,11 +121,27 @@ pub(crate) unsafe fn read_bc_source(
             std::slice::from_raw_parts(INTEGER(code), n)
         };
         crate::eval::bytecode::validate_gnu_bytecode_stream(words)?;
-        let count = reader.read_vector_length(4)?;
+        let count = reader.read_object_vector_length()?;
         if count == 0 {
             return Err("GNU compiled closure has no source expression".into());
         }
-        let constants = Rf_allocVector(SEXPTYPE::VECSXP, count);
+        let stream_owner = if reader.pull.is_some() {
+            Some(crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?)
+        } else {
+            None
+        };
+        let _stream_pin = stream_owner
+            .map(|owner| owner.pin())
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        let mut staged = stream_owner
+            .map(super::super::stream_values::StreamValues::for_owner)
+            .transpose()?;
+        let constants = if staged.is_none() {
+            Rf_allocVector(SEXPTYPE::VECSXP, count)
+        } else {
+            R_NilValue()
+        };
         let _constants = protect(constants);
         for i in 0..count {
             let kind = reader.read_i32()?;
@@ -134,8 +150,25 @@ pub(crate) unsafe fn read_bc_source(
             } else {
                 read_bc_language(kind, reader, refs, reps)?
             };
-            SET_VECTOR_ELT(constants, i as R_xlen_t, value);
+            if let Some(values) = &mut staged {
+                let owner = stream_owner.unwrap();
+                owner.require_active().map_err(|e| e.to_string())?;
+                values.push(
+                    owner
+                        .sexp(value)
+                        .and_then(|v| v.into_owned())
+                        .map_err(|e| e.to_string())?,
+                )?;
+            } else {
+                SET_VECTOR_ELT(constants, i as R_xlen_t, value);
+            }
         }
+        let owned_constants = staged
+            .map(|values| values.finish(stream_owner.unwrap(), SEXPTYPE::VECSXP))
+            .transpose()?;
+        let constants = owned_constants
+            .as_ref()
+            .map_or(constants, |value| value.as_raw());
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
@@ -649,7 +682,9 @@ pub(crate) unsafe fn read_persistent_item(
                 cache_key.push_str(&std::ffi::CStr::from_ptr(raw).to_string_lossy());
             }
         }
-        if let Some(&cached) = reader.persist_cache.get(&cache_key) {
+        if reader.lazy_restore.is_some()
+            && let Some(&cached) = reader.persist_cache.get(&cache_key)
+        {
             ref_table.add(cached);
             return Ok(cached);
         }
@@ -664,7 +699,9 @@ pub(crate) unsafe fn read_persistent_item(
         };
         let _restored_guard = protect(restored);
         ref_table.add(restored);
-        reader.persist_cache.insert(cache_key, restored);
+        if reader.lazy_restore.is_some() {
+            reader.persist_cache.insert(cache_key, restored);
+        }
         return Ok(restored);
     }
 }

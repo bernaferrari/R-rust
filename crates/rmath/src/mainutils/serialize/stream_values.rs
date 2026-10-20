@@ -1,7 +1,7 @@
 //! Incremental owning children keep connection reads at the current object.
 #![forbid(unsafe_code)]
 
-use crate::sexp::{Sexp, memory::WorkspaceReservation};
+use crate::sexp::{SEXPTYPE, Sexp, SexpMut, memory::WorkspaceReservation, owner::OwnerToken};
 
 pub(super) struct StreamValues {
     values: Vec<Sexp<'static>>,
@@ -9,6 +9,13 @@ pub(super) struct StreamValues {
 }
 
 impl StreamValues {
+    pub(super) fn for_owner(owner: OwnerToken<'_>) -> Result<Self, String> {
+        let reservation = owner
+            .with_arena(|arena| arena.reserve_workspace(0))
+            .map_err(|e| e.to_string())?
+            .ok_or_else(memory_error)?;
+        Ok(Self::new(reservation))
+    }
     pub(super) fn new(reservation: WorkspaceReservation) -> Self {
         Self {
             values: Vec::new(),
@@ -42,6 +49,27 @@ impl StreamValues {
 
     pub(super) fn iter(&self) -> impl Iterator<Item = &Sexp<'static>> {
         self.values.iter()
+    }
+
+    pub(super) fn finish(
+        self,
+        owner: OwnerToken<'_>,
+        kind: SEXPTYPE,
+    ) -> Result<Sexp<'static>, String> {
+        owner.require_active().map_err(|e| e.to_string())?;
+        let length = self.values.len().try_into().map_err(|_| memory_error())?;
+        let vector = owner
+            .node_factory()
+            .allocate(|arena| Some(arena.alloc_vector(kind, length)))
+            .and_then(|value| value.into_owned())
+            .map_err(|e| e.to_string())?;
+        let mut vector = SexpMut::try_from_checked(vector).map_err(|e| e.to_string())?;
+        for (index, value) in self.values.iter().enumerate() {
+            vector
+                .try_set_vector_elt(index as _, value.clone())
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(vector.freeze())
     }
 }
 

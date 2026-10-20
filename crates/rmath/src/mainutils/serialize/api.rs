@@ -1126,8 +1126,7 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
                 .unwrap_or_else(|message| error(&message));
             crate::mainutils::connections::connection_pushback(index, &leftover);
         }
-        let result = result.as_raw();
-        result
+        result.as_raw()
     }
 }
 
@@ -1278,20 +1277,47 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             error("wrong number of arguments");
         }
 
-        let conn = CAR(args);
-        let hook = arg_by_name_or_position(args, "refhook", 1);
-        if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP {
-            return R_unserialize(conn, hook);
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        let _arguments = owner.sexp(args).unwrap_or_else(|e| error(&e.to_string()));
+        // A connection/class provider can detach the argument tail and collect.
+        // Retain both actual operands before invoking either provider.
+        let conn = owner
+            .sexp(CAR(args))
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let hook = owner
+            .sexp(arg_by_name_or_position(args, "refhook", 1))
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let result = if conn.typeof_() == SEXPTYPE::RAWSXP {
+                R_unserialize(conn.as_raw(), hook.as_raw())
+            } else if conn.typeof_() == SEXPTYPE::INTSXP
+                && conn.len() == 1
+                && crate::mainutils::objects::inherits2(conn.as_raw(), c"connection".as_ptr()) != 0
+            {
+                let index = conn
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| error(&e.to_string()));
+                R_unserialize_from_conn(index, hook.as_raw())
+            } else {
+                error("'connection' must be a connection");
+            };
+            owner
+                .require_active()
+                .unwrap_or_else(|e| error(&e.to_string()));
+            owner.sexp(result).unwrap_or_else(|e| error(&e.to_string()))
+        }));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        match outcome {
+            Ok(value) => value.as_raw(),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
-        if !conn.is_null()
-            && TYPEOF(conn) == SEXPTYPE::INTSXP
-            && XLENGTH(conn) == 1
-            && crate::mainutils::objects::inherits2(conn, c"connection".as_ptr()) != 0
-        {
-            let index = *INTEGER(conn);
-            return R_unserialize_from_conn(index, hook);
-        }
-        error("'connection' must be a connection");
     }
 }
 
