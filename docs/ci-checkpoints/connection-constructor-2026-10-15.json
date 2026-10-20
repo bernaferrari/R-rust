@@ -1,7 +1,7 @@
 {
   "date": "2026-10-15",
   "issue": "rport-jxfp.3.12.3.3.2",
-  "status": "verified_milestone",
+  "status": "verified",
   "base_commit": "12a22c9fb381b8aa150057a91ba3cb65e4af18f3",
   "source_sha256": {
     "crates/rmath/src/mainutils/connections/file.rs": "2c9661689c5a0eab3200fa293be7c5ea77c5285f059cab556ff1c5071add7aa5",
@@ -15,13 +15,14 @@
     "constructor-red-details.log: 0 passed, 2 failed; unowned header read after provider detachment and invalid description with forced-GC omitted defaults"
   ],
   "validation": {
-    "native_constructor": "constructor-native.log: 10 passed before final named selection refinement; constructor-connections.log repeats current constructor tests within broader connections run",
+    "native_constructor": "constructor-connections.log: 47 passed, including 10 constructor cases; before callback-free OBJECT marker write",
     "gnu": "constructor-gnu.log: TRUE; pinned oracle bac583951b728e97b9786804d3b4081f0fe18df5",
     "public": "constructor-public.log: anonymous 2 and deferred 4 passed; constructor-public-final.log: scalar/logical admission 1 passed",
-    "miri": "constructor-miri-final.log: 7 passed, strict provenance i686, default alias checks, leaks ignored; predates final safe named argument selection refinement; sealed repeat running",
+    "miri": "constructor-miri-20261020.log: 7 passed in 479.60 seconds, i686 strict provenance/default alias checking, isolation enabled, leaks ignored; includes final named selection and OBJECT marker",
     "clippy": "constructor-clippy.log: warnings denied, passed",
-    "public_marker": "constructor-object-marker.log: 1 passed, including is.object/inherits and serialize/unserialize on anonymous file; constructor-gnu-marker.log TRUE"
+    "public_marker": "public-20261020.log: constructor GNU admission and class/serialization test 1 passed; stream controls 3 passed; constructor-object-marker.log: same constructor regression passed; constructor-gnu-marker.log TRUE"
   },
   "scope": "do_file constructor defaults, complete operand snapshots, original-owner pin/checks across providers and unwind, owning result/class before slot publication; broader runtime and other constructors remain outside this bead",
-  "followup": "Broader sequential stream fixture caught missing OBJECT class marker in d5ed4fb6. Fixed with checked header adapter; public and pinned GNU regression passed. Initial Miri 7/7 predates this callback-free marker write; fresh full ownership repeat pending."
+  "followup": "Object marker regression repaired in ea447f94. Final constructor strict Miri repeat passed 7/7. Initial failed Miri run required no relaxed isolation: removed unnecessary host-clock fixture setup. Broader interpreter ownership remains outside this scoped bead.",
+  "verified_date": "2026-10-20"
 }
