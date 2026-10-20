@@ -16,6 +16,14 @@ pub(crate) struct InputBytes {
     reservation: WorkspaceReservation,
 }
 
+impl std::fmt::Debug for InputBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InputBytes")
+            .field("len", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl std::ops::Deref for InputBytes {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
@@ -24,6 +32,9 @@ impl std::ops::Deref for InputBytes {
 }
 
 impl InputBytes {
+    pub(super) fn push(&mut self, byte: u8) -> io::Result<()> {
+        self.write_all(&[byte])
+    }
     pub(super) fn new(mut reservation: WorkspaceReservation, capacity: usize) -> io::Result<Self> {
         reservation.try_resize(capacity).ok_or_else(memory_error)?;
         let mut bytes = Vec::new();

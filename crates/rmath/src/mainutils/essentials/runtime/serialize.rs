@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 
 use crate::mainutils::essentials::*;
 
+#[cfg(test)]
+#[path = "serialize_workspace_tests.rs"]
+mod workspace_tests;
+
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
@@ -280,35 +284,23 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         let len = XLENGTH(raw) as usize;
         let plain = std::slice::from_raw_parts(RAW(raw), len);
-        let payload: Vec<u8> = match compress {
-            None => plain.to_vec(),
-            Some("gzip") => crate::mainutils::zlib::gzip_compress(plain, 6).unwrap_or_else(|e| {
-                std::panic::panic_any(RError {
-                    message: format!("cannot compress file: {e}"),
-                })
-            }),
-            Some("bzip2") => {
-                let mut encoder =
-                    bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::best());
-                use std::io::Write as _;
-                encoder.write_all(plain).ok();
-                encoder.finish().unwrap_or_default()
-            }
-            Some(_) => crate::mainutils::serialize::xz_compress_gnu(plain).unwrap_or_else(|e| {
-                std::panic::panic_any(RError {
-                    message: format!("cannot compress file: {e}"),
-                })
-            }),
-        };
+        // Plain output borrows the already charged R raw vector. Compressed
+        // output retains its original reservation through file/connection I/O.
+        let encoded = compress.map(|codec| {
+            crate::mainutils::serialize::compress_container(&owner, plain, codec).unwrap_or_else(
+                |e| crate::sexp::context::r_error(format!("cannot compress file: {e}")),
+            )
+        });
+        let payload = encoded.as_deref().unwrap_or(plain);
         if let Some(connection) = connection {
             let idx = connection
                 .require_current()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error));
-            crate::mainutils::connections::connection_write_bytes(idx, &payload);
+            crate::mainutils::connections::connection_write_bytes(idx, payload);
         } else {
             let file_path = file_path.as_deref().expect("selected RDS filename");
             if let Err(err) =
-                crate::mainutils::browser_files::write_bytes_or_host(file_path, &payload)
+                crate::mainutils::browser_files::write_bytes_or_host(file_path, payload)
             {
                 std::panic::panic_any(RError {
                     message: format!("cannot open compressed file '{}': {err}", file_path),

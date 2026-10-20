@@ -24,10 +24,14 @@ pub(super) struct WorkspaceVec<T> {
 
 impl<T> WorkspaceVec<T> {
     pub(super) fn new(owner: &OwnerToken<'_>) -> Result<Self, String> {
-        Ok(Self {
+        Ok(Self::with_reservation(reserve(owner, 0)?))
+    }
+
+    pub(super) fn with_reservation(reservation: WorkspaceReservation) -> Self {
+        Self {
             values: Vec::new(),
-            reservation: reserve(owner, 0)?,
-        })
+            reservation,
+        }
     }
 
     pub(super) fn reserve_len(&mut self, length: usize) -> Result<(), String> {

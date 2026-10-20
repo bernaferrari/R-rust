@@ -17,6 +17,37 @@ fn define(factory: &SessionNodeFactory<'_>, environment: &Sexp<'_>, name: &CStr,
     unsafe { crate::sexp::envir::define_var_safe(symbol, value, environment.clone()) };
 }
 
+#[test]
+fn serialization_workspace_lazy_cache_keeps_keys_and_entries_charged_until_reader_drop() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let data = env(&factory);
+    let cache = env(&factory);
+    let replacement = env(&factory);
+    define(&factory, &cache, c"env::broken", replacement.clone());
+    define(&factory, &data, c"cache", cache);
+    let fixture = include_bytes!("fixtures/gnu-persistent-environment-v2.rds");
+    let mut reader = BinaryReader::new(&fixture[14..]);
+    reader.set_xdr_body(true);
+    reader.lazy_restore = Some(LazyLoadRestore {
+        data: data.into_owned().unwrap(),
+    });
+    let mut refs = ReadRefTable::for_owner(&owner);
+    let restored = unsafe { ReadItemInternal(&mut reader, &mut refs).unwrap() };
+    assert_eq!(restored, replacement.as_raw());
+    let combined = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+    drop(reader);
+    let references = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+    assert!(
+        combined > references,
+        "private cache storage must retain its own admission"
+    );
+    assert!(references > 0);
+    drop(refs);
+    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+}
+
 fn fixture<'s>(
     factory: &SessionNodeFactory<'s>,
 ) -> (Sexp<'s>, Sexp<'s>, Sexp<'s>, std::path::PathBuf) {

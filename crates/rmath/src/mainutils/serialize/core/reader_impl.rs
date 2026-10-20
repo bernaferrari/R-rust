@@ -13,7 +13,7 @@ impl<'a> BinaryReader<'a> {
             persist_hook_func: None,
             persist_hook_data: ptr::null_mut(),
             lazy_restore: None,
-            persist_cache: std::collections::HashMap::new(),
+            persist_cache: None,
             pull: None,
         }
     }
@@ -36,7 +36,7 @@ impl<'a> BinaryReader<'a> {
             persist_hook_func: None,
             persist_hook_data: ptr::null_mut(),
             lazy_restore: None,
-            persist_cache: std::collections::HashMap::new(),
+            persist_cache: None,
             pull: Some(PullInput {
                 buf: super::super::owned_input::InputBytes::new(
                     super::super::workspace::reserve(owner, 0)
@@ -129,7 +129,7 @@ impl<'a> BinaryReader<'a> {
     pub fn read_i32(&mut self) -> Result<i32, String> {
         if self.ascii_body {
             let token = self.read_ascii_token()?;
-            if token == "NA" {
+            if &*token == "NA" {
                 return Ok(crate::sexp::ffi::NA_INTEGER);
             }
             return token
@@ -241,9 +241,17 @@ impl<'a> BinaryReader<'a> {
         Ok(len)
     }
 
-    pub fn read_string_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
+    pub(crate) fn read_string_bytes(
+        &mut self,
+        len: usize,
+        reservation: crate::sexp::memory::WorkspaceReservation,
+    ) -> Result<super::super::owned_input::InputBytes, String> {
         if !self.ascii_body {
-            return self.read_bytes(len).map(|bytes| bytes.to_vec());
+            let bytes = self.read_bytes(len)?;
+            let mut out = super::super::owned_input::InputBytes::new(reservation, len)
+                .map_err(|e| e.to_string())?;
+            std::io::Write::write_all(&mut out, bytes).map_err(|e| e.to_string())?;
+            return Ok(out);
         }
 
         self.skip_ascii_whitespace();
@@ -254,32 +262,31 @@ impl<'a> BinaryReader<'a> {
         if !self.ensure(len) || len > self.remaining() {
             return Err("read error: truncated ASCII string".into());
         }
-        let mut out = Vec::new();
-        out.try_reserve_exact(len)
-            .map_err(|_| "read error: ASCII string allocation failed".to_string())?;
+        let mut out = super::super::owned_input::InputBytes::new(reservation, len)
+            .map_err(|e| e.to_string())?;
         while out.len() < len {
             let byte = self
                 .next_byte()
                 .ok_or_else(|| "read error: unexpected end of ASCII string".to_string())?;
             if byte != b'\\' {
-                out.push(byte);
+                out.push(byte).map_err(|e| e.to_string())?;
                 continue;
             }
             let escaped = self
                 .next_byte()
                 .ok_or_else(|| "read error: truncated ASCII string escape".to_string())?;
-            match escaped {
-                b'n' => out.push(b'\n'),
-                b't' => out.push(b'\t'),
-                b'v' => out.push(0x0b),
-                b'b' => out.push(0x08),
-                b'r' => out.push(b'\r'),
-                b'f' => out.push(0x0c),
-                b'a' => out.push(0x07),
-                b'\\' => out.push(b'\\'),
-                b'?' => out.push(b'?'),
-                b'\'' => out.push(b'\''),
-                b'"' => out.push(b'"'),
+            let decoded = match escaped {
+                b'n' => b'\n',
+                b't' => b'\t',
+                b'v' => 0x0b,
+                b'b' => 0x08,
+                b'r' => b'\r',
+                b'f' => 0x0c,
+                b'a' => 0x07,
+                b'\\' => b'\\',
+                b'?' => b'?',
+                b'\'' => b'\'',
+                b'"' => b'"',
                 b'0'..=b'7' => {
                     let mut value = (escaped - b'0') as u8;
                     let mut digits = 1usize;
@@ -301,15 +308,16 @@ impl<'a> BinaryReader<'a> {
                     if out.len() + 1 == len && lookahead.is_some() {
                         self.pos += 1;
                     }
-                    out.push(value);
+                    value
                 }
-                other => out.push(other),
-            }
+                other => other,
+            };
+            out.push(decoded).map_err(|e| e.to_string())?;
         }
         Ok(out)
     }
 
-    pub fn read_ascii_token(&mut self) -> Result<String, String> {
+    pub(crate) fn read_ascii_token(&mut self) -> Result<AsciiToken, String> {
         self.skip_ascii_whitespace();
         let start = self.pos;
         loop {
@@ -324,7 +332,12 @@ impl<'a> BinaryReader<'a> {
         if start == self.pos {
             return Err("read error: missing ASCII token".to_string());
         }
-        let token = self.src()[start..self.pos].to_vec();
+        let length = self.pos - start;
+        let mut token = AsciiToken {
+            bytes: [0; 128],
+            length,
+        };
+        token.bytes[..length].copy_from_slice(&self.src()[start..self.pos]);
         // GNU InWord reads and discards the first terminating whitespace.
         // It does not leave that delimiter in stream pushback.
         if self
@@ -333,9 +346,9 @@ impl<'a> BinaryReader<'a> {
         {
             self.pos += 1;
         }
-        std::str::from_utf8(&token)
-            .map(|s| s.to_string())
-            .map_err(|_| "read error: invalid ASCII token".to_string())
+        std::str::from_utf8(&token.bytes[..length])
+            .map_err(|_| "read error: invalid ASCII token".to_string())?;
+        Ok(token)
     }
 
     pub fn skip_ascii_whitespace(&mut self) {
@@ -345,5 +358,22 @@ impl<'a> BinaryReader<'a> {
         {
             self.pos += 1;
         }
+    }
+}
+
+// GNU InWord uses a bounded 128-byte local array.
+pub(crate) struct AsciiToken {
+    bytes: [u8; 128],
+    length: usize,
+}
+impl std::ops::Deref for AsciiToken {
+    type Target = str;
+    fn deref(&self) -> &str {
+        std::str::from_utf8(&self.bytes[..self.length]).expect("validated ASCII token")
+    }
+}
+impl std::fmt::Display for AsciiToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self)
     }
 }

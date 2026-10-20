@@ -83,6 +83,15 @@ pub struct ReadRefTable {
 }
 
 impl ReadRefTable {
+    pub(super) fn reserve(
+        &self,
+        bytes: usize,
+    ) -> Result<crate::sexp::memory::WorkspaceReservation, String> {
+        self.owner
+            .with_arena(|a| a.reserve_workspace(bytes))
+            .map_err(|e| e.to_string())?
+            .ok_or_else(memory_error)
+    }
     pub(crate) fn for_owner(owner: &OwnerToken<'_>) -> Self {
         Self {
             entries: WorkspaceVec::new(owner).unwrap_or_else(|e| crate::sexp::context::r_error(e)),
@@ -122,6 +131,25 @@ impl ReadRefTable {
 mod workspace_admission_tests {
     use super::*;
     use crate::sexp::{RSession, memory::ArenaBudget};
+
+    #[test]
+    fn serialization_workspace_decoded_string_retains_original_admission() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let mut reader = BinaryReader::new(b"abc");
+        let bytes = reader
+            .read_string_bytes(
+                3,
+                super::super::super::workspace::reserve(&owner, 0).unwrap(),
+            )
+            .unwrap();
+        assert!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap() >= 3,
+            "decoded native string must remain charged until the R copy is published"
+        );
+        drop(bytes);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
 
     #[test]
     fn serialization_workspace_write_references_deny_before_native_growth() {

@@ -672,22 +672,34 @@ pub(crate) unsafe fn read_persistent_item(
             }
             SET_STRING_ELT(names, i as R_xlen_t, value);
         }
-        let mut cache_key = String::new();
-        for i in 0..len {
-            if i > 0 {
-                cache_key.push('\0');
+        // Public hooks run for every record. Only the private lazy-load path
+        // retains a cache, including admitted original bytes for each key.
+        let cache_key = if reader.lazy_restore.is_some() {
+            let mut key = super::super::owned_input::InputBytes::new(ref_table.reserve(0)?, 0)
+                .map_err(|e| e.to_string())?;
+            for i in 0..len {
+                if i > 0 {
+                    key.push(0).map_err(|e| e.to_string())?;
+                }
+                let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
+                if !raw.is_null() {
+                    std::io::Write::write_all(&mut key, std::ffi::CStr::from_ptr(raw).to_bytes())
+                        .map_err(|e| e.to_string())?;
+                }
             }
-            let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
-            if !raw.is_null() {
-                cache_key.push_str(&std::ffi::CStr::from_ptr(raw).to_string_lossy());
+            if let Some(cached) = reader.persist_cache.as_ref().and_then(|entries| {
+                entries
+                    .iter()
+                    .find(|(existing, _)| **existing == *key)
+                    .map(|(_, value)| *value)
+            }) {
+                ref_table.add(cached);
+                return Ok(cached);
             }
-        }
-        if reader.lazy_restore.is_some()
-            && let Some(&cached) = reader.persist_cache.get(&cache_key)
-        {
-            ref_table.add(cached);
-            return Ok(cached);
-        }
+            Some(key)
+        } else {
+            None
+        };
         let restored = if let Some(restore) = reader.lazy_restore.clone() {
             restore.restore(names)?
         } else if let Some(func) = reader.persist_hook_func {
@@ -699,8 +711,17 @@ pub(crate) unsafe fn read_persistent_item(
         };
         let _restored_guard = protect(restored);
         ref_table.add(restored);
-        if reader.lazy_restore.is_some() {
-            reader.persist_cache.insert(cache_key, restored);
+        if let Some(key) = cache_key {
+            if reader.persist_cache.is_none() {
+                reader.persist_cache = Some(
+                    super::super::workspace::WorkspaceVec::with_reservation(ref_table.reserve(0)?),
+                );
+            }
+            reader
+                .persist_cache
+                .as_mut()
+                .unwrap()
+                .push((key, restored))?;
         }
         return Ok(restored);
     }
@@ -835,7 +856,7 @@ pub(crate) unsafe fn read_character_item(
             let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
             Ok(s)
         } else {
-            let bytes = reader.read_string_bytes(len as usize)?;
+            let bytes = reader.read_string_bytes(len as usize, _ref_table.reserve(0)?)?;
             if let Some(name) = crate::sexp::symbol::interned_ascii_character(&bytes) {
                 return Ok(name);
             }
@@ -1084,9 +1105,9 @@ pub(crate) unsafe fn read_primitive_item(
         if length < 0 {
             return Err("invalid primitive name length".into());
         }
-        let bytes = reader.read_string_bytes(length as usize)?;
+        let bytes = reader.read_string_bytes(length as usize, _ref_table.reserve(0)?)?;
         let mut cbuf = bytes;
-        cbuf.push(0);
+        cbuf.push(0).map_err(|e| e.to_string())?;
         let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
         if prim.is_null() || prim == R_NilValue() {
             Ok(R_NilValue())

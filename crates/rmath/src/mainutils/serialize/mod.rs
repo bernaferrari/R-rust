@@ -313,9 +313,12 @@ mod core;
 mod lazyload;
 mod membuf;
 mod owned_input;
+mod owned_output;
 mod stream;
 mod stream_values;
 mod workspace;
+
+pub(crate) use owned_output::compress_container;
 
 pub use self::api::*;
 pub use self::compress::*;

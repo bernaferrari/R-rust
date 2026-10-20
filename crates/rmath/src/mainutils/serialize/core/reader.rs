@@ -13,7 +13,9 @@ pub struct BinaryReader<'a> {
 
     pub(crate) persist_hook_data: SEXP,
     pub(crate) lazy_restore: Option<super::api::LazyLoadRestore>,
-    pub(crate) persist_cache: std::collections::HashMap<String, SEXP>,
+    pub(super) persist_cache: Option<
+        super::super::workspace::WorkspaceVec<(super::super::owned_input::InputBytes, SEXP)>,
+    >,
     /// Pull-mode byte source: bytes are fetched on demand, exactly as the
     /// decoder requests them (GNU `ConnReadChar` data flow).
     pub(crate) pull: Option<PullInput<'a>>,
