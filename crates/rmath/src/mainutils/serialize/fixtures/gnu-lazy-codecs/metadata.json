@@ -1,0 +1,29 @@
+{
+  "oracle_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "svn_revision": 90451,
+  "generator": "tests/serialization/generate-lazy-codec-fixtures.R",
+  "value": "rep.int(7L,128L)",
+  "modes": {
+    "1": "zlib",
+    "2": "bzip2",
+    "3": "raw LZMA2 preset6"
+  },
+  "files": {
+    "expected.rds": {
+      "bytes": 543,
+      "sha256": "6e1b99e1e176687fb0cf6061ce902517a556dca27233dfbb26071f79d60b1f3d"
+    },
+    "mode1.bin": {
+      "bytes": 44,
+      "sha256": "c84c35fe1d3284d77ba087ca0c2cf2b27ad4f71243cb5b94d4bd8c72d031f605"
+    },
+    "mode2.bin": {
+      "bytes": 78,
+      "sha256": "ebfe0b0e626008b6d92092f9f8d877970ef1c38b87c8c98ec36e2df2fb1940ac"
+    },
+    "mode3.bin": {
+      "bytes": 48,
+      "sha256": "e338b36e513154b4c1fa8aa3c24271adb8be73f543e05ce0d3ca34454f8240bb"
+    }
+  }
+}

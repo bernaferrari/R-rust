@@ -5,6 +5,17 @@ use super::{owned_input::InputBytes, workspace::reserve};
 use crate::sexp::owner::OwnerToken;
 use std::io::Write;
 
+pub(super) fn lzma_options(input_length: usize) -> lzma_rust2::LzmaOptions {
+    let mut options = lzma_rust2::LzmaOptions::with_preset(6);
+    // A dictionary larger than all available history adds workspace without
+    // adding possible matches. Preserve preset-6 coding and GNU's maximum.
+    options.dict_size = input_length
+        .checked_next_power_of_two()
+        .unwrap_or(usize::MAX)
+        .clamp(4096, options.dict_size as usize) as u32;
+    options
+}
+
 pub(crate) fn compress_container(
     owner: &OwnerToken<'_>,
     input: &[u8],
@@ -14,10 +25,11 @@ pub(crate) fn compress_container(
     // pending allocation; libbz2-rs uses two 900k u32 arrays plus ftab/state.
     // The envelopes include their writer buffers. XZ exposes its preset's
     // encoder estimate; an additional MiB covers container/filter bookkeeping.
+    let lzma = lzma_options(input.len());
     let workspace = match codec {
         "gzip" => 512 * 1024,
         "bzip2" => 8 * 1024 * 1024,
-        "xz" => (lzma_rust2::LzmaOptions::with_preset(6).get_memory_usage() as usize)
+        "xz" => (lzma.get_memory_usage() as usize)
             .checked_mul(1024)
             .and_then(|n| n.checked_add(1024 * 1024))
             .ok_or_else(super::workspace::memory_error)?,
@@ -41,6 +53,7 @@ pub(crate) fn compress_container(
         }
         _ => {
             let mut options = lzma_rust2::XzOptions::with_preset(6);
+            options.lzma_options = lzma;
             options.set_check_sum_type(lzma_rust2::CheckType::Crc32);
             let mut writer =
                 lzma_rust2::XzWriter::new(output, options).map_err(|e| e.to_string())?;

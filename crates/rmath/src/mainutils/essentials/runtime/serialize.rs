@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::mainutils::essentials::*;
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 #[path = "serialize_workspace_tests.rs"]
 mod workspace_tests;
 

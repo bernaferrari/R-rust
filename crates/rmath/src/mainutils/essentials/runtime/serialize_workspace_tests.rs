@@ -2,6 +2,7 @@ use super::*;
 use crate::sexp::{RSession, memory::ArenaBudget, object::PairlistBuilder};
 
 #[test]
+#[cfg(not(miri))]
 fn serialization_workspace_save_rds_compressors_deny_before_file_publication() {
     for codec in ["gzip", "bzip2", "xz"] {
         let session = RSession::new_for_gc_tests();

@@ -13,19 +13,13 @@
 
 use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_double, c_int, c_void};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr;
 use std::slice;
-
-use bzip2::read::BzDecoder;
-use bzip2::write::BzEncoder;
-use flate2::Compression;
-use flate2::read::ZlibDecoder;
-use flate2::write::ZlibEncoder;
 
 use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::eval::eval::Rf_eval;
@@ -219,85 +213,6 @@ fn mark_decompress_error(err: *mut Rboolean) {
 }
 
 #[inline]
-fn build_compressed_blob(source_len: usize, marker: Option<u8>, payload: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + marker.map_or(0, |_| 1) + payload.len());
-    out.extend_from_slice(&swapped_len_bytes(source_len));
-    if let Some(tag) = marker {
-        out.push(tag);
-    }
-    out.extend_from_slice(payload);
-    out
-}
-
-fn zlib_compress(input: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(input)?;
-    encoder.finish()
-}
-
-fn zlib_decompress_exact(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
-    let mut decoder = ZlibDecoder::new(input);
-    let mut out = Vec::with_capacity(expected_len);
-    decoder.read_to_end(&mut out)?;
-    if out.len() != expected_len {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "zlib decompressed length mismatch",
-        ));
-    }
-    Ok(out)
-}
-
-fn bzip2_compress(input: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-    let mut encoder = BzEncoder::new(Vec::new(), bzip2::Compression::best());
-    encoder.write_all(input)?;
-    encoder.finish()
-}
-
-fn bzip2_decompress_exact(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
-    let mut decoder = BzDecoder::new(input);
-    let mut out = Vec::with_capacity(expected_len);
-    decoder.read_to_end(&mut out)?;
-    if out.len() != expected_len {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "bzip2 decompressed length mismatch",
-        ));
-    }
-    Ok(out)
-}
-
-fn lzma2_raw_encode(input: &[u8], _out_cap: usize) -> Result<Vec<u8>, std::io::Error> {
-    let mut compressed = Vec::new();
-    let mut reader = BufReader::new(Cursor::new(input));
-    lzma_rs::lzma2_compress(&mut reader, &mut compressed).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("lzma2 compress: {e}"),
-        )
-    })?;
-    Ok(compressed)
-}
-
-fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
-    let mut decompressed = Vec::with_capacity(expected_len);
-    let mut reader = BufReader::new(input);
-    lzma_rs::lzma2_decompress(&mut reader, &mut decompressed).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("lzma2 decompress: {e}"),
-        )
-    })?;
-    if decompressed.len() != expected_len {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "lzma2 decompressed length mismatch",
-        ));
-    }
-    Ok(decompressed)
-}
-
-#[inline]
 unsafe fn clear_lazy_load_cache() {
     with_required_current_instance(|instance| unsafe {
         (*instance).serialize_state.used = 0;
@@ -314,6 +229,7 @@ mod lazyload;
 mod membuf;
 mod owned_input;
 mod owned_output;
+mod raw_codecs;
 mod stream;
 mod stream_values;
 mod workspace;
@@ -340,17 +256,3 @@ mod ascii_numeric_tests;
 
 #[cfg(test)]
 mod ascii_stream_tests;
-
-/// xz container at GNU `xzfile()` defaults: preset 6, CRC32 check.
-pub(crate) fn xz_compress_gnu(input: &[u8]) -> Result<Vec<u8>, String> {
-    let mut options = lzma_rust2::XzOptions::with_preset(6);
-    options.set_check_sum_type(lzma_rust2::CheckType::Crc32);
-    let mut writer = lzma_rust2::XzWriter::new(Vec::new(), options)
-        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))?;
-    writer
-        .write_all(input)
-        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))?;
-    writer
-        .finish()
-        .map_err(|e| format!("internal error in xz_compress_gnu: {e}"))
-}

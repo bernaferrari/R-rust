@@ -67,7 +67,19 @@ pub unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
 
 pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
     unsafe {
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        let operands = [file, key].map(|value| {
+            owner
+                .sexp(value)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|e| error(&e.to_string()))
+        });
         let path = sexp_to_path(file);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
         if let Some(image) = crate::library::portable_package::database_path(&path) {
             let result = (|| {
                 let owner =
@@ -108,8 +120,15 @@ pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
         if TYPEOF(key) != SEXPTYPE::INTSXP || LENGTH(key) != 2 {
             error("bad offset/length argument");
         }
-        let offset = *INTEGER(key);
-        let len = *INTEGER(key).add(1);
+        let offset = operands[1]
+            .try_integer_elt(0)
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let len = operands[1]
+            .try_integer_elt(1)
+            .unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
         if offset < 0 || len < 0 {
             error("bad offset/length argument");
         }
@@ -130,11 +149,27 @@ pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
         if fp.seek(SeekFrom::Start(offset_u64)).is_err() {
             error("read failed");
         }
-        let mut buf = vec![0u8; len as usize];
-        if len > 0 && fp.read_exact(&mut buf).is_err() {
-            error("read failed");
+        let mut buf = super::owned_input::InputBytes::new(
+            super::workspace::reserve(&owner, len as usize).unwrap_or_else(|e| error(&e)),
+            len as usize,
+        )
+        .unwrap_or_else(|e| error(&e.to_string()));
+        let mut chunk = [0; 8192];
+        let mut remaining = len as usize;
+        while remaining != 0 {
+            let count = remaining.min(chunk.len());
+            if fp.read_exact(&mut chunk[..count]).is_err() {
+                error("read failed");
+            }
+            buf.write_all(&chunk[..count])
+                .unwrap_or_else(|e| error(&e.to_string()));
+            remaining -= count;
         }
-        raw_from_bytes(&buf)
+        let value = raw_from_bytes(&buf);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        value
     }
 }
 

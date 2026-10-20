@@ -1,177 +1,116 @@
 use super::*;
 
-// ---------------------------------------------------------------------------
-// Compression functions
-// ---------------------------------------------------------------------------
+#[cfg(test)]
+#[path = "raw_codec_tests.rs"]
+mod workspace_tests;
 
-pub unsafe fn R_compress1(inp: SEXP) -> SEXP {
+// Raw entry points retain only an original operation pin and checked native
+// snapshots. All codec allocation and framing lives in the safe Rust module.
+unsafe fn raw_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    input: SEXP,
+    mode: u8,
+    encode: bool,
+) -> super::owned_input::InputBytes {
     unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_compress1 requires a raw vector");
+        let input = owner
+            .sexp(input)
+            .and_then(|v| v.into_owned())
+            .unwrap_or_else(|e| error(&e.to_string()));
+        if input.typeof_() != SEXPTYPE::RAWSXP {
+            error(&format!(
+                "R_{}compress{mode} requires a raw vector",
+                if encode { "" } else { "de" }
+            ));
         }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen > u32::MAX as usize {
+        if ALTREP(input.as_raw()) != 0 {
+            RAW(input.as_raw());
+        }
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let length =
+            usize::try_from(input.len()).unwrap_or_else(|_| error("invalid raw vector length"));
+        if encode && length > u32::MAX as usize {
             error("raw vector too large to compress");
         }
-        let input = slice::from_raw_parts(RAW(inp), inlen);
-        let payload = match zlib_compress(input) {
-            Ok(data) => data,
-            Err(err) => error(&format!("internal error in R_compress1: {err}")),
-        };
-        raw_from_bytes(&build_compressed_blob(inlen, None, &payload))
+        let mut bytes = super::owned_input::InputBytes::new(
+            super::workspace::reserve(owner, length).unwrap_or_else(|e| error(&e)),
+            length,
+        )
+        .unwrap_or_else(|e| error(&e.to_string()));
+        if length == 0 {
+            return bytes;
+        }
+        let header = input.header();
+        let lease = header
+            .payload_lease()
+            .unwrap_or_else(|| error("invalid raw vector payload"));
+        let mut chunk = [0u8; 8192];
+        for start in (0..length).step_by(chunk.len()) {
+            let count = (length - start).min(chunk.len());
+            for (i, byte) in chunk[..count].iter_mut().enumerate() {
+                *byte = lease
+                    .byte_elt(start + i)
+                    .unwrap_or_else(|| error("invalid raw vector payload"));
+            }
+            bytes
+                .write_all(&chunk[..count])
+                .unwrap_or_else(|e| error(&e.to_string()));
+        }
+        bytes
     }
 }
 
-pub unsafe fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
+unsafe fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean>) -> SEXP {
     unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_decompress1 requires a raw vector");
-        }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen < 4 {
-            mark_decompress_error(err);
-            return R_NilValue();
-        }
-        let data = slice::from_raw_parts(RAW(inp), inlen);
-        let outlen = match parse_swapped_len_prefix(data) {
-            Some(v) => v,
-            None => {
-                mark_decompress_error(err);
-                return R_NilValue();
-            }
-        };
-        match zlib_decompress_exact(&data[4..], outlen) {
-            Ok(decoded) => raw_from_bytes(&decoded),
-            Err(_) => {
-                mark_decompress_error(err);
-                R_NilValue()
-            }
-        }
-    }
-}
-
-pub unsafe fn R_compress2(inp: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_compress2 requires a raw vector");
-        }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen > u32::MAX as usize {
-            error("raw vector too large to compress");
-        }
-        let input = slice::from_raw_parts(RAW(inp), inlen);
-        let (marker, payload) = match bzip2_compress(input) {
-            Ok(compressed) if compressed.len() <= inlen => (b'2', compressed),
-            Ok(_) => (b'0', input.to_vec()),
-            Err(err) => error(&format!("internal error in R_compress2: {err}")),
-        };
-        raw_from_bytes(&build_compressed_blob(inlen, Some(marker), &payload))
-    }
-}
-
-pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_decompress2 requires a raw vector");
-        }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen < 5 {
-            mark_decompress_error(err);
-            return R_NilValue();
-        }
-        let data = slice::from_raw_parts(RAW(inp), inlen);
-        let outlen = match parse_swapped_len_prefix(data) {
-            Some(v) => v,
-            None => {
-                mark_decompress_error(err);
-                return R_NilValue();
-            }
-        };
-        let decoded = match data[4] {
-            b'2' => bzip2_decompress_exact(&data[5..], outlen),
-            b'1' => zlib_decompress_exact(&data[5..], outlen),
-            b'0' => {
-                if data.len() < 5 + outlen {
-                    mark_decompress_error(err);
-                    return R_NilValue();
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let bytes = raw_snapshot(&owner, input, mode, decode_error.is_none());
+            if let Some(invalid) = decode_error {
+                match super::raw_codecs::decode(&owner, &bytes, mode) {
+                    Ok(decoded) => raw_from_bytes(&decoded),
+                    Err(super::raw_codecs::DecodeError::Resource(message)) => error(&message),
+                    Err(super::raw_codecs::DecodeError::Invalid) => {
+                        mark_decompress_error(invalid);
+                        R_NilValue()
+                    }
                 }
-                Ok(data[5..5 + outlen].to_vec())
+            } else {
+                let encoded =
+                    super::raw_codecs::encode(&owner, &bytes, mode).unwrap_or_else(|e| error(&e));
+                raw_from_bytes(&encoded)
             }
-            _ => {
-                mark_decompress_error(err);
-                return R_NilValue();
-            }
-        };
-        match decoded {
-            Ok(out) => raw_from_bytes(&out),
-            Err(_) => {
-                mark_decompress_error(err);
-                R_NilValue()
-            }
+        }));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        match outcome {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
         }
     }
 }
 
-pub unsafe fn R_compress3(inp: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_compress3 requires a raw vector");
-        }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen > u32::MAX as usize {
-            error("raw vector too large to compress");
-        }
-        let input = slice::from_raw_parts(RAW(inp), inlen);
-        let (marker, payload) = match lzma2_raw_encode(input, inlen + 5) {
-            Ok(compressed) => (b'Z', compressed),
-            Err(_) => (b'0', input.to_vec()),
-        };
-        raw_from_bytes(&build_compressed_blob(inlen, Some(marker), &payload))
-    }
+pub unsafe fn R_compress1(input: SEXP) -> SEXP {
+    unsafe { raw_codec_operation(input, 1, None) }
 }
-
-pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe {
-        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
-            error("R_decompress3 requires a raw vector");
-        }
-        let inlen = XLENGTH(inp) as usize;
-        if inlen < 5 {
-            mark_decompress_error(err);
-            return R_NilValue();
-        }
-        let data = slice::from_raw_parts(RAW(inp), inlen);
-        let outlen = match parse_swapped_len_prefix(data) {
-            Some(v) => v,
-            None => {
-                mark_decompress_error(err);
-                return R_NilValue();
-            }
-        };
-        let decoded = match data[4] {
-            b'Z' => lzma2_raw_decode(&data[5..], outlen).map_err(|_| ()),
-            b'2' => bzip2_decompress_exact(&data[5..], outlen).map_err(|_| ()),
-            b'1' => zlib_decompress_exact(&data[5..], outlen).map_err(|_| ()),
-            b'0' => {
-                if data.len() < 5 + outlen {
-                    mark_decompress_error(err);
-                    return R_NilValue();
-                }
-                Ok(data[5..5 + outlen].to_vec())
-            }
-            _ => {
-                mark_decompress_error(err);
-                return R_NilValue();
-            }
-        };
-        match decoded {
-            Ok(out) => raw_from_bytes(&out),
-            Err(_) => {
-                mark_decompress_error(err);
-                R_NilValue()
-            }
-        }
-    }
+pub unsafe fn R_compress2(input: SEXP) -> SEXP {
+    unsafe { raw_codec_operation(input, 2, None) }
+}
+pub unsafe fn R_compress3(input: SEXP) -> SEXP {
+    unsafe { raw_codec_operation(input, 3, None) }
+}
+pub unsafe fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
+    unsafe { raw_codec_operation(input, 1, Some(error)) }
+}
+pub unsafe fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
+    unsafe { raw_codec_operation(input, 2, Some(error)) }
+}
+pub unsafe fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
+    unsafe { raw_codec_operation(input, 3, Some(error)) }
 }
 
 // ---------------------------------------------------------------------------
