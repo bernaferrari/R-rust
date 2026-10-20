@@ -15,6 +15,15 @@ use super::accessors::{CHAR, PRINTNAME, TYPEOF};
 use super::ffi::{NodeBody, R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::instance::RInstance;
 
+// GNU R limits symbol names by bytes, independently of the session budget.
+const MAX_SYMBOL_BYTES: usize = 10000;
+
+fn check_symbol_length(bytes: usize) {
+    if bytes > MAX_SYMBOL_BYTES {
+        super::context::r_error("variable names are limited to 10000 bytes");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Symbol table helpers
 // ---------------------------------------------------------------------------
@@ -166,6 +175,7 @@ pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) ->
         }
 
         let cstr = std::ffi::CStr::from_ptr(name);
+        check_symbol_length(cstr.to_bytes().len());
         let name_str = match cstr.to_str() {
             Ok(s) => s.to_string(),
             Err(_) => return ptr::null_mut(),
@@ -202,6 +212,7 @@ pub(crate) unsafe fn Rf_installChar_in(
     let Ok(length) = usize::try_from(len) else {
         return ptr::null_mut();
     };
+    check_symbol_length(length);
     let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, length) };
     let name_str = match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
@@ -337,6 +348,65 @@ mod tests {
     use super::*;
     use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
+
+    fn rejected_symbol_length(text: &str, known_length: bool, bounded: bool) {
+        let mut instance = RInstance::new_for_gc_tests();
+        let bytes = instance.arena.total_bytes_allocated();
+        let nodes = instance.persistent_nodes.len();
+        if bounded {
+            instance
+                .arena
+                .set_budget(crate::sexp::memory::ArenaBudget::new(bytes + 1, 0));
+        }
+        let name = std::ffi::CString::new(text).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            if known_length {
+                Rf_installChar_in(&mut instance, name.as_ptr(), text.len() as i64)
+            } else {
+                Rf_install_in(&mut instance, name.as_ptr())
+            }
+        }));
+        let failure = result.expect_err("oversized symbol was installed");
+        assert_eq!(
+            failure
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap()
+                .message,
+            "variable names are limited to 10000 bytes"
+        );
+        assert_eq!(instance.persistent_nodes.len(), nodes);
+        assert_eq!(instance.arena.total_bytes_allocated(), bytes);
+        assert_eq!(instance.arena.workspace_bytes(), 0);
+        assert!(instance.symbols.is_empty());
+    }
+
+    #[test]
+    fn symbol_length_cstring_rejects_10001_bytes_before_publication() {
+        rejected_symbol_length(&"x".repeat(10001), false, false);
+    }
+    #[test]
+    fn symbol_length_explicit_rejects_10001_bytes_before_publication() {
+        rejected_symbol_length(&"x".repeat(10001), true, false);
+    }
+    #[test]
+    fn symbol_length_limit_counts_utf8_bytes_and_precedes_memory_admission() {
+        for known_length in [false, true] {
+            rejected_symbol_length(&"é".repeat(5001), known_length, true);
+        }
+    }
+    #[test]
+    fn symbol_length_10000_byte_boundary_is_valid_and_reuses_both_entries() {
+        let mut instance = RInstance::new_for_gc_tests();
+        for text in ["x".repeat(10000), "é".repeat(5000)] {
+            let name = std::ffi::CString::new(text).unwrap();
+            let first = unsafe { Rf_install_in(&mut instance, name.as_ptr()) };
+            assert!(!first.is_null());
+            let before = instance.arena.total_bytes_allocated();
+            let again = unsafe { Rf_installChar_in(&mut instance, name.as_ptr(), 10000) };
+            assert_eq!(again, first);
+            assert_eq!(instance.arena.total_bytes_allocated(), before);
+        }
+    }
 
     #[test]
     fn permanent_budget_symbol_denial_is_atomic_and_recovers_under_same_cap() {
