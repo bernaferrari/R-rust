@@ -15,7 +15,10 @@ struct ProtectStackGuard {
 
 impl ProtectStackGuard {
     fn new() -> Self {
-        let session = RSession::new();
+        // These fixtures exercise storage and binding kernels, without R
+        // evaluation or package dispatch. Keep the original session ownership
+        // and protection channels while avoiding unrelated library bootstrap.
+        let session = RSession::new_for_gc_tests();
         reset_protect_stack();
         Self { _session: session }
     }
@@ -78,8 +81,8 @@ fn test_type2char_basic() {
 
 #[test]
 fn test_blank_string_is_session_local_on_same_thread() {
-    let left = RSession::new();
-    let right = RSession::new();
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
 
     let mut left_blank = ptr::null_mut();
     left.with_active(|| unsafe {

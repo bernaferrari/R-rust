@@ -1,0 +1,109 @@
+{
+  "issue": "rport-2gpp.5.6",
+  "date": "2026-10-20",
+  "source_base": "3ca49e7e",
+  "changed_file": "crates/rmath/src/mainutils/bind/tests.rs",
+  "source_sha256": "41ca8afc406430004854a2b718db8ca265c23d4d1654c153df8d25e6560869c7",
+  "behavior": "Allocation-only binding fixtures use the existing minimal real session instead of full package bootstrap; all assertions, input cases and protection operations are unchanged.",
+  "baseline": {
+    "source_base": "383891bb",
+    "executable": "/Users/bernardoferrari/Downloads/rport/target/debug/deps/rmath-f0335626e0fd54ac",
+    "bytes": 101629592,
+    "sha256": "6fe59747d170a9d792eda1de1d94865a7b9e4faf7910e3e6785fd807176abd7f",
+    "profile": {
+      "opt_level": "0",
+      "debuginfo": "line-tables-only",
+      "debug_assertions": true,
+      "overflow_checks": true,
+      "test": true
+    },
+    "command": [
+      "/Users/bernardoferrari/Downloads/rport/target/debug/deps/rmath-f0335626e0fd54ac",
+      "--exact",
+      "mainutils::bind::tests::test_answertype_combined_types",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "timeout_seconds": 15,
+    "timed_out": true,
+    "returncode": null,
+    "elapsed_seconds": 15.008,
+    "passed": false,
+    "source_sha256": "50b2ab5d2ce487beb325a772d7f2f4ec5e6da7c52e81b0f2fb6d31f493e51b35"
+  },
+  "final_debug": [
+    {
+      "name": "single",
+      "command": [
+        "/Users/bernardoferrari/Downloads/rport/target/debug/deps/rmath-f0335626e0fd54ac",
+        "--exact",
+        "mainutils::bind::tests::test_answertype_combined_types",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "timeout_seconds": 15,
+      "timed_out": false,
+      "returncode": 0,
+      "elapsed_seconds": 1.7386,
+      "profile": {
+        "opt_level": "0",
+        "debuginfo": "line-tables-only",
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "artifact_sha256": "8c94fb43d9761216ab318e53c97bbd93ac6e510b5fa4be92bf179c89e59f9603",
+      "source_sha256": "41ca8afc406430004854a2b718db8ca265c23d4d1654c153df8d25e6560869c7",
+      "output": "\nrunning 1 test\ntest mainutils::bind::tests::test_answertype_combined_types ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4114 filtered out; finished in 0.01s\n\n"
+    },
+    {
+      "name": "suite",
+      "command": [
+        "/Users/bernardoferrari/Downloads/rport/target/debug/deps/rmath-f0335626e0fd54ac",
+        "mainutils::bind::tests::",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "timeout_seconds": 60,
+      "timed_out": false,
+      "returncode": 0,
+      "elapsed_seconds": 0.0681,
+      "profile": {
+        "opt_level": "0",
+        "debuginfo": "line-tables-only",
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "artifact_sha256": "8c94fb43d9761216ab318e53c97bbd93ac6e510b5fa4be92bf179c89e59f9603",
+      "source_sha256": "41ca8afc406430004854a2b718db8ca265c23d4d1654c153df8d25e6560869c7",
+      "output": "\nrunning 49 tests\ntest mainutils::bind::tests::test_ans_flags_to_mode ... ok\ntest mainutils::bind::tests::test_answertype_combined_types ... ok\ntest mainutils::bind::tests::test_answertype_null_dropped ... ok\ntest mainutils::bind::tests::test_answertype_single_integer ... ok\ntest mainutils::bind::tests::test_answertype_single_logical ... ok\ntest mainutils::bind::tests::test_answertype_single_real ... ok\ntest mainutils::bind::tests::test_answertype_vector_length ... ok\ntest mainutils::bind::tests::test_bind_data_size ... ok\ntest mainutils::bind::tests::test_blank_string_is_session_local_on_same_thread ... ok\ntest mainutils::bind::tests::test_coerce_vector_int_to_complex ... ok\ntest mainutils::bind::tests::test_coerce_vector_int_to_real ... ok\ntest mainutils::bind::tests::test_coerce_vector_lgl_to_int ... ok\ntest mainutils::bind::tests::test_coerce_vector_raw_to_complex ... ok\ntest mainutils::bind::tests::test_coerce_vector_raw_to_int ... ok\ntest mainutils::bind::tests::test_coerce_vector_raw_to_real ... ok\ntest mainutils::bind::tests::test_coerce_vector_same_type ... ok\ntest mainutils::bind::tests::test_complex_answer_from_real ... ok\ntest mainutils::bind::tests::test_do_bind_null_args ... ok\ntest mainutils::bind::tests::test_do_c_dflt_all_nulls ... ok\ntest mainutils::bind::tests::test_do_c_dflt_int_and_real ... ok\ntest mainutils::bind::tests::test_do_c_dflt_integer_vector ... ok\ntest mainutils::bind::tests::test_do_c_dflt_logical_and_integer ... ok\ntest mainutils::bind::tests::test_do_c_dflt_logical_vector ... ok\ntest mainutils::bind::tests::test_do_c_dflt_null_args ... ok\ntest mainutils::bind::tests::test_do_c_dflt_real_vector ... ok\ntest mainutils::bind::tests::test_do_c_dflt_single_integer ... ok\ntest mainutils::bind::tests::test_do_c_dflt_two_integers ... ok\ntest mainutils::bind::tests::test_do_c_dflt_with_null ... ok\ntest mainutils::bind::tests::test_do_c_null_args ... ok\ntest mainutils::bind::tests::test_do_cbind_null_args ... ok\ntest mainutils::bind::tests::test_do_rbind_null_args ... ok\ntest mainutils::bind::tests::test_do_unlist_null_args ... ok\ntest mainutils::bind::tests::test_has_names_null ... ok\ntest mainutils::bind::tests::test_imax2 ... ok\ntest mainutils::bind::tests::test_integer_answer_from_logical ... ok\ntest mainutils::bind::tests::test_is_list_types ... ok\ntest mainutils::bind::tests::test_is_matrix_null ... ok\ntest mainutils::bind::tests::test_is_new_list_null ... ok\ntest mainutils::bind::tests::test_is_symbol_null ... ok\ntest mainutils::bind::tests::test_is_vector_types ... ok\ntest mainutils::bind::tests::test_itemname_null ... ok\ntest mainutils::bind::tests::test_logical_answer_from_integer ... ok\ntest mainutils::bind::tests::test_name_data_size ... ok\ntest mainutils::bind::tests::test_r_list_compact_all_nulls ... ok\ntest mainutils::bind::tests::test_r_list_compact_basic ... ok\ntest mainutils::bind::tests::test_r_list_compact_no_nulls ... ok\ntest mainutils::bind::tests::test_real_answer_from_integer ... ok\ntest mainutils::bind::tests::test_resolve_promise_null ... ok\ntest mainutils::bind::tests::test_type2char_basic ... ok\n\ntest result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 4066 filtered out; finished in 0.06s\n\n"
+    }
+  ],
+  "strict_miri": {
+    "passed": 3,
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "clippy": "rmath lib and tests, -D warnings",
+  "evidence_directory": "target/bind-fixture-evidence",
+  "evidence_sha256": {
+    "debug-baseline-receipt.json": "d718ef597aa12cca1b6ecf97b9386c18f6dca2cde0e6465d92fef2f9664c1c7c",
+    "debug-final-receipt.json": "50a9e90537ebb6a2977df178943c162caf44dfc155214e88082005ad135c3bf3",
+    "debug-final-single.log": "1b98f8ccc022110de0dbe888a7cbe5963c070b7e7aa0ba50c87fb2076eeb70db",
+    "debug-final-suite.log": "1d35c97fa8b50f34621a72b3d9cae1735c511228c6f45a3db34f0c8d0eb92526",
+    "miri-20261020.log": "e1e7cc072060b433c75b42bd2a83d9036af56955e4c9354ba9286c53d04d9ebe",
+    "clippy-20261020.log": "22bdb3420a1240d969e9c1e10087bc01e9b2a7141b88c4bbd21248213bcd9e45"
+  },
+  "scope_limits": [
+    "Fixture-only change; no production startup or evaluator performance fix claimed.",
+    "Baseline exceeded its 15-second process bound; this was not an assertion failure or demonstrated deadlock.",
+    "No Cargo profiles, compilation settings or iteration counts changed.",
+    "No Wasm or on-device Android execution claimed for this cfg(test)-only change."
+  ]
+}
