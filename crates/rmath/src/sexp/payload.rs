@@ -176,7 +176,14 @@ impl PayloadLease {
     pub(crate) fn bind_to_heap(&self, heap: &HeapIdentity, total: &Rc<Cell<usize>>) -> Option<()> {
         let mut domain = self.0.domain.borrow_mut();
         if let Some(original) = domain.as_ref() {
-            return original.same_domain(heap).then_some(());
+            return (original.same_domain(heap)
+                && self
+                    .0
+                    .charge
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|charge| Rc::ptr_eq(&charge.total, total)))
+            .then_some(());
         }
         // A sealed allocation may be reused in its original charged domain,
         // but an unbound singleton cannot become an unmetered heap payload.
@@ -650,6 +657,20 @@ impl OwnedPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permanent_budget_payload_cannot_rebind_one_heap_to_another_counter() {
+        let heap = HeapIdentity::new();
+        let original = Rc::new(Cell::new(0));
+        let other = Rc::new(Cell::new(0));
+        let lease = PayloadLease::zeroed(SEXPTYPE::INTSXP, 2).unwrap();
+        lease.bind_to_heap(&heap, &original).unwrap();
+        assert!(lease.bind_to_heap(&heap, &other).is_none());
+        assert_eq!(other.get(), 0);
+        assert_eq!(original.get(), 8);
+        drop(lease);
+        assert_eq!(original.get(), 0);
+    }
 
     #[test]
     fn byte_cell_ownership_rejects_safe_aliases_before_sealing() {

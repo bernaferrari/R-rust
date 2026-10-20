@@ -23,47 +23,38 @@ use super::instance::RInstance;
 /// # Safety
 /// The owner must be live and no callback may overlap these short field lends.
 pub(crate) unsafe fn persistent_charsxp_from_bytes_in(inst: *mut RInstance, bytes: &[u8]) -> SEXP {
-    let value =
-        unsafe { (*inst).persistent_nodes.allocate_chars(bytes) }.unwrap_or(ptr::null_mut());
-    if !value.is_null() {
-        unsafe { (*inst).symbol_nodes.push(value) };
-    }
+    unsafe { (*inst).symbol_nodes.try_reserve(1) }.unwrap_or_else(|_| symbol_allocation_error());
+    let value = unsafe { (*inst).persistent_nodes.allocate_chars(bytes) }
+        .unwrap_or_else(|_| symbol_allocation_error());
+    unsafe { (*inst).symbol_nodes.push(value) };
     value
 }
 
-fn intern_symbol_with_pname(
+fn symbol_allocation_error() -> ! {
+    super::context::r_error("permanent symbol allocation exceeds session memory limit")
+}
+
+fn intern_symbol(
     symbols: &mut HashMap<String, SEXP>,
     nodes: &mut Vec<*mut SexprecCore>,
     persistent: &mut super::instance::persistent::PersistentHeap,
     name_str: String,
-    pname: SEXP,
 ) -> SEXP {
     if let Some(&existing) = symbols.get(&name_str) {
         return existing;
     }
-    if pname.is_null() {
-        return ptr::null_mut();
-    }
-    let header = SexprecCore {
-        sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
-        attrib: super::heap::NodeLink::NULL,
-        payload: super::payload::PayloadLink::EMPTY,
-        data: NodeBody::Symbol(super::ffi::Symsxp {
-            pname: persistent
-                .link_from_projection(pname)
-                .expect("permanent symbol name"),
-            value: super::heap::NodeLink::NULL,
-            internal: super::heap::NodeLink::NULL,
-        }),
-    };
-    let sexp = persistent
-        .allocate_header(header)
-        .unwrap_or(ptr::null_mut());
-    if !sexp.is_null() {
-        symbols.insert(name_str, sexp);
-        nodes.push(sexp);
-    }
-    sexp
+    symbols
+        .try_reserve(1)
+        .unwrap_or_else(|_| symbol_allocation_error());
+    nodes
+        .try_reserve(2)
+        .unwrap_or_else(|_| symbol_allocation_error());
+    let (pname, symbol) = persistent
+        .allocate_symbol(name_str.as_bytes())
+        .unwrap_or_else(|_| symbol_allocation_error());
+    symbols.insert(name_str, symbol);
+    nodes.extend([pname, symbol]);
+    symbol
 }
 
 /// Best-effort reverse lookup: get the interned name for a symbol pointer.
@@ -183,15 +174,12 @@ pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) ->
         if let Some(&existing) = (*inst).symbols.get(&name_str) {
             return existing;
         }
-        // Allocate the printed name before borrowing the projection list;
-        // its short field lends end before interning touches that list again.
-        let pname = persistent_charsxp_from_bytes_in(inst, cstr.to_bytes());
-        intern_symbol_with_pname(
+        // The safe allocator publishes the name and symbol together.
+        intern_symbol(
             &mut (*inst).symbols,
             &mut (*inst).symbol_nodes,
             &mut (*inst).persistent_nodes,
             name_str,
-            pname,
         )
     }
 }
@@ -225,13 +213,11 @@ pub(crate) unsafe fn Rf_installChar_in(
         if let Some(&existing) = (*inst).symbols.get(&name_str) {
             return existing;
         }
-        let pname = persistent_charsxp_from_bytes_in(inst, bytes);
-        intern_symbol_with_pname(
+        intern_symbol(
             &mut (*inst).symbols,
             &mut (*inst).symbol_nodes,
             &mut (*inst).persistent_nodes,
             name_str,
-            pname,
         )
     }
 }
@@ -351,6 +337,47 @@ mod tests {
     use super::*;
     use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn permanent_budget_symbol_denial_is_atomic_and_recovers_under_same_cap() {
+        let mut instance = RInstance::new_for_gc_tests();
+        let before = instance.arena.total_bytes_allocated();
+        let nodes = instance.persistent_nodes.len();
+        let width = std::mem::size_of::<SexprecCore>();
+        let name = std::ffi::CString::new(vec![b'x'; width + 31]).unwrap();
+        let limit = before + 2 * width + name.as_bytes_with_nul().len();
+        instance
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(limit, 0));
+        let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            Rf_install_in(&mut instance, name.as_ptr())
+        }));
+        assert!(
+            denied.is_err(),
+            "permanent symbol admission must report a resource error, not return NULL"
+        );
+        assert_eq!(instance.persistent_nodes.len(), nodes);
+        assert!(instance.symbol_nodes.is_empty());
+        assert!(instance.symbols.is_empty());
+        assert_eq!(instance.arena.total_bytes_allocated(), before);
+        let short = unsafe { Rf_install_in(&mut instance, c"s".as_ptr()) };
+        assert!(!short.is_null());
+        assert_eq!(instance.arena.budget().max_bytes, limit);
+        assert_eq!(instance.arena.workspace_bytes(), 0);
+    }
+
+    #[test]
+    fn permanent_budget_existing_symbol_reuse_requires_no_headroom() {
+        let mut instance = RInstance::new_for_gc_tests();
+        let first = unsafe { Rf_install_in(&mut instance, c"retained_symbol".as_ptr()) };
+        let before = instance.arena.total_bytes_allocated();
+        instance
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(before - 1, 0));
+        let second = unsafe { Rf_install_in(&mut instance, c"retained_symbol".as_ptr()) };
+        assert_eq!(first, second);
+        assert_eq!(instance.arena.total_bytes_allocated(), before);
+    }
 
     fn with_session<F, T>(f: F) -> T
     where

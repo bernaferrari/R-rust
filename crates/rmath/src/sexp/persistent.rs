@@ -14,6 +14,10 @@ use std::{
     rc::Rc,
 };
 
+#[cfg(test)]
+#[path = "persistent_budget_tests.rs"]
+mod budget_tests;
+
 fn empty_payload_shape(header: &SexprecCore) -> bool {
     if !header.payload.is_empty() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
         return false;
@@ -39,6 +43,7 @@ struct PersistentAllocation {
     // Fixed interior cells keep a native character projection stable without
     // handing Rust ownership of the bytes to a raw allocation or header.
     payload: Option<PayloadLease>,
+    _header_charge: crate::sexp::memory::AllocationCharge,
 }
 
 /// The single physical owner of permanent headers and their payloads.
@@ -48,8 +53,7 @@ pub(crate) struct PersistentBacking {
     // Allocation lookup only: the existing NodePage remains the authority.
     pages: RefCell<HashMap<u64, usize>>,
     identity: HeapIdentity,
-    allocated_bytes: Rc<Cell<usize>>,
-    transient_bytes: Rc<Cell<usize>>,
+    ledger: crate::sexp::memory::MemoryLedger,
 }
 impl PersistentBacking {
     pub(crate) fn reserve_payload_bytes(
@@ -58,16 +62,7 @@ impl PersistentBacking {
         bytes: usize,
     ) -> Option<crate::sexp::memory::TransientReservation> {
         self.node_snapshot(id)?;
-        Some(
-            crate::sexp::memory::TransientReservation::new(
-                0,
-                self.allocated_bytes.get(),
-                0,
-                &self.transient_bytes,
-                bytes,
-            )?
-            .for_payload(self.identity.clone(), self.allocated_bytes.clone()),
-        )
+        self.ledger.reserve_payload(&self.identity, bytes)
     }
     pub(crate) fn node_payload(&self, id: &NodeId) -> Option<PayloadLease> {
         let key = *self.pages.borrow().get(&id.page_cookie())?;
@@ -104,7 +99,7 @@ impl PersistentBacking {
         if !lease.matches_header(&header) {
             return None;
         }
-        lease.bind_to_heap(&self.identity, &self.allocated_bytes)?;
+        self.ledger.admit_payload(&self.identity, lease)?;
         allocation.header.replace_live(id, header).ok()?;
         allocation.payload = Some(lease.clone());
         Some(())
@@ -201,8 +196,7 @@ impl PersistentHeap {
             nodes: RefCell::new(HashMap::new()),
             pages: RefCell::new(HashMap::new()),
             identity: identity.clone(),
-            allocated_bytes: Rc::new(Cell::new(0)),
-            transient_bytes: Rc::new(Cell::new(0)),
+            ledger: identity.byte_ledger(),
         });
         let owners = identity.retain_persistent(backing.clone());
         let retired_resources = owners.resource_drop_queue();
@@ -224,6 +218,7 @@ impl PersistentHeap {
         &mut self,
         mut header: SexprecCore,
         mut payload: Option<PayloadLease>,
+        mut admission: crate::sexp::memory::WorkspaceReservation,
     ) -> Result<SEXP, HeapError> {
         if !header.has_valid_shape() {
             return Err(HeapError::InvalidShape);
@@ -241,6 +236,17 @@ impl PersistentHeap {
             header.payload = lease.link();
             payload = Some(lease);
         }
+        let payload_growth = payload
+            .as_ref()
+            .filter(|lease| !lease.belongs_to(&self.identity))
+            .map_or(0, PayloadLease::logical_bytes);
+        let header_peak = std::mem::size_of::<SexprecCore>()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(payload_growth))
+            .ok_or(HeapError::Allocation)?;
+        admission
+            .try_resize(header_peak)
+            .ok_or(HeapError::Allocation)?;
         self.backing
             .nodes
             .borrow_mut()
@@ -256,8 +262,8 @@ impl PersistentHeap {
                 if lease.matches_header(&header)
                     && (!lease.is_immutable() || header.sxpinfo.type_of() == SEXPTYPE::CHARSXP) =>
             {
-                lease
-                    .bind_to_heap(&self.identity, &self.backing.allocated_bytes)
+                admission
+                    .bind_payload(&self.identity, lease)
                     .ok_or(HeapError::InvalidShape)?;
             }
             None if empty_payload_shape(&header) => {}
@@ -280,12 +286,17 @@ impl PersistentHeap {
                 .expect("character allocation has bytes")
                 .clone()
         });
+        admission
+            .try_resize(std::mem::size_of::<SexprecCore>())
+            .ok_or(HeapError::Allocation)?;
+        let header_charge = admission.commit_allocation().ok_or(HeapError::Allocation)?;
         self.backing.nodes.borrow_mut().insert(
             pointer as usize,
             PersistentAllocation {
                 _registration: registration,
                 header: page,
                 payload,
+                _header_charge: header_charge,
             },
         );
         if let Some(lease) = character_payload {
@@ -298,12 +309,29 @@ impl PersistentHeap {
         self.next_page = next_page;
         Ok(pointer)
     }
+    fn admission(
+        &self,
+        payload: usize,
+    ) -> Result<crate::sexp::memory::WorkspaceReservation, HeapError> {
+        let payload_peak = payload.checked_mul(2).ok_or(HeapError::Allocation)?;
+        let header_peak = std::mem::size_of::<SexprecCore>()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(payload))
+            .ok_or(HeapError::Allocation)?;
+        self.backing
+            .ledger
+            .reserve(payload_peak.max(header_peak))
+            .ok_or(HeapError::Allocation)
+    }
     pub(crate) fn allocate_header(&mut self, header: SexprecCore) -> Result<SEXP, HeapError> {
-        self.allocate(header, None)
+        let admission =
+            self.admission(usize::from(header.sxpinfo.type_of() == SEXPTYPE::CHARSXP))?;
+        self.allocate(header, None, admission)
     }
     pub(crate) fn allocate_chars(&mut self, bytes: &[u8]) -> Result<SEXP, HeapError> {
         let length = i64::try_from(bytes.len()).map_err(|_| HeapError::Allocation)?;
         let capacity = bytes.len().checked_add(1).ok_or(HeapError::Allocation)?;
+        let admission = self.admission(capacity)?;
         let mut cells = Vec::new();
         cells
             .try_reserve_exact(capacity)
@@ -325,22 +353,60 @@ impl PersistentHeap {
         });
         let payload = PayloadLease::from_byte_cells(cells).map_err(|_| HeapError::Allocation)?;
         header.payload = payload.link();
-        self.allocate(header, Some(payload))
+        self.allocate(header, Some(payload), admission)
+    }
+    /// Allocate both permanent nodes before publishing either to the symbol table.
+    pub(crate) fn allocate_symbol(&mut self, name: &[u8]) -> Result<(SEXP, SEXP), HeapError> {
+        let payload = name.len().checked_add(1).ok_or(HeapError::Allocation)?;
+        let peak = std::mem::size_of::<SexprecCore>()
+            .checked_mul(3)
+            .and_then(|n| n.checked_add(payload))
+            .ok_or(HeapError::Allocation)?
+            .max(payload.checked_mul(2).ok_or(HeapError::Allocation)?);
+        // Preflight the whole transaction. These same-thread producers cannot
+        // invoke R, providers or destructors, so neither the limit nor another
+        // allocation can intervene before their individual admission guards.
+        drop(
+            self.backing
+                .ledger
+                .reserve(peak)
+                .ok_or(HeapError::Allocation)?,
+        );
+        let pname = self.allocate_chars(name)?;
+        let mut header = SexprecCore::new(SEXPTYPE::SYMSXP);
+        header.data = NodeBody::Symbol(crate::sexp::ffi::Symsxp {
+            pname: self
+                .link_from_projection(pname)
+                .expect("private permanent name"),
+            value: NodeLink::NULL,
+            internal: NodeLink::NULL,
+        });
+        match self.allocate_header(header) {
+            Ok(symbol) => Ok((pname, symbol)),
+            Err(error) => {
+                // Native metadata allocation can still fail after preflight.
+                // Nothing outside this transaction has observed the name.
+                self.remove(pname);
+                Err(error)
+            }
+        }
     }
     fn allocate_vector(
         &mut self,
         kind: SEXPTYPE,
         payload: PayloadLease,
+        admission: crate::sexp::memory::WorkspaceReservation,
     ) -> Result<SEXP, HeapError> {
         let mut header = SexprecCore::new_vector(kind, 1);
         header.payload = payload.link();
-        self.allocate(header, Some(payload))
+        self.allocate(header, Some(payload), admission)
     }
     pub(crate) fn allocate_integer(
         &mut self,
         value: i32,
         logical: bool,
     ) -> Result<SEXP, HeapError> {
+        let admission = self.admission(std::mem::size_of::<i32>())?;
         self.allocate_vector(
             if logical {
                 SEXPTYPE::LGLSXP
@@ -349,23 +415,28 @@ impl PersistentHeap {
             },
             PayloadLease::from_integer_cells(scalar_cells(value)?)
                 .map_err(|_| HeapError::Allocation)?,
+            admission,
         )
     }
     pub(crate) fn allocate_real(&mut self, value: f64) -> Result<SEXP, HeapError> {
+        let admission = self.admission(std::mem::size_of::<f64>())?;
         self.allocate_vector(
             SEXPTYPE::REALSXP,
             PayloadLease::from_real_cells(scalar_cells(value)?)
                 .map_err(|_| HeapError::Allocation)?,
+            admission,
         )
     }
     pub(crate) fn allocate_string(&mut self, value: SEXP) -> Result<SEXP, HeapError> {
         let link = self
             .link_from_projection(value)
             .ok_or(HeapError::InvalidSlot)?;
+        let admission = self.admission(std::mem::size_of::<NodeLink>())?;
         self.allocate_vector(
             SEXPTYPE::STRSXP,
             PayloadLease::from_reference_cells(scalar_cells(link)?)
                 .map_err(|_| HeapError::Allocation)?,
+            admission,
         )
     }
     pub(crate) fn token(&self, pointer: SEXP) -> Option<CheckedNode> {
@@ -483,16 +554,19 @@ mod tests {
         let pointer = permanent.allocate_integer(63, false).unwrap();
         let node = permanent.token(pointer).unwrap();
         let lease = heap.payload_lease(&node).unwrap();
-        let charge = permanent.backing.allocated_bytes.clone();
-        assert_eq!(charge.get(), 4);
+        let charge = permanent.backing.ledger.clone();
+        assert_eq!(
+            charge.allocated_bytes(),
+            4 + std::mem::size_of::<SexprecCore>()
+        );
         assert!(permanent.remove(pointer));
         assert!(heap.payload_lease(&node).is_none());
         assert_eq!(lease.integer_elt(0), Some(63));
-        assert_eq!(charge.get(), 4);
+        assert_eq!(charge.allocated_bytes(), 4);
         drop(permanent);
         assert_eq!(lease.integer_elt(0), Some(63));
         drop(lease);
-        assert_eq!(charge.get(), 0);
+        assert_eq!(charge.allocated_bytes(), 0);
     }
 
     #[test]
@@ -509,7 +583,7 @@ mod tests {
             crate::sexp::payload::OwnedPayload::characters(b"mutate").unwrap(),
         )
         .unwrap();
-        let bytes = permanent.backing.allocated_bytes.get();
+        let bytes = permanent.backing.ledger.allocated_bytes();
         assert!(
             heap.publish_payload(&node, original.payload, &replacement)
                 .is_none()
@@ -529,7 +603,7 @@ mod tests {
         let mut nil = SexprecCore::new(SEXPTYPE::NILSXP);
         nil.attrib = original.attrib;
         assert!(heap.replace_node(&node, nil).is_none());
-        assert_eq!(permanent.backing.allocated_bytes.get(), bytes);
+        assert_eq!(permanent.backing.ledger.allocated_bytes(), bytes);
         assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
         assert!(permanent.remove(pointer));
         assert!(!node.is_live());
@@ -567,7 +641,7 @@ mod tests {
         assert_eq!(permanent.len(), 0);
         assert_eq!(permanent.next_page, next_page);
         assert!(permanent.backing.pages.borrow().is_empty());
-        assert_eq!(permanent.backing.allocated_bytes.get(), 0);
+        assert_eq!(permanent.backing.ledger.allocated_bytes(), 0);
 
         let pointer = permanent.allocate_integer(42, true).unwrap();
         let node = permanent.token(pointer).unwrap();

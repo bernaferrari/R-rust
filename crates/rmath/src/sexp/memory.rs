@@ -56,6 +56,7 @@ mod budget;
 mod checked;
 mod gc;
 mod layout;
+mod ledger;
 mod slab;
 
 #[cfg(test)]
@@ -74,5 +75,6 @@ pub use self::checked::*;
 pub use self::gc::*;
 #[allow(unused_imports)]
 pub use self::layout::*;
+pub(crate) use self::ledger::*;
 #[allow(unused_imports)]
 pub use self::slab::*;

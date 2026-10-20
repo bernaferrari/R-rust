@@ -114,6 +114,7 @@ struct HeapState {
     cookie: u32,
     next_page_cookie: Cell<u64>,
     backing: RefCell<Weak<HeapBackingOwners>>,
+    ledger: super::memory::MemoryLedger,
 }
 
 /// Closed physical owners of the existing canonical pages and payloads.
@@ -175,7 +176,11 @@ impl HeapIdentity {
             cookie: issue_heap_cookie(&NEXT_HEAP_COOKIE).expect("heap identity space exhausted"),
             next_page_cookie: Cell::new(1),
             backing: RefCell::new(Weak::new()),
+            ledger: super::memory::MemoryLedger::new(),
         }))
+    }
+    pub(crate) fn byte_ledger(&self) -> super::memory::MemoryLedger {
+        self.0.ledger.clone()
     }
     fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)

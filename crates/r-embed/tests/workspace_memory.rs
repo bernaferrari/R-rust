@@ -162,3 +162,38 @@ fn serialize_native_output_and_final_raw_value_share_admission_and_recover() {
         before.workspace_bytes
     );
 }
+
+#[test]
+fn permanent_symbols_share_public_memory_limit_and_recover_without_raising_it() {
+    let mut session = session();
+    // Warm the exact entry expression before constraining the session, so the
+    // failure measures the symbol transaction rather than parser startup.
+    session
+        .eval("symbol_name <- 'seed'; invisible(as.name(symbol_name))")
+        .unwrap();
+    session
+        .eval("symbol_name <- strrep('x', 300000L); gc(); invisible(NULL)")
+        .unwrap();
+    let before = session.memory_usage().unwrap();
+    let mut limits = session.resource_limits();
+    limits.max_alloc_bytes = before.total_bytes + 128 * 1024;
+    session.set_resource_limits(limits).unwrap();
+    let error = session.eval("invisible(as.name(symbol_name))").unwrap_err();
+    assert!(
+        error.to_string().contains("permanent symbol allocation"),
+        "{error}"
+    );
+    let after = session.memory_usage().unwrap();
+    assert!(after.total_bytes < before.total_bytes + 128 * 1024);
+    assert_eq!(after.workspace_bytes, before.workspace_bytes);
+    assert_eq!(
+        session
+            .eval("identical(as.name('small_recovery_symbol'), as.name('small_recovery_symbol'))")
+            .unwrap(),
+        "[1] TRUE\n"
+    );
+    assert_eq!(
+        session.resource_limits().max_alloc_bytes,
+        limits.max_alloc_bytes
+    );
+}

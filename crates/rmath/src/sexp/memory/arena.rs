@@ -203,14 +203,18 @@ impl RArena {
     }
 
     fn with_budget_and_identity(budget: ArenaBudget, heap_identity: HeapIdentity) -> Self {
-        let allocated_bytes = Rc::new(Cell::new(0));
-        let transient_bytes = Rc::new(Cell::new(0));
+        let super::ledger::ArenaCounters {
+            allocated: allocated_bytes,
+            transient: transient_bytes,
+            limit,
+        } = heap_identity.byte_ledger().counters();
+        limit.set(budget.max_bytes);
         let backing = Rc::new(ArenaBacking {
             node_pages: RefCell::new(Vec::new()),
             page_cookies: RefCell::new(HashMap::new()),
             identity: heap_identity.clone(),
             allocated_bytes: allocated_bytes.clone(),
-            max_bytes: Rc::new(Cell::new(budget.max_bytes)),
+            max_bytes: limit,
             header_bytes: Cell::new(0),
             transient_bytes: transient_bytes.clone(),
         });
@@ -1091,6 +1095,40 @@ pub(crate) struct WorkspaceReservation {
 }
 
 impl WorkspaceReservation {
+    pub(super) fn from_counters(
+        allocated: Rc<Cell<usize>>,
+        transient: Rc<Cell<usize>>,
+        limit: Rc<Cell<usize>>,
+        bytes: usize,
+    ) -> Option<Self> {
+        Some(Self {
+            reservation: TransientReservation::new(
+                limit.get(),
+                allocated.get(),
+                0,
+                &transient,
+                bytes,
+            )?,
+            allocated,
+            limit,
+        })
+    }
+    pub(crate) fn bind_payload(&mut self, heap: &HeapIdentity, lease: &PayloadLease) -> Option<()> {
+        if lease.belongs_to(heap) {
+            return lease.bind_to_heap(heap, &self.allocated);
+        }
+        let remaining = self.bytes().checked_sub(lease.logical_bytes())?;
+        lease.bind_to_heap(heap, &self.allocated)?;
+        self.try_resize(remaining)
+    }
+    pub(crate) fn commit_allocation(self) -> Option<super::AllocationCharge> {
+        let bytes = self.bytes();
+        self.allocated.set(self.allocated.get().checked_add(bytes)?);
+        Some(super::AllocationCharge {
+            allocated: self.allocated.clone(),
+            bytes,
+        })
+    }
     pub(crate) fn bytes(&self) -> usize {
         self.reservation.bytes
     }

@@ -1693,6 +1693,7 @@ pub(super) fn initialized_payload_cannot_attach_to_a_reused_header_generation() 
     let session = super::super::session::RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
         super::with_arena(|arena| {
+            let baseline = arena.total_bytes_allocated();
             let node = arena.alloc_vector(super::SEXPTYPE::INTSXP, 0);
             let old = arena.node_token(node).unwrap();
             let heap = old.heap_identity();
@@ -1719,7 +1720,7 @@ pub(super) fn initialized_payload_cannot_attach_to_a_reused_header_generation() 
             );
             assert!(heap.payload_lease(&replacement_node).is_none());
             assert_eq!(arena.transient_bytes.get(), 0);
-            assert_eq!(arena.allocated_bytes.get(), super::NODE_BYTES);
+            assert_eq!(arena.allocated_bytes.get(), baseline + super::NODE_BYTES);
         });
     });
 }
