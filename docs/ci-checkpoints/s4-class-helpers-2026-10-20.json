@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-20",
+  "source_base": "ffd29bee",
+  "issue": "rport-2gpp.2.14",
+  "source_sha256": {
+    "crates/rmath/src/library/methods/utils_methods.rs": "e09424d15179d371fd6ff2a756ddffdb7d3cd215691d9e63ba407a6c0c6e73b2",
+    "crates/rmath/src/mainutils/objects/class_name.rs": "28d5a12a9a12e126e224a065576305e67dda23be28aa61daaf089be2735fc367",
+    "crates/rmath/src/mainutils/objects/mod.rs": "306f890ccf825eadf00296b036b694d46bc6d067ad6047f567827de290d15ad5",
+    "crates/rmath/src/mainutils/objects/s4.rs": "58e318c35ef8bdadbe2ce3a7acb837569bd38458603be5fe6e5f99e169eb0db2",
+    "crates/rmath/src/mainutils/objects/tests.rs": "9791d1a91af0734b157395c3ebd5527aff54d397828629ede5c94cd1bd786354",
+    "crates/r-embed/tests/s4_cache_new_contract.rs": "c46e30aae033bf36df1bfc0bb0d938e61ea300ad38a5bccf0f75e41e71e19f32",
+    "crates/r-embed/tests/fixtures/s4-class-name-contract.R": "999d7c332b8661457bf5d045ae2d9ed4e47131aaca7ed187be9fc8703acd43ee",
+    "crates/r-embed/tests/fixtures/s4-class-name-contract.out": "e097ddccef17b49bf9b9508cd8565ba74b598870552a87cfa0f82b83ab95859d",
+    "crates/r-embed/tests/fixtures/s4-class-name-quota.R": "699ec7d0cc2e4d298755ada133cbeb3c57016595f0b53e0ae262caba49501730",
+    "tests/browser/s4-cache-new.cjs": "11a7692e9c2c085d1d157bca4da171c6ed92e8e6ee6aaf18a40752a059ab2456"
+  },
+  "behavior": [
+    "Remove R_getClassDef/R_getClassDef_R/R_isVirtualClass/R_extends and their fabricated classRepresentation-vector conversion after a repository-wide Rust caller inventory found no production callers. Replace stub-registry unit controls with genuine original setClass/inheritance/missing-class controls.",
+    "Remove unused raw C-string R_do_MAKE_CLASS/make_class_owned adapters after retained .Call entry points move to typed class-name resolution.",
+    "Retain original and coerced class-name roots, original runtime pin, genuine methods::getClass call/namespace/result roots, and admitted class-name String storage through callback cleanup and NEW construction.",
+    "Match GNU util.c asChar scalar behavior, including symbols, first vector element, empty/NA/list/raw fallbacks, factor underlying integer, logical, integer, real/complex print defaults and OutDec formatting.",
+    "Admit exact lossy UTF-8 decoded length before native allocation, avoid a temporary CString and second decoded native copy; numeric formatting has a conservative8KiB scratch reservation. Charges follow the original counters across active-session switches and release on error/drop without owning the runtime."
+  ],
+  "red": [
+    "Native methods_class_name_copy_retains_original_memory_admission failed: native copy had no workspace charge.",
+    "Current-production Wasm rejected symbol class names through the old incomplete decoder.",
+    "Full class-name comparison separately found default dQuote/sQuote quote-option fidelity gap; this is retained as open rport-i3tbz."
+  ],
+  "validation": {
+    "native_objects_passed": 93,
+    "native_methods_utils_passed": 4,
+    "public_native_s4_passed": 2,
+    "public_native_loess_controls_passed": 2,
+    "strict_isolated_i686_miri_passed": 4,
+    "miri_filters": {
+      "admitted_class_name_": {
+        "passed": 2,
+        "harness_seconds": 182.28
+      },
+      "methods_class_name_": {
+        "passed": 2,
+        "harness_seconds": 138.55
+      }
+    },
+    "miri_flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android check PASS",
+    "wasm_total_checks": 250,
+    "wasm_breakdown": {
+      "loess_native_outputs": 86,
+      "internal_dput": 4,
+      "regex_workspace": 8,
+      "gnu_opcodes": 28,
+      "s4_cache_class_name_quota": 8,
+      "permanent_ledger": 14,
+      "checked_exhaustion": 12,
+      "serialization_workspace": 14,
+      "web_binding_public_contracts": 76
+    },
+    "wasm_quota": "The original64MiB facade denies the actual native class-name copy before getClass lookup; arithmetic recovers in each original session. Original256MiB linear limit unchanged."
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29063824,
+      "sha256": "8a41189bdf37371c90cf3b5020362e04d92721bc07e2689d5fe95bbeaff3fe76"
+    },
+    "output": {
+      "bytes": 24872453,
+      "sha256": "1522da88bf5fdbdf00cf0c6d21db71fe8370dd95572b20814a41acc95bfb63dc"
+    }
+  },
+  "log_sha256": {
+    "target/s4-class-helpers-evidence/native-name-admission-20261020.log": "bb5868d40024af62eedfe9a329dca3c08db72bdc93f9b2270edbaa7596190448",
+    "target/s4-class-helpers-evidence/native-objects-20261020.log": "818273cf56992915662a9413885a4c099d837998ad9a9c79ef7a5f1d878c1fe6",
+    "target/s4-class-helpers-evidence/native-utils-20261020.log": "2d68ce030df7b884c98d4787d3f0c6c3846acef9ee4dac291fdaf0e125626013",
+    "target/s4-class-helpers-evidence/native-public-20261020.log": "bd0ef30af1e6534608896ad5b15a3e4fdca1db12cc27848c8b59fe57a6bc9875",
+    "target/s4-class-helpers-evidence/miri-native-name-20261020.log": "7ae39ecd3be32c895508ea4f43c120b6fced2d726e783ba30c7314e6252d6ee1",
+    "target/s4-class-helpers-evidence/miri-r-name-20261020.log": "00838e4f7915ed312995e8040953969b343b7dd03dcb044d6fea859b23741e2a",
+    "target/s4-class-helpers-evidence/clippy-20261020.log": "325b33bd4826d9e7ef7db72682a867a6b0852e9791e59a7d017d51f6864b889f",
+    "target/s4-class-helpers-evidence/android-20261020.log": "2fe3f441a76f0468e7098cb29ff6faca82d46e769077f16c2d25f81d8c4d4602",
+    "target/s4-class-helpers-evidence/wasm-filled-quota-20261020.log": "f45db2a098fc758b0897c3a46039dae87bb61b1402c92023f4d6cf592b1af1dd",
+    "target/s4-class-helpers-evidence/wasm-final-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/s4-class-helpers-evidence/wasm-final-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/s4-class-helpers-evidence/wasm-final-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "target/s4-class-helpers-evidence/wasm-final-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/s4-class-helpers-evidence/wasm-final-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/s4-class-helpers-evidence/wasm-final-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/s4-class-helpers-evidence/wasm-final-portable-contracts-20261020.log": "98377dcf7f81d65b16b34fd656b433770978cd2be021daad40e8814df7d27fa6",
+    "target/s4-class-helpers-evidence/wasm-final-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/s4-class-helpers-evidence/wasm-final-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e"
+  },
+  "limits": [
+    "The class-name oracle fixture explicitly sets useFancyQuotes=FALSE to isolate this scoped contract; default fancy quoting remains open in rport-i3tbz. No output normalization was used.",
+    "Native maps, allocator padding/control metadata and broader regex/VM memory remain open in cvs2.11/cvs2.8. This does not claim whole-engine total physical memory accounting.",
+    "An initial broad Miri class_name_ filter accidentally selected an unrelated full-startup test and was stopped. The two final focused filters each passed2 with strict checks unchanged.",
+    "The97 native unit count includes the4 memory-admission regressions; the separate2-test native-name invocation is a repeat of those same utilities tests, not additional distinct coverage.",
+    "Web binding contracts run under Node V8; no new Android device or Chromium execution is claimed for this milestone."
+  ]
+}

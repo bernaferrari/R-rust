@@ -923,40 +923,14 @@ mod tests {
     }
 
     #[test]
-    fn test_R_do_MAKE_CLASS() {
+    fn test_make_class_by_name() {
         let mut session = crate::sexp::session::RSession::new();
         let (definition, _, _) = session.eval_script_with_output_capture(
             "setClass('MakeClassProbe', slots=c(x='numeric')); getClassDef('MakeClassProbe')",
         );
         let definition = definition.unwrap().into_owned().unwrap();
-        unsafe {
-            let result = R_do_MAKE_CLASS(c"MakeClassProbe".as_ptr());
-            assert_eq!(session.sexp(result).unwrap(), definition);
-        }
-    }
-
-    #[test]
-    fn test_R_getClassDef() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = R_getClassDef(b"foo\0".as_ptr() as *const c_char);
-            assert!(result.is_null() || result == R_NilValue());
-
-            register_s4_class_with_extends(
-                "Child".to_string(),
-                vec!["x".to_string()],
-                vec!["Parent".to_string()],
-                false,
-            );
-            let result = R_getClassDef(b"Child\0".as_ptr() as *const c_char);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
-            assert_eq!(
-                sexp_to_string(named_vec_elt(result, "className")).as_deref(),
-                Some("Child")
-            );
-            assert_eq!(LENGTH(named_vec_elt(result, "slots")), 1);
-            assert_eq!(LENGTH(named_vec_elt(result, "contains")), 1);
-        }
+        let result = make_class_by_name("MakeClassProbe");
+        assert_eq!(result, definition);
     }
 
     #[test]
@@ -1396,38 +1370,6 @@ mod tests {
     }
 
     #[test]
-    fn test_R_isVirtualClass() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(R_isVirtualClass(ptr::null_mut(), ptr::null_mut()), FALSE);
-            register_s4_class("VirtualClass".to_string(), Vec::new(), true);
-            let class_def = R_getClassDef(b"VirtualClass\0".as_ptr() as *const c_char);
-            assert_eq!(R_isVirtualClass(class_def, ptr::null_mut()), TRUE);
-        }
-    }
-
-    #[test]
-    fn test_R_extends() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(
-                R_extends(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
-                FALSE
-            );
-            register_s4_class("Ancestor".to_string(), Vec::new(), false);
-            register_s4_class_with_extends(
-                "Descendant".to_string(),
-                Vec::new(),
-                vec!["Ancestor".to_string()],
-                false,
-            );
-            let descendant = R_getClassDef(b"Descendant\0".as_ptr() as *const c_char);
-            let ancestor = R_getClassDef(b"Ancestor\0".as_ptr() as *const c_char);
-            assert_eq!(R_extends(descendant, ancestor, ptr::null_mut()), TRUE);
-        }
-    }
-
-    #[test]
     fn test_R_set_prim_method() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
@@ -1502,15 +1444,6 @@ mod tests {
         unsafe {
             R_set_quick_method_check(None);
             // Should not crash
-        }
-    }
-
-    #[test]
-    fn test_R_getClassDef_R() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = R_getClassDef_R(R_NilValue());
-            assert!(result.is_null() || result == R_NilValue());
         }
     }
 

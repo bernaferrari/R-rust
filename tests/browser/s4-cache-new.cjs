@@ -10,8 +10,12 @@ const expected = fs.readFileSync(path.join(fixtures, 's4-cache-new-contract.out'
 for (let generation = 0; generation < 2; generation++) {
   const session = new WasmRSession();
   try {
-    assert.equal(session.eval(source), expected);
+    assert.equal(session.eval_checked(source), expected);
+    assert.equal(session.eval_checked(fs.readFileSync(path.join(fixtures, 's4-class-name-contract.R'), 'utf8')),
+      fs.readFileSync(path.join(fixtures, 's4-class-name-contract.out'), 'utf8'));
+    assert.equal(session.eval_string(fs.readFileSync(path.join(fixtures, 's4-class-name-quota.R'), 'utf8')),
+      'class name workspace exceeds session memory limit');
     assert.equal(session.eval('identical(1L + 1L, 2L)'), '[1] TRUE\n');
-  } finally { session.close(); }
+  } finally { session.close(); session.free(); }
 }
-console.log('S4_CACHE_NEW_WASM_COMPLETE checks=4 failures=0');
+console.log('S4_CACHE_NEW_WASM_COMPLETE checks=8 failures=0');

@@ -26,6 +26,7 @@ pub(crate) use crate::sexp::protect::protect;
 pub(crate) use crate::sexp::symbol::Rf_install;
 
 mod apply_args;
+pub(crate) mod class_name;
 mod class_prims;
 mod helpers;
 mod nextmethod;
