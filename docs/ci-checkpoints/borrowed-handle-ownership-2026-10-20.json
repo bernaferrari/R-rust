@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-sg9a.1",
+  "status": "verified_existing_ownership_fix",
+  "implementation_commits": [
+    "6dbc4f3e",
+    "6ccae790",
+    "63190a41"
+  ],
+  "verified_base_commit": "3e6331c8",
+  "source_sha256": {
+    "crates/rmath/src/sexp/object/mod.rs": "84ffe14794af78f4d189d27ae9673300d2ca3059fa9d81e770b332bdcb3d764d",
+    "crates/rmath/src/sexp/object/vector.rs": "f7cb1cc57d99393d19583074e768408b83f7ce61c9134059f3186830dde8123c",
+    "crates/rmath/src/sexp/object/mut_ref.rs": "a884942351ad3ad4d13e2d81d34d025c938c8b51f4ca8b87dc002952818e3bfc",
+    "crates/rmath/src/sexp/object/safety_tests.rs": "2e6baa0f0bf45aec7c56f076b0878717445884f4829174668a6bc9b1d6601f9d",
+    "crates/rmath/src/sexp/object/factory.rs": "d1c4f54e5c427034f0bee44d338719aa9d8462628561b0c0ad9159428e8e9d84",
+    "crates/rmath/src/sexp/session/rsession.rs": "92f83f7769f2912530f31d8c93bcbf361f96042380f798b46e2a4536666835fe",
+    "crates/rmath/src/sexp/owner.rs": "ac5f049bded9157952e4d7c013f079419ed74ac69bc125139095b125e803875b"
+  },
+  "evidence_directory": "target/trace-reader-evidence",
+  "behavior": [
+    "RSession::sexp installs an automatic root for the original checked allocation; clones share that root until the last handle drops",
+    "Copied public element/string accessors and parent-owning iterators avoid exposing payload references across GC or mutation",
+    "Borrowed numeric slices and borrowed string text are private unsafe implementation operations whose caller must exclude mutation; they are absent from the safe handle surface",
+    "into_owned moves the original physical leases and revocable weak runtime capability, rejecting unrooted native arena views",
+    "Original generations remain checked after retirement, address reuse, callback owner switches, payload replacement and explicit collection",
+    "Owned snapshots preserve their values while checked aliases observe intentional checked mutation"
+  ],
+  "validation": {
+    "native_handles": {
+      "passed": 28,
+      "reported_test_seconds": 1.05,
+      "log": "owned-handles-candidate-native-20261020.log",
+      "sha256": "d08fc431d995ffa3537215af2b61885328b384c1237b5a375dd2f85391eea99c"
+    },
+    "native_altrep_string": {
+      "passed": 1,
+      "reported_test_seconds": 0.0,
+      "log": "owned-strings-candidate-native-20261020.log",
+      "sha256": "e83c659c29829ad162f8d45e9fa93f1ce2f32cc56c89e846dc5838d47e46bb00"
+    },
+    "miri_handles": {
+      "passed": 27,
+      "reported_test_seconds": 1805.63,
+      "log": "owned-handles-miri-20261020.log",
+      "sha256": "3c4a32dd1cbd8e4d6c6017ad20a7c467415a2c7a6dd8ff77d7df3fb8a0d991cc"
+    },
+    "miri_altrep_string": {
+      "passed": 1,
+      "reported_test_seconds": 123.36,
+      "log": "owned-strings-miri-20261020.log",
+      "sha256": "3b5cc9061f1e882b5f2fec548d8abc6eadc50682f258f8251500e96da40f9231"
+    }
+  },
+  "miri_configuration": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "scope_limits": [
+    "Read-only verification of implemented ownership changes; no new runtime ownership refactor claimed",
+    "This closes the borrowed-handle/payload exposure issue, not parent sg9a explicit interpreter ownership",
+    "The external sexp module remains private; its existing compile-fail quarantine was audited, not freshly executed here",
+    "Native28 includes one full-runtime test excluded from Miri, hence strict Miri27 rather than28",
+    "The additional ALTREP string case verifies provider GC followed by parent-owned materialization and ends the private payload loan before further GC",
+    "New S4 class-contract repair was pending independently during validation; the relevant object/owner/session source hashes above identify the unchanged ownership implementation",
+    "No whole-engine absence-of-unsafe or full workspace test claim"
+  ]
+}
