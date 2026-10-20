@@ -167,25 +167,6 @@ fn copy_attributes(
     }
     out.try_set_attribute(&head)
 }
-fn embedded_nul(bytes: &[u8]) -> SexpError {
-    let mut text = String::new();
-    for &b in bytes {
-        match b {
-            0 => text.push_str("\\0"),
-            b'\n' => text.push_str("\\n"),
-            b'\r' => text.push_str("\\r"),
-            b'\t' => text.push_str("\\t"),
-            b'\\' => text.push_str("\\\\"),
-            b'\'' => text.push_str("\\'"),
-            32..=126 => text.push(char::from(b)),
-            _ => {
-                use std::fmt::Write;
-                let _ = write!(&mut text, "\\{:03o}", b);
-            }
-        }
-    }
-    error(format!("embedded nul in string: '{text}'"))
-}
 pub(super) fn inventory(access: &RuntimeAccess) -> SexpResult<Value> {
     let names = iconv_codec::names();
     let mut out = vector(access, SEXPTYPE::STRSXP, names.len() as i64)?;
@@ -327,9 +308,6 @@ pub(super) fn evaluate(
             }
             out.try_set_vector_elt(i, result.freeze())?;
         } else {
-            if bytes.data.contains(&0) {
-                return Err(embedded_nul(&bytes.data));
-            }
             // GNU marks by the requested spelling, independently of codec
             // admission. ISO-8859-1 and utf-8 are accepted but stay native.
             let tag = if !mark {
@@ -346,6 +324,15 @@ pub(super) fn evaluate(
             } else {
                 TextEncoding::Native
             };
+            if bytes.data.contains(&0) {
+                let diagnostic = super::iconv_diagnostic::format(
+                    &args,
+                    &bytes.data,
+                    tag,
+                    crate::mainutils::platform::locale_is_utf8(),
+                )?;
+                return Err(error(diagnostic.into_message()));
+            }
             out.try_set_string_elt(i, character(access, &bytes.data, tag)?)?;
         }
     }
@@ -363,4 +350,41 @@ pub(super) fn evaluate(
         .ok_or(SexpError::StaleAllocation)?;
     access.require_active()?;
     Ok(out)
+}
+
+#[cfg(test)]
+mod nul_diagnostic_tests {
+    use super::*;
+    fn message(bytes: &[u8]) -> String {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let parent = session
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .strings(&["parent"])
+                .unwrap();
+            super::super::iconv_diagnostic::format(&parent, bytes, TextEncoding::Utf8, true)
+                .unwrap()
+                .into_message()
+        })
+    }
+    #[test]
+    fn iconv_nul_diagnostic_matches_pinned_gnu_999_byte_bound() {
+        let error = message(&[0; 10000]);
+        assert_eq!(error.len(), 999);
+        assert!(error.starts_with("embedded nul in string: '"));
+    }
+    #[test]
+    fn iconv_nul_diagnostic_preserves_printable_utf8() {
+        assert_eq!(message(b"\xc3\xa9\0"), "embedded nul in string: 'é\\0'");
+    }
+    #[test]
+    fn iconv_nul_diagnostic_quote_zero_keeps_literal_apostrophes() {
+        assert_eq!(message(b"\"'\\\0"), r#"embedded nul in string: '"'\\\0'"#);
+    }
+    #[test]
+    fn iconv_nul_diagnostic_short_ascii_nul_control() {
+        assert_eq!(message(b"A\0B"), "embedded nul in string: 'A\\0B'");
+    }
 }

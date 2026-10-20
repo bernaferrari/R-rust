@@ -35,6 +35,7 @@ const contracts = [
     'encoding-tag-contract',
     'file-path-encoding-contract',
     'iconv-raw-contract',
+    'iconv-nul-diagnostic-contract',
     'invalid-utf8-print-contract',
     'complex-print-public-contract',
     'stats-namespace-public-contract',

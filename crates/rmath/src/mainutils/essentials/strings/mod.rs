@@ -28,6 +28,7 @@ mod format;
 mod gettext;
 mod gsub_grep;
 mod iconv_codec;
+mod iconv_diagnostic;
 mod iconv_owned;
 #[cfg(test)]
 mod iconv_ownership_tests;

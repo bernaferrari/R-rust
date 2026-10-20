@@ -1,0 +1,134 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.12",
+  "source_base": "b3e1d3c085eb99f7c5d67a617a24b0bbe1493617",
+  "behavior": [
+    "New forbidunsafe diagnostic visitor emits bounded validated UTF8 tokens, preserving quote=0, control escapes, Native/UTF8/Latin1 profile translation and original constructor encoding flags.",
+    "First pass computes the exact capped length without allocating; reserve against the original live parent before String::try_reserve_exact, retain the ticket in the formatter result and drop actual String before its formatting guard on error/unwind.",
+    "Limit formatting to999bytes like pinned GNU. Stop before partial UTF8 scalars to keep Rust text valid; no unbounded intermediate Vec, String or format allocation.",
+    "Original source and converted output workspace reservations remain alive through diagnostic construction. The completed bounded String moves into host-facing error transport without another text copy.",
+    "Native fixed-budget and foreign-activation/unwind tests verify correct original counter, rejection one byte below the999-byte request, success at the exact limit, and recovery of a short message under the unchanged smaller limit."
+  ],
+  "baseline": {
+    "native_direct_failures": 3,
+    "native_direct_control": 1,
+    "public_named_cases": 12,
+    "production_wasm_differences": 9,
+    "production_wasm_controls": 3,
+    "old_message_bytes_for_10000_nuls": 20026,
+    "gnu_message_byte_limit": 999
+  },
+  "validation": {
+    "native_distinct_total": 23,
+    "native_suites": {
+      "native-all-final": 20,
+      "native-original-public": 2,
+      "native-public-final": 1
+    },
+    "strict_isolated_i686_miri": {
+      "distinct_total": 8,
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained"
+    },
+    "clippy": "Four crates/all targets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "wasm": {
+      "node_checks": {
+        "wasm-checked-exhaustion.log": 12,
+        "wasm-regex-workspace.log": 8,
+        "wasm-permanent-ledger.log": 14,
+        "wasm-iconv-raw.log": 6,
+        "wasm-quote-options.log": 8,
+        "wasm-gnu-opcode-contracts.log": 28,
+        "wasm-loess-native-outputs.log": 86,
+        "wasm-internal-dput.log": 4,
+        "wasm-encoding-tags.log": 4,
+        "wasm-filepath-encoding.log": 4,
+        "wasm-s4-cache-new.log": 8,
+        "wasm-serialization-workspace.log": 14,
+        "wasm-iconv-diagnostic.log": 4
+      },
+      "node_total": 200,
+      "web_generations": [
+        45,
+        45
+      ],
+      "total": 290
+    },
+    "scoped_rustfmt_source_whitespace": "PASS; exact GNU stdout fixture intentionally retains final blank line and alignment spaces."
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/essentials/strings/iconv_owned.rs": "558ca386b4cb5abc6f9b14f97b68c6b4f529118e8ed7133efe1efe6219695e27",
+    "crates/rmath/src/mainutils/essentials/strings/mod.rs": "e3c1d943f9363e923436c4357b66940ce541e52f17b144c435c5c5ef307980c6",
+    "tests/browser/portable-package-contracts.mjs": "20619398b21b7c615c02cf3e67a3dc47af8fd01b2d9e143039fad1526b5c29e7",
+    "crates/r-embed/tests/fixtures/iconv-nul-diagnostic-contract.R": "64d95852a3f371d3adf65c62cd024a295c321b8b72db79b2e4b578d527c5f43e",
+    "crates/r-embed/tests/fixtures/iconv-nul-diagnostic-contract.out": "2b1bad2f9a7beda86f7af4977446ab7d0b53b727b4f96f8848162612ac5a4308",
+    "crates/r-embed/tests/iconv_diagnostic.rs": "0a2eaf892d52ac8a87b295d213109e9dec0f97be4aee0f05b1541a296784f7da",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_diagnostic.rs": "5f10e0bcc3d9238d4b17472072632771d5de212dc1972b44280804a77301212a",
+    "tests/browser/iconv-diagnostic.cjs": "fd0ef87c53d6bf9758e20ceb7551e4949f72cc54c34ac6c7fb460df3735f7779"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "evidence_directory": "target/iconv-nul-evidence/",
+  "limits": [
+    "The formatting reservation ends when completed bounded text moves into the existing host-facing error transport. This does not claim global retained-exception/embedding allocations or processRSS are covered by the R arena ledger; parent cvs2 remains active.",
+    "When the999-byte boundary falls inside a multibyte scalar, stop at the preceding UTF8 boundary rather than create invalid Rust text. The dedicated two-byte-scalar boundary control retains998bytes. Broader host error-byte transport is separate from this UTF8 diagnostic contract.",
+    "Original64MiB session and256MiB Wasm linear-memory limits retained. No whole safe-engine/full-locale/full-codec claim.",
+    "User graphics edits are excluded from the commit but present during validation; no immutable full-build or whole-CI claim."
+  ],
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29679391,
+      "sha256": "f254a2f6119c7cd21c7bc4d19ccfa5b982e0b8f9a8b50f666452fa6e4e149af4"
+    },
+    "output": {
+      "bytes": 25380027,
+      "sha256": "65dad096ca483b58501b7645da64b317e6bfcff7a77ad3f10d8cea1272ba0b42"
+    }
+  },
+  "evidence_sha256": {
+    "android.log": "a83ec64458e6fb97a4061802a7b778186e51c7a848c36a7f634e09321340f14e",
+    "clippy.log": "fb8c0318bf6fc19f48068e7ca2c4c3387be93658bf8e7d088fe74e47c81a89fb",
+    "miri-diagnostic.log": "0179a1a07e46f1f45aa632ffc326cbb48b613ebd65961cb799954f7cca92c52a",
+    "native-all-final.log": "2a8349f6991ec565f21f137184e155e391e037c2f5df95ae6050d6d0075695c1",
+    "native-all.log": "0104013079ec2bfddab5e08e1e3bcc92aa32d19682f9fae6e25928f4b0f34a9e",
+    "native-green.log": "4ecb8acb1d1ec7f4272a72771d5a2acb10db3e550d8ef5fe5e5a027e45c3b0e1",
+    "native-original-public.log": "dc45791c3cc718eafdb8e4ad7437e9a3fcd773595f5a2a791b1fc5efdc731f70",
+    "native-public-final.log": "a629835bf1095616638695e41e9d6d0dbc37a0e7502fb1c4c7c4ccc4af3b9919",
+    "native-public.log": "5af69eb07eb881279957ad47d737d48ee215d2d477e2f848f835ce92d6d46485",
+    "native-red.log": "b3bac40c4ac70d2f6f7f0dd63b8c00afa079643dfe870ea33fe0b93a0a21af90",
+    "wasm-baseline.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-build.log": "468eb59f2e0c4c1c4a6d98f7b44523fe48e3ba28f9f71dabe80c9919d7efe6ee",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "8574899f1341c7f305d8baf1c72b8a79730fb060411de3e96c50ca5ea2d3100a",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts.log": "be08deeb801e6a2683c67092bb98286bd7b978ea0fdc0278169dfa14be64d13e"
+  },
+  "oracle_probe_sha256": {
+    "gnu-nul-native-c.out": "ed5318382a780daf44343edff20f5a6d893e5097631ea956dac1cbb1c5b79a77",
+    "gnu-nul-target-tags.out": "348dc26349161109a3916d8680411acfb34f1c5533113ed42097b7b1fef7a2ec",
+    "wasm-baseline.out": "6e2133bddca8e6882f7c564f6b1e8a30e6173217437f8dfae9171a66e8a6af71"
+  }
+}
