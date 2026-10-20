@@ -342,7 +342,7 @@ impl RArena {
         {
             0
         } else {
-            NODE_BYTES
+            NODE_BYTES + PageMetadata::requested_array_bytes(1).expect("one-slot metadata layout")
         }
     }
 

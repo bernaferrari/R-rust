@@ -938,16 +938,40 @@ pub(crate) struct PageMetadata {
     roots: Box<[Cell<usize>]>,
     epochs: Box<[Cell<u32>]>,
     generations: Box<[Cell<u64>]>,
+    // Stale metadata readers retain the arrays after page retirement. Release
+    // their original heap charge only after the actual arrays have dropped.
+    _array_charge: super::memory::AllocationCharge,
 }
 impl PageMetadata {
+    pub(crate) fn requested_array_bytes(slots: usize) -> Result<usize, HeapError> {
+        use std::alloc::Layout;
+        if slots > u32::MAX as usize {
+            return Err(HeapError::Allocation);
+        }
+        let words = slots.checked_add(63).ok_or(HeapError::Allocation)? / 64;
+        let bitset = Layout::array::<Cell<u64>>(words).map_err(|_| HeapError::Allocation)?;
+        let roots = Layout::array::<Cell<usize>>(slots).map_err(|_| HeapError::Allocation)?;
+        let epochs = Layout::array::<Cell<u32>>(slots).map_err(|_| HeapError::Allocation)?;
+        let generations = Layout::array::<Cell<u64>>(slots).map_err(|_| HeapError::Allocation)?;
+        bitset
+            .size()
+            .checked_mul(3)
+            .and_then(|n| n.checked_add(roots.size()))
+            .and_then(|n| n.checked_add(epochs.size()))
+            .and_then(|n| n.checked_add(generations.size()))
+            .ok_or(HeapError::Allocation)
+    }
+
     pub(crate) fn try_new(
         heap: HeapIdentity,
         page: usize,
         slots: usize,
     ) -> Result<Self, HeapError> {
-        if slots > u32::MAX as usize {
-            return Err(HeapError::Allocation);
-        }
+        let bytes = Self::requested_array_bytes(slots)?;
+        let admission = heap
+            .byte_ledger()
+            .reserve(bytes)
+            .ok_or(HeapError::Allocation)?;
         let cookie =
             issue_page_cookie(&heap.0.next_page_cookie).ok_or(HeapError::IdentityExhausted)?;
         let words = slots.checked_add(63).ok_or(HeapError::Allocation)? / 64;
@@ -963,6 +987,7 @@ impl PageMetadata {
             roots: cells(slots, || 0)?,
             epochs: cells(slots, || 0)?,
             generations: cells(slots, || 0)?,
+            _array_charge: admission.commit_allocation().ok_or(HeapError::Allocation)?,
         })
     }
     pub(crate) fn page(&self) -> usize {
@@ -1507,6 +1532,10 @@ impl<T: Copy> NodePage<T> {
             .then(|| self.values[id.slot].get())
     }
 }
+
+#[cfg(test)]
+#[path = "heap_metadata_storage_tests.rs"]
+mod metadata_storage_tests;
 
 #[cfg(test)]
 mod tests {

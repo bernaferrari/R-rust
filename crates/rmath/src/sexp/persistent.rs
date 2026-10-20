@@ -240,9 +240,10 @@ impl PersistentHeap {
             .as_ref()
             .filter(|lease| !lease.belongs_to(&self.identity))
             .map_or(0, PayloadLease::logical_bytes);
+        // The initialized header Vec moves into its sized Rc without a copy.
+        // Metadata performs its own admission below after payload binding.
         let header_peak = std::mem::size_of::<SexprecCore>()
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(payload_growth))
+            .checked_add(payload_growth)
             .ok_or(HeapError::Allocation)?;
         admission
             .try_resize(header_peak)
@@ -315,7 +316,7 @@ impl PersistentHeap {
     ) -> Result<crate::sexp::memory::WorkspaceReservation, HeapError> {
         let payload_peak = payload.checked_mul(2).ok_or(HeapError::Allocation)?;
         let header_peak = std::mem::size_of::<SexprecCore>()
-            .checked_mul(2)
+            .checked_add(crate::sexp::heap::PageMetadata::requested_array_bytes(1)?)
             .and_then(|n| n.checked_add(payload))
             .ok_or(HeapError::Allocation)?;
         self.backing
@@ -359,7 +360,8 @@ impl PersistentHeap {
     pub(crate) fn allocate_symbol(&mut self, name: &[u8]) -> Result<(SEXP, SEXP), HeapError> {
         let payload = name.len().checked_add(1).ok_or(HeapError::Allocation)?;
         let peak = std::mem::size_of::<SexprecCore>()
-            .checked_mul(3)
+            .checked_add(crate::sexp::heap::PageMetadata::requested_array_bytes(1)?)
+            .and_then(|n| n.checked_mul(2))
             .and_then(|n| n.checked_add(payload))
             .ok_or(HeapError::Allocation)?
             .max(payload.checked_mul(2).ok_or(HeapError::Allocation)?);
@@ -555,16 +557,18 @@ mod tests {
         let node = permanent.token(pointer).unwrap();
         let lease = heap.payload_lease(&node).unwrap();
         let charge = permanent.backing.ledger.clone();
+        let metadata = crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
         assert_eq!(
             charge.allocated_bytes(),
-            4 + std::mem::size_of::<SexprecCore>()
+            4 + std::mem::size_of::<SexprecCore>() + metadata
         );
         assert!(permanent.remove(pointer));
         assert!(heap.payload_lease(&node).is_none());
         assert_eq!(lease.integer_elt(0), Some(63));
-        assert_eq!(charge.allocated_bytes(), 4);
+        assert_eq!(charge.allocated_bytes(), 4 + metadata);
         drop(permanent);
         assert_eq!(lease.integer_elt(0), Some(63));
+        drop(node);
         drop(lease);
         assert_eq!(charge.allocated_bytes(), 0);
     }

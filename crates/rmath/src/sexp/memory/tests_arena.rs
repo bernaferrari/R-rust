@@ -889,14 +889,14 @@ pub(super) fn test_vector_and_charsxp_account_node_once() {
     assert!(!arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
     assert_eq!(
         arena.total_bytes_allocated(),
-        super::tests_physical_headers::header_backing_bytes(&arena) + std::mem::size_of::<f64>()
+        super::tests_physical_headers::retained_page_bytes(&arena) + std::mem::size_of::<f64>()
     );
 
     let mut arena = RArena::new();
     assert!(!arena.alloc_charsxp(b"abc").is_null());
     assert_eq!(
         arena.total_bytes_allocated(),
-        super::tests_physical_headers::header_backing_bytes(&arena) + 4
+        super::tests_physical_headers::retained_page_bytes(&arena) + 4
     );
 }
 
@@ -918,9 +918,9 @@ pub(super) fn test_arena_node_budget_applies_to_raw_alloc_node() {
 
 #[test]
 pub(super) fn test_arena_byte_budget_applies_to_raw_allocations() {
-    let node_bytes = std::mem::size_of::<SexprecCore>();
+    let page_bytes = super::tests_physical_headers::minimum_page_bytes();
 
-    let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes, 0));
+    let mut arena = RArena::with_budget(ArenaBudget::new(page_bytes, 0));
     let node = arena.alloc_node(SEXPTYPE::INTSXP);
     assert!(!node.is_null());
     assert!(arena.alloc_charsxp(b"x").is_null());
@@ -930,7 +930,7 @@ pub(super) fn test_arena_byte_budget_applies_to_raw_allocations() {
     });
     assert_eq!(arena.alloc_node(SEXPTYPE::REALSXP), node);
 
-    let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes + 8, 0));
+    let mut arena = RArena::with_budget(ArenaBudget::new(page_bytes + 8, 0));
     assert!(!arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
     assert!(arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
 }
@@ -956,8 +956,8 @@ pub(super) fn test_arena_add_node() {
 
 #[test]
 pub(super) fn test_arena_add_node_obeys_budget() {
-    let node_bytes = std::mem::size_of::<SexprecCore>();
-    let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes, 1));
+    let page_bytes = super::tests_physical_headers::minimum_page_bytes();
+    let mut arena = RArena::with_budget(ArenaBudget::new(page_bytes, 1));
     assert!(
         !(unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ arena
             .add_node(Box::new(SexprecCore::new(SEXPTYPE::INTSXP))) })

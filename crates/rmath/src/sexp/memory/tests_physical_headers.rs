@@ -11,6 +11,21 @@ pub(super) fn header_backing_bytes(arena: &RArena) -> usize {
         .sum()
 }
 
+pub(super) fn retained_page_bytes(arena: &RArena) -> usize {
+    header_backing_bytes(arena)
+        + arena
+            .backing
+            .node_pages
+            .borrow()
+            .iter()
+            .map(|page| PageMetadata::requested_array_bytes(page.meta.slots()).unwrap())
+            .sum::<usize>()
+}
+
+pub(super) fn minimum_page_bytes() -> usize {
+    NODE_BYTES + PageMetadata::requested_array_bytes(1).unwrap()
+}
+
 #[test]
 fn physical_header_prepaid_slots_leave_small_budget_for_later_payloads() {
     let mut arena = RArena::with_budget(ArenaBudget::new(8192, 0));
@@ -66,6 +81,7 @@ fn physical_header_charge_follows_detached_backing_until_its_final_owner_drops()
     let root = node.root_lease().unwrap();
     let counter = arena.allocated_bytes.clone();
     let requested = header_backing_bytes(&arena);
+    let metadata_requested = retained_page_bytes(&arena) - requested;
     drop(arena);
     assert!(node.is_live());
     assert!(
@@ -74,5 +90,7 @@ fn physical_header_charge_follows_detached_backing_until_its_final_owner_drops()
     );
     drop(root);
     assert!(!node.is_live());
+    assert_eq!(counter.get(), metadata_requested);
+    drop(node);
     assert_eq!(counter.get(), 0);
 }

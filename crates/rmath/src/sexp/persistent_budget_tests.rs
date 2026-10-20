@@ -49,13 +49,14 @@ fn permanent_budget_retained_bytes_are_visible_and_release_after_removal() {
 }
 
 #[test]
-fn permanent_budget_header_copy_peak_is_admitted_before_publication() {
+fn permanent_budget_header_and_metadata_are_admitted_before_publication() {
     let mut instance = RInstance::new_for_gc_tests();
     let before = instance.arena.total_bytes_allocated();
-    let width = std::mem::size_of::<SexprecCore>();
+    let width = std::mem::size_of::<SexprecCore>()
+        + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
     instance
         .arena
-        .set_budget(ArenaBudget::new(before + width, 0));
+        .set_budget(ArenaBudget::new(before + width - 1, 0));
     assert!(
         instance
             .persistent_nodes
@@ -64,7 +65,7 @@ fn permanent_budget_header_copy_peak_is_admitted_before_publication() {
     );
     instance
         .arena
-        .set_budget(ArenaBudget::new(before + 2 * width, 0));
+        .set_budget(ArenaBudget::new(before + width, 0));
     let value = instance
         .persistent_nodes
         .allocate_header(SexprecCore::new(SEXPTYPE::LISTSXP))
@@ -91,7 +92,13 @@ fn permanent_budget_character_copy_peak_and_live_limit_changes_are_enforced() {
         .set_budget(ArenaBudget::new(before + 2 * payload, 0));
     let value = instance.persistent_nodes.allocate_chars(&source).unwrap();
     let current = instance.arena.total_bytes_allocated();
-    assert_eq!(current, before + width + payload);
+    assert_eq!(
+        current,
+        before
+            + width
+            + payload
+            + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap()
+    );
     instance.arena.set_budget(ArenaBudget::new(current + 1, 0));
     assert!(instance.persistent_nodes.allocate_real(1.0).is_err());
     assert_eq!(instance.arena.total_bytes_allocated(), current);
@@ -124,8 +131,36 @@ fn permanent_budget_charges_follow_retained_storage_after_instance_drop() {
     assert_eq!(ledger.allocated_bytes(), retained);
     drop(root);
     assert!(!node.is_live());
+    drop(node);
     assert_eq!(ledger.allocated_bytes(), b"retained".len() + 1);
     assert_eq!(payload.byte_elt(0), Some(b'r'));
     drop(payload);
     assert_eq!(ledger.allocated_bytes(), 0);
+}
+
+#[test]
+fn permanent_symbol_preflight_includes_both_original_metadata_pages() {
+    let mut instance = RInstance::new_for_gc_tests();
+    let before = instance.arena.total_bytes_allocated();
+    let nodes = instance.persistent_nodes.len();
+    let name = b"metadata transaction";
+    let page = std::mem::size_of::<SexprecCore>()
+        + crate::sexp::heap::PageMetadata::requested_array_bytes(1).unwrap();
+    let peak = 2 * page + name.len() + 1;
+    instance
+        .arena
+        .set_budget(ArenaBudget::new(before + peak - 1, 0));
+    assert!(instance.persistent_nodes.allocate_symbol(name).is_err());
+    assert_eq!(instance.persistent_nodes.len(), nodes);
+    assert_eq!(instance.arena.total_bytes_allocated(), before);
+    assert_eq!(instance.arena.workspace_bytes(), 0);
+    instance
+        .arena
+        .set_budget(ArenaBudget::new(before + peak, 0));
+    let (pname, symbol) = instance.persistent_nodes.allocate_symbol(name).unwrap();
+    assert_eq!(instance.arena.total_bytes_allocated(), before + peak);
+    assert!(instance.persistent_nodes.remove(symbol));
+    assert!(instance.persistent_nodes.remove(pname));
+    assert_eq!(instance.persistent_nodes.len(), nodes);
+    assert_eq!(instance.arena.total_bytes_allocated(), before);
 }

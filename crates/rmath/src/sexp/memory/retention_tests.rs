@@ -54,7 +54,7 @@ fn retained_small_value_does_not_keep_collected_temporary_payloads() {
     session.owner_token().unwrap().full_gc().unwrap();
     let baseline_bytes = bytes.get();
     let baseline_headers = session
-        .with_arena(|arena| super::tests_physical_headers::header_backing_bytes(arena))
+        .with_arena(|arena| super::tests_physical_headers::retained_page_bytes(arena))
         .unwrap();
     let baseline_nodes = session.with_arena(|arena| arena.node_count()).unwrap();
     let rss_before = resident_kib();
@@ -103,13 +103,13 @@ fn retained_small_value_does_not_keep_collected_temporary_payloads() {
     let after_gc_bytes = bytes.get();
     let after_gc_nodes = session.with_arena(|arena| arena.node_count()).unwrap();
     let after_gc_headers = session
-        .with_arena(|arena| super::tests_physical_headers::header_backing_bytes(arena))
+        .with_arena(|arena| super::tests_physical_headers::retained_page_bytes(arena))
         .unwrap();
     assert_eq!(after_gc_nodes, baseline_nodes);
     assert_eq!(
         after_gc_bytes,
         baseline_bytes + after_gc_headers - baseline_headers,
-        "only retained header backing may remain accounted"
+        "only retained page backing may remain accounted"
     );
     let rss_after_gc = resident_kib();
 
@@ -122,6 +122,8 @@ fn retained_small_value_does_not_keep_collected_temporary_payloads() {
     drop(small);
     assert!(backing.upgrade().is_none());
     assert!(!small_node.is_live());
+    drop(small_node);
+    drop(graph_node);
     assert_eq!(bytes.get(), 0);
     let rss_after_release = resident_kib();
     println!(
@@ -148,6 +150,7 @@ fn repeated_sessions_release_every_backing_after_last_owning_value() {
         drop(value);
         assert!(backing.upgrade().is_none());
         assert!(!node.is_live());
+        drop(node);
         assert_eq!(bytes.get(), 0);
     }
 }
