@@ -228,6 +228,8 @@ pub(crate) struct Model {
     pub divisor: Vec<f64>,
     pub config: Config,
     pub fitted: Vec<f64>,
+    /// Fresh-fit diagnostic; GNU R model objects do not serialize this vector.
+    pub training_diagonal: Option<Vec<f64>>,
     pub robust: Vec<f64>,
     pub trace: f64,
     pub delta1: f64,
@@ -312,6 +314,7 @@ impl Model {
             divisor,
             config,
             fitted: vec![],
+            training_diagonal: None,
             robust: vec![1.; n],
             trace: 0.,
             delta1: 0.,
@@ -319,7 +322,9 @@ impl Model {
             s: 0.,
         };
         let base = model.influence(&model.x, &model.weights, execution)?;
-        model.trace = (0..n).map(|i| base[i][i]).sum();
+        let diagonal: Vec<f64> = (0..n).map(|i| base[i][i]).collect();
+        model.trace = diagonal.iter().sum();
+        model.training_diagonal = Some(diagonal);
         if model.config.approximate_trace && model.config.interpolate && !model.config.exact {
             let tau = if model.config.degree == 0 {
                 d + 1
@@ -556,6 +561,41 @@ impl Model {
         Ok((fitted, errors))
     }
 
+    /// Full prediction influence with this model's original fitting weights.
+    /// Native callers publish these entries directly; robust point refits are
+    /// separate from the matrix used for uncertainty calculations.
+    pub(super) fn prediction_influence(
+        &self,
+        queries: &[Vec<f64>],
+        execution: &Execution<'_>,
+    ) -> Result<Vec<Vec<f64>>, String> {
+        let n = self.y.len();
+        let d = self.divisor.len();
+        if n == 0
+            || !(1..=4).contains(&d)
+            || self.x.len() != n
+            || self.weights.len() != n
+            || self.x.iter().any(|row| row.len() != d)
+            || self.divisor.iter().any(|v| !v.is_finite() || *v <= 0.)
+            || queries
+                .iter()
+                .any(|row| row.len() != d || row.iter().any(|v| !v.is_finite()))
+        {
+            return Err("invalid LOESS prediction shape".into());
+        }
+        execution.workspace(n, d, queries.len(), self.config.interpolate)?;
+        let normalized: Vec<Vec<f64>> = queries
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .zip(&self.divisor)
+                    .map(|(value, scale)| value / scale)
+                    .collect()
+            })
+            .collect();
+        self.influence(&normalized, &self.weights, execution)
+    }
+
     fn influence(
         &self,
         q: &[Vec<f64>],
@@ -618,7 +658,10 @@ impl Model {
                         .zip(q)
                         .zip(&self.config.parametric)
                         .filter(|(_, p)| !**p)
-                        .map(|((x, q), _)| (x - q).powi(2))
+                        .map(|((x, q), _)| {
+                            let delta = x - q;
+                            delta * delta
+                        })
                         .sum::<f64>(),
                 )
             })
@@ -637,12 +680,7 @@ impl Model {
             let (index, dist) = order[i];
             // kernel = tricube on sqrt(dist/rho); rho == 0 propagates the
             // 0/0 NaN exactly as GNU's Fortran does.
-            let t = if rho > 0. {
-                (dist / rho).sqrt()
-            } else {
-                f64::NAN
-            };
-            w[i] = (weights[index] * (1. - t.powi(3)).powi(3)).sqrt();
+            w[i] = tricube_sqrt_weight(dist, rho, weights[index]);
             let delta: Vec<_> = self.x[index].iter().zip(q).map(|(x, q)| x - q).collect();
             for (j, b) in self.basis(&delta).iter().enumerate() {
                 a[i][j] = w[i] * b;
@@ -691,6 +729,22 @@ impl Model {
         Ok(output)
     }
 }
+
+fn tricube_sqrt_weight(distance: f64, radius: f64, weight: f64) -> f64 {
+    let t = if radius > 0. {
+        (distance / radius).sqrt()
+    } else {
+        f64::NAN
+    };
+    // Match loessf.f's integer-power arithmetic. A rounded powi(3) at t=1
+    // can make the radicand negative and zero an otherwise valid neighborhood.
+    let remaining = 1. - t * t * t;
+    let cube = remaining * remaining * remaining;
+    (weight * cube).sqrt()
+}
+
+#[cfg(test)]
+mod kernel_boundary_tests;
 
 fn multiply(matrix: &[Vec<f64>], y: &[f64]) -> Vec<f64> {
     matrix

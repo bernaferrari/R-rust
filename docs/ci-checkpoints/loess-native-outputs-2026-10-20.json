@@ -1,0 +1,173 @@
+{
+  "date": "2026-10-20",
+  "source_base": "0399fce5",
+  "issues": {
+    "rport-aa96.1": "native-output milestone verified; broader lifecycle/ownership acceptance remains open",
+    "rport-aa96.1.2": "boundary rounding defect verified fixed",
+    "rport-aa96.2": "original exclusion/native-output gap verified fixed",
+    "rport-4m0nz.5": "original full-GC stress remains running and unverified"
+  },
+  "source_sha256": {
+    "crates/rmath/src/library/stats/loess/mod.rs": "142c1e278bb9ab7144798792bd3a38985b2aa603b21d8bc6b6e7cac49df5ceef",
+    "crates/rmath/src/library/stats/loess/kernel_boundary_tests.rs": "607691b00ca0a411af1fe38d2098781236d6e2009bd591164d988b3ff00de167",
+    "crates/rmath/src/library/stats/loessc.rs": "20627713ff78e8e98b9588e1043dbdf75a6f122b9a695132767a564a5531a06a",
+    "crates/rmath/src/library/stats/loessc/native_output_tests.rs": "a62086043f4c849273577cb39567e7e68da361b9082343346f4481584725b26c",
+    "crates/rmath/src/mainutils/loess.rs": "09ac5da57888d00eebce8fa0313a8c4c846d7c3c11f5a49e2cf0a55524b544ab",
+    "crates/r-embed/tests/loess_native_outputs.rs": "2bdfdac49d1ff9847b89b0a8aea562c51b668396f79eb21acb4c441029d2872c",
+    "crates/r-embed/tests/fixtures/loess-native-outputs-input.R": "f0343a466ad011335ef5732f69ece657a7b785373a51143cc6236beee45a89e6",
+    "crates/r-embed/tests/fixtures/generate-loess-native-outputs.R": "d93e81f8f38026ae69449f67bbcd85e692687ffb9ce0517c855c3af66fb81e4b",
+    "crates/r-embed/tests/fixtures/gnu-loess-native-outputs.rds": "a516ad806041c562462e51db13f2c2f012b58c4717ab82ebf63d83b067835ee5",
+    "crates/r-embed/tests/fixtures/gnu-loess-native-kernel.json": "7beb66d98ee15f2a092ba724395fcacd2172a134217d6b66d65bb1414bdfa6b7",
+    "tests/browser/loess-native-outputs.cjs": "ce8865e02342bad2f196797776480bc0144004d2f96f8fa103ac37883d859908"
+  },
+  "behavior": [
+    "Preserve genuine training influence diagonal while fitting, expose it only in GNU native modes that write diagonal, and keep it absent when restoring R models that do not serialize it",
+    "Expose a bounded owning full prediction-influence API and publish its actual column-major coefficients for Gaussian, symmetric and interpolated native SE calls",
+    "Retain separate symmetric point refitting; remove synthetic single-column uncertainty encoding and its response-sigma dependency",
+    "Leave loess_ise fit argument and no-statistics delta output buffers untouched, matching original GNU writes",
+    "Keep exact tricube boundary arithmetic through explicit multiplication; retain genuine zero-radius NaN behavior instead of clipping or disabling checks"
+  ],
+  "red": {
+    "production_wasm": "Initial20-case oracle revealed24 differing output components; expanded40-case d1-d4 fixture remains RED on previous production artifact",
+    "strict_miri": "Both native output tests returned zero diagonals/fits under default float perturbation before explicit fixed-integer-power arithmetic; actual assertions retained in miri-power-red-20261020.log"
+  },
+  "validation": {
+    "native_kernel_passed": 3,
+    "native_public_passed": 17,
+    "native_public_breakdown": {
+      "loess_without_torture": 11,
+      "loess_isolation_and_fresh_import": 3,
+      "exclude_without_torture": 2,
+      "all_native_buffers": 1
+    },
+    "native_stress_exclusions": [
+      "loess_objects_survive_collection_and_serialization",
+      "loess_na_exclude_keeps_explicit_newdata_shape_and_serializes"
+    ],
+    "strict_miri": {
+      "passed": 3,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "default_float_nondeterminism": true,
+      "reported_test_seconds": 366.87,
+      "numeric_oracle": "bounded n8 m2 full matrix, diagonal, unused output and boundary controls"
+    },
+    "clippy": "rmath/r-embed/r-uniffi/r-wasm all targets -D warnings",
+    "android": "r-uniffi aarch64-linux-android cross-check",
+    "production_wasm": {
+      "checks": 244,
+      "breakdown": {
+        "loess-native-outputs": 84,
+        "internal-dput": 4,
+        "regex-workspace": 8,
+        "gnu-opcode-contracts": 28,
+        "s4-cache-new": 4,
+        "permanent-ledger": 14,
+        "checked-exhaustion": 12,
+        "serialization-workspace": 14,
+        "portable-web-binding-contracts": 76
+      },
+      "module": {
+        "schema_version": 1,
+        "binaryen_version": "133",
+        "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+        "arguments": [
+          "-Oz"
+        ],
+        "feature_policy": "preserve input target_features",
+        "input": {
+          "bytes": 29019137,
+          "sha256": "a9807923daf7a7b675b94d6b8977e56a0cf1f93fcbb7cfbc6a8379cf8fe1f0e4"
+        },
+        "output": {
+          "bytes": 24770985,
+          "sha256": "803487090f6d04caaafff8a3479c3a557125614552160b92df84f9d69fb488f2"
+        }
+      },
+      "execution": "Node production Node/web bindings; no Chromium/on-device claim",
+      "native_buffer_cases": 40,
+      "fresh_node_sessions": 2,
+      "model_isolation_fixture": 2
+    },
+    "additional_original_workflows": {
+      "checks": 4,
+      "cases": [
+        "unchanged original571_loess_na_exclude.R",
+        "existing loess-metadata-oracle.R"
+      ],
+      "comparison": "Independent pinned GNU output byte-for-byte, plus same-session arithmetic recovery; stored historical571 golden was not rewritten"
+    }
+  },
+  "oracle": {
+    "manifest": "oracle/r-oracle.json",
+    "generator": "crates/r-embed/tests/fixtures/generate-loess-native-outputs.R",
+    "no_warnings": true,
+    "surface_modes": 7,
+    "dimensions": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "matrix_families": [
+      "Gaussian",
+      "symmetric",
+      "interpolated"
+    ],
+    "tolerance": 1e-09,
+    "nonzero_sentinels": "All native buffers seeded so omitted writes differ from zero-filled defaults"
+  },
+  "floating_point_reference": {
+    "miri_primary_source": "https://raw.githubusercontent.com/rust-lang/miri/master/src/intrinsics/math.rs",
+    "miri_documentation": "https://github.com/rust-lang/miri",
+    "original_kernel": "r-source/src/library/stats/src/loessf.f:274-297",
+    "finding": "Miri may perturb imprecise power intrinsics. With boundary t=1, negative radicands can flush the neighborhood; explicit square/cube multiplication passes the original oracle checks with default Miri float handling."
+  },
+  "original_stress_observation": {
+    "status": "still active beyond900s; no pass",
+    "process_pid": 59433,
+    "log": "native-20261020.log",
+    "sample": "original-torture-sample-20261020.txt",
+    "observation_receipt": "original-torture-incomplete-20261020.json",
+    "source_warning": "Initial dirty native-output candidate was not frozen at launch; later target-path SHA is not its executed identity"
+  },
+  "evidence_directory": "target/loess-native-outputs-evidence",
+  "evidence_sha256": {
+    "wasm-red-20261020.log": "08b5e963328d8086bfb22317ebef73efbb93f297bd4b3045766a840e2314bd6a",
+    "wasm-40case-red-20261020.log": "31de68a82e08f1a7c7787d54917864cd8c4a9c365037f1aa2e3df6fad591e0c2",
+    "miri-power-red-20261020.log": "2ddbe4ba4229ffdf8f3e4594dc5d31b58d32a71bb70c49b2bcb94a2d4c59c408",
+    "native-kernel-final-20261020.log": "5230af8700e7cb094ba7c954c727d57819e87174482c83a14822f61ca013ef98",
+    "native-controls-final-20261020.log": "a89a4dff14546a6e2afba2f7dc92605215c47aaed898fc76f5f22df67f1c3082",
+    "miri-final-20261020.log": "b61ab89f105edf505cb15d9491b7d82b2c60f64f47d969fbe2b80381b0697678",
+    "clippy-final-20261020.log": "a39a75e165d3f5a4b5b01c88c747a6bc27de203dea03a19d5d7a5a4bc0a03608",
+    "android-final-20261020.log": "6e70c133d2467b11d9d958800b6d346cda68a45daa198ab4ba690bee24e0d744",
+    "wasm-final-build-20261020.log": "385ecd753d2d9f3320986f64515c303b8426923ee09ce3fb0f210c9be78b7b30",
+    "wasm-final-optimization-20261020.log": "655119394fdd249ad096de53283bc6f05024d4d356641632ee75b10e193a8cfd",
+    "wasm-original-exclusion-metadata-20261020.log": "794fc14f4e7c2ed804b73a198685205caeee1fa98a61e635ba896c52c996e33b",
+    "original571-oracle.out": "2cc71e12419cb77e871a4ff9db83e9718835615e8f14bd0508981fcd9b647405",
+    "metadata-oracle.out": "56c7698b28628c6ea5a0f29ae5cbfb0c09abdcdc566ceccb7d34d631b41f827a",
+    "oracle-generator-20261020.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-final-loess-native-outputs-20261020.log": "72dd2038ac1556cfbf5fe6b48f49e4470397820883c7469750c28696cfdd7f98",
+    "wasm-final-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-final-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-final-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-final-s4-cache-new-20261020.log": "3b77f6f3c8cee02b9d2a88d7880ee9a6e98a3effb37f6a59b54f5320f46e47e4",
+    "wasm-final-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-final-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-final-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-final-portable-contracts-20261020.log": "4e7918f4a472e4852005c4fd444e13f546a681b544fefa4f1637ffea03ff5638"
+  },
+  "scope_limits": [
+    "This is actual native-buffer and arithmetic fidelity proof, not complete aa96.1 or a full LOESS-suite pass",
+    "The original torture case remains unchanged and running; the separate17-pass control group explicitly excludes two torture cases",
+    "Current native closed/foreign raw-ABI lifecycle proof is not established by these numerical fixtures; broader parent remains open",
+    "The initial oracle used incorrect drop-square0 flags and a large raw-byte AST transport; final fixtures use GNU wrapper2 flags and bounded public VFS import/readRDS under the unchanged cap",
+    "No backend features, compilation profiles, model setup, original test assertions, torture frequency or memory ceilings were relaxed",
+    "Unrelated user graphics changes are preserved"
+  ]
+}

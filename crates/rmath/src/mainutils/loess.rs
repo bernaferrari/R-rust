@@ -747,6 +747,7 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
             divisor,
             config,
             fitted: numeric(field(obj, "fitted")),
+            training_diagonal: None,
             robust: numeric(field(obj, "robust")),
             trace: scalar(field(obj, "trace.hat")),
             delta1: scalar(field(obj, "one.delta")),

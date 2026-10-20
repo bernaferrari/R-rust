@@ -158,7 +158,6 @@ fn engine_loess_se(
     drop_square: *mut c_int,
     cell: c_double,
     interpolate: bool,
-    se_divisor: *mut c_double,
     fit_weights: *mut c_double,
     d: *mut c_int,
     n: *mut c_int,
@@ -193,22 +192,10 @@ fn engine_loess_se(
         let mm = (*m).max(0) as usize;
         let nn = (*n).max(0) as usize;
         let queries = column_major_rows(x_evaluate, mm, *d as usize);
-        // GNU R divides L^2 by the object's raw weights when forming se.fit;
-        // the L matrix itself is computed with the weights passed above.
-        let divisor: Vec<f64> = if se_divisor.is_null() {
-            model.weights.clone()
-        } else {
-            copy_vec(se_divisor, nn)
-        };
-        let (fitted, se) = match model.predict_with_execution_se(
-            &queries,
-            true,
-            Some(&divisor),
-            &super::loess::Execution::new(&|| Ok(())),
-        ) {
-            Ok(pair) => pair,
-            Err(message) => fail_loess(&message),
-        };
+        let execution = super::loess::Execution::new(&|| Ok(()));
+        let influence = model
+            .prediction_influence(&queries, &execution)
+            .unwrap_or_else(|message| fail_loess(&message));
         // loess_dfitse's SYMMETRIC branch refits the point estimates with the
         // robustness weights alone (lowesf's second call in loessc.c).
         let fitted = if !fit_weights.is_null() {
@@ -235,31 +222,27 @@ fn engine_loess_se(
                 Err(message) => fail_loess(&message),
             }
         } else {
-            fitted
+            influence
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(&model.y)
+                        .map(|(coefficient, value)| coefficient * value)
+                        .sum()
+                })
+                .collect()
         };
-        write_fit(fit, &fitted);
+        // GNU loess_ise publishes only L; its fit argument is untouched.
+        if !interpolate {
+            write_fit(fit, &fitted);
+        }
         if leverages.is_null() {
             return;
         }
-        for i in 0..(mm.saturating_mul(nn)) {
-            *leverages.add(i) = 0.0;
-        }
-        // Encode se.fit's inner sum in a single L column: the R-level
-        // predLoess computes s * sqrt(rowSums(L^2 / weights)), so storing
-        // sqrt(sum(L^2/divisor)) * sqrt(divisor[j0]) at column j0 keeps the
-        // model's own sigma out of the result.
-        let j0 = (0..nn)
-            .find(|&j| divisor.get(j).is_some_and(|w| *w > 0.0))
-            .unwrap_or(0);
-        let wj = divisor.get(j0).copied().unwrap_or(1.0);
-        let scale = if wj > 0.0 { wj.sqrt() } else { 1.0 };
-        let s = if model.s.is_finite() && model.s > 0.0 {
-            model.s
-        } else {
-            1.0
-        };
-        for i in 0..mm {
-            *leverages.add(i + j0 * mm) = se.get(i).copied().unwrap_or(0.0) / s * scale;
+        for j in 0..nn {
+            for i in 0..mm {
+                *leverages.add(i + j * mm) = influence[i][j];
+            }
         }
     }
 }
@@ -291,6 +274,7 @@ fn engine_loess_raw(
     xi: *mut c_double,
     vert: *mut c_double,
     vval: *mut c_double,
+    diagonal: *mut c_double,
     tr_l: *mut c_double,
     one_delta: *mut c_double,
     two_delta: *mut c_double,
@@ -328,17 +312,25 @@ fn engine_loess_raw(
         if !tr_l.is_null() {
             *tr_l = if no_statistics { 0.0 } else { model.trace };
         }
-        if !one_delta.is_null() {
-            *one_delta = if no_statistics {
-                0.0
-            } else if model.delta1 == 0.0 {
-                1.0
-            } else {
-                model.delta1
-            };
+        if !no_statistics {
+            if !one_delta.is_null() {
+                *one_delta = model.delta1;
+            }
+            if !two_delta.is_null() {
+                *two_delta = model.delta2;
+            }
         }
-        if !two_delta.is_null() {
-            *two_delta = if no_statistics { 0.0 } else { model.delta2 };
+        if matches!(
+            surf.as_str(),
+            "direct/approximate" | "direct/exact" | "interpolate/1.approx" | "interpolate/exact"
+        ) {
+            write_fit(
+                diagonal,
+                model
+                    .training_diagonal
+                    .as_deref()
+                    .unwrap_or_else(|| fail_loess("missing LOESS training diagonal")),
+            );
         }
         if model.config.interpolate {
             let surface = super::loess::pruned::PrunedSurface::fit(
@@ -717,6 +709,7 @@ pub unsafe extern "C-unwind" fn loess_raw(
             xi,
             vert,
             vval,
+            diagonal,
             trL,
             one_delta,
             two_delta,
@@ -929,7 +922,6 @@ pub unsafe extern "C-unwind" fn c_loess_ise(
             drop_square,
             *cell,
             true,
-            weights,
             std::ptr::null_mut(),
             d,
             n,
@@ -959,23 +951,9 @@ pub unsafe extern "C-unwind" fn c_loess_dfitse(
     L: *mut c_double,
 ) {
     unsafe {
-        // loessc.c's loess_dfitse: R passes weights = w*robust here. L is
-        // computed with those weights; se.fit divides by the object's raw
-        // weights; for SYMMETRIC the point fit is refitted with the
-        // robustness weights alone.
-        let nn = (*n).max(0) as usize;
+        // GNU computes L with weights*robust, then refits point estimates
+        // with robustness weights alone for the symmetric family.
         let symmetric = !robust.is_null() && !family.is_null() && *family != 1;
-        let divisor: Vec<f64> = if symmetric {
-            (0..nn)
-                .map(|j| {
-                    let r = *robust.add(j);
-                    let w = *weights.add(j);
-                    if r > 0.0 { w / r } else { w }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
         engine_loess_se(
             y,
             x,
@@ -987,11 +965,6 @@ pub unsafe extern "C-unwind" fn c_loess_dfitse(
             drop_square,
             0.2,
             false,
-            if symmetric {
-                divisor.as_ptr() as *mut c_double
-            } else {
-                weights
-            },
             if symmetric {
                 robust
             } else {
@@ -1391,3 +1364,6 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+mod native_output_tests;
