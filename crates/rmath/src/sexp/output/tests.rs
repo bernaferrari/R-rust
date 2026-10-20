@@ -425,3 +425,37 @@ fn test_real_vector_alignment_keeps_decimal_column() {
             })
             .unwrap();
 }
+
+#[test]
+fn printed_utf8_character_matrix_keeps_invalid_field_text_and_original_width() {
+    use crate::sexp::{
+        encoding::{TextEncoding, allocate_character},
+        object::SexpMut,
+    };
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let factory = session.owner_token().unwrap().node_factory();
+        let invalid = factory
+            .allocate(|a| allocate_character(a, &[0xf4, 0x90, 0x80, 0x80], TextEncoding::Utf8))
+            .unwrap();
+        let mut values = SexpMut::try_from_checked(factory.strings(&["x", ""]).unwrap()).unwrap();
+        values.try_set_string_elt(1, invalid).unwrap();
+        let values = values.freeze();
+        let output = super::format_character_matrix_with(values.clone(), 2, 1, |row, _| {
+            super::printed_string_element(values.clone(), row as i64, true)
+        });
+        assert!(!output.contains("NA"), "{output:?}");
+        let (width, body) = if crate::mainutils::platform::locale_is_utf8() {
+            (12, "\"\\xf4\\x90\\x80\\x80\"")
+        } else {
+            (6, "\"\\364\\220\\200\\200\"")
+        };
+        let lines = output.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 3);
+        assert!(
+            lines[1].ends_with(&format!("\"x\"{}", " ".repeat(width - 3))),
+            "{output:?}"
+        );
+        assert!(lines[2].ends_with(body), "{output:?}");
+    });
+}

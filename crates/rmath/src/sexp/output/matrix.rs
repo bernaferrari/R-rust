@@ -508,7 +508,7 @@ pub(crate) fn format_character_matrix_with<F>(
     value_at: F,
 ) -> String
 where
-    F: Fn(usize, usize) -> String,
+    F: Fn(usize, usize) -> PrintedString,
 {
     let (r_pr, c_pr) = matrix_print_window(nrow, ncol, print_max_cells());
     // GNU's zero-column character printer still emits every row label;
@@ -537,14 +537,14 @@ where
     let right = print_right_flag();
     let align = |text: &str, width: usize| -> String { align_columns(text, width, right) };
     let empty_row_labs = row_labels.iter().all(|s| s.is_empty());
-    let mut values = vec![vec![String::new(); c_pr]; r_pr];
+    let mut values = vec![vec![PrintedString::default(); c_pr]; r_pr];
     let mut widths = Vec::with_capacity(c_pr);
     for c in 0..c_pr {
         let mut width = display_columns(&col_labels[c]).max(1);
         // Field width includes omitted rows, as GNU printStringMatrix does.
         for r in 0..nrow {
             let value = value_at(r, c);
-            width = width.max(display_columns(&value));
+            width = width.max(value.width);
             if r < r_pr {
                 values[r][c] = value;
             }
@@ -629,7 +629,15 @@ where
             let mut line = align_columns(&label, row_width, false);
             for c in cs..ce {
                 line.push_str(&separator);
-                line.push_str(&align(&values[r][c], widths[c]));
+                let value = &values[r][c];
+                let pad = " ".repeat(widths[c].saturating_sub(value.width));
+                if right {
+                    line.push_str(&pad);
+                }
+                line.push_str(&value.text);
+                if !right {
+                    line.push_str(&pad);
+                }
             }
             lines.push(line);
         }
@@ -715,7 +723,7 @@ pub(crate) fn format_matrix_body(x: Sexp<'_>) -> Option<String> {
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
             format_character_matrix_with(x.clone(), nrow, ncol, |r, c| {
-                format_string_element_maybe_quoted(x.clone(), (r + c * nrow) as i64, quote)
+                printed_string_element(x.clone(), (r + c * nrow) as i64, quote)
             })
         }
 

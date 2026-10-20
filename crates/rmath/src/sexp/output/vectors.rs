@@ -102,12 +102,51 @@ pub(crate) fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
     format_string_element_maybe_quoted(x, i, true)
 }
 
-pub(crate) fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> String {
-    match string_element_text(x, i) {
-        Some(Some(value)) if quote => format!("\"{}\"", escape_printed_string(&value)),
-        Some(Some(value)) => escape_printed_text(&value, false),
-        Some(None) | None => if quote { "NA" } else { "<NA>" }.to_string(),
+#[derive(Clone, Default)]
+pub(crate) struct PrintedString {
+    pub(crate) text: String,
+    pub(crate) width: usize,
+}
+pub(crate) fn printed_string_element(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> PrintedString {
+    let text = match x.try_string_value_elt(i) {
+        Ok(Some(value)) if quote => format!("\"{}\"", escape_printed_string(&value)),
+        Ok(Some(value)) => escape_printed_text(&value, false),
+        Err(crate::sexp::object::SexpError::InvalidUtf8) => {
+            if let Ok(value) = x.try_string_elt(i) {
+                // SAFETY: the checked element and parent retain the sealed
+                // character through these copy-only encoders. No R callback
+                // occurs while borrowing their per-runtime text buffer.
+                unsafe {
+                    let q = if quote { b'"' as i32 } else { 0 };
+                    let p = crate::mainutils::printutils::EncodeString(
+                        value.as_raw(),
+                        0,
+                        q,
+                        crate::mainutils::printutils::Rprt_adj::none,
+                    );
+                    if let Ok(text) = std::ffi::CStr::from_ptr(p).to_str() {
+                        return PrintedString {
+                            text: text.to_owned(),
+                            width: crate::mainutils::format::string_element_width(value.as_raw(), q)
+                                .max(0) as usize,
+                        };
+                    }
+                }
+            }
+            if quote { "NA" } else { "<NA>" }.to_owned()
+        }
+        Ok(None) | Err(_) => if quote { "NA" } else { "<NA>" }.to_owned(),
+    };
+    PrintedString {
+        width: text
+            .chars()
+            .map(crate::mainutils::unicode_width::columns)
+            .sum(),
+        text,
     }
+}
+pub(crate) fn format_string_element_maybe_quoted(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> String {
+    printed_string_element(x, i, quote).text
 }
 
 pub(crate) fn escape_printed_string(value: &str) -> String {

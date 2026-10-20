@@ -1,0 +1,21 @@
+$marked
+[1] "ok"           "Aé\xff\xf4\x90\x80\x80\xe9" "é"           
+
+$native
+[1] "ok"     "A\xffB" "end"   
+
+$matrix
+     [,1]           [,2]
+[1,] "x"            "a" 
+[2,] "Aé\xff\xf4\x90\x80\x80\xe9" "é" 
+
+$noquote
+[1] Aé\xff\xf4\x90\x80\x80\xe9 x           
+
+$encoded
+[1] "           \"x\""                    
+[2] "\"Aé\\xff\\xf4\\x90\\x80\\x80\\xe9\""
+
+$unicode
+[1] "Aé🙂"  "ASCII"
+

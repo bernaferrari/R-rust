@@ -1,0 +1,164 @@
+$unknown_from
+[1] "ERROR: unsupported conversion from 'not-an-encoding' to 'UTF-8'"
+
+$unknown_to
+[1] "ERROR: unsupported conversion from 'UTF-8' to 'not-an-encoding'"
+
+$unknown_empty
+character(0)
+
+$unknown_na
+[1] NA
+
+$raw
+$raw[[1]]
+[1] 61
+
+$raw[[2]]
+NULL
+
+$raw[[3]]
+raw(0)
+
+
+$raw_list
+$raw_list[[1]]
+[1] 41 c3 a9
+
+$raw_list[[2]]
+NULL
+
+$raw_list[[3]]
+raw(0)
+
+
+$utf16le
+$utf16le[[1]]
+ [1] 41 00 e9 00 ac 20 3d d8 42 de
+
+
+$utf16be
+$utf16be[[1]]
+ [1] 00 41 00 e9 20 ac d8 3d de 42
+
+
+$utf32le
+$utf32le[[1]]
+ [1] 41 00 00 00 e9 00 00 00 ac 20 00 00 42 f6 01 00
+
+
+$utf32be
+$utf32be[[1]]
+ [1] 00 00 00 41 00 00 00 e9 00 00 20 ac 00 01 f6 42
+
+
+$roundtrips
+$roundtrips[[1]]
+$roundtrips[[1]][[1]]
+ [1] 41 c3 a9 e2 82 ac f0 9f 99 82
+
+
+$roundtrips[[2]]
+$roundtrips[[2]][[1]]
+ [1] 41 c3 a9 e2 82 ac f0 9f 99 82
+
+
+$roundtrips[[3]]
+$roundtrips[[3]][[1]]
+ [1] 41 c3 a9 e2 82 ac f0 9f 99 82
+
+
+$roundtrips[[4]]
+$roundtrips[[4]][[1]]
+ [1] 41 c3 a9 e2 82 ac f0 9f 99 82
+
+
+
+$invalid16
+[1] "A<00><d8>B"
+
+$invalid32
+[1] "\xf4\x90\x80\x80"
+
+$invalidutf8
+[1] "A<ff>B"
+
+$invaliddrop
+[1] "AB"
+
+$invalidna
+$invalidna[[1]]
+NULL
+
+
+$byte_sub
+[1] "<c3><a9>"
+
+$literal_sub
+[1] "??"
+
+$unicode_sub
+[1] "A<U+00E9><U+20AC><U+1F642>"
+
+$c99_sub
+[1] "A\\u00e9\\u20ac\\U0001f642"
+
+$latin_byte
+[1] "caf<e9>"
+
+$latin_default
+$latin_default[[1]]
+[1] 63 61 66 c3 a9
+
+
+$raw_attrs
+$raw_attrs$names
+[1] "a" "b"
+
+$raw_attrs$hello
+[1] 4
+
+
+$raw_input_attrs
+$raw_input_attrs$names
+[1] "n"
+
+$raw_input_attrs$hello
+[1] 5
+
+
+$invalidmark
+[1] "ERROR: invalid 'mark' argument"
+
+$invalidraw
+[1] "ERROR: invalid 'toRaw' argument"
+
+$invalidfrom
+[1] "ERROR: invalid 'from' argument"
+
+$invalidto
+[1] "ERROR: invalid 'to' argument"
+
+$invalidsub
+[1] "ERROR: invalid 'sub' argument"
+
+$invalidlist
+[1] "ERROR: 'x' must be a character vector or a list of NULL or raw vectors"
+
+$nul
+[1] "ERROR: embedded nul in string: 'A\\0B'"
+
+$nulraw
+$nulraw[[1]]
+[1] 41 00 42
+
+
+$unicode_nul
+[1] "ERROR: embedded nul in string: 'a\\0'"
+
+$marks
+[1] "UTF-8" "UTF-8"
+
+$unmarked
+[1] "unknown"
+

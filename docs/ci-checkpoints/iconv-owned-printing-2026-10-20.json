@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-2v78x",
+    "rport-w03x.5"
+  ],
+  "source_base": "ccb202dadfc845cc630196d7dcc002492fc54a0d",
+  "behavior": [
+    "Replace the raw iconv subject span and unbounded decoded-char vectors with a forbidunsafe streaming codec visitor and an owning original-runtime kernel. Size output first, admit complete source/output workspace before copying and retain each ticket with its actual Vec.",
+    "Own arguments, selected source, attributes and original runtime pin across allocations, collection, argument detachment, callback panic and revocation. Copy attribute-list cells and preserve object/S4 flags; set encoding tags before constructor publication.",
+    "Explicitly admit supported codec names; unknown source/target fail on the first nonmissing subject while empty/all-missing controls remain lazy. Honor list-of-raw/NULL input, raw-list output, NA/failure NULL, exact NUL restrictions and argument validation.",
+    "Implement UTF16LE/BE and UTF32LE/BE with checked Rust Unicode primitives and integer wire representations. Preserve observed GNU extended UTF32-to-UTF8 bytes without invalid Rust chars/str. One sorted static codec table supplies advertised aliases without a native inventory Vec.",
+    "Preserve GNU per-source-byte substitutions, Unicode/c99 policy and requested-spelling encoding marks. Keep existing portable transliteration table unchanged.",
+    "Print malformed UTF8 as individual hex escapes while retaining valid scalar neighbors. Bound-check the historical GNU integer width decoder independently from the strict display decoder, preserving requested widths that differ from rendered escape length.",
+    "Carry each matrix/array character field as text plus original width so invalid text survives as actual byte escapes, rather than NA, with faithful alignment."
+  ],
+  "baseline": {
+    "conversion_cases": 35,
+    "conversion_differences": 28,
+    "conversion_controls": 7,
+    "printing_cases": 6,
+    "printing_differences": 5,
+    "printing_controls": 1,
+    "intermediate_printing_differences": 4,
+    "intermediate_printing_controls": 2
+  },
+  "fixture_notes": [
+    "First probe version did not catch raw-attribute/list failure in every named case and aborted; wrap each named case independently before capturing complete35-case production RED. Redundant nested probes were later simplified, with pinned GNU output independently confirmed byte-identical.",
+    "Existing inventory test incorrectly expected public iconv(NULL) to list encodings. Pinned GNU confirms public character(0), while .Internal(iconv(NULL,...)) supplies the inventory. Preserve sorted/unique/admitted-codec assertions through that actual internal shape; Unicode aliases round-trip through raw vectors because encoded UTF16/32 contain NUL.",
+    "Old ASCII substitution fixture expected one ? for UTF8 \u00e9. Actual GNU substitutes each source byte, yielding two; corrected the expected value using the independent35-case contract.",
+    "Initial i686 encoder fixture assumed UTF8 host locale; Miri default native-C returned9 rather than26. Preserve that failure, assert both native profiles, and unconditionally check the explicit GNU UTF8 width path. The later GNU width investigation established12 requested columns versus26 displayed columns for the malformed marked string, so retain that exact historical distinction.",
+    "Intermediate valid conversion produced exact extended UTF8 bytes, but public rendering replaced them. Preserve the original35-case golden and fix the native printer; expanded6-case oracle exposes matrix/array and width behavior."
+  ],
+  "validation": {
+    "miri": {
+      "distinct_total": 13,
+      "suites": {
+        "miri-codec.log": 4,
+        "miri-workspace.log": 2,
+        "miri-ownership.log": 3,
+        "miri-print-final.log": 4
+      },
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained. UTF8 encoder and matrix fixtures also assert default native-C profile where Miri has no locale environment."
+    },
+    "wasm": {
+      "node_checks": {
+        "wasm-checked-exhaustion.log": 12,
+        "wasm-encoding-tags.log": 4,
+        "wasm-filepath-encoding.log": 4,
+        "wasm-gnu-opcode-contracts.log": 28,
+        "wasm-iconv-raw.log": 6,
+        "wasm-internal-dput.log": 4,
+        "wasm-loess-native-outputs.log": 86,
+        "wasm-permanent-ledger.log": 14,
+        "wasm-quote-options.log": 8,
+        "wasm-regex-workspace.log": 8,
+        "wasm-s4-cache-new.log": 8,
+        "wasm-serialization-workspace.log": 14
+      },
+      "node_total": 196,
+      "web_generations": [
+        44,
+        44
+      ],
+      "total": 284
+    },
+    "native": {
+      "distinct_total": 46,
+      "suites": {
+        "native-iconv-final": 12,
+        "native-output-final": 25,
+        "native-printutils-final": 4,
+        "native-public-frozen": 2,
+        "native-quote-width-final": 2,
+        "native-encoding": 1
+      }
+    },
+    "clippy": "Four crates/all targets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "source_formatting_whitespace": "Scoped rustfmt and source git whitespace PASS; exact GNU stdout .out fixtures intentionally retain trailing alignment spaces and final blank lines."
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/essentials/strings/encodings.rs": "96593201fcfe326941e51d042af3d56466af660af79daae7f98de4c3c4ab6d1d",
+    "crates/rmath/src/mainutils/essentials/strings/mod.rs": "3ad428113e2c8dcc35df7cf9c95f73a6fcb381958658af1ce0bc56b68feab375",
+    "crates/rmath/src/mainutils/printutils.rs": "a3443598e646cba2ccd68815148132f9b83361e2878e2e53e7a1fe7b20d0b1bf",
+    "crates/rmath/src/sexp/output/arrays.rs": "cded049cddfb5a64e2574a1a42af60349108f83f63a5891e7979845dead6c6be",
+    "crates/rmath/src/sexp/output/matrix.rs": "13592005447c2cbcbddf3cb90f2ceaa1f833caaa34b84b16a082700bc7d2aa23",
+    "crates/rmath/src/sexp/output/tests.rs": "d04ada302b7f4ba3b2de2709776f3a2d5c6e623dfef54a913546bdd5557846d0",
+    "crates/rmath/src/sexp/output/vectors.rs": "c63bb0598d269312a1ab3c2c8fa4f6434c07fb2f65f876051fab658eca63e688",
+    "tests/browser/portable-package-contracts.mjs": "2243e9b715aba192cc0ba6eea41b141efcf787669277ed0d5b611d2b62ac64c6",
+    "crates/r-embed/tests/fixtures/iconv-raw-contract.R": "dcceacfbad84d33bfc892c0307a4243e9fc2fa8399351d70aa67f2d81c075c97",
+    "crates/r-embed/tests/fixtures/iconv-raw-contract.out": "4f9798561005d52d9933a45957a2dfc485b572c22b105381fbd9a6830db7e1c8",
+    "crates/r-embed/tests/fixtures/invalid-utf8-print-contract.R": "e62f9087618a1eb42ab4984e76e5f39535922921ca7a8743622a421e4b1a82c2",
+    "crates/r-embed/tests/fixtures/invalid-utf8-print-contract.out": "649d0b24de681739bfe74bddacb3206523fe357a5568ba79ee17bfb7ee5cc804",
+    "crates/r-embed/tests/iconv_raw.rs": "fbd49e82b837ce756dbaa52a878bf71c7131db13a890786ec9ea8e29e5741e95",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_codec.rs": "adb701c537d5ac90d477511027b79129cb53b17df1ed0477df8aa33089342b4d",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_owned.rs": "1d09ddf2f5560654777da8ee383461712f0705661463dccf3ab75ac0955300b5",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_ownership_tests.rs": "af8a8992609d343f99b145f0f7ce1be76237ddd4052376311526c9761123d84e",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_tests.rs": "17127b71a519c1c13c5e7d3831f904bad47c2c4cdc650c21822785c391d423c6",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_translit.rs": "8ce3020bc280b5dd4b1057aa19f4ebf4864416ab034f8efad718bd2ba6150e11",
+    "crates/rmath/src/mainutils/printutils/utf8.rs": "3483af47bfe1adaee9faf5418c078d666c74628362e879c5af7a39c4051d0735",
+    "tests/browser/iconv-raw.cjs": "93be2607da0f791543f8756bf07f91f8529c7d8a36e8e69276eb3fd74f7c92a8"
+  },
+  "oracle": {
+    "schema_version": 1,
+    "source": {
+      "repository": "https://github.com/wch/r-source.git",
+      "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+      "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+      "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+    },
+    "runtime": {
+      "version": "4.7.0 Under development (unstable)",
+      "nickname": "Unsuffered Consequences",
+      "svn_revision": 90451,
+      "source_date": "2026-08-27T09:09:57Z"
+    },
+    "build": {
+      "runner_image": "ubuntu-24.04",
+      "configure_args": [
+        "--without-x",
+        "--without-recommended-packages",
+        "--disable-java",
+        "--without-blas",
+        "--without-lapack"
+      ]
+    }
+  },
+  "evidence_directory": "target/iconv-evidence/",
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "limits": [
+    "Original64MiB browser session and256MiB Wasm linear-memory caps retained. No total-native-memory/RSS/whole-safe-engine/full-GNU-iconv-inventory claim.",
+    "Explicit-endian UTF16/32 valid Unicode and observed extended UTF32-to-UTF8 controls pass. Non-scalar UTF32-to-UTF16 policy remains tracked as rport-evnx.1; host codec inventory/locale/diagnostic breadth is not claimed.",
+    "Rprintf independently constructs invalid String values from arbitrary native bytes; tracked as rport-hah9u.79. The repaired display path does not claim this independent native-byte output boundary is safe.",
+    "User graphics files remain uncommitted and excluded from this milestone, but were present in validation. No immutable complete-build or whole-CI completion claim.",
+    "Large embedded-NUL diagnostic formatting is still unadmitted and exceeds GNU999-byte bound; actual forward probes and follow-up rport-cvs2.12 preserve this known total-workspace gap for the next milestone."
+  ],
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29847725,
+      "sha256": "c955b2d6262f69086607e28821c0357123d48b9315ffad43069450fac8f4b09b"
+    },
+    "output": {
+      "bytes": 25570384,
+      "sha256": "940d923310e20e3c9b70e345f266c7b8a97f2b30ca4ace28816c1933b9276ca4"
+    }
+  },
+  "followups": [
+    "rport-cvs2.12: actual20026-byte error versus GNU999 bound; original-ledger diagnostic admission next.",
+    "rport-evnx.1: independently measured non-scalar UTF32 target policy.",
+    "rport-hah9u.79: independent invalid native-byte String construction in Rprintf."
+  ],
+  "evidence_sha256": {
+    "android-final.log": "7863b6a84b77cf2370599f9bbd94009efadc3a3e57155c9737fa8eb15ca15a0c",
+    "clippy-final.log": "a921da8cfc9b65264eee101875a7387bd625b22bb7175b17fa9bd219761b81e1",
+    "clippy.log": "01aa3c3645f7c5b9e5b10d9397ec3bcb0d1453a4e5829b653a5c033bab955624",
+    "miri-codec.log": "1f815f6593113a949f9f93374efff79d1758955376f97c9a5b7ca208899933fd",
+    "miri-ownership.log": "76f3cbe2f2485f5cf862cc121316ae380233c2287def89c31c1fc9ec1f21d032",
+    "miri-print-final.log": "b9091183d7f3431fea4616de7200f514865ace70fefd1a9a09a6fed486ece1b3",
+    "miri-print.log": "1c23bc68cd25cef6138d363c013ae92aaf2d83147bc0856a14524251a054fe26",
+    "miri-workspace.log": "a26b4868bd3de80cc2aa6e6529d088e575f1bd3f56191d7d806be1e2e31a1b53",
+    "native-all-complete.log": "501aa8c918b1e3dd7093212aedd24e5f680c853e8f6ab2d61dce62edeac3e62c",
+    "native-all-final.log": "18568fbf48f704f712104ea7c27c59521109e4d4ec124d02218d8b4f0c7a63a3",
+    "native-all.log": "1313964f0fe784e6bf2154c922a16fc958d2a860935dde07ad7f99dccf96c0b6",
+    "native-encoding.log": "93f09bfdcda901d46c4090a501d1bf7e500c374b31318755098bb27d5fcff98e",
+    "native-final.log": "9b0b96acf779571ed71da6b55cda891677f544d2a16446972aa7d423495b60a7",
+    "native-iconv-final.log": "8171ccec1bd70911dad0edce7f484a512e4d04e04e502e387c30c2e3e1b776d5",
+    "native-inventory-diagnosis.log": "0f97ad0219a45fdb7d2a46870d3886055438ac4bc62f5ff04f60e76c4f1a9f32",
+    "native-kernel-final.log": "3e4c8233d756675bfe014724d1fcc8e562739cf79c0abc524de658ac7780946e",
+    "native-kernel-green.log": "e11a121d3e6c9f56afd2d4acd918ecb4371a121e252d534a95e0940866c123ca",
+    "native-output-final.log": "89d87226057e2f0aa9e8444da1b4ab504019783a38e79dd75714a7dcee70a72e",
+    "native-printutils-final.log": "b5567c45dec5d18785df4deff183da20cfa306fce73f7913c69c68147434a37e",
+    "native-printutils.log": "4e436d293e25fd97bc51123562f3bd9f6a49cf63877a35ac0ccfb206b820cd5d",
+    "native-public-complete.log": "83ce2fac53e3c0b8278e2a980351f900feaa467bb808c2ec560738b3a3097c74",
+    "native-public-final.log": "a6d7e2f2a794136449221e59470a45dccdb9d95e57cda9ad22d891705cf0605e",
+    "native-public-frozen.log": "adcd7adf7ed113f9ef7e9f8dbedd77d7641914dd36e0fb90d36f5996b15a211f",
+    "native-public-full-green.log": "59ec1028fe880d20cb888444263012b039adc0545821d9233a1946ab4f026b04",
+    "native-public-green.log": "ab1eece91c763a4dc07d1bfbbf6df746002db069ef12ebba4a77d5f230635894",
+    "native-public-print-green.log": "c89b01245a217ac08f241ed1955fbde9fe3f88abc52a5ab88061696ba5c5382c",
+    "native-quote-width-final.log": "deeb984e09b3987c80031c395ee110937b529e53f7ba5d28b95e3b1b77e7db4e",
+    "native-quote-width.log": "fa9f171d84f2e973ca3d2413b03e0c6cfca4de73dcc5c55cbd1328ce23ad8654",
+    "native-red.log": "aad35d0beefa378dbc884172c192fb8074acbc243fbc8dda2ecc515f8c9a68a7",
+    "wasm-baseline.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-build-complete.log": "0b5ab359256250674e46540f8f99a3cb82456d4efddfe6ef94160d227a046e7b",
+    "wasm-build-final.log": "ec634dfb5721635eb4f6d2287a0a8fde26e57f12cb4749d933053a6d3093f4a4",
+    "wasm-build.log": "5730c117faa2ac46c5c82b86ffa0409242409fe9f95dd0fc1f3f81ff13c17c54",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-nul-diagnostic-probe.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-optimize.log": "b703901ced092237ec0ecfba31420ee5be2593c33d1b294dc66b5e85eb8ee777",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-print-baseline.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-utf32-target-probe.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-web-contracts.log": "d6186da2fb0afbabaf1f2e23cfc5ff321c69eaa2a02d075380e19f0ce580f51a"
+  },
+  "forward_probe_sha256": {
+    "gnu-final-fixture.out": "4f9798561005d52d9933a45957a2dfc485b572c22b105381fbd9a6830db7e1c8",
+    "gnu-invalid-widths.out": "25b434e006eeddb874714de240034345d1e730283ad11b8fe7fa6248d5efccd8",
+    "gnu-nul-diagnostic-bounds.out": "eefbe2ec78e899db8935771f705c31e1c6020f6bbb46e0f8da29912ca70fa43b",
+    "gnu-nul-diagnostic-controls.out": "19803c11e41353b7a45275a46a99c8460db74dec72098275ae98e6e2ac35d3cb",
+    "gnu-utf32-boundaries.out": "1773c2fd5b8a15b3f02e74e0d209fc721b8979ccf46b7a56fdd90f58f5ceebe1",
+    "gnu-utf32-targets.out": "f6f346db1ca86dc3d61cab58afaa95f36f1a1bd1bce8e321609e86ccc0c02d6b",
+    "native-candidate.out": "f1fd167eadf2894663eef867d6fd3f62f41ce2d423ce497f4827e401251f54ce",
+    "native-extended-print.out": "832c615d201c672f52d223be6c3936395122ebcfc5090b6f08e752a543783d83",
+    "native-print-width-candidate.out": "4ef56fe320770ab84c2419fb198930b2267c6def1c395de76ae5d46fccc714ab",
+    "wasm-baseline.out": "9e974f502c0fe4323c3fd770f9510962acf4a35d79d6c961f2cf00203b42dede",
+    "wasm-nul-diagnostic-probe.out": "5e7217e89ca942c5e8667bf9f59770b100bab79fc22afdfd67d0a97da93ecf7a",
+    "wasm-print-baseline.out": "4f625e1f66743245e231023cc440d52dece5c281b6a755324c1130487d044415",
+    "wasm-utf32-target-probe.out": "d8c12050dff3e3310f5ca89717cff37b819cd9b7c5c686577b3fb0f528e8cdda"
+  }
+}

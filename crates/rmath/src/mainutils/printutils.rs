@@ -17,6 +17,7 @@
 //!   Rcons_vprintf, VectorIndex
 
 use crate::sexp::encoding::{CE_BYTES, CE_LATIN1, CE_UTF8};
+mod utf8;
 #[cfg(test)]
 use std::cell::RefCell;
 use std::ffi::CStr;
@@ -763,25 +764,29 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
             return len;
         }
 
-        // Decode UTF-8 once without allocating. Preserve the byte fallback for
-        // invalid/native non-UTF-8 data and the separate CE_BYTES path above.
-        if (ienc == CE_UTF8 || crate::mainutils::platform::locale_is_utf8())
-            && let Ok(text) = std::str::from_utf8(bytes)
-        {
-            return text
-                .chars()
-                .map(|ch| {
-                    if ch.is_ascii() {
-                        match ch as u8 {
-                            b'\\' => 2,
-                            b'\'' | b'"' | b'`' if quote_char != 0 && ch as u8 == quote_char => 2,
-                            0x20..=0x7E => 1,
-                            0x07 | 0x08 | 0x0C | b'\n' | b'\r' | b'\t' | 0x0B | 0 => 2,
-                            _ => 4,
-                        }
-                    } else {
-                        crate::mainutils::unicode_width::columns(ch) as i32
-                    }
+        if (ienc == CE_UTF8 || crate::mainutils::platform::locale_is_utf8()) && ienc != CE_LATIN1 {
+            let ascii_width = |point: u32, first: u8| match point {
+                92 => 2,
+                39 | 34 | 96 if quote_char != 0 && first == quote_char => 2,
+                0x20..=0x7e => 1,
+                7 | 8 | 12 | 10 | 13 | 9 | 11 | 0 => 2,
+                _ => 4,
+            };
+            if ienc == CE_UTF8 {
+                return utf8::width_units(bytes)
+                    .map(|(point, first)| match point {
+                        None => 4,
+                        Some(cp @ 0..=127) => ascii_width(cp, first),
+                        Some(cp) => char::from_u32(cp)
+                            .map_or(10, |ch| crate::mainutils::unicode_width::columns(ch) as i32),
+                    })
+                    .sum();
+            }
+            return utf8::units(bytes)
+                .map(|unit| match unit {
+                    utf8::Unit::Invalid(_) => 4,
+                    utf8::Unit::Scalar(ch) => crate::mainutils::unicode_width::columns(ch) as i32,
+                    utf8::Unit::Ascii(b) => ascii_width(u32::from(b), b),
                 })
                 .sum();
         }
@@ -940,7 +945,7 @@ pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
             return escape_native_string_body(bytes, ce, quote, quote as u8).len() as c_int;
         }
         let len = LENGTH(s);
-        Rstrwid(p, len, 0, quote) // CE_NATIVE = 0
+        Rstrwid(p, len, crate::sexp::accessors::getCharCE(s), quote)
     }
 }
 
@@ -1135,7 +1140,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
                     body.len() as c_int
                 }
             }
-            None => Rstrwid(p, cnt as c_int, 0, quote),
+            None => Rstrwid(p, cnt as c_int, ce, quote),
         };
 
         // Compute padding
@@ -1171,7 +1176,24 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
                 None => {
                     // Encode each byte with escaping (ASCII path, matching
                     // R's non-MBCS path)
-                    for &k in bytes {
+                    for unit in utf8::units(bytes) {
+                        let k = match unit {
+                            utf8::Unit::Scalar(ch) => {
+                                let mut raw = [0; 4];
+                                buffer.extend_from_slice(ch.encode_utf8(&mut raw).as_bytes());
+                                continue;
+                            }
+                            utf8::Unit::Invalid(k) if ce != CE_LATIN1 && ce != CE_BYTES => {
+                                buffer.extend_from_slice(&[
+                                    b'\\',
+                                    b'x',
+                                    b"0123456789abcdef"[(k >> 4) as usize],
+                                    b"0123456789abcdef"[(k & 15) as usize],
+                                ]);
+                                continue;
+                            }
+                            utf8::Unit::Invalid(k) | utf8::Unit::Ascii(k) => k,
+                        };
                         if k < 0x80 {
                             // ASCII
                             if k != b'\t' && (k >= 0x20 && k < 0x7f) {
@@ -1557,6 +1579,46 @@ pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn printed_utf8_width_and_encoder_preserve_invalid_bytes_and_valid_neighbors() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let factory = session.owner_token().unwrap().node_factory();
+            let value = factory
+                .allocate(|arena| {
+                    crate::sexp::encoding::allocate_character(
+                        arena,
+                        b"A\xc3\xa9\xff\xf4\x90\x80\x80\xe9",
+                        crate::sexp::encoding::TextEncoding::Utf8,
+                    )
+                })
+                .unwrap();
+            // SAFETY: the owning checked character retains its sealed bytes;
+            // encoders only copy this span, with no callback or live arena loan.
+            unsafe {
+                assert_eq!(Rstrwid(CHAR(value.as_raw()), 9, CE_UTF8, b'"' as i32), 12);
+                let utf8 = crate::mainutils::platform::locale_is_utf8();
+                assert_eq!(
+                    Rstrlen(value.as_raw(), b'"' as i32),
+                    if utf8 { 12 } else { 9 }
+                );
+                let encoded = EncodeString(
+                    value.as_raw(),
+                    if utf8 { 14 } else { 11 },
+                    b'"' as i32,
+                    Rprt_adj::left,
+                );
+                let bytes = CStr::from_ptr(encoded).to_bytes();
+                if utf8 {
+                    assert_eq!(bytes, b"\"A\xc3\xa9\\xff\\xf4\\x90\\x80\\x80\\xe9\"");
+                } else {
+                    assert_eq!(bytes, b"\"A<U+00E9>\\377\\364\\220\\200\\200\\351\"");
+                }
+                assert!(std::str::from_utf8(bytes).is_ok());
+            }
+        });
+    }
 
     #[test]
     fn encode_na_string_distinguishes_values_from_unquoted_names() {

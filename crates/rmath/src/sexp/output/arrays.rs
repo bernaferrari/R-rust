@@ -118,7 +118,7 @@ pub(crate) fn format_array_slice_body(
             && !has_class(x.clone(), "noquote")
             && !has_class(x.clone(), "table");
         return format_character_matrix_with(x.clone(), use_nr, use_nc, |r, c| {
-            format_string_element_maybe_quoted(x.clone(), index_at(r, c), quote)
+            printed_string_element(x.clone(), index_at(r, c), quote)
         });
     }
     format_matrix_with(x.clone(), use_nr, use_nc, |r, c| {
