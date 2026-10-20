@@ -315,6 +315,20 @@ impl<'session> SessionNodeFactory<'session> {
         NodeProducer::pairlist_cell(self, value, rest, tag)
     }
 
+    pub(crate) fn call(
+        &self,
+        function: &Sexp<'_>,
+        arguments: &Sexp<'_>,
+    ) -> SexpResult<Sexp<'session>> {
+        NodeProducer::list_cell(
+            self,
+            function,
+            arguments,
+            &self.nil(),
+            crate::sexp::ffi::SEXPTYPE::LANGSXP,
+        )
+    }
+
     pub(crate) fn character(&self, text: &str) -> SexpResult<Sexp<'session>> {
         NodeProducer::character(self, text)
     }

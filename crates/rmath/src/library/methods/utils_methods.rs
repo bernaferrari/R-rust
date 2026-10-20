@@ -47,11 +47,11 @@ pub unsafe fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
 /// R_methods_test_NEW - create a new object of a given class for testing.
 pub unsafe fn R_methods_test_NEW(className: SEXP) -> SEXP {
     unsafe {
-        let class_def = R_methods_test_MAKE_CLASS(className);
-        if class_def.is_null() || class_def == R_NilValue() {
+        let Some(class_name) = class_name_to_cstring(className) else {
             return R_NilValue();
-        }
-        crate::mainutils::objects::R_do_new_object(class_def)
+        };
+        let class_def = crate::mainutils::objects::make_class_owned(class_name.as_ptr());
+        crate::mainutils::objects::R_do_new_object(class_def.as_raw())
     }
 }
 
@@ -62,20 +62,28 @@ mod tests {
     use crate::sexp::constructors::Rf_mkString;
 
     #[test]
-    fn methods_test_make_class_registers_class_definition() {
-        let _session = crate::sexp::session::RSession::new();
+    fn methods_test_make_class_resolves_original_class_definition() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (definition, _, _) = session.eval_script_with_output_capture(
+            "setClass('UtilityClass', slots=c(x='numeric')); getClassDef('UtilityClass')",
+        );
+        let definition = definition.unwrap().into_owned().unwrap();
         unsafe {
             let class = Rf_mkString(c"UtilityClass".as_ptr());
             let class_def = R_methods_test_MAKE_CLASS(class);
-
-            assert!(!class_def.is_null());
-            assert!(crate::mainutils::objects::s4_class("UtilityClass").is_some());
+            assert_eq!(session.sexp(class_def).unwrap(), definition);
         }
     }
 
     #[test]
     fn methods_test_new_creates_s4_object() {
-        let _session = crate::sexp::session::RSession::new();
+        let mut session = crate::sexp::session::RSession::new();
+        session
+            .eval_script_with_output_capture(
+                "setClass('UtilityObject', slots=c(x='numeric'), prototype=prototype(x=42))",
+            )
+            .0
+            .unwrap();
         unsafe {
             let class = Rf_mkString(c"UtilityObject".as_ptr());
             let object = R_methods_test_NEW(class);

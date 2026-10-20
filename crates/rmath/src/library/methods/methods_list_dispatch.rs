@@ -1892,9 +1892,6 @@ mod tests {
         );
         assert_eq!(tables.output.trim_end().lines().last(), Some("[1] TRUE"));
     }
-
-    // R_getClassFromCache(. , NULL) is a GNU cache miss (Nil). The old
-    // rust register_s4_class table is not .classTable.
 }
 
 /// R_identC - test if two single-string objects are identical at the C level.
@@ -1919,6 +1916,9 @@ pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
         if TYPEOF(class) == SEXPTYPE::STRSXP {
             if LENGTH(class) == 0 {
                 return R_NilValue();
+            }
+            if table == R_NilValue() {
+                r_error("use of NULL environment is defunct");
             }
             if table.is_null() || TYPEOF(table) != SEXPTYPE::ENVSXP {
                 return R_NilValue();
@@ -1947,9 +1947,7 @@ pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
         } else if TYPEOF(class) == SEXPTYPE::S4SXP || TYPEOF(class) == SEXPTYPE::OBJSXP {
             class
         } else {
-            // GNU errors here; an extern-C .Call frame cannot unwind, so treat
-            // unexpected types as a cache miss (getClassDef falls back to get0).
-            R_NilValue()
+            r_error("class should be either a character-string name or a class definition")
         }
     }
 }

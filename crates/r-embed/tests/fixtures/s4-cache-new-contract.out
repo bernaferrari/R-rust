@@ -1,0 +1,5 @@
+null-table: use of NULL environment is defunct
+invalid-class: class should be either a character-string name or a class definition
+null-definition: cannot get a slot ("virtual") from an object of type "NULL"
+undefined-class: TRUE
+cache/prototype/named-slot controls: TRUE

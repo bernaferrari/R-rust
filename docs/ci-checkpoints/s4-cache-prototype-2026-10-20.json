@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-8tyca",
+    "rport-pgwjn"
+  ],
+  "status": "verified_class_cache_and_prototype_boundary",
+  "source_sha256": {
+    "crates/rmath/src/library/methods/methods_list_dispatch.rs": "13cd4214b5e49d6b1da00d712e55a2eb5bfbae18869618ceb2052d71613003cb",
+    "crates/rmath/src/library/methods/native_calls.rs": "8366b2decf9248c582c0bfd40d635445a66fdb9f293f950a63adbfab209b336b",
+    "crates/rmath/src/library/methods/utils_methods.rs": "9ca81bfd9f82b5cde82c827bf8ea004ed26574373bb1400f2a63db552f847ba4",
+    "crates/rmath/src/mainutils/objects/s4.rs": "acba9cea970a1c605b2b662bcd482385ebf20cfa3e8a04605812411c990aa80c",
+    "crates/rmath/src/mainutils/objects/tests.rs": "a46c00b5309257b5edd1c1fec5ed025a89f6a783636bc90a314a6534ea8ffd69",
+    "crates/rmath/src/sexp/object/factory.rs": "17008bbafe4fb24aa78753ef8ee74285718964fa0f30690d6e2386b2f621b3f1",
+    "crates/r-embed/tests/s4_cache_new_contract.rs": "15ba06b31407799f5c891e1493339647192c60821083344089cb62cc6ffbd3cf",
+    "crates/r-embed/tests/fixtures/s4-cache-new-contract.R": "5e5e9af4590a8741929f9bcdd4fb1eb7e52f0ef9b1804648ddd759a79e27abc6",
+    "crates/r-embed/tests/fixtures/s4-cache-new-contract.out": "a65b08624a2cfaaad98618ad1b8b16ee5fc1bed95d181b7da6de2b93ccedd896",
+    "tests/browser/s4-cache-new.cjs": "c5241b63c8321c8ae5e57472434a03f82564693c68ed0df876458439c8a2151b",
+    "tests/browser/portable-package-contracts.mjs": "0849b18d2093889687f097a10aee81e34dfc6c286938e7c1cdf53ba3fedb4141"
+  },
+  "evidence_directory": "target/s4-cache-new-evidence",
+  "oracle": {
+    "manifest": "oracle/r-oracle.json",
+    "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "revision": 90451,
+    "runtime_version": "4.7.0 Under development (unstable)",
+    "output_log": "gnu-helper-gc-final-20261020.log",
+    "output_sha256": "a65b08624a2cfaaad98618ad1b8b16ee5fc1bed95d181b7da6de2b93ccedd896"
+  },
+  "regressions_before": [
+    "Shared native/Wasm output showed silent NULL-table and invalid-class cache lookups, and the null-native-pointer error for R NULL",
+    "After removing NEW registry fallback, full object/method validation found126PASS/1FAIL in the stale MAKE_CLASS/NEW utility fixture",
+    "The first extended production Wasm run could not find C_R_methods_test_MAKE_CLASS"
+  ],
+  "behavior": [
+    "Nonempty name with R NULL cache table reports the GNU defunct-environment error; invalid class type reports the GNU class-type error",
+    "Empty character name remains a miss before table access; actual environment miss/hit and original class-definition passthrough preserve identity",
+    "Null C class pointer retains its dedicated error, while R NULL reaches the original virtual-slot error",
+    "NEW duplicates the actual classRepresentation prototype; registry-name fabrication is removed from this constructor",
+    "MAKE_CLASS evaluates the original methods getClass symbol with an owner pin and owning namespace/call/argument/result leases; utility NEW retains that definition through construction",
+    "Both original registered class utility routines are connected; temporary collecting getClass wrappers verify callback GC and are restored on exit",
+    "Named numeric slot coercion, multiple named slots and independent fresh prototype objects match the shared pinned oracle",
+    "The shared contract is part of the production portable package suite, now37 cases per fresh session"
+  ],
+  "validation": {
+    "native_public_collecting_helpers": {
+      "passed": 1,
+      "log": "native-helper-gc-final-20261020.log",
+      "sha256": "4e3de0de8e48bd90d7108f0032f1bcf98040a673eba252dfc82a225a3454ada5"
+    },
+    "native_objects_methods": {
+      "passed": 127,
+      "log": "native-objects-methods-final-20261020.log",
+      "sha256": "3661b143bec509cdcc915a2241daac3fe7d66fcfae8731ce059ec02acd099ac3"
+    },
+    "miri_error_admission": {
+      "passed": 1,
+      "log": "miri-admission-final-20261020.log",
+      "sha256": "cd5367e3dd518751396b448e4c75af806c5eb6b4a771c4934b19bd3225c2438c",
+      "scope": "Rooted cache/new error and recovery paths; execution preceded the independent MAKE_CLASS/helper extension, which is verified by public collecting native/Wasm cases"
+    },
+    "native_initializers_before_helper_extension": {
+      "passed": 8,
+      "log": "native-green-20261020.log",
+      "sha256": "d7399747ee7e5d4f035b30eadd402d701bfdb86a67ae9863fd52dd309cadf1b0",
+      "scope": "Seven initializer branches plus one superclass copy case in the first repair; the final shared public case independently verifies named slots and prototype copies"
+    },
+    "clippy_four_crates_all_targets": {
+      "log": "clippy-helper-final-20261020.log",
+      "sha256": "8f001fbae5e3e82280d03090e46a8b13bba2d237b46ee1a7e461af24aa6c22f5"
+    },
+    "android_cross_check": {
+      "log": "android-helper-final-20261020.log",
+      "sha256": "a9a5db459d8bec8b01c49a3e32201fd129883741d1c740cd2aeee6e8754926ec"
+    },
+    "wasm_collecting_class_contract": {
+      "checks": 4,
+      "log": "wasm-helper-green-20261020.log",
+      "sha256": "3b77f6f3c8cee02b9d2a88d7880ee9a6e98a3effb37f6a59b54f5320f46e47e4"
+    },
+    "wasm_permanent": {
+      "checks": 14,
+      "log": "wasm-helper-permanent-20261020.log",
+      "sha256": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407"
+    },
+    "wasm_exhaustion": {
+      "checks": 12,
+      "log": "wasm-helper-exhaustion-20261020.log",
+      "sha256": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a"
+    },
+    "wasm_serialization": {
+      "checks": 14,
+      "log": "wasm-helper-serialization-20261020.log",
+      "sha256": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54"
+    },
+    "wasm_web_package_contracts": {
+      "passed": 74,
+      "fresh_sessions": 2,
+      "log": "wasm-helper-package-contracts-20261020.log",
+      "sha256": "3c478983b83f7627229e49d2713515d24b09916df48408874781304a0669dc6f",
+      "s4_class_contract_ms": [
+        2250.1859170000025,
+        2331.5679579999996
+      ],
+      "s4_continuation_ms": [
+        8496.582125,
+        8496.750249999997
+      ]
+    }
+  },
+  "miri_configuration": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "isolation": true,
+    "default_alias_checks": true
+  },
+  "production_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29126383,
+      "sha256": "c76b86d95abc4ed870be1eab4559f2c71a7103af0c26f90e928369c45e35879e"
+    },
+    "output": {
+      "bytes": 24878534,
+      "sha256": "bee350d1b55ae36220884dcd831518425e74953b2bc92c1b68da7f51b8596b54"
+    }
+  },
+  "scope_limits": [
+    "No full S4 torture PASS: the unchanged frozen3e6331c8 case still reaches900s and is tracked separately",
+    "The old issue assumption that GNU NULL-table lookup is a miss was disproved by the pinned runtime and corrected",
+    "A direct integer-table native probe crashes GNU; that unsupported native precondition is not emulated as a Rust crash or part of the shared fixture",
+    "Missing-class error checks preserve the class name and required message content without assuming locale-specific quotation glyphs",
+    "Remaining registry-backed class helpers, broader asChar class-name coercion and native class-name workspace reservations remain in rport-2gpp.2.14",
+    "Initial test-only missing imports caused a compile failure with no executed admission test; only final successful logs count",
+    "Wasm web bindings execute in Node using the production module and original15s/64MiB limits; no on-device Android or live-browser timing claim",
+    "Unrelated user graphics edits were preserved; no whole-workspace or whole-engine safety claim"
+  ]
+}

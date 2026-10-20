@@ -26,6 +26,8 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "C_R_identC",
     "C_R_initMethodDispatch",
     "C_R_methodsPackageMetaName",
+    "C_R_methods_test_MAKE_CLASS",
+    "C_R_methods_test_NEW",
     "C_R_missingArg",
     "C_R_nextMethodCall",
     "C_R_quick_method_check",
@@ -49,6 +51,8 @@ const METHODS_CALL_NAMES: &[&str] = &[
     "R_identC",
     "R_initMethodDispatch",
     "R_methodsPackageMetaName",
+    "R_methods_test_MAKE_CLASS",
+    "R_methods_test_NEW",
     "R_missingArg",
     "R_nextMethodCall",
     "R_quick_method_check",
@@ -156,6 +160,14 @@ unsafe extern "C-unwind" fn c_new_object(class_def: SEXP) -> SEXP {
     unsafe { super::class_support::new_object(class_def) }
 }
 
+unsafe extern "C-unwind" fn c_methods_make_class(name: SEXP) -> SEXP {
+    unsafe { super::utils_methods::R_methods_test_MAKE_CLASS(name) }
+}
+
+unsafe extern "C-unwind" fn c_methods_new(name: SEXP) -> SEXP {
+    unsafe { super::utils_methods::R_methods_test_NEW(name) }
+}
+
 unsafe extern "C-unwind" fn c_rf_alloc_s4_object() -> SEXP {
     unsafe { super::class_support::Rf_allocS4Object() }
 }
@@ -239,6 +251,14 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         )),
         "new_object" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_new_object),
+        )),
+        "R_methods_test_MAKE_CLASS" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args1(c_methods_make_class),
+            ))
+        }
+        "R_methods_test_NEW" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args1(c_methods_new),
         )),
         "Rf_allocS4Object" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args0(c_rf_alloc_s4_object),

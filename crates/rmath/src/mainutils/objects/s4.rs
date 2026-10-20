@@ -141,14 +141,62 @@ unsafe fn class_def_to_sexp(class_name: &str, class_def: &S4ClassDef) -> SEXP {
 }
 
 pub unsafe fn R_do_MAKE_CLASS(what: *const c_char) -> SEXP {
+    unsafe { make_class_owned(what).as_raw() }
+}
+
+/// Resolve an actual methods class while retaining the call, arguments,
+/// namespace and result through evaluation and callback cleanup.
+pub(crate) unsafe fn make_class_owned(what: *const c_char) -> crate::sexp::object::Sexp<'static> {
     unsafe {
         let Some(name) = c_string_to_string(what) else {
             error("C level MAKE_CLASS macro called with NULL string pointer");
         };
-        if s4_class(&name).is_none() {
-            register_s4_class(name.clone(), Vec::new(), false);
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let factory = owner.node_factory();
+        let namespace = if let Some(pointer) =
+            crate::mainutils::essentials::cached_namespace_by_name("methods")
+        {
+            factory
+                .wrap(pointer)
+                .unwrap_or_else(|failure| error(&failure.to_string()))
+        } else {
+            crate::library::methods::portable::namespace().unwrap_or_else(|failure| error(&failure))
+        };
+        factory
+            .require_active()
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let function = factory
+            .wrap(Rf_install(c"getClass".as_ptr()))
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let name = factory
+            .strings(&[&name])
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let nil = factory.nil();
+        let arguments = factory
+            .pairlist_cell(&name, &nil, &nil)
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let call = factory
+            .call(&function, &arguments)
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let result = Rf_eval(call.as_raw(), namespace.as_raw());
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|failure| error(&failure.to_string()));
         }
-        R_getClassDef(what)
+        owner
+            .require_active()
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        factory
+            .wrap(result)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|failure| error(&failure.to_string()))
     }
 }
 
@@ -223,70 +271,46 @@ pub unsafe fn R_extends(class1: SEXP, class2: SEXP, _env: SEXP) -> c_int {
 
 pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
     unsafe {
-        if class_def.is_null() || class_def == R_NilValue() {
+        if class_def.is_null() {
             error("C level NEW macro called with null class definition pointer");
         }
 
-        // GNU objects.c: duplicate the classRepresentation prototype.
-        if crate::mainutils::coerce::IS_S4_OBJECT(class_def) != 0
-            || TYPEOF(class_def) == SEXPTYPE::S4SXP
-        {
-            let virtual_sym = crate::sexp::symbol::Rf_install(c"virtual".as_ptr());
-            let prototype_sym = crate::sexp::symbol::Rf_install(c"prototype".as_ptr());
-            let class_name_sym = crate::sexp::symbol::Rf_install(c"className".as_ptr());
-            let virtual_flag = crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
-            if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
-                let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
-                let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
-                error(&format!(
-                    "trying to generate an object from a virtual class (\"{shown}\")"
-                ));
-            }
-            let class_name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
-            let _class_name_guard = protect(class_name);
-            let prototype = crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
-
-            let value = crate::mainutils::duplicate::duplicate(prototype);
-            let _value_guard = protect(value);
-            let x_data = TYPEOF(value) == SEXPTYPE::ENVSXP
-                || TYPEOF(value) == SEXPTYPE::SYMSXP
-                || TYPEOF(value) == SEXPTYPE::EXTPTRSXP;
-            let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
-            let has_package = {
-                let pkg = crate::sexp::attrib_core::getAttrib(class_name, package_sym);
-                !pkg.is_null() && pkg != R_NilValue()
-            };
-            if (TYPEOF(value) == SEXPTYPE::S4SXP || has_package) && !x_data {
-                crate::sexp::attrib_core::setAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_ClassSymbol(),
-                    class_name,
-                );
-                SET_S4_OBJECT(value);
-            }
-            return value;
+        // GNU objects.c reads the classRepresentation slots even for an
+        // invalid R value. R NULL is distinct from a null native pointer.
+        let virtual_sym = crate::sexp::symbol::Rf_install(c"virtual".as_ptr());
+        let prototype_sym = crate::sexp::symbol::Rf_install(c"prototype".as_ptr());
+        let class_name_sym = crate::sexp::symbol::Rf_install(c"className".as_ptr());
+        let virtual_flag = crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
+        if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
+            let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+            let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
+            error(&format!(
+                "trying to generate an object from a virtual class (\"{shown}\")"
+            ));
         }
+        let class_name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+        let _class_name_guard = protect(class_name);
+        let prototype = crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
 
-        let Some(class_name) = class_name_from_def(class_def) else {
-            return R_NilValue();
+        let value = crate::mainutils::duplicate::duplicate(prototype);
+        let _value_guard = protect(value);
+        let x_data = TYPEOF(value) == SEXPTYPE::ENVSXP
+            || TYPEOF(value) == SEXPTYPE::SYMSXP
+            || TYPEOF(value) == SEXPTYPE::EXTPTRSXP;
+        let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
+        let has_package = {
+            let pkg = crate::sexp::attrib_core::getAttrib(class_name, package_sym);
+            !pkg.is_null() && pkg != R_NilValue()
         };
-        let Some(class_def) = s4_class(&class_name) else {
-            return R_NilValue();
-        };
-        if class_def.virtual_class {
-            error(&format!("class '{}' is virtual", class_name));
+        if (TYPEOF(value) == SEXPTYPE::S4SXP || has_package) && !x_data {
+            crate::sexp::attrib_core::setAttrib(
+                value,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class_name,
+            );
+            SET_S4_OBJECT(value);
         }
-
-        let out = Rf_allocVector(SEXPTYPE::VECSXP, class_def.slots.len() as c_int);
-        let _out_guard = protect(out);
-        let names = make_string_vector(&class_def.slots);
-        let _names_guard = protect(names);
-        for i in 0..class_def.slots.len() {
-            SET_VECTOR_ELT(out, i as R_xlen_t, R_NilValue());
-        }
-        setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
-        setAttrib(out, R_ClassSymbol(), make_string_vector(&[class_name]));
-        asS4(out, TRUE, 0)
+        value
     }
 }
 

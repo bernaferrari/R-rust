@@ -57,6 +57,7 @@ const contracts = [
     'condition-handler-stack-public-contract',
     'attribute-print-public-contract',
     's4-next-method-public-contract',
+    's4-cache-new-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',
     'try-condition-call-public-contract',

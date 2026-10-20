@@ -356,6 +356,60 @@ mod tests {
     }
 
     #[test]
+    fn owned_s4_native_admission_matches_gnu() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let name = factory.strings(&["AbsentCacheProbe"]).unwrap();
+        let empty = factory.strings(&[]).unwrap();
+        let invalid = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let nil = factory.nil();
+        use crate::library::methods::methods_list_dispatch::R_getClassFromCache;
+        // SAFETY: every native argument retains its original checked root or
+        // singleton lease. Error unwinding crosses only Rust frames here.
+        unsafe {
+            assert_eq!(
+                assert_r_error(|| {
+                    R_getClassFromCache(name.as_raw(), nil.as_raw());
+                })
+                .message,
+                "use of NULL environment is defunct"
+            );
+            assert_eq!(
+                assert_r_error(|| {
+                    R_getClassFromCache(invalid.as_raw(), nil.as_raw());
+                })
+                .message,
+                "class should be either a character-string name or a class definition"
+            );
+            assert_eq!(
+                R_getClassFromCache(empty.as_raw(), nil.as_raw()),
+                nil.as_raw()
+            );
+            assert_eq!(
+                assert_r_error(|| {
+                    R_do_new_object(nil.as_raw());
+                })
+                .message,
+                "cannot get a slot (\"virtual\") from an object of type \"NULL\""
+            );
+            assert_eq!(
+                assert_r_error(|| {
+                    R_do_new_object(ptr::null_mut());
+                })
+                .message,
+                "C level NEW macro called with null class definition pointer"
+            );
+        }
+        session.gc();
+        assert_eq!(
+            name.string_value_elt(0),
+            Some(Some("AbsentCacheProbe".to_owned()))
+        );
+    }
+
+    #[test]
     fn test_equalS3Signature_exact_match() {
         let _session = crate::sexp::session::RSession::new();
         let signature = b"print.default\0";
@@ -870,14 +924,14 @@ mod tests {
 
     #[test]
     fn test_R_do_MAKE_CLASS() {
-        let _session = crate::sexp::session::RSession::new();
+        let mut session = crate::sexp::session::RSession::new();
+        let (definition, _, _) = session.eval_script_with_output_capture(
+            "setClass('MakeClassProbe', slots=c(x='numeric')); getClassDef('MakeClassProbe')",
+        );
+        let definition = definition.unwrap().into_owned().unwrap();
         unsafe {
-            let result = R_do_MAKE_CLASS(b"foo\0".as_ptr() as *const c_char);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
-            assert_eq!(
-                sexp_to_string(named_vec_elt(result, "className")).as_deref(),
-                Some("foo")
-            );
+            let result = R_do_MAKE_CLASS(c"MakeClassProbe".as_ptr());
+            assert_eq!(session.sexp(result).unwrap(), definition);
         }
     }
 
@@ -1313,7 +1367,9 @@ mod tests {
 
     #[test]
     fn test_R_do_new_object() {
-        let _session = crate::sexp::session::RSession::new();
+        use crate::mainutils::{coerce::asReal, essentials::R_do_slot};
+
+        let mut session = crate::sexp::session::RSession::new();
         unsafe {
             // GNU objects.c R_do_new_object errors on a null class
             // definition pointer ("C level NEW macro called with null class
@@ -1322,17 +1378,20 @@ mod tests {
                 R_do_new_object(ptr::null_mut());
             });
             assert!(err.message.contains("null class definition pointer"));
-
-            register_s4_class(
-                "Point".to_string(),
-                vec!["x".to_string(), "y".to_string()],
-                false,
-            );
-            let class_def = R_getClassDef(b"Point\0".as_ptr() as *const c_char);
-            let result = R_do_new_object(class_def);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+        }
+        let (definition, _, _) = session.eval_script_with_output_capture(
+            "setClass('PointPrototypeUnit', slots=c(x='numeric', y='numeric'), prototype=prototype(x=1, y=2)); getClassDef('PointPrototypeUnit')",
+        );
+        let definition = definition.unwrap().into_owned().unwrap();
+        // SAFETY: the actual class definition retains its checked root; no
+        // payload loan overlaps construction or slot reads.
+        unsafe {
+            let result = R_do_new_object(definition.as_raw());
+            let rooted = session.sexp(result).unwrap();
+            let result = rooted.as_raw();
             assert_eq!(IS_S4_OBJECT(result), TRUE);
-            assert_eq!(LENGTH(result), 2);
+            assert_eq!(asReal(R_do_slot(result, Rf_install(c"x".as_ptr()))), 1.0);
+            assert_eq!(asReal(R_do_slot(result, Rf_install(c"y".as_ptr()))), 2.0);
         }
     }
 
