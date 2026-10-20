@@ -75,6 +75,15 @@ pub(crate) enum ResolvedLink {
     Singleton(SingletonLease),
 }
 
+#[cfg(test)]
+thread_local! {
+    static TRACE_LINK_BACKING_PROBES: Cell<usize> = const { Cell::new(0) };
+}
+#[cfg(test)]
+pub(crate) fn trace_link_backing_probe_count() -> usize {
+    TRACE_LINK_BACKING_PROBES.with(Cell::get)
+}
+
 /// Primitive authority belonging to one exact class-node generation. Keeping
 /// provider tables or R values here would create an owning heap cycle.
 struct BuiltinSequencePermit {
@@ -427,6 +436,8 @@ impl HeapIdentity {
         Some(link)
     }
     pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<ResolvedLink> {
+        #[cfg(test)]
+        TRACE_LINK_BACKING_PROBES.with(|count| count.set(count.get() + 1));
         if link.is_null() {
             return Some(ResolvedLink::Null);
         }
@@ -1232,6 +1243,16 @@ impl<T> Clone for NodeProjection<T> {
     }
 }
 impl<T> NodeProjection<T> {
+    /// Resolve the saved graph identity through this original weak page.
+    /// Metadata and physical storage must both remain live; no current-slot
+    /// identity is substituted for a stale generation.
+    pub(crate) fn resolve_link(&self, link: NodeLink) -> Option<(*mut T, CheckedNode)> {
+        let id = self.metadata.id_from_link(link)?;
+        let token = CheckedNode::new(self.metadata.clone(), id)?;
+        let values = self.values.upgrade()?;
+        Some((values.get(token.id.slot)?.as_ptr(), token))
+    }
+
     pub(crate) fn resolve_slot(&self, slot: usize) -> Option<(*mut T, CheckedNode)> {
         let token = CheckedNode::new(self.metadata.clone(), self.metadata.current_id(slot)?)?;
         let values = self.values.upgrade()?;

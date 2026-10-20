@@ -75,11 +75,25 @@ impl TraceContext {
     }
 
     fn project_link(&self, link: NodeLink) -> Result<Option<TraceNode>, TraceError> {
-        match self
-            .heap
-            .resolve_link(link)
-            .ok_or(TraceError::InvalidLink(link))?
-        {
+        if link.is_null() {
+            return Ok(None);
+        }
+        let cached = self
+            .readers
+            .borrow()
+            .get(&link.page_cookie())
+            .and_then(|reader| reader.resolve_link(link));
+        let resolved = match cached {
+            Some((projection, allocation)) => ResolvedLink::Node {
+                projection,
+                allocation,
+            },
+            None => self
+                .heap
+                .resolve_link(link)
+                .ok_or(TraceError::InvalidLink(link))?,
+        };
+        match resolved {
             ResolvedLink::Null | ResolvedLink::Singleton(_) => Ok(None),
             ResolvedLink::Node {
                 projection,
@@ -343,6 +357,127 @@ mod tests {
             wrong.snapshot(&context),
             Err(TraceError::ProjectionMismatch(_))
         ));
+    }
+
+    #[test]
+    fn checked_trace_cached_reader_resolves_edges_without_backing_lookup() {
+        let mut arena = memory::RArena::new();
+        let first = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let second = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let link = arena.node_token(second).unwrap().link().unwrap();
+        let context = Rc::new(TraceContext::new(arena.heap_identity(), 51));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(first).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        let before = crate::sexp::heap::trace_link_backing_probe_count();
+        for _ in 0..1000 {
+            worklist.enqueue_link(link).unwrap();
+        }
+        assert_eq!(worklist.pending.len(), 1);
+        assert_eq!(
+            crate::sexp::heap::trace_link_backing_probe_count() - before,
+            0,
+            "an admitted page reader repeated backing selection for graph edges"
+        );
+        assert_eq!(
+            worklist.next_marked().unwrap().unwrap().address(),
+            second.addr()
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn checked_trace_warmed_reader_rejects_reused_and_foreign_links() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let pointer = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap();
+        let original = memory::checked_projection(pointer).unwrap().1;
+        let saved = original.link().unwrap();
+        let context = Rc::new(TraceContext::new(original.heap_identity(), 53));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(pointer).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        super::super::full_gc();
+        let replacement = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::LISTSXP))
+            .unwrap();
+        assert_eq!(pointer.addr(), replacement.addr());
+        let current = memory::checked_projection(replacement).unwrap().1;
+        worklist.enqueue_link(current.link().unwrap()).unwrap();
+        assert_eq!(
+            worklist.enqueue_link(saved),
+            Err(TraceError::InvalidLink(saved))
+        );
+        let mut foreign = memory::RArena::new();
+        let other = foreign.alloc_node(SEXPTYPE::LISTSXP);
+        let foreign_link = foreign.node_token(other).unwrap().link().unwrap();
+        assert_eq!(
+            worklist.enqueue_link(foreign_link),
+            Err(TraceError::InvalidLink(foreign_link))
+        );
+        assert_eq!(worklist.pending.len(), 1);
+        assert_eq!(current.mark(53), Some(true));
+    }
+
+    #[test]
+    fn checked_trace_warmed_reader_rejects_destroyed_page_links() {
+        let mut arena = memory::RArena::new();
+        let pointer = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let link = arena.node_token(pointer).unwrap().link().unwrap();
+        let context = Rc::new(TraceContext::new(arena.heap_identity(), 59));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(pointer).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        drop(arena);
+        assert_eq!(
+            worklist.enqueue_link(link),
+            Err(TraceError::InvalidLink(link))
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+    }
+
+    #[test]
+    fn checked_trace_cached_reader_rejects_foreign_page_cookie_collision() {
+        let mut arena = memory::RArena::new();
+        let pointer = arena.alloc_node(SEXPTYPE::LISTSXP);
+        let original = arena.node_token(pointer).unwrap();
+        let context = Rc::new(TraceContext::new(arena.heap_identity(), 61));
+        let mut worklist = TraceWorklist::new(context.clone());
+        worklist.enqueue(pointer).unwrap();
+        worklist
+            .next_marked()
+            .unwrap()
+            .unwrap()
+            .snapshot(&context)
+            .unwrap();
+        let mut foreign = memory::RArena::new();
+        let other = foreign.alloc_node(SEXPTYPE::LISTSXP);
+        let token = foreign.node_token(other).unwrap();
+        let link = token.link().unwrap();
+        assert_eq!(link.page_cookie(), original.id().page_cookie());
+        assert_eq!(token.mark(61), Some(false));
+        assert_eq!(
+            worklist.enqueue_link(link),
+            Err(TraceError::InvalidLink(link))
+        );
+        assert!(worklist.next_marked().unwrap().is_none());
+        assert_eq!(token.mark(61), Some(true));
     }
 
     #[test]

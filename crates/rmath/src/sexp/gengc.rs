@@ -316,6 +316,8 @@ pub(crate) use remembered::*;
 pub(crate) use sweep::*;
 
 #[cfg(test)]
+mod fixed_heap_bench;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod tests_a;

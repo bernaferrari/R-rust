@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-7ojp4",
+  "status": "completed_fixed_live_mark_measurement",
+  "evidence_directory": "target/trace-reader-evidence",
+  "benchmark": "crates/rmath/src/sexp/gengc/fixed_heap_bench.rs",
+  "benchmark_sha256": "fc2b73266646511fdcfff5e5bb71566609397d054533428a4658ff570d7d682f",
+  "command": [
+    "frozen-rmath-test-binary",
+    "--ignored",
+    "--exact",
+    "sexp::gengc::fixed_heap_bench::fixed_live_heap_mark_measurement",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "profile": {
+    "opt_level": 3,
+    "debug_assertions": false,
+    "overflow_checks": false,
+    "tests": true
+  },
+  "artifacts": {
+    "baseline": {
+      "production_base": "c30e83c1",
+      "scope": "Only test instrumentation, adversarial tests and fixed mark benchmark added; link fast path absent",
+      "executable_sha256": "95f89026c88d8e675be82508818e1f6c566cbb950b80f3ab5663108008d93f6a",
+      "source_hashes": {
+        "crates/rmath/src/sexp/heap.rs": "04c47524ca74e341062d7bb152b876d39f0dc54cdb531b2114692510b4edd881",
+        "crates/rmath/src/sexp/gc_trace.rs": "99bad09a1efa8f787c6fb5bf76aee9aff6fd72f68608ca7327272797fc046ead",
+        "crates/rmath/src/sexp/gengc.rs": "33f27557d2e544a353026a336e7f17a536c18c0cc82803b21b2120ab03dbe1b4",
+        "crates/rmath/src/sexp/gengc/fixed_heap_bench.rs": "fc2b73266646511fdcfff5e5bb71566609397d054533428a4658ff570d7d682f"
+      }
+    },
+    "candidate": {
+      "base": "3118a08d",
+      "scope": "Only original weak page-reader link resolution, null fast path, same instrumentation and benchmark",
+      "executable_sha256": "2f6d93e4c6224f1fca8aa4091e8359177875f7db15c67eb689b695ade47a7789",
+      "source_hashes": {
+        "crates/rmath/src/sexp/heap.rs": "eb62b07fce12f050efe7f8e63954f776efdef7b2de0ee3b66b55d25867ccb8bc",
+        "crates/rmath/src/sexp/gc_trace.rs": "0ad398270b43be775e0aa4bef69f58dbd135863e2499b22febeee76f2424087d",
+        "crates/rmath/src/sexp/gengc.rs": "33f27557d2e544a353026a336e7f17a536c18c0cc82803b21b2120ab03dbe1b4",
+        "crates/rmath/src/sexp/gengc/fixed_heap_bench.rs": "fc2b73266646511fdcfff5e5bb71566609397d054533428a4658ff570d7d682f"
+      }
+    }
+  },
+  "comparison": {
+    "scope": "Fixed live graph mark phase only; no lazy loading or sweep, not total S4 timing",
+    "runtime_thread_environment": {
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "RAYON_NUM_THREADS": "2"
+    },
+    "runs": [
+      {
+        "artifact": "baseline",
+        "trial": 1,
+        "graph_nodes": 16384,
+        "collections": 1518,
+        "mark_ns": 2999783704,
+        "mark_ns_per_collection": 1976142,
+        "elapsed_ns": 3000280708,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 1,
+        "graph_nodes": 65536,
+        "collections": 384,
+        "mark_ns": 3003324044,
+        "mark_ns_per_collection": 7821156,
+        "elapsed_ns": 3003594791,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 1,
+        "graph_nodes": 16384,
+        "collections": 1834,
+        "mark_ns": 2999932470,
+        "mark_ns_per_collection": 1635731,
+        "elapsed_ns": 3000488750,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 1,
+        "graph_nodes": 65536,
+        "collections": 471,
+        "mark_ns": 3001866405,
+        "mark_ns_per_collection": 6373389,
+        "elapsed_ns": 3002036875,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 2,
+        "graph_nodes": 16384,
+        "collections": 1815,
+        "mark_ns": 3000726976,
+        "mark_ns_per_collection": 1653293,
+        "elapsed_ns": 3001159083,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 2,
+        "graph_nodes": 65536,
+        "collections": 453,
+        "mark_ns": 3000933080,
+        "mark_ns_per_collection": 6624576,
+        "elapsed_ns": 3001153583,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 2,
+        "graph_nodes": 16384,
+        "collections": 1447,
+        "mark_ns": 2999926917,
+        "mark_ns_per_collection": 2073204,
+        "elapsed_ns": 3000432250,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 2,
+        "graph_nodes": 65536,
+        "collections": 364,
+        "mark_ns": 3001144500,
+        "mark_ns_per_collection": 8244902,
+        "elapsed_ns": 3001372541,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 3,
+        "graph_nodes": 16384,
+        "collections": 1454,
+        "mark_ns": 3001213588,
+        "mark_ns_per_collection": 2064108,
+        "elapsed_ns": 3001662375,
+        "sweep_included": false
+      },
+      {
+        "artifact": "baseline",
+        "trial": 3,
+        "graph_nodes": 65536,
+        "collections": 364,
+        "mark_ns": 3003369255,
+        "mark_ns_per_collection": 8251014,
+        "elapsed_ns": 3003565917,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 3,
+        "graph_nodes": 16384,
+        "collections": 1853,
+        "mark_ns": 3001152210,
+        "mark_ns_per_collection": 1619618,
+        "elapsed_ns": 3001557458,
+        "sweep_included": false
+      },
+      {
+        "artifact": "candidate",
+        "trial": 3,
+        "graph_nodes": 65536,
+        "collections": 459,
+        "mark_ns": 3003498048,
+        "mark_ns_per_collection": 6543568,
+        "elapsed_ns": 3003702875,
+        "sweep_included": false
+      }
+    ],
+    "summary": [
+      {
+        "graph_nodes": 16384,
+        "baseline_median_ns": 2064108,
+        "candidate_median_ns": 1635731,
+        "speedup": 1.2619
+      },
+      {
+        "graph_nodes": 65536,
+        "baseline_median_ns": 8244902,
+        "candidate_median_ns": 6543568,
+        "speedup": 1.26
+      }
+    ]
+  },
+  "log_sha256": {
+    "fixed-mark-baseline-trial1.log": "70770fabb5b5bc266d4e315717f975f5bcbf54946b7a25fae035e520a28eb19a",
+    "fixed-mark-baseline-trial2.log": "e664228ae309fa5a6f679559b5ff36c4c844e65ae496e13a6773916803f077d5",
+    "fixed-mark-baseline-trial3.log": "6dee1bfa737a54d5cbacdb114a1cd76cce61569b0dc6cea12ae3e6a0ba9ab293",
+    "fixed-mark-candidate-trial1.log": "e8898c3d96c1267ca00dc76b1031041406a6334e74168a8b55993797ff2ce469",
+    "fixed-mark-candidate-trial2.log": "ead409e5086aa6a854efcfb58d8a27265920f8da7b60241cecc49e7ef8a552b5",
+    "fixed-mark-candidate-trial3.log": "2fbf5ab47f52f4e3683a4fd017406439b581e935b266519aa33277fb372b2bc4"
+  },
+  "scope_limits": [
+    "Mark phase on a fixed minimal-session live graph only; sweep and package lazy loading excluded",
+    "Recorded collection count is the actual GcStats delta from explicit mark-only run_gc_cycle_in transactions, not a production torture workload count",
+    "All original graph tokens and the one checked root remain live after each three-second measurement window",
+    "Two identical edges per list cell exercise repeated admission; this is a collector measurement rather than an R workload forecast",
+    "Original release compilation and thread-pool defaults retained; three alternating trials reduce host timing noise, no machine-dependent test threshold",
+    "Baseline has the header-reader optimization but no link-reader optimization; candidate adds only weak link-reader resolution and a null fast path",
+    "A subsequent extra foreign-page-cookie regression changes test source only, not measured production behavior",
+    "No full S4 PASS, total collection speedup, or browser timing inferred from this mark-phase ratio"
+  ]
+}
