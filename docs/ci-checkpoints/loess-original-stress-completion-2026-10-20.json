@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-4m0nz.5",
+  "outcome": "original unchanged native group completed successfully;19 tests passed, exit0",
+  "command": "scripts/cargo_dev.sh test -p r-embed --release --test loess_native_outputs --test loess --test loess_na --test loess_isolation -- --test-threads=1",
+  "group_harness_seconds": {
+    "loess_12": 1103.72,
+    "loess_isolation_3": 10.95,
+    "loess_na_3": 702.08,
+    "loess_native_outputs_1": 5.4
+  },
+  "original_stress_cases": [
+    "loess_objects_survive_collection_and_serialization",
+    "loess_na_exclude_keeps_explicit_newdata_shape_and_serializes"
+  ],
+  "unchanged_test_sha256": {
+    "crates/r-embed/tests/loess.rs": "6f3b782ffa83d9f7c3164169da98b39e456a6afc60f6ff1aa6d595f1d7edad78",
+    "crates/r-embed/tests/loess_na.rs": "f221ec64728bb4e8dfca0daaae8c6638da1c3a7f4566e0c11135a817a79986cb",
+    "crates/r-embed/tests/loess_isolation.rs": "590b5d174a8c9065d39a9c700ae49431a0039754a748f556c4555494cd081298"
+  },
+  "log": "target/loess-native-outputs-evidence/native-20261020.log",
+  "log_sha256": "b33c169f01b7a2dea1ec08380afeebeed2e3e8cf8d71f2d8fcd48df07b545a9b",
+  "profile": {
+    "sample": "target/loess-native-outputs-evidence/original-torture-sample-20261020.txt",
+    "hot_path": "full GC drain_trace_worklist, CheckedNode projection, weak link backing resolution"
+  },
+  "limits": [
+    "The initial run used a dirty output-fix candidate before the exact-power follow-up; no immutable source or executable identity was captured at launch.",
+    "The original running executable path was replaced by later builds. Its current hash is not evidence of the running artifact.",
+    "These are observed successful completion times, not a predeclared watchdog guarantee, benchmark comparison, portable timeout guarantee or current-frozen-artifact claim.",
+    "The900s incomplete milestone remains valid; the original loess group exceeded it. No assertions or original GC frequency were reduced.",
+    "Broader forced-GC performance work remains open in rport-4m0nz."
+  ]
+}

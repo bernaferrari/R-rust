@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-aa96.1"
+  ],
+  "production_loess_base": "6f355525",
+  "source_sha256": {
+    "crates/rmath/src/mainutils/native_routines/buffers/loess_lifecycle_tests.rs": "d1835b64903970a42f562e857bcf79c8f5c3f6981a3a873ffc36ac767ebce0ec",
+    "crates/r-embed/tests/loess_native_outputs.rs": "d4e7520107e9b9680ddfe9039c42051a38ca7b4dd852d072589fcd3266db5010",
+    "crates/r-embed/tests/fixtures/loess-robust-workspaces.R": "9126084262d8169475dc80ac82dcec374a5bfd813cb039503b3d17a62371b421",
+    "tests/browser/loess-native-outputs.cjs": "0e0c798e53fadc25a256f67be10d937ad13b3a52bd0260cf7730c1d19a34bc0d"
+  },
+  "behavior": [
+    "Stateless numerical model decoding remains the genuine owned GNU KD representation; no latest-model or skip cache exists.",
+    "Actual .C dispatch captures original model nodes before a name provider detaches argument cells and triggers real GC; predictions and sentinel tails remain valid after original runtime closure.",
+    "A closing name callback and wrong package return exact managed admission errors without kernel invocation. Live and closed foreign original argument/model domains reject before name provider lookup or leaf invocation.",
+    "Registered lowesw/lowesp expose genuine GNU partial-selection workspace permutations, numerical weights and pseudovalues, zero-MAD NaNs, all unchanged input buffers and sentinel tails."
+  ],
+  "validation": {
+    "native_boundary_passed": 6,
+    "strict_i686_miri_passed": 6,
+    "miri_harness_seconds": 527.54,
+    "miri_flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-ignore-leaks"
+    ],
+    "miri_scope": "Default isolation, alias/alignment and float-nondeterminism checks retained; final6 includes exact errors plus actual registered lowesw/lowesp calls.",
+    "public_native": "2 full GNU native-output contracts passed on concurrent S4 candidate; production LOESS code unchanged from6f355525.",
+    "pinned_gnu": "loess-robust-workspaces.R returnsTRUE against oracle bac583951b728e97b9786804d3b4081f0fe18df5.",
+    "production_wasm": "86checks passed on retained6f355525 production module; extends40 all-buffer cases\u00d72 sessions with robust workspaces, isolation and recovery.",
+    "other_gates": "Four-crate all-target Clippy -Dwarnings and Android cross-check passed on concurrent S4 candidate; see S4 class-helper checkpoint."
+  },
+  "wasm": {
+    "bytes": 24770985,
+    "sha256": "803487090f6d04caaafff8a3479c3a557125614552160b92df84f9d69fb488f2"
+  },
+  "log_sha256": {
+    "target/loess-native-outputs-evidence/native-lifecycle-final-20261020.log": "2f3ffceb26f502c3ed8fa5360af4e7ec26240ed4728f9ecfa417871eede4b441",
+    "target/loess-native-outputs-evidence/miri-lifecycle-verified-20261020.log": "a47ebd40351453decabf2ddc59959d44cdc16f37fbb3649b593ff8bfc9454ebb",
+    "target/loess-native-outputs-evidence/gnu-robust-workspaces-20261020.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "target/loess-native-outputs-evidence/wasm-robust-workspaces-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65"
+  },
+  "related_evidence": [
+    "docs/ci-checkpoints/loess-native-outputs-2026-10-20.json",
+    "docs/ci-checkpoints/loess-original-stress-completion-2026-10-20.json"
+  ],
+  "limits": [
+    "This closes the scoped LOESS model/output lifecycle acceptance, not whole-interpreter ownership or total native memory accounting.",
+    "The original stress completion receipt explicitly lacks a frozen initial runtime artifact and makes no benchmark or portable timeout guarantee."
+  ]
+}

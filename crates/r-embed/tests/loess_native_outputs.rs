@@ -21,3 +21,15 @@ fn loess_native_buffers_match_independent_gnu_outputs() {
     assert_eq!(session.eval("actual <- loess_native_outputs(); comparison <- all.equal(actual, expected, tolerance=1e-9); if (!isTRUE(comparison)) stop(paste(comparison, collapse='; ')); identical(length(actual), 40L)").unwrap(), "[1] TRUE\n");
     assert_eq!(session.eval("1L + 1L").unwrap(), "[1] 2\n");
 }
+
+#[test]
+fn loess_robust_native_buffers_match_gnu_permutations_and_sentinel_tails() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(include_str!("fixtures/loess-robust-workspaces.R"))
+            .unwrap(),
+        "[1] TRUE\n"
+    );
+    assert_eq!(session.eval("1L + 1L").unwrap(), "[1] 2\n");
+}

@@ -16,9 +16,11 @@ for (let generation = 0; generation < 2; generation++) {
     checks += 40;
     assert.equal(session.eval_checked(fs.readFileSync(path.join(fixtures, 'loess-isolation.R'), 'utf8')), '[1] TRUE\n');
     checks++;
+    assert.equal(session.eval_checked(fs.readFileSync(path.join(fixtures, 'loess-robust-workspaces.R'), 'utf8')), '[1] TRUE\n');
+    checks++;
     assert.equal(session.eval_checked('1L + 1L'), '[1] 2\n');
     checks++;
   } finally { session.close(); session.free(); }
 }
-assert.equal(checks, 84);
+assert.equal(checks, 86);
 console.log(`LOESS_NATIVE_OUTPUTS_WASM_COMPLETE checks=${checks} failures=0`);

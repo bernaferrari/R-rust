@@ -1035,3 +1035,6 @@ mod ppr_predict_tests;
 mod stl_tests;
 #[cfg(test)]
 mod supsmu_tests;
+
+#[cfg(test)]
+mod loess_lifecycle_tests;
