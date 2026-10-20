@@ -252,7 +252,7 @@ pub unsafe fn WriteItemInternal(
             writer.write_i32(flags);
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };
             writer.write_i32(len);
-            if len > 0 {
+            if len >= 0 {
                 let char_data = CHAR(s);
                 writer.write_string_bytes(char_data, len);
             }
