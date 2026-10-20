@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-cvs2.9",
+  "status": "verified",
+  "implementation_commit": "40a9d946",
+  "source_sha256": {
+    "crates/rmath/src/sexp/object/factory.rs": "d1c4f54e5c427034f0bee44d338719aa9d8462628561b0c0ad9159428e8e9d84",
+    "tests/browser/checked-exhaustion.cjs": "edb12fe22986812df8adcb98c9cbc6c020441c551c52d037f9c3b9aae4b619f3"
+  },
+  "evidence_directory": "target/checked-exhaustion-evidence",
+  "regressions_before": [
+    "Native denied allocation returned Some(NULL), which checked wrapping reported as UnownedPointer at0",
+    "Production Wasm with legal paste inputs and retained raw filler reported an invalid pointer when native workspace fit but final R string did not"
+  ],
+  "behavior": [
+    "Reject null allocation results as SexpError::AllocationFailed before obtaining a checked root",
+    "Preserve both explicit allocator and session factory cleanup, live-limit denial and small-value recovery",
+    "R tryCatch receives the allocation failure and later small paste succeeds while filler remains retained"
+  ],
+  "validation": {
+    "native_regressions": {
+      "passed": 2,
+      "log": "green-20261020.log"
+    },
+    "native_factory": {
+      "passed": 8,
+      "log": "factory-final-native-20261020.log"
+    },
+    "miri": {
+      "passed": 2,
+      "seconds": 148.68,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "log": "miri-final-20261020.log"
+    },
+    "clippy": {
+      "crates": 4,
+      "all_targets": true,
+      "warnings_denied": true,
+      "exit_code": 0,
+      "log": "clippy-final-20261020.log"
+    },
+    "android": {
+      "crate": "r-uniffi",
+      "target": "aarch64-linux-android",
+      "exit_code": 0,
+      "log": "android-final-20261020.log"
+    },
+    "production_wasm": {
+      "checks": 12,
+      "recreated_sessions": 2,
+      "failures": 0,
+      "session_bytes": 67108864,
+      "linear_memory_bytes": 268435456,
+      "optimized_asset_bytes": 24791462,
+      "log": "wasm-verified-20261020.log"
+    }
+  },
+  "scope_limits": [
+    "This is canonical checked allocation error propagation, not a migration of every remaining raw allocation call site",
+    "Root-table capacity exhaustion remains a distinct issue rport-sg9a.2",
+    "Allocator metadata, regex and rendering accounting remain separate parent scope",
+    "Production Wasm runs under Node; Android is a cross-compilation check",
+    "Unrelated shared graphics edits remain outside this milestone"
+  ],
+  "log_sha256": {
+    "admission-valid-red-20261020.log": "f7a8ee4665cb71e964011c53eff1d55c400f811d6fe263c288314c68261e2473",
+    "public-valid-red-20261020.log": "e231298660f70c16a2c7d4d79583e2b9f69b4d7935e73601b14b0c7354d75e7e",
+    "green-20261020.log": "6ce2e2adea8fb20f60052eb9e23f92092a8b230c368b89f813cd1afbf50cc625",
+    "factory-final-native-20261020.log": "0836da89204e1f3b182acbb02c23d37c917cc256aa82762b3cdbbf56749ec488",
+    "miri-final-20261020.log": "0242000ee60ae1838ae4b505b6a9a48e427a44d47d74056c7690d6f6cf177afd",
+    "clippy-final-20261020.log": "3b582c870fd01fd76afa991e5e7960741cf6ac7c08f023a91cd6a707555c7c07",
+    "android-final-20261020.log": "887f60ee43ff6bcf77f22ea808ac7adfd3b31ef40df790eb23c625aba50ec31b",
+    "wasm-build-20261020.log": "92ab75b13b7ec0cb11d6384e71bbb36e7d4972fa8f52cefcd9ffe7d03b7a4c4d",
+    "wasm-optimization-20261020.log": "fa632c6d9fc9591319d695d1636dba5c9ed1f56be00c047c516eecd213f6eac0",
+    "wasm-verified-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a"
+  },
+  "wasm_sha256": {
+    "r_wasm_bg.wasm.d.ts": "9ecb5e7438c7acc4a72a33c3c1fc48338613c0c868753517cbe8c7f31ddb395b",
+    "r_wasm_bg.wasm": "45c46876b08a41e1e3863b462bb396c5d87138049d584ee31874143beeef4b30",
+    "r_wasm.js": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3",
+    "r_wasm.d.ts": "7e3cf2cab7e0429022809e7925982a262edda8052eca9f4d7f4826b5db50c4ae"
+  }
+}
