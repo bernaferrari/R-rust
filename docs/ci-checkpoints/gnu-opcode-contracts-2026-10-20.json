@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-s3u1",
+  "status": "verified_existing_implementation",
+  "source_base": "2cc73533",
+  "source_sha256": {
+    "crates/rmath/src/eval/bc_eval/execute.rs": "d002d61c0b8770b6e9ba2a1e5b04642f6b8e3ae7ecfaad3704479abfac7f9561",
+    "crates/rmath/src/eval/bc_eval/calls.rs": "46acf9754536487b14b6f8d978789ebc4045e501c39c25f3b2a51d580e109846",
+    "crates/rmath/src/eval/bc_eval/subset_ops.rs": "b207216e0c8389dae0056785c196d47b8024cf79d9b5b0f47939c14eb80f0346",
+    "crates/r-embed/tests/gnu_bytecode_getter_call.rs": "2650980e773341f230b3b29564f1335da027a14ce30216f8e34735b4168921a8",
+    "crates/r-embed/tests/gnu_bytecode_matsubset2.rs": "a97b2e4a2445dd0beb0970c2a3f1c30455dcb7003a7952895750a42bff8a4894",
+    "crates/r-embed/tests/gnu_bytecode_subset2_n.rs": "bf84bebb889248e6d607d07b3ef74a251a9f35f34ff40389f9100bb2ebd2f89d",
+    "tests/browser/gnu-opcode-contracts.cjs": "3c0eb4849b32ae2df13ebbafcf835ccce016a773133cf02d734726bbdc5728b7"
+  },
+  "evidence_directory": "target/trace-token-evidence",
+  "validation": {
+    "native_imported_gnu": {
+      "passed": 14,
+      "log": "gnu-opcode-20261020.log",
+      "sha256": "c147363d83a2839d3f47e50b13e4bb1dc8b31dd549b94d5452d4176ac2a91aca"
+    },
+    "native_validators": {
+      "passed": 3,
+      "log": "gnu-opcode-validators-20261020.log",
+      "artifact": "candidate-rmath",
+      "artifact_sha256": "c3639b1e5e9808c5da5b31b7bca52ff8d60dcc746b2b2c11095fb671cfefb54e"
+    },
+    "production_wasm": {
+      "passed": 28,
+      "sessions": 2,
+      "log": "wasm-gnu-opcode-20261020.log",
+      "sha256": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+      "module_sha256": "3f42c11f4fcf310e6de97bbb6b7a0da12bcb80db03a8d0d0e671dfba51c9b32d"
+    }
+  },
+  "behavior": [
+    "GETTER_CALL names/attribute replacement, visibility, sharing and closure getter",
+    "MATSUBSET2 matrix extraction and global S3 dispatch",
+    "SUBSET2_N constant/variable multidimensional extraction and native named indices/S3 dispatch",
+    "Mutated instruction streams execute differently from retained serialized source",
+    "Malformed missing-frame/empty-stack streams fail and the session remains usable"
+  ],
+  "scope_limits": [
+    "Runtime implementations predate this verification; this milestone adds a portable regression runner and closes stale tracking.",
+    "Initial added local-method visibility assertion was incorrect: pinned GNU and Wasm both returned1; final method-dispatch check uses the existing native global-method contract.",
+    "Production Wasm executed in Node; no browser UI or on-device Android run claimed.",
+    "No full bytecode or full R parity claim."
+  ]
+}

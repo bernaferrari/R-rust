@@ -1,7 +1,7 @@
 {
   "date": "2026-10-20",
   "issue": "rport-4m0nz.4",
-  "status": "native_verified_production_timing_pending",
+  "status": "native_and_wasm_verified_original_s4_diagnostic_running",
   "source_sha256": {
     "crates/rmath/src/sexp/heap.rs": "e414fcba23313a00c7ace1e103c6a54d18738ae7a3acff0c38962c439429070c",
     "crates/rmath/src/sexp/gc_trace.rs": "ee85a64bfe8dc7895921fe0ba4fb7dd244e9d09f35502d94c3f1e7df08a60aab"
@@ -45,6 +45,43 @@
     "android_cross_check": {
       "log": "android-20261020.log",
       "sha256": "d9258727cd623a792fa742483ef1ca6323685f5a2f9766a617c268add58506f3"
+    },
+    "production_wasm": {
+      "module": {
+        "schema_version": 1,
+        "binaryen_version": "133",
+        "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+        "arguments": [
+          "-Oz"
+        ],
+        "feature_policy": "preserve input target_features",
+        "input": {
+          "bytes": 29123829,
+          "sha256": "928a0fc203e2c23d7a5fb0749a55e7316bf4a8960678c8b6cbd19692a80f053f"
+        },
+        "output": {
+          "bytes": 24876266,
+          "sha256": "3f42c11f4fcf310e6de97bbb6b7a0da12bcb80db03a8d0d0e671dfba51c9b32d"
+        }
+      },
+      "checks": 118,
+      "breakdown": {
+        "s4_cache_new": 4,
+        "permanent_ledger": 14,
+        "checked_exhaustion": 12,
+        "serialization_workspace": 14,
+        "portable_web_binding_contracts": 74
+      },
+      "engine": "Node.js executes production Node/web bindings; no Chromium or on-device execution claimed",
+      "logs": {
+        "wasm-build-20261020.log": "0b5ab359256250674e46540f8f99a3cb82456d4efddfe6ef94160d227a046e7b",
+        "wasm-optimization-20261020.log": "e025c92f08d365025232d30820cedc7e366549ec8f9770bd917d503110ca8d24",
+        "wasm-s4-cache-new-20261020.log": "3b77f6f3c8cee02b9d2a88d7880ee9a6e98a3effb37f6a59b54f5320f46e47e4",
+        "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+        "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+        "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+        "wasm-portable-contracts-20261020.log": "53ef77d499031d659b78c9b2f558f7a1996671b16bc7a1fe9e2a2ca40f82f5f8"
+      }
     }
   },
   "instrumented_mark_comparison": {
@@ -225,11 +262,10 @@
     "default_alias_checks": true
   },
   "remaining": [
-    "Production Wasm build and regressions",
-    "Frozen original S4 torture test completion and timing with unchanged R program/class setup/assertion"
+    "Frozen original S4 torture test completion/timing with unchanged R program/class setup/assertion; candidate and matched baseline both incomplete at900s and continuing under explicit3600s diagnostic bound."
   ],
   "scope_limits": [
-    "This is a verified native source milestone, not issue completion or full S4 success",
+    "Verified tracing and platform milestone; original S4 torture performance remains open.",
     "Both mark test binaries include token/backing counters; their ratios are instrumented diagnostics, not uninstrumented production speedup",
     "No torture frequency, allocation publication point, original class setup or test assertion changed",
     "Non-test CheckedNode construction retains the original checked expression; cfg(test) success counting does not add a production path",
