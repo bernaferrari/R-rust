@@ -54,5 +54,8 @@ stopifnot(identical(readBin(connection,'character',n=0L),character()),
           identical(readBin(connection,'character',n=1L),'b'),
           identical(readBin(connection,'character',n=1L),character()))
 close(connection)
+stopifnot(identical(readBin(con=as.raw(c(9,8,7,6)), 'raw', 2L), as.raw(c(9,8))),
+          identical(writeBin(con=raw(), c(1L,256L), size=2L, endian='big'), as.raw(c(0,1,1,0))),
+          identical(readBin(what='raw', con=input, 2L), as.raw(c(0,1))))
 unlink(directory,recursive=TRUE)
 cat('GNU_BINARY_FILENAME_CONTRACT_PASS\n')

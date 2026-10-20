@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-wszw.11.1",
+  "status": "verified",
+  "implementation_commit": "f89aa22a",
+  "source_sha256": {
+    "crates/rmath/src/mainutils/connections/binary/filename_owned.rs": "5c3f22d90882dc25c7ebbede921fbe151b6c8e4e7eecd0aa84e656d67c44de05",
+    "crates/rmath/src/mainutils/connections/binary/filename_tests.rs": "5cb8f4f9904d43554b637b65a4cd4cf2b1c743ab88e30e5376496a100747b4ab",
+    "crates/rmath/src/mainutils/connections/binary/filename-oracle.R": "ceb20f7af944b1520854d56ea661e983b3117a390a9f2ed7d1a8cc9ecce59f40",
+    "crates/r-embed/tests/browser_binary_filenames.rs": "535b3b7a0b751a6437db626d117fa57b8917e8075d1b3a1afdcfde33c1fce287",
+    "tests/browser/binary-admission.cjs": "234bf66d24cfa8f879645c020a987edb37a23eb2079c049395eb589ca279fe79"
+  },
+  "evidence_directory": "target/binary-admission-evidence",
+  "regressions_before": [
+    "Actual malformed tag invoked filename provider before reporting invalid symbol; callback count1 instead of0",
+    "Named con with first unnamed what and count selected the wrong operands; one output byte instead of2"
+  ],
+  "behavior": [
+    "Own and validate the entire argument chain, all tag/value domains and tag types before filename classification or provider invocation",
+    "Retain cycle detection and original owner pin through operations and cleanup",
+    "Match named arguments first, then place unnamed arguments into remaining formal positions",
+    "Reject duplicate/unknown arguments before file side effects; preserve existing endian/swap aliases"
+  ],
+  "validation": {
+    "native_focused_final": {
+      "passed": 5,
+      "log": "admission-final-native-20261020.log"
+    },
+    "native_binary_module": {
+      "passed": 22,
+      "log": "full-binary-native-20261020.log"
+    },
+    "public_native_gnu_matching": {
+      "passed": 1,
+      "controls": 3,
+      "log": "public-named-green-20261020.log"
+    },
+    "clippy": {
+      "crates": 4,
+      "all_targets": true,
+      "warnings_denied": true,
+      "exit_code": 0,
+      "log": "clippy-final-20261020.log"
+    },
+    "android": {
+      "crate": "r-uniffi",
+      "target": "aarch64-linux-android",
+      "exit_code": 0,
+      "log": "android-final-20261020.log"
+    },
+    "miri": {
+      "passed": 5,
+      "seconds": 465.11,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "log": "miri-isolated-verified-20261020.log"
+    },
+    "gnu_oracle": {
+      "manifest": "oracle/r-oracle.json",
+      "svn_revision": 90451,
+      "exit_code": 0,
+      "completion_marker": "GNU_BINARY_FILENAME_CONTRACT_PASS",
+      "log": "gnu-filenames-and-matching-20261020.log"
+    },
+    "production_wasm": {
+      "matching_checks": 6,
+      "filename_checks": 35,
+      "failures": 0,
+      "session_byte_limit": 67108864,
+      "linear_memory_byte_limit": 268435456,
+      "optimized_asset_bytes": 24779599
+    }
+  },
+  "scope_limits": [
+    "Miri fixtures use minimal sessions and raw buffers to preserve isolation; first attempt stopped on the browser-file timestamp wall clock, not a UB finding",
+    "Native module22 predates only fixture normalization; final native5 and strictMiri5 cover final fixtures",
+    "Wasm is production Node execution; Android is cross-compilation, not browser-engine/device execution",
+    "Shared unrelated graphics edits and separate checked-allocation work remain outside this milestone",
+    "No whole-engine safety, total RSS bound or full GNU argument-matching claim"
+  ],
+  "log_sha256": {
+    "admission-valid-red-20261020.log": "26669b252a531063b42fd658e066a7fd9b95a604fa3057adc0c17f790b9bb1b5",
+    "admission-final-native-20261020.log": "c092a4a3c109c43673677cc4bdb1cbbae90a2803404f630f811b6670dc7dfa10",
+    "full-binary-native-20261020.log": "3b3f9e6b9384431e0c8b5450bcddb6c7b1de2bfd1873b88d041c4e41823b8bd8",
+    "public-named-green-20261020.log": "ec8bafbe8f2373b8935fadd983a42dffcd8afb6030aa3a8f6a949a87209db79c",
+    "clippy-final-20261020.log": "0da494254b7ea1da550b58ef1652e0b2c090ec5ff5e0dd4b781c783684ab9b31",
+    "android-final-20261020.log": "c2888850b87f341a7c76e858cb20ec9ba58dc81332d318e71f61ed2cb4bf3312",
+    "miri-isolated-verified-20261020.log": "f634cf4010fe59e2af6e3edefaa1337f9e0fd3a9ef37acebdfbb5c4c603adc7a",
+    "gnu-filenames-and-matching-20261020.log": "b26231b71dd16affdf1ab6c30470c746084adbe3e069fccc6c4511e74b1a824e",
+    "wasm-build-20261020.log": "8cd5957b407f0a78ae4f7e2679924074323fc926754302bc0bc46fcb12c00a5d",
+    "wasm-optimization-20261020.log": "0a6a561ac625e06c696568cf110cc3d40778c787a3b3da86f6c54f63658f6be4",
+    "wasm-admission-20261020.log": "e1b15d484fe9d10777af4eac9f17063906f9cdf123a7dac167519690ae0923a9",
+    "wasm-filenames-20261020.log": "8e5a27c4429941852926b93e9852de4ef042b9f0f7a236fe1da31aae3d4340c5"
+  },
+  "wasm_sha256": {
+    "r_wasm_bg.wasm.d.ts": "a77fac0781251574087e7e147b55b78d645e79589dfff6ab4daa59d3406a0add",
+    "r_wasm_bg.wasm": "7db030e0f9c68c650b8465ccd0991d02ecc4202f576d2b2c2d9e505e18fb7081",
+    "r_wasm.js": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3",
+    "r_wasm.d.ts": "7e3cf2cab7e0429022809e7925982a262edda8052eca9f4d7f4826b5db50c4ae"
+  }
+}

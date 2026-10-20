@@ -992,7 +992,7 @@ fn owned_binary_filename_saved_character_survives_admission_slot_detachment_and_
 }
 
 fn malformed_binary_arguments(malformed: &str) {
-    let session = session();
+    let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
     let calls = Rc::new(Cell::new(0));
     let observed = calls.clone();
@@ -1093,9 +1093,18 @@ fn binary_admission_foreign_operand_precedes_filename_provider() {
 
 #[test]
 fn binary_admission_named_con_keeps_first_unnamed_what_and_count() {
-    let session = session();
+    let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
-    let con = filename(&session);
+    let con = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 4)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    for (index, byte) in [9, 8, 7, 6].into_iter().enumerate() {
+        unsafe {
+            SET_RAW_ELT(con.as_raw(), index as c_int, byte);
+        }
+    }
     let what = factory.strings(&["raw"]).unwrap().into_owned().unwrap();
     let count = factory
         .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
