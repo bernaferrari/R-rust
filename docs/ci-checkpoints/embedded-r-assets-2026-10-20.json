@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-645io",
+  "source_commit": "5bbf84a9268ff4968f9f70d7c8df5ea2d537c253",
+  "behavior": [
+    "Package the exact118 previously embedded GNU base R files729724bytes with COPYING and a per-file origin/byte/hash manifest inside the runtime crate.",
+    "Compile exclusively from those committed crate inputs; preserve every upstream R byte and the distinction between reference d4cc5d9e and parity oracle bac583951.",
+    "Authenticate provenance, hashes, licensing inventory and actual Rust include references in a dedicated CI job. Reject ignored-reference dependencies, changed/missing/extra/unreferenced inputs, path escapes and changed provenance/licenses.",
+    "Keep the optional reference-fetch helper for audits/regeneration, and document that clean builds require no reference checkout. Inherit the existing workspace GPL license and repository package metadata."
+  ],
+  "red": {
+    "github_run": 39472478842,
+    "source": "6f355525",
+    "symptom": "Compilation fails across native/workspace/Wasm/upstream jobs because ignored r-source base R inputs do not exist in a clean checkout.",
+    "log": "target/quote-contract-evidence/ci-6f355525-failures.log"
+  },
+  "validation": {
+    "manifest_files": 118,
+    "manifest_bytes": 729724,
+    "all_files_exact_pinned_git_blobs": true,
+    "validator_unit_tests_passed": 9,
+    "cargo_package_list": "All118 .R files plus COPYING and manifest are included. This is inventory validation, not a crates.io publication claim.",
+    "primary_alltargets_check": "rmath+r-embed PASS",
+    "clean_checkout": {
+      "source_commit": "5bbf84a9268ff4968f9f70d7c8df5ea2d537c253",
+      "worktree": "/Users/bernardoferrari/.codex/worktrees/embedded-r-clean-proof/rport",
+      "reference_checkout_present_at_start": false,
+      "toolchain": "1.96.0-aarch64-apple-darwin (overridden by '/Users/bernardoferrari/.codex/worktrees/embedded-r-clean-proof/rport/rust-toolchain.toml')",
+      "target_directory": "/Users/bernardoferrari/Downloads/rport/target",
+      "commands": [
+        {
+          "arguments": [
+            "python3",
+            "scripts/validate_embedded_r_sources.py"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.16785320901544765,
+          "log": "/Users/bernardoferrari/Downloads/rport/target/embedded-r-assets-evidence/clean-proof-0-20261020.log"
+        },
+        {
+          "arguments": [
+            "python3",
+            "-m",
+            "unittest",
+            "scripts.tests.test_embedded_r_sources"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.09611520898761228,
+          "log": "/Users/bernardoferrari/Downloads/rport/target/embedded-r-assets-evidence/clean-proof-1-20261020.log"
+        },
+        {
+          "arguments": [
+            "scripts/cargo_dev.sh",
+            "check",
+            "-p",
+            "rmath",
+            "-p",
+            "r-embed",
+            "--all-targets"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 23.5061762080295,
+          "log": "/Users/bernardoferrari/Downloads/rport/target/embedded-r-assets-evidence/clean-proof-2-20261020.log"
+        },
+        {
+          "arguments": [
+            "scripts/cargo_dev.sh",
+            "test",
+            "-p",
+            "r-embed",
+            "--release",
+            "--test",
+            "quote_options_contract",
+            "--test",
+            "s4_cache_new_contract",
+            "--test",
+            "loess_native_outputs",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 128.97314316697884,
+          "log": "/Users/bernardoferrari/Downloads/rport/target/embedded-r-assets-evidence/clean-proof-3-20261020.log"
+        }
+      ],
+      "reference_checkout_present_after_command": false,
+      "git_status_after_command": ""
+    },
+    "clean_native_public_passed": 6,
+    "clean_android": "r-uniffi aarch64-linux-android check PASS13.70s",
+    "clean_wasm_build": "Pinned nightly release build PASS86s approximate; exact build log retained",
+    "clean_wasm_checks": 262,
+    "clean_wasm_web_binding_contracts": 80,
+    "github_asset_authentication": "Embedded GNU R source assets jobPASS at39480665196 /5bbf84a9; broader tests still in progress, not a whole-CI success claim."
+  },
+  "manifest_sha256": "3c5e60d89c4e778f786075f2384b1c928c2a4f041cb7ba84d34fcc41e3634f71",
+  "clean_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29213844,
+      "sha256": "785cdaf5d5a6a35390cb555c746888d95a9aafc3a5dbd67ac521f9d345942636"
+    },
+    "output": {
+      "bytes": 24997946,
+      "sha256": "24d79104c3ec3a4967db4ff1d814ad3713aec256b6b994a0234b2a6448a53255"
+    }
+  },
+  "log_sha256": {
+    "target/embedded-r-assets-evidence/validator-tests-final-20261020.log": "25660486d75d5f4b9efa5b4fdd11e9e694dfc634802c6601b239be93e2d13722",
+    "target/embedded-r-assets-evidence/clean-wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "target/embedded-r-assets-evidence/clean-proof-1-20261020.log": "092f3ef0c082b5e2a61888b77b1f68ffbd0afb7284e19601ea6250cb7141c478",
+    "target/embedded-r-assets-evidence/clean-wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "target/embedded-r-assets-evidence/clean-wasm-optimization-20261020.log": "8ee58f99b77015768f4da7f62c6db45d92b5c62fe78a25b5e148caa017b95d16",
+    "target/embedded-r-assets-evidence/clean-proof-0-20261020.log": "ccd843215db8aecbfab6eb9632f66824146f26cd5be819b54cd569f60e554aed",
+    "target/embedded-r-assets-evidence/validator-tests-20261020.log": "74202dc09a3347400de94f86db7081b0c92ff6270bca74570c143aa53888e576",
+    "target/embedded-r-assets-evidence/clean-wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "target/embedded-r-assets-evidence/clean-wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "target/embedded-r-assets-evidence/native-primary-check-20261020.log": "614336f8600e3b044954a19d330f94317fa1ff24aec2e15eb6acb6f066d9b16d",
+    "target/embedded-r-assets-evidence/package-list-final-20261020.log": "290d0b947a1874c7fb1fefdb817f7733724c57d0bbde6bdd6d371019ccb69aa7",
+    "target/embedded-r-assets-evidence/clean-wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "target/embedded-r-assets-evidence/package-list-stderr-20261020.log": "dfba74bc7f38af7b51851f5f2d1920fc88130b102d42580db2e05a183c336563",
+    "target/embedded-r-assets-evidence/clean-wasm-build-20261020.log": "fe081f988249cb1eee865b4c8cc84bc2362f59ecf07d1283077f65e065b83c92",
+    "target/embedded-r-assets-evidence/clean-wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "target/embedded-r-assets-evidence/package-list-20261020.log": "290d0b947a1874c7fb1fefdb817f7733724c57d0bbde6bdd6d371019ccb69aa7",
+    "target/embedded-r-assets-evidence/clean-wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "target/embedded-r-assets-evidence/clean-wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "target/embedded-r-assets-evidence/package-list-final-stderr-20261020.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/embedded-r-assets-evidence/clean-wasm-portable-contracts-20261020.log": "ec81e5e0b5727af5533aaedba511fbe02a545e2158486d6879ec0fcfbebac2a7",
+    "target/embedded-r-assets-evidence/clean-proof-2-20261020.log": "47e5a51a10a93ca637e1fd567b6480736862d7c0833467b9dbf0fd68b73f79a8",
+    "target/embedded-r-assets-evidence/clean-wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "target/embedded-r-assets-evidence/clean-proof-3-20261020.log": "2a49b50289db0f9ffd877e7e541b91172927e813857338c115fd8e729e3237bd",
+    "target/embedded-r-assets-evidence/clean-android-20261020.log": "a95c4ac8d1cd1ac255f0ef28f6a194fb9bf7e79788c2e9c88aeffda7dc64a626"
+  },
+  "limits": [
+    "Clean proof uses a separate managed worktree at exact5bbf84a9, no r-source directory, no primary user graphics changes, and unchanged toolchain/build options. Existing agent target directories were reused.",
+    "Native public6 includes two full numerical-output tests, two quote/Unicode tests and two original class-cache/name tests. No whole-workspace or full upstream-suite pass is claimed.",
+    "Wasm checks use Node V8 through Node/web bindings. No new Android ondevice or Chromium execution claim.",
+    "Whole-CI parity and the remaining runtime/physical-memory beads remain open."
+  ]
+}
