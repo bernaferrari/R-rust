@@ -569,46 +569,8 @@ pub unsafe fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `file.path(...)` — join path components element-wise with recycling.
-pub unsafe fn do_file_path(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut parts = Vec::new();
-        let mut max_len = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            if tag_name(current).as_deref() != Some("fsep") {
-                let value = CAR(current);
-                if !value.is_null() && value != R_NilValue() {
-                    max_len = max_len.max(XLENGTH(value));
-                    parts.push(value);
-                }
-            }
-            current = CDR(current);
-        }
-        if parts.is_empty() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..max_len {
-            let joined = parts
-                .iter()
-                .filter_map(|part| {
-                    let value = elt_to_string(*part, i);
-                    (!value.is_empty()).then_some(value)
-                })
-                .collect::<Vec<_>>()
-                .join("/");
-            SET_STRING_ELT(
-                result,
-                i,
-                Rf_mkChar(CString::new(joined).unwrap_or_default().as_ptr()),
-            );
-        }
-        result
-    }
+pub unsafe fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { crate::mainutils::paste_impl::do_filepath_public(call, op, args, env) }
 }
 
 /// R's `dir.exists(paths)` — check if directories exist.

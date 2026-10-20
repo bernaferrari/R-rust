@@ -35,17 +35,21 @@ fn cell(value: &Value) -> SexpResult<(Value, Value)> {
         value.try_cdr()?.into_owned()?,
     ))
 }
-fn length(access: &RuntimeAccess, value: &Value) -> SexpResult<i64> {
+pub(super) fn length(access: &RuntimeAccess, value: &Value) -> SexpResult<i64> {
     let n = value.len();
     access.require_active()?;
     Ok(n)
 }
-fn element(access: &RuntimeAccess, input: &Value, index: i64) -> SexpResult<Value> {
+pub(super) fn element(access: &RuntimeAccess, input: &Value, index: i64) -> SexpResult<Value> {
     let v = input.try_string_elt(index)?.into_owned()?;
     access.require_active()?;
     Ok(v)
 }
-fn separator(access: &RuntimeAccess, input: &Value, message: &'static str) -> SexpResult<Value> {
+pub(super) fn separator(
+    access: &RuntimeAccess,
+    input: &Value,
+    message: &'static str,
+) -> SexpResult<Value> {
     if input.typeof_() != SEXPTYPE::STRSXP || length(access, input)? == 0 {
         return Err(error(message));
     }
@@ -63,7 +67,11 @@ fn vector(access: &RuntimeAccess, n: i64) -> SexpResult<SexpMut<'static>> {
             .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, n)))?,
     )
 }
-fn character(access: &RuntimeAccess, bytes: &[u8], encoding: TextEncoding) -> SexpResult<Value> {
+pub(super) fn character(
+    access: &RuntimeAccess,
+    bytes: &[u8],
+    encoding: TextEncoding,
+) -> SexpResult<Value> {
     let d = access.domain();
     access
         .allocator(&d)?
@@ -77,7 +85,7 @@ fn zero(access: &RuntimeAccess, collapse: bool) -> SexpResult<Value> {
     access.require_active()?;
     Ok(result.freeze())
 }
-fn join(parent: &Value, parts: &[Bytes], separator: &Bytes) -> SexpResult<Bytes> {
+pub(super) fn join(parent: &Value, parts: &[Bytes], separator: &Bytes) -> SexpResult<Bytes> {
     let count = parts.len().saturating_sub(1);
     let size = parts
         .iter()

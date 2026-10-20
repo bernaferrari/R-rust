@@ -879,6 +879,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "rapply" => Some(crate::mainutils::apply::do_rapply),
         "array" => Some(crate::mainutils::array::do_array),
         "paste" | "paste0" => Some(crate::mainutils::paste_impl::do_paste),
+        "file.path" => Some(crate::mainutils::paste_impl::do_filepath),
         "unique" => Some(crate::mainutils::essentials::do_unique),
         "duplicated" => Some(crate::mainutils::essentials::do_duplicated),
         "anyDuplicated" => Some(crate::mainutils::essentials::do_anyDuplicated),

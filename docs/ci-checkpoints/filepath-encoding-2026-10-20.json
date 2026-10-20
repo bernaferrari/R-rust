@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-w03x.4",
+  "source_base": "14c105ae410180642afadad6bafb94b9dc29922f",
+  "behavior": [
+    "Replace the public lossy/string-join facade and native raw filepath implementation with one forbidunsafe owning kernel, reached through thin original-owner entry adapters.",
+    "Route .Internal(file.path(component_list,fsep)) through its own two-argument handler; public dots/named-fsep construction remains a separate input adapter to that same kernel.",
+    "Preserve empty components, NULL/zero-length propagation, recycling and literal missing values. Perform original-order native coercion and validate its character result.",
+    "Reject every byte-tagged path component with the exact GNU error; validate separators after the empty-input-list return and retain raw fsep bytes, even when a Latin1 separator produces invalid UTF8-tagged data as GNU does.",
+    "Reuse original-heap immutable character translation and prepublication tags. Admit exact translated bytes, row descriptor storage and actual copy-pass concatenation; no output growth beyond its admission when providers change later selections.",
+    "Keep selected original components/separator alive after argument detachment and collection; release their roots after output, preserve deliberate callback panic payloads, and deny publication after original runtime revocation.",
+    "Remove obsolete raw filepath translation/mkCharCE stubs; retain the eval helper still required by shared native coercion."
+  ],
+  "red": {
+    "native_public": 1,
+    "native_original_bridge": 2,
+    "production_wasm_baseline_commit": "14c105ae",
+    "production_wasm_baseline_sha256": "16245d04c57355203bf55b639356f81d3655cc71362c6d2a14f119cabb0dcb74",
+    "expanded_cases": {
+      "cases": 20,
+      "different": [
+        "bytes",
+        "zero",
+        "NULL",
+        "empty",
+        "fsep",
+        "fsep bytes",
+        "fsep Latin1",
+        "fsep missing",
+        "internal",
+        "S3 collecting coercion",
+        "S3 invalid coercion",
+        "internal symbol",
+        "zero separator"
+      ],
+      "matching": [
+        "mixed",
+        "native",
+        "Latin1",
+        "numeric",
+        "recycle",
+        "NA",
+        "empty dots before separator validation"
+      ]
+    },
+    "intake_correction": "The earlier e867e132 mixed-Latin1 public gap was already repaired by w03x.3 ordinal migration; the14c105ae baseline has13 remaining differences and7 passing controls in the20-case focused contract."
+  },
+  "oracle": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "validation": {
+    "native_distinct_total": 14,
+    "native_filepath_ownership": 5,
+    "native_existing_paste_ownership": 8,
+    "native_pinned_20_case_public_contract": 1,
+    "strict_isolated_i686_miri": {
+      "original_native_bridge": 2,
+      "detach_gc_panic_and_revocation": 3,
+      "distinct_total": 5,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ]
+    },
+    "clippy": "Four crates/alltargets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt_git_whitespace_node_syntax": "PASS",
+    "production_wasm_checks": 274,
+    "wasm_node_checks": {
+      "filepath-encoding": 4,
+      "encoding-tags": 4,
+      "quote-options": 8,
+      "loess-native-outputs": 86,
+      "internal-dput": 4,
+      "regex-workspace": 8,
+      "gnu-opcode-contracts": 28,
+      "s4-cache-new": 8,
+      "permanent-ledger": 14,
+      "checked-exhaustion": 12,
+      "serialization-workspace": 14
+    },
+    "web_binding_checks": 84
+  },
+  "wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29395137,
+      "sha256": "788ac5b082b31edc29c8557e2bcb8dfbc8a324da0b714296b1135b71d405077e"
+    },
+    "output": {
+      "bytes": 25070259,
+      "sha256": "51acde31552e454806d3f3e3eff835bdf2e73985a1e7e746d47a9c8c32b2c803"
+    }
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/essentials/s3.rs": "f5a6822322351b2bc2ab29b312d36191d145ac0cd856f238f08a1ce1f6e70143",
+    "crates/rmath/src/mainutils/names/mod.rs": "972e53ae3c866c4424544807b8fb023f0a27b099340801183fe75d2ffe5daf87",
+    "crates/rmath/src/mainutils/paste_impl.rs": "482ad3fce158aec601b93d74d64dc3b673907ffc31a3151772e526ff5405d16b",
+    "crates/rmath/src/mainutils/paste_impl/owned.rs": "e22be31740dde3db488e5c48ad89c752312da5bb7121d73f4f66cd8a8b35aba1",
+    "tests/browser/portable-package-contracts.mjs": "b8b1d91c899381c999ea7040edb01e5273835f2f17c5c7314ec975b2c15cbe2f",
+    "crates/r-embed/tests/file_path_encoding.rs": "3ba431508b25dd30d27151f8423c2f6e51beec5fd1e5f61a8183a394a3d10863",
+    "crates/r-embed/tests/fixtures/file-path-encoding-contract.R": "60c091bc0673b836ff1e87a328460aa0496944a66bfcbdef70e8dcf27503cf26",
+    "crates/r-embed/tests/fixtures/file-path-encoding-contract.out": "079fbd5c7e05b596c7b5bf9e8083db47f3a92f9ac1fcc08312eb2c365f776d8f",
+    "crates/rmath/src/mainutils/paste_impl/filepath_tests.rs": "33ccecef4d5f27919e75add2cf1a2b359091a6822c3d2cab44b7e563df27d1e7",
+    "crates/rmath/src/mainutils/paste_impl/path.rs": "dd3c08e95c72ab60b6b725c56c9c942cbb049063ec41b86fec4b719831e09ad7",
+    "tests/browser/filepath-encoding.cjs": "bd44792cfbed0d53298de909d458b282fc5401df57e82823912d71998cd71bcd"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/filepath-encoding-evidence/",
+  "evidence_log_sha256": {
+    "android-20261020.log": "9b6c2083a1190babb2d119670e8bdfc55adf156d4fa8f3f1c9ce1f77fffc995e",
+    "clippy-20261020.log": "9dadcd4f43fbeaa706df30f8ee5e300cb532de9b5f7a879ec5670f0408b2b8ff",
+    "miri-bridge-green-20261020.log": "6be9539f22ba6dfbf216dfc3d89ac85446b4b89f87c10f415877d78718270659",
+    "miri-ownership-green-20261020.log": "f6983e888d6360727c24379e12763265cacf53718a6e1fd5a273b54e89d4fecd",
+    "native-bridge-red-20261020.log": "d2d7f075d412af9b4064ce51b701f76c68090785b70a81940803a328fda268d7",
+    "native-compile-helper-error-20261020.log": "9cc460019bbdf14af1a6e600de9a040336fd9a9817516666bbac9c9854020778",
+    "native-expanded-public-green-20261020.log": "5771d9ce30ae865bd700a017fb936cc18c556c8942799be505057c7f7ceb618f",
+    "native-owned-green-20261020.log": "1b85f92a8ce11becc2f63d0ac7ad2d90068c01fd2aa6dfa2e44b6ded98eb041e",
+    "native-paste-regression-20261020.log": "0dc89ad591ef8c48126b4f46d737e951d07cecf930fbece262e7970f909eca52",
+    "native-public-green-20261020.log": "42a5a38559aabf489d990de8ff8a2019caee3d82b625bc9e75c8320969fad428",
+    "native-public-red-20261020.log": "6078d9c13048e4afd5f3cd8882f4b7a8c7cc76cdc0afb4790b9f2b126292a19d",
+    "wasm-build-20261020.log": "72941a46728b87a77c501802cf8e183363e85f006e458482ce5e6fc3ef988b64",
+    "wasm-checked-exhaustion-20261020.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags-20261020.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding-20261020.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts-20261020.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-internal-dput-20261020.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs-20261020.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize-20261020.log": "43ea3a13fa7fde04b2dc9b903ef6f953861dda759e8947fe452bdfdca5517b22",
+    "wasm-permanent-ledger-20261020.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options-20261020.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace-20261020.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new-20261020.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace-20261020.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts-20261020.log": "e0d6d7b0c7ef86391ff7baa11c716fac3faa01267fba6813c1f76d4d092651f3"
+  },
+  "limits": [
+    "Original browser64MiB session and256MiB Wasm linear-memory caps retained.",
+    "Native supported locale profiles are C and UTF8; broader legacy translation adapters, codecs, PCRE and total physical memory remain active scope.",
+    "Validation checkout includes the listed uncommitted user graphics files, which are excluded from this commit; no immutable full-build or whole CI completion claim."
+  ]
+}

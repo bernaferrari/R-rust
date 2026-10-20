@@ -33,6 +33,7 @@ const contracts = [
   ]),
   ...[
     'encoding-tag-contract',
+    'file-path-encoding-contract',
     'complex-print-public-contract',
     'stats-namespace-public-contract',
     'get-lazy-mode-public-contract',

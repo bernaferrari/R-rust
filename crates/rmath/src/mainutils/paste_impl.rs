@@ -20,11 +20,10 @@ use std::ptr;
 
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol, Rf_length,
-    Rf_mkChar, Rf_mkString,
+    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -134,24 +133,6 @@ unsafe fn translateChar(s: SEXP) -> *const c_char {
 
 unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateCharUTF8(s) }
-}
-
-unsafe fn translateCharFP(s: SEXP) -> *const c_char {
-    unsafe {
-        if s.is_null() {
-            return ptr::null();
-        }
-        CHAR(s)
-    }
-}
-
-unsafe fn trCharUTF8(s: SEXP) -> *const c_char {
-    unsafe {
-        if s.is_null() {
-            return ptr::null();
-        }
-        CHAR(s)
-    }
 }
 
 unsafe fn PrintDefaults() {
@@ -303,10 +284,6 @@ unsafe fn reconcile_fixed_real_width(
     }
 }
 
-unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
-    unsafe { Rf_mkChar(s) }
-}
-
 unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
@@ -315,10 +292,6 @@ unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
     unsafe {
         crate::eval::attrib_core::setAttrib(x, what, value);
     }
-}
-
-unsafe fn isObject(x: SEXP) -> c_int {
-    unsafe { crate::eval::attrib_core::isObject(x) }
 }
 
 unsafe fn eval(x: SEXP, env: SEXP) -> SEXP {
@@ -546,6 +519,8 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// .Internal(paste0(args,      collapse, recycle0))
 #[path = "paste_impl/owned.rs"]
 mod owned_paste;
+#[path = "paste_impl/path.rs"]
+mod owned_path;
 
 struct PasteNative<'execution>(&'execution crate::sexp::owner::RuntimeAccess);
 impl owned_paste::Native for PasteNative<'_> {
@@ -688,120 +663,50 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// .Internal(filepath(...))
-pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub unsafe fn do_filepath(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { filepath_entry(args, env, false) }
+}
 
-        // Check the arguments
-        let x = CAR(args);
-        if isVectorList(x) == 0 {
-            return ptr::null_mut();
-        }
-        let nx = Rf_length(x) as R_xlen_t;
-        if nx == 0 {
-            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-        }
+pub(crate) unsafe fn do_filepath_public(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { filepath_entry(args, env, true) }
+}
 
-        let mut sep = CADR(args);
-        if Rf_isString(sep) == 0 || LENGTH(sep) <= 0 || isNA_STRING(STRING_ELT(sep, 0)) {
-            return ptr::null_mut();
-        }
-        sep = STRING_ELT(sep, 0);
-        let csep = CHAR(sep);
-        let sepw = c_strlen(csep) as c_int;
-
-        // Any zero-length argument gives zero-length result
-        let mut maxlen: R_xlen_t = 0;
-        let mut nzero: bool = false;
-        for j in 0..nx {
-            if Rf_isString(VECTOR_ELT(x, j)) == 0 {
-                let xj = VECTOR_ELT(x, j);
-                if isObject(xj) != 0 {
-                    let call2 = crate::sexp::constructors::Rf_lang2(R_AsCharacterSymbol(), xj);
-                    let coerced = eval(call2, env);
-                    SET_VECTOR_ELT(x, j, coerced);
-                } else if Rf_isSymbol(xj) != 0 {
-                    let pname = crate::sexp::accessors::PRINTNAME(xj);
-                    let scalar = crate::sexp::constructors::Rf_ScalarString(pname);
-                    SET_VECTOR_ELT(x, j, scalar);
-                } else {
-                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.as_c_int());
-                    SET_VECTOR_ELT(x, j, coerced);
-                }
-
-                if Rf_isString(VECTOR_ELT(x, j)) == 0 {
-                    return ptr::null_mut();
-                }
+unsafe fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
+    use crate::sexp::owner::OwnerToken;
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let own = |raw| {
+        owner
+            .sexp(raw)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    };
+    let (args, env) = (own(args), own(env));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("file.path requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            if public {
+                owned_path::public(access, &PasteNative(access), args, env)
+            } else {
+                owned_path::internal(access, &PasteNative(access), args, env)
             }
-            let ln = XLENGTH(VECTOR_ELT(x, j));
-            if ln == 0 {
-                nzero = true;
-                break;
-            }
-            if ln > maxlen {
-                maxlen = ln;
-            }
+        })
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
+            crate::sexp::context::r_error(message)
         }
-
-        if nzero || maxlen == 0 {
-            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-        }
-
-        // Check for bytes encoding (not allowed in file paths)
-        for j in 0..nx {
-            let k = XLENGTH(VECTOR_ELT(x, j));
-            for i in 0..k {
-                let cs = STRING_ELT(VECTOR_ELT(x, j), i);
-                if IS_BYTES(cs) {
-                    return ptr::null_mut();
-                }
-            }
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
-        let mut cbuff = RStringBuffer::new();
-
-        for i in 0..maxlen {
-            let use_UTF8: bool = true;
-
-            let mut pwidth: i64 = 0;
-            for j in 0..nx {
-                let k = XLENGTH(VECTOR_ELT(x, j));
-                let cs = STRING_ELT(VECTOR_ELT(x, j), i % k);
-                if use_UTF8 {
-                    pwidth += c_strlen(trCharUTF8(cs));
-                } else {
-                    pwidth += c_strlen(translateCharFP(cs));
-                }
-            }
-            pwidth += (nx - 1) * sepw as i64;
-
-            let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
-            let cbuf = buf;
-            let mut buf_ptr = buf;
-
-            for j in 0..nx {
-                let k = XLENGTH(VECTOR_ELT(x, j));
-                // k == 0 already handled above
-                let cs = STRING_ELT(VECTOR_ELT(x, j), i % k);
-                let s = if use_UTF8 {
-                    trCharUTF8(cs)
-                } else {
-                    translateCharFP(cs)
-                };
-                buf_ptr = R_stpcpy(buf_ptr, s);
-                if j as R_xlen_t != nx - 1 && sepw != 0 {
-                    c_strcpy(buf_ptr, csep);
-                    buf_ptr = buf_ptr.add(sepw as usize);
-                }
-            }
-
-            let ienc = if use_UTF8 { CE_UTF8 } else { 0 };
-            let ch = mkCharCE(cbuf, ienc);
-            SET_STRING_ELT(ans, i, ch);
-        }
-
-        ans
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -1459,3 +1364,7 @@ mod tests {
 #[cfg(test)]
 #[path = "paste_impl/tests.rs"]
 mod owned_tests;
+
+#[cfg(test)]
+#[path = "paste_impl/filepath_tests.rs"]
+mod filepath_tests;
