@@ -1,0 +1,200 @@
+{
+  "date": "2026-10-20",
+  "issue": "rport-sqs1h",
+  "status": "verified",
+  "implementation_commit": "c31a743c",
+  "source_sha256": {
+    "crates/r-embed/tests/fixtures/gnu-bytecode-stream-hooks-v2.rds": "258ae976d05356a8ab312f97eabc3e441c4e9cfec1bc13d44446ebcce29a0274",
+    "crates/r-embed/tests/fixtures/gnu-sequential-v2.rds.gz": "4cd1af23d6f9344ea2349785e1594c3afc11e7401eb557930d1e6e2b6b4b2068",
+    "crates/r-embed/tests/serialization_streams.rs": "80e9709eb75994d2df3d0a2715078ee8ec2df96fe9238fdd71a291babfdbe132",
+    "crates/rmath/src/mainutils/serialize/api.rs": "054422e9483fa15b7ded3bc6871004c47637c4d13347cbbaea00fb3b2af16f70",
+    "crates/rmath/src/mainutils/serialize/compiled-hook-contract.R": "345ce1d35a9bd6681496c99084ef437808d740449f7e09719639ab6072ef8669",
+    "crates/rmath/src/mainutils/serialize/compressed-stream-contract.R": "5175187f8b4ce6ce9dc40888d1b649fc523156068a23a1d6c0755e985cee1d70",
+    "crates/rmath/src/mainutils/serialize/connection_stream_tests.rs": "272a269815c402872adffd095056a04a823c565c88f3f40004d2f4b1ff61a0ab",
+    "crates/rmath/src/mainutils/serialize/core/read_item.rs": "9d87ff16e2c7930b6bd667d826cc70a9fa0b6b0f4cc574310170b6651e27e29d",
+    "crates/rmath/src/mainutils/serialize/core/reader_impl.rs": "ca8b5db5de3d5723018afcd7d0f99ecb1db99a3cb3e63d70a5f783f6d8055b04",
+    "crates/rmath/src/mainutils/serialize/core/writer.rs": "ec37e93d8220e0133ad8b8be65eb1f84ca135c53bb8375084f75db25b967c6ac",
+    "crates/rmath/src/mainutils/serialize/hook-cursor-contract.R": "6f4cb5321c0e89e479bb47e2fb5e9a4e01b1fbad1882880e6e705fec7892b800",
+    "crates/rmath/src/mainutils/serialize/stream_values.rs": "c4ef9cd47d1375f06139db65ae9c146fa061ce1ff10597933d4652ec522f07ba",
+    "tests/browser/connection-streams.cjs": "ac72f53f1ff0ab0dc29987c6234bded0e052dff2031c6c19b8146567d6b51576",
+    "tests/serialization/generate-connection-stream-fixtures.R": "84d4c22b7366c6fba69d1dcfbf13f3c211eeb4d575a6d18b41f1bd75c4e70f3c",
+    "crates/rmath/src/mainutils/serialize/core/write_item.rs": "462480480efab079269a0dc6802523b5258f623e283c1e9658605323d519fa80",
+    "crates/r-embed/tests/gnu_persistence_hooks.rs": "0adbb6972e92e8d964baf88030536599feb38fb9b62205fbb61d55b65de4ee1a"
+  },
+  "evidence_directory": "target/connection-stream-evidence",
+  "oracle": {
+    "manifest": "oracle/r-oracle.json",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "svn_revision": 90451,
+    "compiled_fixture_hook_cursors": [
+      1324,
+      3761
+    ]
+  },
+  "regressions_before": [
+    "stream-native-red.log: reused connection slot incorrectly accepted; 2 passed and 2 failed",
+    "stream-operand-red-20261020.log: collecting ALTREP index provider detached the hook tail, producing an unowned-pointer error",
+    "compiled-hook-red-20261020.log: compiled constants prefetch and public hook memoization violate the two GNU hook positions",
+    "ascii-escape-diagnostic-20261020.log and stream-public-sealed-20261020.log: empty ASCII string cursor 41 versus expected 40; first newline fix bypassed by CHARSXP caller"
+  ],
+  "behavior": [
+    "Own all connection/hook operands before callback-capable reads, pin and recheck the original runtime through unwind",
+    "Validate the original connection allocation token before each input operation and leftover pushback",
+    "Retain recursive list and bytecode constant children incrementally, with admitted staging capacity and cleanup on error",
+    "Match GNU ASCII token, octal escape and empty-string cursor behavior",
+    "Invoke public restoration hooks for every persistent record; retain private lazy-load caching",
+    "Read compression through gzcon/gzfile and leave following serialized objects unread"
+  ],
+  "validation": {
+    "native_safety": {
+      "log": "stream-native-complete-20261020.log",
+      "passed": 8
+    },
+    "gnu_controls": {
+      "logs": [
+        "gnu-expanded-final-20261020.log",
+        "compressed-gnu-20261020.log",
+        "stream-gnu-final-20261020.log",
+        "repeated-hook-gnu-20261020.log"
+      ],
+      "status": "passed"
+    },
+    "public_streams": {
+      "log": "stream-public-sealed-20261020.log",
+      "passed": 4,
+      "failed": 1,
+      "note": "Compiled closures, compressed streams, hook reentry and sequential objects passed; empty token cursor failed and was corrected in 0b412216"
+    },
+    "public_final_empty_string_cursor": {
+      "log": "empty-string-cursor-green-20261020.log",
+      "passed": 1,
+      "token_format_combinations": 60,
+      "exit_code": 0
+    },
+    "public_repeated_hook": {
+      "log": "repeated-hook-public-20261020.log",
+      "passed": 1,
+      "exit_code": 0
+    },
+    "public_earlier_regressions": {
+      "log": "public-final-20261020.log",
+      "passed": 17,
+      "scope": "Browser serialization files 4, constructor 1 and persistence hooks 12; before final compiled-constant and empty-string changes"
+    },
+    "miri_original_seven": {
+      "log": "stream-miri-sealed-20261020.log",
+      "passed": 7,
+      "seconds": 562.25,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "exit_code": 0,
+      "scope": "Original seven safety cases; started before compiled-constant staging and empty-string writer fixes"
+    },
+    "clippy": {
+      "log": "clippy-final-source-20261020.log",
+      "exit_code": 0,
+      "command": "scripts/cargo_dev.sh clippy -p rmath -p r-embed -p r-wasm -p r-uniffi --all-targets -- -D warnings"
+    },
+    "android": {
+      "log": "android-final-source-20261020.log",
+      "exit_code": 0,
+      "command": "scripts/cargo_dev.sh check -p r-uniffi --target aarch64-linux-android"
+    },
+    "formatting": "rustfmt --edition 2024 --check --config skip_children=true on owned Rust files; git diff --check; node --check tests/browser/connection-streams.cjs",
+    "production_wasm": {
+      "log": "wasm-smoke-final-20261020.log",
+      "command": "node tests/browser/connection-streams.cjs target/connection-stream-evidence/wasm-node",
+      "checks": 12,
+      "failures": 0,
+      "session_generations": 2,
+      "exit_code": 0
+    },
+    "miri_compiled_constants": {
+      "log": "compiled-hook-miri-20261020.log",
+      "passed": 1,
+      "seconds": 444.21,
+      "target": "i686-unknown-linux-gnu",
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-ignore-leaks"
+      ],
+      "isolation": true,
+      "default_alias_checks": true,
+      "exit_code": 0,
+      "scope": "Final compiled constant staging/finish with full GC in both public persistent-hook calls; actual cursors 1324 and 3761"
+    },
+    "empty_ascii_wire": {
+      "log": "empty-string-wire-comparison-20261020.log",
+      "status": "Exact GNU and production Wasm serialized bytes match, including the empty CHARSXP newline"
+    }
+  },
+  "limits": {
+    "wasm_max_memory_bytes": 268435456,
+    "optimized_wasm_size_limit_bytes": 26214400,
+    "compiler_settings": "Unchanged; project build scripts used"
+  },
+  "scope_limits": [
+    "This scoped bead does not complete the broader interpreter ownership, full memory accounting or whole R compatibility work",
+    "Android validation is cross-compilation, not an Android device execution",
+    "Production Wasm contracts run under Node; no browser-engine execution claimed",
+    "Build used shared working tree containing unrelated graphics edits; hashes above identify the owned sources"
+  ],
+  "followup_commits": [
+    "0b412216",
+    "d3b76536"
+  ],
+  "wasm_artifact": {
+    "package": "target/connection-stream-evidence/wasm-node",
+    "files": {
+      "r_wasm.js": {
+        "bytes": 20589,
+        "sha256": "d6da390e5e6b2d4f444d1ad48f48659448368fc29cd328fc17624c8fbbd4d7a3"
+      },
+      "r_wasm_bg.wasm": {
+        "bytes": 24789192,
+        "sha256": "8573b86ffaefc679c7a051e8af9e587491cb7669be0a431066455652aa4ba9e9"
+      }
+    },
+    "build_log": "wasm-build-empty-string-20261020.log",
+    "build_exit_code": 0,
+    "toolchain": "nightly-2026-08-25",
+    "optimizer": "Binaryen 133",
+    "smoke_status": "passed"
+  },
+  "cleanup": {
+    "wasm_build_directory": "target/wasm-unwind",
+    "wasm_log": "wasm-build-cleanup-20261020.log",
+    "wasm_exit_code": 0,
+    "evidence_and_tested_package_retained": true,
+    "miri_build_directory": "target/ownership-loess-miri",
+    "miri_log": "miri-build-cleanup-20261020.log",
+    "miri_exit_code": 0
+  },
+  "existing_followups": [
+    "rport-cvs2.6: broader decoder scratch and reference-table admission",
+    "rport-0d5o: Beads Dolt remote is not configured; source Git milestones pushed"
+  ],
+  "evidence_sha256": {
+    "android-final-source-20261020.log": "9854e56b9b607af9207f4e5629ae2b0fd4fb7f17eb3ed1c4bb869e160f42c5aa",
+    "clippy-final-source-20261020.log": "0ded1a8b0d70f0f69b7c54e3b423d05461e047612af645cfe596d104794ed128",
+    "compiled-hook-miri-20261020.log": "8f15455b57879ebf8e6c8e38203e0ae9364cf2de218a7fb3d0d7749bed00019d",
+    "compressed-gnu-20261020.log": "d7c594f75cff5359d80b18d8fe5769e0386713b2231cedb7aa9bba72c8ded574",
+    "empty-string-cursor-green-20261020.log": "78303235c4181953b99a2d980e6acc20fe5ceec4522c79f4e0f01068889a365f",
+    "empty-string-wire-comparison-20261020.log": "d78fce2182783020a0e151107b52f9b301a8ca83259c42e00fed69c1114e85b8",
+    "gnu-expanded-final-20261020.log": "d2cc52aa85d931f3286e685ef62b26b5de2769bd991f89461a113c509a7a5cbd",
+    "public-final-20261020.log": "a2401ad2890167e151c63cb4f6a03ac105298aa97bba5a70a98c338f441fbcfe",
+    "repeated-hook-gnu-20261020.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "repeated-hook-public-20261020.log": "c8c75742990183bac44f4e24f2182ed190fd91ced89ad7571bba70d6597786d4",
+    "stream-gnu-final-20261020.log": "b9956fde095d4ffcd8b74ba3875a2e50a87abd0e5aee258ab7eb5137f33613aa",
+    "stream-miri-sealed-20261020.log": "27341be15020615b131400aa068f921f4e767309d19ec2dcf08707c0a350b8d5",
+    "stream-native-complete-20261020.log": "8a73c9a7cfe8e8e2db756b6aab6e8a63829275789a9ee615ba2b6bd06e1ca0ae",
+    "stream-public-sealed-20261020.log": "ef7e078239ed9176d510cf2030b585946743dfa28e69471dd6d3b1fc2ffdfe54",
+    "wasm-build-empty-string-20261020.log": "cffd7f6cc971caa82c8e726b6030d7fa9600b96f395a6504c60ec4d98cc3fa92",
+    "wasm-smoke-final-20261020.log": "52fc1a858ea0628d74e8d2263fe5a700f786ac2d48829af088c6bcf4609ad261"
+  }
+}
