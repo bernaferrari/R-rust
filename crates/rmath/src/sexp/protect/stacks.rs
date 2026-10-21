@@ -57,11 +57,15 @@ impl std::error::Error for ProtectError {}
 /// instead — the two storages never alias, so a legacy `unprotect` can never
 /// truncate a root slot and a root release can never shift legacy entries.
 /// The common canonical occupants of ordered native root channels.
-#[derive(Default)]
 pub(crate) struct NativeRoots {
     pub(crate) entries: RefCell<RootSequence<RootValue>>,
 }
 impl NativeRoots {
+    fn new(ledger: crate::sexp::memory::MemoryLedger) -> Self {
+        Self {
+            entries: RefCell::new(RootSequence::new(ledger)),
+        }
+    }
     fn len(&self) -> usize {
         self.entries.borrow().len()
     }
@@ -115,21 +119,29 @@ fn storage_error(error: StorageError) -> ProtectError {
     }
 }
 
-#[derive(Default)]
 pub(crate) struct LegacyProtectionStack {
     roots: NativeRoots,
 }
 impl LegacyProtectionStack {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    #[cfg(test)]
+    pub(crate) fn roots_for_test(&self) -> &NativeRoots {
+        &self.roots
+    }
+    pub(crate) fn new(ledger: crate::sexp::memory::MemoryLedger) -> Self {
+        Self {
+            roots: NativeRoots::new(ledger),
+        }
     }
     pub(crate) fn len(&self) -> usize {
         self.roots.len()
     }
     pub(crate) fn push(&self, value: RootValue, api: &str) {
-        self.roots
-            .try_push(value)
-            .unwrap_or_else(|error| panic!("{api}: {error}"));
+        self.roots.try_push(value).unwrap_or_else(|error| {
+            if error == ProtectError::Allocation {
+                crate::sexp::context::r_error(format!("{api}: {error}"));
+            }
+            panic!("{api}: {error}")
+        });
     }
     pub(crate) fn pop_count(&self, count: usize) {
         self.roots.entries.borrow_mut().pop_count(count);
@@ -168,13 +180,14 @@ impl LegacyProtectionStack {
 
 /// Preserved objects keep native first-match release semantics; Rust guards
 /// release the precise lease they installed, independently of duplicate values.
-#[derive(Default)]
 pub(crate) struct PreservedRoots {
     pub(crate) roots: NativeRoots,
 }
 impl PreservedRoots {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    pub(crate) fn new(ledger: crate::sexp::memory::MemoryLedger) -> Self {
+        Self {
+            roots: NativeRoots::new(ledger),
+        }
     }
     pub(crate) fn try_push(&self, value: RootValue) -> Result<SequenceLease, ProtectError> {
         self.roots.try_push(value)

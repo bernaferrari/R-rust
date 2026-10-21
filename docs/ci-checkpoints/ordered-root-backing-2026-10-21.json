@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-21",
+  "issue": "rport-cvs2.11.9",
+  "source_base": "fd50d7958ecda47787a21d935ca3ea36cb725901",
+  "behavior": [
+    "Both ordered native channels receive the original heap ledger explicitly during interpreter storage construction. RootSequence pre-admits complete replacement capacity before fallible allocation, reconciles actual Vec capacity and retains its charge after pop/clear and until final storage owner drops.",
+    "Replacement preserves original push order and exact leases; preferred amortized growth falls back to exact capacity. Admission denial preserves occupants, capacity and the next lease. First-match preserved release, topmost UNPROTECT_PTR and allocation-free cleanup remain unchanged.",
+    "A stronger actual push_protect_in error-class RED exposed generic internal String panic when new quota admission failed. Allocation denial now raises the canonical RError only after the short root borrow ends; other invariant diagnostics retain their contracts. No fallible result is discarded or null root published."
+  ],
+  "baseline": {
+    "actual_native_accounting_failures": 4,
+    "retained_bytes_each_channel": 256,
+    "old_ledger_delta": 0,
+    "actual_resource_condition_failure": 1
+  },
+  "validation": {
+    "new_native_cases": 8,
+    "native_distinct": 203,
+    "native_suites": {
+      "protection_including_new_cases": 77,
+      "standalone_root_sequence": 6,
+      "memory": 120
+    },
+    "strict_default_isolated_i686_miri": {
+      "cases": 8,
+      "seconds": 407.28,
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks"
+    },
+    "wasm": {
+      "node": 226,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 318,
+      "limits": "Unchanged64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_format_whitespace": "PASS"
+  },
+  "test_notes": [
+    "Initial new test used a non-exported RInstance path, corrected before the genuine four-case native RED was captured. No production defect claimed from that compile error."
+  ],
+  "source_sha256": {
+    "crates/rmath/src/sexp/instance.rs": "d6f1df84f17553f176ae29c91ee9ac25b806b43d1e32e69709330898b43c38cd",
+    "crates/rmath/src/sexp/protect/mod.rs": "71b0be169f0902533c8f2520c4c2d2555efb1dd48096d36d62c0e9e117d8c39c",
+    "crates/rmath/src/sexp/protect/sequence_budget_tests.rs": "d98f8737d6bdd3299a8024c35f39fe15beb0df91fa376cf9c7fccde74fbf40b3",
+    "crates/rmath/src/sexp/protect/stacks.rs": "506ebabbfe6e616e7b1941d32d79cf9c67d529b852801334b4cfd0e5b727f259",
+    "crates/rmath/src/sexp/protect/tests.rs": "a388e66a49bcf4856b55c7e6e7157614096816788174f82914ce0c6554199778",
+    "crates/rmath/src/sexp/root_sequence.rs": "f662f0c80093acf56261d6116acdf6abedc61099f0a71761b3f24affcd7f78cc"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29774457,
+      "sha256": "665b11c11077b4118da6ca7631c20904ac817a2954d6545f0737ddb63c1edd7c"
+    },
+    "output": {
+      "bytes": 25450999,
+      "sha256": "810e86a15b96fc0a698c645f8ab173275c7a15a6f97b21f56b79f14c40f8526d"
+    }
+  },
+  "evidence_directory": "target/ordered-root-evidence",
+  "evidence_sha256": {
+    "android.log": "aead6ed941cd08c1942b2b8260118c0b241e065124cda3b8b02bd4d053f9e035",
+    "clippy.log": "29314d6ebc7e58ee29c5244cc7ccd5306b140c352d6f5a99689ab21cd676ab8c",
+    "miri-final.log": "27030d4964c04518472e61e34180a7f76b42e156e28481d190fe460a9e05a22b",
+    "native-condition-red.log": "ba7a4ecc55dc8d9021e236ea0d4394b0f1d50ff8b16b6cc242d0899498fd905d",
+    "native-green-final.log": "93c54bcf34486b89875fa668d222d478488af02c04859a8ede46b1c76e551b7a",
+    "native-green.log": "18ae00ae4e4b940c13e22c79e962f24298ee01d3014abd77d7df1c14a1584a3f",
+    "native-memory.log": "fc85381ee1cb106d6b771376e966c5933e3ec7353a4c82e70da407317038d432",
+    "native-protect.log": "4fabdfe7f5ba746701a13d3c85128ef4be0316c07becc27a8f645a1b4f86923d",
+    "native-red-2.log": "604b9c8e879eb9cc48eaeb9de9706fb7666d09fe7c9a433e27bb7dc156fe484e",
+    "native-red.log": "a8c0a5797f8ddbfbb244c453e8fc1a2c9f58e1831e58418b65dfe8fd341afad6",
+    "native-root-sequence.log": "0388c5182c5d1f190f216682d64c7f4c813ab0586bb193ea8ec9bb5c94b72220",
+    "wasm-build.log": "80885a24f9d3e9a420a34b8b31d2cd8f1f83bf80adbc815b61c2a3613ae42fce",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "816a979d5b26133eeecfa93e070c913593c9d3bdc3523598f941c1f6148cd479",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "9b12b37112981d9306fff7ea369ab0ef181df9f8e2ed656dff72c93626531238",
+    "wasm-web-contracts.log": "9a2e2befe367c0ef8192f50fb5b7f25746b0bdfc747dac63c9295b83257bf1a4"
+  },
+  "limitations": [
+    "Root snapshots are next separate rport-cvs2.11.10 work; native maps and Rc/weak-control metadata also remain. No total process/RSS or whole-engine safety claim.",
+    "Source hashes above describe staged ordered-channel code. Subsequent snapshot work remains uncommitted and excluded. User graphics edits were present during validation and excluded. No immutable whole-CI claim.",
+    "Dolt origin remains unconfigured, rport-0d5o."
+  ]
+}

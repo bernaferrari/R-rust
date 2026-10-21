@@ -594,6 +594,9 @@ impl RInstance {
         let global_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, base_env, nil);
 
         let root_table = super::protect::RootTable::new(heap_identity.byte_ledger());
+        let legacy_protect =
+            super::protect::LegacyProtectionStack::new(heap_identity.byte_ledger());
+        let preserve_stack = super::protect::PreservedRoots::new(heap_identity.byte_ledger());
         RInstance {
             liveness: Some(Rc::new(())),
             runtime_owner: None,
@@ -605,9 +608,9 @@ impl RInstance {
             empty_env,
             env_nodes,
             initialized: false,
-            legacy_protect: super::protect::LegacyProtectionStack::new(),
+            legacy_protect,
             root_table,
-            preserve_stack: super::protect::PreservedRoots::new(),
+            preserve_stack,
             base_wrappers: RefCell::default(),
             context_stack: Vec::new(),
             in_error: false,

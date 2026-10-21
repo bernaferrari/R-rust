@@ -922,8 +922,8 @@ fn stale_native_roots_cannot_pin_a_reused_header_address() {
         projection,
         allocation: allocation.clone(),
     };
-    let legacy = LegacyProtectionStack::new();
-    let preserved = PreservedRoots::new();
+    let legacy = LegacyProtectionStack::new(crate::sexp::memory::MemoryLedger::new());
+    let preserved = PreservedRoots::new(crate::sexp::memory::MemoryLedger::new());
     legacy.push(value.clone(), "fixture");
     let lease = preserved.try_push(value.clone()).unwrap();
     assert!(metadata.release(allocation.id()));

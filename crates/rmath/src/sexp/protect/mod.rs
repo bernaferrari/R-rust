@@ -92,3 +92,6 @@ mod tests;
 
 pub(crate) use guards::*;
 pub(crate) use stacks::*;
+
+#[cfg(test)]
+mod sequence_budget_tests;

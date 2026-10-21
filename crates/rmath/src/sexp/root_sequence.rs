@@ -2,6 +2,8 @@
 //! Canonical root occupants with stable lease identities and native ordering.
 
 use super::root_storage::StorageError;
+use crate::sexp::memory::{AllocationCharge, MemoryLedger};
+use std::alloc::Layout;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SequenceLease(u64);
@@ -16,19 +18,35 @@ struct Entry<T> {
 /// root merely because its value or native address matches the old occupant.
 pub(crate) struct RootSequence<T> {
     entries: Vec<Entry<T>>,
+    // Actual storage and occupants are dropped before their byte charge.
+    charge: Option<AllocationCharge>,
+    ledger: MemoryLedger,
     next_lease: u64,
 }
 
 impl<T> Default for RootSequence<T> {
     fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-            next_lease: 0,
-        }
+        Self::new(MemoryLedger::new())
     }
 }
 
 impl<T> RootSequence<T> {
+    pub(super) fn new(ledger: MemoryLedger) -> Self {
+        Self {
+            entries: Vec::new(),
+            charge: None,
+            ledger,
+            next_lease: 0,
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn physical_storage_for_test(&self) -> (usize, usize, u64) {
+        (
+            self.entries.capacity(),
+            self.entries.capacity() * std::mem::size_of::<Entry<T>>(),
+            self.next_lease,
+        )
+    }
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -38,9 +56,48 @@ impl<T> RootSequence<T> {
     }
 
     fn reserve(&mut self, additional: usize) -> Result<(), StorageError> {
-        self.entries
-            .try_reserve(additional)
-            .map_err(|_| StorageError::Allocation)
+        let failed = || StorageError::Allocation;
+        let needed = self
+            .entries
+            .len()
+            .checked_add(additional)
+            .ok_or_else(failed)?;
+        if needed <= self.entries.capacity() {
+            return Ok(());
+        }
+        let desired = self
+            .entries
+            .capacity()
+            .checked_mul(2)
+            .unwrap_or(needed)
+            .max(needed)
+            .max(4);
+        let bytes = |capacity| Layout::array::<Entry<T>>(capacity).ok().map(|l| l.size());
+        let desired_bytes = bytes(desired).ok_or_else(failed)?;
+        // The complete replacement coexists with the original funded buffer.
+        let (capacity, mut admission) = if let Some(admission) = self.ledger.reserve(desired_bytes)
+        {
+            (desired, admission)
+        } else {
+            (
+                needed,
+                self.ledger
+                    .reserve(bytes(needed).ok_or_else(failed)?)
+                    .ok_or_else(failed)?,
+            )
+        };
+        let mut entries = Vec::new();
+        entries.try_reserve_exact(capacity).map_err(|_| failed())?;
+        admission
+            .try_resize(bytes(entries.capacity()).ok_or_else(failed)?)
+            .ok_or_else(failed)?;
+        let charge = admission.commit_allocation().ok_or_else(failed)?;
+        // Every old entry fits: append only moves, and cannot allocate here.
+        entries.append(&mut self.entries);
+        let old = std::mem::replace(&mut self.entries, entries);
+        drop(old);
+        self.charge = Some(charge);
+        Ok(())
     }
 
     pub(super) fn try_push(&mut self, value: T) -> Result<SequenceLease, StorageError> {
