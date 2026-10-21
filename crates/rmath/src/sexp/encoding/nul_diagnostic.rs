@@ -2,25 +2,25 @@
 //! GNU's bounded embedded-NUL error text. Size and admit before allocating.
 use crate::sexp::{
     encoding::TextEncoding,
-    memory::TransientReservation,
+    memory::WorkspaceReservation,
     object::{Sexp, SexpError, SexpResult},
 };
 const LIMIT: usize = 999;
 const PREFIX: &str = "embedded nul in string: '";
-pub(super) struct Diagnostic {
+pub(crate) struct Diagnostic {
     pub(super) message: String,
-    _ticket: TransientReservation,
+    _ticket: WorkspaceReservation,
 }
 impl Diagnostic {
     /// Error text leaves the operation as a bounded host-facing diagnostic.
     /// Its formatting allocation has completed; no further copy is needed.
-    pub(super) fn into_message(self) -> String {
+    pub(crate) fn into_message(self) -> String {
         self.message
     }
 }
 fn allocation() -> SexpError {
     SexpError::AllocationFailed {
-        object: "iconv diagnostic workspace",
+        object: "embedded-NUL diagnostic workspace",
     }
 }
 fn hex(out: &mut [u8], point: u32, upper: bool) {
@@ -177,7 +177,7 @@ fn capped_visit(
     });
     size
 }
-pub(super) fn format(
+pub(crate) fn format(
     parent: &Sexp<'_>,
     bytes: &[u8],
     encoding: TextEncoding,
@@ -185,12 +185,16 @@ pub(super) fn format(
 ) -> SexpResult<Diagnostic> {
     let size = capped_visit(bytes, encoding, utf8, |_| {});
     let node = parent.allocation()?;
-    let ticket = node
+    let mut ticket = node
         .heap_identity()
-        .reserve_payload_bytes(node, size)
+        .byte_ledger()
+        .reserve(size)
         .ok_or_else(allocation)?;
     let mut message = String::new();
     message.try_reserve_exact(size).map_err(|_| allocation())?;
+    ticket
+        .try_resize(message.capacity())
+        .ok_or_else(allocation)?;
     let copied = capped_visit(bytes, encoding, utf8, |part| message.push_str(part));
     debug_assert_eq!(copied, size);
     debug_assert_eq!(message.len(), size);

@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-evnx.3"
+  ],
+  "source_base": "aa7d514aac49a30cf296a03b27dae660ad29689e",
+  "behavior": [
+    "One forbidunsafe rawToChar engine selects original raw input before coercion, owns it across all constructor notifications, and reads copied stack bytes or an admitted owned buffer. No borrowed RAW span crosses callbacks.",
+    "GNU public wrapper supports default/multiple/named argument semantics. MultipleTRUE returns one Native scalar per byte, zero yields empty; single mode trims trailing NULs and rejects interior NULs with bounded GNU diagnostics. Preserve raw nonASCII and invalid bytes without silently declaring UTF8.",
+    "Single output copy admits requested bytes, reconciles physical Vec capacity and retains original-ledger ticket through publication/drop. Multiple mode uses no bulk workspace; empty copy needs no allocation/ticket even below resident cap1.",
+    "Move the forbidunsafe bounded NUL formatter to encoding for rawToChar and iconv. Its String allocation now reconciles actual capacity before formatting."
+  ],
+  "failures_and_repairs": {
+    "native_constructor_red": "Actual original implementation loses raw source during output allocation callback: detach CAR(args), actual fullGC, assert selected source still live. Failed assertion occurs before dangling read. Final test retains same GC pressure and adds original workspace assertion.",
+    "public_original_11": "PinnedGNU all11PASS in childC/UTF8; immutable old optimized module6wrong/5controls.",
+    "public_final_15": "Final15GNU assertions allPASS in childC/UTF8; immutable old optimized module10wrong/5controls, including exact embeddedNUL error, numeric multiple and reordered named args.",
+    "native_semantic_matrix": "Original matrix plus constructor tests2FAIL. Native corrected modes and both original constructor assertions nowPASS. No quota, constructor, GC gap/wait, Miri alias/provenance/isolation or assertion relaxed."
+  },
+  "validation": {
+    "native_distinct": 20,
+    "native_ownership_quota": 10,
+    "native_shared_nul_regression": 8,
+    "native_public": {
+      "utf8": 2,
+      "c": 2,
+      "scope": "Same2 test names in both child locales:15independent assertions with recovery after each and separate complete fixture."
+    },
+    "strict_default_isolated_i686_miri": 14,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; unchanged default isolation",
+    "wasm": {
+      "node": 336,
+      "web_generations": [
+        53,
+        53
+      ],
+      "total": 442,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi alltargets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "format_whitespace": "ScopedPASS"
+  },
+  "ownership_cases": [
+    "selected raw source survives actual constructor detachment/fullGC and releases afterward",
+    "Native tag and original workspace ticket are present before actual CHARSXP publication notification",
+    "multiple selected input survives actual GC with zero bulk workspace",
+    "callback panic releases workspace",
+    "revoked original cannot publish",
+    "foreign raw input rejects before coercion/output in current runtime",
+    "exact no-headroom denial and unchanged-limit smaller-copy recovery",
+    "physical charge survives facade teardown with another runtime active",
+    "empty copy succeeds under already lowered resident cap1"
+  ],
+  "oracle": {
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "version": "R4.7devel r90451",
+    "host": "Darwin aarch64-apple-darwin25.6.0; Apple/GNU libiconv1.11",
+    "locales": [
+      "en_US.UTF-8",
+      "C"
+    ],
+    "reference_source": "ignored r-source d4cc5d9e196a144bbb087a798bb945b37121383b raw.c47"
+  },
+  "remaining_parent_inventory": [
+    "evnx.4 declaredLatin1 sharedCP1252 and strict path translation remains separately in progress",
+    "evnx.5 invalid-byte diagnostic spans and structured error lifetime admission: bounded host error String currently transfers after local formatter ticket release",
+    "cvs2 total physical accounting and whole safe-engine ownership remain open",
+    "cvs2.15 unchanged original full-base startup Miri still running; no pass claimed"
+  ],
+  "source_hash_scope": "Staged rawToChar sources as compiled before later unstaged declaredLatin1 changes. New declaredLatin1 tests/fixtures and user graphics excluded from this commit.",
+  "source_sha256": {
+    "crates/r-embed/tests/fixtures/raw-to-char-contract.R": "4c2ac90ce0e88ff91df6f1d88ee406335b3b99d81c2bd90e4597b98b4eb79a5a",
+    "crates/r-embed/tests/fixtures/raw-to-char-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "crates/r-embed/tests/raw_to_char_public.rs": "b1efc478623e5d7d2a620b30875d2aece60cc6fa9fc0fac304517875d9cb6fb6",
+    "crates/rmath/src/mainutils/essentials/mathstats/math1.rs": "eae7a62b7187bf8b2c5e92655dafc31d64b124821b1d93decd5f9becb73eb7aa",
+    "crates/rmath/src/mainutils/essentials/mathstats/raw_to_char.rs": "61585e7276226c913d2e378d3d42fb1ea7600f7a2440924ab5d549e614539643",
+    "crates/rmath/src/mainutils/essentials/mathstats/raw_to_char_tests.rs": "a9fa2c8f9c37b306c31d1319d96198a243df83a266158c92d55a3f0d856ef15f",
+    "crates/rmath/src/mainutils/essentials/mathstats/raw_to_char_workspace_tests.rs": "db0b2de1666e7f5a763c31c66a3de461e27915f02ca021a721f56315aacc0381",
+    "crates/rmath/src/mainutils/essentials/mathstats/tests.rs": "e40f4214dd6e0e32ae1da7fdcf5af5b29c10b3e17ea24dfec77802b7041727a4",
+    "crates/rmath/src/mainutils/essentials/strings/mod.rs": "9aec58f52becf275d709841d53c29c9692a81f0f12b043fb758cc7367b0fce98",
+    "crates/rmath/src/sexp/encoding.rs": "b2fbb5a8d453d6bdb9b38b07e3385636145e2e569939a15244a3d8b2c1c8630c",
+    "crates/rmath/src/sexp/encoding/nul_diagnostic.rs": "aa36dea849fa75736769fe7deb06332f38414d028e441e231924fc267cbadd0f",
+    "crates/rmath/src/sexp/init/bindings_core.rs": "68e7004943456b88256395d1b4bc87829338093659156de695fbfe7daeadfaf7",
+    "tests/browser/portable-package-contracts.mjs": "efa25ac7cd23586c0de71687af1fd03a488e00cfaa7a64e5e99dc4f87b57d3a5",
+    "tests/browser/raw-to-char.cjs": "9cd3a39f11c069ee439978ad852c2347a83800e39de6fd89a1b835ae3f592648"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29699334,
+      "sha256": "e97e68718be66dc95688a9351e75a9b0235ce61f96e9a24b4a453084b9aef10c"
+    },
+    "output": {
+      "bytes": 25404148,
+      "sha256": "bbcd3a413756864282e24a1cb5d73a57f7544d723e94124ce30a6573c3712b57"
+    }
+  },
+  "evidence_logs": {
+    "native-owned.log": "126f8f44693782e148bd1e4bd8f9930ad5d5ad683d800f53a36b74df45674eaa",
+    "native-nul-regression.log": "1c9fc7a7aa1bbfb49c3d35d5f67e8be87286885e436d10eb322189894427c36e",
+    "native-public-utf8.log": "8f989b33d4480266c36f45cb77854050feb3c73b5154da178f4cfb3587095c4a",
+    "native-public-c.log": "47f3f86a3e4f1eb1d13e1f8e24ccec4781d2f1302257e2c74318b382d4730d61",
+    "miri-owned.log": "8a225c2dbe941275937e184935c0a2981a3965c89e920ebd6e1239c82cbfd85c",
+    "miri-nul.log": "72589a91976eac9d759a6c658e83d430f3a9517628177b4a16e85ef7fcc9bfa7",
+    "clippy.log": "67b064d16e224d10494e3e0e318096d144e415aa2c2ae933602b66186ea62b30",
+    "android.log": "9bc8c34ad1ca3260a110fcb2768f4474e199fe5b9467bfaf4e98b2d672b5eb3d",
+    "wasm-build.log": "d946b8f925f6ebe28441f96ba65610ba8a3a259d90f5ee487b3974620226f568",
+    "wasm-validation.log": "d848745c5111f3f2ae62ebe03a78bc01c18c8843df3b817d6d0e957f6156ae68"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  }
+}

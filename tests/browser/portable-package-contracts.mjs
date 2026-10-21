@@ -77,6 +77,7 @@ const contracts = [
     'regex-compile-error-recovery-contract',
     'regex-empty-fixed-contract',
     'public-case-conversion-contract',
+    'raw-to-char-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

@@ -212,3 +212,6 @@ mod char_to_raw_tests;
 #[cfg(test)]
 #[path = "char_to_raw_warning_tests.rs"]
 mod char_to_raw_warning_tests;
+#[cfg(test)]
+#[path = "raw_to_char_tests.rs"]
+mod raw_to_char_tests;

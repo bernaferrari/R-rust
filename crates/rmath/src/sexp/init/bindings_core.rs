@@ -47,6 +47,12 @@ pub(crate) unsafe fn install(base_env: SEXP) {
             "function(x, upper = FALSE) if (upper) toupper(x) else tolower(x)",
         );
 
+        eval_base_binding(
+            base_env,
+            "rawToChar",
+            "function(x, multiple = FALSE) .Internal(rawToChar(x, multiple))",
+        );
+
         // GNU: T and F are ordinary symbols bound to TRUE/FALSE, not parser
         // keywords. `quote(F())` and `substitute(F(), list(F=...))` need
         // the symbol, while bare `F` still evaluates to FALSE.

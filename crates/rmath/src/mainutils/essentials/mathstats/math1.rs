@@ -43,29 +43,47 @@ mod char_to_raw;
 
 /// GNU `rawToChar(x)` copies raw bytes, stripping trailing nuls.
 pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
-            std::panic::panic_any(RError {
-                message: "argument 'x' must be a raw vector".to_string(),
-            });
+    use crate::sexp::{
+        object::Sexp,
+        owner::{OwnerToken, with_runtime},
+    };
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let args = owner
+        .sexp(args)
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("rawToChar requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_runtime(&weak, |access| {
+            raw_to_char::evaluate(access, args, |value| {
+                access.with_native(|original| {
+                    let flag = unsafe { crate::mainutils::coerce::asLogical(value.as_raw()) };
+                    original.require_active()?;
+                    Ok(flag)
+                })
+            })
+        })
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
+            crate::sexp::context::r_error(message)
         }
-        let n = XLENGTH(x);
-        let data = RAW(x);
-        let mut last = -1i32;
-        for i in 0..n {
-            if *data.add(i as usize) != 0 {
-                last = i as i32;
-            }
-        }
-        let nc = last + 1;
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _o = protect(out);
-        let ch = crate::sexp::constructors::Rf_mkCharLen(data as *const std::os::raw::c_char, nc);
-        SET_STRING_ELT(out, 0, ch);
-        out
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
+#[path = "raw_to_char.rs"]
+mod raw_to_char;
 
 // ---------------------------------------------------------------------------
 // do_abs — absolute value
