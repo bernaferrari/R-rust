@@ -220,30 +220,31 @@ pub struct tre_literal_t {
     pub code_min: c_long,
     pub code_max: c_long,
     pub position: c_int,
-    // Union: class or params
-    pub class_or_params: *mut c_void,
+    // Class identifiers and parameter addresses have distinct Rust types.
+    class: tre_ctype_t,
+    params: *mut c_int,
     pub neg_classes: *mut tre_ctype_t,
 }
 
 impl tre_literal_t {
     #[inline]
     pub fn get_class(&self) -> tre_ctype_t {
-        self.class_or_params as tre_ctype_t
+        self.class
     }
 
     #[inline]
     pub fn get_params(&self) -> *mut c_int {
-        self.class_or_params as *mut c_int
+        self.params
     }
 
     #[inline]
-    pub unsafe fn set_class(&mut self, class: tre_ctype_t) {
-        self.class_or_params = class as *mut c_void;
+    pub fn set_class(&mut self, class: tre_ctype_t) {
+        self.class = class;
     }
 
     #[inline]
-    pub unsafe fn set_params(&mut self, params: *mut c_int) {
-        self.class_or_params = params as *mut c_void;
+    pub fn set_params(&mut self, params: *mut c_int) {
+        self.params = params;
     }
 }
 
@@ -515,6 +516,9 @@ pub unsafe fn tre_ast_new_literal(
         (*lit).code_min = code_min as c_long;
         (*lit).code_max = code_max as c_long;
         (*lit).position = position;
+        (*lit).class = 0;
+        (*lit).params = ptr::null_mut();
+        (*lit).neg_classes = ptr::null_mut();
         node
     }
 }

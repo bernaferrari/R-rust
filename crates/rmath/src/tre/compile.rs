@@ -1,4 +1,3 @@
-#![allow(unreachable_code)]
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
 /*
@@ -36,6 +35,62 @@ struct tre_tag_states_t {
     next_tag: c_int,
 }
 
+// Construct every field before publishing a child copied during tag insertion.
+unsafe fn tre_tagged_child(
+    mem: mem::tre_mem_t,
+    node: *const tre_ast_node_t,
+) -> *mut tre_ast_node_t {
+    unsafe {
+        let child =
+            mem::tre_mem_alloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
+        if !child.is_null() {
+            child.write(tre_ast_node_t {
+                type_: (*node).type_,
+                obj: (*node).obj,
+                nullable: -1,
+                submatch_id: -1,
+                num_submatches: (*node).num_submatches,
+                num_tags: 0,
+                firstpos: ptr::null_mut(),
+                lastpos: ptr::null_mut(),
+            });
+        }
+        child
+    }
+}
+
+#[test]
+fn tag_wrapper_children_initialize_all_metadata_before_expansion() {
+    unsafe {
+        for left in [false, true] {
+            let arena = mem::tre_mem_new();
+            assert!(!arena.is_null());
+            let source = tre_ast_new_literal(arena, 65, 65, 0);
+            assert!(!source.is_null());
+            (*source).num_submatches = 7;
+            let status = if left {
+                tre_add_tag_left(arena, source, 0)
+            } else {
+                tre_add_tag_right(arena, source, 0)
+            };
+            assert_eq!(status, REG_OK);
+            let catenation = (*source).obj as *mut tre_catenation_t;
+            let copied = if left {
+                (*catenation).right
+            } else {
+                (*catenation).left
+            };
+            assert_eq!((*copied).num_submatches, 7);
+            assert_eq!((*copied).num_tags, 0);
+            assert_eq!((*copied).nullable, -1);
+            assert_eq!((*copied).submatch_id, -1);
+            assert!((*copied).firstpos.is_null());
+            assert!((*copied).lastpos.is_null());
+            mem::tre_mem_destroy(arena);
+        }
+    }
+}
+
 unsafe fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
     unsafe {
         let c = mem::tre_mem_alloc(mem, std::mem::size_of::<tre_catenation_t>())
@@ -47,19 +102,11 @@ unsafe fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_i
         if (*c).left.is_null() {
             return REG_ESPACE as c_int;
         }
-        (*c).right =
-            mem::tre_mem_alloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
+        (*c).right = tre_tagged_child(mem, node);
         if (*c).right.is_null() {
             return REG_ESPACE as c_int;
         }
 
-        (*(*c).right).obj = (*node).obj;
-        (*(*c).right).type_ = (*node).type_;
-        (*(*c).right).nullable = -1;
-        (*(*c).right).submatch_id = -1;
-        (*(*c).right).firstpos = ptr::null_mut();
-        (*(*c).right).lastpos = ptr::null_mut();
-        (*(*c).right).num_tags = 0;
         (*node).obj = c as *mut c_void;
         (*node).type_ = tre_ast_type_t::CATENATION;
         REG_OK as c_int
@@ -81,19 +128,11 @@ unsafe fn tre_add_tag_right(
         if (*c).right.is_null() {
             return REG_ESPACE as c_int;
         }
-        (*c).left =
-            mem::tre_mem_alloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
+        (*c).left = tre_tagged_child(mem, node);
         if (*c).left.is_null() {
             return REG_ESPACE as c_int;
         }
 
-        (*(*c).left).obj = (*node).obj;
-        (*(*c).left).type_ = (*node).type_;
-        (*(*c).left).nullable = -1;
-        (*(*c).left).submatch_id = -1;
-        (*(*c).left).firstpos = ptr::null_mut();
-        (*(*c).left).lastpos = ptr::null_mut();
-        (*(*c).left).num_tags = 0;
         (*node).obj = c as *mut c_void;
         (*node).type_ = tre_ast_type_t::CATENATION;
         REG_OK as c_int
@@ -625,6 +664,8 @@ unsafe fn tre_copy_ast(
                             } else {
                                 (*((**result).obj as *mut tre_literal_t))
                                     .set_class((*lit).get_class());
+                                (*((**result).obj as *mut tre_literal_t))
+                                    .set_params((*lit).get_params());
                                 if pos > *max_pos {
                                     *max_pos = pos;
                                 }
@@ -1617,7 +1658,9 @@ unsafe fn tre_make_trans(
                         let total = (i + j + 1) as usize;
                         (*t).tags =
                             mem::xmalloc(std::mem::size_of::<c_int>() * total) as *mut c_int;
-                        if !(*t).tags.is_null() {
+                        if (*t).tags.is_null() {
+                            return REG_ESPACE;
+                        } else {
                             let mut k: c_int = 0;
                             if !(*p1.offset(pi)).tags.is_null() {
                                 while *(*p1.offset(pi)).tags.offset(k as isize) >= 0 {
@@ -1656,7 +1699,9 @@ unsafe fn tre_make_trans(
                     if !(*p1.offset(pi)).params.is_null() || !(*p2.offset(pj)).params.is_null() {
                         (*t).params = mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST)
                             as *mut c_int;
-                        if !(*t).params.is_null() {
+                        if (*t).params.is_null() {
+                            return REG_ESPACE;
+                        } else {
                             for k in 0..TRE_PARAM_LAST {
                                 *(*t).params.add(k) = TRE_PARAM_UNSET;
                                 if !(*p1.offset(pi)).params.is_null()
@@ -1780,6 +1825,8 @@ pub unsafe fn tre_compile(
     cflags: c_int,
 ) -> c_int {
     unsafe {
+        (*preg).value = ptr::null_mut();
+        (*preg).re_nsub = 0;
         let mut parse_ctx: tre_parse_ctx_t = std::mem::zeroed();
         let mut counts: *mut c_int = ptr::null_mut();
         let mut offs: *mut c_int = ptr::null_mut();
@@ -1804,17 +1851,7 @@ pub unsafe fn tre_compile(
 
         let errcode = super::parse::tre_parse(&mut parse_ctx);
         if errcode != REG_OK as c_int {
-            let _ = errcode;
-            goto_error(
-                mem,
-                stack,
-                counts,
-                offs,
-                preg,
-                ptr::null_mut(),
-                REG_ESPACE as c_int,
-            );
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, ptr::null_mut(), errcode);
         }
 
         (*preg).re_nsub = if parse_ctx.submatch_id > 0 {
@@ -1827,7 +1864,7 @@ pub unsafe fn tre_compile(
         // Allocate TNFA
         let tnfa = mem::xcalloc(1, std::mem::size_of::<tre_tnfa_t>()) as *mut tre_tnfa_t;
         if tnfa.is_null() {
-            goto_error(
+            return compile_error(
                 mem,
                 stack,
                 counts,
@@ -1836,7 +1873,6 @@ pub unsafe fn tre_compile(
                 ptr::null_mut(),
                 REG_ESPACE as c_int,
             );
-            unreachable!()
         }
         (*tnfa).have_backrefs = if parse_ctx.max_backref >= 0 { 1 } else { 0 };
         (*tnfa).have_approx = parse_ctx.have_approx;
@@ -1845,13 +1881,23 @@ pub unsafe fn tre_compile(
         // Set up tags for submatch addressing
         if (*tnfa).have_backrefs != 0 || (cflags & REG_NOSUB) == 0 {
             let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa);
+            if _errcode != REG_OK {
+                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            }
             if (*tnfa).num_tags > 0 {
                 let tag_directions =
                     mem::xmalloc(std::mem::size_of::<c_int>() * ((*tnfa).num_tags as usize + 1))
                         as *mut c_int;
                 if tag_directions.is_null() {
-                    goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-                    unreachable!()
+                    return compile_error(
+                        mem,
+                        stack,
+                        counts,
+                        offs,
+                        preg,
+                        tnfa,
+                        REG_ESPACE as c_int,
+                    );
                 }
                 (*tnfa).tag_directions = tag_directions;
                 for i in 0..=(*tnfa).num_tags {
@@ -1863,8 +1909,7 @@ pub unsafe fn tre_compile(
                 std::mem::size_of::<c_int>(),
             ) as *mut c_int;
             if (*tnfa).minimal_tags.is_null() {
-                goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-                unreachable!()
+                return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
             }
 
             let submatch_data = mem::xcalloc(
@@ -1872,12 +1917,14 @@ pub unsafe fn tre_compile(
                 std::mem::size_of::<tre_submatch_data_t>(),
             ) as *mut tre_submatch_data_t;
             if submatch_data.is_null() {
-                goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-                unreachable!()
+                return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
             }
             (*tnfa).submatch_data = submatch_data;
 
             let _errcode = tre_add_tags(mem, stack, tree, tnfa);
+            if _errcode != REG_OK {
+                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            }
         }
 
         // Expand iteration nodes
@@ -1889,44 +1936,45 @@ pub unsafe fn tre_compile(
             (*tnfa).tag_directions,
             &mut (*tnfa).params_depth,
         );
+        if _errcode != REG_OK {
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+        }
 
         // Add dummy node for final state
         let tmp_ast_l = tree;
         let tmp_ast_r = tre_ast_new_literal(mem, 0, 0, parse_ctx.position);
         if tmp_ast_r.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
         parse_ctx.position += 1;
         let tree = tre_ast_new_catenation(mem, tmp_ast_l, tmp_ast_r);
         if tree.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
 
         let _errcode = tre_compute_nfl(mem, stack, tree);
         if _errcode != REG_OK as c_int {
-            goto_error(mem, stack, counts, offs, preg, tnfa, _errcode);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
         }
 
         counts =
             mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
         if counts.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
         offs =
             mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
         if offs.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
 
         for i in 0..parse_ctx.position as isize {
             *counts.offset(i) = 0;
         }
         let _errcode = tre_ast_to_tnfa(tree, ptr::null_mut(), counts, ptr::null());
+        if _errcode != REG_OK {
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+        }
 
         let mut add: c_int = 0;
         for i in 0..parse_ctx.position as isize {
@@ -1940,16 +1988,14 @@ pub unsafe fn tre_compile(
             std::mem::size_of::<tre_tnfa_transition_t>(),
         ) as *mut tre_tnfa_transition_t;
         if transitions.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
         (*tnfa).transitions = transitions;
         (*tnfa).num_transitions = add as u32;
 
         let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs);
         if _errcode != REG_OK as c_int {
-            goto_error(mem, stack, counts, offs, preg, tnfa, _errcode);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
         }
 
         (*tnfa).first_char = -1;
@@ -1968,8 +2014,7 @@ pub unsafe fn tre_compile(
             std::mem::size_of::<tre_tnfa_transition_t>(),
         ) as *mut tre_tnfa_transition_t;
         if initial.is_null() {
-            goto_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
-            unreachable!()
+            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
         }
         (*tnfa).initial = initial;
 
@@ -1990,7 +2035,9 @@ pub unsafe fn tre_compile(
                 }
                 let tags =
                     mem::xmalloc(std::mem::size_of::<c_int>() * (j as usize + 1)) as *mut c_int;
-                if !tags.is_null() {
+                if tags.is_null() {
+                    return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE);
+                } else {
                     for k in 0..j as isize {
                         *tags.offset(k) = *(*p).tags.offset(k);
                     }
@@ -2002,7 +2049,9 @@ pub unsafe fn tre_compile(
             if !(*p).params.is_null() {
                 let params =
                     mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST) as *mut c_int;
-                if !params.is_null() {
+                if params.is_null() {
+                    return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE);
+                } else {
                     for k in 0..TRE_PARAM_LAST {
                         *params.add(k) = *(*p).params.add(k);
                     }
@@ -2030,7 +2079,7 @@ pub unsafe fn tre_compile(
     }
 }
 
-unsafe fn goto_error(
+unsafe fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     counts: *mut c_int,
@@ -2038,7 +2087,7 @@ unsafe fn goto_error(
     preg: *mut regex_t,
     tnfa: *mut tre_tnfa_t,
     errcode: c_int,
-) -> ! {
+) -> c_int {
     unsafe {
         if !mem.is_null() {
             mem::tre_mem_destroy(mem);
@@ -2052,11 +2101,9 @@ unsafe fn goto_error(
         if !offs.is_null() {
             mem::xfree(offs as *mut c_void);
         }
-        if !tnfa.is_null() {
-            (*preg).value = tnfa as *mut c_void;
-            tre_free(preg);
-        }
-        std::process::exit(errcode as i32);
+        (*preg).value = tnfa as *mut c_void;
+        tre_free(preg);
+        errcode
     }
 }
 
@@ -2066,6 +2113,8 @@ pub unsafe fn tre_free(preg: *mut regex_t) {
             return;
         }
         let tnfa = (*preg).value as *mut tre_tnfa_t;
+        (*preg).value = ptr::null_mut();
+        (*preg).re_nsub = 0;
         if tnfa.is_null() {
             return;
         }

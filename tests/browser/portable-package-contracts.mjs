@@ -74,6 +74,8 @@ const contracts = [
     'regex-unicode-public-contract',
     'regex-replacement-case-contract',
     'regex-replacement-missing-contract',
+    'regex-compile-error-recovery-contract',
+    'regex-empty-fixed-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

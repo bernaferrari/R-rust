@@ -16,6 +16,9 @@ use super::match_backtrack;
 use super::match_parallel;
 use super::mem;
 
+#[cfg(test)]
+mod compile_error_tests;
+
 // ===== tre_fill_pmatch =====
 
 pub unsafe fn tre_fill_pmatch(
@@ -714,12 +717,6 @@ mod tests {
             tre_regfree(&mut preg);
         }
     }
-
-    // NOTE: Compile-error tests (unbalanced parens/brackets) are omitted
-    // because goto_error() in compile.rs calls std::process::exit() which
-    // kills the entire test process instead of returning an error code.
-    // This is itself a bug — goto_error should return the error code instead
-    // of aborting.
 
     // ---- regerror ----
 

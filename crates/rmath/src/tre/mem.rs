@@ -4,9 +4,29 @@
   Ported from tre-mem.c and xmalloc.c
 */
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::Layout;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+
+#[cfg(test)]
+pub(super) mod fault;
+
+unsafe fn alloc(layout: Layout) -> *mut u8 {
+    #[cfg(test)]
+    if fault::deny() {
+        return ptr::null_mut();
+    }
+    let pointer = unsafe { std::alloc::alloc(layout) };
+    #[cfg(test)]
+    fault::allocated(pointer);
+    pointer
+}
+
+unsafe fn dealloc(pointer: *mut u8, layout: Layout) {
+    #[cfg(test)]
+    fault::deallocated(pointer);
+    unsafe { std::alloc::dealloc(pointer, layout) };
+}
 
 pub const TRE_MEM_BLOCK_SIZE: usize = 1024;
 
@@ -213,9 +233,18 @@ pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
         let Some(new_layout) = allocation_layout(new_size) else {
             return ptr::null_mut();
         };
+        #[cfg(test)]
+        if fault::deny() {
+            return ptr::null_mut();
+        }
         let new_raw = std::alloc::realloc(raw, old_layout, new_layout.size());
         if new_raw.is_null() {
             return ptr::null_mut();
+        }
+        #[cfg(test)]
+        {
+            fault::deallocated(raw);
+            fault::allocated(new_raw);
         }
         new_raw
             .cast::<AllocationHeader>()

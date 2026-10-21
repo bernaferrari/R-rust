@@ -495,6 +495,9 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         }
         let replacement_missing = string_arg_is_na(replacement_arg);
         let pattern = elt_to_string(pattern_arg, 0);
+        if fixed && pattern.is_empty() {
+            base_error("zero-length pattern");
+        }
         let replacement = elt_to_string(replacement_arg, 0);
         crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
             .unwrap_or_else(|message| base_error(&message));
