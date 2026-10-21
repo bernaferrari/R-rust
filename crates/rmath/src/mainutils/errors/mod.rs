@@ -62,6 +62,10 @@ mod format;
 mod helpers;
 mod messages;
 mod render;
+mod rendered_cache;
+pub(crate) use rendered_cache::RenderedMessage;
+#[cfg(test)]
+mod rendered_cache_tests;
 mod restarts;
 mod state;
 #[cfg(test)]

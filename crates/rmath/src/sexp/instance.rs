@@ -85,7 +85,7 @@ pub(crate) struct ErrorState {
     /// error buffer when the escaping error's message matches this, so stale
     /// renders from previously caught errors are ignored (mirrors upstream,
     /// where caught errors never reach `verrorcall_dflt` printing).
-    pub last_rendered_message: Option<String>,
+    pub last_rendered_message: Option<crate::mainutils::errors::RenderedMessage>,
     /// 1-based index of the top-level expression a session script loop is
     /// currently evaluating (0 = no script position is active). The port
     /// parses scripts without srcrefs, so the loop's expression index stands

@@ -132,6 +132,19 @@ fn deparse_callback(action: u8, stop_condition: bool) {
             assert_eq!((*instance).memory_state.in_gc, 0);
             assert_eq!((*instance).error_state.in_error, 0);
             assert_eq!((*instance).error_state.expressions, 503);
+            let cache_capacity = (*instance)
+                .error_state
+                .last_rendered_message
+                .as_ref()
+                .map_or(0, |message| message.capacity());
+            assert_eq!(
+                heap.byte_ledger().workspace_bytes_for_test(),
+                cache_capacity
+            );
+            if action == 0 {
+                assert!(state::error_was_last_rendered("a\\xffb"));
+                state::clear_last_rendered_message();
+            }
             assert_eq!(heap.byte_ledger().workspace_bytes_for_test(), 0);
             if action == 1 {
                 assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 991);

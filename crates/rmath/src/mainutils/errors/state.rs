@@ -123,12 +123,10 @@ fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
     })
 }
 
-pub(super) fn last_rendered_message() -> Option<String> {
-    with_error_state(|state| state.last_rendered_message.clone())
-}
-
-pub(super) fn set_last_rendered_message(message: Option<String>) {
-    with_error_state(|state| state.last_rendered_message = message);
+pub(super) fn set_last_rendered_message(message: Option<super::RenderedMessage>) {
+    let previous =
+        with_error_state(|state| std::mem::replace(&mut state.last_rendered_message, message));
+    drop(previous);
 }
 
 /// Whether `message` is the error most recently rendered into the error
@@ -136,7 +134,13 @@ pub(super) fn set_last_rendered_message(message: Option<String>) {
 /// builtin-dispatch attribution wrapper to trust/distrust the error buffer
 /// and avoid re-rendering already-attributed errors.
 pub fn error_was_last_rendered(message: &str) -> bool {
-    last_rendered_message().as_deref() == Some(message)
+    with_error_state(|state| {
+        state
+            .last_rendered_message
+            .as_ref()
+            .map(|text| text.as_str())
+            == Some(message)
+    })
 }
 
 /// Clear the last-rendered marker at the start of a top-level evaluation so
@@ -453,7 +457,12 @@ pub unsafe fn R_curErrorBuf() -> *const c_char {
 pub fn try_last_rendered_message(message: &str) -> Option<String> {
     instance::with_current_instance(|instance| unsafe {
         let state = &(*instance).error_state;
-        if state.last_rendered_message.as_deref() != Some(message) {
+        if state
+            .last_rendered_message
+            .as_ref()
+            .map(|text| text.as_str())
+            != Some(message)
+        {
             return None;
         }
         Some(super::byte_buffer::Snapshot::stored(&state.error_buffer))

@@ -342,6 +342,11 @@ pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer:
         // the payload stays clean; the rendered errbuf above keeps the full
         // attribution for stderr.
         let payload_message = tmp.bare_host_text();
+        let cache_owner = crate::sexp::owner::OwnerToken::from_raw(_guard.owner.as_ptr())
+            .weak_owner()
+            .expect("managed renderer owner");
+        let cached_message = super::RenderedMessage::copy(&cache_owner, &payload_message)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
         // Write to thread-local errbuf via R_SetErrmessage
         super::state::set_error_buffer_snapshot(
@@ -353,7 +358,7 @@ pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer:
         // attribution wrapper) trust the buffer for this error only —
         // renders from previously caught errors must not leak into later
         // results (upstream: caught errors never reach this printer).
-        set_last_rendered_message(Some(payload_message.clone()));
+        set_last_rendered_message(Some(cached_message));
 
         // Emission contract, exactly once:
         // - When no output capture is active (standalone embedding), write

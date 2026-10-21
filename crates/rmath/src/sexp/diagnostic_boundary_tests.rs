@@ -207,6 +207,15 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
             }));
             assert_eq!(seen.get(), 1);
             assert_eq!((*instance).memory_state.in_gc, 0);
+            let cache_capacity = (*instance)
+                .error_state
+                .last_rendered_message
+                .as_ref()
+                .map_or(0, |message| message.capacity());
+            assert_eq!(ledger.workspace_bytes_for_test(), cache_capacity);
+            if action == 0 {
+                crate::mainutils::errors::clear_last_rendered_message();
+            }
             assert_eq!(ledger.workspace_bytes_for_test(), 0);
             match action {
                 0 => {
