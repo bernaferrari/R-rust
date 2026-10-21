@@ -1027,23 +1027,15 @@ pub(crate) fn perl_replace_with_case(
     if pattern == "\\b" {
         // PCRE's default word class is ASCII even for UTF8 subjects. Preserve
         // byte offsets and literal text without constructing a Vec<char>.
-        let word = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
         let bytes = text.as_bytes();
         let mut out = regex_workspace().text(text.len());
         let mut copied = 0;
-        for offset in 0..=bytes.len() {
-            let left = offset
-                .checked_sub(1)
-                .and_then(|i| bytes.get(i))
-                .is_some_and(|&b| word(b));
-            let right = bytes.get(offset).is_some_and(|&b| word(b));
-            if left != right {
-                out.push_str(&text[copied..offset]);
-                append_r_replacement(&mut out, replacement, text, &[], mode);
-                copied = offset;
-                if !global {
-                    break;
-                }
+        for offset in ascii_word_boundaries(bytes) {
+            out.push_str(&text[copied..offset]);
+            append_r_replacement(&mut out, replacement, text, &[], mode);
+            copied = offset;
+            if !global {
+                break;
             }
         }
         out.push_str(&text[copied..]);
@@ -1058,6 +1050,18 @@ pub(crate) fn perl_replace_with_case(
         &regex.workspace,
         |original, offset| regex.captures_at(original, offset),
     )
+}
+
+fn ascii_word_boundaries(bytes: &[u8]) -> impl Iterator<Item = usize> + '_ {
+    (0..=bytes.len()).filter(|&offset| {
+        let word = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+        let left = offset
+            .checked_sub(1)
+            .and_then(|i| bytes.get(i))
+            .is_some_and(|&b| word(b));
+        let right = bytes.get(offset).is_some_and(|&b| word(b));
+        left != right
+    })
 }
 
 fn replace_with_captures<F>(
@@ -1257,6 +1261,14 @@ pub(crate) fn ere_find(pattern: &str, text: &str, ignore_case: bool) -> Option<R
 }
 
 pub(crate) fn perl_find(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexMatch> {
+    if pattern == "\\b" {
+        return ascii_word_boundaries(text.as_bytes())
+            .next()
+            .map(|offset| RegexMatch {
+                start: offset,
+                end: offset,
+            });
+    }
     PerlRegex::compile(pattern, ignore_case)
         .ok()
         .and_then(|regex| regex.find(text))

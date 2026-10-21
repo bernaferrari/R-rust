@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod replacement_missing_tests;
+
 /// R's `trimws(x, which="both")` — trim whitespace from strings.
 pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -479,6 +482,18 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             return R_NilValue();
         }
         let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
+        // Missing patterns short-circuit every matcher, including raw literals.
+        if string_arg_is_na(pattern_arg) {
+            let n = XLENGTH(x_arg);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _result_guard = protect(result);
+            for i in 0..n {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            }
+            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
+            return result;
+        }
+        let replacement_missing = string_arg_is_na(replacement_arg);
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
         crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
@@ -520,7 +535,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             } else {
                 Vec::new()
             };
-            let parsed_replacement = if fixed {
+            let parsed_replacement = if fixed || replacement_missing {
                 None
             } else {
                 Some(crate::mainutils::grep::literal_replacement_bytes(
@@ -553,9 +568,12 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                             }
                         });
                     if matched {
+                        changed = true;
+                        if replacement_missing {
+                            break;
+                        }
                         out.extend_from_slice(replacement_bytes);
                         p += pat.len();
-                        changed = true;
                         if !global {
                             out.extend_from_slice(&src[p..]);
                             break;
@@ -567,6 +585,8 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 }
                 if !changed {
                     SET_STRING_ELT(result, i, src_ch);
+                } else if replacement_missing {
+                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                 } else {
                     let cstr = std::ffi::CString::new(out).unwrap_or_default();
                     SET_STRING_ELT(
@@ -585,35 +605,11 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        if string_arg_is_na(pattern_arg) {
-            for i in 0..n {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-            }
-            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
-            return result;
-        }
-        let replacement_missing = string_arg_is_na(replacement_arg);
         for i in 0..n {
             if TYPEOF(x_arg) == SEXPTYPE::STRSXP
                 && STRING_ELT(x_arg, i) == crate::sexp::globals::R_NaString()
             {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            if replacement_missing {
-                let matched = crate::mainutils::grep::ere_replace(
-                    &pattern,
-                    &elt_to_string(x_arg, i),
-                    "",
-                    global,
-                    ignore_case,
-                )
-                .is_some_and(|trial| trial != elt_to_string(x_arg, i));
-                if matched {
-                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                } else {
-                    SET_STRING_ELT(result, i, STRING_ELT(x_arg, i));
-                }
                 continue;
             }
             // GNU sub/gsub in a single-byte locale treats native strings as
@@ -629,6 +625,22 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             } else {
                 (elt_to_string(x_arg, i), false)
             };
+            if replacement_missing {
+                // Match existence includes empty matches. Deleting text cannot
+                // distinguish those and must not send Perl/fixed syntax to TRE.
+                let value = if grep_value_matches(&s, &pattern, ignore_case && !fixed, perl, fixed)
+                {
+                    crate::sexp::globals::R_NaString()
+                } else if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+                    STRING_ELT(x_arg, i)
+                } else {
+                    let original =
+                        CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
+                    crate::sexp::constructors::Rf_mkChar(original.as_ptr())
+                };
+                SET_STRING_ELT(result, i, value);
+                continue;
+            }
             let fixed_replacement = if fixed && global {
                 Some(s.replace(&pattern, &replacement))
             } else if fixed {

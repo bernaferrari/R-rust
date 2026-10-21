@@ -71,6 +71,9 @@ const contracts = [
     'try-condition-call-public-contract',
     'unserialize-connection-contract',
     'text-publication-contract',
+    'regex-unicode-public-contract',
+    'regex-replacement-case-contract',
+    'regex-replacement-missing-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 
