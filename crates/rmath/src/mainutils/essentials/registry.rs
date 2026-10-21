@@ -683,7 +683,6 @@ pub(super) const ALL_FNS: &[&str] = &[
     "load",
     "withCallingHandlers",
     "globalCallingHandlers",
-    "try",
     "computeRestarts",
     "findRestart",
     "invokeRestart",

@@ -46,6 +46,9 @@ pub use crate::special::mlutils::REprintf;
 #[allow(unused_imports)]
 use crate::mainutils::inlined::PRINTNAME;
 
+mod byte_buffer;
+#[cfg(test)]
+mod byte_buffer_tests;
 mod conditions;
 mod native;
 pub(crate) use native::raise_owned_diagnostic;

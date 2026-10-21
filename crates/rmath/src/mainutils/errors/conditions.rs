@@ -235,12 +235,24 @@ pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP)
     unsafe { signal_condition_handlers(cond, msg, ecall, SignalMode::Condition) }
 }
 
-enum SignalMode {
+#[derive(Clone, Copy)]
+enum SignalMode<'a> {
     Condition,
-    Error { exit_only: bool },
+    Error {
+        exit_only: bool,
+    },
+    SimpleError {
+        access: &'a crate::sexp::owner::RuntimeAccess,
+        diagnostic: &'a crate::sexp::diagnostic::Diagnostic,
+    },
 }
 
-unsafe fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMode) -> bool {
+unsafe fn signal_condition_handlers(
+    cond: SEXP,
+    msg: SEXP,
+    ecall: SEXP,
+    mode: SignalMode<'_>,
+) -> bool {
     let condition = unsafe { crate::sexp::context::own_control_value(cond) };
     let message = unsafe { crate::sexp::context::own_control_value(msg) };
     let call = unsafe { crate::sexp::context::own_control_value(ecall) };
@@ -248,12 +260,25 @@ unsafe fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: Si
         let mut called = false;
         let mut list = findConditionHandler(condition.as_raw());
         while !list.is_null() && list != globals::R_NilValue() {
+            if let SignalMode::SimpleError { access, diagnostic } = mode {
+                access
+                    .require_active()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                let snapshot = super::byte_buffer::Snapshot::copy(
+                    |i| diagnostic.byte(i),
+                    crate::mainutils::platform::locale_is_utf8(),
+                );
+                super::state::set_error_buffer_snapshot(snapshot);
+            }
             let entry = crate::sexp::context::own_control_value(CAR(list));
             set_handler_stack(CDR(list));
             if IS_CALLING_ENTRY(entry.as_raw()) != 0 {
                 let h = ENTRY_HANDLER(entry.as_raw());
                 if h == globals::R_RestartToken() {
-                    if matches!(mode, SignalMode::Error { .. }) {
+                    if matches!(
+                        mode,
+                        SignalMode::Error { .. } | SignalMode::SimpleError { .. }
+                    ) {
                         break;
                     }
                     let msg = message.as_raw();
@@ -275,6 +300,11 @@ unsafe fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: Si
                 }
             } else {
                 gotoExitingHandler(condition.as_raw(), call.as_raw(), entry.as_raw());
+            }
+            if let SignalMode::SimpleError { access, .. } = mode {
+                access
+                    .require_active()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             }
             list = findConditionHandler(condition.as_raw());
         }
@@ -405,6 +435,27 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
 /// Default rendering must not signal a new simpleError over this condition.
 pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
     unsafe {
+        signal_error_with_mode(
+            cond,
+            call,
+            SignalMode::Error {
+                exit_only: exitOnly != 0,
+            },
+        )
+    }
+}
+
+pub(super) unsafe fn signal_simple_error(
+    access: &crate::sexp::owner::RuntimeAccess,
+    diagnostic: &crate::sexp::diagnostic::Diagnostic,
+    cond: SEXP,
+    call: SEXP,
+) {
+    unsafe { signal_error_with_mode(cond, call, SignalMode::SimpleError { access, diagnostic }) }
+}
+
+unsafe fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>) {
+    unsafe {
         let condition = crate::sexp::context::own_control_value(cond);
         let call = crate::sexp::context::own_control_value(if call.is_null() {
             globals::R_NilValue()
@@ -415,9 +466,7 @@ pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) 
             condition.as_raw(),
             globals::R_NilValue(),
             call.as_raw(),
-            SignalMode::Error {
-                exit_only: exitOnly != 0,
-            },
+            mode,
         );
         let cond = condition.as_raw();
         if TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0 {

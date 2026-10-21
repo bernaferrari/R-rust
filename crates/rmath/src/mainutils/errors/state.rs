@@ -210,16 +210,6 @@ pub fn take_recorded_error_call() -> Option<(crate::sexp::object::Sexp<'static>,
     })
 }
 
-pub(crate) fn push_try_catch_nframe(nframe: i32) {
-    with_error_state(|state| state.try_catch_nframes.push(nframe));
-}
-
-pub(crate) fn pop_try_catch_nframe() {
-    with_error_state(|state| {
-        state.try_catch_nframes.pop();
-    });
-}
-
 pub(crate) fn try_catch_entry_nframe() -> Option<i32> {
     with_error_state(|state| state.try_catch_nframes.last().copied())
 }
@@ -490,12 +480,23 @@ pub fn R_GetErrorBuf() -> String {
 
 /// Set the error message buffer (Rust).
 pub fn R_SetErrmessage(s: &str) {
+    let message = super::byte_buffer::Snapshot::copy(
+        |i| s.as_bytes().get(i).copied(),
+        crate::mainutils::platform::locale_is_utf8(),
+    );
+    set_error_buffer_snapshot(message);
+}
+
+pub(super) fn error_buffer_snapshot() -> super::byte_buffer::Snapshot {
+    with_error_state(|state| super::byte_buffer::Snapshot::stored(&state.error_buffer))
+}
+
+pub(super) fn set_error_buffer_snapshot(message: super::byte_buffer::Snapshot) {
+    let bytes = message.into_array();
     with_error_state(|state| {
-        let bytes = s.as_bytes();
-        let len = bytes.len().min(BUFSIZE - 1);
-        state.error_buffer[..len].copy_from_slice(&bytes[..len]);
-        state.error_buffer[len] = 0;
-    })
+        state.error_buffer = bytes;
+        state.last_rendered_message = None;
+    });
 }
 
 /// Set the error message buffer (C FFI).
@@ -504,8 +505,13 @@ pub unsafe fn R_SetErrmessage_c(s: *const c_char) {
         if s.is_null() {
             return;
         }
-        let str = CStr::from_ptr(s).to_str().unwrap_or("");
-        R_SetErrmessage(str);
+        // End every source read before borrowing mutable error state. The
+        // source can be the pointer returned by R_curErrorBuf itself.
+        let message = super::byte_buffer::Snapshot::copy(
+            |i| Some(*s.cast::<u8>().add(i)),
+            crate::mainutils::platform::locale_is_utf8(),
+        );
+        set_error_buffer_snapshot(message);
     }
 }
 

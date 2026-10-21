@@ -123,29 +123,12 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_geterrmessage — geterrmessage().
 pub unsafe fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let msg = R_GetErrorBuf();
-        let msg = std::ffi::CString::new(msg).unwrap_or_default();
-        Rf_mkString(msg.as_ptr())
-    }
+    unsafe { super::native::error_buffer_entry(op, args, false) }
 }
 
 /// do_seterrmessage — seterrmessage().
 pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let msg = CAR(args);
-        if isString(msg) == 0 || LENGTH(msg) != 1 {
-            errorcall(
-                call,
-                b"error message must be a character string\x00".as_ptr() as *const c_char,
-            );
-        }
-        let s = CHAR_local(STRING_ELT(msg, 0));
-        R_SetErrmessage_c(s);
-        globals::R_NilValue()
-    }
+    unsafe { super::native::error_buffer_entry(op, args, true) }
 }
 
 /// do_interruptsSuspended — get/set interrupts suspended flag.

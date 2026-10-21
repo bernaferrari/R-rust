@@ -4,22 +4,7 @@ unsafe fn current_framedepth() -> i32 {
     unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) }
 }
 
-pub(crate) struct TryCatchNframeGuard;
-
-impl TryCatchNframeGuard {
-    pub(crate) fn push() -> Self {
-        crate::mainutils::errors::push_try_catch_nframe(unsafe { current_framedepth() });
-        Self
-    }
-}
-
-impl Drop for TryCatchNframeGuard {
-    fn drop(&mut self) {
-        crate::mainutils::errors::pop_try_catch_nframe();
-    }
-}
-
-/// The native try/tryCatch evaluator replaces GNU's doTryCatch closure.
+/// The native tryCatch evaluator replaces GNU's doTryCatch closure.
 /// Keep its call on the context stack while forcing the protected expression,
 /// so an inferred error call has a real caller even at top level.
 pub(crate) unsafe fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
@@ -238,6 +223,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::mainutils::errors::try_catch_owned(
                 || {
+                    let _trace = crate::mainutils::debug::NativeTryCatchTrace::enter();
                     let _context = try_catch_evaluation_context(rho_owner.as_raw());
                     own_condition(crate::eval::eval::Rf_eval(expr, rho_owner.as_raw()))
                 },

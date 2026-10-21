@@ -1121,6 +1121,9 @@ const BLOCKED_EXPORTS: &[&str] = &[
     "t.default",
     "tracingState",
     "truncate.connection",
+    // Use the base try closure adapted to native tryCatch's frame shape.
+    // A staged GNU copy would shadow it for upstream sibling functions.
+    "try",
     "tryCatch",
     "tryInvokeRestart",
     "unloadNamespace",

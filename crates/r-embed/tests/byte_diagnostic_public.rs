@@ -9,7 +9,7 @@ fn byte_diagnostic_public_cases_and_recovery() {
         .lines()
         .filter(|line| line.starts_with("stopifnot("))
         .collect::<Vec<_>>();
-    assert_eq!(cases.len(), 13);
+    assert_eq!(cases.len(), 14);
     let mut failures = Vec::new();
     for (index, code) in cases.iter().enumerate() {
         let actual = session.eval(&format!("{code}\nTRUE"));

@@ -161,6 +161,10 @@ fn owned_diagnostic_truncation_repairs_only_final_sequence_in_utf8_profile() {
                     TextEncoding::Native
                 );
             }
+            let source = b"a\x80\x80z";
+            let diagnostic =
+                Diagnostic::new(access, &parent, source.len(), 3, true, |i| source[i]).unwrap();
+            assert_eq!(bytes(&diagnostic), b"a");
         })
         .unwrap();
     });

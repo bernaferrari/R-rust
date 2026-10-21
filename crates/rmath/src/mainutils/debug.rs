@@ -382,39 +382,42 @@ pub unsafe fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // `do_eval` does push a function context naming `eval`, which is why the
 // primitives.R line contains `eval` twice.
 //
-// GNU `try` is a closure that calls `tryCatch` → `tryCatchList` →
-// `tryCatchOne` → `doTryCatch`. This port implements `try` as a builtin,
-// so those closures are not on the context stack. While that builtin is
-// evaluating its expression, report the same names GNU would, inserted
-// at the framedepth recorded on entry (frames outside `try` stay outside).
+// GNU's R-level `try` is an ordinary closure. Native `tryCatch` supplies
+// its four implementation frames at the depth where it forces `expr`.
 // ---------------------------------------------------------------------------
 
 thread_local! {
-    static BUILTIN_TRY_ENTRIES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+    static NATIVE_TRY_CATCH_ENTRIES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
 }
 
-/// RAII marker for [`crate::mainutils::essentials::do_try`].
-pub struct BuiltinTryTrace;
+/// RAII marker for the native tryCatch expression evaluator.
+pub struct NativeTryCatchTrace(bool);
 
-impl BuiltinTryTrace {
+impl NativeTryCatchTrace {
     pub fn enter() -> Self {
+        if !memory_profiling_enabled() {
+            return Self(false);
+        }
         let depth =
             unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) };
-        BUILTIN_TRY_ENTRIES.with(|entries| entries.borrow_mut().push(depth));
-        Self
+        NATIVE_TRY_CATCH_ENTRIES.with(|entries| entries.borrow_mut().push(depth));
+        Self(true)
     }
 }
 
-impl Drop for BuiltinTryTrace {
+impl Drop for NativeTryCatchTrace {
     fn drop(&mut self) {
-        BUILTIN_TRY_ENTRIES.with(|entries| {
+        if !self.0 {
+            return;
+        }
+        NATIVE_TRY_CATCH_ENTRIES.with(|entries| {
             entries.borrow_mut().pop();
         });
     }
 }
 
-fn builtin_try_entries() -> Vec<i32> {
-    BUILTIN_TRY_ENTRIES.with(|entries| entries.borrow().clone())
+fn native_try_catch_entries() -> Vec<i32> {
+    NATIVE_TRY_CATCH_ENTRIES.with(|entries| entries.borrow().clone())
 }
 
 struct ReportedFrame {
@@ -422,17 +425,11 @@ struct ReportedFrame {
     function: bool,
 }
 
-/// GNU closure chain that `base::try` pushes around its expression.
-const GNU_TRY_CHAIN: [&str; 5] = [
-    "doTryCatch",
-    "tryCatchOne",
-    "tryCatchList",
-    "tryCatch",
-    "try",
-];
+/// GNU implementation frames supplied by native tryCatch.
+const GNU_TRY_CATCH_CHAIN: [&str; 4] = ["doTryCatch", "tryCatchOne", "tryCatchList", "tryCatch"];
 
-fn insert_builtin_try_frames(frames: &mut Vec<ReportedFrame>) {
-    let entries = builtin_try_entries();
+fn insert_native_try_catch_frames(frames: &mut Vec<ReportedFrame>) {
+    let entries = native_try_catch_entries();
     if entries.is_empty() || frames.iter().any(|frame| frame.name == "doTryCatch") {
         return;
     }
@@ -457,7 +454,7 @@ fn insert_builtin_try_frames(frames: &mut Vec<ReportedFrame>) {
     insert_at.sort_unstable_by(|a, b| b.cmp(a));
     insert_at.dedup();
     for at in insert_at {
-        for (offset, name) in GNU_TRY_CHAIN.iter().enumerate() {
+        for (offset, name) in GNU_TRY_CATCH_CHAIN.iter().enumerate() {
             frames.insert(
                 at + offset,
                 ReportedFrame {
@@ -514,7 +511,7 @@ pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_
             cptr = (*cptr).nextcontext;
         }
     }
-    insert_builtin_try_frames(&mut frames);
+    insert_native_try_catch_frames(&mut frames);
     for frame in &frames {
         line.push_str(&frame.name);
         line.push(' ');

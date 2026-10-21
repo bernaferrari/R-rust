@@ -81,6 +81,8 @@ const contracts = [
     'declared-latin1-contract',
     'byte-diagnostic-contract',
     'nul-error-lifetime-contract',
+    'try-byte-diagnostic-contract',
+    'try-construction-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

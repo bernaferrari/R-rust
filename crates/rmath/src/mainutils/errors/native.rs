@@ -23,6 +23,42 @@ fn checked<T>(result: SexpResult<T>) -> T {
     result.unwrap_or_else(|e| context::r_error(e.to_string()))
 }
 
+pub(super) unsafe fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SEXP {
+    let owner = checked(unsafe { OwnerToken::current() });
+    let _pin = checked(owner.pin());
+    let op = checked(owner.sexp(op).and_then(Sexp::into_owned));
+    let args = checked(owner.sexp(args).and_then(Sexp::into_owned));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| context::r_error("error buffers require a managed runtime"));
+    let result = checked(crate::sexp::owner::with_runtime(
+        &weak,
+        |access| -> SexpResult<Sexp<'static>> {
+            access.with_native(|original| {
+                unsafe { super::checkArity(op.as_raw(), args.as_raw()) };
+                original.require_active()
+            })?;
+            if write {
+                let snapshot = super::byte_buffer::argument(access, &args)?;
+                access.with_native(|original| {
+                    super::state::set_error_buffer_snapshot(snapshot);
+                    original.require_active()
+                })?;
+                Ok(access.domain().nil())
+            } else {
+                let snapshot = access.with_native(|original| {
+                    let snapshot = super::state::error_buffer_snapshot();
+                    original.require_active()?;
+                    Ok(snapshot)
+                })?;
+                snapshot.value(access)
+            }
+        },
+    ));
+    checked(owner.require_active());
+    checked(result).as_raw()
+}
+
 /// Signal canonical byte-preserving condition data in its original runtime.
 pub(crate) fn raise_owned_diagnostic(
     owner: &OwnerToken<'_>,
@@ -55,7 +91,14 @@ pub(crate) fn raise_owned_diagnostic(
             })?;
             let condition = diagnostic.condition(access, &call, &names, &class)?;
             access.with_native(|original| {
-                unsafe { super::R_signalErrorCondition(condition.as_raw(), call.as_raw()) };
+                unsafe {
+                    super::conditions::signal_simple_error(
+                        access,
+                        &diagnostic,
+                        condition.as_raw(),
+                        call.as_raw(),
+                    )
+                };
                 original.require_active()?;
                 Err(crate::sexp::object::SexpError::EvaluationFailed {
                     message: "error condition unexpectedly returned".into(),

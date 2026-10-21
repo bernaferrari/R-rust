@@ -6,7 +6,7 @@ if (process.argv.length !== 3) throw new Error('Usage: node byte-diagnostic.cjs 
 const { WasmRSession } = require(path.join(path.resolve(process.argv[2]), 'r_wasm.js'));
 const fixture = fs.readFileSync(path.join(__dirname, '../../crates/r-embed/tests/fixtures/byte-diagnostic-contract.R'), 'utf8');
 const cases = fixture.split('\n').filter(line => line.startsWith('stopifnot('));
-assert.equal(cases.length, 13);
+assert.equal(cases.length, 14);
 let checks = 0;
 for (let generation = 0; generation < 2; generation++) {
   const session = new WasmRSession();
@@ -18,5 +18,5 @@ for (let generation = 0; generation < 2; generation++) {
     assert.equal(session.eval_checked('1L+1L'), '[1] 2\n'); checks++;
   } finally { session.close(); session.free(); }
 }
-assert.equal(checks, 30);
+assert.equal(checks, 32);
 console.log(`BYTE_DIAGNOSTIC_WASM_COMPLETE checks=${checks} failures=0`);

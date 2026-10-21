@@ -185,6 +185,7 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         eval_base_binding(base_env, "strwrap", include_str!("../gnu_strwrap.R"));
         eval_base_binding(base_env, "formatDL", include_str!("../gnu_format_dl.R"));
         eval_base_binding(base_env, "file.show", include_str!("../gnu_file_show.R"));
+        eval_base_binding(base_env, "try", include_str!("../gnu_try.R"));
         eval_base_binding(base_env, "by", include_str!("../gnu_by.R"));
         eval_base_binding(
             base_env,

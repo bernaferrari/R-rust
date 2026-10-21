@@ -8,6 +8,21 @@ pub(crate) const UTF8_MASK: u16 = 1 << 3;
 pub(crate) const ASCII_MASK: u16 = 1 << 6;
 pub(crate) const ENCODING_MASK: u16 = BYTES_MASK | LATIN1_MASK | UTF8_MASK;
 
+/// GNU mbcsTruncateToValid in a UTF8 locale. Preserve earlier invalid bytes,
+/// and keep any valid character preceding stray continuation bytes at the end.
+pub(crate) fn utf8_tail_prefix_len(bytes: &[u8]) -> usize {
+    let Some(mut start) = bytes.len().checked_sub(1) else {
+        return 0;
+    };
+    while start != 0 && bytes[start] & 0xc0 == 0x80 {
+        start -= 1;
+    }
+    match std::str::from_utf8(&bytes[start..]) {
+        Ok(_) => bytes.len(),
+        Err(error) => start + error.valid_up_to(),
+    }
+}
+
 /// GNU Rinternals.h cetype_t values. Symbol/Any are device/text adapter
 /// requests, never character encoding flags stored in a CHARSXP.
 #[repr(i32)]

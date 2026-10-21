@@ -73,14 +73,8 @@ impl MessageCopy {
         }
         // GNU Rvsnprintf_mbcs only repairs the final sequence when truncated.
         // Invalid bytes earlier in an error message must remain intact.
-        if length > limit && utf8 && !bytes.is_empty() {
-            let mut last = bytes.len() - 1;
-            while last > 0 && bytes[last] & 0xc0 == 0x80 {
-                last -= 1;
-            }
-            if std::str::from_utf8(&bytes[last..]).is_err() {
-                bytes.truncate(last);
-            }
+        if length > limit && utf8 {
+            bytes.truncate(encoding::utf8_tail_prefix_len(&bytes));
         }
         Ok(Self {
             bytes,

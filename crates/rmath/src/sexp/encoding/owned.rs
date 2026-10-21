@@ -317,6 +317,15 @@ pub(crate) enum NulText {
     Converted(TranslatedBytes),
 }
 impl NulText {
+    /// Copy one byte while retaining the sealed payload or converted buffer.
+    pub(crate) fn byte(&self, index: usize) -> Option<u8> {
+        match self {
+            Self::Payload(payload) => payload.byte_elt(index),
+            Self::StaticNa => b"NA\0".get(index).copied(),
+            Self::Converted(converted) => converted.data.get(index).copied(),
+        }
+    }
+
     pub(crate) fn new(value: &Sexp<'_>, mode: Mode, parent: &Sexp<'_>) -> SexpResult<Self> {
         let source = Source::read(value, parent)?;
         if matches!(source.conversion(mode)?, Conversion::Copy) {
