@@ -1,0 +1,171 @@
+{
+  "issue": "rport-evnx.5.5",
+  "parent": "rport-evnx.5",
+  "date": "2026-10-21",
+  "source_base": "c822d9d4",
+  "verified_source_commit": "5333c9e4",
+  "scope": "Native compatibility simpleError/simpleWarning/simpleCondition construction through an original RuntimeAccess, safe owned builder, and GNU simpleMessage message preservation.",
+  "oracle": {
+    "version": "GNU R 4.7 devel r90451",
+    "locales": [
+      "C",
+      "en_US.UTF-8"
+    ],
+    "reference_source_commit": "d4cc5d9e196a144bbb087a798bb945b37121383b",
+    "public_fixture": "crates/r-embed/tests/fixtures/simple-condition-ownership-contract.R"
+  },
+  "observed_red": [
+    "native-simple-selection-red.log and native-simple-names-corrected-red.log: six actual failures before production repair. Error drops message-vector tail; Warning omits call; Condition drops bytes/shape. Detached-argument actual-constructor GC loses selected original message/call.",
+    "wasm-simple-message-red.log: immutable optimized candidate returned FALSE for exact named integer message identity; GNU simpleMessage preserves supplied object without as.character.",
+    "Initial fixture nested Rf_lang2/Rf_install inside an allocator arena lend was invalid reentry; corrected with owned factory.call before accepting RED. Initial fixture compile failures are not defect evidence.",
+    "Original GC selector used STRSXP1/2 and could observe message/name publication; final selector targets class STRSXP3 for Error/Warning or attribute STRSXP2 for Condition, with unchanged fullGC/gap1/wait1/detached arguments."
+  ],
+  "implementation": [
+    "simple_owned.rs forbids unsafe code. It validates original-domain links, roots message/call/names/class through each checked allocation, builds complete message/call fields and classes, and returns an owned condition.",
+    "Thin native adapter snapshots both input selections before coercion. Evaluated promise carries language values as data to base as.character, preserving custom method results and attributes. Original RuntimeAccess is rechecked after every native callback.",
+    "Removed three manual lossy String constructor paths and their unrooted message/name/class intermediate vectors.",
+    "GNU simpleMessage closure retains message directly, including named integer/object/NULL values, and never invokes as.character."
+  ],
+  "verification": {
+    "native_distinct_tests": 21,
+    "native_by_log": {
+      "target/simple-condition-ownership-evidence/native-simple-owner-final.log": [
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_obeys_lowered_original_cap",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_panic_releases_original_roots",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_preserves_vector_bytes_tags_and_call",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_revocation_cannot_allocate_in_foreign_runtime",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_revocation_rejects_publication",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_roots_selection_before_actual_attribute_gc",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_obeys_lowered_original_cap",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_panic_releases_original_roots",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_preserves_vector_bytes_tags_and_call",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_revocation_cannot_allocate_in_foreign_runtime",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_revocation_rejects_publication",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_roots_selection_before_actual_attribute_gc",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_foreign_arguments_reject_before_current_allocation",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_obeys_lowered_original_cap",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_panic_releases_original_roots",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_preserves_vector_bytes_tags_and_call",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_revocation_cannot_allocate_in_foreign_runtime",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_revocation_rejects_publication",
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_roots_selection_before_actual_attribute_gc"
+      ],
+      "target/simple-condition-ownership-evidence/native-simple-generic-dispatch.log": [
+        "mainutils::essentials::conditions::owned_tests::simple_owned_tests::native_simple_constructor_generic_dispatch_keeps_exact_method_result_and_call"
+      ]
+    },
+    "public_test": "simple_condition_ownership_matches_gnu_bytes_vectors_methods_and_recovery",
+    "public_test_log": "target/default-error-rendering-evidence/native-default-public-combined-corrected.log",
+    "original_full_base_constructor_test": "native_simple_constructor_generic_dispatch_keeps_exact_method_result_and_call uses unchanged RSession::new_without_default_packages; native PASS; not claimed under Miri.",
+    "strict_isolated_miri_distinct_tests": 19,
+    "miri_tests": [
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_obeys_lowered_original_cap",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_panic_releases_original_roots",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_preserves_vector_bytes_tags_and_call",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_revocation_cannot_allocate_in_foreign_runtime",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_revocation_rejects_publication",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_condition_roots_selection_before_actual_attribute_gc",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_obeys_lowered_original_cap",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_panic_releases_original_roots",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_preserves_vector_bytes_tags_and_call",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_revocation_cannot_allocate_in_foreign_runtime",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_revocation_rejects_publication",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_error_roots_selection_before_actual_attribute_gc",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_foreign_arguments_reject_before_current_allocation",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_obeys_lowered_original_cap",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_panic_releases_original_roots",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_preserves_vector_bytes_tags_and_call",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_revocation_cannot_allocate_in_foreign_runtime",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_revocation_rejects_publication",
+      "mainutils::essentials::conditions::owned_tests::simple_owned_tests::owned_simple_constructor_warning_roots_selection_before_actual_attribute_gc"
+    ],
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; i686-unknown-linux-gnu; default isolation",
+    "miri_scope": "19 constructor ownership tests; selected-stop controls remain in the separate unmodified renderer28 Miri run; constructor production source frozen, later addition is cfg(test) full-base native-only generic-dispatch case.",
+    "controls": "Actual attribute-constructor fullGC gap1/wait1, source args detached, panic991, original revocation, replacement runtime flags+allocated/workspace unchanged, cap1 unchanged, foreign arguments rejected before current allocation.",
+    "optimized_wasm_shared_milestone_checks": 800,
+    "optimized_node_checks": 602,
+    "optimized_web_checks": 198,
+    "shared_native_distinct_tests": 68,
+    "renderer_miri_pending_expected_tests": 28,
+    "overlap_deduplicated": "Public constructor test counted in both checkpoint scopes once in shared68; Constructor19 is verified here. Renderer28 is still running and is not claimed as PASS in this checkpoint.",
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings",
+    "android": "aarch64-linux-android r-uniffi compile check; no device execution",
+    "limits": "unchanged64MiB sessions/256MiB Wasm cap; ctor GC gap1/wait1, original cap1, foreign allocations+flags stable; no Miri alias/provenance/isolation relaxation"
+  },
+  "source_sha256": {
+    "crates/r-embed/tests/default_byte_diagnostic_public.rs": "bda26488502263db81021b8c6e00d6e2994fa8b48c0a71171588947aa5ee93f9",
+    "crates/r-embed/tests/fixtures/default-byte-diagnostic-cases.tsv": "d07d067c14117b5cfce66e5907ef1ad7306cb459458c2a205ea9f2e45f7781c0",
+    "crates/r-embed/tests/fixtures/simple-condition-ownership-contract.R": "1540dcb0afe6de1303b2988d2a1cf60d434895c92b0bd44df9f116347fb9ec22",
+    "crates/r-embed/tests/fixtures/simple-condition-ownership-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "crates/r-embed/tests/simple_condition_ownership_public.rs": "24e7631f2ee70032427b4602fbe595014724282153b89a87ee609fe561bd09bc",
+    "crates/rmath/src/mainutils/errors/byte_buffer.rs": "8375515607e19b3b9cc6e7c25a7f3ddd0462676be6bc91b4d5d82ba32fbff46e",
+    "crates/rmath/src/mainutils/errors/conditions.rs": "03ac3fb354a0601ee1eb08108111e7978a458e08e7d2888e1188cbb03200539a",
+    "crates/rmath/src/mainutils/errors/default_byte_tests.rs": "39d0b8671d39c788ae72f3b440b024f41b3bcd7c4b4325f4eeb135f08b1f73d8",
+    "crates/rmath/src/mainutils/errors/mod.rs": "31a809e67ea39c51135dafb0c76066a957abb2020ade2eb6ae619e183bfc352b",
+    "crates/rmath/src/mainutils/errors/render.rs": "de6103cab7a7b8cfb78bbab6d125300d22ae1e712c2b03827d6c0d1d96ed72c3",
+    "crates/rmath/src/mainutils/errors/state.rs": "56a2f31abd58d46b1d5693d0e66b2ed2f0f16e126e0517aca0efb41cba41c42c",
+    "crates/rmath/src/mainutils/essentials/conditions/condition_objects.rs": "d6e9b0acc04ee20d7104f25962d47b6e9d9660df92abc3ed89ae82a985ac82df",
+    "crates/rmath/src/mainutils/essentials/conditions/handlers.rs": "fc5ad1c0dd3133d2147d11e23f0081f69eb32b9bcf5159514c983256b6e68db4",
+    "crates/rmath/src/mainutils/essentials/conditions/mod.rs": "6f456f48612c404b558a71357415284e10c75858577d7be86132f28a107cd462",
+    "crates/rmath/src/mainutils/essentials/conditions/owned_tests.rs": "9db001d3d4bc7fc811fcad65a9753391aca4e1960077331c674b81fc06f289e0",
+    "crates/rmath/src/mainutils/essentials/conditions/raise.rs": "e326f0e4d181e826df2959cb295245b7940fafaab9461a966aee8047eaf74ea0",
+    "crates/rmath/src/mainutils/essentials/conditions/simple_owned.rs": "e0e3feecdb6403d292d2d3096602cd198215a37487780f8c7d2586dfb68f4651",
+    "crates/rmath/src/mainutils/essentials/conditions/simple_owned_tests.rs": "72e337ae7629987154e7f28e404d0d2ab4854c8d2fb8b5e21d329c6ff2f7ca33",
+    "crates/rmath/src/mainutils/options.rs": "e6dc890bc2d4e711e48845b2205cd51eb9db93920a17de5219be98a1fc0061b6",
+    "crates/rmath/src/sexp/gnu_simple_message.R": "2291258a923c173a8a6779d2286d08581addaac491fd5179f1c3d176b330ef81",
+    "crates/rmath/src/sexp/init/bindings_ops.rs": "b9e3b37ed601f1f08be20b9cfc015022d2ac9c1c9e357f3c75b6e222e2ff1336",
+    "crates/rmath/src/sexp/output.rs": "65e70aea582368d684a998477918ae0535f907a75a32b0da14fd68219d0d010c",
+    "crates/rmath/src/sexp/output/native_bytes.rs": "bccda4c14d28ba81fff9603e6734f440b69f51a3832474b5d73a1bef3c2e5136",
+    "tests/browser/default-byte-diagnostic-contract.mjs": "5f9dff4aaa811b50d7f2b80080644c37f93f096d55df943349310dff24b291c7",
+    "tests/browser/default-byte-diagnostic.cjs": "f9fac4e6b5c2a9b9db4b9e1d4c605c98c976357a4d80920b257966565efad270",
+    "tests/browser/portable-package-contracts.mjs": "818626c3565ae645b15af82feb24e4faa21db0b93bfc3218504c56e96a9c8846",
+    "tests/browser/simple-condition-ownership.cjs": "77e1f7e2a83cfdbe9f320dd012ae4b2c99b766f888f437f9d17e4687b8b6b369"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29661567,
+      "sha256": "d4ed85ecac8bc9c8100616891cf688209ebcac32068fee51b41484bfc253abce"
+    },
+    "output": {
+      "bytes": 25338244,
+      "sha256": "8ec1cf022c2c2596cbda64b0e05ec0cd952e4c414f96e86134c609f7a92ecd6c"
+    }
+  },
+  "evidence_log_sha256": {
+    "target/simple-condition-ownership-evidence/gnu-public-contract-c.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "target/simple-condition-ownership-evidence/gnu-public-contract-utf8.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "target/simple-condition-ownership-evidence/gnu-simple-condition-c.log": "317474eb8a323af2e7fe02bf03c12269eb016580fde6ad3dee7d611aa144eda9",
+    "target/simple-condition-ownership-evidence/gnu-simple-condition-utf8.log": "317474eb8a323af2e7fe02bf03c12269eb016580fde6ad3dee7d611aa144eda9",
+    "target/simple-condition-ownership-evidence/miri-simple-constructor-final.log": "53c5b7ddb8c7057aa74c5e8413aea966b1faa7cf0eea263b0b7ca8084e60baae",
+    "target/simple-condition-ownership-evidence/miri-simple-owner-final.log": "e32f6da2d31ee5087b7a976116e258db16e2630f1cf165a290d0ef34e436c2b6",
+    "target/simple-condition-ownership-evidence/native-simple-corrected-red.log": "18ec5078f2b5e4eca53fa113d5d1d1b51a215c5440146b03c7695ff80b818bf5",
+    "target/simple-condition-ownership-evidence/native-simple-first-green-corrected.log": "9aaef0bb864bf4066f195ef1406c0eb01a9d93458431b71450bb2586b15ce061",
+    "target/simple-condition-ownership-evidence/native-simple-first-green.log": "bb580c697aef88de12a820f9ab997699fdfdc4dc39e58087c25e7d04f014b2d5",
+    "target/simple-condition-ownership-evidence/native-simple-generic-dispatch.log": "b3c4110bcf3078f9d41ee302b91ac09a9ed026e217d4173c52506ee85a8ff334",
+    "target/simple-condition-ownership-evidence/native-simple-initial-red.log": "883075d6c3f654467d673bfb68cdf3292014a9a1f0fc5e052e08c7670673c9f2",
+    "target/simple-condition-ownership-evidence/native-simple-names-corrected-red.log": "c552b475d7cd997ff4d5a7b5c4b506a8240fa5a9e61a4fa619ac4dfed9a50c72",
+    "target/simple-condition-ownership-evidence/native-simple-owner-expanded.log": "44dd1d43f631c86e47b86593b86c29357bbd4c0e4d46aad2ab7b235f6ef3789e",
+    "target/simple-condition-ownership-evidence/native-simple-owner-final.log": "592ebf2b1d5fb4e50b612cfb628155d108d5023291904ecf685eccdc909077d6",
+    "target/simple-condition-ownership-evidence/native-simple-selection-red.log": "d1713b38d29e636acc56a71364a0ac5431337f0b57c06cba4201a08798b0af42",
+    "target/simple-condition-ownership-evidence/wasm-simple-message-red.log": "8c2cffeabe1e64f7e7936c9a09622db7d68db58a8d85abc3cf292753195c5281"
+  },
+  "preserved_user_graphics_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "remaining_parent_inventory": [
+    "evnx.5.3.3 persistent rendered-message cache admission and clone removal remains open.",
+    "Broader renderer/control/host String memory accounting, native errorCondition/warningCondition extra-field builders and non-simple signal helpers remain parent work.",
+    "Full interpreter memory accounting, broad nonliteral regex fidelity, and unchanged full-base Miri startup remain open.",
+    "Dolt origin is not configured; source Git push is available."
+  ]
+}
