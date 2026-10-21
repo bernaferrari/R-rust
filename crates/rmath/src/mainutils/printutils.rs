@@ -17,6 +17,7 @@
 //!   Rcons_vprintf, VectorIndex
 
 use crate::sexp::encoding::{CE_BYTES, CE_LATIN1, CE_UTF8};
+mod string_buffer;
 mod utf8;
 #[cfg(test)]
 use std::cell::RefCell;
@@ -110,7 +111,7 @@ pub(crate) struct PrintUtilsState {
     encode_raw: [u8; 10],
     encode_environment: [u8; 1000],
     encode_extptr: [u8; 1000],
-    encode_string: Vec<u8>,
+    encode_string: string_buffer::StringBuffer,
 }
 
 impl Default for PrintUtilsState {
@@ -126,7 +127,7 @@ impl Default for PrintUtilsState {
             encode_raw: [0; 10],
             encode_environment: [0; 1000],
             encode_extptr: [0; 1000],
-            encode_string: Vec::with_capacity(BUFSIZE),
+            encode_string: string_buffer::StringBuffer::default(),
         }
     }
 }
@@ -942,7 +943,13 @@ pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
             if ce == CE_UTF8 {
                 return len as c_int;
             }
-            return escape_native_string_body(bytes, ce, quote, quote as u8).len() as c_int;
+            return c_int::try_from(
+                string_buffer::body_len(bytes, ce, quote as u8, false)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            )
+            .unwrap_or_else(|_| {
+                crate::sexp::context::r_error("encoded string width exceeds integer range")
+            });
         }
         let len = LENGTH(s);
         Rstrwid(p, len, crate::sexp::accessors::getCharCE(s), quote)
@@ -963,328 +970,69 @@ pub enum Rprt_adj {
 ///
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
-/// thread-local buffer.
-/// Escaped representation of a CHARSXP body in a single-byte (non-UTF-8)
-/// locale, following GNU's `EncodeString`: ASCII is escaped as usual, unknown
-/// high bytes become octal escapes, latin1 bytes `<xx>`, and UTF-8 code
-/// points `<U+XXXX>`.
-fn escape_native_string_body(bytes: &[u8], ce: c_int, quote: c_int, quote_char: u8) -> Vec<u8> {
-    fn push_ascii(out: &mut Vec<u8>, k: u8, quote: c_int, quote_char: u8) {
-        if k != b'\t' && (k >= 0x20 && k < 0x7f) {
-            match k {
-                b'\\' => out.extend_from_slice(b"\\\\"),
-                b'\'' | b'"' | b'`' => {
-                    if quote != 0 && k == quote_char {
-                        out.push(b'\\');
-                    }
-                    out.push(k);
-                }
-                _ => out.push(k),
-            }
-        } else {
-            match k {
-                0x07 => out.extend_from_slice(b"\\a"),
-                0x08 => out.extend_from_slice(b"\\b"),
-                0x0C => out.extend_from_slice(b"\\f"),
-                b'\n' => out.extend_from_slice(b"\\n"),
-                b'\r' => out.extend_from_slice(b"\\r"),
-                b'\t' => out.extend_from_slice(b"\\t"),
-                0x0B => out.extend_from_slice(b"\\v"),
-                0x00 => out.extend_from_slice(b"\\0"),
-                _ => {
-                    out.push(b'\\');
-                    out.push(b'0' + (k >> 6));
-                    out.push(b'0' + ((k >> 3) & 7));
-                    out.push(b'0' + (k & 7));
-                }
-            }
-        }
-    }
-    fn push_octal(out: &mut Vec<u8>, k: u8) {
-        out.push(b'\\');
-        out.push(b'0' + (k >> 6));
-        out.push(b'0' + ((k >> 3) & 7));
-        out.push(b'0' + (k & 7));
-    }
-    let mut out = Vec::with_capacity(bytes.len());
-    if ce == CE_UTF8 {
-        // UTF-8-marked: decode; non-ASCII code points become <U+XXXX>.
-        let mut i = 0;
-        while i < bytes.len() {
-            let k = bytes[i];
-            if k < 0x80 {
-                push_ascii(&mut out, k, quote, quote_char);
-                i += 1;
-                continue;
-            }
-            let seq_len = match k {
-                0xC0..=0xDF => 2,
-                0xE0..=0xEF => 3,
-                0xF0..=0xF7 => 4,
-                _ => 0,
-            };
-            let decoded = if seq_len > 0 {
-                bytes
-                    .get(i..i + seq_len)
-                    .and_then(|seq| std::str::from_utf8(seq).ok())
-                    .and_then(|s| s.chars().next())
-            } else {
-                None
-            };
-            match decoded {
-                Some(ch) => {
-                    let cp = ch as u32;
-                    out.extend_from_slice(format!("<U+{cp:04X}>").as_bytes());
-                    i += seq_len;
-                }
-                None => {
-                    push_octal(&mut out, k);
-                    i += 1;
-                }
-            }
-        }
-    } else if ce == CE_LATIN1 {
-        // latin1-marked: high bytes become <xx>.
-        for &k in bytes {
-            if k < 0x80 {
-                push_ascii(&mut out, k, quote, quote_char);
-            } else {
-                out.extend_from_slice(format!("<{k:02x}>").as_bytes());
-            }
-        }
-    } else {
-        for &k in bytes {
-            if k < 0x80 {
-                push_ascii(&mut out, k, quote, quote_char);
-            } else {
-                push_octal(&mut out, k);
-            }
-        }
-    }
-    out
-}
-
+/// session-owned native buffer. Its next successful encoding replaces the contents.
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
-        // Stock uses `R_print.na_string` ("NA") for quoted string values and
-        // `R_print.na_string_noquote` ("<NA>") for unquoted labels/names.
-        let is_na = !s.is_null() && s == crate::sexp::globals::R_NaString();
-        if s.is_null() || is_na {
-            return crate::sexp::instance::with_required_current_instance(|inst| {
-                let buffer = &mut (*inst).eval_state.printutils.encode_string;
-                buffer.clear();
-                let text: &[u8] = if quote != 0 { b"NA" } else { b"<NA>" };
-                let text_len = text.len() as c_int;
-                let mut b = w - text_len;
-                if justify == Rprt_adj::none {
-                    b = 0;
-                }
-                if b > 0 && justify != Rprt_adj::left {
-                    let b0 = if justify == Rprt_adj::centre {
-                        b / 2
-                    } else {
-                        b
-                    };
-                    for _ in 0..b0 {
-                        buffer.push(b' ');
-                    }
-                }
-                buffer.extend_from_slice(text);
-                // Left-adjustment appends the remaining padding (stock pads
-                // the NA text to the field width like any other element).
-                if b > 0 && justify == Rprt_adj::left {
-                    for _ in 0..b {
-                        buffer.push(b' ');
-                    }
-                }
-                buffer.push(0);
-                buffer.as_ptr() as *const c_char
-            });
-        }
-
-        // Get the character data
-        let p = CHAR(s);
-        if p.is_null() {
-            return crate::sexp::instance::with_required_current_instance(|inst| {
-                let buffer = &mut (*inst).eval_state.printutils.encode_string;
-                buffer.clear();
-                buffer.push(0);
-                buffer.as_ptr() as *const c_char
-            });
-        }
-
-        let bytes = CStr::from_ptr(p).to_bytes();
-        let cnt = bytes.len();
-
-        let quote_char = quote as u8;
-
-        // In a non-UTF-8 locale GNU escapes CHARSXPs per their declared
-        // encoding: unknown bytes as octal escapes, latin1 as <xx>, and
-        // UTF-8 as <U+XXXX>. For unknown/latin1 text the escaped body's
-        // byte length is the display width; GNU still measures UTF-8-marked
-        // elements by their raw byte count even though it prints the
-        // escaped form.
-        let ce = crate::sexp::accessors::getCharCE(s);
-        let escaped_body = if crate::mainutils::platform::locale_is_utf8() {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let instance = owner.as_ptr();
+        let ledger = (*instance).heap_identity.byte_ledger();
+        let rooted = if s.is_null() {
             None
         } else {
-            Some(escape_native_string_body(bytes, ce, quote, quote_char))
+            Some(
+                owner
+                    .sexp(s)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            )
         };
-
-        // Compute display width (escaped width)
-        let i = match &escaped_body {
-            Some(body) => {
-                if ce == CE_UTF8 {
-                    cnt as c_int
-                } else {
-                    body.len() as c_int
-                }
-            }
-            None => Rstrwid(p, cnt as c_int, ce, quote),
+        let is_na = rooted
+            .as_ref()
+            .is_some_and(|value| value.as_raw() == crate::sexp::globals::R_NaString());
+        let pointer = if s.is_null() || is_na {
+            ptr::null()
+        } else {
+            CHAR(s)
         };
-
-        // Compute padding
-        let mut b = w - i - if quote != 0 { 2 } else { 0 };
-        if justify == Rprt_adj::none {
-            b = 0;
+        let utf8_profile = crate::mainutils::platform::locale_is_utf8();
+        let plan = if s.is_null() || is_na {
+            string_buffer::StringPlan::na(quote != 0, w, justify)
+        } else if pointer.is_null() {
+            string_buffer::StringPlan::text(b"", 0, true, 0, 0, 0, Rprt_adj::none)
+        } else {
+            let bytes = CStr::from_ptr(pointer).to_bytes();
+            let count = c_int::try_from(bytes.len()).unwrap_or_else(|_| {
+                crate::sexp::context::r_error("encoded string exceeds integer range")
+            });
+            let encoding = crate::sexp::accessors::getCharCE(s);
+            let width = if utf8_profile {
+                usize::try_from(Rstrwid(pointer, count, encoding, quote)).unwrap_or_else(|_| {
+                    crate::sexp::context::r_error("invalid encoded string width")
+                })
+            } else if encoding == CE_UTF8 {
+                bytes.len()
+            } else {
+                string_buffer::body_len(bytes, encoding, quote as u8, false)
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            };
+            string_buffer::StringPlan::text(bytes, encoding, utf8_profile, quote, w, width, justify)
         }
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buffer = &mut (*inst).eval_state.printutils.encode_string;
-            buffer.clear();
-
-            // Left/centre padding
-            if b > 0 && justify != Rprt_adj::left {
-                let b0 = if justify == Rprt_adj::centre {
-                    b / 2
-                } else {
-                    b
-                };
-                for _ in 0..b0 {
-                    buffer.push(b' ');
-                }
-                b -= b0;
-            }
-
-            // Opening quote
-            if quote != 0 {
-                buffer.push(quote_char);
-            }
-
-            match &escaped_body {
-                Some(body) => buffer.extend_from_slice(body),
-                None => {
-                    // Encode each byte with escaping (ASCII path, matching
-                    // R's non-MBCS path)
-                    for unit in utf8::units(bytes) {
-                        let k = match unit {
-                            utf8::Unit::Scalar(ch) => {
-                                let mut raw = [0; 4];
-                                buffer.extend_from_slice(ch.encode_utf8(&mut raw).as_bytes());
-                                continue;
-                            }
-                            utf8::Unit::Invalid(k) if ce != CE_LATIN1 && ce != CE_BYTES => {
-                                buffer.extend_from_slice(&[
-                                    b'\\',
-                                    b'x',
-                                    b"0123456789abcdef"[(k >> 4) as usize],
-                                    b"0123456789abcdef"[(k & 15) as usize],
-                                ]);
-                                continue;
-                            }
-                            utf8::Unit::Invalid(k) | utf8::Unit::Ascii(k) => k,
-                        };
-                        if k < 0x80 {
-                            // ASCII
-                            if k != b'\t' && (k >= 0x20 && k < 0x7f) {
-                                match k {
-                                    b'\\' => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'\\');
-                                    }
-                                    b'\'' | b'"' | b'`' => {
-                                        if quote != 0 && k == quote_char {
-                                            buffer.push(b'\\');
-                                        }
-                                        buffer.push(k);
-                                    }
-                                    _ => buffer.push(k),
-                                }
-                            } else {
-                                // Control characters / non-printable ASCII
-                                match k {
-                                    0x07 => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'a');
-                                    }
-                                    0x08 => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'b');
-                                    }
-                                    0x0C => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'f');
-                                    }
-                                    b'\n' => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'n');
-                                    }
-                                    b'\r' => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'r');
-                                    }
-                                    b'\t' => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b't');
-                                    }
-                                    0x0B => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'v');
-                                    }
-                                    0x00 => {
-                                        buffer.push(b'\\');
-                                        buffer.push(b'0');
-                                    }
-                                    _ => {
-                                        // Octal encoding: \OOO
-                                        buffer.push(b'\\');
-                                        buffer.push(b'0' + (k >> 6));
-                                        buffer.push(b'0' + ((k >> 3) & 7));
-                                        buffer.push(b'0' + (k & 7));
-                                    }
-                                }
-                            }
-                        } else {
-                            // High byte: pass through (non-MBCS simplified path)
-                            if k >= 0x20 {
-                                buffer.push(k);
-                            } else {
-                                // Octal encoding
-                                buffer.push(b'\\');
-                                buffer.push(b'0' + (k >> 6));
-                                buffer.push(b'0' + ((k >> 3) & 7));
-                                buffer.push(b'0' + (k & 7));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Closing quote
-            if quote != 0 {
-                buffer.push(quote_char);
-            }
-
-            // Right/centre padding
-            if b > 0 && justify != Rprt_adj::right {
-                for _ in 0..b {
-                    buffer.push(b' ');
-                }
-            }
-
-            buffer.push(0); // null-terminate
-            buffer.as_ptr() as *const c_char
-        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        // Ledger admission and streaming formatting are callback-free. No R
+        // allocation or arena lend occurs while this retained buffer is loaned.
+        (*instance)
+            .eval_state
+            .printutils
+            .encode_string
+            .render(&plan, &ledger)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            .cast()
     }
 }
 
@@ -1754,3 +1502,6 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+mod workspace_tests;

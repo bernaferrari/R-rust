@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-21",
+  "issue": "rport-cvs2.14",
+  "status": "Implementation milestone; issue remains active pending final Miri evidence",
+  "source_base": "f8214e1f182e39329b42ce80928cc7e78cbb9df9",
+  "behavior": [
+    "Lazy empty printer buffer with original-heap admission before any retained allocation. Full replacement capacity is admitted while the old allocation remains funded; reconcile actual Vec capacity and retain its AllocationCharge through final runtime ownership. Denial leaves the original pointer, contents and limits intact.",
+    "Streaming identical count/render escape plan removes temporary escaped-body Vec and per-codepoint formatting allocations. Plain ASCII spans and bounded stack chunks serve native output. Preserve native quote presence separately from its truncated byte, GNU encoding and width contracts.",
+    "Original shared ledger is accessible without an arena lend, including while the registered arena is already mutably lent. No callback occurs while formatter storage is borrowed."
+  ],
+  "baseline": {
+    "native_failures": 5,
+    "unchanged_zero_headroom_control": 1,
+    "details": "Default8192 unfunded allocation, denied growth, full old-plus-new replacement peak, uncharged retained actual capacity and native-C UTF8 escape expansion. RED captured before production changes."
+  },
+  "validation": {
+    "native_final_printutils": 17,
+    "native_public_suite_counts": [
+      1,
+      4,
+      1,
+      1,
+      2,
+      2,
+      1
+    ],
+    "native_locale": "C for budget cases; en_US.UTF-8 for public GNU fixtures, child environment only",
+    "miri_completed": "Strict isolated i686 replacement-peak/preserved old-pointer and same-limit recovery case1 PASS; default isolation and strict provenance unchanged. Full nine-case large-input run remains running, no completion claimed. Initial pre-span run interrupted without completed tests.",
+    "wasm": {
+      "node": 226,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 318,
+      "pressure": "16MiB resident plus legal48MiB field rejected before printer buffer allocation; recovery retains original64MiB session and256MiB linear caps, two fresh sessions12 checks."
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/printutils.rs": "f09a1c94a35af755778b7e8c6c52b85214c1a46e75a1607a4c26ab56bcac561a",
+    "crates/rmath/src/mainutils/printutils/string_buffer.rs": "85cf9f591247cd0026d12147211e28364a3e5e67695412a69cabf3e9a5990f60",
+    "crates/rmath/src/mainutils/printutils/workspace_tests.rs": "504f88d9c907a436a7abcc6c263b9a51722304b6fbe216f7489cf4b00750eece",
+    "tests/browser/printer-workspace.cjs": "99c2af2312d89ccd52db2e6d528b3c689a35d9b936560f337f06b47bfae9be2d"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29763377,
+      "sha256": "eeebddeb57e51084db1862a0fd0d9dcfd94baf760b8d621037c090cd71c2f34e"
+    },
+    "output": {
+      "bytes": 25448806,
+      "sha256": "5118f7ebf48551ee10597560057443905b659b5f727124f536e4c990ce6da64c"
+    }
+  },
+  "evidence_directory": "target/printer-workspace-evidence",
+  "evidence_sha256": {
+    "android.log": "ba5122cdea181ef4ce037be5660a38aaadc4a307cefbcd0b4b8f71cf48ca6001",
+    "clippy.log": "7a134bb295eab324648fb808279b87c71f1aa77f5a38cd81ea4fb9e97d69010f",
+    "miri-replacement-peak.log": "9ba1236d9b018a5bf8221016f0ef44676b219f0b650bb34f1dba81fc65c069b1",
+    "miri-workspace.log": "489a8e6ebb8cc1f12cf6a8a080321f5b19848390d9a30dcbf754ace8b3a646d7",
+    "native-ascii-runs.log": "8bdcfa67317e878dd45a48c59e48baa8ac474de44a89fc9c3856027d14b9c947",
+    "native-control.log": "a1c4aa4d2b386a4427cca6a79fefd9f25c1e48b9e875380fd08152e34fe17b2e",
+    "native-format-final.log": "c22a06eb5849d467b1836586cd931efe47f9c595df62b90108b623b8e3a12b60",
+    "native-green.log": "a468b1df867147acc12b1b167a8a0eff350a7b9fe141b5bc467fcdca86524612",
+    "native-printutils.log": "cf46728781388a56afadedb84a4bc18aed4d1bb875961c713eaeab7409f3def2",
+    "native-public.log": "a9f9bca66df64549713369fd9d70d36e10f7bee0d71fcc7ca3d0c659dcba4ef0",
+    "native-quote-presence.log": "0ce02fb1507b188cfaba009f2a037c0ff33bda1cef11b20e607214a98173f7aa",
+    "native-red.log": "c4cdd9009c1b93c4ec37e640c4960737d93c2679db4027f9b55b48f0d0a6fbeb",
+    "wasm-ascii-build.log": "80885a24f9d3e9a420a34b8b31d2cd8f1f83bf80adbc815b61c2a3613ae42fce",
+    "wasm-build.log": "0c75167f420cc340c02bb773d4b7ffd5a6f0b85eb070fffee6c605a375cca30c",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-final-build.log": "92ab75b13b7ec0cb11d6384e71bbb36e7d4972fa8f52cefcd9ffe7d03b7a4c4d",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "6a829f0fcc123bbeea5d8e84313c868aa25f5642826857f620803ff36fd5f405",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "394804a168c2a7421031a1c3d67b69e7c8f08018119e55417a8f7f59f5143355",
+    "wasm-web-contracts.log": "9748a4941ef4b73393c3d496070ca50e3e09737cd274f3eeaf28c3ce853fd278"
+  },
+  "limitations": [
+    "Bounded printer storage scope only; other retained native collections, root/snapshot metadata, regex VM/compile and facade/capture intermediates remain tracked. No global RSS bound or whole-engine safety claim.",
+    "User graphics edits were present during validation and excluded from this milestone. No immutable whole-CI claim.",
+    "Dolt origin is unconfigured (rport-0d5o); Git remote pushes remain available."
+  ]
+}
