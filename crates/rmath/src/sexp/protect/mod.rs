@@ -86,6 +86,7 @@ pub(crate) use root_sequence::{RootSequence, SequenceLease};
 mod guards;
 #[cfg(kani)]
 mod root_table_kani;
+mod snapshot;
 mod stacks;
 #[cfg(test)]
 mod tests;
@@ -95,3 +96,6 @@ pub(crate) use stacks::*;
 
 #[cfg(test)]
 mod sequence_budget_tests;
+
+#[cfg(test)]
+mod snapshot_budget_tests;

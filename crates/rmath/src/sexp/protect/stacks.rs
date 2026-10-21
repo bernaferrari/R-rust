@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 #![deny(unsafe_op_in_unsafe_fn)]
+use super::snapshot::RootSnapshot;
 use super::*;
 
 /// Error returned when a safe protection API receives a handle whose owner was
@@ -79,27 +80,64 @@ impl NativeRoots {
     fn clear(&self) {
         self.entries.borrow_mut().clear();
     }
-    fn checked_entries_snapshot(&self) -> Vec<RootValue> {
-        self.entries
-            .borrow()
-            .entries()
-            .filter(|(_, value)| value.is_live())
-            .map(|(_, value)| value.clone())
-            .collect()
+    // Marking only enqueues these copied roots. It finishes this iterator
+    // before tracing may execute any R/provider/notification callbacks.
+    fn checked_roots_for_marking(&self) -> impl Iterator<Item = RootValue> + '_ {
+        (0..self.len()).filter_map(move |index| {
+            let entries = self.entries.borrow();
+            let value = entries.at(index)?;
+            value.is_live().then(|| value.clone())
+        })
     }
-    pub(crate) fn entries_snapshot(&self) -> Vec<SEXP> {
-        self.entries
-            .borrow()
-            .entries()
-            .map(|(_, value)| value.projection().unwrap_or(std::ptr::null_mut()))
-            .collect()
+    fn copy_native_entries(&self, output: &mut [SEXP]) -> Option<usize> {
+        let entries = self.entries.borrow();
+        let len = entries.len();
+        let output = output.get_mut(..len)?;
+        for ((_, value), target) in entries.entries().zip(output) {
+            *target = value.projection().unwrap_or(std::ptr::null_mut());
+        }
+        Some(len)
     }
-    pub(crate) fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
-        self.entries
-            .borrow()
-            .entries()
-            .map(|(lease, value)| (lease, value.clone()))
-            .collect()
+    fn checked_entries_snapshot(&self) -> RootSnapshot<RootValue> {
+        snapshot_or_error({
+            let entries = self.entries.borrow();
+            let count = entries
+                .entries()
+                .filter(|(_, value)| value.is_live())
+                .count();
+            RootSnapshot::try_collect(
+                entries.ledger(),
+                count,
+                entries
+                    .entries()
+                    .filter(|(_, value)| value.is_live())
+                    .map(|(_, value)| value.clone()),
+            )
+        })
+    }
+    pub(crate) fn entries_snapshot(&self) -> RootSnapshot<SEXP> {
+        snapshot_or_error({
+            let entries = self.entries.borrow();
+            RootSnapshot::try_collect(
+                entries.ledger(),
+                entries.len(),
+                entries
+                    .entries()
+                    .map(|(_, value)| value.projection().unwrap_or(std::ptr::null_mut())),
+            )
+        })
+    }
+    pub(crate) fn updates_snapshot(&self) -> RootSnapshot<(SequenceLease, RootValue)> {
+        snapshot_or_error({
+            let entries = self.entries.borrow();
+            RootSnapshot::try_collect(
+                entries.ledger(),
+                entries.len(),
+                entries
+                    .entries()
+                    .map(|(lease, value)| (lease, value.clone())),
+            )
+        })
     }
     pub(crate) fn replace_if_current(
         &self,
@@ -112,6 +150,12 @@ impl NativeRoots {
             .replace_if_current(lease, expected, value);
     }
 }
+// Evaluate the preparation block first: all table loans end before error hooks.
+fn snapshot_or_error<T>(result: Result<RootSnapshot<T>, StorageError>) -> RootSnapshot<T> {
+    result
+        .unwrap_or_else(|_| crate::sexp::context::r_error("protection snapshot allocation failed"))
+}
+
 fn storage_error(error: StorageError) -> ProtectError {
     match error {
         StorageError::Allocation => ProtectError::Allocation,
@@ -123,6 +167,9 @@ pub(crate) struct LegacyProtectionStack {
     roots: NativeRoots,
 }
 impl LegacyProtectionStack {
+    pub(crate) fn copy_native_entries(&self, output: &mut [SEXP]) -> Option<usize> {
+        self.roots.copy_native_entries(output)
+    }
     #[cfg(test)]
     pub(crate) fn roots_for_test(&self) -> &NativeRoots {
         &self.roots
@@ -155,13 +202,16 @@ impl LegacyProtectionStack {
     pub(crate) fn clear(&self) {
         self.roots.clear();
     }
-    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+    pub(crate) fn checked_roots_for_marking(&self) -> impl Iterator<Item = RootValue> + '_ {
+        self.roots.checked_roots_for_marking()
+    }
+    pub(crate) fn checked_entries_snapshot(&self) -> RootSnapshot<RootValue> {
         self.roots.checked_entries_snapshot()
     }
-    pub(crate) fn entries_snapshot(&self) -> Vec<SEXP> {
+    pub(crate) fn entries_snapshot(&self) -> RootSnapshot<SEXP> {
         self.roots.entries_snapshot()
     }
-    pub(crate) fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
+    pub(crate) fn updates_snapshot(&self) -> RootSnapshot<(SequenceLease, RootValue)> {
         self.roots.updates_snapshot()
     }
     pub(crate) fn replace_if_current(
@@ -204,13 +254,16 @@ impl PreservedRoots {
     pub(crate) fn is_empty(&self) -> bool {
         self.roots.entries.borrow().is_empty()
     }
-    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
+    pub(crate) fn checked_roots_for_marking(&self) -> impl Iterator<Item = RootValue> + '_ {
+        self.roots.checked_roots_for_marking()
+    }
+    pub(crate) fn checked_entries_snapshot(&self) -> RootSnapshot<RootValue> {
         self.roots.checked_entries_snapshot()
     }
-    pub(crate) fn entries_snapshot(&self) -> Vec<SEXP> {
+    pub(crate) fn entries_snapshot(&self) -> RootSnapshot<SEXP> {
         self.roots.entries_snapshot()
     }
-    pub(crate) fn updates_snapshot(&self) -> Vec<(SequenceLease, RootValue)> {
+    pub(crate) fn updates_snapshot(&self) -> RootSnapshot<(SequenceLease, RootValue)> {
         self.roots.updates_snapshot()
     }
     pub(crate) fn replace_if_current(
@@ -292,10 +345,14 @@ impl RootValue {
         if let Some(projection) = crate::sexp::session::immutable_singleton_projection(input) {
             return Ok(Self::Static { projection });
         }
-        let projection =
-            unsafe { (*inst).canonical_projection(input) }.ok_or(ProtectError::ForeignOwner)?;
-        let allocation =
-            unsafe { (*inst).node_token(projection) }.ok_or(ProtectError::StaleAllocation)?;
+        // The registered arena may already be mutably lent. Recover the
+        // canonical Cell projection from shared directory metadata, then lend
+        // only the independent original heap identity to authenticate it.
+        let (projection, allocation) =
+            crate::sexp::memory::checked_projection(input).ok_or(ProtectError::ForeignOwner)?;
+        if !allocation.belongs_to(unsafe { &(*inst).heap_identity }) {
+            return Err(ProtectError::ForeignOwner);
+        }
         Self::Checked {
             projection,
             allocation,
@@ -391,35 +448,70 @@ impl RootTable {
     pub(crate) fn clear(&self) {
         self.storage.borrow_mut().clear();
     }
-    pub(crate) fn checked_entries_snapshot(&self) -> Vec<RootValue> {
-        self.storage
-            .borrow()
-            .entries()
-            .filter(|(_, value)| value.is_live())
-            .map(|(_, value)| value.clone())
-            .collect()
+    pub(crate) fn checked_roots_for_marking(&self) -> impl Iterator<Item = RootValue> + '_ {
+        (0..self.len()).filter_map(move |index| {
+            let storage = self.storage.borrow();
+            let (_, value) = storage.at(index)?;
+            value.is_live().then(|| value.clone())
+        })
     }
-    pub(crate) fn entries_snapshot(&self) -> Vec<SEXP> {
+    pub(crate) fn copy_native_entries(&self, output: &mut [SEXP]) -> Option<usize> {
         let storage = self.storage.borrow();
-        (0..storage.len())
-            .map(|index| {
+        let len = storage.len();
+        let output = output.get_mut(..len)?;
+        for (index, target) in output.iter_mut().enumerate() {
+            *target = storage
+                .at(index)
+                .and_then(|(_, value)| value.projection())
+                .unwrap_or(std::ptr::null_mut());
+        }
+        Some(len)
+    }
+    pub(crate) fn checked_entries_snapshot(&self) -> RootSnapshot<RootValue> {
+        snapshot_or_error({
+            let storage = self.storage.borrow();
+            let count = storage
+                .entries()
+                .filter(|(_, value)| value.is_live())
+                .count();
+            RootSnapshot::try_collect(
+                storage.ledger(),
+                count,
                 storage
-                    .at(index)
-                    .and_then(|(_, value)| value.projection())
-                    .unwrap_or(std::ptr::null_mut())
-            })
-            .collect()
+                    .entries()
+                    .filter(|(_, value)| value.is_live())
+                    .map(|(_, value)| value.clone()),
+            )
+        })
+    }
+    pub(crate) fn entries_snapshot(&self) -> RootSnapshot<SEXP> {
+        snapshot_or_error({
+            let storage = self.storage.borrow();
+            RootSnapshot::try_collect(
+                storage.ledger(),
+                storage.len(),
+                (0..storage.len()).map(|index| {
+                    storage
+                        .at(index)
+                        .and_then(|(_, value)| value.projection())
+                        .unwrap_or(std::ptr::null_mut())
+                }),
+            )
+        })
     }
     pub(crate) fn with_entries<R>(&self, f: impl FnOnce(&[SEXP]) -> R) -> R {
         let entries = self.entries_snapshot();
         f(&entries)
     }
-    pub(crate) fn updates_snapshot(&self) -> Vec<(SlotId, RootValue)> {
-        self.storage
-            .borrow()
-            .entries()
-            .map(|(slot, value)| (slot, value.clone()))
-            .collect()
+    pub(crate) fn updates_snapshot(&self) -> RootSnapshot<(SlotId, RootValue)> {
+        snapshot_or_error({
+            let storage = self.storage.borrow();
+            RootSnapshot::try_collect(
+                storage.ledger(),
+                storage.entries().count(),
+                storage.entries().map(|(slot, value)| (slot, value.clone())),
+            )
+        })
     }
     pub(crate) fn replace_if_current(&self, slot: SlotId, expected: &RootValue, value: RootValue) {
         let mut storage = self.storage.borrow_mut();

@@ -62,6 +62,10 @@ impl<T> RootStorage<T> {
         self.next_generation
     }
 
+    pub(super) fn ledger(&self) -> &MemoryLedger {
+        &self.ledger
+    }
+
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }

@@ -165,8 +165,30 @@ pub(crate) fn update_instance_roots_in(
         update_field(&mut (*instance).base_env, old_to_new);
         update_field(&mut (*instance).global_env, old_to_new);
 
-        update_protect_stack_in(instance, old_to_new);
-        update_preserve_stack_in(instance, old_to_new);
+        // Nonmoving sweep normally remaps only dead headers. Strong checked
+        // roots therefore need no rewrite. Avoid allocating callback snapshots
+        // when the map cannot change any root, including under a lowered limit.
+        // Explicit remaps of a live root still use the exact-lease update path.
+        let mapped = |value: RootValue| {
+            value
+                .projection()
+                .is_some_and(|ptr| old_to_new.contains_key(&ptr.addr()))
+        };
+        if (*instance)
+            .legacy_protect
+            .checked_roots_for_marking()
+            .chain((*instance).root_table.checked_roots_for_marking())
+            .any(mapped)
+        {
+            update_protect_stack_in(instance, old_to_new);
+        }
+        if (*instance)
+            .preserve_stack
+            .checked_roots_for_marking()
+            .any(mapped)
+        {
+            update_preserve_stack_in(instance, old_to_new);
+        }
 
         update_field(
             &mut (*instance).eval_state.printvector.na_string,

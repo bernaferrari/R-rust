@@ -763,10 +763,38 @@ pub(crate) fn with_protected_objects_in<F, R>(inst: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&[SEXP], &[SEXP]) -> R,
 {
-    // All owner and storage borrows end before the supplied code runs.
-    let legacy = unsafe { (*inst).legacy_protect.entries_snapshot() };
-    let roots = unsafe { (*inst).root_table.entries_snapshot() };
-    f(&legacy, &roots)
+    // Small diagnostic views need no heap allocation, including after a limit
+    // is lowered below resident storage. Every field loan ends before f runs.
+    // Larger views retain the same original-owner admitted snapshot contract.
+    let mut legacy_inline = [std::ptr::null_mut(); 32];
+    let mut roots_inline = [std::ptr::null_mut(); 32];
+    let legacy_len = unsafe {
+        (*inst)
+            .legacy_protect
+            .copy_native_entries(&mut legacy_inline)
+    };
+    let roots_len = unsafe { (*inst).root_table.copy_native_entries(&mut roots_inline) };
+    let legacy_heap = legacy_len
+        .is_none()
+        .then(|| unsafe { (*inst).legacy_protect.entries_snapshot() });
+    let roots_heap = roots_len
+        .is_none()
+        .then(|| unsafe { (*inst).root_table.entries_snapshot() });
+    let legacy = match legacy_len {
+        Some(len) => &legacy_inline[..len],
+        None => legacy_heap
+            .as_ref()
+            .expect("prepared legacy root view")
+            .as_slice(),
+    };
+    let roots = match roots_len {
+        Some(len) => &roots_inline[..len],
+        None => roots_heap
+            .as_ref()
+            .expect("prepared checked root view")
+            .as_slice(),
+    };
+    f(legacy, roots)
 }
 
 /// Update all protection entries — legacy stack AND root table — using the

@@ -15,7 +15,7 @@
   },
   "validation": {
     "new_native_cases": 8,
-    "native_distinct": 203,
+    "native_distinct": 197,
     "native_suites": {
       "protection_including_new_cases": 77,
       "standalone_root_sequence": 6,
@@ -37,7 +37,8 @@
     },
     "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
     "android": "r-uniffi aarch64-linux-android PASS",
-    "scoped_format_whitespace": "PASS"
+    "scoped_format_whitespace": "PASS",
+    "counting_note": "Full sexp::protect suite already includes standalone root_storage/root_sequence module cases; separate invocations are recorded but deduplicated by test name."
   },
   "test_notes": [
     "Initial new test used a non-exported RInstance path, corrected before the genuine four-case native RED was captured. No production defect claimed from that compile error."

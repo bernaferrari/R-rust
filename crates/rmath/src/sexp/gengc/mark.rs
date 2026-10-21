@@ -106,7 +106,7 @@ pub(crate) fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
     }
 }
 
-pub(crate) fn mark_checked_root_snapshot(roots: Vec<RootValue>) {
+pub(crate) fn mark_checked_root_snapshot(roots: impl IntoIterator<Item = RootValue>) {
     let mut pending = gc_trace::TraceWorklist::new(gc_trace::TraceScope::active());
     for root in roots {
         match root {
@@ -145,7 +145,7 @@ pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
                 projection,
                 allocation,
             })
-            .collect();
+            .collect::<Vec<_>>();
         MARK_WHERE.with(|w| w.set("fresh_allocations"));
         mark_checked_root_snapshot(fresh);
 
@@ -155,18 +155,18 @@ pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
                 projection,
                 allocation,
             })
-            .collect();
+            .collect::<Vec<_>>();
         MARK_WHERE.with(|w| w.set("automatic_handles"));
         mark_checked_root_snapshot(automatic);
 
         // Every native and Rust protection channel carries original checked
         // allocation identities; raw address reuse never creates a new root.
         MARK_WHERE.with(|w| w.set("legacy_protect"));
-        mark_checked_root_snapshot((*instance).legacy_protect.checked_entries_snapshot());
+        mark_checked_root_snapshot((*instance).legacy_protect.checked_roots_for_marking());
         MARK_WHERE.with(|w| w.set("root_table"));
-        mark_checked_root_snapshot((*instance).root_table.checked_entries_snapshot());
+        mark_checked_root_snapshot((*instance).root_table.checked_roots_for_marking());
         MARK_WHERE.with(|w| w.set("preserve_stack"));
-        mark_checked_root_snapshot((*instance).preserve_stack.checked_entries_snapshot());
+        mark_checked_root_snapshot((*instance).preserve_stack.checked_roots_for_marking());
         // Context and bytecode values own exact-generation automatic roots.
 
         // Error-state values own exact-generation automatic roots.
@@ -274,7 +274,6 @@ where
         let _resource_drops = super::super::memory::resource_drop_guard_in(instance);
         (*instance).gc_state.in_progress = true;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            verify_gc_invariants_in(instance);
             // Managed and permanent headers share epoch metadata; immutable
             // process singletons are recognized without marking their bytes.
             super::super::memory::begin_gc_epoch();

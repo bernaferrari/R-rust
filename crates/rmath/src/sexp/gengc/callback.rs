@@ -63,30 +63,6 @@ pub(crate) fn notify_gc_callbacks_in(owner: *mut instance::RInstance) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// GC Invariants Checking
-// ---------------------------------------------------------------------------
-
-pub(crate) fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
-    unsafe {
-        (*instance).legacy_protect.with_entries(|entries| {
-            for &obj in entries.iter() {
-                if !obj.is_null() {
-                    // Debug-only: verify object is within arena bounds.
-                    // Full validation would require classifying singleton roots too.
-                }
-            }
-        });
-        (*instance).root_table.with_entries(|entries| {
-            for &obj in entries.iter() {
-                if !obj.is_null() {
-                    // As above: tombstoned slots hold null and are skipped.
-                }
-            }
-        });
-    }
-}
-
 /// Every N-th evaluation-safe-point collection also runs a full collection
 /// (via the same environment force-protect preamble) so old-generation
 /// garbage is reclaimed without waiting for an explicit `gc()`.

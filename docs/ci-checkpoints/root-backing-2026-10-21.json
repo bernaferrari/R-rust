@@ -14,7 +14,7 @@
     "zero_headroom": "Growth unexpectedly returns a new live lease"
   },
   "validation": {
-    "native_distinct": 193,
+    "native_distinct": 189,
     "native_suites": {
       "protection_including_new_root_cases": 69,
       "standalone_root_storage": 4,
@@ -37,7 +37,8 @@
     },
     "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
     "android": "r-uniffi aarch64-linux-android PASS",
-    "scoped_format_whitespace": "PASS"
+    "scoped_format_whitespace": "PASS",
+    "counting_note": "Full sexp::protect suite already includes standalone root_storage/root_sequence module cases; separate invocations are recorded but deduplicated by test name."
   },
   "implementation_notes": [
     "Initial compile attempt used the wrong relative import because root_storage is mounted beneath protect; corrected to crate::sexp::memory.",

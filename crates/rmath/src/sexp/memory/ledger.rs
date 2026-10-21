@@ -33,6 +33,10 @@ impl MemoryLedger {
             limit: self.limit.clone(),
         }
     }
+    #[cfg(test)]
+    pub(crate) fn workspace_bytes_for_test(&self) -> usize {
+        self.transient.get()
+    }
     pub(crate) fn allocated_bytes(&self) -> usize {
         self.allocated.get()
     }

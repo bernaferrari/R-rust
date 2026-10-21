@@ -1,0 +1,179 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-cvs2.11.10",
+    "rport-hah9u.81"
+  ],
+  "source_base": "aab73e6b24e993e9fd3946059b06f44b5d41b40e",
+  "behavior": [
+    "All checked/native/update views of legacy, canonical and preserved roots use a forbidunsafe RootSnapshot. Count callback-free stable occupants, admit requested layout before allocation, reconcile actual Vec capacity and keep the original WorkspaceReservation through final snapshot or consuming-iterator drop. Neither an exhausted iterator nor early exit/unwind can release the charge while physical capacity remains.",
+    "All root-table loans end before snapshot admission errors invoke canonical R error hooks or arbitrary update callbacks execute. Canonical copied allocation identity and conditional exact-lease updates remain unchanged.",
+    "GC enqueues copied roots through allocation-free short-lend iterators that finish before tracing callbacks. Pure nonmoving remap skips callback snapshots only when no checked root is a map key; actual live-root remaps retain the existing exact-lease update path.",
+    "Small compatibility diagnostic views copy at most32 native pointers per channel into bounded stack arrays, with no table loan across the callback. Larger views still require admitted physical heap storage. Remove the former invariant placeholder walks: their loop bodies performed no checks or assertions.",
+    "RootValue::from_owner now recovers canonical projection and exact allocation from the existing shared directory, then authenticates only the independent original heap_identity field. No complete RInstance or already-lent RArena reference is formed. Original canonical recheck, address-only recovery, stale rejection and foreign-heap rejection remain."
+  ],
+  "failures_and_repairs": {
+    "original_accounting": "18 actual native failures before production edits: three root channels x three snapshot views x retained lifetime/zero-headroom denial.",
+    "lowered_limit_regression": "First admitted snapshot implementation passes21 scoped native/Miri cases but unchanged broad GC reports103pass/1fail/1existingignored at original one-byte lowered limit. First enqueue/diagnostic fix still fails because old no-op invariant walks allocate snapshots. Final allocation-free marking, removed no-op walks and nonmoving map-key fast path preserve the unchanged full-startup test; new real garbage-reclamation and large diagnostic quota controls pass at the same one-byte limit.",
+    "ownership_ub": "Strict isolatedi686 Miri diagnoses protected Unique-tag alias UB at RootValue::from_owner canonical_projection during a registered mutable arena lend. Fix production owner validation; keep actual test/lend/construction/quotas. Final strict new GC2 and original-directory/foreign control1 pass.",
+    "compatibility_compile": "Existing GC test expects stable as_slice accessor. Provide that view on owned snapshots; no unstable feature or toolchain change."
+  },
+  "validation": {
+    "native_distinct": 325,
+    "native_suites": {
+      "protection_including24new_cases": 101,
+      "memory": 120,
+      "gengc": 104
+    },
+    "pre_existing_ignored": "One manual fixed_live_heap_mark_measurement benchmark; no ignored/skipped test added.",
+    "strict_default_isolated_i686_miri_distinct": 24,
+    "miri_phases": {
+      "admission_lifetime_iterator_matrix": 21,
+      "final_lowered_limit_gc_diagnostic": 2,
+      "final_owner_directory_and_foreign_heap": 1
+    },
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation unchanged",
+    "miri_phase_scope": "Initial21 cases exercise the unchanged admitted-buffer/iterator implementation before later GC-recovery/root-owner fixes. Final additional3 cases exercise those fixes; no full-engine Miri claim.",
+    "wasm": {
+      "node": 226,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 318,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_format_whitespace": "PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/sexp/gengc/callback.rs": "ee03ad6fbf0aeb8166869c854293142e99b8575aa374cb335b981312fb3ee5dd",
+    "crates/rmath/src/sexp/gengc/mark.rs": "4efb3bbb1f9642f2347c72142c11fc7b817b76b999797f661897a7846af849c8",
+    "crates/rmath/src/sexp/gengc/sweep.rs": "969eab2ae37addba78130a7cc011568b1f3c58000bb447398416bd510e054f60",
+    "crates/rmath/src/sexp/memory/ledger.rs": "45662f0140cf322b8d0e1d039533ace76bc1c477fdc480ad8f8167b146a3e793",
+    "crates/rmath/src/sexp/protect/guards.rs": "d988eb1b49041634367b19142d1ac26281434c11a6bc4f46f2752e2df553c29c",
+    "crates/rmath/src/sexp/protect/mod.rs": "ef4d110c9925486e3b7b8f5f8a522a8757856ef9d70bd73d5757c5de54e5ea9a",
+    "crates/rmath/src/sexp/protect/snapshot.rs": "7a8f23e500f661fad915d1eb9934adb0cee8f11f36d55002fa54874f71d1eaae",
+    "crates/rmath/src/sexp/protect/snapshot_budget_tests.rs": "e1ac3b7fa944b596e50ecf2ca9f5272abc795f8eb7e14a622873e8fa27d92f92",
+    "crates/rmath/src/sexp/protect/stacks.rs": "4ec5e3750ba7183819f984c0e83e36ab20404731a36e802b9d6be3bb851a0e72",
+    "crates/rmath/src/sexp/root_sequence.rs": "940f9b1cf01bba13cff7c521e73a0e5d50cea4bedcd3fc17deb5d350292cb273",
+    "crates/rmath/src/sexp/root_storage.rs": "8d766e080b88f4d45948aa656f84f84c44a0332084022c41ed03fba444e0e46b"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29688607,
+      "sha256": "e08242e64b88475de9b8db61779c15034bd1c8aaf4849b27e62ee7221ddaf8db"
+    },
+    "output": {
+      "bytes": 25362224,
+      "sha256": "c08e85e74c3919f5ecc4dc97342ed42468df89fee42177e609bd3ce5f0b725bc"
+    }
+  },
+  "evidence_directory": "target/root-snapshot-evidence",
+  "evidence_sha256": {
+    "android-final.log": "9a1c4caba80e33dba9810f88df2454e240591a2ec03f6546cecfe12fe6d26e17",
+    "android-owner-final.log": "ab6cb31c277736c5b347732506133a802044be118e7ad6e2abf58dbc66ad0c6b",
+    "clippy-final.log": "01a574d90490c69512f1fac99ef9f5e23a98856fdcf15b6b33a54eb31875e06c",
+    "clippy-owner-final.log": "bb24bc274d8b27c7f4d30f82dc4569e64b7df25ebf9bcce0a558f2015f5cd747",
+    "final-wasm/validation.log": "6f6a790583f28c9e0bb60a9d1a44e5b34806b7bb69b065c9dc4731e8cf09ab7a",
+    "final-wasm/wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "final-wasm/wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "final-wasm/wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "final-wasm/wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "final-wasm/wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "final-wasm/wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "final-wasm/wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "final-wasm/wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "final-wasm/wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "final-wasm/wasm-optimize.log": "4fec3085227c9ddfc05c6bf935f619ff15dee4b8f7959e348823e02e9ff1d86d",
+    "final-wasm/wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "final-wasm/wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "final-wasm/wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "final-wasm/wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "final-wasm/wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "final-wasm/wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "final-wasm/wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "final-wasm/wasm-web-contracts.log": "9c7ac3d13e3f841a856dafc5f562f6517c0ef5a14fdeaa8ac2aecc85ecf1b0c3",
+    "miri-final-scopes-owner-fixed.log": "3461fd7dcbde2a15efcdc207bb8dd00f3e859f4e7e244220aad7778a5543d3cf",
+    "miri-final-scopes.log": "5da9424f1c0af41ad812f5500effcb00b852c8852346f075fa551ffe3e230709",
+    "miri-final.log": "9d39c708932297d478842f1120cc3e0877a98fd294d2c33780c11dc11a5cc6d9",
+    "miri-owner-directory.log": "502415d394135f49c083af40f45426a5f59ee5c8d4bc9fa79158fe31d68a1c06",
+    "native-final-scopes.log": "f32db578d030aa383dba8c5d84c877c146d201fa953a700449034b335664b669",
+    "native-gc-fixed-2.log": "f3c918dee9de9d5e23bf26eecc2ebf0419c97f03214f4a9c49add072b0614e17",
+    "native-gc-fixed.log": "f4dd7eb4ac22c84cace03fbeebc6514884910ef4192b45b0dc89a829ef14ffdc",
+    "native-gc-focused.log": "a85920c707546aa79ea7d1b4ee62cd0eb2a19da101ae52d396b4006566487fc7",
+    "native-gengc-final.log": "39ae28a356b5c1ed99edca6dfd26ed972456b581188c5c2b194befc5c76bb18b",
+    "native-gengc-owner-final.log": "c95adbb893bffdbffd4c0a9cd0af893bb2b562e74d28f0a154a84cd65dcbbc0d",
+    "native-gengc.log": "3f05e39cb79c3fb872875a8c77ec1a6faad4a1b96132569c6002803238e5680e",
+    "native-green-2.log": "ce5f628ca0f19a35874b65b544a25cd2492d425deb12f9add6c52709654713b5",
+    "native-green.log": "64d29e50254b6e46f81376e2a25ed63fc4b27a00fc4c7898aa0684f3d56243c3",
+    "native-memory-final.log": "2cf250239ffc659937f2c1ec348f6d1e6df6a396f523c9d4bd0dcd7f1850c9e4",
+    "native-memory-owner-final.log": "a98492db74a32dd28e243d0a711f8ddafe90160d51a310c125f350c42c1c7e85",
+    "native-owner-directory.log": "42e44e65186f262bc65ed8bffde7cdcc9ce28cbf8ebe78c1e62a798666429c7c",
+    "native-protect-final.log": "74ab0f233b5a8bb5ed91334419a847a3d454273f210e0bbbce993d604b3d8035",
+    "native-protect-owner-final.log": "4178d8da56f20e0d919a6b60bafd6a7e010957a10b7b8f8d8cbcc918a7c12441",
+    "native-protect.log": "57a7a91fd67d3125435cdfc9f361e5d9d3538a9ab5cc58d84b7c758cc8b6b91f",
+    "native-red.log": "b79a5a94a93139d486c310bc898b4e3d619c59d5bdd0719e77c81c89f18dbab2",
+    "verified-wasm/validation.log": "2186029b3fa8fd523c7f13513a94ff30b4ac8eab5e6465194bc3bed547d92156",
+    "verified-wasm/wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "verified-wasm/wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "verified-wasm/wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "verified-wasm/wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "verified-wasm/wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "verified-wasm/wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "verified-wasm/wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "verified-wasm/wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "verified-wasm/wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "verified-wasm/wasm-optimize.log": "326f7bb29ed0ece51b917cb77cbc2e30fd3d18b873bbba75220629f4163cfd54",
+    "verified-wasm/wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "verified-wasm/wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "verified-wasm/wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "verified-wasm/wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "verified-wasm/wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "verified-wasm/wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "verified-wasm/wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "verified-wasm/wasm-web-contracts.log": "1f81bc83f7479b4e35924a6f5b8bf97e16f3b72d50590d25e856a52547a523ea",
+    "wasm-build.log": "0d04c84b6123db5035eab4ce03cc34fc9632f00f7e29a05c2f6ecb7942642601",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-final-build.log": "dc59942cdffff08c162e2967448b9dbfaf1360b804daab321dde88f5a9da6961",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "fe3da34a0740d7a8e58679959ae1ec10e2ef7f507f3c962d9d905bdb9bf57031",
+    "wasm-owner-final-build.log": "80885a24f9d3e9a420a34b8b31d2cd8f1f83bf80adbc815b61c2a3613ae42fce",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "dcef41071effd2afaed39f747cc45daf7c125729abc367f8ffd443aef61d23c1",
+    "wasm-web-contracts.log": "00a1bd141f94631da703f66d1ed5123818ab4142d016872c2f0de6e97a830a98"
+  },
+  "counting_corrections": "Earlier canonical/ordered root checkpoints counted repeated module invocations twice. Correct unique native totals are189 and197, respectively; source/test outcomes unchanged. Deduplicate the current325 native/24Miri counts by exact test name.",
+  "limitations": [
+    "Automatic/fresh-allocation root snapshots, trace worklist/native collection/key storage and Rc/weak controls remain separate parent inventory. No total-process/RSS or whole-engine safe-implementation claim.",
+    "User graphics edits were present during validation and excluded. No immutable whole-CI claim.",
+    "Dolt origin remains unconfigured, tracked rport-0d5o. Git remote push is separate."
+  ]
+}

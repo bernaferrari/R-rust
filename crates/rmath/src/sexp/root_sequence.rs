@@ -47,6 +47,10 @@ impl<T> RootSequence<T> {
             self.next_lease,
         )
     }
+    pub(super) fn ledger(&self) -> &MemoryLedger {
+        &self.ledger
+    }
+
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -110,6 +114,10 @@ impl<T> RootSequence<T> {
         self.entries.push(Entry { lease, value });
         self.next_lease = next;
         Ok(lease)
+    }
+
+    pub(super) fn at(&self, index: usize) -> Option<&T> {
+        self.entries.get(index).map(|entry| &entry.value)
     }
 
     pub(super) fn entries(&self) -> impl Iterator<Item = (SequenceLease, &T)> {
