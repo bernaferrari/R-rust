@@ -87,6 +87,7 @@ mod guards;
 #[cfg(kani)]
 mod root_table_kani;
 mod snapshot;
+pub(crate) use snapshot::RootSnapshot;
 mod stacks;
 #[cfg(test)]
 mod tests;

@@ -1507,17 +1507,56 @@ pub(super) fn note_lend_allocation(arena: usize, projection: SEXP, allocation: C
 /// Snapshot temporary roots for the collector's heap domain. The original
 /// tokens reject freed/reused slots; lookup never refreshes them by address.
 /// The owned snapshot releases its TLS borrow before tracing or callbacks.
-pub(crate) fn fresh_allocation_roots(identity: &HeapIdentity) -> Vec<(SEXP, CheckedNode)> {
-    LEND_LEDGER
-        .try_with(|slot| {
-            slot.borrow()
-                .iter()
-                .flat_map(|ledger| &ledger.fresh)
-                .filter(|(_, allocation)| allocation.belongs_to(identity) && allocation.is_live())
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default()
+pub(crate) fn fresh_allocation_roots(
+    identity: &HeapIdentity,
+) -> super::root_snapshots::CheckedRootSnapshot {
+    let count = fresh_allocation_roots_for_marking(identity).count();
+    crate::sexp::protect::RootSnapshot::try_collect(
+        &identity.byte_ledger(),
+        count,
+        fresh_allocation_roots_for_marking(identity),
+    )
+    .unwrap_or_else(|error| super::root_snapshots::snapshot_error(error))
+}
+
+/// Each copied root ends its TLS loan before the collector traces it.
+pub(crate) fn fresh_allocation_roots_for_marking(
+    identity: &HeapIdentity,
+) -> impl Iterator<Item = (SEXP, CheckedNode)> + use<> {
+    FreshRoots {
+        identity: identity.clone(),
+        ledger: 0,
+        root: 0,
+    }
+}
+
+struct FreshRoots {
+    identity: HeapIdentity,
+    ledger: usize,
+    root: usize,
+}
+
+impl Iterator for FreshRoots {
+    type Item = (SEXP, CheckedNode);
+    fn next(&mut self) -> Option<Self::Item> {
+        LEND_LEDGER
+            .try_with(|ledgers| {
+                let ledgers = ledgers.borrow();
+                while let Some(ledger) = ledgers.get(self.ledger) {
+                    while let Some((pointer, allocation)) = ledger.fresh.get(self.root) {
+                        self.root += 1;
+                        if allocation.belongs_to(&self.identity) && allocation.is_live() {
+                            return Some((*pointer, allocation.clone()));
+                        }
+                    }
+                    self.ledger += 1;
+                    self.root = 0;
+                }
+                None
+            })
+            .ok()
+            .flatten()
+    }
 }
 
 /// Reserve transient bytes without borrowing an already-lent arena again.

@@ -1,0 +1,140 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-cvs2.11.11"
+  ],
+  "source_base": "3f4383d3918af4b9fca795aba9625af3b9a7d718",
+  "behavior": [
+    "Automatic and fresh-allocation root snapshots use the existing forbidunsafe RootSnapshot with original-heap admission, actual Vec capacity reconciliation and retained tickets through teardown and consuming iteration. Empty/ZST snapshots own no allocation and need no ticket even after lowering an already resident heap limit.",
+    "Automatic root collection traverses page capabilities directly rather than allocating a page-entry Vec. Bitmap iteration resumes at the precise slot across word boundaries. Fresh snapshots consult the original live ledger during the actual registered mutable arena lend.",
+    "GC streams copied exact allocation identities from short directory/TLS loans. No loan survives a yielded item, tracing or callbacks. Removed both extra Vec<RootValue> copies. GC root enumeration therefore requires no new snapshot storage under a lowered limit."
+  ],
+  "failures_and_repairs": {
+    "baseline": "Five genuine native accounting/lifetime/admission failures plus one control captured before production edits, repeated with a nonempty resident heap.",
+    "fixture_trigger": "First new one-byte collection fixture failed natively and under Miri because one allocation did not trigger the asserted full collection. Final fixture retains gap1/wait1, uses four actual fresh allocations and a guarded full-GC notification to verify actual reclamation during the registered lend. This fixture correction is not a production defect RED.",
+    "compiler": "Initial never-returning error function did not coerce at unwrap_or_else; use an explicit closure. No toolchain/settings change."
+  },
+  "validation": {
+    "native_distinct": 333,
+    "native_suites": {
+      "memory": 126,
+      "protect": 101,
+      "gc": 104,
+      "bitmap_stream": 1,
+      "one_byte_actual_collection": 1
+    },
+    "pre_existing_ignored": "One manual fixed_live_heap_mark_measurement benchmark; no new skip or ignored test.",
+    "strict_default_isolated_i686_miri_distinct": 13,
+    "miri_phases": {
+      "snapshot_matrix": 6,
+      "fresh_callbacks": 4,
+      "automatic_domains": 1,
+      "bitmap_stream": 1,
+      "one_byte_actual_collection": 1
+    },
+    "miri_additional_rerun": "Strengthened empty-snapshot test also passes at original one-byte resident cap; duplicate name excluded from distinct totals.",
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation unchanged",
+    "additional_full_startup_miri": "Still running when recording this checkpoint; not counted as passed. The unchanged full-base-startup test_full_gc_never_moves_protected_objects passes in the complete native GC suite. Targeted strict Miri separately verifies actual GC under cap1 with live automatic/fresh roots and reclamation.",
+    "wasm": {
+      "node": 256,
+      "web_generations": [
+        51,
+        51
+      ],
+      "total": 358,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS, final rerun after test refinements",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_format_whitespace": "PASS",
+    "artifact_scope": "Final Wasm, Android and first Clippy compiled the frozen production changes; subsequent edits only strengthened/added test code. Final Clippy includes those test refinements."
+  },
+  "remaining_parent_inventory": [
+    "Fresh-registration and TLS lend-ledger Vec storage",
+    "GC trace worklists/maps",
+    "Native directory/key/control metadata and Rc weak/control allocations",
+    "Whole-engine safe Rust, total memory/RSS, complete regex compatibility"
+  ],
+  "source_sha256": {
+    "crates/rmath/src/sexp/gengc/mark.rs": "afaf40665a9bc044ad59cbfadc758465343cbac63223a36eb81df959f91ca072",
+    "crates/rmath/src/sexp/heap.rs": "5adabb7bed12776b9889883289f945197540ec2a330c5752bf207abbfb8a0dcd",
+    "crates/rmath/src/sexp/memory.rs": "b6245aa65544b09f37d3c68808d3e9120477d3779c15a4262cab5c09ffab994b",
+    "crates/rmath/src/sexp/memory/arena.rs": "5096cf111f7857767d28ac460bc7121791f67d12ad6d8f02f75593aa8e40b31c",
+    "crates/rmath/src/sexp/memory/checked.rs": "af8fc1c8054e40fe887f3d7d3a9335a23e3e5b0c5ea6ba79ef03f7a2cad447ef",
+    "crates/rmath/src/sexp/protect/mod.rs": "f271fcbaf2452ba5e4c98589b1c42805f82553a5db0e0784f29703f53b8c2093",
+    "crates/rmath/src/sexp/protect/snapshot.rs": "cba7d6d40904efb916a97fb78689fa664e1021f43777c198344bd3fa22099aa7",
+    "crates/rmath/src/sexp/memory/root_snapshots.rs": "b691a0d85f35e848a75fb1666756e6fa58f221831ff17c62f3e4893a804294d0",
+    "crates/rmath/src/sexp/memory/tests_root_snapshots.rs": "6a42c36a60294123a7a7e2a1dc1d1acf036b8976bb37ecb99f4fe3bafabf74b2"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29705154,
+      "sha256": "56f9bd098710c5bddca24737d1f870800b2c6694b6de0dfb631f344f459a6473"
+    },
+    "output": {
+      "bytes": 25394238,
+      "sha256": "df59c82ad002abfdbe3f8966185efb00df79a2c3c1f192657ab5ada9470662dd"
+    }
+  },
+  "evidence_directory": "target/automatic-root-snapshot-evidence",
+  "evidence_sha256": {
+    "android.log": "92e9afb9d1db8006518092de469e1551e43fffcb0291c16e7bd9955df2f52731",
+    "clippy-final.log": "673adad1631c7ef9cd9f21f1292d161eea5427be47a53752cc9e14336e04e7c1",
+    "clippy.log": "c13b9940cab7aae492dd45bcb0d8017c2edcb9cea161080e1790d951355e6d1f",
+    "miri-automatic-domains.log": "c95f321ad57c294b88e6b0504b2829405f37af21f0d8aa8dac055163a8eba407",
+    "miri-fresh-callbacks.log": "3bfef0edeca879a7f1d68f4cfa4599abd57d73a398dbaa19d622f6022a29f814",
+    "miri-lowered-empty.log": "ccf1fc067559df6242b25637c15814df8f7f88377db5a5551a4dfb853a809ee3",
+    "miri-one-byte-collection-final.log": "8b983c7bfebb107bdb18bd4075ee2a256e07007d680345d923f0cc6e5e1e70c6",
+    "miri-one-byte-collection.log": "fbbe3fedd73ed66ee471ef2838c667b4c6ead61404a3ccd0e14a717661dd63fd",
+    "miri-snapshot.log": "f509fc6de246cb02b2af18de427ae9710ce9e15cf56e65ee658824d42a8a1743",
+    "miri-stream-bitmap.log": "96642be4955ea72c30410bc0b996f5c3e4870ffb8049251c065f863c7aaa322d",
+    "native-gc.log": "cdc43ab3fefa1f100891014f6a8a8deb3dd250fca0f2b6b3ab2bc0c0d0426e3d",
+    "native-green-2.log": "f5b835fb5f0c6bcf7da424d3f74b1c9ffc804f073dcf1441c1f0edafa8082bfb",
+    "native-green.log": "e7cbbc52d6b5dea67748587c1dcea850b54a2390c6c6181ba0d0d9beca3bc6ff",
+    "native-lowered-empty.log": "d701cdf90c743937a147f8c56890c2ab6e57f400d91c3b2c6778ade45919c9b9",
+    "native-memory.log": "087ea2925effe18ed3d5b7ee917cd68ab1f9614e6acdc4fa7896109296dfaadd",
+    "native-one-byte-collection-final.log": "78ea08eb94d0b218c4109366e95791e3eefc7bc2e0b4e850a40400caa8c4f89a",
+    "native-one-byte-collection.log": "e4cd2295e1bfa6b1d5dbe990afdb4e43f4e881c6cc76a6cc6acff320ddf85a5b",
+    "native-protect.log": "1cf1463f21c0dc9efd9b97a1ce064840bdf053bc5c1b82523e44022abcf33987",
+    "native-red-final.log": "8c81ce5c8480eb6c2ccd35170549b6eac6dc0ba14c268cfe73e9891791afe829",
+    "native-red.log": "d8c3ae2e7ca8979191c3f13b78eefa1f45fc5bdf85daadedea589e1f377ee2ec",
+    "native-stream-bitmap.log": "9f6c2fd472b369a060534b079075dd49bb02e8fba8bddc12af3df7bf873ad67a",
+    "verified-wasm/wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "verified-wasm/wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "verified-wasm/wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "verified-wasm/wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "verified-wasm/wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "verified-wasm/wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "verified-wasm/wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "verified-wasm/wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "verified-wasm/wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "verified-wasm/wasm-node/rust-runtime-optimization.json": "957712c7c4911776d9d3779b230711614901ae71c18405ae357ba95461dfa17a",
+    "verified-wasm/wasm-optimize.log": "45083948c834175f7c8ecd1f5916e7f815b8f5242c49ab3d75d35a2aea3092f4",
+    "verified-wasm/wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "verified-wasm/wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "verified-wasm/wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "verified-wasm/wasm-regex-compile-error-recovery.log": "79b477504b673978bd449abfdb21408b1831023682b2a78023711834d30a4b67",
+    "verified-wasm/wasm-regex-replacement-missing.log": "3ecdd6a714509ef0f8542234da524081c8bfbd0935099a78dd4cb60b62a20560",
+    "verified-wasm/wasm-regex-replacement.log": "c59e7458e78d8853bac790d2fd36dc7038390f4dc06062c23b8b3417aeb9c9c9",
+    "verified-wasm/wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "verified-wasm/wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "verified-wasm/wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "verified-wasm/wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "verified-wasm/wasm-web-contracts.log": "32cdefcd4c87db00be97f173dd966390006157d6df0df10fd57d63c6540fd76d",
+    "verified-wasm-validation.log": "75d484dd65716861b4ce0d50c04e0940c7b3819f8ba470a5525cad9710ff67c7",
+    "wasm-build.log": "43617570c06eb4f798982389caac6c3f930194746d70a924928ae85255afaa35"
+  }
+}

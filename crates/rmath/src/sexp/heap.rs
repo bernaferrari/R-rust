@@ -1148,11 +1148,19 @@ impl PageMetadata {
     /// Enumerate current rooted IDs using the root bitmap, avoiding a scan
     /// over every unrooted slot on each allocation-time collection.
     pub(crate) fn rooted_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.rooted_ids_from(0)
+    }
+    pub(crate) fn rooted_ids_from(&self, first_slot: usize) -> impl Iterator<Item = NodeId> + '_ {
+        let first_word = first_slot / 64;
         self.rooted
             .iter()
             .enumerate()
+            .skip(first_word)
             .flat_map(move |(index, word)| {
                 let mut bits = word.get();
+                if index == first_word {
+                    bits &= u64::MAX << (first_slot % 64);
+                }
                 std::iter::from_fn(move || {
                     while bits != 0 {
                         let bit = bits.trailing_zeros() as usize;

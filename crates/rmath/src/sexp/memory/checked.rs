@@ -1,6 +1,5 @@
 //! Checked header/projection accessors.
 
-use super::slab::SLAB_META;
 use super::*;
 
 /// Resolve a live legacy projection to owned, generational metadata. The
@@ -13,25 +12,10 @@ pub(crate) fn checked_node(pointer: SEXP) -> Option<CheckedNode> {
 /// Snapshot automatic handle roots from the one registered production heap.
 /// Both arena and permanent pages use this directory and heap identity. The
 /// directory borrow ends before any root is projected or passed to tracing.
-pub(crate) fn automatic_roots(identity: &HeapIdentity) -> Vec<(SEXP, CheckedNode)> {
-    let pages = SLAB_META
-        .try_with(|map| {
-            map.borrow()
-                .values()
-                .filter(|entry| entry.meta.belongs_to(identity))
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    pages
-        .iter()
-        .flat_map(|entry| {
-            entry.meta.rooted_ids().filter_map(move |id| {
-                let (pointer, allocation) = entry.projection.resolve_slot(id.slot())?;
-                (allocation.id() == &id).then_some((pointer, allocation))
-            })
-        })
-        .collect()
+pub(crate) fn automatic_roots(
+    identity: &HeapIdentity,
+) -> super::root_snapshots::CheckedRootSnapshot {
+    super::root_snapshots::automatic_snapshot(identity)
 }
 
 /// Use the input address only to select an owned slot. The returned pointer

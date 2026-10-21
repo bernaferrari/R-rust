@@ -7,28 +7,33 @@ use std::{alloc::Layout, fmt, ops::Deref};
 pub(crate) struct RootSnapshot<T> {
     entries: Vec<T>,
     // Deallocate actual storage before releasing its original workspace ticket.
-    admission: WorkspaceReservation,
+    admission: Option<WorkspaceReservation>,
 }
 impl<T> RootSnapshot<T> {
     pub(crate) fn as_slice(&self) -> &[T] {
         self.entries.as_slice()
     }
     /// Caller counts and visits a stable root channel without executing callbacks.
-    pub(super) fn try_collect(
+    pub(crate) fn try_collect(
         ledger: &MemoryLedger,
         count: usize,
         values: impl IntoIterator<Item = T>,
     ) -> Result<Self, StorageError> {
         let failed = || StorageError::Allocation;
         let bytes = |n| Layout::array::<T>(n).ok().map(|layout| layout.size());
-        let mut admission = ledger
-            .reserve(bytes(count).ok_or_else(failed)?)
-            .ok_or_else(failed)?;
+        let requested = bytes(count).ok_or_else(failed)?;
+        let mut admission = if requested == 0 {
+            None
+        } else {
+            Some(ledger.reserve(requested).ok_or_else(failed)?)
+        };
         let mut entries = Vec::new();
         entries.try_reserve_exact(count).map_err(|_| failed())?;
-        admission
-            .try_resize(bytes(entries.capacity()).ok_or_else(failed)?)
-            .ok_or_else(failed)?;
+        if let Some(admission) = &mut admission {
+            admission
+                .try_resize(bytes(entries.capacity()).ok_or_else(failed)?)
+                .ok_or_else(failed)?;
+        }
         for value in values {
             // Even a caller count mismatch cannot grow an unfunded buffer.
             if entries.len() == count {
@@ -67,7 +72,7 @@ impl<T: PartialEq, Other: AsRef<[T]>> PartialEq<Other> for RootSnapshot<T> {
 pub(crate) struct RootSnapshotIter<T> {
     entries: std::vec::IntoIter<T>,
     // Vec::IntoIter retains its allocation, including after reaching exhaustion.
-    _admission: WorkspaceReservation,
+    _admission: Option<WorkspaceReservation>,
 }
 impl<T> IntoIterator for RootSnapshot<T> {
     type Item = T;

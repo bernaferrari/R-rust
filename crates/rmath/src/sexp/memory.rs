@@ -53,6 +53,8 @@ mod bytecode_string_tests;
 mod arena;
 mod budget;
 mod checked;
+mod root_snapshots;
+pub(crate) use root_snapshots::automatic_roots_for_marking;
 mod gc;
 mod layout;
 mod ledger;
@@ -77,6 +79,9 @@ mod tests_bookkeeping;
 
 #[cfg(test)]
 mod tests_page_descriptors;
+
+#[cfg(test)]
+mod tests_root_snapshots;
 
 #[allow(unused_imports)]
 pub use self::arena::*;

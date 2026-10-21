@@ -139,23 +139,21 @@ pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
         // deferred collection and notification callbacks. The ledger snapshot
         // owns exact allocation identities and ends its TLS borrow before trace.
         let identity = &(*instance).heap_identity;
-        let fresh = super::super::memory::fresh_allocation_roots(identity)
-            .into_iter()
-            .map(|(projection, allocation)| RootValue::Checked {
+        let fresh = super::super::memory::fresh_allocation_roots_for_marking(identity).map(
+            |(projection, allocation)| RootValue::Checked {
                 projection,
                 allocation,
-            })
-            .collect::<Vec<_>>();
+            },
+        );
         MARK_WHERE.with(|w| w.set("fresh_allocations"));
         mark_checked_root_snapshot(fresh);
 
-        let automatic = super::super::memory::automatic_roots(identity)
-            .into_iter()
-            .map(|(projection, allocation)| RootValue::Checked {
+        let automatic = super::super::memory::automatic_roots_for_marking(identity).map(
+            |(projection, allocation)| RootValue::Checked {
                 projection,
                 allocation,
-            })
-            .collect::<Vec<_>>();
+            },
+        );
         MARK_WHERE.with(|w| w.set("automatic_handles"));
         mark_checked_root_snapshot(automatic);
 
