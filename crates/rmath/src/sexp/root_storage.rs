@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 //! Stable root leases, independent of native pointer representations.
+use crate::sexp::memory::{AllocationCharge, MemoryLedger};
+use std::alloc::Layout;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SlotId {
@@ -24,20 +26,38 @@ struct Entry<T> {
 pub(crate) struct RootStorage<T> {
     entries: Vec<Entry<T>>,
     free: Vec<usize>,
+    // The physical buffers disappear before their retained byte charge.
+    charge: Option<AllocationCharge>,
+    ledger: MemoryLedger,
     next_generation: u64,
 }
 
 impl<T> Default for RootStorage<T> {
     fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-            free: Vec::new(),
-            next_generation: 0,
-        }
+        Self::new(MemoryLedger::new())
     }
 }
 
 impl<T> RootStorage<T> {
+    pub(super) fn new(ledger: MemoryLedger) -> Self {
+        Self {
+            entries: Vec::new(),
+            free: Vec::new(),
+            charge: None,
+            ledger,
+            next_generation: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn physical_storage_for_test(&self) -> (usize, usize) {
+        (
+            self.entries.capacity(),
+            self.entries.capacity() * std::mem::size_of::<Entry<T>>()
+                + self.free.capacity() * std::mem::size_of::<usize>(),
+        )
+    }
+
     pub(super) fn checkpoint(&self) -> u64 {
         self.next_generation
     }
@@ -46,22 +66,58 @@ impl<T> RootStorage<T> {
         self.entries.len()
     }
 
+    fn buffer_bytes(entries: usize, free: usize) -> Option<usize> {
+        Layout::array::<Entry<T>>(entries)
+            .ok()?
+            .size()
+            .checked_add(Layout::array::<usize>(free).ok()?.size())
+    }
+
     fn reserve_new_slots(&mut self, additional: usize) -> Result<(), StorageError> {
+        let failed = || StorageError::Allocation;
         let needed = self
             .entries
             .len()
             .checked_add(additional)
-            .ok_or(StorageError::Allocation)?;
-        self.entries
-            .try_reserve(additional)
-            .map_err(|_| StorageError::Allocation)?;
-        // Reserve cleanup capacity before publishing any root. At most one
-        // free-list entry exists per physical slot, so release never grows it.
-        if self.free.capacity() < needed {
-            self.free
-                .try_reserve(needed.saturating_sub(self.free.len()))
-                .map_err(|_| StorageError::Allocation)?;
+            .ok_or_else(failed)?;
+        if needed <= self.entries.capacity() && needed <= self.free.capacity() {
+            return Ok(());
         }
+        let desired = self
+            .entries
+            .capacity()
+            .checked_mul(2)
+            .unwrap_or(needed)
+            .max(needed)
+            .max(4);
+        // Prepare both buffers together. Neither original buffer is moved or
+        // released until every fallible step has succeeded. Reserve the full
+        // replacement, since the old allocations remain physically present.
+        let desired_bytes = Self::buffer_bytes(desired, desired).ok_or_else(failed)?;
+        let (capacity, mut admission) = if let Some(admission) = self.ledger.reserve(desired_bytes)
+        {
+            (desired, admission)
+        } else {
+            let bytes = Self::buffer_bytes(needed, needed).ok_or_else(failed)?;
+            (needed, self.ledger.reserve(bytes).ok_or_else(failed)?)
+        };
+        let mut entries = Vec::new();
+        let mut free = Vec::new();
+        entries.try_reserve_exact(capacity).map_err(|_| failed())?;
+        free.try_reserve_exact(capacity).map_err(|_| failed())?;
+        admission
+            .try_resize(Self::buffer_bytes(entries.capacity(), free.capacity()).ok_or_else(failed)?)
+            .ok_or_else(failed)?;
+        let charge = admission.commit_allocation().ok_or_else(failed)?;
+        // These moves cannot allocate: both replacements already hold room
+        // for every live entry and every possible cleanup vacancy.
+        entries.append(&mut self.entries);
+        free.append(&mut self.free);
+        let old_entries = std::mem::replace(&mut self.entries, entries);
+        let old_free = std::mem::replace(&mut self.free, free);
+        drop(old_entries);
+        drop(old_free);
+        self.charge = Some(charge);
         Ok(())
     }
 

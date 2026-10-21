@@ -294,14 +294,19 @@ impl RootValue {
 /// The single canonical Rust root store. Lease identity and allocation identity
 /// are distinct: recycling either a root slot or a heap address cannot revive an
 /// older lease. Native projections are copied only from live checked entries.
-#[derive(Default)]
 pub(crate) struct RootTable {
     storage: RefCell<RootStorage<RootValue>>,
 }
 
 impl RootTable {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    #[cfg(test)]
+    pub(crate) fn physical_storage_for_test(&self) -> (usize, usize) {
+        self.storage.borrow().physical_storage_for_test()
+    }
+    pub(crate) fn new(ledger: super::super::memory::MemoryLedger) -> Self {
+        Self {
+            storage: RefCell::new(RootStorage::new(ledger)),
+        }
     }
     pub(crate) fn checkpoint(&self) -> u64 {
         self.storage.borrow().checkpoint()

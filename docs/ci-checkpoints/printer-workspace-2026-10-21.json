@@ -1,7 +1,7 @@
 {
   "date": "2026-10-21",
   "issue": "rport-cvs2.14",
-  "status": "Implementation milestone; issue remains active pending final Miri evidence",
+  "status": "Completed bounded printer storage admission scope; additional nine-case Miri run continues separately",
   "source_base": "f8214e1f182e39329b42ce80928cc7e78cbb9df9",
   "behavior": [
     "Lazy empty printer buffer with original-heap admission before any retained allocation. Full replacement capacity is admitted while the old allocation remains funded; reconcile actual Vec capacity and retain its AllocationCharge through final runtime ownership. Denial leaves the original pointer, contents and limits intact.",
@@ -25,7 +25,7 @@
       1
     ],
     "native_locale": "C for budget cases; en_US.UTF-8 for public GNU fixtures, child environment only",
-    "miri_completed": "Strict isolated i686 replacement-peak/preserved old-pointer and same-limit recovery case1 PASS; default isolation and strict provenance unchanged. Full nine-case large-input run remains running, no completion claimed. Initial pre-span run interrupted without completed tests.",
+    "miri_completed": "Strict default-isolated i686 four-case suite PASS (default empty, zero-headroom reuse, complete replacement peak/preserved old pointer, native quote presence). The unchanged16384-byte final-owner lifecycle case also completed PASS in the broader running suite. Five distinct completed cases; no full-nine-case completion claimed. Flags remain -Zmiri-strict-provenance -Zmiri-ignore-leaks.",
     "wasm": {
       "node": 226,
       "web_generations": [
@@ -102,7 +102,9 @@
     "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
     "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
     "wasm-validation.log": "394804a168c2a7421031a1c3d67b69e7c8f08018119e55417a8f7f59f5143355",
-    "wasm-web-contracts.log": "9748a4941ef4b73393c3d496070ca50e3e09737cd274f3eeaf28c3ce853fd278"
+    "wasm-web-contracts.log": "9748a4941ef4b73393c3d496070ca50e3e09737cd274f3eeaf28c3ce853fd278",
+    "miri-focused-controls.log": "00033ef6dddc7e9b7d0073e90600ce96af7a6b51457bbb7bfcaab845ff7012a5",
+    "miri-completed-prefix.log": "931a8fc8b88c7204fdf4d5c00c5ae457b57b0f8c9f10c85789c1fb9f2add0183"
   },
   "limitations": [
     "Bounded printer storage scope only; other retained native collections, root/snapshot metadata, regex VM/compile and facade/capture intermediates remain tracked. No global RSS bound or whole-engine safety claim.",

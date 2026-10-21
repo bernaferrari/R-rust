@@ -887,7 +887,7 @@ fn stale_allocation_root_cannot_pin_reused_header_address() {
         projection,
         allocation: allocation.clone(),
     };
-    let table = RootTable::new();
+    let table = RootTable::new(crate::sexp::memory::MemoryLedger::new());
     let old_slot = table.try_claim(old_value.clone(), true).unwrap();
     assert!(metadata.release(allocation.id()));
     page.replace_inactive(0, super::super::ffi::SexprecCore::new(SEXPTYPE::REALSXP))
@@ -1029,7 +1029,7 @@ fn root_claim_recovers_owned_provenance_from_address_only_input() {
     page.metadata().activate(0, false).unwrap();
     let _registration = super::super::memory::register_node_page(&page);
     let pointer = page.raw_slot(0).unwrap();
-    let table = RootTable::new();
+    let table = RootTable::new(crate::sexp::memory::MemoryLedger::new());
     let slot = table
         .try_claim(
             RootValue::Checked {
@@ -1146,4 +1146,124 @@ fn exhausted_safe_claim_returns_error_without_mutating_existing_roots() {
     assert_eq!(unsafe { (*owner).root_table.entries_snapshot() }, before);
     drop(value); // Even at generation exhaustion, root cleanup cannot panic.
     assert_eq!(unsafe { (*owner).root_table.len() }, 0);
+}
+
+#[test]
+fn root_backing_retained_capacity_is_charged_to_original_interpreter() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let table = &(*owner.as_ptr()).root_table;
+        let (_, old_bytes) = table.physical_storage_for_test();
+        let before = (*owner.as_ptr())
+            .heap_identity
+            .byte_ledger()
+            .allocated_bytes();
+        let value =
+            RootValue::from_owner(owner.as_ptr(), crate::sexp::globals::R_NilValue()).unwrap();
+        let root = table.try_claim(value, true).unwrap();
+        let (_, bytes) = table.physical_storage_for_test();
+        let after = (*owner.as_ptr())
+            .heap_identity
+            .byte_ledger()
+            .allocated_bytes();
+        assert!(bytes > old_bytes);
+        assert_eq!(
+            after - before,
+            bytes - old_bytes,
+            "physical root entries and cleanup capacity must remain charged"
+        );
+        table.release(root);
+        assert_eq!(table.physical_storage_for_test().1, bytes);
+        assert_eq!(
+            (*owner.as_ptr())
+                .heap_identity
+                .byte_ledger()
+                .allocated_bytes(),
+            after
+        );
+    });
+}
+
+fn root_backing_denied_growth(delta_only: bool) {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let value =
+            RootValue::from_owner(owner.as_ptr(), crate::sexp::globals::R_NilValue()).unwrap();
+        let table = &(*owner.as_ptr()).root_table;
+        let first = table.try_claim(value.clone(), true).unwrap();
+        let capacity = table.physical_storage_for_test().0;
+        for _ in table.len()..capacity {
+            table.try_claim(value.clone(), true).unwrap();
+        }
+        let checkpoint = table.checkpoint();
+        let len = table.len();
+        let bytes = table.physical_storage_for_test().1;
+        let before = (*owner.as_ptr())
+            .heap_identity
+            .byte_ledger()
+            .allocated_bytes();
+        let headroom = if delta_only { bytes / capacity } else { 0 };
+        owner
+            .with_arena(|a| {
+                a.set_budget(crate::sexp::memory::ArenaBudget::new(before + headroom, 0))
+            })
+            .unwrap();
+        assert_eq!(
+            table.try_claim(value.clone(), true),
+            Err(ProtectError::Allocation)
+        );
+        assert_eq!((table.len(), table.checkpoint()), (len, checkpoint));
+        assert_eq!(table.physical_storage_for_test().1, bytes);
+        assert_eq!(table.generation_at(first), Some(first.generation));
+        table.release(first);
+        let replacement = table.try_claim(value, true).unwrap();
+        assert_eq!(replacement.index, first.index);
+        assert_ne!(replacement.generation, first.generation);
+        table.release(first);
+        assert_eq!(
+            table.generation_at(replacement),
+            Some(replacement.generation)
+        );
+        assert_eq!(
+            owner
+                .with_arena(|a| (
+                    a.total_bytes_allocated(),
+                    a.workspace_bytes(),
+                    a.budget().max_bytes
+                ))
+                .unwrap(),
+            (before, 0, before + headroom)
+        );
+        table.clear();
+    });
+}
+
+#[test]
+fn root_backing_growth_denial_is_atomic_and_cleanup_needs_no_headroom() {
+    root_backing_denied_growth(false);
+}
+
+#[test]
+fn root_backing_growth_requires_full_replacement_not_only_capacity_delta() {
+    root_backing_denied_growth(true);
+}
+
+#[test]
+fn root_backing_charge_releases_with_the_final_interpreter() {
+    let session = RSession::new_for_gc_tests();
+    let ledger = session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let value =
+            RootValue::from_owner(owner.as_ptr(), crate::sexp::globals::R_NilValue()).unwrap();
+        (*owner.as_ptr()).root_table.try_claim(value, true).unwrap();
+        let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
+        assert!(
+            ledger.allocated_bytes() >= (*owner.as_ptr()).root_table.physical_storage_for_test().1
+        );
+        ledger
+    });
+    drop(session);
+    assert_eq!(ledger.allocated_bytes(), 0);
 }

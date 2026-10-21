@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-21",
+  "issue": "rport-cvs2.11.8",
+  "source_base": "fee64e6461b9ba5777ca9ed455944c98a89ba5b5",
+  "behavior": [
+    "Canonical RootStorage receives the original heap MemoryLedger explicitly during interpreter storage construction. No ambient interpreter lookup or replacement shadow ledger serves runtime roots.",
+    "Admit complete entries and cleanup-free-list replacement layouts together while both original buffers remain funded. Prefer amortized growth, fall back to exact required capacity, allocate fallibly and reconcile both actual Vec capacities before committing.",
+    "Move existing root values only after every fallible step succeeds. Drop both actual old buffers before releasing their charge. Retain actual capacity charges after release/clear/truncate and until final storage teardown. Cleanup still cannot allocate.",
+    "Keep monotonically checked lease generations, root identity, allocation identity, checkpoint restore and typed denial atomicity unchanged."
+  ],
+  "baseline": {
+    "native_actual_failures": 2,
+    "retained": "352physical bytes, ledger delta0",
+    "zero_headroom": "Growth unexpectedly returns a new live lease"
+  },
+  "validation": {
+    "native_distinct": 193,
+    "native_suites": {
+      "protection_including_new_root_cases": 69,
+      "standalone_root_storage": 4,
+      "memory": 120
+    },
+    "new_root_cases": 4,
+    "strict_default_isolated_i686_miri": {
+      "cases": 4,
+      "seconds": 200.03,
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks"
+    },
+    "wasm": {
+      "node": 226,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 318,
+      "limits": "Unchanged64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_format_whitespace": "PASS"
+  },
+  "implementation_notes": [
+    "Initial compile attempt used the wrong relative import because root_storage is mounted beneath protect; corrected to crate::sexp::memory.",
+    "A new stale-release test initially expected generation_at(old_slot) to be None; the existing API returns the CURRENT generation at an index. The final control verifies releasing the old identity leaves its replacement live; no generation API changed."
+  ],
+  "source_sha256": {
+    "crates/rmath/src/sexp/instance.rs": "4863791a78e5fae65b2df9000d2220607178c8cc694fe565565dd8b6726fc384",
+    "crates/rmath/src/sexp/protect/stacks.rs": "793b1ecfd89c8903edd21747fa84802648b2d7537262a3df2326b694c9fa1838",
+    "crates/rmath/src/sexp/protect/tests.rs": "e483b86038ba02c0a0e3f2e90310fd20b47e87fcbc6ce7f128b8c4d5e3c15be2",
+    "crates/rmath/src/sexp/root_storage.rs": "0881cca018d3f619e3503ff56f9be755177e7761771e0340766baa67d193d019"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29776770,
+      "sha256": "45d149e29433a2e34e8aad2b81d56dac83d7cc09faffbe8606d9fd0c1dfbb7a7"
+    },
+    "output": {
+      "bytes": 25453472,
+      "sha256": "3190fc8ea3438a3b07685c1cd76b70d5e56cb1997396d04164629430cab158cd"
+    }
+  },
+  "evidence_directory": "target/root-backing-evidence",
+  "evidence_sha256": {
+    "android.log": "4b6c91f2a2cf2471f830552ce5cd709d945f6a80cac23e171d88f5b6e939adf4",
+    "clippy.log": "1e484d461c2737fda3fa889367607d5c495f0e604fc09b0d714689fd87b4c83f",
+    "miri-green.log": "fa29926777b29929ed044a903d7ef1674d462e4969c3dc0349797c7a10469a9a",
+    "native-green-2.log": "7662109ba57eef3d52014dfa5d19327225de158ee27cb99d16b00d5b626f730c",
+    "native-green.log": "319a64e8f63b5ca8958e79a0fa293d4e25d469d5e2b7797f7023d9f0ca2af50b",
+    "native-memory.log": "4b60a5f163a90aef1d31a16cdacec67ffcbfcd4cf93ca2e4e405d3302cdd2009",
+    "native-protect.log": "1a99b72af3fdd603f565791b0c8bf4f98cfb5aabe77778d72c83684caccff640",
+    "native-red.log": "6e01d99763a8879914217bd74d1bac5884b31a06ebd94f0c2fe7df86f1c8aa5c",
+    "native-root-storage.log": "1d763cdf6a7a23eb944213ddf1b4dc8e379b316330f57398f3da3ff6f130ce0e",
+    "wasm-build.log": "dc16a175cc67e9e56f01a36cc1e6a6b221a2ebf36c9db0c2ddaf3524a73f1b56",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "29e5b49b3e62636fca144a3dab51b8f5dcbee9b47856666b4447f6ced323db1e",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "a310d97fce54ce19330411f34b6b7db4ea249e7cb456a7ecf69a5ade8219be63",
+    "wasm-web-contracts.log": "be60b95d64279c27899f2dd1fcdc6566a964064824bf1fa458926b58e67047e0"
+  },
+  "limitations": [
+    "Ordered native root channels are separate rport-cvs2.11.9 work, not part of this milestone. Root snapshots/iterator vectors, native maps and Rc/weak controls remain parent scope. No globalRSS or whole-engine completion claim.",
+    "Evidence source hashes above are the staged canonical-slot implementation. Subsequent ordered-channel work is uncommitted and excluded; tests/build logs were captured before those production edits. User graphics edits were present and excluded.",
+    "Dolt origin remains absent (rport-0d5o). Git push is separate and available."
+  ]
+}
