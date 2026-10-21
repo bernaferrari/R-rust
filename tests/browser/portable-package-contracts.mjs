@@ -79,6 +79,7 @@ const contracts = [
     'public-case-conversion-contract',
     'raw-to-char-contract',
     'declared-latin1-contract',
+    'byte-diagnostic-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

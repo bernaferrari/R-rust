@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-evnx.5.1"
+  ],
+  "source_base": "4be056285070a58a8d2fca34879e5d8104e041d1",
+  "behavior": [
+    "A forbidunsafe evaluation diagnostic owns the existing canonical Rc<NodeRootLease> and sealed immutable character payload. Exact raw error bytes remain Native through calling/exiting handlers, finally/GC and default condition publication. Display for Rust host APIs escapes invalid bytes without altering R condition data.",
+    "Case conversion returns a typed evaluation error instead of flattening diagnostics into String. Retain existing accessor SexpError and public Rust textual convenience APIs; no blanket Send weakening of access errors.",
+    "Count and admit complete bounded message copy, reconcile actual Vec capacity, retain ticket until the canonical Native CHARSXP publishes. Preserve invalid bytes earlier in a message and repair only a truncated final UTF8 sequence. Honor min(8192, warning.length)-1, matching GNU error().",
+    "Original-domain condition construction roots message/call/names/classes through every allocation. NodeDomain.rooted_value validates original heap and revocable availability, reuses the exact existing root and projection, and adds no root or box allocation. Native bridge uses original pinned runtime and existing condition-transfer protocol."
+  ],
+  "failures_and_repairs": {
+    "corrected_native_red": "Corrected10GNU assertions allPASS childUTF8/C; native2FAIL reports8wrong rows. First finally probe used<<- incorrectly and failed GNU itself; corrected<- before validated native RED.",
+    "expanded_browser_red": "Final13GNU assertions allPASS both profiles; immutable old optimized module11wrong/2controls. Added warning.length100/1000 and truncated finalUTF8 sequence.",
+    "quota_fixture": "Initial6byte headroom fixture incorrectly tried to fit canonical R-node publication. Production correctly rejected it as R-value allocation. The unchanged6byte no-headroom/smaller-copy assertion now targets the actual production MessageCopy seam; separate actual message constructor tests retain full GC/panic/revocation assertions.",
+    "clippy_repair": "Initial fullSexp diagnostic made Result error160bytes. Replace redundant execution affiliation with the existing canonical physical root; no extra box/allocation or lint suppression. Rerun all9 ownership tests under strict Miri on final root representation.",
+    "source_scope": "Early5+4 Miri runs preceded the smaller representation and are superseded by final9; no final pass claimed from those earlier runs. Minor compile lifetime/import repairs did not weaken assertions."
+  },
+  "validation": {
+    "native_distinct": 29,
+    "native_new_owned": 9,
+    "native_case_regression": 10,
+    "native_native_condition_regression": 8,
+    "native_public": {
+      "utf8": 2,
+      "c": 2,
+      "scope": "Same2names in both child profiles:13independent assertions with recovery after each and complete fixture."
+    },
+    "strict_default_isolated_i686_miri": 9,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; unchanged isolation",
+    "regression_scope": "Native10case/8condition regression tests ran before the diagnostic-only smaller-root representation; unchanged exercised branches. Final9native/Miri and both public profiles exercise the final representation.",
+    "wasm": {
+      "node": 422,
+      "web_generations": [
+        55,
+        55
+      ],
+      "total": 532,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi alltargets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "format_whitespace": "ScopedPASS"
+  },
+  "ownership_cases": [
+    "canonical message bytes and physical charge survive facade teardown and clone with another runtime active, then release",
+    "exact no-headroom copy denial and smaller-copy recovery at unchanged6byte headroom",
+    "foreign parent rejects before reading source or allocating",
+    "source panic releases original copy ticket",
+    "UTF8 truncation repairs only the final sequence, C retains final raw byte",
+    "actual diagnostic CHARSXP notification sees Native tag and original ticket while detached source survives actual GC",
+    "actual publication callback panic propagates and clears in_gc/workspace",
+    "actual facade revocation cannot publish success",
+    "foreign diagnostic cannot signal or allocate in current runtime"
+  ],
+  "oracle": {
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "version": "R4.7devel r90451",
+    "host": "Darwin aarch64-apple-darwin25.6.0; Apple/GNU libiconv1.11",
+    "locales": [
+      "en_US.UTF-8",
+      "C"
+    ],
+    "reference_source": "ignored r-source d4cc5d9e196a144bbb087a798bb945b37121383b util.c1472 utf8towcs, errors.c error()/Rvsnprintf_mbcs, util.c mbcsTruncateToValid"
+  },
+  "remaining_parent_inventory": [
+    "evnx.5.2 rawToChar/iconv NUL returned-message admission and dynamic warning.length limits: actualREDs separate and not in this commit",
+    "strict-path String error lifetime still open",
+    "default error-state and general try/host byte-preserving transport still open; no all-error or total-accounting completion claim",
+    "GNU accepts some overlong UTF8 encodings (overlongNUL truncates); strict portable scalar policy classification remains open rather than creating invalid Rust text",
+    "cvs2 full physical accounting and whole safe engine remain open",
+    "cvs2.15 unchanged original full-base startup strict Miri still running; no pass claimed"
+  ],
+  "source_sha256": {
+    "crates/r-embed/tests/byte_diagnostic_public.rs": "1def69b759343843981809aeacf521e4d9dc3111683a94917372c473c96c2905",
+    "crates/r-embed/tests/fixtures/byte-diagnostic-contract.R": "f2be32c9abd594bb9775d0ad660e5ce0bf2fbbe0c85e9f5d0d5a7f53fb8d1ee4",
+    "crates/r-embed/tests/fixtures/byte-diagnostic-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "crates/rmath/src/mainutils/case_conversion.rs": "0e5513ed9fb9adf5b115ceca374181a2e33807d87a15a5f2970f805bce500cd1",
+    "crates/rmath/src/mainutils/case_conversion/tests.rs": "b6b8393c347fee45b1229c9836ab0d5ed08da5db8da2859339efdc0334e0f1e2",
+    "crates/rmath/src/mainutils/character.rs": "fd83c32dd026809b544364f2873fad5e89737e5956359b31d0ff7d6cd4a5d2ca",
+    "crates/rmath/src/mainutils/errors/mod.rs": "924fb67f9168fbbb7bf014235af38c10e7f84bbdce64c2ba9bd44c2c0497df6d",
+    "crates/rmath/src/mainutils/errors/native.rs": "8edd43308c9c1859786fc0f2502b8784cacbfd207bf0d236742eb6d3c1db28c0",
+    "crates/rmath/src/sexp/diagnostic.rs": "517016e562573d3bddb8fdec59fe6a1f341bdead3dd47360b64d851e6ecd8691",
+    "crates/rmath/src/sexp/diagnostic_boundary_tests.rs": "fa452fecbc68e8298576aec4a5446fb7bf8d04affe3ec6583fcde143f4df6876",
+    "crates/rmath/src/sexp/diagnostic_tests.rs": "ab08538444fa51ddde4a565a6d02d9e81abac6883087b8fe06b3bdabac85ad2a",
+    "crates/rmath/src/sexp/mod.rs": "7e4438728dd6dc49fd51dddbc68fca985c3f6fab5cb457814b40e6c86988e694",
+    "crates/rmath/src/sexp/object/factory.rs": "4cf19d18b729bf65ecafc3afd2211c2c5aa004a95c4f272970ab42380d8e55fc",
+    "crates/rmath/src/sexp/object/mod.rs": "6af82d2eb2769fc13474f2dbd019752b9c9c6c04d09892b44538836ae2547bd1",
+    "tests/browser/byte-diagnostic.cjs": "86927fb63b708614f9040169a932d8c0765bd657b46de89904ca6adcab7a85bb",
+    "tests/browser/portable-package-contracts.mjs": "b853dea2f27d16b35e0dd543e12a8ab4cfeaefb81b8265c5472bf338771cf1c7"
+  },
+  "source_hash_scope": "Staged final casing-diagnostic versions. Later unstaged NUL admission implementation/RED tests, fixtures and user graphics excluded from this commit.",
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29901339,
+      "sha256": "da3b3db35d4db7bc7d5918db9dc5c858f3562249a6c070b619e398c7c3f2cf14"
+    },
+    "output": {
+      "bytes": 25584189,
+      "sha256": "9fcee32712cdb9d964fce7ccf1addd5e8b501aca97709c2766b21b5e0852e33d"
+    }
+  },
+  "evidence_logs": {
+    "native-final-owned.log": "efcf822b0cdf8aa458b9ec7d2eec4366d7f4a01cda5a784f94e232f2ea0125d4",
+    "native-case-regression.log": "8dfa7dc7d1d4b9b92fb9c7786c71c0578d3ba159f8c991bf13c168b2330d3950",
+    "native-error-regression.log": "6d9aee20e855fc7a8300d76e15f40fce42f1eafacf35099af9111a506ff288d7",
+    "native-complete-public-utf8.log": "933029c7f2903bb451d6f0de441e5de5b4dc779dadfd82e5c214d36869df23ee",
+    "native-complete-public-c.log": "230fb0f91f1c06460fc5387f4b5630d16e616a62b9993f36855f4c37a231170f",
+    "miri-final-owned.log": "8ca8d1bffc5786b70b5a75d51fabd2b7b5baec577351c521857ebec50eb54b91",
+    "native-corrected-public-red.log": "f8b7329354f7cf063ad2e16f51eee3b53805d64339fb50460c18c65017d3f6ec",
+    "gnu-final-contract-utf8.log": "42a22a6dbc02d90d54115a8faaae1b8c4da9d0437582680468399f87dda5cd23",
+    "gnu-final-contract-c.log": "42a22a6dbc02d90d54115a8faaae1b8c4da9d0437582680468399f87dda5cd23",
+    "wasm-final-red.log": "01887313fbeb0ae1e9cb7805d2e8836cf27f3a685177bc7eeca09375db27c44c",
+    "clippy-final.log": "3ad4b351d75541407780136bd4f7e4dc1c2d839e78cd763f5c0f8cb5d05bccd3",
+    "android.log": "7147f2f55fc8b76e004e99c1b8774dab98615da589603104826a964a0d734322",
+    "wasm-final-build.log": "dc59942cdffff08c162e2967448b9dbfaf1360b804daab321dde88f5a9da6961",
+    "wasm-validation.log": "59dd50e1b8c2b94842db428fec45621a12967015ef40aaeadc4bc22023a84577"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  }
+}

@@ -19,6 +19,9 @@ pub mod attrib_core;
 pub mod builder;
 pub(crate) mod constructors;
 pub mod context;
+pub(crate) mod diagnostic;
+#[cfg(test)]
+mod diagnostic_boundary_tests;
 pub(crate) mod encoding;
 pub(crate) mod env_hash;
 pub mod envir;

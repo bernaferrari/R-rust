@@ -22,6 +22,50 @@ pub type NativeFinally = unsafe extern "C-unwind" fn(*mut c_void);
 fn checked<T>(result: SexpResult<T>) -> T {
     result.unwrap_or_else(|e| context::r_error(e.to_string()))
 }
+
+/// Signal canonical byte-preserving condition data in its original runtime.
+pub(crate) fn raise_owned_diagnostic(
+    owner: &OwnerToken<'_>,
+    diagnostic: crate::sexp::diagnostic::Diagnostic,
+) -> ! {
+    checked(owner.require_active());
+    let _pin = checked(owner.pin());
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| context::r_error("diagnostics require a managed runtime"));
+    let result = checked(crate::sexp::owner::with_runtime(
+        &weak,
+        |access| -> SexpResult<()> {
+            let _message = diagnostic.message(access)?;
+            let (call, names, class) = access.with_native(|original| {
+                let call = unsafe { super::R_getCurrentCall() };
+                let call = if call.is_null() {
+                    access.domain().nil()
+                } else {
+                    original.sexp(call)?.into_owned()?
+                };
+                let names = original
+                    .sexp(unsafe { crate::eval::attrib_core::R_NamesSymbol() })?
+                    .into_owned()?;
+                let class = original
+                    .sexp(unsafe { crate::eval::attrib_core::R_ClassSymbol() })?
+                    .into_owned()?;
+                original.require_active()?;
+                Ok((call, names, class))
+            })?;
+            let condition = diagnostic.condition(access, &call, &names, &class)?;
+            access.with_native(|original| {
+                unsafe { super::R_signalErrorCondition(condition.as_raw(), call.as_raw()) };
+                original.require_active()?;
+                Err(crate::sexp::object::SexpError::EvaluationFailed {
+                    message: "error condition unexpectedly returned".into(),
+                })
+            })
+        },
+    ));
+    checked(result);
+    unreachable!("signalling an error does not return")
+}
 fn owned(value: Sexp<'_>) -> Sexp<'static> {
     checked(value.into_owned())
 }

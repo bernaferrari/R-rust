@@ -70,6 +70,37 @@ impl<'session> NodeDomain<'session> {
         value.link_in(&self.heap)
     }
 
+    /// Reattach execution affiliation to an existing physical root. Original
+    /// heap identity and revocable availability are checked before projection.
+    pub(crate) fn rooted_value(
+        &self,
+        root: &std::rc::Rc<crate::sexp::heap::NodeRootLease>,
+    ) -> SexpResult<Sexp<'session>> {
+        if !self.availability.is_live() {
+            return Err(SexpError::RootUnavailable);
+        }
+        let node = root.allocation();
+        if !node.belongs_to(&self.heap) {
+            return Err(SexpError::HeapDomainMismatch);
+        }
+        let link = node.link().ok_or(SexpError::StaleAllocation)?;
+        let pointer = self
+            .heap
+            .projection_of_link(link)
+            .ok_or(SexpError::StaleAllocation)?;
+        Ok(Sexp {
+            ptr: pointer,
+            owner: SexpOwner::Session(self.owner_identity),
+            node: Some(node.clone()),
+            runtime_owner: self.runtime_owner.clone(),
+            session_owner_ptr: self.borrowed_pointer,
+            root: Some(root.clone()),
+            singleton: None,
+            singletons: Some(self.singletons.clone()),
+            _marker: std::marker::PhantomData,
+        })
+    }
+
     pub(crate) fn nil(&self) -> Sexp<'session> {
         Sexp::from_singleton(self.singletons.nil(), self.singletons.clone())
     }

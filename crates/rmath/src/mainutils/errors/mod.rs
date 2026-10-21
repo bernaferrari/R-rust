@@ -48,6 +48,7 @@ use crate::mainutils::inlined::PRINTNAME;
 
 mod conditions;
 mod native;
+pub(crate) use native::raise_owned_diagnostic;
 pub(crate) use native::try_catch_owned;
 pub use native::{NativeBody, NativeFinally, NativeHandler};
 mod deferred;
@@ -95,4 +96,11 @@ pub fn nmath_warning_hook(message: &str) {
             Rf_warning1(c_msg.as_ptr());
         }
     }
+}
+
+/// Match GNU error()'s initial bounded message, before rendering a call prefix.
+pub(crate) fn diagnostic_message_limit() -> usize {
+    8192usize
+        .min(state::r_warn_length().max(0) as usize)
+        .saturating_sub(1)
 }

@@ -631,7 +631,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
 /// Safe version of toupper using `Sexp<'a>`.
 pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    unsafe { case_transform_safe(x, true) }
+    unsafe { case_transform_safe(x, true) }.map_err(|e| e.to_string())
 }
 
 /// Convert characters in a character vector to uppercase.
@@ -648,7 +648,7 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
 /// Safe version of tolower using `Sexp<'a>`.
 pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    unsafe { case_transform_safe(x, false) }
+    unsafe { case_transform_safe(x, false) }.map_err(|e| e.to_string())
 }
 
 /// Convert characters in a character vector to lowercase.
@@ -660,27 +660,26 @@ pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// Shared safe implementation for toupper and tolower.
-unsafe fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
-    use crate::sexp::owner::{OwnerToken, with_runtime};
-    let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
-    let _pin = owner.pin().map_err(|e| e.to_string())?;
-    let x = x.into_owned().map_err(|e| e.to_string())?;
+unsafe fn case_transform_safe(
+    x: Sexp<'_>,
+    upper: bool,
+) -> Result<SEXP, crate::sexp::diagnostic::EvaluationError> {
+    use crate::sexp::{
+        object::SexpError,
+        owner::{OwnerToken, with_runtime},
+    };
+    let owner = unsafe { OwnerToken::current() }?;
+    let _pin = owner.pin()?;
+    let x = x.into_owned()?;
     let na = owner
-        .sexp(unsafe { crate::sexp::globals::R_NaString() })
-        .and_then(Sexp::into_owned)
-        .map_err(|e| e.to_string())?;
-    let weak = owner
-        .weak_owner()
-        .ok_or("case conversion requires a managed runtime")?;
+        .sexp(unsafe { crate::sexp::globals::R_NaString() })?
+        .into_owned()?;
+    let weak = owner.weak_owner().ok_or(SexpError::OwnerNotActive)?;
     let result = with_runtime(&weak, |access| {
         super::case_conversion::transform(access, x, na, upper)
-    })
-    .map_err(|e| e.to_string())?;
-    owner.require_active().map_err(|e| e.to_string())?;
-    result.map(|value| value.as_raw()).map_err(|e| match e {
-        crate::sexp::object::SexpError::EvaluationFailed { message } => message,
-        other => other.to_string(),
-    })
+    })?;
+    owner.require_active()?;
+    result.map(|value| value.as_raw())
 }
 
 /// Shared native boundary; errors and callback panics remain recoverable R errors.
@@ -699,8 +698,13 @@ pub(crate) unsafe fn case_entry(args: SEXP, upper: bool) -> SEXP {
         .try_pairlist_arg(0)
         .and_then(Sexp::into_owned)
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    unsafe { case_transform_safe(x, upper) }
-        .unwrap_or_else(|message| crate::sexp::context::r_error(message))
+    match unsafe { case_transform_safe(x, upper) } {
+        Ok(value) => value,
+        Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)) => {
+            crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
+        }
+        Err(error) => crate::sexp::context::r_error(error.to_string()),
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -114,7 +114,7 @@ fn foreign_input_cannot_use_the_current_runtime_allocator() {
             transform(access, input, access.domain().nil(), true)
         })
         .unwrap();
-        assert!(matches!(result, Err(SexpError::UnownedPointer { address: rejected }) if rejected == address));
+        assert!(matches!(result, Err(EvaluationError::Access(SexpError::UnownedPointer { address: rejected })) if rejected == address));
         assert_eq!(
             owner
                 .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))

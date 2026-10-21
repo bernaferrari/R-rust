@@ -2,6 +2,7 @@
 //! Simple casing over sealed original-heap bytes and admitted output storage.
 
 use crate::sexp::{
+    diagnostic::{Diagnostic, EvaluationError},
     encoding::{self, TextEncoding},
     ffi::SEXPTYPE,
     memory::WorkspaceReservation,
@@ -106,7 +107,7 @@ impl Source {
                 };
                 let invalid = || {
                     if self.encoding == TextEncoding::Utf8 {
-                        error("invalid input in 'utf8towcs'")
+                        SexpError::InvalidUtf8
                     } else {
                         error(format!("invalid multibyte string {}", index + 1))
                     }
@@ -182,12 +183,12 @@ pub(crate) fn transform(
     x: Sexp<'static>,
     na: Sexp<'static>,
     upper: bool,
-) -> SexpResult<Sexp<'static>> {
+) -> Result<Sexp<'static>, EvaluationError> {
     let domain = access.domain();
     domain.link(&x)?;
     domain.link(&na)?;
     if x.typeof_() != SEXPTYPE::STRSXP {
-        return Err(error("non-character argument"));
+        return Err(error("non-character argument").into());
     }
     let native_utf8 = super::platform::locale_is_utf8();
     let mut wide = native_utf8;
@@ -213,7 +214,33 @@ pub(crate) fn transform(
             continue;
         }
         let source = Source::read(&el)?;
-        let converted = convert(&source, &x, upper, native_utf8, wide, i)?;
+        let converted = match convert(&source, &x, upper, native_utf8, wide, i) {
+            Err(SexpError::InvalidUtf8) if source.encoding == TextEncoding::Utf8 => {
+                const PREFIX: &[u8] = b"invalid input '";
+                const SUFFIX: &[u8] = b"' in 'utf8towcs'";
+                let length = PREFIX
+                    .len()
+                    .checked_add(source.len)
+                    .and_then(|n| n.checked_add(SUFFIX.len()))
+                    .ok_or_else(allocation)?;
+                let limit = access.with_native(|original| {
+                    let limit = crate::mainutils::errors::diagnostic_message_limit();
+                    original.require_active()?;
+                    Ok(limit)
+                })?;
+                let diagnostic = Diagnostic::new(access, &el, length, limit, native_utf8, |i| {
+                    if i < PREFIX.len() {
+                        PREFIX[i]
+                    } else if i - PREFIX.len() < source.len {
+                        source.byte(i - PREFIX.len())
+                    } else {
+                        SUFFIX[i - PREFIX.len() - source.len]
+                    }
+                })?;
+                return Err(EvaluationError::Diagnostic(diagnostic));
+            }
+            result => result?,
+        };
         let tag = if source.encoding == TextEncoding::Latin1 {
             TextEncoding::Utf8
         } else {

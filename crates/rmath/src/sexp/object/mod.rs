@@ -501,6 +501,18 @@ impl<'a> Sexp<'a> {
         })
     }
 
+    /// Share the existing canonical physical root without a new root allocation.
+    pub(crate) fn allocation_root(
+        &self,
+    ) -> SexpResult<std::rc::Rc<crate::sexp::heap::NodeRootLease>> {
+        let node = self.allocation()?;
+        let root = self.root.as_ref().ok_or(SexpError::RootUnavailable)?;
+        if root.allocation() != node {
+            return Err(SexpError::StaleAllocation);
+        }
+        Ok(root.clone())
+    }
+
     /// Return the owner provenance attached to this handle.
     #[inline]
     pub fn owner(&self) -> SexpOwner {
