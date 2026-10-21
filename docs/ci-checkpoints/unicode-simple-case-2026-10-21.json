@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-21",
+  "issue": "rport-w03x.6.1",
+  "source_base": "6339944690a9d666f27b30970fc2c19aebeae3e9",
+  "behavior": [
+    "Replace empty wide-case mapping stubs with typed single-scalar Unicode case maps. Rust char literals guarantee valid scalar keys and values; safe binary search preserves unmapped characters. ASCII uses standard ASCII scalar mapping. No host libc or full string case expansion is involved.",
+    "Ri18n_towupper/towlower are now total safe functions: invalid/negative/surrogate/out-of-range integer values remain unchanged. Remove the empty C-style tables, unused pair layout and handwritten integer search.",
+    "Generate data reproducibly from exact selected upstream R headers with source commit, labelled upstream Unicode version and each header SHA256 in the generated file. Generator rejects mismatched versions, non-scalars, duplicate keys and unsorted maps. No upstream C code is compiled."
+  ],
+  "upstream": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "d4cc5d9e196a144bbb087a798bb945b37121383b",
+    "unicode_version_as_labelled_by_upstream": "18.0.0",
+    "upper_pairs": 1505,
+    "lower_pairs": 1488,
+    "upper_header_sha256": "3106f8c12d3bcdaf900b258431129e3ba617fec74743c2046ba124883114b7ef",
+    "lower_header_sha256": "bce86080b04523e577d1fc9a9ca2118bff9d8de97906f5e1c31c1cb5cdc9bd32",
+    "runtime_oracle": "Existing local GNU R bac583 r90451 Darwin oracle, UTF8 child locale; reference scalar examples include \u00c9\u00df\u1f88, i\u03c3\u00df and Deseret. Do not conflate local Darwin iconv behavior with Linux."
+  },
+  "baseline": {
+    "actual_native_failures": 2,
+    "unchanged_invalid_nonletter_control": 1
+  },
+  "validation": {
+    "native": 3,
+    "strict_default_isolated_i686_miri": 3,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks",
+    "generator_check": "python3 scripts/generate_unicode_case_tables.py --check PASS",
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "wasm": "r-wasm release check, original panic-unwind build-std/max-memory256MiB profile PASS; no new browser execution claim",
+    "scoped_format_whitespace": "PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/rlocale.rs": "098da942457aa89edfcfe95cceff84562681cb9fb870e37a1ed87b0d2b0dbbf2",
+    "crates/rmath/src/mainutils/rlocale/case_tables.rs": "b1b96becba2f4fb6ae60e77155ccebbb0eb04c8d8968cf99fdfff1db8d5834d2",
+    "crates/rmath/src/mainutils/rlocale/case_tests.rs": "ee023fd7d486b5bb1bc955c44bb67489385862c8fe0174b7b077f4ab666c7ffe",
+    "crates/rmath/src/mainutils/rlocale/simple_case.rs": "2f162183b24176a4e03590748902775813f4c4e6c5e4eef5e9c11f08ce4823e1",
+    "scripts/generate_unicode_case_tables.py": "35c1d284181e2d72751eeafd071da61a5ec0d47318cec76eb84c9e2f9522e776"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/regex-replacement-evidence",
+  "evidence_sha256": {
+    "native-case-map-red.log": "5b7ac1e61bc3c04a4835dcb176170ebec4622a464112aff45203ac49460ec8a6",
+    "native-case-map-green.log": "8daeba7d040a93c541f24e4713d00ee4467c29e80cd03d61c480661f008e5019",
+    "miri-case-map.log": "534cb001edb373da7f651040134eecc998d41fc49f23ceee34219a11e693c281",
+    "clippy-case-map.log": "c3207ec8231a426e0e3ec142e54a630f304ef50a1be05ca5cfc90c48cc2507ba",
+    "android-case-map.log": "e8a916ccfe6254a06ee1bfb697611323c399f963876a49c28ae529cae402d551",
+    "wasm-case-map-check.log": "f3888a53235fd66146f289ae6959ca99c2ae4ade4f28a8179a94c031f57f6a00",
+    "gnu-case-probe.R": "16e0352d9786d531f15c29d55a8e75a7212fef55c1916242e486b862532afabc",
+    "gnu-case-probe.out": "dff9cc7030013a0ebfed9460132f2c6d2d3405ebc05974eeba41b728e2e9dfc5",
+    "gnu-public-case-probe.out": "19c1ab7bfaba4b45cf7164f7e7e941077127fb3a7e7a4784e7ff2115a03d89ca"
+  },
+  "limitations": [
+    "Replacement-mode implementation/tests are subsequent uncommitted rport-w03x.6 work and excluded from this data milestone. Public toupper/tolower builtin string handling, native-byte profiles and locale-specific tailoring remain separate scope.",
+    "User graphics edits and parent replacement work were present during validation and excluded. No immutable whole-CI, all-Unicode/locale or full-PCRE2 claim.",
+    "Generated mapping version describes the selected upstream data; no claim about the release date of a Unicode standard.",
+    "Dolt origin remains unconfigured (rport-0d5o); Git push is separate."
+  ]
+}

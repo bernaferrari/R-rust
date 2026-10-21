@@ -13,6 +13,9 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 use std::os::raw::{c_int, c_uint};
+mod case_tables;
+mod simple_case;
+pub(crate) use simple_case::{simple_lower, simple_upper};
 
 // -----------------------------------------------------------------------
 // Type aliases
@@ -83,15 +86,6 @@ pub struct interval_wcwidth {
     pub mb: [i8; MB_SIZE],
 }
 
-/// Pair struct for toupper/tolower tables.
-/// Equivalent to C `struct pair { int from; int to; };`
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct pair {
-    pub from: c_int,
-    pub to: c_int,
-}
-
 // -----------------------------------------------------------------------
 // Placeholder data tables (auto-generated from Unicode data in C builds)
 // -----------------------------------------------------------------------
@@ -141,10 +135,6 @@ static table_wcntrl_count: usize = 0;
 
 static table_wpunct: &[interval] = &[];
 static table_wpunct_count: usize = 0;
-
-// toupper/tolower tables (from rlocale_toupper.h, rlocale_tolower.h)
-static table_toupper: &[pair] = &[];
-static table_tolower: &[pair] = &[];
 
 // -----------------------------------------------------------------------
 // CJK locale name table
@@ -333,34 +323,6 @@ fn wcwidthsearch(wint: c_int, table: &[interval_wcwidth], max: c_int, locale: c_
                 0
             };
             return table[mid].mb[loc] as c_int;
-        }
-    }
-    -1
-}
-
-/// Binary search in toupper/tolower tables.
-///
-/// Returns the mapped character if found, or -1 if not found.
-/// `max` is 1-based (number of elements in the table).
-fn tlsearch(wint: c_int, table: &[pair], max: c_int) -> c_int {
-    let mut min: c_int = 0;
-    let mut max = max - 1;
-
-    if table.is_empty() {
-        return -1;
-    }
-
-    if wint < table[0].from || wint > table[max as usize].from {
-        return -1;
-    }
-    while max >= min {
-        let mid = ((min + max) / 2) as usize;
-        if wint > table[mid].from {
-            min = (mid as c_int) + 1;
-        } else if wint < table[mid].from {
-            max = (mid as c_int) - 1;
-        } else {
-            return table[mid].to;
         }
     }
     -1
@@ -640,18 +602,16 @@ pub unsafe fn Ri18n_wcswidth(wc: *const c_int, n: usize) -> c_int {
 ///
 /// If `wc` has a defined uppercase mapping, returns that mapping.
 /// Otherwise returns `wc` unchanged.
-pub unsafe fn Ri18n_towupper(wc: R_wchar_t) -> R_wchar_t {
-    let res = tlsearch(wc, table_toupper, table_toupper.len() as c_int);
-    if res >= 0 { res } else { wc }
+pub fn Ri18n_towupper(wc: R_wchar_t) -> R_wchar_t {
+    char::from_u32(wc as u32).map_or(wc, |character| simple_upper(character) as R_wchar_t)
 }
 
 /// Convert a wide character to lowercase.
 ///
 /// If `wc` has a defined lowercase mapping, returns that mapping.
 /// Otherwise returns `wc` unchanged.
-pub unsafe fn Ri18n_towlower(wc: R_wchar_t) -> R_wchar_t {
-    let res = tlsearch(wc, table_tolower, table_tolower.len() as c_int);
-    if res >= 0 { res } else { wc }
+pub fn Ri18n_towlower(wc: R_wchar_t) -> R_wchar_t {
+    char::from_u32(wc as u32).map_or(wc, |character| simple_lower(character) as R_wchar_t)
 }
 
 // -----------------------------------------------------------------------
@@ -709,3 +669,6 @@ pub unsafe fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
 pub extern "C" fn get_locale_id_c() -> c_int {
     get_locale_id()
 }
+
+#[cfg(test)]
+mod case_tests;
