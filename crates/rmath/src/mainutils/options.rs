@@ -1512,6 +1512,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     {
                         r_error("invalid value for 'showErrorCalls'");
                     }
+                    crate::mainutils::errors::R_SetShowErrorCalls(*LOGICAL(argi).add(0) != 0);
                     let new_val = duplicate_sexp(argi);
                     let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));

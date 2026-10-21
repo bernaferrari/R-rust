@@ -54,6 +54,8 @@ mod native;
 pub(crate) use native::raise_owned_diagnostic;
 pub(crate) use native::try_catch_owned;
 pub use native::{NativeBody, NativeFinally, NativeHandler};
+#[cfg(test)]
+mod default_byte_tests;
 mod deferred;
 mod do_fns;
 mod format;

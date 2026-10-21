@@ -21,6 +21,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 mod condition_objects;
+mod simple_owned;
 mod env_lookup;
 mod handlers;
 mod owned_tests;

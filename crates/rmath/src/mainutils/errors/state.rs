@@ -456,26 +456,16 @@ pub fn try_last_rendered_message(message: &str) -> Option<String> {
         if state.last_rendered_message.as_deref() != Some(message) {
             return None;
         }
-        let len = state
-            .error_buffer
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(BUFSIZE);
-        Some(String::from_utf8_lossy(&state.error_buffer[..len]).into_owned())
+        Some(super::byte_buffer::Snapshot::stored(&state.error_buffer))
     })
     .flatten()
+    .map(|snapshot| super::byte_buffer::Snapshot::host_text(snapshot.as_bytes()))
 }
 
 /// Get the current error buffer contents as a Rust String.
 pub fn R_GetErrorBuf() -> String {
-    with_error_state(|state| {
-        let len = state
-            .error_buffer
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(BUFSIZE);
-        String::from_utf8_lossy(&state.error_buffer[..len]).into_owned()
-    })
+    let snapshot = error_buffer_snapshot();
+    super::byte_buffer::Snapshot::host_text(snapshot.as_bytes())
 }
 
 /// Set the error message buffer (Rust).

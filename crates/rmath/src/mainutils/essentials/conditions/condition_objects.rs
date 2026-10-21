@@ -56,62 +56,74 @@ pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 
 /// R's `simpleError(message, call)` — create a simple error condition.
 pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let message_arg = CAR(args);
-        let call_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(args))
-        };
-        let message = if message_arg.is_null() || message_arg == R_NilValue() {
-            String::new()
-        } else {
-            elt_to_string(message_arg, 0)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let msg_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !msg_vec.is_null() {
-            let cstr = CString::new(message).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(msg_vec, 0 as R_xlen_t, charsxp);
-            }
-        }
-        SET_VECTOR_ELT(result, 0, msg_vec);
-        let stored_call = if call_arg.is_null() {
-            R_NilValue()
-        } else {
-            call_arg
-        };
-        SET_VECTOR_ELT(result, 1, stored_call);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !names.is_null() {
-            for (i, cstr) in [c"message", c"call"].into_iter().enumerate() {
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(names, i as R_xlen_t, charsxp);
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        }
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        if !class.is_null() {
-            let classes = ["simpleError", "error", "condition"];
-            for (i, &c) in classes.iter().enumerate() {
-                let cs = CString::new(c).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(class, i as R_xlen_t, charsxp);
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
-        }
-        result
-    }
+    unsafe { simple_constructor(args, &["simpleError", "error", "condition"]) }
+}
+
+/// Own selections before coercion, dispatch, or a constructor can reenter R.
+unsafe fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
+    use crate::sexp::{
+        object::{SexpError, SexpResult},
+        owner::{OwnerToken, with_runtime},
+    };
+    let result = (|| -> SexpResult<_> {
+        let owner = unsafe { OwnerToken::current()? }
+            .weak_owner()
+            .ok_or(SexpError::RootUnavailable)?;
+        with_runtime(&owner, |access| -> SexpResult<_> {
+            let args = access.domain().wrap(args)?.into_owned()?;
+            let domain = access.domain();
+            let message = if args.is_nil() {
+                domain.nil()
+            } else {
+                args.try_car()?.into_owned()?
+            };
+            let tail = if args.is_nil() {
+                domain.nil()
+            } else {
+                args.try_cdr()?.into_owned()?
+            };
+            let call = if tail.is_nil() {
+                domain.nil()
+            } else {
+                tail.try_car()?.into_owned()?
+            };
+            let base = access.with_native(|original| {
+                let value = unsafe { crate::sexp::globals::R_BaseEnv() };
+                original.require_active()?;
+                original.sexp(value)?.into_owned()
+            })?;
+            let function = access.with_native(|original| {
+                let value = unsafe { Rf_install(c"as.character".as_ptr()) };
+                original.require_active()?;
+                original.sexp(value)?.into_owned()
+            })?;
+            let allocator = access.allocator(&domain)?;
+            // Evaluated promises preserve language values as data during the
+            // generic call, and keep the original selected message rooted.
+            let argument = allocator.evaluated_promise(&message, &base)?;
+            let arguments = allocator.pairlist_cell(&argument, &domain.nil(), &domain.nil())?;
+            let coercion = allocator.call(&function, &arguments)?;
+            let converted = access.with_native(|original| {
+                let value = unsafe { crate::eval::eval::Rf_eval(coercion.as_raw(), base.as_raw()) };
+                original.require_active()?;
+                original.sexp(value)?.into_owned()
+            })?;
+            let names = access.with_native(|original| {
+                let value = unsafe { crate::sexp::attrib_core::R_NamesSymbol() };
+                original.require_active()?;
+                original.sexp(value)?.into_owned()
+            })?;
+            let class = access.with_native(|original| {
+                let value = unsafe { crate::sexp::attrib_core::R_ClassSymbol() };
+                original.require_active()?;
+                original.sexp(value)?.into_owned()
+            })?;
+            super::simple_owned::build(access, &converted, &call, &names, &class, classes)
+        })?
+    })();
+    result
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .as_raw()
 }
 
 /// R's `errorCondition(message, ..., class = NULL, call = NULL)`.
@@ -230,48 +242,9 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
 
 /// R's `simpleWarning(message, call)` — create a simple warning condition.
 pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let message_arg = CAR(args);
-        let message = if message_arg.is_null() || message_arg == R_NilValue() {
-            String::new()
-        } else {
-            elt_to_string(message_arg, 0)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let msg_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !msg_vec.is_null() {
-            let cstr = CString::new(message).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(msg_vec, 0 as R_xlen_t, charsxp);
-            }
-        }
-        SET_VECTOR_ELT(result, 0, msg_vec);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !names.is_null() {
-            let cstr = c"message";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names, 0 as R_xlen_t, charsxp);
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        }
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        if !class.is_null() {
-            let classes = ["simpleWarning", "warning", "condition"];
-            for (i, &c) in classes.iter().enumerate() {
-                let cs = CString::new(c).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(class, i as R_xlen_t, charsxp);
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
-        }
-        result
-    }
+    unsafe { simple_constructor(args, &["simpleWarning", "warning", "condition"]) }
+}
+
+pub(super) unsafe fn native_simple_condition(args: SEXP) -> SEXP {
+    unsafe { simple_constructor(args, &["simpleCondition", "condition"]) }
 }

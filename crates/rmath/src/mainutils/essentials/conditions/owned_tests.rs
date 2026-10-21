@@ -2,6 +2,10 @@
 use super::*;
 
 #[cfg(test)]
+#[path = "simple_owned_tests.rs"]
+mod simple_owned_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

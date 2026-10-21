@@ -186,6 +186,12 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         eval_base_binding(base_env, "formatDL", include_str!("../gnu_format_dl.R"));
         eval_base_binding(base_env, "file.show", include_str!("../gnu_file_show.R"));
         eval_base_binding(base_env, "try", include_str!("../gnu_try.R"));
+        // GNU conditions.R preserves original message bytes, shape and tags.
+        eval_base_binding(
+            base_env,
+            "simpleError",
+            r#"function(message, call=NULL) { class <- c("simpleError", "error", "condition"); structure(list(message=as.character(message), call=call), class=class) }"#,
+        );
         // GNU files.R: preserve the call frame and base environment used by
         // as.character method lookup before the owned internal path engine.
         eval_base_binding(

@@ -31,6 +31,7 @@ pub(crate) use formatting::*;
 pub(crate) use lists::*;
 pub(crate) use matrix::*;
 pub(crate) use native_bytes::NativeOutputBytes;
+pub(crate) use native_bytes::visit_capture_text;
 pub(crate) use summary::*;
 pub(crate) use vectors::*;
 

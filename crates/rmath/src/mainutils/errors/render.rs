@@ -125,14 +125,26 @@ pub(crate) unsafe fn findCall() -> SEXP {
 /// Guaranteed to run even if the panic is caught mid-stack, because
 /// Drop runs during unwinding before catch_unwind handlers.
 pub(super) struct RestoreInError {
+    owner: crate::sexp::owner::OwnerPin,
     old_in_error: i32,
     old_expressions: c_int,
 }
 
 impl Drop for RestoreInError {
     fn drop(&mut self) {
-        set_in_error(self.old_in_error);
-        R_SetExpressions(self.old_expressions);
+        // Restore the original physical runtime even after callback revocation.
+        unsafe {
+            (*self.owner.as_ptr()).error_state.in_error = self.old_in_error;
+            (*self.owner.as_ptr()).error_state.expressions = self.old_expressions;
+        }
+    }
+}
+
+impl RestoreInError {
+    fn require_active(&self) {
+        unsafe { crate::sexp::owner::OwnerToken::from_raw(self.owner.as_ptr()) }
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
 }
 
@@ -164,9 +176,10 @@ pub(super) fn strip_call_prefix(message: &str) -> String {
 /// values convert to logical.
 pub(super) unsafe fn show_error_locations_enabled() -> bool {
     unsafe {
-        let opt = GetOption1(Rf_install(
-            b"show.error.locations\0".as_ptr() as *const c_char
-        ));
+        let opt_owner = crate::sexp::context::own_control_value(GetOption1(Rf_install(
+            b"show.error.locations\0".as_ptr() as *const c_char,
+        )));
+        let opt = opt_owner.as_raw();
         if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
             return false;
         }
@@ -184,29 +197,38 @@ pub(super) unsafe fn show_error_locations_enabled() -> bool {
 
 pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
+        use super::byte_buffer::Snapshot;
+        // Copy literal native bytes before touching error state: format can
+        // itself be the pointer returned by R_curErrorBuf.
+        let raw_input = if ap.is_null() {
+            Snapshot::raw(|i| {
+                if format.is_null() {
+                    None
+                } else {
+                    Some(*format.cast::<u8>().add(i))
+                }
+            })
+        } else {
+            let formatted = format_varargs(format, ap);
+            Snapshot::raw(|i| formatted.as_bytes().get(i).copied())
+        };
+        verrorcall_bytes(call, raw_input);
+    }
+}
+
+pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer::Snapshot) {
+    unsafe {
+        use super::byte_buffer::Snapshot;
+        let owner = super::state::error_scope_pin();
         let old_in_err = in_error();
         if old_in_err > 0 {
             // fail-safe handler for recursive errors
             if old_in_err >= 3 {
                 eprint!("Error during wrapup: ");
-                if !format.is_null() {
-                    let mut buf = vec![0u8; BUFSIZE + 1];
-                    if ap.is_null() {
-                        let src = CStr::from_ptr(format).to_bytes();
-                        let len = src.len().min(BUFSIZE);
-                        ptr::copy_nonoverlapping(format as *const u8, buf.as_mut_ptr(), len);
-                        buf[len] = 0;
-                    } else {
-                        vsnprintf_c(buf.as_mut_ptr() as *mut c_char, BUFSIZE, format, ap);
-                        buf[BUFSIZE] = 0;
-                    }
-                    let msg = CStr::from_ptr(buf.as_ptr() as *const c_char)
-                        .to_str()
-                        .unwrap_or("");
-                    eprintln!("{}", msg);
-                } else {
-                    eprintln!();
-                }
+                use std::io::Write;
+                let mut stderr = std::io::stderr().lock();
+                let _ = stderr.write_all(raw_input.as_bytes());
+                let _ = stderr.write_all(b"\n");
             }
             // Clean up warnings
             set_collect_warnings(0);
@@ -223,6 +245,7 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         // This guarantees IN_ERROR and R_Expressions are restored even if the panic
         // is caught by an intermediate catch_unwind frame.
         let _guard = RestoreInError {
+            owner,
             old_in_error: old_in_err,
             old_expressions: R_Expressions(),
         };
@@ -243,8 +266,7 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
             b"Error: ".len()
         };
         let tmp_cap = (warn_len + 1).saturating_sub(head_len).saturating_sub(1);
-        let mut tmp_str = format_varargs(format, ap);
-        truncate_bytes(&mut tmp_str, tmp_cap);
+        let tmp = raw_input.clipped(tmp_cap, crate::mainutils::platform::locale_is_utf8());
 
         // errors.c:804-819 — resolve the `(from <loc>)` marker before
         // rendering: gated by show.error.locations. A top-level
@@ -269,103 +291,48 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         } else {
             String::new()
         };
-        // ERRBUFCAT only concatenates while the total stays under BUFSIZE.
-        let errcat = |buf: &mut String, s: &str| {
-            if buf.len() + s.len() < BUFSIZE {
-                buf.push_str(s);
-            }
-        };
-
-        // Build the full error message and write to errbuf via R_SetErrmessage
-        let mut err_msg = String::new();
-
-        if has_call {
+        _guard.require_active();
+        let dcall = if has_call {
             // Error with call — "Error in <call> : <message>"
             // Upstream errors.c verrorcall_dflt deparses the call with
             // deparse1s(); reuse the faithful port instead of a placeholder.
-            let dcall_sexp = crate::mainutils::deparse::deparse1s(call);
-            let dcall: String = if dcall_sexp.is_null()
-                || dcall_sexp == globals::R_NilValue()
-                || TYPEOF(dcall_sexp) != SEXPTYPE::STRSXP
-                || XLENGTH(dcall_sexp) == 0
-            {
-                "<call>".to_string()
+            let dcall_raw = crate::mainutils::deparse::deparse1s(call);
+            _guard.require_active();
+            let dcall = if dcall_raw.is_null() || dcall_raw == globals::R_NilValue() {
+                Snapshot::raw(|i| b"<call>".get(i).copied())
             } else {
-                let cs = STRING_ELT(dcall_sexp, 0);
-                if cs.is_null() {
-                    "<call>".to_string()
+                let dcall_owner = crate::sexp::context::own_control_value(dcall_raw);
+                if TYPEOF(dcall_raw) != SEXPTYPE::STRSXP || XLENGTH(dcall_raw) == 0 {
+                    Snapshot::raw(|i| b"<call>".get(i).copied())
                 } else {
-                    let cptr = translateChar(cs);
-                    if cptr.is_null() {
-                        "<call>".to_string()
+                    let character = crate::sexp::context::own_control_value(STRING_ELT(
+                        dcall_owner.as_raw(),
+                        0,
+                    ));
+                    let pointer = translateChar(character.as_raw());
+                    _guard.require_active();
+                    if pointer.is_null() {
+                        Snapshot::raw(|i| b"<call>".get(i).copied())
                     } else {
-                        std::ffi::CStr::from_ptr(cptr)
-                            .to_string_lossy()
-                            .into_owned()
+                        Snapshot::raw(|i| Some(*pointer.cast::<u8>().add(i)))
                     }
                 }
             };
 
-            // errors.c:818 — the buffer-fit test is strlen("Error in ") +
-            // strlen("\n  ") + strlen(tmp) < BUFSIZE; the deparsed call
-            // participates only in the LONGWARN wrap decision below.
-            if head_len + b"\n  ".len() + tmp_str.len() < BUFSIZE {
-                errcat(&mut err_msg, "Error in ");
-                errcat(&mut err_msg, &dcall);
-                // errors.c:815-819/828-830 — the "(from <loc>)" marker sits
-                // between the deparsed call and the " : " separator.
-                errcat(&mut err_msg, &location_mark);
-                errcat(&mut err_msg, " : ");
-
-                // Check if first line is too long
-                // (14 + strlen(dcall) + msgline1 > LONGWARN).
-                let msg_first_line = tmp_str
-                    .find('\n')
-                    .map(|i| &tmp_str[..i])
-                    .unwrap_or(&tmp_str);
-                if 14 + dcall.len() + msg_first_line.len() > LONGWARN {
-                    errcat(&mut err_msg, "\n  ");
-                }
-                errcat(&mut err_msg, &tmp_str);
-            } else {
-                // Fallback: just "Error: <message>"
-                errcat(&mut err_msg, "Error: ");
-                errcat(&mut err_msg, &tmp_str);
-            }
+            Some(dcall)
         } else {
-            // Error without call — "Error: <message>". Upstream only decorates
-            // the "Error in <call>" form (a top-level stop() carries no call),
-            // so here the location marker appends to the rendered line
-            // instead, keeping every top-level error line locatable.
-            errcat(&mut err_msg, "Error: ");
-            errcat(&mut err_msg, &tmp_str);
-            errcat(&mut err_msg, &location_mark);
-        }
-
-        // Approximate truncation detection (errors.c:855-863): with a
-        // single-byte locale (R_MB_CUR_MAX == 1) this can only trigger when
-        // the buffer already overflowed past BUFSIZE - 1.
-        let nc = err_msg.len();
-        if nc > BUFSIZE - 1 {
-            let end = (nc + 1).min(BUFSIZE + 1 - 4);
-            truncate_bytes(&mut err_msg, end - 1);
-            err_msg.push_str("...\n");
-        } else {
-            // Ensure newline termination
-            if !err_msg.ends_with('\n') {
-                err_msg.push('\n');
-            }
-
-            // Show error call trace if configured (errors.c:870-882:
-            // nc_tr + nc + strlen("Calls:") + 2 < BUFSIZE + 1).
-            if r_show_error_calls() && has_call {
-                let tr = R_ConciseTraceback(call, 0);
-                if !tr.is_empty() && tr.len() + err_msg.len() + b"Calls:".len() + 2 < BUFSIZE + 1 {
-                    err_msg.push_str("Calls: ");
-                    err_msg.push_str(&tr);
-                    err_msg.push('\n');
-                }
-            }
+            None
+        };
+        let mut err_msg = Snapshot::render_error(
+            &tmp,
+            dcall.as_ref(),
+            location_mark.as_bytes(),
+            crate::mainutils::platform::locale_is_utf8(),
+        );
+        if r_show_error_calls() && has_call {
+            let trace = R_ConciseTraceback(call, 0);
+            _guard.require_active();
+            err_msg.append_trace(trace.as_bytes());
         }
 
         // Payload contract: the RError message is the BARE message (what
@@ -374,10 +341,12 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         // printing). Strip any prefix that a raise site baked into its text so
         // the payload stays clean; the rendered errbuf above keeps the full
         // attribution for stderr.
-        let payload_message = strip_call_prefix(&tmp_str);
+        let payload_message = tmp.bare_host_text();
 
         // Write to thread-local errbuf via R_SetErrmessage
-        R_SetErrmessage(&err_msg);
+        super::state::set_error_buffer_snapshot(
+            err_msg.normalized(crate::mainutils::platform::locale_is_utf8()),
+        );
 
         // Record that this exact error message was rendered into the error
         // buffer so the top-level renderer (and the builtin-dispatch
@@ -396,7 +365,9 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         //   actually escapes the script. Emitting into the captured-stderr
         //   channel here would leak caught errors into successful results.
         if r_show_error_messages() && !crate::sexp::output::is_capturing() {
-            eprint!("{}", R_GetErrorBuf());
+            use std::io::Write;
+            let snapshot = super::state::error_buffer_snapshot();
+            let _ = std::io::stderr().lock().write_all(snapshot.as_bytes());
         }
 
         // Deferred warnings follow the same rule (upstream prints them only

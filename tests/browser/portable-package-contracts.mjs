@@ -1,3 +1,4 @@
+import { runDefaultByteDiagnostics } from './default-byte-diagnostic-contract.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -49,6 +50,7 @@ const contracts = [
     'utils-console-public-contract',
     'mapply-public-contract',
     'sample-condition-contract',
+    'simple-condition-ownership-contract',
     'rep-len-admission-contract',
     'calling-error-handler-public-contract',
     'calling-warning-handler-public-contract',
@@ -105,6 +107,8 @@ for (let generation = 0; generation < 2; generation++) {
       }
       assert.equal(session.eval_checked('1 + 1'), '[1] 2\n');
     }
+    const defaultChecks = runDefaultByteDiagnostics(session, generation);
+    console.log(JSON.stringify({ generation, default_byte_diagnostic_checks: defaultChecks }));
     const name = session.eval_checked("tempfile(pattern='rport',fileext='.tmp')");
     assert.equal(temporaryNames.has(name), false, 'Uncreated names must remain distinct across fresh sessions');
     temporaryNames.add(name);

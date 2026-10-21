@@ -449,14 +449,7 @@ unsafe fn pairlist_len(mut p: SEXP) -> i64 {
 
 /// GNU `simpleCondition(message, call = NULL)`.
 pub unsafe fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let message = if args.is_null() || args == R_NilValue() {
-            String::new()
-        } else {
-            elt_to_string(CAR(args), 0)
-        };
-        simple_condition(&message, &["simpleCondition", "condition"])
-    }
+    unsafe { super::condition_objects::native_simple_condition(args) }
 }
 
 /// GNU `signalCondition(cond)` — invoke matching calling handlers.

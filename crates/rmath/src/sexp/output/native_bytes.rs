@@ -30,7 +30,7 @@ impl NativeOutputBytes {
 }
 /// Valid UTF8 spans are unchanged. Each invalid wire byte becomes an ASCII
 /// hex escape, never an invalid str. The consumer can stop at its own cap.
-pub(super) fn visit_capture_text(mut bytes: &[u8], mut emit: impl FnMut(&str) -> bool) {
+pub(crate) fn visit_capture_text(mut bytes: &[u8], mut emit: impl FnMut(&str) -> bool) {
     while !bytes.is_empty() {
         match std::str::from_utf8(bytes) {
             Ok(text) => {

@@ -253,12 +253,20 @@ unsafe fn signal_condition_handlers(
     ecall: SEXP,
     mode: SignalMode<'_>,
 ) -> bool {
+    let operation_pin = super::state::error_scope_pin();
+    let authority = unsafe { crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr()) };
+    let active = || {
+        authority
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
     let condition = unsafe { crate::sexp::context::own_control_value(cond) };
     let message = unsafe { crate::sexp::context::own_control_value(msg) };
     let call = unsafe { crate::sexp::context::own_control_value(ecall) };
     super::native::with_preserved_handler_stack(|| unsafe {
         let mut called = false;
         let mut list = findConditionHandler(condition.as_raw());
+        active();
         while !list.is_null() && list != globals::R_NilValue() {
             if let SignalMode::SimpleError { access, diagnostic } = mode {
                 access
@@ -301,12 +309,9 @@ unsafe fn signal_condition_handlers(
             } else {
                 gotoExitingHandler(condition.as_raw(), call.as_raw(), entry.as_raw());
             }
-            if let SignalMode::SimpleError { access, .. } = mode {
-                access
-                    .require_active()
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            }
+            active();
             list = findConditionHandler(condition.as_raw());
+            active();
         }
         called
     })
@@ -441,6 +446,7 @@ pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) 
             SignalMode::Error {
                 exit_only: exitOnly != 0,
             },
+            None,
         )
     }
 }
@@ -451,37 +457,90 @@ pub(super) unsafe fn signal_simple_error(
     cond: SEXP,
     call: SEXP,
 ) {
-    unsafe { signal_error_with_mode(cond, call, SignalMode::SimpleError { access, diagnostic }) }
+    unsafe {
+        signal_error_with_mode(
+            cond,
+            call,
+            SignalMode::SimpleError { access, diagnostic },
+            None,
+        )
+    }
 }
 
-unsafe fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>) {
+/// `stop(condition)` resolves the named message before handlers can mutate
+/// the condition. Native R_signalErrorCondition instead uses its first field.
+pub(crate) unsafe fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
     unsafe {
+        signal_error_with_mode(
+            cond,
+            call,
+            SignalMode::Error { exit_only: false },
+            Some(message),
+        )
+    }
+}
+
+unsafe fn signal_error_with_mode(
+    cond: SEXP,
+    call: SEXP,
+    mode: SignalMode<'_>,
+    selected: Option<SEXP>,
+) {
+    unsafe {
+        let operation_pin = super::state::error_scope_pin();
+        let authority = crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr());
+        let active = || {
+            authority
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
         let condition = crate::sexp::context::own_control_value(cond);
         let call = crate::sexp::context::own_control_value(if call.is_null() {
             globals::R_NilValue()
         } else {
             call
         });
+        let selected = selected.map(|value| crate::sexp::context::own_control_value(value));
         signal_condition_handlers(
             condition.as_raw(),
-            globals::R_NilValue(),
+            selected
+                .as_ref()
+                .map_or(globals::R_NilValue(), |message| message.as_raw()),
             call.as_raw(),
             mode,
         );
+        active();
         let cond = condition.as_raw();
-        if TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0 {
+        if selected.is_none() && (TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0) {
             errorcall(
                 call.as_raw(),
                 b"condition object must be a VECSXP of length at least one\x00".as_ptr()
                     as *const c_char,
             );
         }
-        let elt = VECTOR_ELT(cond, 0);
-        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
+        let supplied_message = selected.is_some();
+        let message = selected.unwrap_or_else(|| {
+            condition
+                .try_vector_elt(0)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+        active();
+        let message_type = message.typeof_();
+        let message_length = if message_type == SEXPTYPE::STRSXP {
+            message.len()
+        } else {
+            0
+        };
+        active();
+        if message_type != SEXPTYPE::STRSXP || message_length != 1 {
             errorcall(
                 call.as_raw(),
-                b"first element of condition object must be a scalar string\x00".as_ptr()
-                    as *const c_char,
+                if supplied_message {
+                    c"bad error message".as_ptr()
+                } else {
+                    c"first element of condition object must be a scalar string".as_ptr()
+                },
             );
         }
         // Keep the same condition available to the outer public error adapter
@@ -490,8 +549,21 @@ unsafe fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>) {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
-        let msg = translateChar(STRING_ELT(elt, 0));
-        verrorcall_dflt(call.as_raw(), msg, ptr::null_mut());
+        let character = message
+            .try_string_elt(0)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        active();
+        let translated = crate::sexp::encoding::NulText::new(
+            &character,
+            crate::sexp::encoding::Mode::Native,
+            &condition,
+        )
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        active();
+        let bytes = super::byte_buffer::Snapshot::raw(|i| translated.byte(i));
+        drop(translated);
+        super::render::verrorcall_bytes(call.as_raw(), bytes);
     }
 }
 

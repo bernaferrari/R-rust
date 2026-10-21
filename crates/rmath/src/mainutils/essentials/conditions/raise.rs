@@ -41,28 +41,35 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // (.dfltStop). Every signaling start clears the slot first: a
         // fresh stop() (condition or not) supersedes any earlier one.
         set_signalled_condition(std::ptr::null_mut());
-        let first = CAR(args);
-        if crate::mainutils::essentials::sexp_has_class(first, "condition") {
-            if let Some(msg) =
+        let first_owner = crate::sexp::context::own_control_value(CAR(args));
+        let first = first_owner.as_raw();
+        if crate::mainutils::essentials::sexp_has_class(first, "condition")
+            && crate::mainutils::essentials::tables::list_element_by_name(first, "message")
+                .is_some()
+        {
+            let message_owner = crate::sexp::context::own_control_value(
                 crate::mainutils::essentials::tables::list_element_by_name(first, "message")
-            {
-                let text = elt_to_string(msg, 0);
-                crate::mainutils::errors::save_error_traceback();
-                set_signalled_condition(first);
-                signal_calling_handlers(first, _rho);
-                // `.dfltStop(message, call)` uses conditionCall semantics:
-                // the call field kept only when it is a language object.
-                let cond_call =
-                    crate::mainutils::essentials::tables::list_element_by_name(first, "call")
-                        .filter(|c| {
-                            let t = TYPEOF(*c);
-                            t == SEXPTYPE::LANGSXP.as_c_int()
-                                || t == SEXPTYPE::SYMSXP.as_c_int()
-                                || t == SEXPTYPE::EXPRSXP.as_c_int()
-                        })
-                        .unwrap_or(std::ptr::null_mut());
-                crate::mainutils::errors::dflt_stop_str(cond_call, &text);
-            }
+                    .expect("named message was selected"),
+            );
+            let cond_call =
+                crate::mainutils::essentials::tables::list_element_by_name(first, "call")
+                    .filter(|call| {
+                        let kind = TYPEOF(*call);
+                        kind == SEXPTYPE::LANGSXP.as_c_int()
+                            || kind == SEXPTYPE::SYMSXP.as_c_int()
+                            || kind == SEXPTYPE::EXPRSXP.as_c_int()
+                    })
+                    .unwrap_or(R_NilValue());
+            let call_owner = crate::sexp::context::own_control_value(cond_call);
+            crate::mainutils::errors::save_error_traceback();
+            // Signal the original condition once. The common native boundary
+            // owns its message and call through handlers and default printing.
+            crate::mainutils::errors::signal_stop_condition(
+                first,
+                call_owner.as_raw(),
+                message_owner.as_raw(),
+            );
+            unreachable!("error condition signalling does not return");
         }
 
         let s = condition_message_text(args, &["call.", "domain"]);
