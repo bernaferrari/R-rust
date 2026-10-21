@@ -29,6 +29,23 @@ pub(crate) unsafe fn install(base_env: SEXP) {
             "rep_len",
             "function(x, length.out) .Internal(rep_len(x, length.out))",
         );
+        // GNU character.R: coercion uses as.character dispatch in the R wrapper.
+        // The internal primitive remains strict about character arguments.
+        eval_base_binding(
+            base_env,
+            "tolower",
+            "function(x) { if (!is.character(x)) x <- as.character(x); .Internal(tolower(x)) }",
+        );
+        eval_base_binding(
+            base_env,
+            "toupper",
+            "function(x) { if (!is.character(x)) x <- as.character(x); .Internal(toupper(x)) }",
+        );
+        eval_base_binding(
+            base_env,
+            "casefold",
+            "function(x, upper = FALSE) if (upper) toupper(x) else tolower(x)",
+        );
 
         // GNU: T and F are ordinary symbols bound to TRUE/FALSE, not parser
         // keywords. `quote(F())` and `substitute(F(), list(F=...))` need

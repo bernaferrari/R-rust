@@ -1,0 +1,173 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-evnx.2"
+  ],
+  "source_base": "39e9cc4029563d34259ae51b876d155a54b10765",
+  "behavior": [
+    "Both native casing entry paths use one forbidunsafe engine over sealed original-heap payload leases. R single-scalar upper/lower tables replace full Rust Unicode expansions and the old ASCII-only lower-level implementation; no contextual final-sigma rewrite.",
+    "Preserve missing strings, declared UTF8 and Native tags, GNU CP1252 interpretation of declared Latin1 (including literal <xx> escapes for its five undefined bytes), names/dim/dimnames/class/custom attributes, object and formal-S4 bits. Shallow-copy the attribute spine and share original values.",
+    "Output workspaces count mapped bytes before allocation, admit the complete copy, reconcile actual Vec capacity and retain the original heap ticket through character publication and teardown. Empty copies require no ticket. No CString or uncharged into-String escape.",
+    "Managed native boundaries pin/select original arguments and propagate recoverable errors and callback panics. Restore GNU R wrappers for tolower/toupper/casefold: public coercion dispatches as.character methods while internal primitives reject non-character arguments."
+  ],
+  "failures_and_repairs": {
+    "initial_native": "Original16test baseline reports11fail/5controls. Ten failures are independently valid. The initial invalidUTF8-message fixture did not itself pass GNU in UTF8 locale because default grepl rejects the invalid-byte diagnostic; do not count that row as a validated native RED.",
+    "corrected_public_browser": "Corrected21assertions pass pinnedGNU in childUTF8 andC. Original pushed optimized module gives14actualwrong/7controls, including the corrected byte-grep invalidUTF8 test and both CP1252extension cases.",
+    "coercion_regression": "First shared strict engine loses public numeric coercion; native coercion and complete-fixture tests fail. Restore original R wrapper semantics, then validate factor/custom as.character methods and internal strictness.",
+    "fixture_clarifications": "Foreign input was correctly rejected as UnownedPointer, not the initially assumed HeapDomainMismatch; final control checks the exact rejected address and unchanged other heap. Explicitly mark a NativeUTF8 profile input unknown because rawToChar incorrectly auto-tags validUTF8 (separate evnx.3). Remove an unverified AppleC mixed-vector assertion: Darwin mbstowcs differs from the strict portable C profile.",
+    "harness": "Consolidate identical21independent assertions plus recovery-after-each into one session and retain separate complete-fixture/native-profile tests. Two superseded23startup development runs were explicitly terminated; no pass claimed. Initial Result comparison in the consolidated Rust harness failed to compile because RSessionError has no PartialEq; use matches! with unchanged expected output."
+  },
+  "validation": {
+    "native_distinct": 13,
+    "native_ownership_quota": 10,
+    "native_public": {
+      "utf8": 3,
+      "c": 3,
+      "scope": "Same3test names run in both child profiles;21independent rows with recovery after each, complete fixture and native-byte profile."
+    },
+    "strict_default_isolated_i686_miri": 10,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; unchanged isolation",
+    "ownership_scope": [
+      "original selected input survives detachment and actual GC",
+      "source releases after publication",
+      "callback panic/unwind",
+      "revoked original cannot publish",
+      "foreign input cannot allocate into current runtime",
+      "formal object flags",
+      "charge retained during actual character-publication GC",
+      "exact no-headroom denial and same-limit recovery",
+      "original charge after teardown with other runtime active",
+      "empty copy at already lowered cap1"
+    ],
+    "miri_source_scope": "Final behavior is tested before a subsequent removal of redundant i64 casts. No constructor, quota, gap, alias/provenance or behavioral assertion was relaxed.",
+    "wasm": {
+      "node": 302,
+      "web_generations": [
+        52,
+        52
+      ],
+      "total": 406,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi alltargets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "format_whitespace": "ScopedPASS"
+  },
+  "oracle": {
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "version": "R4.7devel r90451",
+    "host": "Darwin aarch64-apple-darwin25.6.0; Apple/GNU libiconv1.11",
+    "locales": [
+      "en_US.UTF-8",
+      "C"
+    ],
+    "reference_source": "ignored r-source d4cc5d9e196a144bbb087a798bb945b37121383b character.c1084, sysutils.c translateToUTF8 and base/R/character.R wrappers"
+  },
+  "remaining_parent_inventory": [
+    "evnx.3 rawToChar native tags and constructor roots",
+    "evnx.4 shared declaredLatin1 CP1252 translation",
+    "evnx.5 invalid-byte diagnostic spans and structured error lifetime accounting",
+    "Named nonUTF8 locale tailoring and host-specific wide-C behavior",
+    "cvs2 total physical accounting and full safe-engine ownership remain open",
+    "cvs2.15 unchanged full-startup Miri still running; not claimed as passed"
+  ],
+  "source_sha256": {
+    "crates/rmath/src/mainutils/case_conversion.rs": "5471250552f376a2483f10f424a01a342576277c3245552946ab8a9667af2d5d",
+    "crates/rmath/src/mainutils/case_conversion/tests.rs": "c19a508a994bb2a8a8118f1e069eaaf1b6b4565560c5a027d673a7088e60416a",
+    "crates/rmath/src/mainutils/case_conversion_boundary_tests.rs": "da5d9c2f7c9e7a26af4721aa4335000df9ff7d2557e9cf281bbb0247c77f6187",
+    "crates/rmath/src/mainutils/character.rs": "5c02767780905687a90225f2ee6f49d447d6856eff55c6ff7db14a369d7450d5",
+    "crates/rmath/src/mainutils/essentials/strings/nchar_substr.rs": "9bdaa2388e683f0dd07ea64a868f29bf457e77c72b24e0f6146449be10d7e217",
+    "crates/rmath/src/mainutils/mod.rs": "871ad885c434cb837899a563018d2ab074da157604a7f79bee094c2911ffb54f",
+    "crates/rmath/src/sexp/init/bindings_core.rs": "86e76c085cc4fa53f652180a10f7f405d54baa4b39742c97c8f46c10b102b7f4",
+    "crates/r-embed/tests/public_case_conversion.rs": "127c56580da28162ead134ff143ad292a1982a79480e1bd6e05644752a520933",
+    "crates/r-embed/tests/fixtures/public-case-conversion-contract.R": "78ed3c96a0e2c363b222c315e20a5d92e520f81f3dd314635edfd3a26171cbfb",
+    "crates/r-embed/tests/fixtures/public-case-conversion-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "tests/browser/public-case-conversion.cjs": "da109954f59d966a506896494a0e8b9349236fbebaf84c62de7ab0c6487a84d0",
+    "tests/browser/portable-package-contracts.mjs": "5ea761fbdf433cdae608659b6e5691d19a65ee7b5e9365aba09592068d63efcc"
+  },
+  "source_hash_scope": "Staged casing versions, compiled before later uncommitted rawToChar work. User graphics and rawToChar production/tests are excluded from this commit.",
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29740634,
+      "sha256": "dda22c213caf2e2d604c305e1e02dbebbbfb0afbcc7a3beb6e5ccb9d973a10e3"
+    },
+    "output": {
+      "bytes": 25434609,
+      "sha256": "ad4add49fd1674e5219f31dd72a65a80599b428269195cf89278234facc71c66"
+    }
+  },
+  "evidence_directory": "target/public-case-evidence",
+  "evidence_sha256": {
+    "android.log": "03659ee6948f5a0add66f36c9044c8963c33ba2c0cc3a44c6742f4caff4686b9",
+    "check-fixed.log": "df8e4dd1e990f58b1191066710b9c75bce405622e63608154ff1984bf4c30551",
+    "check.log": "d9841b035af330386c0c8caaf9de7eb835c1f30302a5ceb2473ab426a51e74d4",
+    "clippy-final.log": "dbe7566222b9e58e8e6edc2bf1f3736d5212f8542c5d1e7c63d6e53abc0d0a06",
+    "clippy.log": "8d5d31b16e2f8eda53b28d2789669d3729c2ec0604e7bacfa1f618b6aef1c752",
+    "gnu-contract-c.log": "4b54bdade74d5004717c438d0debee13be6080a208c06de1e0228be7ddb5bc1b",
+    "gnu-contract-extended-c.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-extended-utf8.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-final-c.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-final-utf8.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-full-c.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-full-utf8.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-contract-utf8.log": "0995b18ec728dc6e74d34f6be55d98d823222981606a7ae3d98f62c2cb84f1b6",
+    "gnu-latin1-all-controls.log": "3bdbc8bceaea98c8e70ecb2eb8edc5bee75bfce8a55e1baaab51564a7f3d3910",
+    "gnu-latin1-extended-c.log": "fc89b470979b57936e33d7d9975ae00275776f5ef84e181275ca6e8a729e88ba",
+    "gnu-native-utf8-tag.log": "0cf71af3976f04076412b5db74a08ea73e41c919775d46f7e6223f4df260ccb8",
+    "miri-owned.log": "7480b856037d591b1fbd8ee943c6a619c179e09dbc9fc88fe92b479ed6611a7d",
+    "native-c-complete.log": "fee27048f7f349492f6b0d4636739aa260218f529a5de953fcfe4f42217ca3a5",
+    "native-c-final.log": "370ef8425e75a00d188e03f4698fa165b5227a468056d1702b327caeb3a0aa23",
+    "native-c-green.log": "9513494507f5511f75ef7bc9f2a1dae3a11cbefe921648f85af551ff549e7589",
+    "native-owned-complete.log": "ba0389ce119388e96f50d8dbb6e5b322ee629d193044ff0ea282a962a7a0bd93",
+    "native-owned-final.log": "8bfe98b466ea89a796c8c16c0d429aaac66f5e0d344b029aa793ea7636ee4e2e",
+    "native-owned-fixed.log": "7a1486484d6ac156216c08b69479cf78debdea274f504a91a69ccf729102be71",
+    "native-owned.log": "2a6ecf82f8a443184d3b5912a293de0699f0e6db8e0479fca6d3066ccc651bbb",
+    "native-red.log": "93a0e8a6d38039ee022599b242e061893118d130a17c59bac3afd56fcb94099b",
+    "native-utf8-complete.log": "b9de9879637fcc3c4ad364518156e0f76cde692a032c5c7c261ab8e78afd5fef",
+    "native-utf8-final.log": "c1ca073ff3a5efd825c157c9504226b61613e541748cb02706f38796a9c38e6e",
+    "native-utf8-green.log": "927754048ad3cd054c719c3e1e134c9d5c06a08c37351a4404b5ed16f6ca0a53",
+    "verified-wasm/wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "verified-wasm/wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "verified-wasm/wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "verified-wasm/wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "verified-wasm/wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "verified-wasm/wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "verified-wasm/wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "verified-wasm/wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "verified-wasm/wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "verified-wasm/wasm-node/rust-runtime-optimization.json": "359715de326ea5da518c963cd319fd1df8fe8d199b26080d417b0ccc7a3a2904",
+    "verified-wasm/wasm-optimize.log": "835d080591be606de8166f00959bd146b39eb771791801b06ffb6976111a8e5d",
+    "verified-wasm/wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "verified-wasm/wasm-printer-workspace.log": "336b9b0a448450ac9af0737a515696812ac04b1facf6bf0d3720d58126a1e0ce",
+    "verified-wasm/wasm-public-case-conversion.log": "60d6674ca26b2f92f401b021f5066fb3a27fe1bc26dfdf4c268f82079abe9abc",
+    "verified-wasm/wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "verified-wasm/wasm-regex-compile-error-recovery.log": "79b477504b673978bd449abfdb21408b1831023682b2a78023711834d30a4b67",
+    "verified-wasm/wasm-regex-replacement-missing.log": "3ecdd6a714509ef0f8542234da524081c8bfbd0935099a78dd4cb60b62a20560",
+    "verified-wasm/wasm-regex-replacement.log": "c59e7458e78d8853bac790d2fd36dc7038390f4dc06062c23b8b3417aeb9c9c9",
+    "verified-wasm/wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "verified-wasm/wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "verified-wasm/wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "verified-wasm/wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "verified-wasm/wasm-web-contracts.log": "da31234e8ea3528df2061a4c50f82607ba1987f7956117167d5160c3af21fd8d",
+    "verified-wasm-validation.log": "9f867946052193b617c92f0257edf3d712f362a15c281d03418fc80cf757f766",
+    "wasm-build-final.log": "d3116d3e3c9aebc857f93f042bff092fb9895e6feef4c437eb077224e4a844a0",
+    "wasm-build-frozen.log": "3341c0ec09a1a8db5e362b76253120378356c8ee6b21312db9ba7a69dd00e042",
+    "wasm-build.log": "b38a0f90aba9044836b98ec95970e4fe498bb3d257ec4b4ad7b6dc2b3db92987",
+    "wasm-extended-red.log": "48a9f6d6b00f3a56cfd77b166e2fe03d45ea0c1be380fad01e1c4c0b82d45f02",
+    "wasm-full-red.log": "f734a0c43fed137cede768e8c3ce80ed5238abbbd72c3e2c82ef54305ecc83b6",
+    "wasm-red.log": "e8bcf91d3116a267f3c6984eda1a78be5b38a320dcf0d9438a7e2d4d265e1293"
+  }
+}

@@ -597,7 +597,7 @@ pub unsafe fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Resu
 /// characters in `new`.
 ///
 /// This is the Rust port of R's `do_chartr` from character.c.
-/// For this port we use the byte-level (non-MBCS) path.
+/// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::try_from_raw(args) {
@@ -637,24 +637,9 @@ pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// Convert characters in a character vector to uppercase.
 ///
 /// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
-/// For this port we use the byte-level (non-MBCS) path.
+/// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let x = match args_s.try_pairlist_arg(0) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        match toupper_safe(x) {
-            Ok(result) => result,
-            Err(_) => crate::sexp::globals::R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+    unsafe { case_entry(args, true) }
 }
 
 // ---------------------------------------------------------------------------
@@ -669,58 +654,53 @@ pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// Convert characters in a character vector to lowercase.
 ///
 /// This is the Rust port of R's `do_tolower` from character.c.
-/// For this port we use the byte-level (non-MBCS) path.
+/// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let x = match args_s.try_pairlist_arg(0) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        match tolower_safe(x) {
-            Ok(result) => result,
-            Err(_) => crate::sexp::globals::R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+    unsafe { case_entry(args, false) }
 }
 
 /// Shared safe implementation for toupper and tolower.
 unsafe fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
-    let na = unsafe { get_na_string() };
+    use crate::sexp::owner::{OwnerToken, with_runtime};
+    let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
+    let _pin = owner.pin().map_err(|e| e.to_string())?;
+    let x = x.into_owned().map_err(|e| e.to_string())?;
+    let na = owner
+        .sexp(unsafe { crate::sexp::globals::R_NaString() })
+        .and_then(Sexp::into_owned)
+        .map_err(|e| e.to_string())?;
+    let weak = owner
+        .weak_owner()
+        .ok_or("case conversion requires a managed runtime")?;
+    let result = with_runtime(&weak, |access| {
+        super::case_conversion::transform(access, x, na, upper)
+    })
+    .map_err(|e| e.to_string())?;
+    owner.require_active().map_err(|e| e.to_string())?;
+    result.map(|value| value.as_raw()).map_err(|e| match e {
+        crate::sexp::object::SexpError::EvaluationFailed { message } => message,
+        other => other.to_string(),
+    })
+}
 
-    if x.clone().typeof_() != SEXPTYPE::STRSXP {
-        return Err("non-character argument".into());
-    }
-
-    let n = x.clone().len();
-    let y = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as c_int) };
-    let _y_guard = unsafe { protect(y) };
-
-    for i in 0..i64::from(n) {
-        let el = x.clone().string_elt(i).ok_or("missing string element")?;
-        if el.clone().as_raw() == na {
-            unsafe { SET_STRING_ELT(y, i, na) };
-        } else {
-            let xi_bytes = unsafe { charsxp_bytes(el.as_raw()) };
-            let mut buf: Vec<u8> = xi_bytes.to_vec();
-            for b in buf.iter_mut() {
-                if upper {
-                    *b = (*b as char).to_ascii_uppercase() as u8;
-                } else {
-                    *b = (*b as char).to_ascii_lowercase() as u8;
-                }
-            }
-            let ch = unsafe { make_charsxp(&buf) };
-            unsafe { SET_STRING_ELT(y, i, ch) };
-        }
-    }
-
-    Ok(y)
+/// Shared native boundary; errors and callback panics remain recoverable R errors.
+pub(crate) unsafe fn case_entry(args: SEXP, upper: bool) -> SEXP {
+    use crate::sexp::owner::OwnerToken;
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let args = owner
+        .sexp(args)
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let x = args
+        .try_pairlist_arg(0)
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    unsafe { case_transform_safe(x, upper) }
+        .unwrap_or_else(|message| crate::sexp::context::r_error(message))
 }
 
 // ---------------------------------------------------------------------------
@@ -987,7 +967,7 @@ pub unsafe fn substr_safe<'a>(
 /// Extract substrings from a character vector.
 ///
 /// This is the Rust port of R's `do_substr` from character.c.
-/// For this port we use the byte-level (non-MBCS) path.
+/// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::try_from_raw(args) {

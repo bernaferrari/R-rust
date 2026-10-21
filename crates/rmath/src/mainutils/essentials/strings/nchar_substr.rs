@@ -481,39 +481,7 @@ pub unsafe fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = if x.is_null() || x == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for i in 0..n {
-            if as_character_element_is_na(x, i) {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            let s = elt_to_string(x, i);
-            let converted = if to_lower {
-                s.to_lowercase()
-            } else {
-                s.to_uppercase()
-            };
-            let cstr = CString::new(converted).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-
-        result
-    }
+    unsafe { crate::mainutils::character::case_entry(args, !to_lower) }
 }
 
 pub(crate) unsafe fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {

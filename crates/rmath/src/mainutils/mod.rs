@@ -13,6 +13,9 @@ pub(crate) mod bincode;
 pub mod bind;
 pub mod browser_files;
 pub mod builtin;
+pub(crate) mod case_conversion;
+#[cfg(test)]
+mod case_conversion_boundary_tests;
 pub mod character;
 pub mod clippath;
 pub mod coerce;
