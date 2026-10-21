@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-evnx.4"
+  ],
+  "source_base": "48d7d1ef287c0452c13d8724d4060e66b18bf89e",
+  "behavior": [
+    "One forbidunsafe encoding-domain declaredLatin1 policy supplies CP1252 scalars and lower-hex escapes for undefined81/8d/8f/90/9d. Both casing and shared UTF8 translation use it. Explicit iconv ISO-8859-1 retains its separate ISO byte-to-U+00xx codec.",
+    "Paste/sprintf escape undefined declaredLatin1 bytes; file.path uses a distinct strict UTF8 mode and rejects them, as GNU trCharUTF8 does. Preserve byte-mode and NativeC translation controls.",
+    "Bound strict-path diagnostics before allocating: at most255native bytes, or valid252byte prefix plus ellipsis. GNU reEnc subst2 in ASCII C replaces each unrepresentable UTF8 input byte by a dot.",
+    "Shared translation admits output before allocation, reconciles physical Vec capacity, then freezes its exact original counter ticket. Data deallocates before ticket; no alias/revocation or current-owner substitution."
+  ],
+  "failures_and_repairs": {
+    "initial_probe": "Two undefined-path exploratory rows initially expected escaped output; GNU rejects them. Corrected exact diagnostic expectations before public/native REDs.",
+    "native_red": "Corrected24GNU assertions allPASS both childC/UTF8. Actual native public2FAIL reports18wrong rows; immutable old optimizedWasm18wrong/6controls.",
+    "final_contract": "26GNU assertions/complete fixture PASS both profiles. Adds explicit ISO-8859-1 high-byte control and exact rich path diagnostic by l10n_info profile. Immutable old module19wrong/7controls.",
+    "c_diagnostic_red": "Initial strict-path C formatter incorrectly used U+ escapes. Source reEncodeIconv subst2 and actual GNU byte probes prove dots per UTF8 byte. Strengthened native bounded-error test actuallyFAILS before repair; same assertion passes final native and strict Miri. Earlier host-specific assumption was wrong and is superseded.",
+    "superseded_validation": "First preliminary optimized browser run explicitly terminated after C-policy RED. No full-suite pass claimed for that artifact. Final source rebuilt and complete fresh Node/web suite run below.",
+    "unchanged_assertions": "No quotas, constructors, GC gap/wait, provenance/alias rules or Miri isolation relaxed. Existing exact foreign-input and native-C controls remain intact."
+  },
+  "validation": {
+    "native_distinct": 23,
+    "native_new_owned": 4,
+    "native_encoding_regression": 7,
+    "native_case_regression": 10,
+    "native_public": {
+      "utf8": 2,
+      "c": 2,
+      "scope": "Same2names in both child profiles:26independent assertions with recovery after each plus complete fixture."
+    },
+    "strict_default_isolated_i686_miri": 11,
+    "miri_final_new_owned": 4,
+    "miri_encoding_regression": 7,
+    "miri_source_scope": "New4 including strengthened C-policy assertion run on final source. Existing7 regression tests ran before subsequent C diagnostic-only correction, which does not change their exercised conversion branches.",
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; unchanged default isolation",
+    "wasm": {
+      "node": 392,
+      "web_generations": [
+        54,
+        54
+      ],
+      "total": 500,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi alltargets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "format_whitespace": "ScopedPASS"
+  },
+  "oracle": {
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "version": "R4.7devel r90451",
+    "host": "Darwin aarch64-apple-darwin25.6.0; Apple/GNU libiconv1.11",
+    "locales": [
+      "en_US.UTF-8",
+      "C"
+    ],
+    "reference_source": "ignored r-source d4cc5d9e196a144bbb087a798bb945b37121383b sysutils.c1932 translateToUTF8, trCharUTF8, reEncodeIconv subst2; paste.c407 strict paths"
+  },
+  "remaining_parent_inventory": [
+    "evnx.5 original invalid-byte condition messages and bounded NUL/path error-String lifetime accounting remain open",
+    "cvs2 other physical workspace/control metadata admission gaps remain open",
+    "Full regex PCRE2/byte semantics and named nonUTF8 locales remain open",
+    "cvs2.15 unchanged original full-base startup Miri still running, no pass claimed"
+  ],
+  "source_sha256": {
+    "crates/r-embed/tests/declared_latin1_public.rs": "283b518f5e32baf07629cd16a30f8808ac7e6b646a327ddd684e543b41a72aaf",
+    "crates/r-embed/tests/fixtures/declared-latin1-contract.R": "cf7408006f072178e0ee964c77311eae69b780fe654037d179a3b749235980c4",
+    "crates/r-embed/tests/fixtures/declared-latin1-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "crates/rmath/src/mainutils/case_conversion.rs": "cca26692d11d96bd66ad0e9bb8dca87104cd5c3228beefe2a91cb43dd4ddc395",
+    "crates/rmath/src/mainutils/paste_impl/owned.rs": "ee93262a692e04e40c78f186c381f67418961a6f3ad0490f4259512f2d14d13a",
+    "crates/rmath/src/mainutils/paste_impl/path.rs": "985d94d3add1dee97774c42b42422f7c82b37829a5936339ed75329c6b19e37b",
+    "crates/rmath/src/sexp/encoding.rs": "405282b34f9cbb0a72e758a0dea7be70b7d6745dcd7034d0edb5af70d136c12c",
+    "crates/rmath/src/sexp/encoding/declared_latin1.rs": "ea87160bd4d174fdfc61c6401f8bff4529eed6f28b3ef2832c373dbca9a04902",
+    "crates/rmath/src/sexp/encoding/owned.rs": "d928947fd0385e1559e50bd8de089f63803e0e249ced3e97107182aa2f6c1b81",
+    "crates/rmath/src/sexp/memory/arena.rs": "4e446185e34b52f94f3b4392f5f7aee397eb8aab03b9f418ea506183dd4c8d4a",
+    "tests/browser/declared-latin1.cjs": "bee8bcc1c323e123cb2c1b8775ab16a274a8005f8659c545a38b69c751fa8925",
+    "tests/browser/portable-package-contracts.mjs": "054ecbdb937aedbb797e44a9c30465211d3b063e1285c24af0f06c7452b5a0af"
+  },
+  "source_hash_scope": "Staged final Latin1 versions. New byte-diagnostic RED tests/fixtures and user graphics excluded.",
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29733577,
+      "sha256": "dcadbd32d455447658f1bcc00ab0d7ae88842a2f1ae74018ef228316875afea1"
+    },
+    "output": {
+      "bytes": 25425797,
+      "sha256": "7f4728d5d3e8fc85d36d34c283e015400b90a920e9503d7c2bb84ee09f861d44"
+    }
+  },
+  "evidence_logs": {
+    "native-public-red.log": "7f53a98d67c5daba7ff7c07cb12dbe19be1c62095227bdca9c55e6e8a0cc48eb",
+    "native-c-diagnostic-red.log": "b5920f18c1e98069c9366bc700bd144239cbd9ba83b75567691722c12ef1ae2d",
+    "native-final-owned.log": "c8a84d9a0a6154ff0fdf9bf6b95ab499469f2cb09041a73251782f646720152b",
+    "native-encoding-regression.log": "e55a785c9b4eb7d66779d894ad5fb7b5a84b14962b15583871054709f665ef97",
+    "native-case-regression.log": "d37210d5bf3a28e97edae0a5416cc75d151f89e212badb040fae45d3e8e987a6",
+    "native-complete-public-utf8.log": "2eaf75777bd099c37feecb5b1eb37ee2a4787043281f67eb10a18ddc9229cd94",
+    "native-complete-public-c.log": "13d2f1306af1c64ad1e1ee55d3cb19a8e1296aa9dc4a595cf2fab0e505bf0842",
+    "miri-final-owned.log": "057e7291f25464a51ce83a696011589737eece7f42d230a43a2e9c8c75263790",
+    "miri-encoding-regression.log": "05b165cae19a4b7fa502bac3b004e428bf601bea28d55779ee0f45b266e732ac",
+    "gnu-complete-c.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "gnu-complete-utf8.log": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "wasm-complete-red.log": "087d97dc3339409b9c21e7e3873cb760a4048200661db66a12857370607114a1",
+    "clippy-final.log": "f5454d63f8a9c938da930a7b753e5b706406a23e06ce7878a2882f300b965915",
+    "android-final.log": "0641c341a2837bea7e051cdc8f32050a42f269d3744cf8ecce912a65bbbfb4b8",
+    "wasm-final-build.log": "f5211f348b4421dc91555386037d2759a291ccec939d04273b0f2f92a8fcbf4d",
+    "wasm-final-validation.log": "3d3694267f1078ac3cd520fecf310fd6941eaecaf696089fc4cf4a9c707b5b9c"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  }
+}

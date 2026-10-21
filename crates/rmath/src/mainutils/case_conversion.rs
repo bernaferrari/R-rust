@@ -21,21 +21,6 @@ fn allocation() -> SexpError {
     }
 }
 
-// GNU's HAVE_ICONV_CP1252 profile interprets declared latin1 through CP1252.
-// Undefined bytes become literal <xx> text before simple casing.
-fn latin1_character(byte: u8) -> Option<char> {
-    const EXTENDED: [char; 32] = [
-        '€', '\0', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\0', 'Ž', '\0', '\0',
-        '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\0', 'ž', 'Ÿ',
-    ];
-    let ch = if (0x80..=0x9f).contains(&byte) {
-        EXTENDED[(byte - 0x80) as usize]
-    } else {
-        char::from(byte)
-    };
-    (ch != '\0').then_some(ch)
-}
-
 struct Source {
     payload: PayloadLease,
     len: usize,
@@ -101,7 +86,7 @@ impl Source {
             }
             let ch = if self.encoding == TextEncoding::Latin1 {
                 i += 1;
-                let Some(ch) = latin1_character(b) else {
+                let Some(ch) = encoding::declared_latin1::character(b) else {
                     let hex = if upper {
                         b"0123456789ABCDEF"
                     } else {

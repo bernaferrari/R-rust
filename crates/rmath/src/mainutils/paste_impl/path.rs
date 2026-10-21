@@ -177,7 +177,7 @@ fn evaluate(
                 }
             }
         }
-        let mode = if utf8 { Mode::Utf8 } else { Mode::Native };
+        let mode = if utf8 { Mode::Utf8Path } else { Mode::Native };
         let mut width = separator
             .data
             .len()

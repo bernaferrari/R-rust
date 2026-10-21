@@ -78,6 +78,7 @@ const contracts = [
     'regex-empty-fixed-contract',
     'public-case-conversion-contract',
     'raw-to-char-contract',
+    'declared-latin1-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

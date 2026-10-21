@@ -1344,6 +1344,12 @@ impl WorkspaceReservation {
         self.reservation.bytes
     }
 
+    /// Freeze a reconciled workspace charge when the buffer will not grow.
+    /// The fixed ticket retains the original counter through buffer teardown.
+    pub(crate) fn into_fixed(self) -> TransientReservation {
+        self.reservation
+    }
+
     pub(crate) fn try_resize(&mut self, bytes: usize) -> Option<()> {
         let others = self
             .reservation

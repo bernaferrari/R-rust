@@ -75,6 +75,7 @@ pub const CE_BYTES: i32 = TextEncoding::Bytes.as_gnu();
 pub const CE_SYMBOL: i32 = TextEncoding::Symbol.as_gnu();
 pub const CE_ANY: i32 = TextEncoding::Any.as_gnu();
 
+pub(crate) mod declared_latin1;
 pub(crate) mod nul_diagnostic;
 mod owned;
 pub(crate) use owned::{CharacterFlags, Mode, NulText, flags, translate};
