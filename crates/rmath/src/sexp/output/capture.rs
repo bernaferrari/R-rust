@@ -16,6 +16,7 @@ pub struct RCapturedOutput {
 /// One capture layer owns its budget, including traffic forwarded to it.
 #[derive(Debug, Default)]
 pub(crate) struct CaptureFrame {
+    id: u64,
     pub(crate) stdout: Option<String>,
     pub(crate) stderr: Option<String>,
     pub(crate) interleaved: Option<String>,
@@ -33,6 +34,16 @@ pub(crate) enum OutputStream {
     Message,
 }
 
+#[derive(Clone, Copy)]
+struct FrameRoute {
+    id: u64,
+    older: Option<u64>,
+    floor: usize,
+    selected: bool,
+    connection: Option<(*mut RInstance, i32)>,
+    split: bool,
+}
+
 impl CaptureFrame {
     /// Return true when this layer consumes the stream completely.
     fn write(&mut self, stream: OutputStream, msg: &[u8], limit: Option<usize>) -> bool {
@@ -46,15 +57,6 @@ impl CaptureFrame {
             OutputStream::Message => return false,
         };
         if let Some(buffer) = target {
-            if let Some((owner, connection)) = self.connection {
-                if super::super::instance::current_instance_ptr() != Some(owner) {
-                    std::panic::panic_any(super::super::context::RError {
-                        message: "capture destination belongs to another session".into(),
-                    });
-                }
-                crate::mainutils::connections::connection_write_bytes(connection, msg);
-                return !split;
-            }
             let previous_len = buffer.len();
             append_bounded_bytes(
                 buffer,
@@ -83,6 +85,7 @@ pub(crate) struct OutputCaptureState {
     pub(crate) current: CaptureFrame,
     stack: Vec<CaptureFrame>,
     max_bytes: Option<usize>,
+    next_frame: u64,
 }
 
 impl OutputCaptureState {
@@ -91,7 +94,13 @@ impl OutputCaptureState {
     }
 
     pub(crate) fn start_with_options(&mut self, stdout: bool, stderr: bool, split: bool) {
+        let id = self
+            .next_frame
+            .checked_add(1)
+            .unwrap_or_else(|| super::super::context::r_error("capture frame identity exhausted"));
+        self.next_frame = id;
         let frame = CaptureFrame {
+            id,
             stdout: stdout.then(String::new),
             stderr: stderr.then(String::new),
             interleaved: (stdout || stderr).then(String::new),
@@ -100,7 +109,7 @@ impl OutputCaptureState {
         };
 
         let outer = std::mem::replace(&mut self.current, frame);
-        if outer.active() {
+        if outer.id != 0 {
             self.stack.push(outer);
         }
     }
@@ -130,36 +139,73 @@ impl OutputCaptureState {
         self.current.active()
     }
 
-    fn route(&mut self, stream: OutputStream, msg: &[u8]) -> bool {
-        self.route_with_sink(stream, msg, None)
+    fn frame(&self, id: u64) -> Option<&CaptureFrame> {
+        if self.current.id == id {
+            Some(&self.current)
+        } else {
+            self.stack.iter().find(|frame| frame.id == id)
+        }
     }
-    fn route_with_sink(
-        &mut self,
-        stream: OutputStream,
-        msg: &[u8],
-        instance: Option<*mut RInstance>,
-    ) -> bool {
-        let mut pending_depth = instance.map_or(0, |instance| unsafe {
-            (*instance).connections_state.sink.sink_number
-        });
+    fn frame_mut(&mut self, id: u64) -> Option<&mut CaptureFrame> {
+        if self.current.id == id {
+            Some(&mut self.current)
+        } else {
+            self.stack.iter_mut().find(|frame| frame.id == id)
+        }
+    }
+    fn take_frame(&mut self, id: u64) -> Option<RCapturedOutput> {
+        if self.current.id == id {
+            return Some(self.stop());
+        }
+        let index = self.stack.iter().position(|frame| frame.id == id)?;
+        Some(Self::frame_output(self.stack.remove(index)))
+    }
+    fn frame_output(frame: CaptureFrame) -> RCapturedOutput {
+        RCapturedOutput {
+            stdout: frame.stdout.unwrap_or_default(),
+            stderr: frame.stderr.unwrap_or_default(),
+            interleaved: frame.interleaved.unwrap_or_default(),
+            truncated: frame.truncated,
+        }
+    }
+    fn plan(&self, id: u64, stream: OutputStream, depth: usize) -> Option<FrameRoute> {
+        let frame = self.frame(id)?;
+        let older = if self.current.id == id {
+            self.stack.last().map(|f| f.id)
+        } else {
+            let index = self.stack.iter().position(|f| f.id == id)?;
+            index.checked_sub(1).map(|i| self.stack[i].id)
+        };
+        let selected = match stream {
+            OutputStream::Stdout => frame.stdout.is_some(),
+            OutputStream::Stderr | OutputStream::Message => frame.stderr.is_some(),
+        };
+        let floor = if matches!(stream, OutputStream::Stdout) && frame.stdout.is_some() {
+            if frame.stderr.is_some() {
+                0
+            } else {
+                frame.sink_depth_at_start.min(depth)
+            }
+        } else {
+            depth
+        };
+        Some(FrameRoute {
+            id,
+            older,
+            floor,
+            selected,
+            connection: frame.connection,
+            split: matches!(stream, OutputStream::Stdout) && frame.split_stdout,
+        })
+    }
+    // Owned, standalone frame tests use the same callback-free append path.
+    // Native destinations require the original runtime route below.
+    fn route(&mut self, stream: OutputStream, msg: &[u8]) -> bool {
         for frame in std::iter::once(&mut self.current).chain(self.stack.iter_mut().rev()) {
-            if matches!(stream, OutputStream::Stdout) && frame.stdout.is_some() {
-                let floor = if frame.stderr.is_some() {
-                    0
-                } else {
-                    frame.sink_depth_at_start.min(pending_depth)
-                };
-                if let Some(instance) = instance {
-                    if crate::mainutils::connections::write_output_sinks_between(
-                        instance,
-                        msg,
-                        floor,
-                        pending_depth,
-                    ) {
-                        return true;
-                    }
-                }
-                pending_depth = floor;
+            if frame.connection.is_some() {
+                super::super::context::r_error(
+                    "native capture destination requires its original runtime",
+                );
             }
             if frame.write(stream, msg, self.max_bytes) {
                 return true;
@@ -253,6 +299,7 @@ pub(crate) fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
 pub(crate) struct OutputCaptureGuard {
     owner: super::super::owner::OwnerPin,
     active: bool,
+    frame: u64,
 }
 
 impl OutputCaptureGuard {
@@ -270,9 +317,11 @@ impl OutputCaptureGuard {
     pub(crate) fn start() -> Self {
         let owner = Self::owner();
         start_capture_in(owner.as_ptr());
+        let frame = unsafe { (*owner.as_ptr()).output_capture.borrow().current.id };
         Self {
             owner,
             active: true,
+            frame,
         }
     }
     pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
@@ -284,9 +333,11 @@ impl OutputCaptureGuard {
             capture.start_with_options(stdout, stderr, split);
             capture.current.sink_depth_at_start = depth;
         }
+        let frame = unsafe { (*instance).output_capture.borrow().current.id };
         Self {
             owner,
             active: true,
+            frame,
         }
     }
     pub(crate) fn set_connection(&mut self, index: i32) {
@@ -297,21 +348,34 @@ impl OutputCaptureGuard {
             (*self.owner.as_ptr())
                 .output_capture
                 .borrow_mut()
-                .current
+                .frame_mut(self.frame)
+                .expect("original capture frame unavailable")
                 .connection = Some((self.owner.as_ptr(), index));
         }
     }
     pub(crate) fn finish(mut self) -> RCapturedOutput {
-        let output = stop_capture_in(self.owner.as_ptr());
         self.active = false;
-        output
+        unsafe {
+            (*self.owner.as_ptr())
+                .output_capture
+                .borrow_mut()
+                .take_frame(self.frame)
+        }
+        .unwrap_or_else(|| {
+            super::super::context::r_error("original capture frame is no longer available")
+        })
     }
 }
 
 impl Drop for OutputCaptureGuard {
     fn drop(&mut self) {
         if self.active {
-            let _ = stop_capture_in(self.owner.as_ptr());
+            unsafe {
+                let _ = (*self.owner.as_ptr())
+                    .output_capture
+                    .borrow_mut()
+                    .take_frame(self.frame);
+            }
         }
     }
 }
@@ -335,16 +399,92 @@ pub fn capture_stdout(msg: &str) {
 pub fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
     capture_stdout_bytes_in(inst, msg.as_bytes());
 }
-fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
-    let mut capture = unsafe { (*inst).output_capture.borrow_mut() };
-    if capture.route_with_sink(OutputStream::Stdout, msg, Some(inst)) {
-        return;
+fn call_native<T>(owner: super::super::owner::OwnerToken<'_>, operation: impl FnOnce() -> T) -> T {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    match outcome {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
     }
-    drop(capture);
-    if !crate::mainutils::connections::write_output_sink_in(inst, msg) {
+}
+fn route_runtime(
+    owner: super::super::owner::OwnerToken<'_>,
+    stream: OutputStream,
+    msg: &[u8],
+) -> bool {
+    let instance = owner.as_ptr();
+    let mut id = unsafe { (*instance).output_capture.borrow().current.id };
+    let mut depth = unsafe { (*instance).connections_state.sink.sink_number };
+    while id != 0 {
+        let plan = unsafe { (*instance).output_capture.borrow().plan(id, stream, depth) }
+            .unwrap_or_else(|| {
+                super::super::context::r_error("original capture frame is no longer available")
+            });
+        let still_present = || {
+            if unsafe { (*instance).output_capture.borrow().frame(plan.id).is_none() } {
+                super::super::context::r_error("original capture frame is no longer available");
+            }
+        };
+        if plan.floor < depth {
+            let consumed = call_native(owner, || {
+                crate::mainutils::connections::write_output_sinks_between(
+                    instance, msg, plan.floor, depth,
+                )
+            });
+            still_present();
+            depth = plan.floor;
+            if consumed {
+                return true;
+            }
+        }
+        if plan.selected {
+            if let Some((original, index)) = plan.connection {
+                if original != instance {
+                    super::super::context::r_error(
+                        "capture destination belongs to another session",
+                    );
+                }
+                call_native(owner, || {
+                    crate::mainutils::connections::connection_write_bytes(index, msg)
+                });
+                still_present();
+                if !plan.split {
+                    return true;
+                }
+            } else {
+                let mut capture = unsafe { (*instance).output_capture.borrow_mut() };
+                let limit = capture.max_bytes;
+                let frame = capture.frame_mut(plan.id).unwrap_or_else(|| {
+                    super::super::context::r_error("original capture frame is no longer available")
+                });
+                if frame.write(stream, msg, limit) {
+                    return true;
+                }
+            }
+        }
+        id = plan.older.unwrap_or(0);
+    }
+    false
+}
+fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
+    let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    if !route_runtime(owner, OutputStream::Stdout, msg)
+        && !call_native(owner, || {
+            crate::mainutils::connections::write_output_sink_in(inst, msg)
+        })
+    {
         write_native_stdout(msg);
     }
 }
+
 fn write_native_stdout(msg: &[u8]) {
     use std::io::Write;
     if let Err(error) = std::io::stdout().lock().write_all(msg) {
@@ -382,41 +522,30 @@ pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_
 /// real stderr. The session keeps one ordered stream so the text lands
 /// between print() side effects, deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
-    super::super::instance::with_current_instance(|inst| unsafe {
-        // GNU `sink(type="message")` diverts message() before any capture
-        // frame. Connection 2 is the default stderr and stays on the frame.
-        let error_con = crate::mainutils::connections::sink_state().error_con;
-        if error_con != 2 {
-            crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes());
-            return;
-        }
-        let captured = (*inst)
-            .output_capture
-            .borrow_mut()
-            .route(OutputStream::Message, msg.as_bytes());
-        if !captured {
-            eprint!("{msg}");
-        }
+    super::super::instance::with_current_instance(|inst| {
+        capture_error_bytes_in(inst, OutputStream::Message, msg)
     });
 }
-
-/// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
     super::super::instance::with_current_instance(|inst| capture_stderr_in(inst, msg));
 }
-
 pub fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
-    unsafe {
-        let error_con = crate::mainutils::connections::sink_state().error_con;
-        if error_con != 2 {
-            crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes());
-            return;
-        }
-        let mut capture = (*inst).output_capture.borrow_mut();
-        if !capture.capture_stderr(msg) {
-            drop(capture);
-            eprint!("{msg}");
-        }
+    capture_error_bytes_in(inst, OutputStream::Stderr, msg);
+}
+fn capture_error_bytes_in(inst: *mut RInstance, stream: OutputStream, msg: &str) {
+    let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    let error_con = unsafe { (*inst).connections_state.sink.error_con };
+    if error_con != 2 {
+        call_native(owner, || {
+            crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes())
+        });
+        return;
+    }
+    if !route_runtime(owner, stream, msg.as_bytes()) {
+        eprint!("{msg}");
     }
 }
 
@@ -557,5 +686,67 @@ mod native_byte_tests {
         assert!(outer.stderr.is_empty());
         assert_eq!(outer.interleaved, outer.stdout);
         assert!(outer.truncated);
+    }
+}
+
+#[cfg(test)]
+mod frame_identity_tests {
+    use super::*;
+    use crate::sexp::RSession;
+    #[test]
+    fn capture_frame_identity_finish_and_drop_do_not_consume_a_nested_scope() {
+        for finish in [true, false] {
+            let session = RSession::new_for_gc_tests();
+            session.with_active(|| {
+                let outer = OutputCaptureGuard::start();
+                capture_stdout("outer");
+                let inner = OutputCaptureGuard::start();
+                capture_stdout("inner");
+                if finish {
+                    assert_eq!(outer.finish().stdout, "outer");
+                } else {
+                    drop(outer);
+                }
+                capture_stdout(" tail");
+                assert_eq!(inner.finish().stdout, "inner tail");
+                assert!(!is_capturing());
+            });
+        }
+    }
+    #[test]
+    fn capture_frame_identity_stale_guard_cannot_pop_a_replacement() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let old = OutputCaptureGuard::start();
+            capture_stdout("old");
+            assert_eq!(stop_capture().stdout, "old");
+            let replacement = OutputCaptureGuard::start();
+            capture_stdout("replacement");
+            let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| old.finish()));
+            let error = failed.expect_err("the original frame was explicitly removed");
+            assert_eq!(
+                error
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .unwrap()
+                    .message,
+                "original capture frame is no longer available"
+            );
+            capture_stdout(" tail");
+            assert_eq!(replacement.finish().stdout, "replacement tail");
+            assert!(!is_capturing());
+        });
+    }
+    #[test]
+    fn capture_frame_identity_exhaustion_preserves_the_existing_scope() {
+        let mut state = OutputCaptureState::default();
+        state.start();
+        state.capture_stdout("original");
+        let id = state.current.id;
+        state.next_frame = u64::MAX;
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.start()));
+        assert!(failed.is_err());
+        assert_eq!(state.current.id, id);
+        assert_eq!(state.stop().stdout, "original");
+        assert!(!state.is_capturing());
     }
 }

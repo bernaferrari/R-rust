@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-hah9u.80.1"
+  ],
+  "source_base": "0339af271d1b57dacb6bdffc999b0e86071c487a",
+  "behavior": [
+    "Copy passive frame-route metadata under short output_capture borrows; release every capture field loan before native sink or connection output and reauthenticate the original active runtime on normal return and unwind.",
+    "Assign checked monotonic runtime-local capture identities. Guard finish/drop removes only its own frame, including while a nested frame is active, and stale guards cannot consume a replacement.",
+    "Retain receiving-frame byte caps, chronological mirrors, selective streams, split routing and original-session targeting without an allocated route planner.",
+    "After a native call, reject removal of the original capture frame instead of appending to or consuming a replacement scope."
+  ],
+  "red": {
+    "native": "1 failed / 1 allocation-only control passed",
+    "strict_isolated_i686_miri": "1 failed / 1 allocation-only control passed",
+    "diagnosis": "RefCell already borrowed during balanced nested capture in a genuine textConnection publication GC callback; logical reentry failure, not presented as alias/provenance UB."
+  },
+  "regressions": [
+    "Original constructor and owned argument/env roots, forced gap1/wait1 and actual writer allocation hook are retained.",
+    "Balanced nested output, allocation-only control, actual close attempt with original live connection/env assertions, and callback removal/replacement all pass.",
+    "Exact-scope finish/drop, stale-guard replacement isolation and checked frame-ID exhaustion all pass."
+  ],
+  "validation": {
+    "native_and_miri_suite_counts": {
+      "native-callbacks-green": [
+        4
+      ],
+      "native-output": [
+        31
+      ],
+      "miri-callbacks": [
+        4
+      ],
+      "miri-frame-identity": [
+        3
+      ],
+      "miri-original-owner": [
+        1
+      ]
+    },
+    "additional_capture_sink_integration": "Running separately; not counted as completed in this checkpoint",
+    "strict_miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained",
+    "wasm": "200 optimized Node checks + 45 web contracts in each of two generations = 290; original64MiB session/256MiB linear caps retained",
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all-targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "source_whitespace": "scoped rustfmt and git diff --check PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/connections/mod.rs": "b0b6f882126467c51a97d85f721597ad28dc5247137d35de25839771ba5a4660",
+    "crates/rmath/src/mainutils/connections/publication_tests.rs": "c7df12a28de13f6956f70e5b67cb7b7e51ebe94310d1e9a431f046ae05fabeec",
+    "crates/rmath/src/sexp/output/capture.rs": "12d711ab5b0d7254f4a7f37700484bc6dfccc948d681ae6512bf4c2e66c82780"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29676908,
+      "sha256": "3c96ae307b41af0c5bd7e06d0af6587ecf96348e3d9fd739c445f5f1eba0b8e6"
+    },
+    "output": {
+      "bytes": 25372809,
+      "sha256": "4fcac482ab90a1bbf9c55ff98bba29c08d3c3572e1c61a05fb46853b6e755ee2"
+    }
+  },
+  "evidence_directory": "target/text-publication-evidence/",
+  "evidence_sha256": {
+    "android-capture-milestone.log": "9299883611b4b8c9228465b421e6b2098fe7e1256bbd19b5827b31c246a2efe2",
+    "android.log": "9299883611b4b8c9228465b421e6b2098fe7e1256bbd19b5827b31c246a2efe2",
+    "clippy-capture-milestone.log": "f730be19301956dce9ef70c3e7347dd7b003b4823623f4803c0eeefcb769c0eb",
+    "clippy.log": "f730be19301956dce9ef70c3e7347dd7b003b4823623f4803c0eeefcb769c0eb",
+    "miri-callbacks.log": "32b68a9f24ff2a726d9b8e8366a485ec71f2630286e3ed7f5aee202c10f278b6",
+    "miri-capture-owners.log": "49a779e8cb97c46d2f0cce62501954936aff9a374c6fa5fe0d99c984872732d9",
+    "miri-frame-identity.log": "6d5228f2292b0bee2dc47e165e50c66548c45bab19d18b7d687637b97de82bd2",
+    "miri-original-owner.log": "f1f2ebc13ba09ca4c3c76f294f12733f7e49fc3cd8ec2609b468eefc6293b29d",
+    "miri-red.log": "267686322356c95521d2274f6c0043c6b782641bfb25d1cf4862094b054dcf0e",
+    "native-callbacks-green.log": "0a64f09e06abc43092b2d4f2fea2bf37cb66239ab6e6f572a6cca90c68796b3d",
+    "native-embed.log": "eafaf8bd25d0d6e91dd6724c1926a77eca255e0296e6798088be10206ca33030",
+    "native-output.log": "c8d10d875305577c40f926cd9cb0fb0eb11b0beb6a048823b4953fd416da184f",
+    "native-red.log": "cc9c3eb5f6b6ec6bd53ba1f480aef490a4b87536a235ba4047670b9660b1a732",
+    "native-route-green.log": "5ca3796757b8fa910539099d4eae4c779a8d44b2a41fe724f756cc7f151f65e0",
+    "wasm-build.log": "0d04c84b6123db5035eab4ce03cc34fc9632f00f7e29a05c2f6ecb7942642601",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "4cb33f4086bc288cec6cef35e56b4121fb3ea49ee6585e1c48f7640d3349bffa",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-validation.log": "758e8d830ea2cfc49d32d6311300afe1c6a17a7e9751e52f0d9bdcd83b16ac9e",
+    "wasm-web-contracts.log": "ef764969951b6892070ede6c0dcc301e12b445b36cb6f64ba2f51551068eae3a"
+  },
+  "limits": [
+    "The separate direct writer/connection-body/text-lines publication audit remains rport-hah9u.80 and80.2. This child does not close the parent or claim every connection loan is migrated.",
+    "Retained output native buffers and global memory accounting remain separate beads; no full-memory/RSS or complete R parity claim.",
+    "User graphics edits were present during validation and excluded from this commit. The next direct-writer reproducer was added unstaged after capture unit and Wasm builds; source_sha256 refers to staged capture milestone sources. No immutable full-build/whole-CI claim.",
+    "The exploratory capture_guard Miri filter selected zero tests and is excluded from successful case counts; the real original-runtime ownership test was run explicitly."
+  ]
+}

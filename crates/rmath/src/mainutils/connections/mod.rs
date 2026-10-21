@@ -54,3 +54,6 @@ pub use self::state::*;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod publication_tests;
