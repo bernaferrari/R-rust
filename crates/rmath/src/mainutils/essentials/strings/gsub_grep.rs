@@ -502,7 +502,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             )
         });
         if use_bytes
-            && (fixed || pattern_is_literal)
+            && (fixed || (pattern_is_literal && !pattern.is_empty()))
             && TYPEOF(x_arg) == SEXPTYPE::STRSXP
             && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP
         {
@@ -520,6 +520,14 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             } else {
                 Vec::new()
             };
+            let parsed_replacement = if fixed {
+                None
+            } else {
+                Some(crate::mainutils::grep::literal_replacement_bytes(
+                    &rep, perl,
+                ))
+            };
+            let replacement_bytes = parsed_replacement.as_deref().unwrap_or(&rep);
             for i in 0..n {
                 let src_ch = STRING_ELT(x_arg, i);
                 if src_ch.is_null()
@@ -534,8 +542,18 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 let mut p = 0;
                 let mut changed = false;
                 while p < src.len() {
-                    if src[p..].starts_with(&pat) {
-                        out.extend_from_slice(&rep);
+                    let matched = src
+                        .get(p..)
+                        .and_then(|tail| tail.get(..pat.len()))
+                        .is_some_and(|candidate| {
+                            if !fixed && ignore_case {
+                                candidate.eq_ignore_ascii_case(&pat)
+                            } else {
+                                candidate == pat
+                            }
+                        });
+                    if matched {
+                        out.extend_from_slice(replacement_bytes);
                         p += pat.len();
                         changed = true;
                         if !global {
@@ -611,27 +629,37 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
             } else {
                 (elt_to_string(x_arg, i), false)
             };
-            let replaced = if fixed && global {
-                s.replace(&pattern, &replacement)
+            let fixed_replacement = if fixed && global {
+                Some(s.replace(&pattern, &replacement))
             } else if fixed {
-                s.replacen(&pattern, &replacement, 1)
+                Some(s.replacen(&pattern, &replacement, 1))
+            } else {
+                None
+            };
+            let regex_replacement = if fixed {
+                None
             } else if perl {
-                crate::mainutils::grep::perl_replace(
+                crate::mainutils::grep::perl_replace_with_case(
                     &pattern,
                     &s,
                     &replacement,
                     global,
                     ignore_case,
+                    if use_bytes {
+                        crate::mainutils::grep::ReplacementCase::Bytes
+                    } else {
+                        crate::mainutils::grep::ReplacementCase::Unicode
+                    },
                 )
-                .unwrap_or(s)
-            } else if let Some(replaced) =
-                crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
-            {
-                replaced
             } else {
-                s
+                crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
             };
-            let cstr = CString::new(string_to_native_bytes(&replaced, latin1)).unwrap_or_default();
+            // Keep the actual regex output ticket through final R publication.
+            let replaced = fixed_replacement
+                .as_deref()
+                .or(regex_replacement.as_deref())
+                .unwrap_or(&s);
+            let cstr = CString::new(string_to_native_bytes(replaced, latin1)).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);

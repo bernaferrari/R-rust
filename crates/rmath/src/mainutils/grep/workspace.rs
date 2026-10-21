@@ -47,6 +47,12 @@ impl RegexWorkspace {
         buffer
     }
 
+    pub(super) fn text(&self, capacity: usize) -> TextBuilder {
+        TextBuilder {
+            bytes: self.buffer(capacity),
+        }
+    }
+
     fn require_live(&self) {
         if self
             .availability
@@ -66,52 +72,72 @@ pub(crate) struct WorkspaceBuffer<T> {
 }
 
 impl<T> WorkspaceBuffer<T> {
-    fn reserve_capacity(&mut self, capacity: usize) {
+    fn try_reserve_capacity(&mut self, capacity: usize) -> Result<(), ()> {
         if capacity <= self.values.capacity() {
-            return;
+            return Ok(());
         }
         if self
             .availability
             .as_ref()
             .is_some_and(|value| !value.is_live())
         {
-            memory_error();
+            return Err(());
         }
         let old_bytes = self.reservation.bytes();
-        let new_bytes = capacity
-            .checked_mul(std::mem::size_of::<T>())
-            .unwrap_or_else(|| memory_error());
-        // Both allocations coexist while initialized elements move to the new buffer.
+        let new_bytes = capacity.checked_mul(std::mem::size_of::<T>()).ok_or(())?;
         self.reservation
-            .try_resize(
-                old_bytes
-                    .checked_add(new_bytes)
-                    .unwrap_or_else(|| memory_error()),
-            )
-            .unwrap_or_else(|| memory_error());
+            .try_resize(old_bytes.checked_add(new_bytes).ok_or(())?)
+            .ok_or(())?;
         let mut replacement = Vec::new();
         if replacement.try_reserve_exact(capacity).is_err() {
             self.reservation
                 .try_resize(old_bytes)
                 .expect("restore admitted regex buffer");
-            memory_error();
+            return Err(());
+        }
+        // Allocators may report more capacity than requested. Keep the old
+        // vector untouched until the complete actual replacement peak is funded.
+        let actual = replacement.capacity().checked_mul(std::mem::size_of::<T>());
+        let admitted = actual
+            .and_then(|bytes| old_bytes.checked_add(bytes))
+            .and_then(|peak| self.reservation.try_resize(peak));
+        if admitted.is_none() {
+            drop(replacement);
+            self.reservation
+                .try_resize(old_bytes)
+                .expect("restore regex replacement admission");
+            return Err(());
         }
         replacement.append(&mut self.values);
         drop(std::mem::replace(&mut self.values, replacement));
         self.reservation
-            .try_resize(new_bytes)
+            .try_resize(actual.expect("admitted actual capacity"))
             .expect("shrink regex replacement peak");
+        Ok(())
+    }
+
+    fn reserve_capacity(&mut self, capacity: usize) {
+        self.try_reserve_capacity(capacity)
+            .unwrap_or_else(|()| memory_error());
+    }
+
+    fn grow_for(&mut self, needed: usize) {
+        let preferred = needed.max(4).checked_next_power_of_two().unwrap_or(needed);
+        if self.try_reserve_capacity(preferred).is_err()
+            && (needed == preferred || self.try_reserve_capacity(needed).is_err())
+        {
+            memory_error();
+        }
     }
 
     pub(super) fn push(&mut self, value: T) {
         if self.values.len() == self.values.capacity() {
-            let capacity = self
-                .values
-                .len()
-                .checked_add(1)
-                .and_then(|n| n.max(4).checked_next_power_of_two())
-                .unwrap_or_else(|| memory_error());
-            self.reserve_capacity(capacity);
+            self.grow_for(
+                self.values
+                    .len()
+                    .checked_add(1)
+                    .unwrap_or_else(|| memory_error()),
+            );
         }
         self.values.push(value);
     }
@@ -122,6 +148,75 @@ impl<T> WorkspaceBuffer<T> {
     {
         self.reserve_capacity(length);
         self.values.resize(length, value);
+    }
+}
+
+impl WorkspaceBuffer<u8> {
+    pub(super) fn extend_bytes(&mut self, bytes: &[u8]) {
+        let needed = self
+            .values
+            .len()
+            .checked_add(bytes.len())
+            .unwrap_or_else(|| memory_error());
+        if needed > self.values.capacity() {
+            self.grow_for(needed);
+        }
+        self.values.extend_from_slice(bytes);
+    }
+}
+
+// Readonly UTF8 output owns the actual allocation and its original ticket.
+// No into-String escape can release admission while native storage is alive.
+pub(crate) struct WorkspaceText {
+    value: String,
+    _reservation: WorkspaceReservation,
+}
+impl std::ops::Deref for WorkspaceText {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.value
+    }
+}
+impl AsRef<str> for WorkspaceText {
+    fn as_ref(&self) -> &str {
+        &self.value
+    }
+}
+impl std::fmt::Debug for WorkspaceText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
+impl<Other: AsRef<str> + ?Sized> PartialEq<Other> for WorkspaceText {
+    fn eq(&self, other: &Other) -> bool {
+        self.value == other.as_ref()
+    }
+}
+
+pub(super) struct TextBuilder {
+    bytes: WorkspaceBuffer<u8>,
+}
+impl TextBuilder {
+    pub(super) fn push(&mut self, character: char) {
+        let mut encoded = [0; 4];
+        self.push_str(character.encode_utf8(&mut encoded));
+    }
+    pub(super) fn push_str(&mut self, text: &str) {
+        self.bytes.extend_bytes(text.as_bytes());
+    }
+    pub(super) fn finish(self) -> Option<WorkspaceText> {
+        let WorkspaceBuffer {
+            values,
+            reservation,
+            availability: _,
+        } = self.bytes;
+        match String::from_utf8(values) {
+            Ok(value) => Some(WorkspaceText {
+                value,
+                _reservation: reservation,
+            }),
+            Err(_) => None,
+        }
     }
 }
 

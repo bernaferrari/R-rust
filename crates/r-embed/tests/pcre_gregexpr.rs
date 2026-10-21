@@ -25,3 +25,16 @@ fn regex_unicode_offsets_context_and_invalid_patterns_match_gnu() {
     );
     assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
 }
+
+#[test]
+fn regex_replacement_case_modes_and_byte_policy_match_gnu() {
+    let mut session =
+        RSession::new_with_path_policy(r_embed::RuntimePathPolicy::new(Vec::new(), "tmp")).unwrap();
+    assert_eq!(
+        session
+            .eval(include_str!("fixtures/regex-replacement-case-contract.R"))
+            .unwrap(),
+        "[1] TRUE\n"
+    );
+    assert_eq!(session.eval("1+1").unwrap(), "[1] 2\n");
+}

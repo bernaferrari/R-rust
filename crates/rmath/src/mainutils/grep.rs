@@ -10,8 +10,8 @@
 //! Since this port does not link against PCRE2, the implementation uses:
 //! - Rust's standard library for fixed-string matching (fixed = TRUE)
 //! - The ported TRE engine for non-perl, non-fixed ERE mode
-//! - Backreference-free Perl-like regex is not supported; perl=TRUE falls back
-//!   to the ERE engine with a warning
+//! - The pure-Rust fancy-regex engine for the supported Perl syntax subset
+//!   (full PCRE2 compatibility remains tracked separately)
 //!
 //! Ported functions from grep.c:
 //!   do_grep, do_gsub, do_regexpr, do_regexec, do_grepraw
@@ -36,8 +36,12 @@ use crate::sexp::protect::protect;
 use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
 use crate::tre::regapi::{tre_regfree, tre_regnexec};
 
+#[cfg(test)]
+mod replacement_memory_tests;
+#[cfg(test)]
+mod replacement_tests;
 mod workspace;
-use workspace::{RegexWorkspace, WorkspaceBuffer};
+use workspace::{RegexWorkspace, TextBuilder, WorkspaceBuffer, WorkspaceText};
 
 pub(crate) type RegexCaptures = WorkspaceBuffer<Option<RegexMatch>>;
 pub(crate) type RegexMatches = WorkspaceBuffer<RegexCaptures>;
@@ -59,9 +63,9 @@ fn regex_workspace() -> RegexWorkspace {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|_| workspace::memory_error());
         let _pin = owner.pin().unwrap_or_else(|_| workspace::memory_error());
-        let ledger = owner
-            .with_arena(|arena| arena.heap_identity().byte_ledger())
-            .unwrap_or_else(|_| workspace::memory_error());
+        // This immutable sibling capability remains valid during a registered
+        // mutable arena lend and observes the same live original budget cells.
+        let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
         let availability = crate::sexp::instance::instance_liveness(owner.as_ptr());
         RegexWorkspace::new(ledger, availability)
     }
@@ -929,17 +933,69 @@ fn ere_gsub(
     result
 }
 
+/// Parse the replacement for a literal regex pattern with no capture groups.
+/// Keep opaque bytes intact; fixed=TRUE bypasses this regex escape grammar.
+pub(crate) fn literal_replacement_bytes(replacement: &[u8], perl: bool) -> WorkspaceBuffer<u8> {
+    fn visit(bytes: &[u8], perl: bool, mut emit: impl FnMut(&[u8])) {
+        let mut at = 0;
+        while at < bytes.len() {
+            if bytes[at] == b'\\' {
+                let Some(&next) = bytes.get(at + 1) else {
+                    break;
+                };
+                if !matches!(next, b'1'..=b'9') && !(perl && matches!(next, b'U' | b'L' | b'E')) {
+                    emit(&bytes[at + 1..at + 2]);
+                }
+                at += 2;
+            } else {
+                let count = bytes[at..]
+                    .iter()
+                    .position(|&byte| byte == b'\\')
+                    .unwrap_or(bytes.len() - at);
+                emit(&bytes[at..at + count]);
+                at += count;
+            }
+        }
+    }
+    let mut count = 0usize;
+    visit(replacement, perl, |part| {
+        count = count
+            .checked_add(part.len())
+            .unwrap_or_else(|| workspace::memory_error())
+    });
+    let mut output = regex_workspace().buffer(count);
+    visit(replacement, perl, |part| output.extend_bytes(part));
+    output
+}
+
+/// Casing policy for expanded Perl backreferences, independent of matching.
+#[derive(Clone, Copy)]
+pub(crate) enum ReplacementCase {
+    Unicode,
+    Bytes,
+}
+#[derive(Clone, Copy)]
+enum ReplacementMode {
+    Ere,
+    Perl(ReplacementCase),
+}
+
 pub(crate) fn ere_replace(
     pattern: &str,
     text: &str,
     replacement: &str,
     global: bool,
     ignore_case: bool,
-) -> Option<String> {
+) -> Option<WorkspaceText> {
     let regex = TreRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(text, replacement, global, |original, offset| {
-        regex.captures_at(original, offset)
-    })
+    replace_with_captures(
+        text,
+        replacement,
+        global,
+        ReplacementMode::Ere,
+        &regex.workspace,
+        |original, offset| regex.captures_at(original, offset),
+    )
 }
 
 pub(crate) fn perl_replace(
@@ -948,46 +1004,74 @@ pub(crate) fn perl_replace(
     replacement: &str,
     global: bool,
     ignore_case: bool,
-) -> Option<String> {
-    if pattern == "\\b" || pattern == "\u{8}" {
-        let chars: Vec<char> = text.chars().collect();
-        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
-        let mut out = String::new();
-        let last = if global {
-            chars.len()
-        } else {
-            chars.len().min(1)
-        };
-        let mut used = false;
-        for i in 0..=chars.len() {
-            let left = i > 0 && word(chars[i - 1]);
-            let right = i < chars.len() && word(chars[i]);
-            if left != right && (global || !used) {
-                out.push_str(replacement);
-                used = true;
-            }
-            if i < chars.len() && i < last.max(chars.len()) {
-                out.push(chars[i]);
+) -> Option<WorkspaceText> {
+    perl_replace_with_case(
+        pattern,
+        text,
+        replacement,
+        global,
+        ignore_case,
+        ReplacementCase::Unicode,
+    )
+}
+
+pub(crate) fn perl_replace_with_case(
+    pattern: &str,
+    text: &str,
+    replacement: &str,
+    global: bool,
+    ignore_case: bool,
+    case: ReplacementCase,
+) -> Option<WorkspaceText> {
+    let mode = ReplacementMode::Perl(case);
+    if pattern == "\\b" {
+        // PCRE's default word class is ASCII even for UTF8 subjects. Preserve
+        // byte offsets and literal text without constructing a Vec<char>.
+        let word = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+        let bytes = text.as_bytes();
+        let mut out = regex_workspace().text(text.len());
+        let mut copied = 0;
+        for offset in 0..=bytes.len() {
+            let left = offset
+                .checked_sub(1)
+                .and_then(|i| bytes.get(i))
+                .is_some_and(|&b| word(b));
+            let right = bytes.get(offset).is_some_and(|&b| word(b));
+            if left != right {
+                out.push_str(&text[copied..offset]);
+                append_r_replacement(&mut out, replacement, text, &[], mode);
+                copied = offset;
+                if !global {
+                    break;
+                }
             }
         }
-        return Some(out);
+        out.push_str(&text[copied..]);
+        return out.finish();
     }
     let regex = PerlRegex::compile(pattern, ignore_case).ok()?;
-    replace_with_captures(text, replacement, global, |original, offset| {
-        regex.captures_at(original, offset)
-    })
+    replace_with_captures(
+        text,
+        replacement,
+        global,
+        mode,
+        &regex.workspace,
+        |original, offset| regex.captures_at(original, offset),
+    )
 }
 
 fn replace_with_captures<F>(
     text: &str,
     replacement: &str,
     global: bool,
+    mode: ReplacementMode,
+    workspace: &RegexWorkspace,
     mut captures_at: F,
-) -> Option<String>
+) -> Option<WorkspaceText>
 where
     F: FnMut(&str, usize) -> Option<RegexCaptures>,
 {
-    let mut result = String::with_capacity(text.len());
+    let mut result = workspace.text(text.len());
     let mut search_from = 0usize;
     let mut prev_nonzero = false;
     loop {
@@ -1005,7 +1089,7 @@ where
             prev_nonzero = false;
         } else {
             result.push_str(&text[search_from..m.start]);
-            append_r_replacement(&mut result, replacement, text, &captures);
+            append_r_replacement(&mut result, replacement, text, &captures, mode);
             search_from = m.end;
             if !global {
                 result.push_str(&text[search_from..]);
@@ -1028,38 +1112,66 @@ where
         }
     }
 
-    Some(result)
+    result.finish()
 }
 
 fn append_r_replacement(
-    out: &mut String,
+    out: &mut TextBuilder,
     replacement: &str,
     matched_text: &str,
     captures: &[Option<RegexMatch>],
+    mode: ReplacementMode,
 ) {
+    let perl = matches!(mode, ReplacementMode::Perl(_));
+    let unicode_case = !matches!(mode, ReplacementMode::Perl(ReplacementCase::Bytes));
+    #[derive(Clone, Copy)]
+    enum Case {
+        Original,
+        Upper,
+        Lower,
+    }
+    let mut mode = Case::Original;
     let mut chars = replacement.chars();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            out.push(ch);
+    while let Some(character) = chars.next() {
+        if character != '\\' {
+            out.push(character);
             continue;
         }
-
+        // GNU discards a final escape introducer in both ERE and Perl modes.
         let Some(next) = chars.next() else {
-            out.push('\\');
             break;
         };
-
-        if let Some(digit) = next.to_digit(10) {
-            let idx = digit as usize;
-            if idx == 0 {
-                out.push('0');
-            } else if let Some(Some(m)) = captures.get(idx) {
-                out.push_str(&matched_text[m.start..m.end]);
+        match next {
+            '1'..='9' => {
+                if let Some(Some(span)) = captures.get(next as usize - '0' as usize) {
+                    let captured = &matched_text[span.start..span.end];
+                    match mode {
+                        Case::Original => out.push_str(captured),
+                        Case::Upper => {
+                            for character in captured.chars() {
+                                out.push(if unicode_case {
+                                    crate::mainutils::rlocale::simple_upper(character)
+                                } else {
+                                    character.to_ascii_uppercase()
+                                });
+                            }
+                        }
+                        Case::Lower => {
+                            for character in captured.chars() {
+                                out.push(if unicode_case {
+                                    crate::mainutils::rlocale::simple_lower(character)
+                                } else {
+                                    character.to_ascii_lowercase()
+                                });
+                            }
+                        }
+                    }
+                }
             }
-        } else if next == '\\' {
-            out.push('\\');
-        } else {
-            out.push(next);
+            'U' if perl => mode = Case::Upper,
+            'L' if perl => mode = Case::Lower,
+            'E' if perl => mode = Case::Original,
+            _ => out.push(next),
         }
     }
 }
