@@ -26,7 +26,9 @@ memory-profiling = []
 
 [dependencies]
 rmath-nmath = { path = "../nmath" }
-libm = "0.2"
+# Keep math in portable Rust, including when another dependency enables arch.
+# Decimal parsing still requires the correctly rounded software FMA.
+libm = { version = "0.2.16", default-features = false, features = ["force-soft-floats"] }
 num = "0.4"
 hashbrown.workspace = true
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }

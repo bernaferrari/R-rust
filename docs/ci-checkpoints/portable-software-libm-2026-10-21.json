@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-21",
+  "issue": "rport-cvs2.15",
+  "source_base": "92096082662934b4da3af003b23a03b51e2eabbd",
+  "behavior": "Use libm0.2.16 force-soft-floats with default features disabled. The stable feature overrides transitive arch feature unification, selecting portable Rust math and correctly rounded software FMA rather than x86 CPUID/inline assembly. Cargo.lock remains unchanged; no compiler or saved build settings change.",
+  "actual_failure": "Unchanged strict isolatedi686 test_full_gc_never_moves_protected_objects with original full-base constructor reaches unsupported CPUID asm via number_parse::parse_number/libm::fma before reaching its collection check. This is a Miri unsupported operation, not an ownership-UB diagnosis.",
+  "validation": {
+    "native_number_parser": 3,
+    "native_nmath_with_explicit_libm_force_soft_floats": 80,
+    "strict_default_isolated_i686_miri_number_parser": 3,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation unchanged",
+    "numeric_scope": "Independent pinned-GNU bit-pattern coercion table, original near-two/underflow/exact-mode regressions and exhaustive byte-prefix/decimal-delimiter bounds; NMath full80test suite with software libm explicitly enabled.",
+    "full_startup_miri": "Rerun with unchanged constructor/quotas/gaps is still running and not counted as passed. Keep cvs2.15 open until this required result is resolved.",
+    "additional_gates": "The pending casing checkpoint also builds this dependency feature into the original production Wasm package, Android bridge and four-crate Clippy gates. No pending gate is claimed as passed here."
+  },
+  "source_sha256": {
+    "crates/rmath/Cargo.toml": "6d2185056d750d051ac09c3d074eddf4c5f7963dc12298eeaf163296854e6359",
+    "Cargo.lock": "544eb8e38247e071a2f0b2d26d1d1f5f50ff1a0afbe9e92202a292e33be407a7",
+    "crates/rmath/src/mainutils/number_parse.rs": "a314f75d69b5067b0e74586c3dc780825a967074a8575525f297b07999daae10",
+    "crates/rmath/src/mainutils/coerce/fixtures/number-coercion.tsv": "9f085dfaaa22e55d971b792ed94276af64e190f36d16ffd72075c0cdf96c9715"
+  },
+  "local_primary_dependency_source": {
+    "version": "libm0.2.16",
+    "features": "force-soft-floats overrides both arch_enabled and intrinsics_enabled in configure.rs; math/fma.rs selects generic::fma_round"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/portable-libm-evidence",
+  "evidence_sha256": {
+    "native-number-parse.log": "aa9f0c9583398a3a769f564bb931f816d37c1e3f561bca8c106287543c2d8e88",
+    "native-nmath-soft.log": "3010bbf12bf1d3cd59f34036f2edef43ff19886da7ee8e864815ef709eec2145",
+    "miri-number-parse.log": "4966d00c097a1c85375893aa220a2151e999a63fe3212d2a1af22557caed5a9e"
+  },
+  "original_startup_unsupported_evidence": {
+    "path": "target/automatic-root-snapshot-evidence/miri-lowered-limit-gc.log",
+    "sha256": "1e15a73cc31c29caa204bf0bf8bd1562db73cf8de7b3124f97e3bd4e43baba1e"
+  },
+  "checkout_scope": "Uncommitted casing engine/wrapper/tests and unrelated user graphics are present during validation; only the dependency declaration and this bounded checkpoint are committed in this milestone."
+}
