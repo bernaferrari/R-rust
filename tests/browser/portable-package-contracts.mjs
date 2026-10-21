@@ -70,6 +70,7 @@ const contracts = [
     'try-condition-caller-context-contract',
     'try-condition-call-public-contract',
     'unserialize-connection-contract',
+    'text-publication-contract',
   ].map(name => [resolve(fixtures, name + '.R'), resolve(fixtures, name + '.out')]),
 ];
 

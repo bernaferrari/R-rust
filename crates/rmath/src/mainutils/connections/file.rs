@@ -887,7 +887,7 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if !inherits_class(scon, "connection") {
             r_error("'con' is not a connection");
         }
-        let i = as_integer(scon) as usize;
+        let i = checked_connection_index(as_integer(scon));
         if i < 3 {
             r_error("cannot close standard connections");
         }
@@ -915,14 +915,12 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
+        let instance = with_required_current_instance(|instance| instance);
+        close_connection_at_in(instance, i as c_int);
         let mut table = connection_table();
-        let status = if let Some(ref mut conn) = table[i] {
-            let is_pipe = matches!(conn.kind, ConnKind::Pipe);
-            close_connection_inner(conn);
-            if is_pipe { Some(conn.status) } else { None }
-        } else {
-            None
-        };
+        let status = table[i]
+            .as_ref()
+            .and_then(|conn| matches!(conn.kind, ConnKind::Pipe).then_some(conn.status));
         table[i] = None;
         if let Some(code) = status {
             Rf_ScalarInteger(code)
@@ -930,6 +928,35 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             R_NilValue()
         }
     }
+}
+
+/// Flush text output only after the original writer storage has moved out of
+/// the table. Every other backend close remains callback-free Rust I/O.
+pub(crate) fn close_connection_at_in(instance: *mut RInstance, index: c_int) {
+    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(instance) };
+    let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    let token = connection_token(index).unwrap_or_else(|e| r_error(&e));
+    let publish = {
+        let table = connection_table();
+        let conn = table[index as usize].as_ref().unwrap();
+        if conn.text_busy {
+            r_error(super::text_publication::BUSY);
+        }
+        conn.isopen && conn.canwrite && matches!(conn.kind, ConnKind::TextConnection)
+    };
+    if publish {
+        let mut writer = super::text_publication::TextWriter::take(owner, index).unwrap();
+        writer.close();
+    }
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    let index = token.require_current().unwrap_or_else(|e| r_error(&e));
+    let mut table = connection_table();
+    close_connection_inner(table[index as usize].as_mut().unwrap());
 }
 
 /// Internal close logic for a connection.
@@ -954,15 +981,11 @@ pub fn close_connection_inner(conn: &mut RConn) {
     }
 
     conn.status = 0; // success
-    if matches!(conn.kind, ConnKind::TextConnection) && conn.canwrite {
-        conn.text_incomplete = false;
-        unsafe {
-            conn.assign_text_output();
-            if !conn.text_env.is_null() {
-                crate::sexp::protect::R_ReleaseObject(conn.text_env);
-                conn.text_env = std::ptr::null_mut();
-            }
-        }
+    if conn.text_busy {
+        r_error(super::text_publication::BUSY);
+    }
+    if let Some(output) = conn.text_output.as_mut() {
+        output.environment = None;
     }
 
     conn.isopen = false;

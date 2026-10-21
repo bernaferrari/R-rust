@@ -44,6 +44,8 @@ mod file;
 mod lines;
 mod pipes;
 mod state;
+mod text_output;
+mod text_publication;
 
 pub use self::args::*;
 pub use self::binary::*;
@@ -57,3 +59,6 @@ mod tests;
 
 #[cfg(test)]
 mod publication_tests;
+
+#[cfg(test)]
+mod direct_publication_tests;

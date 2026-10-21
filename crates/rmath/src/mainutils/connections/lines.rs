@@ -374,6 +374,35 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             }
             return R_NilValue();
         }
+        let text_output = {
+            let table = connection_table();
+            table[i]
+                .as_ref()
+                .is_some_and(|conn| matches!(conn.kind, ConnKind::TextConnection))
+        };
+        if text_output {
+            let token = connection_token(i as c_int).unwrap_or_else(|e| r_error(&e));
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+            let text = owner
+                .sexp(text)
+                .and_then(crate::sexp::Sexp::into_owned)
+                .unwrap_or_else(|e| r_error(&e.to_string()));
+            for j in 0..text_len {
+                let mut chunk = string_elt(text.as_raw(), j);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| r_error(&e.to_string()));
+                let index = token.require_current().unwrap_or_else(|e| r_error(&e));
+                chunk.push_str(&sep_str);
+                connection_write_bytes(index, chunk.as_bytes());
+            }
+            if let Some(guard) = auto_guard.as_mut() {
+                guard.close();
+            }
+            return R_NilValue();
+        }
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
@@ -384,19 +413,6 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         }
         if !conn.canwrite {
             r_error("cannot write to this connection");
-        }
-
-        if matches!(&conn.kind, ConnKind::TextConnection) {
-            for j in 0..text_len {
-                let mut chunk = string_elt(text, j);
-                chunk.push_str(&sep_str);
-                write_bytes_to_conn(conn, chunk.as_bytes());
-            }
-            drop(table);
-            if let Some(guard) = auto_guard.as_mut() {
-                guard.close();
-            }
-            return R_NilValue();
         }
 
         match &conn.kind {
@@ -505,12 +521,7 @@ impl AutoCloseGuard {
     unsafe fn close(&mut self) {
         if std::mem::replace(&mut self.active, false) {
             unsafe {
-                if let Some(conn) = (&mut (*self.owner).connections_state.table)
-                    .get_mut(self.index)
-                    .and_then(Option::as_mut)
-                {
-                    super::file::close_connection_inner(conn);
-                }
+                super::file::close_connection_at_in(self.owner, self.index as c_int);
             }
         }
     }

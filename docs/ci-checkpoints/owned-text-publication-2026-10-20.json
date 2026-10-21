@@ -1,0 +1,179 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-hah9u.80.2"
+  ],
+  "source_base": "b5baf4aaf8c4d3958760d1fe5ecf487601145271",
+  "behavior": [
+    "Move the actual text writer Vec/String buffers and owned environment graph root out of RConn during publication; no cloned line store, shadow connection heap, added Rc state or text-lines RefCell loans.",
+    "An operation-local original runtime pin and ConnectionToken retain physical cleanup authority and authenticate the exact original allocation around every native callout, including unwind. Reject incompatible writes/closes while publishing. Drop restores the moved state only into the exact original connection, never a replaced slot.",
+    "Publish R vectors/strings and environment bindings after every connection-table/RConn loan ends. Use checked rooted values for old/new vectors and element writes; the target environment is an owning lifetime-free Sexp instead of a raw manually preserved pointer.",
+    "Apply the same owned operation to native output sinks, direct byte writes, writeLines, textConnectionValue and close final-fragment flush. All internal close callers now dispatch text publication outside table loans.",
+    "Unpublished constructor state stays locally owned during initial publication; choose the connection slot only after that callout completes.",
+    "GNU fidelity: textConnectionValue exposes completed lines only; complete newline prefixes publish immediately even when a chunk ends in an incomplete fragment. Close publishes the retained final fragment."
+  ],
+  "red": {
+    "native_direct_writer": "1 failed / 1 actual allocation-only control passed; nested writer hits text-lines RefCell borrow panic",
+    "strict_isolated_i686": "Allocation-only control passes; nested direct writer produces protected Unique-tag aliasing UB at state.rs conn.isopen while the original write_bytes_to_conn mutable RConn argument is live",
+    "public_gnu": "Pinned GNU comparison exposes three semantic differences: value of a partial line, value after partial writeLines, and completed blank-line prefix ending with an unfinished fragment"
+  },
+  "fixture_corrections": [
+    "Initial compiler diagnostics correct borrowed r_error strings and checked i64/usize length comparison; no production assertions or budgets weakened.",
+    "Final GNU predicates explicitly assert completed-line values rather than the initial includes-fragment predicates. Remove an incidental message from the stdout-only golden fixture; no message-routing fix is claimed.",
+    "The reader allocation-hook fixture now seeds one genuine complete line plus a partial fragment, preserving a real allocation hook after correcting GNU value semantics."
+  ],
+  "validation": {
+    "native_distinct_total": 23,
+    "suite_case_counts": {
+      "native-final": [
+        10
+      ],
+      "native-capture": [
+        4
+      ],
+      "native-printutils": [
+        8
+      ],
+      "native-gnu-green": [
+        1
+      ],
+      "miri-green": [
+        8
+      ],
+      "miri-owner": [
+        2
+      ],
+      "miri-value-final": [
+        1
+      ]
+    },
+    "gnu_public_assertions": 14,
+    "strict_isolated_i686_miri_distinct": 10,
+    "miri_scope": "Eight owned-operation cases pass; after the final completed-line/callout-check correction, rerun the revised value-reader case and two original-owner close/drop+replacement cases. Default isolation and strict provenance retained; no alias-check relaxation.",
+    "wasm": {
+      "node_total": 204,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 296,
+      "new_text_publication_node_checks": 4,
+      "original_limits": "64MiB session /256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "format_whitespace": "scoped rustfmt and git diff --check PASS"
+  },
+  "oracle": {
+    "schema_version": 1,
+    "source": {
+      "repository": "https://github.com/wch/r-source.git",
+      "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+      "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+      "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+    },
+    "runtime": {
+      "version": "4.7.0 Under development (unstable)",
+      "nickname": "Unsuffered Consequences",
+      "svn_revision": 90451,
+      "source_date": "2026-08-27T09:09:57Z"
+    },
+    "build": {
+      "runner_image": "ubuntu-24.04",
+      "configure_args": [
+        "--without-x",
+        "--without-recommended-packages",
+        "--disable-java",
+        "--without-blas",
+        "--without-lapack"
+      ]
+    }
+  },
+  "source_sha256": {
+    "crates/r-embed/tests/fixtures/text-publication-contract.R": "7ef07afb75d3abba843accd877b297ce15dc36a8b513b777ec2336bbff3967ad",
+    "crates/r-embed/tests/fixtures/text-publication-contract.out": "cc81694523cdfa7a44faaa4bab31ef34746b20555afbf991e1f4716110ea8b52",
+    "crates/r-embed/tests/text_publication_contract.rs": "7bd024e8385c5756790a821e709a92133a8933367750c358787c3b5754b47d5a",
+    "crates/rmath/src/mainutils/connections/direct_publication_tests.rs": "702415412b7f59d0ee68d9092681c434165b426cd91c9fcbba3739ec59a8a255",
+    "crates/rmath/src/mainutils/connections/file.rs": "38f32231f9e2e79ed10fe82ec9dcc4a9fe8114be5f2146b0c0e5fe4319e5aa8e",
+    "crates/rmath/src/mainutils/connections/lines.rs": "e3eb9e52306a20e8c64e3b222f29ead47e6d983be1e6d4ef6f758a2441000f59",
+    "crates/rmath/src/mainutils/connections/mod.rs": "7fd1f10e4883be8745096d9eeeb07aaefc85d91172cc6381617828e1236c0d98",
+    "crates/rmath/src/mainutils/connections/pipes.rs": "9e5dc88a3b3b1e353ee220e7ba6b460d809ebfdaf513b96bac5bd60287858d61",
+    "crates/rmath/src/mainutils/connections/state.rs": "21cff684131c35afb527a5bfbc7e63c88f139e3bae4d2894e71f8de0d0004351",
+    "crates/rmath/src/mainutils/connections/text_output.rs": "55584ca8a8fbe88d602586cd8306188265129b95d11dc83c50a42c4131693575",
+    "crates/rmath/src/mainutils/connections/text_publication.rs": "433efbfedc78c2d9e35a6a4472c49a3f57caa0c64d602f68a2a75b2c4a29f9f2",
+    "crates/rmath/src/mainutils/essentials/io/cat_message.rs": "7a86cc313c045ce296769d54a4747fb959b4e64ca1bc21c9252d01aa081a41ec",
+    "crates/rmath/src/mainutils/essentials/io/chars.rs": "527e7c27b4d2620d48f299ad9f0ec6d04c2c384b9bd19900f32181e85c30fa7f",
+    "tests/browser/portable-package-contracts.mjs": "39ad88c4c21b3a1afca4d17ebf889144cff87637fce9eed7e516ab122f51d900",
+    "tests/browser/text-publication.cjs": "198eb6f925695d96b411d0d980424f74fd1f68f07b79e4ec016bb7eb77180285"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29539374,
+      "sha256": "461dbc8ea415b7283884f270f5ba447fe481deabafb6a3a27a104f791dffc0ee"
+    },
+    "output": {
+      "bytes": 25247061,
+      "sha256": "1c70a66a780659a135c1fc775485176ee5fa7c4a582818c5cf55a1ebbf40c72f"
+    }
+  },
+  "evidence_directory": "target/direct-publication-evidence/",
+  "evidence_sha256": {
+    "android.log": "624c3b220f90a669768844fccddd5254b10f701e50e0735e27a6fc03a0e3f5f1",
+    "clippy.log": "66e30f4b80ba4029712341e02a9fa22774349783d4a4f1e0766feb0e14d31d85",
+    "gnu-contract-stderr-green.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gnu-contract-stderr.log": "10a098c572c8e4b36a98684953ce62246c7deef754485e50f315a810611bc62c",
+    "gnu-partial-values.out": "c83c82c2938191a355cdcfa27907ff43013b8fc48edddcfcf5151800273dc7ff",
+    "miri-green.log": "bfa1721beb4b77d77e355137c9ff82e90cf7002d5766842392f173af06849bfd",
+    "miri-owner.log": "f1af0c631f2a578aa9f8c09d15aab14a10e9536f96e11e983c6fe15efe9a4ca4",
+    "miri-red.log": "852f31bfd013a04754635ca917959bc82e6b4d0cbcb9e2c2d9f6148786368790",
+    "miri-value-final.log": "a555ad8ca0b41e8cc99bbcdb763e2576450c513899299869a007d378b6ac1c5c",
+    "native-capture.log": "8207279dfc3c440fd90f8f4151ef1acbd17e3086f463b1cb0d652ddfe21a8051",
+    "native-controls.log": "7ecb90aaa58ffd808073564e311f77bd47b9e98b9bf57493d10a432266db78ec",
+    "native-final.log": "6f0bd96399aa7306b425bd0220d15eec851d91114e39f950f80d810f1513214d",
+    "native-gnu-green.log": "7d5bceaf52c8fb61b5c4884ae1b0f61faf700e95918732d63c5346f9833bc419",
+    "native-gnu-red.log": "dd67b8d4730e9b96b640665d19619a219a299f3019b226c53491b893fbb2d1d3",
+    "native-green-2.log": "2a78e7796dc62873275b1ad51378ab2c3c7a57d0fe0862aa8cb50b8f405a63e3",
+    "native-green-3.log": "1246890e9d0876f9b91c886a8dd5b2d5163a026b656a7dc6b492518d31c4aee9",
+    "native-green.log": "6a30c34986425d8235dc7a48e1cb082fc401b5671bc4bee4592aeeffc19af712",
+    "native-owner.log": "2009a442c3d8abf2d645f70503bb329a04c2eb0d46f12aa390da90e795e0915c",
+    "native-printutils.log": "5991b5424c68d414d659e32f7f8c8a45c4cd9940bdb5045dc9f8d15ce10e3b54",
+    "native-red.log": "6aeed3a0ffca3b2c54a1ad4b71b20f475f434c5707204d07a5473ba65fde86bb",
+    "wasm-build.log": "ec634dfb5721635eb4f6d2287a0a8fde26e57f12cb4749d933053a6d3093f4a4",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "0dc9db40ba9772e7ebe9ae4a1a8e882b057724da7f0cb6ac9a67a695e9a93cbd",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "7f58191896dcf9b5854d50056142944965271fbff3d17ac5fdb4e622c12b4036",
+    "wasm-web-contracts.log": "989ed9c1ff0ce2ca75445a8cd665229a5cc08ee1c7a9443d0fd815c590ba9f08"
+  },
+  "limits": [
+    "Separate active-sink close indexing and private cleanup-guard allocation identity audit remains rport-hah9u.80.3. Parent80 is not closed by this milestone.",
+    "This owns and isolates the actual text publication storage. Retained line/name/conversion native buffer admission remains within cvs2 total native accounting; no global RSS or complete R parity claim.",
+    "The canonical connection table and unrelated connection readers/summary/native provider loans remain broader engine ownership work; this is a bounded text publication migration.",
+    "User graphics changes were present during validation and excluded from this commit. The next sink-close test module was added unstaged after the milestone builds; source hashes refer to the staged milestone. No immutable full-build/whole-CI claim."
+  ]
+}

@@ -83,12 +83,10 @@ impl Drop for MessageSinkGuard {
 impl CaptureFileGuard {
     fn close(&mut self) {
         if let Some(index) = self.connection.take() {
+            crate::mainutils::connections::close_connection_at_in(self.instance, index as i32);
             unsafe {
-                if let Some(mut connection) = (&mut (*self.instance).connections_state.table)
-                    .get_mut(index)
-                    .and_then(Option::take)
-                {
-                    crate::mainutils::connections::close_connection_inner(&mut connection);
+                if let Some(slot) = (&mut (*self.instance).connections_state.table).get_mut(index) {
+                    *slot = None;
                 }
             }
         }

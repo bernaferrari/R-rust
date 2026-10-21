@@ -96,15 +96,8 @@ pub struct RConn {
     pub text_data: String,
     /// Current position in text_data.
     pub text_pos: usize,
-    /// Output text lines (for textConnection writing).
-    pub text_lines: RefCell<Vec<String>>,
-    /// Write-mode textConnection variable name (`textConnection("rval", "w")`).
-    pub text_var: Option<String>,
-    /// Environment that receives `text_var` updates. Null when unused.
-    pub text_env: SEXP,
-    pub text_incomplete: bool,
-    /// Complete lines already stored in the bound STRSXP.
-    pub text_published: usize,
+    pub(super) text_output: Option<super::text_output::TextOutput>,
+    pub(super) text_busy: bool,
 
     /// Child process (for pipe connections).
     pub child: Option<Child>,
@@ -134,16 +127,13 @@ impl RConn {
             incomplete: false,
             status: NA_INTEGER,
             kind,
-            text_var: None,
-            text_env: ptr::null_mut(),
+            text_output: None,
+            text_busy: false,
 
             raw_pos: 0,
             raw_data: Vec::new(),
             text_data: String::new(),
             text_pos: 0,
-            text_lines: RefCell::new(Vec::new()),
-            text_incomplete: false,
-            text_published: 0,
 
             child: None,
             file: None,
@@ -152,58 +142,21 @@ impl RConn {
             pushback: Vec::new(),
         }
     }
-
-    /// GNU write-mode textConnection: assign captured lines to `object`.
-    pub unsafe fn assign_text_output(&mut self) {
-        unsafe {
-            let Some(name) = self.text_var.as_deref() else {
-                return;
-            };
-            if self.text_env.is_null() || name.is_empty() {
-                return;
-            }
-            let Ok(cname) = CString::new(name) else {
-                return;
-            };
-            let published = self.text_published;
-            let incomplete = self.text_incomplete;
-            let lines = self.text_lines.borrow();
-            let complete = lines.len() - usize::from(incomplete && !lines.is_empty());
-            let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
-            let old = crate::sexp::envir::R_findVarInFrame(self.text_env, sym);
-            let reuse = TYPEOF(old) == SEXPTYPE::STRSXP
-                && XLENGTH(old) as usize == published
-                && published <= complete;
-            let ans = if reuse {
-                crate::mainutils::builtin::xlengthgets(old, complete as R_xlen_t)
-            } else {
-                Rf_allocVector(SEXPTYPE::STRSXP, complete as c_int)
-            };
-            if ans.is_null() {
-                return;
-            }
-            let _ans = protect(ans);
-            let start = if reuse { published } else { 0 };
-            for (i, line) in lines.iter().take(complete).enumerate().skip(start) {
-                let ch = Rf_mkChar(CString::new(line.as_str()).unwrap_or_default().as_ptr());
-                SET_STRING_ELT(ans, i as R_xlen_t, ch);
-            }
-            drop(lines);
-            crate::sexp::envir::defineVar(sym, ans, self.text_env);
-            self.text_published = complete;
-        }
-    }
 }
 
 /// Allocation identity is retained across providers, without retaining the
 /// connection or its runtime. The retained Rc prevents allocator-address ABA.
 #[derive(Clone)]
 pub(crate) struct ConnectionToken {
-    index: c_int,
+    pub(super) index: c_int,
     identity: Rc<()>,
 }
 
 impl ConnectionToken {
+    pub(super) fn matches(&self, connection: &RConn) -> bool {
+        Rc::ptr_eq(&self.identity, &connection.identity)
+    }
+
     pub(crate) fn same_connection(&self, other: &Self) -> bool {
         self.index == other.index && Rc::ptr_eq(&self.identity, &other.identity)
     }
@@ -381,21 +334,7 @@ pub(crate) fn write_output_sinks_between(
                 };
                 (connection, sink.sink_split[depth])
             };
-            let table = &mut (*instance).connections_state.table;
-            let Some(conn) = usize::try_from(connection)
-                .ok()
-                .and_then(|index| table.get_mut(index))
-                .and_then(Option::as_mut)
-            else {
-                r_error("invalid connection");
-            };
-            if !conn.isopen {
-                r_error("connection is not open");
-            }
-            if !conn.canwrite {
-                r_error("cannot write to this connection");
-            }
-            write_bytes_to_conn(conn, bytes);
+            connection_write_bytes(connection, bytes);
             if !split {
                 return true;
             }
@@ -692,6 +631,26 @@ pub fn read_raw_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
 /// Write bytes to a connection using the Rust connection table.
 pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     let index = checked_connection_index(n);
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    {
+        let table = connection_table();
+        let conn = table[index].as_ref().unwrap();
+        if !conn.isopen {
+            r_error("connection is not open");
+        }
+        if !conn.canwrite {
+            r_error("cannot write to this connection");
+        }
+    }
+    if let Some(mut writer) = super::text_publication::TextWriter::take(owner, n) {
+        writer.append(bytes);
+        return;
+    }
     let mut table = connection_table();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
@@ -749,43 +708,7 @@ pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
     bytes
 }
 
-fn append_text_connection_write(conn: &mut RConn, bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
-    }
-    let text = String::from_utf8_lossy(bytes);
-    let ends_with_nl = text.ends_with('\n');
-    let mut pieces: Vec<&str> = text.split('\n').collect();
-    if ends_with_nl {
-        pieces.pop();
-    }
-    {
-        let mut lines = conn.text_lines.borrow_mut();
-        for (i, piece) in pieces.iter().enumerate() {
-            if i == 0 && conn.text_incomplete {
-                if let Some(last) = lines.last_mut() {
-                    last.push_str(piece);
-                } else {
-                    lines.push((*piece).to_string());
-                }
-            } else {
-                lines.push((*piece).to_string());
-            }
-        }
-    }
-    if !pieces.is_empty() {
-        conn.text_incomplete = !ends_with_nl;
-    }
-    // Rebuilding the STRSXP on every partial chunk is quadratic. Complete
-    // lines are published here; close() assigns any trailing fragment.
-    if ends_with_nl {
-        unsafe {
-            conn.assign_text_output();
-        }
-    }
-}
-
-pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
+pub(crate) fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
     match &mut conn.kind {
         ConnKind::AnonymousFile(file) => {
             if let Err(message) = file.write(bytes) {
@@ -832,7 +755,7 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
             }
         }
         ConnKind::RawConnection => conn.raw_data.extend_from_slice(bytes),
-        ConnKind::TextConnection => append_text_connection_write(conn, bytes),
+        ConnKind::TextConnection => r_error("text writes require an owned publication operation"),
 
         ConnKind::Terminal(name) if name == "stdout" => {
             let stdout = io::stdout();

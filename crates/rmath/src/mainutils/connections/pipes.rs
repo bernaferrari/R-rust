@@ -225,7 +225,6 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
             (desc, arg1, open, arg3)
         };
 
-        let ncon = next_connection();
         let mut conn = RConn::new(
             "textConnection",
             &description,
@@ -253,18 +252,33 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
             conn.isopen = true;
             conn.canread = false;
             conn.canwrite = true;
-            if TYPEOF(stext) == SEXPTYPE::STRSXP && LENGTH(stext) == 1 {
-                conn.text_var = Some(string_elt(stext, 0));
+            let name = if TYPEOF(stext) == SEXPTYPE::STRSXP && LENGTH(stext) == 1 {
+                Some(string_elt(stext, 0))
             } else if !description.is_empty() && description != "textConnection" {
-                conn.text_var = Some(description.clone());
-            }
-            conn.text_env = text_connection_env(local_arg, env);
-            if !conn.text_env.is_null() {
-                crate::sexp::protect::R_PreserveObject(conn.text_env);
-                conn.assign_text_output();
-            }
+                Some(description.clone())
+            } else {
+                None
+            };
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+            let environment = text_connection_env(local_arg, env);
+            let environment = if environment.is_null() {
+                None
+            } else {
+                Some(
+                    owner
+                        .sexp(environment)
+                        .and_then(crate::sexp::Sexp::into_owned)
+                        .unwrap_or_else(|e| r_error(&e.to_string())),
+                )
+            };
+            let mut output = super::text_output::TextOutput::new(name, environment);
+            super::text_publication::publish(owner, None, &mut output, false);
+            conn.text_output = Some(output);
         }
 
+        let ncon = next_connection();
         let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
@@ -315,28 +329,12 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         if !inherits_class(scon, "connection") {
             r_error("'con' is not a connection");
         }
-        let i = as_integer(scon) as usize;
-        let table = connection_table();
-        let Some(conn) = table[i].as_ref() else {
-            r_error("invalid connection");
-        };
-
-        if !conn.canwrite {
-            r_error("'con' is not an output textConnection");
-        }
-
-        let lines = conn.text_lines.borrow();
-        let nlines = lines.len() as c_int;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
-        if !ans.is_null() {
-            for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str()).unwrap_or_default();
-                let charsxp = Rf_mkChar(c_line.as_ptr());
-                SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
-            }
-        }
-
-        ans
+        let i = checked_connection_index(as_integer(scon));
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| r_error(&e.to_string()));
+        let writer = super::text_publication::TextWriter::take(owner, i as c_int)
+            .unwrap_or_else(|| r_error("'con' is not an output textConnection"));
+        writer.value().as_raw()
     }
 }
 

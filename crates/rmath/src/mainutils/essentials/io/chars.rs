@@ -92,11 +92,8 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
         }
     }
     if opened_here {
-        let index = crate::mainutils::connections::checked_connection_index(connection);
-        let mut table = crate::mainutils::connections::connection_table();
-        if let Some(conn) = table[index].as_mut() {
-            crate::mainutils::connections::close_connection_inner(conn);
-        }
+        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+        crate::mainutils::connections::close_connection_at_in(instance, connection);
     }
     String::from_utf8_lossy(&bytes).into_owned()
 }
