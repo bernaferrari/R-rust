@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Original raw input roots, admitted bulk copies and native character tags.
 use crate::sexp::{
+    diagnostic::EvaluationError,
     encoding::{self, TextEncoding},
     ffi::{NA_LOGICAL, SEXPTYPE},
     memory::WorkspaceReservation,
@@ -63,10 +64,10 @@ pub(super) fn evaluate(
     access: &RuntimeAccess,
     arguments: Sexp<'static>,
     logical: impl FnOnce(&Sexp<'_>) -> SexpResult<i32>,
-) -> SexpResult<Sexp<'static>> {
+) -> Result<Sexp<'static>, EvaluationError> {
     let input = arguments.try_car()?.into_owned()?;
     if input.typeof_() != SEXPTYPE::RAWSXP {
-        return Err(error("argument 'x' must be a raw vector"));
+        return Err(error("argument 'x' must be a raw vector").into());
     }
     access.domain().link(&input)?;
     // Select both arguments before coercion can notify or reenter user code.
@@ -79,7 +80,7 @@ pub(super) fn evaluate(
     let multiple = logical(&flag)?;
     access.require_active()?;
     if multiple == NA_LOGICAL {
-        return Err(error("argument 'multiple' must be TRUE or FALSE"));
+        return Err(error("argument 'multiple' must be TRUE or FALSE").into());
     }
     if multiple != 0 {
         let len = input.len();
@@ -105,15 +106,21 @@ pub(super) fn evaluate(
     }
     let bytes = copy(&input, len, access)?;
     if bytes.data.contains(&0) {
-        let diagnostic = encoding::nul_diagnostic::format(
+        let limit = access.with_native(|original| {
+            let limit = crate::mainutils::errors::diagnostic_message_limit();
+            original.require_active()?;
+            Ok(limit)
+        })?;
+        let diagnostic = encoding::nul_diagnostic::format_bounded(
             &arguments,
             &bytes.data,
             TextEncoding::Native,
             crate::mainutils::platform::locale_is_utf8(),
+            limit,
         )?;
-        return Err(SexpError::EvaluationFailed {
-            message: diagnostic.into_message(),
-        });
+        return Err(EvaluationError::Diagnostic(
+            diagnostic.into_owned(access, &arguments)?,
+        ));
     }
     let mut out = vector(access, 1)?;
     out.try_set_string_elt(0, character(access, &bytes.data)?)?;

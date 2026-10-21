@@ -1350,6 +1350,14 @@ impl WorkspaceReservation {
         self.reservation
     }
 
+    /// A prepared buffer can only publish against the ledger that admitted it.
+    pub(crate) fn belongs_to(&self, ledger: &MemoryLedger) -> bool {
+        let counters = ledger.counters();
+        Rc::ptr_eq(&self.allocated, &counters.allocated)
+            && Rc::ptr_eq(&self.reservation.counter, &counters.transient)
+            && Rc::ptr_eq(&self.limit, &counters.limit)
+    }
+
     pub(crate) fn try_resize(&mut self, bytes: usize) -> Option<()> {
         let others = self
             .reservation

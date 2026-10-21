@@ -1,0 +1,144 @@
+{
+  "date": "2026-10-21",
+  "issues": [
+    "rport-evnx.5.2"
+  ],
+  "source_base": "6abad60ebe75e68bf12b72b26492d07fe61a0469",
+  "behavior": [
+    "RawToChar/iconv NUL failures carry an owned canonical diagnostic instead of a String escaping after its formatting ticket drops. Consume the already admitted String as its original Vec without another scratch copy; verify exact original ledger and physical capacity before canonical Native character publication. Data deallocates before its ticket, while the published root/payload retains the original physical charge.",
+    "Use the original interpreter warning.length, capped by GNU8192byte buffer, minus terminator. Preserve default999-byte text and repair UTF8 cut points without changing C byte handling.",
+    "Share the declaredLatin1 CP1252 diagnostic policy: mapped80..9F symbols and literal escapes for the five undefined bytes, C original-byte escapes; pinned128highbytes in both profiles including NBSP/softHyphen controls. Explicit ISO input/output codecs remain separate.",
+    "Both original native entry boundaries dispatch typed diagnostics through canonical conditions, propagating allocation failures and callback panics with original owner checks."
+  ],
+  "failures_and_repairs": {
+    "actual_lifetime_reds": "Raw returned-message test FAILS with String held. Corrected iconv test also FAILS after temporary-output fullGC while original input/NA roots are retained, excluding reclaimed inputs from the baseline. Original iconv probe did not retain those witness roots; use correctedRED as evidence.",
+    "length_reds": "GNU6initial rows PASS both child profiles; native public2FAIL lists4wrong rows, immutable oldWasm4wrong/2controls at warning.length100/2000. Final9GNU rows PASS both profiles; expanded old optimized module7wrong/2controls, including Native tag of the printable Latin1 diagnostic.",
+    "latin_red": "Actual original formatter FAILS byte80: U0080 escape versus GNU euro. New oracle-derived128byte UTF8 fixture plus all128C escape expectations pass after sharing policy. Final9GNU rows PASS both profiles; old optimized module expanded comparison recorded separately.",
+    "test_interface_changes": "Original foreign raw input assertion retains exact rejected address, now nested in EvaluationError::Access. Returned-message tests use typed Diagnostic with unchanged retained-byte admission threshold. Shared actual constructor fixture preserves original sessions/gap1/wait1/assertions and strengthens detachment by clearing both CAR/CDR; no provenance/alias/isolation relaxation.",
+    "compile_repair": "A broad textual boundary edit initially touched charToRaw by mistake. Restore only that untouched prefix from the known HEAD version, then update rawToChar specifically; final raw11 and complete browser regressions PASS. No user files restored."
+  },
+  "validation": {
+    "native_distinct": 48,
+    "native_group_counts": {
+      "retained_errors": 2,
+      "nul_diagnostic": 18,
+      "actual_constructor": 10,
+      "raw_regression": 11,
+      "iconv_regression": 24,
+      "public_each_locale": 2
+    },
+    "counting": "Union of exact test names; groups overlap and each public test runs in UTF8/C.",
+    "public_contract": "9independent assertions with recovery after each plus complete fixture, both child profiles.",
+    "strict_default_isolated_i686_miri": 20,
+    "miri_groups": {
+      "nul_diagnostic": 18,
+      "retained_errors": 2
+    },
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; unchanged default isolation",
+    "wasm": {
+      "node": 444,
+      "web_generations": [
+        56,
+        56
+      ],
+      "total": 556,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi alltargets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android cross-check PASS",
+    "format_whitespace": "ScopedPASS; later test-assertion line wrapping only, no semantic source change"
+  },
+  "ownership_cases": [
+    "Actual original raw and iconv source survives argument detachment and fullGC during message character publication with Native tag and live original ticket",
+    "Both publication callbacks propagate panic991 and clear in_gc/workspace",
+    "Both actual facade revocations cannot publish success",
+    "Prepared buffer promotion retains canonical original physical charge after workspace release",
+    "Foreign ticket rejects before current-heap allocation and releases original charge",
+    "Underfunded capacity rejects before publication",
+    "Both returned error messages stay charged through their own lifetime, including fullGC of temporary iconv output",
+    "Existing quota, teardown, constructor and Unicode codec controls remain unchanged"
+  ],
+  "oracle": {
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "version": "R4.7devel r90451",
+    "host": "Darwin aarch64-apple-darwin25.6.0; Apple/GNU libiconv1.11",
+    "locales": [
+      "en_US.UTF-8",
+      "C"
+    ],
+    "reference_source": "ignored r-source d4cc5d9e196a144bbb087a798bb945b37121383b envir.c4781 error()/EncodeString, errors.c error()/Rvsnprintf_mbcs, sysutils.c declaredLatin1 translation"
+  },
+  "remaining_parent_inventory": [
+    "evnx.5.3 try text/geterrmessage rawbyte/default-state transport: actual native2FAIL/optimizedWasm2wrong1control, original condition attribute bytes PASS",
+    "strict-path String error lifetime remains open",
+    "cvs2 full physical control-metadata/accounting and whole safe-engine ownership remain open",
+    "cvs2.15 original full-base i686 Miri stopped with address-space exhaustion, not UB/PASS; same constructor/cap/strict flags rerun on x86_64 still pending"
+  ],
+  "source_sha256": {
+    "crates/r-embed/tests/fixtures/nul-error-lifetime-contract.R": "8be8631a272b9c3af0ec17ec432f0d58b4670d983b12b9718e452c1a75454661",
+    "crates/r-embed/tests/fixtures/nul-error-lifetime-contract.out": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745",
+    "crates/r-embed/tests/nul_error_lifetime_public.rs": "a2b0b4c89b38678af349f97324f1770e5fabc4ac3086af7ea907abec78e232fb",
+    "crates/rmath/src/mainutils/essentials/mathstats/math1.rs": "724c63ba446b7e719d020a6bf3048fce9ff5b5b5d63e038e86f88143f805b5a8",
+    "crates/rmath/src/mainutils/essentials/mathstats/raw_to_char.rs": "ca25e84f9dac77c9c465e0371bc7bd55f807a369e27e69b833761b9a77f6f5bd",
+    "crates/rmath/src/mainutils/essentials/mathstats/raw_to_char_workspace_tests.rs": "54edbb783bf1a6a21c3002634f8fa3d4e3d989a9c99f6f17ca362c191e9cc83f",
+    "crates/rmath/src/mainutils/essentials/strings/encodings.rs": "2c946c17adbe572b5a257e7da5fc7aaffac2d40ba31f5a775ade3065111e73c1",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_owned.rs": "21431551688a16a395cc07c233ea26a7a65eaba3efed976fe7e607adb84db0c6",
+    "crates/rmath/src/mainutils/essentials/strings/iconv_ownership_tests.rs": "9aa32925959a5d9edbba3094be472cd107655521704c4555e6f5ab45db46ca39",
+    "crates/rmath/src/sexp/diagnostic.rs": "300e4e38c4b548083dfca771a7fb5242b5d7e5e7396e61bbf4185f8bab1d3c0e",
+    "crates/rmath/src/sexp/diagnostic_boundary_tests.rs": "9100b490649a1b9fcf7faff9e297e239d5d7562c605d77c88f641e924c2d4c65",
+    "crates/rmath/src/sexp/diagnostic_tests.rs": "c492fcdfe287884130c02204a74faca0d98dafbd617631baf60397be939a1ccd",
+    "crates/rmath/src/sexp/encoding/nul_diagnostic.rs": "b7ada78b072eb7345d637eefdf12ff2617d71ef89257351a54230259daf8881b",
+    "crates/rmath/src/sexp/encoding/nul_diagnostic_latin1_utf8.out": "cbbdfb615c23cc27234bd7fb14e132b706a2d9137e4bd4bb408e04d68e3db1f1",
+    "crates/rmath/src/sexp/memory/arena.rs": "e4bebed528c644c0d5df0eeb3ee69d7046d51cb3dd340fc55930618fb7fcab46",
+    "tests/browser/nul-error-lifetime.cjs": "170b396dc82cfbd370c726a6f731be330f095dd04d3f42263d99021c4fe35c2b",
+    "tests/browser/portable-package-contracts.mjs": "9f7c7f9258babcbb8ae00b8ec587bc6915aa3d4e10b4150835f7e872daec2814"
+  },
+  "source_hash_scope": "Staged final NUL versions. Untracked try/geterrmessage RED tests/fixtures and user graphics excluded.",
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29630815,
+      "sha256": "a3f24c8e7bae7b8a08ff29c2960d7e2cb405e814e4359232fa60325f74ae87d7"
+    },
+    "output": {
+      "bytes": 25313562,
+      "sha256": "44da59fdfc583a0094167dfc2fc9e4fc61597f051c214e6a1dd3132d8ab90ead"
+    }
+  },
+  "evidence_logs": {
+    "native-error-lifetime-green.log": "e91445af8f6e8bc9ad496510c59fb8b9485ae1f5c06af7570d2046489fdc1c82",
+    "native-nul-diagnostic.log": "4d0561ec963a43ad0abf6e8da8e453418369fa50dfbd8e265cbf08fde1733d10",
+    "native-constructor.log": "e365dd137c2154276a891568fe9482a069d6d0581f3ce67b1e44ce0e185c6834",
+    "native-raw-regression.log": "50d1d959bc5d7497f5fba8fcf2426eac35693df4e1246b57aa0c238a34805987",
+    "native-iconv-regression.log": "d0caf6330e19711bc86f1df4038f6cdf9136d1b2c59e5659826d88133fbd6e7d",
+    "native-final-public-utf8.log": "b817970684f82674117cedf4b300ec3eedf8a2f26819849302eb26ef87f2671f",
+    "native-final-public-c.log": "1617da6a3676be58a8c5e205d2d178abfd564c1d2666a72fdc05aba9bbe6d12c",
+    "native-raw-error-red.log": "f63096480f2aba4b4fefeeb52f3e8a606176c75b02a5128844485910492c2079",
+    "native-iconv-error-corrected-red.log": "fc61984147b9032b62c4e09879fadec9a03d6a211498311e072ed5bd5bdf52ec",
+    "native-public-red.log": "717f0e673fb9e860dddc7a0059daf01ee250ec4261d50ede036bc514b745cc50",
+    "native-latin-nul-red.log": "a6be06f27fcf02c287cdf2f22ab0825bb1c1d07fdf7e872f407dd50420d1f395",
+    "gnu-final-contract-utf8.log": "fe6c616a656a64f9fdea79dd5626a638c4ccd616235cfb2f8fb021f101f35936",
+    "gnu-final-contract-c.log": "fe6c616a656a64f9fdea79dd5626a638c4ccd616235cfb2f8fb021f101f35936",
+    "gnu-latin-nul-utf8.log": "d2babc2e901180eddc003c29982aff587ae21327f352e8f1b74b188a09e03fa9",
+    "gnu-latin-nul-c.log": "77d2e1b0cd834a45e526a6ce26ba89d7f89161be1c8bc026a9fe17d1ac89a1e8",
+    "miri-nul-diagnostic.log": "e2d0dcdcf521335f0137f327d9de35989afdd3a30b6244251729f7238b7476c6",
+    "miri-retained-errors.log": "d809df31d6b0bb77c56d4e41ee5a9b70a0909b77925053c0465cbe7f9c743878",
+    "wasm-final-red.log": "088851272509489c19ca3f0c84b92330df44426db13b0b0d18018870a20cfdaa",
+    "clippy.log": "66bee7e3201529ab7b6d2b6e4ae9be23050f1c4126f0e448630befb7cd2b21aa",
+    "android.log": "50a41b9b95067c7a213446838a5e791c515b70752aff7ce6756905f126a4687e",
+    "wasm-build.log": "bffc1ff3e247aa56b1faa27a2ec70c81ebda0bc27b5f52cfe53444ed723f6f05",
+    "wasm-validation.log": "dabe32a10fa3ab4aeef3fefca48eeb494b2a748dfd6dc6089270fe942ae8d23e"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  }
+}

@@ -183,10 +183,10 @@ pub(super) fn evaluate(
     args: Value,
     na: Value,
     boolean: impl Fn(&Value) -> SexpResult<i32>,
-) -> SexpResult<Value> {
+) -> Result<Value, crate::sexp::diagnostic::EvaluationError> {
     let x = argument(&args, 0, b"x")?.unwrap_or_else(|| access.domain().nil());
     if x.is_nil() {
-        return inventory(access);
+        return inventory(access).map_err(Into::into);
     }
     let from = label(&args, 1, "from")?;
     let to = label(&args, 2, "to")?;
@@ -203,7 +203,7 @@ pub(super) fn evaluate(
             None
         } else {
             if value.typeof_() != SEXPTYPE::STRSXP || value.len() != 1 {
-                return Err(error("invalid 'sub' argument"));
+                return Err(error("invalid 'sub' argument").into());
             }
             let value = value.try_string_elt(0)?.into_owned()?;
             if value.is_na_string() {
@@ -234,7 +234,7 @@ pub(super) fn evaluate(
     let raw = flag(5, b"toRaw", false)?;
     let list = x.typeof_() == SEXPTYPE::VECSXP;
     if !list && x.typeof_() != SEXPTYPE::STRSXP {
-        return Err(error("'x' must be a character vector"));
+        return Err(error("'x' must be a character vector").into());
     }
     let n = x.len();
     access.require_active()?;
@@ -263,9 +263,9 @@ pub(super) fn evaluate(
             continue;
         }
         if list && value.typeof_() != SEXPTYPE::RAWSXP {
-            return Err(error(
-                "'x' must be a character vector or a list of NULL or raw vectors",
-            ));
+            return Err(
+                error("'x' must be a character vector or a list of NULL or raw vectors").into(),
+            );
         }
         let mut source_codec = codec(from_name);
         if !list && from_name.is_empty() {
@@ -279,7 +279,8 @@ pub(super) fn evaluate(
         let (Some(source_codec), Some(target)) = (source_codec, codec(to_name)) else {
             return Err(error(format!(
                 "unsupported conversion from '{from_name}' to '{to_name}'"
-            )));
+            ))
+            .into());
         };
         let bytes = if list {
             read_raw(&value, &args)?
@@ -325,13 +326,21 @@ pub(super) fn evaluate(
                 TextEncoding::Native
             };
             if bytes.data.contains(&0) {
-                let diagnostic = super::iconv_diagnostic::format(
+                let limit = access.with_native(|original| {
+                    let limit = crate::mainutils::errors::diagnostic_message_limit();
+                    original.require_active()?;
+                    Ok(limit)
+                })?;
+                let diagnostic = super::iconv_diagnostic::format_bounded(
                     &args,
                     &bytes.data,
                     tag,
                     crate::mainutils::platform::locale_is_utf8(),
+                    limit,
                 )?;
-                return Err(error(diagnostic.into_message()));
+                return Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(
+                    diagnostic.into_owned(access, &args)?,
+                ));
             }
             out.try_set_string_elt(i, character(access, &bytes.data, tag)?)?;
         }

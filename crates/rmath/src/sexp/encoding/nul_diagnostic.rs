@@ -4,6 +4,7 @@ use crate::sexp::{
     encoding::TextEncoding,
     memory::WorkspaceReservation,
     object::{Sexp, SexpError, SexpResult},
+    owner::RuntimeAccess,
 };
 const LIMIT: usize = 999;
 const PREFIX: &str = "embedded nul in string: '";
@@ -12,8 +13,21 @@ pub(crate) struct Diagnostic {
     _ticket: WorkspaceReservation,
 }
 impl Diagnostic {
-    /// Error text leaves the operation as a bounded host-facing diagnostic.
-    /// Its formatting allocation has completed; no further copy is needed.
+    pub(crate) fn into_owned(
+        self,
+        access: &RuntimeAccess,
+        parent: &Sexp<'_>,
+    ) -> SexpResult<crate::sexp::diagnostic::Diagnostic> {
+        crate::sexp::diagnostic::Diagnostic::from_workspace(
+            access,
+            parent,
+            self.message.into_bytes(),
+            self._ticket,
+        )
+    }
+
+    // Only textual fixture assertions extract an uncharged host string.
+    #[cfg(test)]
     pub(crate) fn into_message(self) -> String {
         self.message
     }
@@ -82,13 +96,10 @@ fn visit(bytes: &[u8], mut encoding: TextEncoding, utf8: bool, mut emit: impl Fn
             }
         } else if encoding == TextEncoding::Latin1 {
             if utf8 {
-                if char::from(b).is_control() {
-                    raw[..2].copy_from_slice(b"\\u");
-                    hex(&mut raw[2..6], u32::from(b), false);
-                    (6, 1)
-                } else {
-                    (char::from(b).encode_utf8(&mut raw).len(), 1)
-                }
+                let mut encoded = [0; 4];
+                let text = super::declared_latin1::encode(b, &mut encoded);
+                raw[..text.len()].copy_from_slice(text.as_bytes());
+                (text.len(), 1)
             } else {
                 raw[0] = b'<';
                 hex(&mut raw[1..3], u32::from(b), false);
@@ -163,17 +174,18 @@ fn capped_visit(
     bytes: &[u8],
     encoding: TextEncoding,
     utf8: bool,
+    limit: usize,
     mut emit: impl FnMut(&str),
 ) -> usize {
     let mut size = 0;
     visit(bytes, encoding, utf8, |part| {
-        let mut n = part.len().min(LIMIT - size);
+        let mut n = part.len().min(limit - size);
         while !part.is_char_boundary(n) {
             n -= 1;
         }
         emit(&part[..n]);
         size += n;
-        n == part.len() && size < LIMIT
+        n == part.len() && size < limit
     });
     size
 }
@@ -183,7 +195,17 @@ pub(crate) fn format(
     encoding: TextEncoding,
     utf8: bool,
 ) -> SexpResult<Diagnostic> {
-    let size = capped_visit(bytes, encoding, utf8, |_| {});
+    format_bounded(parent, bytes, encoding, utf8, LIMIT)
+}
+
+pub(crate) fn format_bounded(
+    parent: &Sexp<'_>,
+    bytes: &[u8],
+    encoding: TextEncoding,
+    utf8: bool,
+    limit: usize,
+) -> SexpResult<Diagnostic> {
+    let size = capped_visit(bytes, encoding, utf8, limit, |_| {});
     let node = parent.allocation()?;
     let mut ticket = node
         .heap_identity()
@@ -195,7 +217,7 @@ pub(crate) fn format(
     ticket
         .try_resize(message.capacity())
         .ok_or_else(allocation)?;
-    let copied = capped_visit(bytes, encoding, utf8, |part| message.push_str(part));
+    let copied = capped_visit(bytes, encoding, utf8, limit, |part| message.push_str(part));
     debug_assert_eq!(copied, size);
     debug_assert_eq!(message.len(), size);
     Ok(Diagnostic {
@@ -208,6 +230,38 @@ pub(crate) fn format(
 mod tests {
     use super::*;
     use crate::sexp::{RSession, memory::ArenaBudget};
+    #[test]
+    fn nul_diagnostic_declared_latin1_matches_all_pinned_gnu_high_bytes() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let parent = owner
+                .node_factory()
+                .character("anchor")
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let cases = include_str!("nul_diagnostic_latin1_utf8.out")
+                .lines()
+                .collect::<Vec<_>>();
+            assert_eq!(cases.len(), 128);
+            for line in cases {
+                let (byte, expected) = line.split_once(' ').unwrap();
+                let byte = byte.parse::<u8>().unwrap();
+                let formatted =
+                    format(&parent, &[byte, 0, b'A'], TextEncoding::Latin1, true).unwrap();
+                assert_eq!(formatted.message, expected, "declared byte {byte:02x}");
+                drop(formatted);
+                let formatted =
+                    format(&parent, &[byte, 0, b'A'], TextEncoding::Latin1, false).unwrap();
+                assert_eq!(
+                    formatted.message,
+                    std::format!("embedded nul in string: '<{byte:02x}>'")
+                );
+            }
+        });
+    }
+
     #[test]
     fn iconv_nul_workspace_admits_exact_bound_and_recovers_under_unchanged_limit() {
         let session = RSession::new_for_gc_tests();

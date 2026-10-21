@@ -197,3 +197,123 @@ fn owned_diagnostic_source_panic_releases_original_copy_ticket() {
         );
     });
 }
+
+fn prepared(parent: &Sexp<'_>, source: &[u8]) -> (Vec<u8>, WorkspaceReservation) {
+    let mut ticket = parent
+        .allocation()
+        .unwrap()
+        .heap_identity()
+        .byte_ledger()
+        .reserve(source.len())
+        .unwrap();
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(source.len()).unwrap();
+    ticket.try_resize(bytes.capacity()).unwrap();
+    bytes.extend_from_slice(source);
+    (bytes, ticket)
+}
+
+#[test]
+fn nul_diagnostic_prepared_buffer_promotes_into_canonical_original_charge() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        let (data, ticket) = prepared(&parent, b"prepared\xff");
+        let capacity = data.capacity();
+        assert_eq!(ledger.workspace_bytes_for_test(), capacity);
+        let diagnostic = with_runtime(&owner.weak_owner().unwrap(), |access| {
+            Diagnostic::from_workspace(access, &parent, data, ticket)
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(bytes(&diagnostic), b"prepared\xff");
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert!(owner.with_arena(|a| a.total_bytes_allocated()).unwrap() >= resident + capacity);
+    });
+}
+
+#[test]
+fn nul_diagnostic_prepared_foreign_ticket_cannot_fund_current_heap() {
+    let original = RSession::new_for_gc_tests();
+    let (data, ticket, ledger) = original.with_active(|| {
+        let parent = original
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let (data, ticket) = prepared(&parent, b"foreign");
+        (data, ticket, ledger)
+    });
+    let other = RSession::new_for_gc_tests();
+    other.with_active(|| {
+        let owner = other.owner_token().unwrap();
+        let parent = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let before = owner
+            .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+            .unwrap();
+        let result = with_runtime(&owner.weak_owner().unwrap(), |access| {
+            Diagnostic::from_workspace(access, &parent, data, ticket)
+        })
+        .unwrap();
+        assert!(matches!(result, Err(SexpError::HeapDomainMismatch)));
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(
+            owner
+                .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+                .unwrap(),
+            before
+        );
+    });
+}
+
+#[test]
+fn nul_diagnostic_prepared_underfunded_capacity_rejects_before_publication() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        // A malformed internal packet must not authenticate a larger buffer.
+        let ticket = ledger.reserve(1).unwrap();
+        let data = b"larger".to_vec();
+        assert!(data.capacity() > ticket.bytes());
+        let result = with_runtime(&owner.weak_owner().unwrap(), |access| {
+            Diagnostic::from_workspace(access, &parent, data, ticket)
+        })
+        .unwrap();
+        assert!(matches!(
+            result,
+            Err(SexpError::AllocationFailed {
+                object: "evaluation diagnostic"
+            })
+        ));
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(
+            owner.with_arena(|a| a.total_bytes_allocated()).unwrap(),
+            before
+        );
+    });
+}

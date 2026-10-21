@@ -99,6 +99,34 @@ impl Diagnostic {
         byte: impl FnMut(usize) -> u8,
     ) -> SexpResult<Self> {
         let copy = MessageCopy::new(access, parent, length, limit, utf8, byte)?;
+        Self::from_copy(access, parent, copy)
+    }
+
+    pub(crate) fn from_workspace(
+        access: &RuntimeAccess,
+        parent: &Sexp<'_>,
+        bytes: Vec<u8>,
+        ticket: WorkspaceReservation,
+    ) -> SexpResult<Self> {
+        let copy = MessageCopy {
+            bytes,
+            _admission: Some(ticket),
+        };
+        access.require_active()?;
+        access.domain().link(parent)?;
+        let ticket = copy._admission.as_ref().expect("prepared workspace ticket");
+        if !ticket.belongs_to(&parent.allocation()?.heap_identity().byte_ledger()) {
+            return Err(SexpError::HeapDomainMismatch);
+        }
+        if ticket.bytes() != copy.bytes.capacity() {
+            return Err(allocation());
+        }
+        Self::from_copy(access, parent, copy)
+    }
+
+    fn from_copy(access: &RuntimeAccess, parent: &Sexp<'_>, copy: MessageCopy) -> SexpResult<Self> {
+        access.require_active()?;
+        access.domain().link(parent)?;
         let bytes = &copy.bytes;
         let domain = access.domain();
         let message = access

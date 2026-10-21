@@ -120,8 +120,37 @@ fn raw_to_char_foreign_input_cannot_use_current_allocator_or_coercion() {
         let before = owner.with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes())).unwrap();
         let called = Cell::new(false);
         let result = with_runtime(&owner.weak_owner().unwrap(), |access| evaluate(access, args, |_| { called.set(true); Ok(0) })).unwrap();
-        assert!(matches!(result, Err(SexpError::UnownedPointer { address: rejected }) if rejected == address));
+        assert!(matches!(result, Err(EvaluationError::Access(SexpError::UnownedPointer { address: rejected })) if rejected == address));
         assert!(!called.get());
         assert_eq!(owner.with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes())).unwrap(), before);
+    });
+}
+
+#[test]
+fn raw_to_char_returned_error_retains_original_message_admission() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let f = owner.node_factory();
+        let input = raw(&f, b"A\0B");
+        let arguments = f
+            .pairlist_cell(&input, &f.nil(), &f.nil())
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        with_runtime(&owner.weak_owner().unwrap(), |access| {
+            let error = evaluate(access, arguments, |flag| flag.try_logical_elt(0)).unwrap_err();
+            let EvaluationError::Diagnostic(message) = error else {
+                panic!("embedded-NUL diagnostic")
+            };
+            assert_eq!(message.to_string(), "embedded nul in string: 'A\\0B'");
+            assert!(
+                owner.with_arena(|a| a.total_bytes_allocated()).unwrap()
+                    >= resident + message.len(),
+                "returned R error still owns its message storage"
+            );
+        })
+        .unwrap();
     });
 }

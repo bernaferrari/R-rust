@@ -341,6 +341,7 @@ unsafe fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
         with_runtime(&weak, |access| {
             if inventory {
                 super::iconv_owned::inventory(access)
+                    .map_err(crate::sexp::diagnostic::EvaluationError::from)
             } else {
                 super::iconv_owned::evaluate(access, args, na, |value| {
                     access.with_native(|original| {
@@ -357,10 +358,11 @@ unsafe fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     match outcome {
         Ok(Ok(Ok(value))) => value.as_raw(),
-        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
-            crate::sexp::context::r_error(message)
+        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)))) => {
+            crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
         }
-        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Ok(Ok(Err(error))) => crate::sexp::context::r_error(error.to_string()),
+        Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
         Err(payload) => std::panic::resume_unwind(payload),
     }
 }

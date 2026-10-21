@@ -122,3 +122,70 @@ fn iconv_owned_live_callback_panic_preserves_original_payload() {
 fn iconv_owned_revoked_original_cannot_publish() {
     iconv_output_allocation_callback(2);
 }
+
+#[test]
+fn iconv_returned_error_retains_original_message_admission() {
+    use crate::sexp::{
+        diagnostic::EvaluationError, ffi::SEXPTYPE, object::SexpMut, owner::with_runtime,
+    };
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let mut input = SexpMut::try_from_checked(
+            factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::RAWSXP, 3)))
+                .unwrap(),
+        )
+        .unwrap();
+        for (i, byte) in b"A\0B".iter().copied().enumerate() {
+            input.try_set_raw_elt(i as i64, byte).unwrap();
+        }
+        let mut list = SexpMut::try_from_checked(
+            factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                .unwrap(),
+        )
+        .unwrap();
+        list.try_set_vector_elt(0, input.freeze()).unwrap();
+        let values = [
+            list.freeze(),
+            factory.strings(&["UTF-8"]).unwrap(),
+            factory.strings(&["UTF-8"]).unwrap(),
+            factory.strings(&["byte"]).unwrap(),
+            factory.domain().logical(true),
+            factory.domain().logical(false),
+        ];
+        let mut args = factory.nil();
+        for value in values.into_iter().rev() {
+            args = factory
+                .pairlist_cell(&value, &args, &factory.nil())
+                .unwrap();
+        }
+        let args = args.into_owned().unwrap();
+        let na = owner
+            .sexp(unsafe { crate::sexp::globals::R_NaString() })
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        unsafe { crate::sexp::gengc::full_gc() };
+        let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        with_runtime(&owner.weak_owner().unwrap(), |access| {
+            let error = super::iconv_owned::evaluate(access, args.clone(), na.clone(), |flag| {
+                flag.try_logical_elt(0)
+            })
+            .unwrap_err();
+            let EvaluationError::Diagnostic(message) = error else {
+                panic!("embedded-NUL diagnostic")
+            };
+            assert_eq!(message.to_string(), "embedded nul in string: 'A\\0B'");
+            unsafe { crate::sexp::gengc::full_gc() };
+            assert!(
+                owner.with_arena(|a| a.total_bytes_allocated()).unwrap()
+                    >= resident + message.len(),
+                "returned R error still owns its message storage after temporary output collection"
+            );
+        })
+        .unwrap();
+    });
+}

@@ -13,7 +13,18 @@ use std::{
 };
 const EXPECTED: &[u8] = b"invalid input 'a\xff' in 'utf8towcs'";
 
-fn actual_message_publication(action: u8) {
+#[derive(Clone, Copy)]
+enum MessageOperation {
+    Case,
+    Raw,
+    Iconv,
+}
+
+fn actual_message_publication(action: u8, operation: MessageOperation) {
+    let expected: &'static [u8] = match operation {
+        MessageOperation::Case => EXPECTED,
+        _ => b"embedded nul in string: 'A\\0B'",
+    };
     let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
     let weak = facade
         .borrow()
@@ -28,23 +39,69 @@ fn actual_message_publication(action: u8) {
     let factory = weak.node_factory().unwrap();
     unsafe {
         super::session::with_instance_active(instance, || {
-            let mut input = SexpMut::try_from_checked(
-                factory
-                    .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))
-                    .unwrap(),
-            )
-            .unwrap();
-            let character = factory
-                .allocate(|a| encoding::allocate_character(a, b"a\xff", TextEncoding::Utf8))
-                .unwrap();
-            input.try_set_string_elt(0, character).unwrap();
-            let input = input.freeze();
+            let input = match operation {
+                MessageOperation::Case => {
+                    let mut input = SexpMut::try_from_checked(
+                        factory
+                            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    let character = factory
+                        .allocate(|a| encoding::allocate_character(a, b"a\xff", TextEncoding::Utf8))
+                        .unwrap();
+                    input.try_set_string_elt(0, character).unwrap();
+                    input.freeze()
+                }
+                MessageOperation::Raw | MessageOperation::Iconv => {
+                    let mut raw = SexpMut::try_from_checked(
+                        factory
+                            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::RAWSXP, 3)))
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    for (i, byte) in b"A\0B".iter().copied().enumerate() {
+                        raw.try_set_raw_elt(i as i64, byte).unwrap();
+                    }
+                    let raw = raw.freeze();
+                    if matches!(operation, MessageOperation::Iconv) {
+                        let mut list = SexpMut::try_from_checked(
+                            factory
+                                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                                .unwrap(),
+                        )
+                        .unwrap();
+                        list.try_set_vector_elt(0, raw).unwrap();
+                        list.freeze()
+                    } else {
+                        raw
+                    }
+                }
+            };
             let source = input.allocation().unwrap().clone();
-            let args = factory
-                .pairlist_cell(&input, &factory.nil(), &factory.nil())
-                .unwrap()
-                .into_owned()
-                .unwrap();
+            let args = if matches!(operation, MessageOperation::Iconv) {
+                let values = [
+                    input.clone(),
+                    factory.strings(&["UTF-8"]).unwrap(),
+                    factory.strings(&["UTF-8"]).unwrap(),
+                    factory.strings(&["byte"]).unwrap(),
+                    factory.domain().logical(true),
+                    factory.domain().logical(false),
+                ];
+                let mut args = factory.nil();
+                for value in values.into_iter().rev() {
+                    args = factory
+                        .pairlist_cell(&value, &args, &factory.nil())
+                        .unwrap();
+                }
+                args.into_owned().unwrap()
+            } else {
+                factory
+                    .pairlist_cell(&input, &factory.nil(), &factory.nil())
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            };
             drop(input);
             let saved = args.clone();
             let observed = source.clone();
@@ -63,9 +120,9 @@ fn actual_message_publication(action: u8) {
                     let header = heap.node_snapshot(&node).unwrap();
                     if header.sxpinfo.type_of() == SEXPTYPE::CHARSXP {
                         let payload = heap.payload_lease(&node).unwrap();
-                        if payload.byte_elt(0) == Some(b'i')
-                            && payload.byte_elt(1) == Some(b'n')
-                            && payload.byte_elt(2) == Some(b'v')
+                        if payload.byte_elt(0) == Some(expected[0])
+                            && payload.byte_elt(1) == Some(expected[1])
+                            && payload.byte_elt(2) == Some(expected[2])
                         {
                             assert_eq!(
                                 TextEncoding::from_gp(header.sxpinfo.gp()),
@@ -80,8 +137,9 @@ fn actual_message_publication(action: u8) {
                 }
                 called.set(1);
                 (*instance).memory_state.gc_force_gap = 0;
-                assert!(callback_ledger.workspace_bytes_for_test() >= EXPECTED.len());
+                assert!(callback_ledger.workspace_bytes_for_test() >= expected.len());
                 super::accessors::SETCAR(saved.as_raw(), super::globals::R_NilValue());
+                super::accessors::SETCDR(saved.as_raw(), super::globals::R_NilValue());
                 super::gengc::full_gc();
                 assert!(
                     observed.is_live(),
@@ -95,8 +153,22 @@ fn actual_message_publication(action: u8) {
             }));
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
-            let result = catch_unwind(AssertUnwindSafe(|| {
-                crate::mainutils::character::case_entry(args.as_raw(), true)
+            let result = catch_unwind(AssertUnwindSafe(|| match operation {
+                MessageOperation::Case => {
+                    crate::mainutils::character::case_entry(args.as_raw(), true)
+                }
+                MessageOperation::Raw => crate::mainutils::essentials::do_rawToChar(
+                    factory.nil().as_raw(),
+                    factory.nil().as_raw(),
+                    args.as_raw(),
+                    factory.nil().as_raw(),
+                ),
+                MessageOperation::Iconv => crate::mainutils::essentials::do_iconv(
+                    factory.nil().as_raw(),
+                    factory.nil().as_raw(),
+                    args.as_raw(),
+                    factory.nil().as_raw(),
+                ),
             }));
             assert_eq!(seen.get(), 1);
             assert_eq!((*instance).memory_state.in_gc, 0);
@@ -121,7 +193,7 @@ fn actual_message_publication(action: u8) {
                         .unwrap()
                         .into_owned()
                         .unwrap();
-                    assert!(text.try_char_eq(EXPECTED).unwrap());
+                    assert!(text.try_char_eq(expected).unwrap());
                     assert_eq!(
                         TextEncoding::from_gp(text.header().sxpinfo.gp()),
                         TextEncoding::Native
@@ -131,7 +203,7 @@ fn actual_message_publication(action: u8) {
                         !source.is_live(),
                         "detached input releases after diagnostic publication"
                     );
-                    assert!(text.try_char_eq(EXPECTED).unwrap());
+                    assert!(text.try_char_eq(expected).unwrap());
                 }
                 1 => assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 991),
                 2 => {
@@ -150,15 +222,15 @@ fn actual_message_publication(action: u8) {
 }
 #[test]
 fn owned_diagnostic_actual_message_constructor_keeps_source_tag_and_ticket() {
-    actual_message_publication(0);
+    actual_message_publication(0, MessageOperation::Case);
 }
 #[test]
 fn owned_diagnostic_actual_message_callback_panic_releases_ticket() {
-    actual_message_publication(1);
+    actual_message_publication(1, MessageOperation::Case);
 }
 #[test]
 fn owned_diagnostic_actual_message_callback_revocation_cannot_publish() {
-    actual_message_publication(2);
+    actual_message_publication(2, MessageOperation::Case);
 }
 #[test]
 fn owned_diagnostic_foreign_raise_cannot_signal_or_allocate_in_current_runtime() {
@@ -196,4 +268,34 @@ fn owned_diagnostic_foreign_raise_cannot_signal_or_allocate_in_current_runtime()
             before
         );
     });
+}
+
+#[test]
+fn owned_nul_diagnostic_raw_constructor_keeps_source_tag_and_ticket() {
+    actual_message_publication(0, MessageOperation::Raw);
+}
+
+#[test]
+fn owned_nul_diagnostic_raw_callback_panic_releases_ticket() {
+    actual_message_publication(1, MessageOperation::Raw);
+}
+
+#[test]
+fn owned_nul_diagnostic_raw_callback_revocation_cannot_publish() {
+    actual_message_publication(2, MessageOperation::Raw);
+}
+
+#[test]
+fn owned_nul_diagnostic_iconv_constructor_keeps_source_tag_and_ticket() {
+    actual_message_publication(0, MessageOperation::Iconv);
+}
+
+#[test]
+fn owned_nul_diagnostic_iconv_callback_panic_releases_ticket() {
+    actual_message_publication(1, MessageOperation::Iconv);
+}
+
+#[test]
+fn owned_nul_diagnostic_iconv_callback_revocation_cannot_publish() {
+    actual_message_publication(2, MessageOperation::Iconv);
 }
