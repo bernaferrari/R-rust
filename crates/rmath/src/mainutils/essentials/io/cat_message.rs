@@ -48,13 +48,6 @@ pub unsafe fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: 
 // Complete I/O — capture.output, withVisible, invisible, suppress*,
 // ---------------------------------------------------------------------------
 
-/// Filename destinations and connections opened by capture.output are owned. Close them
-/// against their originating session, including when evaluation unwinds.
-struct CaptureFileGuard {
-    instance: *mut crate::sexp::instance::RInstance,
-    connection: Option<usize>,
-}
-
 /// Restores `sink(type="message")` after `capture.output` evaluates its
 /// expressions, including when that evaluation unwinds.
 struct MessageSinkGuard {
@@ -80,24 +73,6 @@ impl Drop for MessageSinkGuard {
         }
     }
 }
-impl CaptureFileGuard {
-    fn close(&mut self) {
-        if let Some(index) = self.connection.take() {
-            crate::mainutils::connections::close_connection_at_in(self.instance, index as i32);
-            unsafe {
-                if let Some(slot) = (&mut (*self.instance).connections_state.table).get_mut(index) {
-                    *slot = None;
-                }
-            }
-        }
-    }
-}
-impl Drop for CaptureFileGuard {
-    fn drop(&mut self) {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.close()));
-    }
-}
-
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
 pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -160,10 +135,9 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         if capture_type == "message" && split {
             base_error("cannot split the message connection");
         }
-        let mut file_guard = CaptureFileGuard {
-            instance: crate::sexp::instance::with_required_current_instance(|instance| instance),
-            connection: None,
-        };
+        let owner =
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| base_error(e.to_string()));
+        let mut file_guard = crate::mainutils::connections::ConnectionCleanup::new(owner, true);
         let destination = if file_value == R_NilValue() {
             None
         } else {
@@ -186,7 +160,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                     let open_args = Rf_cons(file_value, tail);
                     let _open_args = protect(open_args);
                     crate::mainutils::connections::do_open(_call, _op, open_args, rho);
-                    file_guard.connection = Some(slot);
+                    file_guard.attach(slot as i32);
                 }
                 index
             } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
@@ -202,7 +176,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                 let _file_args = protect(file_args);
                 let connection = crate::mainutils::connections::do_file(_call, _op, file_args, rho);
                 let index = connection_index(connection);
-                file_guard.connection = Some(index as usize);
+                file_guard.attach(index);
                 index
             } else {
                 base_error("'file' must be NULL, a connection or a character string");

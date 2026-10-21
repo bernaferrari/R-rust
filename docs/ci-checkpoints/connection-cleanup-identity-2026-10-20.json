@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-hah9u.80.3"
+  ],
+  "source_base": "7ebd3c6f7a57d5ff6f1c4099d8da61a5c1ef3c8d",
+  "behavior": [
+    "Replace private AutoCloseGuard and CaptureFileGuard raw runtime/numeric-slot storage with one forbidunsafe ConnectionCleanup capability: original WeakOwner, operation-local OwnerPin and exact ConnectionToken.",
+    "Capture cleanup identity before automatic opening allocates R argument nodes. Check original authority/identity before and after open, and before close/remove plus normal/unwind completion. A retired allocation is rejected and a same-slot replacement remains open and untouched.",
+    "Share the same guard for readLines/writeLines automatic opening and capture.output filename/deferred destinations. Preserve whether each operation closes the original body in place or also removes its slot.",
+    "Consume cleanup exactly once, catch destructor unwind and retain original physical storage through guard drop even after facade close/drop. The guard does not create a permanent value-to-runtime ownership edge.",
+    "Keep GNU top-sink close behavior unchanged. No sink-range production change is included."
+  ],
+  "red": {
+    "actual_cleanup": "Native1 failed /2 controls passed through genuine deferred file constructor, auto_open_connection, native close and real constructor same-slot reuse; stale guard closes the replacement"
+  },
+  "gnu_hypothesis_correction": {
+    "initial_hypothesis": "Two native tests initially required top sink close rejection. Pinned GNU permits it; its source has the same0..sink_number scan. Those failed assertions are not classified as port defects.",
+    "action": "Revert the experimental scan change, remove the aborted public fixture, and retain five explicit unchanged GNU/neighbor sink-close controls.",
+    "oracle_probe": "gnu-single-probe.err records closed and sink.number1; ignored source connections.c4227 agrees. No source compilation against ignored checkout."
+  },
+  "test_dependency": [
+    "Initial isolated Miri file open stops at unsupported host clock_gettime REALTIME, not alias/provenance UB. Keep default isolation; provide explicit fixed per-store time only to these tests. Real file constructors, automatic open, close and actual slot reuse remain active.",
+    "Production default clock behavior is unchanged. A native control checks creation, overwrite, touch, missing path and preserved creation-time semantics.",
+    "Move unsafe native test setup into a sibling test module so the shared production cleanup module retains forbidunsafe.",
+    "Resolve Clippy unnecessary unwrap in test target selection with match; no assertions relaxed."
+  ],
+  "validation": {
+    "native_distinct_total": 35,
+    "native_and_miri_suite_counts": {
+      "native-clock": [
+        1
+      ],
+      "native-cleanup-clock": [
+        5
+      ],
+      "native-owner-clock": [
+        2
+      ],
+      "native-sink-gnu-controls": [
+        5
+      ],
+      "native-writer": [
+        10
+      ],
+      "native-public": [
+        9,
+        3
+      ],
+      "miri-cleanup-clock": [
+        5
+      ],
+      "miri-owner-clock": [
+        2
+      ]
+    },
+    "strict_isolated_i686_miri_distinct": 7,
+    "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained",
+    "wasm": {
+      "node": 28,
+      "web_generations": [
+        46,
+        46
+      ],
+      "total": 120,
+      "limits": "Original64MiB session/256MiB linear memory"
+    },
+    "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "source_format_whitespace": "Scoped rustfmt and git diff --check PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/browser_files.rs": "bb7b2673758be592ed9090f57e6ee233c10a80151fa7645d9ca273bf1587e30d",
+    "crates/rmath/src/mainutils/connections/cleanup.rs": "a47c6c2d8ed83dc8331a627a79990ba6fedc09b486004f02fd02b317fa03c723",
+    "crates/rmath/src/mainutils/connections/cleanup_owner_tests.rs": "c4e5c8e1ec80704da9e68023f9fef7b9329e4c2999343faf62197e00cca44e46",
+    "crates/rmath/src/mainutils/connections/close_sink_tests.rs": "0dd14e859eb52745d51ee3849c1503394e12a770975e310cac65ea733ca8e591",
+    "crates/rmath/src/mainutils/connections/lines.rs": "c58d6230c05bea9d223a74134ae3443b560b87887b830d5afc70788f859bf283",
+    "crates/rmath/src/mainutils/connections/mod.rs": "ed9c8b9d6c7cd952c71ac6c2045a55cd26f2080c0be5f3fdee963684e64ba018",
+    "crates/rmath/src/mainutils/essentials/io/cat_message.rs": "3ea2b53581467e1bb42bdc695a126a28daede6480fb1779caf199127cd430274",
+    "tests/browser/connection-cleanup.cjs": "e0bdefd0a3cd61925886656b4ed380ec36c58a4f6e4d24f79c5f6c5299cbec2b"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29810472,
+      "sha256": "922578de6fa9deeed1700e854b3563a8307f5782f2bcb6e59888fbd49c77013e"
+    },
+    "output": {
+      "bytes": 25461010,
+      "sha256": "1a616429425696737ed3f6ab1e98a8052d732852959f7199e78ca499789a4850"
+    }
+  },
+  "evidence_directory": "target/close-identity-evidence/",
+  "evidence_sha256": {
+    "android-checked.log": "3dcf42a9632d2bb2651bbfbd48a08800967da233a50be14a979e1b9af2f54895",
+    "clippy-checked.log": "d77878cf6c1eddd615dfa11299e6846f2dab6c69f176f0f2bf50b24d37c1195a",
+    "clippy-final.log": "f1d34c199e6fbc709aaf1bd9ff99eac890b5c30e3275769dd618c4f541868bc7",
+    "clippy.log": "f8f1ffe032e9c55c8d8d1d7d2d2eda9e8ac738b54f2650ef93590066434e3027",
+    "gnu-single-probe.err": "c9f1acf5663d0eec9431c03c9751616056242c5a4895b9b7e62c9b69c1039264",
+    "gnu-single-probe.out": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gnu-sink-close-stderr.log": "f7ffa6d302b309c43d72297c5c1977799a210cdd74164689735fdcf4abba9bc5",
+    "miri-cleanup-clock.log": "bcb5400a3fac03febd96af9b3b3206215a281ffeee24967db3c20e3fe149670c",
+    "miri-cleanup-final.log": "bdc3e6dd6dd2e67cc25d7965b492a6e280862aa292377771589461dc895fc823",
+    "miri-cleanup.log": "e0477cef1da170987bd6f4e9ce0fa3be352ff7757f94ebf47897c8ce0d1b192e",
+    "miri-owner-clock.log": "060df7f789d49d15e3b7f14cab8b0f3b58ec7b70b62509ab9ba91b5f2a71e7ad",
+    "native-cleanup-clock.log": "09c775c67bb1229c4568d53d46d8dc838e8f6b62d8d4ae239bfd0b60c3dc3fdc",
+    "native-cleanup-final.log": "acd71f9b44f7d4d878bb9a70eefcb32eb5de7f9fd90dbaf4873138a4b2b66c1d",
+    "native-cleanup-green-2.log": "577b768e44102c8c70b883957b0e9265204e4cf51a3e9bade45dcb1779b2c626",
+    "native-cleanup-green.log": "9a588a38ee5052241222e3577e5ed63277eb969833061ed03d1f0f95483a3766",
+    "native-cleanup-red.log": "7404e26a0154888a1f44a8b9edc2bbf2d41e1357aa74211644ee2d4f5677bf20",
+    "native-cleanup.log": "651e9f334a5c06f631121621fa01dc6a58460412b19238756156dcd44bf5164b",
+    "native-clock.log": "15b3fb2ebeade2f4dfe0ff914e9346c276ee44c58076de4c1ba39a65430e6536",
+    "native-owner-clock.log": "072f2ef2109010bdfa53de18dd79b9b279b28a59dafaee945bfba22e211e2fb3",
+    "native-owner-final.log": "81379a2d643488daa4997b4bd53f2e9c82ce84182fa4ed15e7053b98c0028e0f",
+    "native-public.log": "0b7e49a3cd0f3e93ef21e5b329842bacd062edbbbcab43fa2764b0de97027e78",
+    "native-sink-final.log": "62f83d1ecf9296447cfadb130f525ee6f4d3ee2d2f74ceda508987e98bcd96d0",
+    "native-sink-gnu-controls.log": "9862a93b4f9b89d5d60c84e21f7dfc5d2f2514bedd40772760d9d6f7adca4823",
+    "native-sink-red.log": "79f82eb88a1675a0d11b069ceb617f51b4dcec9d15a4a5d7d3cb26bb60b8fb0c",
+    "native-writer.log": "cd8cf7365145db0cda75147d9c912fa061d2173f9e0c133d22b4d1a515a31023",
+    "wasm-build.log": "dc16a175cc67e9e56f01a36cc1e6a6b221a2ebf36c9db0c2ddaf3524a73f1b56",
+    "wasm-connection-cleanup.log": "c5d29403c0d8d7ea09325434fd0bbb419260acafda3da3d26cb9400a13094cd1",
+    "wasm-final-build.log": "9e1facc5526e491a685ea3ac217c8527f1f5989d40fe204e9eddd5ed46c7c287",
+    "wasm-final-validation.log": "bc2574573a10b620247ea774769fcce35f7c9e25cc74a23c4734168d9d05ae7b",
+    "wasm-optimize.log": "61fbf0b144f3488c817c94cf5a4f6a76218d6abc7fc41a5887498a8bf0668132",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-text-publication.log": "e2446a32c4f8d84512987333ed0b92c4874e96ae847e379817764aa1d5c5b2d0",
+    "wasm-validation.log": "30f42f40728d5c04504c1eded21b306c4cf7871e22ccd26fa6f92b5a6aafc3c3",
+    "wasm-web-contracts.log": "979f8f07a3021435d1d8356423702ca2958f242e4f366c6ddce1ec1a886eec8c"
+  },
+  "limits": [
+    "The broader engine migration and unrelated connection reader/summary/provider field loans remain separate parent work; no whole-connection-table or whole-engine safety claim.",
+    "Retained native buffers and total memory accounting remain cvs2 work. Printer accounting REDs are separately tracked in cvs2.14; no full native/RSS or full R parity claim.",
+    "User graphics changes were present during validation and excluded from this commit. The next printer accounting regressions were added unstaged during final validation; hashes refer to staged cleanup sources. No immutable full-build/whole-CI claim."
+  ]
+}

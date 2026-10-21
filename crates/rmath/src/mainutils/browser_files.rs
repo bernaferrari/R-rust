@@ -30,6 +30,8 @@ pub struct BrowserFileInfo {
 pub struct BrowserFileStore {
     files: HashMap<String, StoredFile>,
     total_bytes: usize,
+    #[cfg(test)]
+    test_clock: Option<f64>,
 }
 
 /// Unix seconds, including a fraction.
@@ -329,6 +331,19 @@ pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
 }
 
 impl BrowserFileStore {
+    /// Keep real in-memory file operations deterministic under isolated tests.
+    #[cfg(test)]
+    pub(crate) fn set_test_clock(&mut self, seconds: f64) {
+        self.test_clock = Some(seconds);
+    }
+    fn now(&self) -> f64 {
+        #[cfg(test)]
+        if let Some(seconds) = self.test_clock {
+            return seconds;
+        }
+        unix_now()
+    }
+
     pub fn validate_path(path: &str) -> Result<(), String> {
         if path.is_empty()
             || path.len() > 255
@@ -371,12 +386,14 @@ impl BrowserFileStore {
         if !secs.is_finite() {
             return false;
         }
-        let Some(file) = self.files.get_mut(path) else {
+        if !self.files.contains_key(path) {
             return false;
-        };
+        }
+        let now = self.now();
+        let file = self.files.get_mut(path).expect("existing file timestamp");
         file.mtime = secs;
         file.atime = secs;
-        file.ctime = unix_now();
+        file.ctime = now;
         true
     }
 
@@ -410,7 +427,7 @@ impl BrowserFileStore {
                 MAX_SESSION_BYTES
             ));
         }
-        let now = unix_now();
+        let now = self.now();
         let ctime = self.files.get(path).map(|file| file.ctime).unwrap_or(now);
         self.files.insert(
             path.to_owned(),
@@ -458,6 +475,33 @@ impl BrowserFileStore {
 mod tests {
     use super::*;
     use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+    #[test]
+    fn file_store_explicit_clock_preserves_creation_and_touch_semantics() {
+        let mut store = BrowserFileStore::default();
+        store.set_test_clock(11.0);
+        store.put("clock.txt", b"a").unwrap();
+        let initial = store.info("clock.txt").unwrap();
+        assert_eq!(
+            (initial.mtime, initial.atime, initial.ctime),
+            (11.0, 11.0, 11.0)
+        );
+        store.set_test_clock(22.0);
+        store.put("clock.txt", b"second").unwrap();
+        let changed = store.info("clock.txt").unwrap();
+        assert_eq!(
+            (changed.size, changed.mtime, changed.atime, changed.ctime),
+            (6, 22.0, 22.0, 11.0)
+        );
+        assert!(store.set_file_time("clock.txt", 33.0));
+        let touched = store.info("clock.txt").unwrap();
+        assert_eq!(
+            (touched.mtime, touched.atime, touched.ctime),
+            (33.0, 33.0, 22.0)
+        );
+        assert!(!store.set_file_time("missing.txt", 0.0));
+        assert_eq!(store.info("clock.txt"), Some(touched));
+    }
 
     #[test]
     fn binary_file_bytes_remain_admitted_and_rejected_replacement_preserves_store() {

@@ -98,10 +98,16 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             let table = connection_table();
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
-        if temporarily_open {
-            auto_open_connection(scon, "r");
+        let mut auto_guard = temporarily_open.then(|| {
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let mut guard = ConnectionCleanup::new(owner, false);
+            guard.attach(i as c_int);
+            guard
+        });
+        if let Some(guard) = &auto_guard {
+            auto_open_connection(scon, "r", guard);
         }
-        let mut auto_guard = temporarily_open.then(|| AutoCloseGuard::new(scon));
 
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
@@ -318,10 +324,16 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             let table = connection_table();
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
-        if temporarily_open {
-            auto_open_connection(scon, "w");
+        let mut auto_guard = temporarily_open.then(|| {
+            let owner = crate::sexp::owner::OwnerToken::current()
+                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let mut guard = ConnectionCleanup::new(owner, false);
+            guard.attach(i as c_int);
+            guard
+        });
+        if let Some(guard) = &auto_guard {
+            auto_open_connection(scon, "w", guard);
         }
-        let mut auto_guard = temporarily_open.then(|| AutoCloseGuard::new(scon));
         {
             let table = connection_table();
             let Some(conn) = table[i].as_ref() else {
@@ -490,7 +502,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
     }
 }
 
-unsafe fn auto_open_connection(con: SEXP, mode: &str) {
+unsafe fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
     unsafe {
         let mode = Rf_mkString(CString::new(mode).unwrap_or_default().as_ptr());
         let _mode_root = protect(mode);
@@ -498,38 +510,9 @@ unsafe fn auto_open_connection(con: SEXP, mode: &str) {
         let _inner_root = protect(inner);
         let call_args = Rf_cons(con, inner);
         let _args_root = protect(call_args);
+        guard.check();
         super::file::do_open(ptr::null_mut(), ptr::null_mut(), call_args, R_NilValue());
-    }
-}
-
-struct AutoCloseGuard {
-    owner: *mut RInstance,
-    index: usize,
-    active: bool,
-}
-
-impl AutoCloseGuard {
-    fn new(con: SEXP) -> Self {
-        let owner = with_required_current_instance(|instance| instance);
-        let index = unsafe { checked_connection_index(as_integer(con)) };
-        Self {
-            owner,
-            index,
-            active: true,
-        }
-    }
-    unsafe fn close(&mut self) {
-        if std::mem::replace(&mut self.active, false) {
-            unsafe {
-                super::file::close_connection_at_in(self.owner, self.index as c_int);
-            }
-        }
-    }
-}
-
-impl Drop for AutoCloseGuard {
-    fn drop(&mut self) {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { self.close() }));
+        guard.check();
     }
 }
 
@@ -582,4 +565,110 @@ fn decompress_known(raw: &[u8]) -> Vec<u8> {
         }
     }
     raw.to_vec()
+}
+
+#[cfg(test)]
+mod cleanup_identity_tests {
+    use super::*;
+    use crate::sexp::{
+        RSession, Sexp,
+        object::{PairlistBuilder, SessionNodeFactory},
+    };
+    unsafe fn file<'s>(f: &SessionNodeFactory<'s>, name: &str, mode: &str) -> Sexp<'s> {
+        let mut args = PairlistBuilder::from_factory(f.clone());
+        for value in [f.strings(&[name]).unwrap(), f.strings(&[mode]).unwrap()] {
+            args.push(value, None).unwrap();
+        }
+        let args = args.finish().unwrap();
+        unsafe {
+            f.wrap(do_file(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                args.as_raw(),
+                ptr::null_mut(),
+            ))
+            .unwrap()
+        }
+    }
+    fn cleanup_identity(action: u8, remove: bool) {
+        let mut session = RSession::new_for_gc_tests();
+        session.enable_browser_files();
+        session.with_active_in(|instance| unsafe {
+            (*instance).browser_files.set_test_clock(0.0);
+        });
+        session.with_active(|| unsafe {
+            let f = session.owner_token().unwrap().node_factory();
+            let original = file(&f, "cleanup-original.txt", "");
+            let index = original.try_integer_elt(0).unwrap();
+            let mut guard = ConnectionCleanup::new(session.owner_token().unwrap(), remove);
+            guard.attach(index);
+            auto_open_connection(original.as_raw(), "w", &guard);
+            let mut replacement_token = None;
+            if action != 0 {
+                let args = f.pairlist_cell(&original, &f.nil(), &f.nil()).unwrap();
+                do_close(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    args.as_raw(),
+                    ptr::null_mut(),
+                );
+                if action == 1 {
+                    let fresh = file(&f, "cleanup-replacement.txt", "w");
+                    assert_eq!(
+                        fresh.try_integer_elt(0).unwrap(),
+                        index,
+                        "actual constructor must reuse the slot"
+                    );
+                    replacement_token = Some(connection_token(index).unwrap());
+                }
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| guard.close()));
+            if action == 0 {
+                assert!(result.is_ok());
+                let table = connection_table();
+                if remove {
+                    assert!(table[index as usize].is_none());
+                } else {
+                    assert!(!table[index as usize].as_ref().unwrap().isopen);
+                }
+            } else {
+                assert!(
+                    result.is_err(),
+                    "cleanup must authenticate its original allocation"
+                );
+                if let Some(token) = replacement_token {
+                    assert_eq!(token.require_current().unwrap(), index);
+                    let table = connection_table();
+                    let replacement = table[index as usize].as_ref().unwrap();
+                    assert!(
+                        replacement.isopen,
+                        "a replacement must remain writable after stale cleanup"
+                    );
+                    assert_eq!(replacement.description, "cleanup-replacement.txt");
+                } else {
+                    assert!(connection_table()[index as usize].is_none());
+                }
+            }
+        });
+    }
+    #[test]
+    fn cleanup_identity_original_open_file_control() {
+        cleanup_identity(0, false);
+    }
+    #[test]
+    fn cleanup_identity_real_same_slot_replacement_cannot_be_closed() {
+        cleanup_identity(1, false);
+    }
+    #[test]
+    fn cleanup_identity_retired_original_is_checked() {
+        cleanup_identity(2, false);
+    }
+    #[test]
+    fn cleanup_identity_owned_capture_original_control_removes_only_its_body() {
+        cleanup_identity(0, true);
+    }
+    #[test]
+    fn cleanup_identity_owned_capture_same_slot_replacement_is_preserved() {
+        cleanup_identity(1, true);
+    }
 }

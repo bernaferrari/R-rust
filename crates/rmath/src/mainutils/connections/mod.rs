@@ -40,6 +40,7 @@ use crate::sexp::instance::{RInstance, with_current_instance, with_required_curr
 use crate::sexp::protect::*;
 mod args;
 mod binary;
+mod cleanup;
 mod file;
 mod lines;
 mod pipes;
@@ -53,6 +54,7 @@ pub use self::file::*;
 pub use self::lines::*;
 pub use self::pipes::*;
 pub use self::state::*;
+pub(crate) use cleanup::ConnectionCleanup;
 
 #[cfg(test)]
 mod tests;
@@ -62,3 +64,9 @@ mod publication_tests;
 
 #[cfg(test)]
 mod direct_publication_tests;
+
+#[cfg(test)]
+mod close_sink_tests;
+
+#[cfg(test)]
+mod cleanup_owner_tests;
