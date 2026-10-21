@@ -1369,6 +1369,9 @@ pub(crate) struct TransientReservation {
 }
 
 impl TransientReservation {
+    pub(crate) const fn bytes(&self) -> usize {
+        self.bytes
+    }
     pub(crate) fn new(
         max_bytes: usize,
         accounted: usize,

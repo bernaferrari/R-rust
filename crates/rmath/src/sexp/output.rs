@@ -18,6 +18,7 @@ mod dispatch;
 mod formatting;
 mod lists;
 mod matrix;
+mod native_bytes;
 mod summary;
 mod vectors;
 
@@ -29,6 +30,7 @@ pub(crate) use dispatch::*;
 pub(crate) use formatting::*;
 pub(crate) use lists::*;
 pub(crate) use matrix::*;
+pub(crate) use native_bytes::NativeOutputBytes;
 pub(crate) use summary::*;
 pub(crate) use vectors::*;
 

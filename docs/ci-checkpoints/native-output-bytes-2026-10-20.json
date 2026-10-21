@@ -1,0 +1,185 @@
+{
+  "date": "2026-10-20",
+  "issues": [
+    "rport-hah9u.79",
+    "rport-cvs2.13"
+  ],
+  "source_base": "223d516aa94046f4b84cd79690ee902012879249",
+  "behavior": [
+    "Remove Rprintf String::from_utf8_unchecked. Snapshot the exact native C bytes into a forbidunsafe owned byte buffer and validate that the supplied admission equals the actual byte length.",
+    "Acquire original runtime pin and reserve complete workspace through the existing callback-free metadata path before copying. Registered arena lends use their actual ledger without reborrowing the arena or entering R; own the snapshot before any formatter/TLS buffer could be changed by a native callout.",
+    "Use a typed original OwnerToken for the byte-output entry, pin it through native writes and recheck authority on normal return and callback unwind. Source bytes and their ticket outlive the complete write, with Vec storage dropped before its guard.",
+    "One byte route forwards unchanged bytes to existing native sinks and connections. Only String capture frames convert invalid byte units to ASCII hex escapes, retaining valid Unicode spans and all original stream ordering/split behavior.",
+    "Stream capture conversion without allocating a complete rendered message. Each receiving frame applies its existing byte cap at UTF8 boundaries, and chronological mirrors copy only its admitted text prefix. Raising a later cap can accept new text even when the old truncation flag is already true.",
+    "Output outside an interpreter continues to native stdout as bytes. Existing printf variadic/format-only contract is unchanged."
+  ],
+  "red": {
+    "native_invalid_rust_text_failed": 1,
+    "strict_isolated_i686_invalid_rust_text_failed": 1,
+    "native_unadmitted_1024_byte_snapshot_failed": 1,
+    "fixed_budget_headroom_bytes": 128,
+    "note": "The strict Miri baseline reproduces failed UTF8 validity of the public String; this is not presented as a Miri alias/provenance UB diagnostic."
+  },
+  "fixture_correction": "The raw native-connection fixture initially attempted RConn instead of the existing Box<RConn> table entry; correct the setup and retain the compile-error log. No production representation, original assertions or budgets were weakened.",
+  "validation": {
+    "native_distinct_total": 41,
+    "native_suite_counts_with_overlap": {
+      "native-printutils": 8,
+      "native-output": 28,
+      "native-output-final": 7,
+      "native-quote-width": 2,
+      "native-diagnostic": 1
+    },
+    "native_distinct_cases": [
+      "iconv_nul_diagnostics_match_gnu_bound_and_survive_recovery",
+      "library::stats::loessc::native_output_tests::native_raw_diagonals_and_unused_outputs_follow_gnu",
+      "library::stats::loessc::native_output_tests::native_standard_error_outputs_publish_genuine_full_influence",
+      "mainutils::printutils::tests::encode_na_string_distinguishes_values_from_unquoted_names",
+      "mainutils::printutils::tests::native_output_raw_connection_receives_original_invalid_utf8_bytes",
+      "mainutils::printutils::tests::native_output_snapshot_uses_the_registered_lent_arena_budget",
+      "mainutils::printutils::tests::native_printf_invalid_bytes_never_construct_invalid_rust_capture_text",
+      "mainutils::printutils::tests::native_printf_snapshot_respects_original_fixed_budget_and_recovers",
+      "mainutils::printutils::tests::printed_utf8_width_and_encoder_preserve_invalid_bytes_and_valid_neighbors",
+      "mainutils::printutils::utf8::tests::printed_utf8_legacy_width_decoder_bounds_every_truncation",
+      "mainutils::printutils::utf8::tests::printed_utf8_units_preserve_neighbors_and_invalid_wire_bytes",
+      "quote_options_and_formals_follow_original_base_closures",
+      "sexp::output::capture::native_byte_tests::native_output_capture_prefixes_remain_valid_utf8_at_every_budget",
+      "sexp::output::capture::native_byte_tests::native_output_nested_split_caps_charge_the_receiving_frame_after_limit_changes",
+      "sexp::output::native_bytes::tests::native_output_snapshot_owns_its_source_and_rejects_mismatched_admission",
+      "sexp::output::tests::exact_top_level_emission_preserves_custom_print_blank_lines",
+      "sexp::output::tests::exact_top_level_emission_preserves_custom_print_without_newline",
+      "sexp::output::tests::nested_split_captures_tee_once_and_keep_separate_budgets",
+      "sexp::output::tests::owned_output_capture_preserves_custom_method_stream_order_and_error_prefix",
+      "sexp::output::tests::owned_output_capture_retains_only_its_original_runtime_through_closure",
+      "sexp::output::tests::printed_utf8_character_matrix_keeps_invalid_field_text_and_original_width",
+      "sexp::output::tests::selective_capture_crosses_layers_and_charges_receiving_budget",
+      "sexp::output::tests::test_atomic_element_formatting_reports_access_errors",
+      "sexp::output::tests::test_bounded_capture_also_bounds_chronological_output",
+      "sexp::output::tests::test_bounded_capture_budget_is_shared_by_stdout_and_stderr",
+      "sexp::output::tests::test_bounded_capture_exact_limit_and_empty_message_are_not_truncated",
+      "sexp::output::tests::test_bounded_capture_respects_utf8_boundaries",
+      "sexp::output::tests::test_bounded_capture_stays_bounded_under_long_mixed_unicode_output",
+      "sexp::output::tests::test_capture_can_target_instance_explicitly",
+      "sexp::output::tests::test_capture_empty",
+      "sexp::output::tests::test_capture_lifecycle",
+      "sexp::output::tests::test_format_atomic_na_values",
+      "sexp::output::tests::test_format_real_value_prints_signed_zero_as_zero",
+      "sexp::output::tests::test_nested_bounded_capture_restores_outer_state",
+      "sexp::output::tests::test_nested_capture",
+      "sexp::output::tests::test_numeric_vector_alignment_matches_r_simple_output",
+      "sexp::output::tests::test_print_logical_vector",
+      "sexp::output::tests::test_print_named_list_keeps_final_stock_separator_line",
+      "sexp::output::tests::test_real_vector_alignment_keeps_decimal_column",
+      "sexp::output::tests::test_string_output_uses_safe_charsxp_access_and_preserves_na",
+      "unicode_vectors_and_matrices_use_gnu_display_columns"
+    ],
+    "strict_isolated_i686_miri": {
+      "distinct_total": 7,
+      "suites": {
+        "miri-printf.log": 2,
+        "miri-sinks-lend.log": 2,
+        "miri-capture.log": 2,
+        "miri-snapshot.log": 1
+      },
+      "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation retained"
+    },
+    "wasm": {
+      "node_checks": {
+        "wasm-checked-exhaustion.log": 12,
+        "wasm-regex-workspace.log": 8,
+        "wasm-permanent-ledger.log": 14,
+        "wasm-iconv-raw.log": 6,
+        "wasm-quote-options.log": 8,
+        "wasm-gnu-opcode-contracts.log": 28,
+        "wasm-loess-native-outputs.log": 86,
+        "wasm-internal-dput.log": 4,
+        "wasm-encoding-tags.log": 4,
+        "wasm-filepath-encoding.log": 4,
+        "wasm-s4-cache-new.log": 8,
+        "wasm-serialization-workspace.log": 14,
+        "wasm-iconv-diagnostic.log": 4
+      },
+      "node_total": 200,
+      "web_generations": [
+        45,
+        45
+      ],
+      "total": 290
+    },
+    "clippy": "Four crates/all targets/-Dwarnings PASS",
+    "android": "r-uniffi aarch64-linux-android PASS",
+    "scoped_rustfmt_source_whitespace": "PASS"
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/printutils.rs": "0db5cce324620239e2db18ad3e6de316e5eac3dbd135c64bc5581d1c534e92ca",
+    "crates/rmath/src/sexp/memory/arena.rs": "bf079644e87263c0eeba52743ae2f213b22e5b00d65c9e69f0b30a33acc28da4",
+    "crates/rmath/src/sexp/output.rs": "08efaf0706e32211b8f8c8167d1971747425951a5cbf11a7258686dc93d99b10",
+    "crates/rmath/src/sexp/output/capture.rs": "9ecbd7b50798dfe3a171aefbe6ce5e8188dbeb9ddb5569a35c869f1e4b25568b",
+    "crates/rmath/src/sexp/output/native_bytes.rs": "5c9071cd77b672916f5d8f3e69e52dda0861661cf9029d559882f75cd7b1fa95"
+  },
+  "user_graphics_present_in_validation_checkout": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804"
+  },
+  "evidence_directory": "target/printf-bytes-evidence/",
+  "limits": [
+    "RCapturedOutput is explicitly UTF8 text. Invalid native bytes use hex escapes in its String fields; native byte sinks receive the original data. This does not claim byte-identical R-level/host-specific capture semantics for every legacy native encoding.",
+    "Existing connection/text-connection writer internals can still retain field loans through R publication. That independent ownership audit is rport-hah9u.80; runtime pin and byte snapshot do not claim the entire engine/connection table is migrated.",
+    "Retained printer/TLS escaped-body buffers remain unadmitted and are tracked in rport-cvs2.14; capture-frame native buffers, root/iterator metadata and total native/RSS scope remain parent work.",
+    "Original64MiB session and256MiB linear-memory bounds retained; no complete R parity/full-native-memory/whole-CI claim.",
+    "User graphics edits are excluded from the commit but were present during validation. No immutable full-build claim."
+  ],
+  "wasm_optimization": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29693192,
+      "sha256": "7922959cf07bde6cf32c8a385db69cd191c897bb10dbce5bb8d8a8d182807e00"
+    },
+    "output": {
+      "bytes": 25381057,
+      "sha256": "e29266c64afd1ce250416d2024b1445a3905622a3c0d01d7aabf04ee3b193cbe"
+    }
+  },
+  "evidence_sha256": {
+    "android.log": "5340c0bed2df1ddc3708160772a7fd971efc8ff9eabdc01afa9f2cc4395eca13",
+    "clippy.log": "07dfe008bcf68a6efa405e4ceb0d5b8be2dcecc8c9fe699dcb7779884d538c47",
+    "miri-capture.log": "12a1d2d166fbc682e1abfe5fec84589ce49abdf11416803fda058f0a5ff093ac",
+    "miri-printf.log": "96b5b53cbc2c7ea54b245bf7a5499794637bae350dfe007129ce4ef5a5c5a50b",
+    "miri-red.log": "79fa64b5ed12e5b150a8270b90c999a4233006d8a37ddae6df2c4367fc2708c6",
+    "miri-sinks-lend.log": "dca3d83a4226e7f565396439b8b4e8203050fe4659edcefbd07bbd893f468208",
+    "miri-snapshot.log": "5ecb8616af2ed8b23f36b3bd7a9327c89fd0c0ea0f1f2c2c1c11cd1d62c5ddb4",
+    "native-budget-red.log": "d99a8f2be475e8af63b011812949297a299da8db5365a2889bb12b4e1defe8c7",
+    "native-diagnostic.log": "7573ecbecc207d708861a4e1907d7498499788bd02a9b21c3c8c53b529525e54",
+    "native-green.log": "f2e72eb9c539d11139786ea2700b697d66bd02a94f6bff7ffc0bf57e26f0ad5a",
+    "native-output-final.log": "80016f7185ee0c000f01d3aecff8e9ffc1208f68e0b2d3b66aff96ae5adc71ce",
+    "native-output-green.log": "33b2446178700ed4665a20cb8358ff21a158ff90674c7cc5855f93cc36111f4c",
+    "native-output.log": "ad8b5d0c9676a7a07c91a1fcb5301341293ae925787c9a50e83abe5f32755727",
+    "native-printutils.log": "01fbc14d76e479e5112eccbff97869a5701b804a35de6325fd395e4010d7d8d1",
+    "native-quote-width.log": "9bd926516e4d24e8ca4e27f093936324eae88bed696120a8603bb4b0560f36b3",
+    "native-red.log": "1100b709fc77d1942f0cfb69c2d59267317f8684e759e3a302ca5fa89a2a9d05",
+    "wasm-build.log": "89ed2a1340c7d08f9abf075a1dd8b57182c96cf298f904821f53b76ad30cc326",
+    "wasm-checked-exhaustion.log": "c4503d6580adc755e96405568af61f4b75b15aa53e957ad0cec26bee4903ee6a",
+    "wasm-encoding-tags.log": "511650d7c1ea379ebb1068e87adb9b0bf0b623f0bbe91cdce4d9adb186677883",
+    "wasm-filepath-encoding.log": "d4259452350961df2dad82bfdca56d22875ace877bd0764fe094d5f12f4b3828",
+    "wasm-gnu-opcode-contracts.log": "0fa613adb062fcf7a85f6a6116f40ba08a9da40242250f007a351eff6363ff0e",
+    "wasm-iconv-diagnostic.log": "2e685619a47783c4e4e27d22593e72f3033adc4b0ad60799e96d8c4a08db8cb1",
+    "wasm-iconv-raw.log": "6e7b19c70e073d9496b598750aa561885ccf95ad2e5a90821cb18af829de74c3",
+    "wasm-internal-dput.log": "f70fc1cc39baf17042e1694bb1b506eb597f6cce1b8f2f70bbdbe152b9c6c530",
+    "wasm-loess-native-outputs.log": "06d62b1fb9322ba65e5bef0b2210b6b7a89bfe9533ed1261290083dae508ac65",
+    "wasm-optimize.log": "b77cf1be96dc1d1927f964590152f10a1651d766a7fe79a9e1761b3c8021f0d7",
+    "wasm-permanent-ledger.log": "2fc63d0310c9138a6ba6235a7ec14f3348e818fbaec2cafb958ffd005dfae407",
+    "wasm-quote-options.log": "23917f8085567a1654e38bc23b7f836c76bc0b9ec3964c692c924a890dda6f3c",
+    "wasm-regex-workspace.log": "806f847160e7e59ff2c7f945535a140d5abd7f3aac1d494af8ce64da4aa3f2ec",
+    "wasm-s4-cache-new.log": "ec9ce99283556301e346d5b3ab1d9c4c1949b6e52ffcc86322f945c7e9ed2d56",
+    "wasm-serialization-workspace.log": "56ef7a70b95c1b2de99495a644b0cd9a090f3d2af07d7ee64774d877f82b1d54",
+    "wasm-web-contracts.log": "d432c3a7e4f638ef107fa482c523c68fae985adfaf92a9b9ff89be56b54193a9"
+  }
+}

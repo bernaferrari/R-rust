@@ -2,7 +2,8 @@
 
 use super::*;
 
-/// Captured R output.
+/// UTF8 text captured from R output. Invalid native bytes are represented by
+/// ASCII hex escapes; native byte sinks receive the original bytes.
 #[derive(Debug, Clone, Default)]
 pub struct RCapturedOutput {
     pub stdout: String,
@@ -34,7 +35,7 @@ pub(crate) enum OutputStream {
 
 impl CaptureFrame {
     /// Return true when this layer consumes the stream completely.
-    fn write(&mut self, stream: OutputStream, msg: &str, limit: Option<usize>) -> bool {
+    fn write(&mut self, stream: OutputStream, msg: &[u8], limit: Option<usize>) -> bool {
         let (target, split) = match stream {
             OutputStream::Stdout => (&mut self.stdout, self.split_stdout),
             OutputStream::Stderr => (&mut self.stderr, false),
@@ -51,11 +52,11 @@ impl CaptureFrame {
                         message: "capture destination belongs to another session".into(),
                     });
                 }
-                crate::mainutils::connections::connection_write_bytes(connection, msg.as_bytes());
+                crate::mainutils::connections::connection_write_bytes(connection, msg);
                 return !split;
             }
             let previous_len = buffer.len();
-            append_bounded(
+            append_bounded_bytes(
                 buffer,
                 msg,
                 limit,
@@ -129,13 +130,13 @@ impl OutputCaptureState {
         self.current.active()
     }
 
-    fn route(&mut self, stream: OutputStream, msg: &str) -> bool {
+    fn route(&mut self, stream: OutputStream, msg: &[u8]) -> bool {
         self.route_with_sink(stream, msg, None)
     }
     fn route_with_sink(
         &mut self,
         stream: OutputStream,
-        msg: &str,
+        msg: &[u8],
         instance: Option<*mut RInstance>,
     ) -> bool {
         let mut pending_depth = instance.map_or(0, |instance| unsafe {
@@ -151,7 +152,7 @@ impl OutputCaptureState {
                 if let Some(instance) = instance {
                     if crate::mainutils::connections::write_output_sinks_between(
                         instance,
-                        msg.as_bytes(),
+                        msg,
                         floor,
                         pending_depth,
                     ) {
@@ -167,14 +168,29 @@ impl OutputCaptureState {
         false
     }
     pub fn capture_stdout(&mut self, msg: &str) -> bool {
-        self.route(OutputStream::Stdout, msg)
+        self.route(OutputStream::Stdout, msg.as_bytes())
     }
     pub fn capture_stderr(&mut self, msg: &str) -> bool {
-        self.route(OutputStream::Stderr, msg)
+        self.route(OutputStream::Stderr, msg.as_bytes())
     }
     pub(crate) fn set_max_bytes(&mut self, max_bytes: Option<usize>) {
         self.max_bytes = max_bytes;
     }
+}
+
+fn append_bounded_bytes(
+    target: &mut String,
+    message: &[u8],
+    limit: Option<usize>,
+    used: &mut usize,
+    truncated: &mut bool,
+) {
+    super::native_bytes::visit_capture_text(message, |part| {
+        let mut this_truncated = false;
+        append_bounded(target, part, limit, used, &mut this_truncated);
+        *truncated |= this_truncated;
+        !this_truncated
+    });
 }
 
 pub(crate) fn append_bounded(
@@ -317,15 +333,45 @@ pub fn capture_stdout(msg: &str) {
 }
 
 pub fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
-    // P2: the RefCell borrow below is dropped before the print!, and no
-    // ambient write occurs while it is held.
+    capture_stdout_bytes_in(inst, msg.as_bytes());
+}
+fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
     let mut capture = unsafe { (*inst).output_capture.borrow_mut() };
     if capture.route_with_sink(OutputStream::Stdout, msg, Some(inst)) {
         return;
     }
     drop(capture);
-    if !crate::mainutils::connections::write_output_sink_in(inst, msg.as_bytes()) {
-        print!("{msg}");
+    if !crate::mainutils::connections::write_output_sink_in(inst, msg) {
+        write_native_stdout(msg);
+    }
+}
+fn write_native_stdout(msg: &[u8]) {
+    use std::io::Write;
+    if let Err(error) = std::io::stdout().lock().write_all(msg) {
+        crate::sexp::context::r_error(format!("error writing native stdout: {error}"));
+    }
+}
+/// Byte-aware native entry. Its caller retains the original runtime and owns
+/// any source buffer that a connection callback could otherwise invalidate.
+pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_>>, msg: &[u8]) {
+    let Some(owner) = owner else {
+        write_native_stdout(msg);
+        return;
+    };
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        capture_stdout_bytes_in(owner.as_ptr(), msg)
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
+    if let Err(payload) = outcome {
+        std::panic::resume_unwind(payload);
     }
 }
 
@@ -347,7 +393,7 @@ pub(crate) fn capture_interleaved(msg: &str) {
         let captured = (*inst)
             .output_capture
             .borrow_mut()
-            .route(OutputStream::Message, msg);
+            .route(OutputStream::Message, msg.as_bytes());
         if !captured {
             eprint!("{msg}");
         }
@@ -409,7 +455,7 @@ pub(crate) struct PrintedOutputError {
 }
 
 /// Capture actual automatic printing, including custom methods and both streams.
-/// Presentation formatting never modifies these emitted bytes.
+/// Valid UTF8 is unchanged; invalid native bytes use the capture text policy.
 pub(crate) fn capture_printed_value(x: Sexp<'_>) -> Result<RCapturedOutput, PrintedOutputError> {
     // Only the managed original authority escapes this temporary current token.
     let original = unsafe { super::super::owner::OwnerToken::current() }
@@ -469,4 +515,47 @@ pub(crate) fn result_admission_error(x: Sexp<'_>) -> Option<String> {
     crate::android::result_budget::admit(x, limit)
         .err()
         .map(|message| format!("[{message}]"))
+}
+
+#[cfg(test)]
+mod native_byte_tests {
+    use super::*;
+    #[test]
+    fn native_output_capture_prefixes_remain_valid_utf8_at_every_budget() {
+        let wire = b"prefix \xc3\xa9\xff\xf0\x9f\x99\x82\xe9";
+        let text = "prefix é\\xff🙂\\xe9";
+        for limit in 0..=32 {
+            let mut state = OutputCaptureState::default();
+            state.set_max_bytes(Some(limit));
+            state.start();
+            assert!(state.route(OutputStream::Stdout, wire));
+            let captured = state.stop();
+            let mut n = limit.min(text.len());
+            while !text.is_char_boundary(n) {
+                n -= 1;
+            }
+            assert_eq!(captured.stdout, &text[..n], "limit {limit}");
+            assert_eq!(captured.interleaved, captured.stdout);
+            assert_eq!(captured.truncated, limit < text.len());
+        }
+    }
+    #[test]
+    fn native_output_nested_split_caps_charge_the_receiving_frame_after_limit_changes() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(6));
+        state.start();
+        state.start_with_options(true, false, true);
+        assert!(state.route(OutputStream::Stdout, b"\xc3\xa9\xffX"));
+        state.capture_stderr("E");
+        let inner = state.stop();
+        assert_eq!(inner.stdout, "é\\xff");
+        assert!(inner.truncated);
+        state.set_max_bytes(Some(9));
+        state.route(OutputStream::Stdout, b"Y\xfe");
+        let outer = state.stop();
+        assert_eq!(outer.stdout, "é\\xffY\\x");
+        assert!(outer.stderr.is_empty());
+        assert_eq!(outer.interleaved, outer.stdout);
+        assert!(outer.truncated);
+    }
 }

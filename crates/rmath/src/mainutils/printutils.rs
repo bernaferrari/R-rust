@@ -1461,23 +1461,31 @@ pub unsafe fn EncodeChar(x: SEXP) -> *const c_char {
 /// processing variadic arguments, since Rust cannot represent C varargs).
 /// For format-string-only calls (no % args), this produces correct output.
 pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
-    unsafe {
-        if format.is_null() {
-            return;
-        }
-        let bytes = CStr::from_ptr(format).to_bytes();
-        // Native text may hold single-byte-locale bytes that are not valid
-        // UTF-8; GNU writes them verbatim, so keep the raw bytes and route
-        // through the capture-aware emitter to preserve output order.
-        let text = match std::str::from_utf8(bytes) {
-            Ok(text) => text.to_string(),
-            // SAFETY: the bytes only pass through byte-oriented append and
-            // write paths (capture buffers and write_all); no char-boundary
-            // indexing happens on the way to the terminal.
-            Err(_) => unsafe { String::from_utf8_unchecked(bytes.to_vec()) },
-        };
-        crate::sexp::output::emit(&text);
+    use crate::sexp::{output::NativeOutputBytes, owner::OwnerToken};
+    if format.is_null() {
+        return;
     }
+    // SAFETY: the native caller retains this NUL-terminated span until it is
+    // copied. Snapshot admission reads only metadata, with no R callback or
+    // new arena lend that could overwrite a formatter/TLS source buffer.
+    let bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    let Ok(owner) = (unsafe { OwnerToken::current() }) else {
+        crate::sexp::output::emit_native_bytes(None, bytes);
+        return;
+    };
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let ticket = unsafe { crate::sexp::memory::reserve_transient_in(owner.as_ptr(), bytes.len()) }
+        .unwrap_or_else(|| {
+            crate::sexp::context::r_error("native output workspace budget exceeded")
+        });
+    let message = NativeOutputBytes::copy(bytes, ticket)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    crate::sexp::output::emit_native_bytes(Some(owner), message.as_bytes());
 }
 
 /// Rvprintf: varargs variant of Rprintf.
@@ -1580,6 +1588,120 @@ pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn native_output_snapshot_uses_the_registered_lent_arena_budget() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            crate::sexp::output::start_capture();
+            owner
+                .with_arena(|arena| {
+                    let before = arena.total_bytes_allocated();
+                    arena.set_budget(crate::sexp::memory::ArenaBudget::new(before + 3, 0));
+                    let denied =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                            Rprintf(c"lent".as_ptr(), std::ptr::null_mut());
+                        }));
+                    assert!(denied.is_err());
+                    assert_eq!(arena.workspace_bytes(), 0);
+                    arena.set_budget(crate::sexp::memory::ArenaBudget::new(before + 4, 0));
+                    unsafe {
+                        Rprintf(c"lent".as_ptr(), std::ptr::null_mut());
+                    }
+                    assert_eq!(arena.workspace_bytes(), 0);
+                })
+                .unwrap();
+            assert_eq!(crate::sexp::output::stop_capture().stdout, "lent");
+        });
+    }
+    #[test]
+    fn native_output_raw_connection_receives_original_invalid_utf8_bytes() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            use crate::mainutils::connections::{self, ConnKind, RConn};
+            connections::init_connections_table();
+            let index = {
+                let mut table = connections::connection_table();
+                let index = table.len();
+                let mut connection = RConn::new(
+                    "rawConnection",
+                    "native-bytes",
+                    "w",
+                    ConnKind::RawConnection,
+                );
+                connection.isopen = true;
+                connection.canwrite = true;
+                table.push(Some(Box::new(connection)));
+                index as i32
+            };
+            let mut capture = crate::sexp::output::OutputCaptureGuard::start();
+            capture.set_connection(index);
+            unsafe {
+                Rprintf(b"A\xffB\0".as_ptr().cast(), std::ptr::null_mut());
+            }
+            assert!(capture.finish().stdout.is_empty());
+            assert_eq!(
+                connections::connection_table()[index as usize]
+                    .as_ref()
+                    .unwrap()
+                    .raw_data,
+                b"A\xffB"
+            );
+        });
+    }
+    #[test]
+    fn native_printf_snapshot_respects_original_fixed_budget_and_recovers() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+            owner
+                .with_arena(|a| {
+                    a.set_budget(crate::sexp::memory::ArenaBudget::new(before + 128, 0))
+                })
+                .unwrap();
+            let mut wire = [b'a'; 1025];
+            wire[1024] = 0;
+            crate::sexp::output::start_capture();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                Rprintf(wire.as_ptr().cast(), std::ptr::null_mut());
+            }));
+            let denied = crate::sexp::output::stop_capture();
+            assert!(
+                result.is_err(),
+                "native printf snapshot escaped its original byte budget"
+            );
+            assert!(denied.stdout.is_empty());
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+            crate::sexp::output::start_capture();
+            unsafe {
+                Rprintf(c"ok".as_ptr(), std::ptr::null_mut());
+            }
+            assert_eq!(crate::sexp::output::stop_capture().stdout, "ok");
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+            assert_eq!(
+                owner.with_arena(|a| a.budget().max_bytes).unwrap(),
+                before + 128
+            );
+        });
+    }
+    #[test]
+    fn native_printf_invalid_bytes_never_construct_invalid_rust_capture_text() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            crate::sexp::output::start_capture();
+            // SAFETY: this static byte span is a valid NUL-terminated native
+            // C string. Its non-UTF8 byte is legal native text, not an invalid
+            // pointer or a request to create an invalid Rust str.
+            unsafe {
+                Rprintf(b"A\xffB\0".as_ptr().cast(), std::ptr::null_mut());
+            }
+            let output = crate::sexp::output::stop_capture();
+            assert!(std::str::from_utf8(output.stdout.as_bytes()).is_ok());
+            assert_eq!(output.stdout, "A\\xffB");
+            assert_eq!(output.interleaved, output.stdout);
+        });
+    }
     #[test]
     fn printed_utf8_width_and_encoder_preserve_invalid_bytes_and_valid_neighbors() {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
