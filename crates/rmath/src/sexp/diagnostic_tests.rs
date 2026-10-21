@@ -321,3 +321,31 @@ fn nul_diagnostic_prepared_underfunded_capacity_rejects_before_publication() {
         );
     });
 }
+
+#[test]
+fn prepared_diagnostic_rejects_underfunded_capacity_before_publication() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        let mut message = String::with_capacity(8);
+        message.push_str("message");
+        let ticket = ledger.reserve(message.capacity() - 1).unwrap();
+        assert!(matches!(
+            PreparedDiagnostic::from_admitted_string(message, ticket),
+            Err(SexpError::AllocationFailed { .. })
+        ));
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(
+            owner.with_arena(|a| a.total_bytes_allocated()).unwrap(),
+            before
+        );
+    });
+}

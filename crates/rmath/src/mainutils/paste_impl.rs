@@ -702,10 +702,15 @@ unsafe fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     match outcome {
         Ok(Ok(Ok(value))) => value.as_raw(),
-        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
-            crate::sexp::context::r_error(message)
+        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)))) => {
+            crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
         }
-        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(
+            crate::sexp::object::SexpError::EvaluationFailed { message },
+        )))) => crate::sexp::context::r_error(message),
+        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(error)))) | Ok(Err(error)) => {
+            crate::sexp::context::r_error(error.to_string())
+        }
         Err(payload) => std::panic::resume_unwind(payload),
     }
 }

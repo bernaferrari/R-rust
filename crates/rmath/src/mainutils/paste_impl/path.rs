@@ -2,12 +2,15 @@
 //! Both path entry shapes join owned components through the original runtime.
 use super::owned_paste::{self, Bytes, Mode, Native, Value};
 use crate::sexp::{
-    encoding::TextEncoding,
+    diagnostic::EvaluationError,
+    encoding::{self, TextEncoding},
     ffi::SEXPTYPE,
     memory::TransientReservation,
     object::{SexpError, SexpMut, SexpResult},
     owner::RuntimeAccess,
 };
+
+type PathResult<T> = Result<T, EvaluationError>;
 
 fn error(message: impl Into<String>) -> SexpError {
     SexpError::EvaluationFailed {
@@ -47,17 +50,35 @@ fn selected(access: &RuntimeAccess, inputs: &Value, index: i64, row: i64) -> Sex
     owned_paste::element(access, &value, row % len)
 }
 
+fn path_bytes(
+    access: &RuntimeAccess,
+    native: &impl Native,
+    value: &Value,
+    mode: Mode,
+    parent: &Value,
+) -> PathResult<Bytes> {
+    access.require_active()?;
+    access.domain().link(value)?;
+    access.domain().link(parent)?;
+    if matches!(mode, Mode::Utf8) {
+        encoding::validate_utf8_path(access, value, parent)?;
+    }
+    let bytes = native.bytes(value, mode, parent)?;
+    access.require_active()?;
+    Ok(bytes)
+}
+
 /// GNU's internal entry receives the component list and separator vector.
 pub(super) fn internal(
     access: &RuntimeAccess,
     native: &impl Native,
     args: Value,
     env: Value,
-) -> SexpResult<Value> {
+) -> PathResult<Value> {
     let inputs = args.try_car()?.into_owned()?;
     let tail = args.try_cdr()?.into_owned()?;
     if tail.is_nil() || !tail.try_cdr()?.is_nil() {
-        return Err(error("invalid number of arguments to .Internal(file.path)"));
+        return Err(error("invalid number of arguments to .Internal(file.path)").into());
     }
     let separator = tail.try_car()?.into_owned()?;
     evaluate(access, native, inputs, separator, args, env)
@@ -69,16 +90,16 @@ pub(super) fn public(
     native: &impl Native,
     args: Value,
     env: Value,
-) -> SexpResult<Value> {
+) -> PathResult<Value> {
     let mut count = 0i64;
     let mut separator = None;
     let mut current = args.clone();
     while !current.is_nil() {
         if current.try_tag_name_eq(b"fsep")? {
             if separator.is_some() {
-                return Err(error(
-                    "formal argument \"fsep\" matched by multiple actual arguments",
-                ));
+                return Err(
+                    error("formal argument \"fsep\" matched by multiple actual arguments").into(),
+                );
             }
             separator = Some(current.try_car()?.into_owned()?);
         } else {
@@ -118,9 +139,9 @@ fn evaluate(
     separator: Value,
     parent: Value,
     env: Value,
-) -> SexpResult<Value> {
+) -> PathResult<Value> {
     if !matches!(inputs.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
-        return Err(error("invalid first argument"));
+        return Err(error("invalid first argument").into());
     }
     let count = owned_paste::length(access, &inputs)?;
     if count == 0 {
@@ -138,7 +159,7 @@ fn evaluate(
             let value = native.coerce(&value, &env)?;
             access.require_active()?;
             if value.typeof_() != SEXPTYPE::STRSXP {
-                return Err(error("non-string argument to .Internal(file.path)"));
+                return Err(error("non-string argument to .Internal(file.path)").into());
             }
             SexpMut::try_from_checked(inputs.clone())?.try_set_vector_elt(j, value.clone())?;
             value
@@ -158,7 +179,7 @@ fn evaluate(
         for i in 0..owned_paste::length(access, &value)? {
             let character = owned_paste::element(access, &value, i)?;
             if native.flags(&character)?.bytes {
-                return Err(error("strings with \"bytes\" encoding are not allowed"));
+                return Err(error("strings with \"bytes\" encoding are not allowed").into());
             }
         }
     }
@@ -177,7 +198,7 @@ fn evaluate(
                 }
             }
         }
-        let mode = if utf8 { Mode::Utf8Path } else { Mode::Native };
+        let mode = if utf8 { Mode::Utf8 } else { Mode::Native };
         let mut width = separator
             .data
             .len()
@@ -186,11 +207,15 @@ fn evaluate(
         for j in 0..count {
             let character = selected(access, &inputs, j, row)?;
             width = width
-                .checked_add(native.bytes(&character, mode, &parent)?.data.len())
+                .checked_add(
+                    path_bytes(access, native, &character, mode, &parent)?
+                        .data
+                        .len(),
+                )
                 .ok_or_else(allocation)?;
         }
         if width > i32::MAX as usize {
-            return Err(error("result would exceed 2^31-1 bytes"));
+            return Err(error("result would exceed 2^31-1 bytes").into());
         }
         let _parts_charge = workspace(
             &parent,
@@ -204,7 +229,7 @@ fn evaluate(
             .map_err(|_| allocation())?;
         for j in 0..count {
             let character = selected(access, &inputs, j, row)?;
-            parts.push(native.bytes(&character, mode, &parent)?);
+            parts.push(path_bytes(access, native, &character, mode, &parent)?);
         }
         // Recompute admission from the actual copy-pass pieces. Providers can
         // change a later component after the width pass; never grow uncharged.

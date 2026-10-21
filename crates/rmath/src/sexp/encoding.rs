@@ -93,7 +93,7 @@ pub const CE_ANY: i32 = TextEncoding::Any.as_gnu();
 pub(crate) mod declared_latin1;
 pub(crate) mod nul_diagnostic;
 mod owned;
-pub(crate) use owned::{CharacterFlags, Mode, NulText, flags, translate};
+pub(crate) use owned::{CharacterFlags, Mode, NulText, flags, translate, validate_utf8_path};
 
 /// Publish the requested character tag before any constructor notification.
 pub(crate) fn allocate_character(

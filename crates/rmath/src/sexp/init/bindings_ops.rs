@@ -186,6 +186,13 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         eval_base_binding(base_env, "formatDL", include_str!("../gnu_format_dl.R"));
         eval_base_binding(base_env, "file.show", include_str!("../gnu_file_show.R"));
         eval_base_binding(base_env, "try", include_str!("../gnu_try.R"));
+        // GNU files.R: preserve the call frame and base environment used by
+        // as.character method lookup before the owned internal path engine.
+        eval_base_binding(
+            base_env,
+            "file.path",
+            "function(..., fsep=.Platform$file.sep) .Internal(file.path(list(...), fsep))",
+        );
         eval_base_binding(base_env, "by", include_str!("../gnu_by.R"));
         eval_base_binding(
             base_env,

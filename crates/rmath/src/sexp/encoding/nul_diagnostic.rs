@@ -2,36 +2,11 @@
 //! GNU's bounded embedded-NUL error text. Size and admit before allocating.
 use crate::sexp::{
     encoding::TextEncoding,
-    memory::WorkspaceReservation,
     object::{Sexp, SexpError, SexpResult},
-    owner::RuntimeAccess,
 };
 const LIMIT: usize = 999;
 const PREFIX: &str = "embedded nul in string: '";
-pub(crate) struct Diagnostic {
-    pub(super) message: String,
-    _ticket: WorkspaceReservation,
-}
-impl Diagnostic {
-    pub(crate) fn into_owned(
-        self,
-        access: &RuntimeAccess,
-        parent: &Sexp<'_>,
-    ) -> SexpResult<crate::sexp::diagnostic::Diagnostic> {
-        crate::sexp::diagnostic::Diagnostic::from_workspace(
-            access,
-            parent,
-            self.message.into_bytes(),
-            self._ticket,
-        )
-    }
-
-    // Only textual fixture assertions extract an uncharged host string.
-    #[cfg(test)]
-    pub(crate) fn into_message(self) -> String {
-        self.message
-    }
-}
+pub(crate) use crate::sexp::diagnostic::PreparedDiagnostic as Diagnostic;
 fn allocation() -> SexpError {
     SexpError::AllocationFailed {
         object: "embedded-NUL diagnostic workspace",
@@ -220,10 +195,7 @@ pub(crate) fn format_bounded(
     let copied = capped_visit(bytes, encoding, utf8, limit, |part| message.push_str(part));
     debug_assert_eq!(copied, size);
     debug_assert_eq!(message.len(), size);
-    Ok(Diagnostic {
-        message,
-        _ticket: ticket,
-    })
+    Diagnostic::from_admitted_string(message, ticket)
 }
 
 #[cfg(test)]
@@ -250,12 +222,12 @@ mod tests {
                 let byte = byte.parse::<u8>().unwrap();
                 let formatted =
                     format(&parent, &[byte, 0, b'A'], TextEncoding::Latin1, true).unwrap();
-                assert_eq!(formatted.message, expected, "declared byte {byte:02x}");
+                assert_eq!(formatted.as_str(), expected, "declared byte {byte:02x}");
                 drop(formatted);
                 let formatted =
                     format(&parent, &[byte, 0, b'A'], TextEncoding::Latin1, false).unwrap();
                 assert_eq!(
-                    formatted.message,
+                    formatted.as_str(),
                     std::format!("embedded nul in string: '<{byte:02x}>'")
                 );
             }
@@ -275,7 +247,7 @@ mod tests {
             assert!(format(&parent, &[0; 10000], TextEncoding::Utf8, true).is_err());
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
             let small = format(&parent, b"A\0B", TextEncoding::Utf8, true).unwrap();
-            assert_eq!(small.message, "embedded nul in string: 'A\\0B'");
+            assert_eq!(small.as_str(), "embedded nul in string: 'A\\0B'");
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 30);
             drop(small);
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
@@ -291,7 +263,7 @@ mod tests {
                 .with_arena(|a| a.set_budget(ArenaBudget::new(before + 999, 0)))
                 .unwrap();
             let exact = format(&parent, &[0; 10000], TextEncoding::Utf8, true).unwrap();
-            assert_eq!(exact.message.len(), 999);
+            assert_eq!(exact.as_str().len(), 999);
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 999);
             drop(exact);
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
@@ -314,7 +286,7 @@ mod tests {
         foreign.with_active(|| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let diagnostic = format(&parent, b"\0", TextEncoding::Native, true).unwrap();
-                assert_eq!(diagnostic.message.len(), 28);
+                assert_eq!(diagnostic.as_str().len(), 28);
                 assert_eq!(
                     original.with_active(|| owner.with_arena(|a| a.workspace_bytes()).unwrap()),
                     28
@@ -348,9 +320,9 @@ mod tests {
                 .unwrap();
             let wire = format!("A{}\0", "é".repeat(1000));
             let diagnostic = format(&parent, wire.as_bytes(), TextEncoding::Utf8, true).unwrap();
-            assert_eq!(diagnostic.message.len(), 998);
-            assert!(diagnostic.message.ends_with('é'));
-            assert!(!diagnostic.message.contains('\u{fffd}'));
+            assert_eq!(diagnostic.as_str().len(), 998);
+            assert!(diagnostic.as_str().ends_with('é'));
+            assert!(!diagnostic.as_str().contains('\u{fffd}'));
         });
     }
     #[test]
@@ -408,7 +380,7 @@ mod tests {
                 ),
             ] {
                 assert_eq!(
-                    format(&parent, wire, encoding, utf8).unwrap().message,
+                    format(&parent, wire, encoding, utf8).unwrap().as_str(),
                     expected
                 );
             }

@@ -28,6 +28,49 @@ impl std::fmt::Display for EvaluationError {
     }
 }
 
+/// An admitted formatter result retains its physical charge until publication.
+pub(crate) struct PreparedDiagnostic {
+    message: String,
+    // Field order releases physical storage before its original ledger ticket.
+    admission: WorkspaceReservation,
+}
+impl PreparedDiagnostic {
+    pub(crate) fn from_admitted_string(
+        message: String,
+        admission: WorkspaceReservation,
+    ) -> SexpResult<Self> {
+        let prepared = Self { message, admission };
+        if prepared.message.capacity() != prepared.admission.bytes() {
+            return Err(allocation());
+        }
+        Ok(prepared)
+    }
+
+    pub(crate) fn into_owned(
+        self,
+        access: &RuntimeAccess,
+        parent: &Sexp<'_>,
+    ) -> SexpResult<Diagnostic> {
+        Diagnostic::from_workspace(access, parent, self.message.into_bytes(), self.admission)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn as_str(&self) -> &str {
+        &self.message
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capacity(&self) -> usize {
+        self.message.capacity()
+    }
+
+    // Only fixture assertions extract an uncharged host string.
+    #[cfg(test)]
+    pub(crate) fn into_message(self) -> String {
+        self.message
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Diagnostic {
     root: std::rc::Rc<super::heap::NodeRootLease>,

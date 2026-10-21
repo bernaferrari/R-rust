@@ -354,7 +354,7 @@ impl Knowledge {
     fn encoding(&self, mode: Mode) -> TextEncoding {
         match mode {
             Mode::Bytes => TextEncoding::Bytes,
-            Mode::Utf8 | Mode::Utf8Path => TextEncoding::Utf8,
+            Mode::Utf8 => TextEncoding::Utf8,
             Mode::Native
                 if self.any && self.all && crate::mainutils::platform::locale_is_utf8() =>
             {

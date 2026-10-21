@@ -2,9 +2,11 @@
 //! Checked, owned translation. No borrowed C span survives a callback.
 use super::{ASCII_MASK, BYTES_MASK, LATIN1_MASK, UTF8_MASK};
 use crate::sexp::{
+    diagnostic::{EvaluationError, PreparedDiagnostic},
     ffi::SEXPTYPE,
     memory::TransientReservation,
     object::{Sexp, SexpError, SexpResult},
+    owner::RuntimeAccess,
     payload::PayloadLease,
 };
 
@@ -12,8 +14,6 @@ use crate::sexp::{
 pub(crate) enum Mode {
     Native,
     Utf8,
-    /// GNU trCharUTF8: fail instead of escaping an untranslatable path.
-    Utf8Path,
     Bytes,
 }
 #[derive(Clone, Copy, Default)]
@@ -115,8 +115,7 @@ impl Source {
                 message: "translating strings with \"bytes\" encoding is not allowed".into(),
             });
         }
-        let utf8 = matches!(mode, Mode::Utf8 | Mode::Utf8Path)
-            || crate::mainutils::platform::locale_is_utf8();
+        let utf8 = matches!(mode, Mode::Utf8) || crate::mainutils::platform::locale_is_utf8();
         Ok(if self.gp & LATIN1_MASK != 0 {
             if utf8 {
                 Conversion::LatinUtf8
@@ -211,16 +210,6 @@ pub(crate) struct TranslatedBytes {
 }
 fn copy(source: &Source, mode: Mode, parent: &Sexp<'_>, nul: bool) -> SexpResult<TranslatedBytes> {
     let conversion = source.conversion(mode)?;
-    if matches!(mode, Mode::Utf8Path)
-        && matches!(conversion, Conversion::LatinUtf8)
-        && (0..source.len).any(|i| super::declared_latin1::character(source.byte(i)).is_none())
-    {
-        return Err(path_translation_error(
-            source,
-            parent,
-            crate::mainutils::platform::locale_is_utf8(),
-        )?);
-    }
     let mut length = usize::from(nul);
     source.visit(conversion, |bytes| {
         length = length.checked_add(bytes.len()).ok_or_else(failure)?;
@@ -250,7 +239,12 @@ fn copy(source: &Source, mode: Mode, parent: &Sexp<'_>, nul: bool) -> SexpResult
     })
 }
 
-fn path_translation_error(source: &Source, parent: &Sexp<'_>, utf8: bool) -> SexpResult<SexpError> {
+fn path_translation_error(
+    source: &Source,
+    parent: &Sexp<'_>,
+    utf8: bool,
+    limit: usize,
+) -> SexpResult<PreparedDiagnostic> {
     // GNU bounds the native rendering at 255 bytes, or a valid 252-byte
     // prefix followed by an ellipsis. No full translated copy is needed.
     let mut body = [0u8; 256];
@@ -284,7 +278,7 @@ fn path_translation_error(source: &Source, parent: &Sexp<'_>, utf8: bool) -> Sex
     let body = std::str::from_utf8(&body[..length]).map_err(|_| SexpError::InvalidUtf8)?;
     const PREFIX: &str = "unable to translate '";
     const SUFFIX: &str = "' to UTF-8";
-    let size = PREFIX.len() + body.len() + usize::from(truncated) * 3 + SUFFIX.len();
+    let size = (PREFIX.len() + body.len() + usize::from(truncated) * 3 + SUFFIX.len()).min(limit);
     let mut ticket = parent
         .allocation()?
         .heap_identity()
@@ -294,14 +288,48 @@ fn path_translation_error(source: &Source, parent: &Sexp<'_>, utf8: bool) -> Sex
     let mut message = String::new();
     message.try_reserve_exact(size).map_err(|_| failure())?;
     ticket.try_resize(message.capacity()).ok_or_else(failure)?;
-    message.push_str(PREFIX);
-    message.push_str(body);
-    if truncated {
-        message.push_str("...");
+    'message: for part in [PREFIX, body, if truncated { "..." } else { "" }, SUFFIX] {
+        for ch in part.chars() {
+            if message.len() + ch.len_utf8() > size {
+                break 'message;
+            }
+            message.push(ch);
+        }
     }
-    message.push_str(SUFFIX);
-    Ok(SexpError::EvaluationFailed { message })
+    PreparedDiagnostic::from_admitted_string(message, ticket)
 }
+
+/// GNU's strict path conversion rejects undefined declared-Latin1 bytes.
+/// Keep the selected original character rooted through error publication.
+pub(crate) fn validate_utf8_path(
+    access: &RuntimeAccess,
+    value: &Sexp<'_>,
+    parent: &Sexp<'_>,
+) -> Result<(), EvaluationError> {
+    access.require_active()?;
+    access.domain().link(value)?;
+    access.domain().link(parent)?;
+    let source = Source::read(value, parent)?;
+    if matches!(source.conversion(Mode::Utf8)?, Conversion::LatinUtf8)
+        && (0..source.len).any(|i| super::declared_latin1::character(source.byte(i)).is_none())
+    {
+        let (utf8, limit) = access.with_native(|original| {
+            let result = (
+                crate::mainutils::platform::locale_is_utf8(),
+                crate::mainutils::errors::diagnostic_message_limit(),
+            );
+            original.require_active()?;
+            Ok(result)
+        })?;
+        let prepared = path_translation_error(&source, parent, utf8, limit)?;
+        return Err(EvaluationError::Diagnostic(
+            prepared.into_owned(access, parent)?,
+        ));
+    }
+    access.require_active()?;
+    Ok(())
+}
+
 pub(crate) fn translate(
     value: &Sexp<'_>,
     mode: Mode,
@@ -421,6 +449,48 @@ mod tests {
     }
 
     #[test]
+    fn declared_latin1_path_returned_error_retains_original_formatting_charge() {
+        let arena = RSession::new_for_gc_tests();
+        let value = character(&arena, &[0x81], TextEncoding::Latin1);
+        let ledger = value.allocation().unwrap().heap_identity().byte_ledger();
+        let source = Source::read(&value, &value).unwrap();
+        let diagnostic = path_translation_error(&source, &value, true, 999).unwrap();
+        let capacity = diagnostic.capacity();
+        assert_eq!(diagnostic.as_str(), "unable to translate '<81>' to UTF-8");
+        assert_eq!(
+            ledger.workspace_bytes_for_test(),
+            capacity,
+            "returned path diagnostic must keep its original physical charge"
+        );
+        drop(source);
+        drop(value);
+        drop(arena);
+        let other = RSession::new_for_gc_tests();
+        let before = total(&other);
+        assert_eq!(ledger.workspace_bytes_for_test(), capacity);
+        drop(diagnostic);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(total(&other), before);
+    }
+
+    #[test]
+    fn owned_path_diagnostic_foreign_selection_rejects_before_current_allocation() {
+        let original = RSession::new_for_gc_tests();
+        let value = character(&original, &[0x81], TextEncoding::Latin1);
+        let ledger = value.allocation().unwrap().heap_identity().byte_ledger();
+        let other = RSession::new_for_gc_tests();
+        let parent = character(&other, b"anchor", TextEncoding::Native);
+        let before = total(&other);
+        other.with_active(|| {
+            let owner = other.owner_token().unwrap();
+            let error = crate::sexp::owner::with_runtime(&owner.weak_owner().unwrap(), |access| validate_utf8_path(access, &value, &parent)).unwrap().unwrap_err();
+            assert!(matches!(error, EvaluationError::Access(SexpError::UnownedPointer { address }) if address == value.as_raw().addr()));
+        });
+        assert_eq!(total(&other), before);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+    }
+
+    #[test]
     fn declared_latin1_path_errors_are_bounded_before_workspace_admission() {
         let arena = RSession::new_for_gc_tests();
         let mut bytes = vec![0xe9; 127];
@@ -430,30 +500,28 @@ mod tests {
         let before = total(&arena);
         limit(&arena, ArenaBudget::new(before + 285, 100));
         assert!(matches!(
-            path_translation_error(&source, &value, true),
+            path_translation_error(&source, &value, true, 999),
             Err(SexpError::AllocationFailed { .. })
         ));
         assert_eq!(total(&arena), before);
         limit(&arena, ArenaBudget::new(before + 286, 100));
-        let SexpError::EvaluationFailed { message } =
-            path_translation_error(&source, &value, true).unwrap()
-        else {
-            panic!("typed path diagnostic")
-        };
+        let diagnostic = path_translation_error(&source, &value, true, 999).unwrap();
         assert_eq!(
-            message,
+            diagnostic.as_str(),
             format!("unable to translate '{}...' to UTF-8", "é".repeat(126))
         );
-        assert_eq!(message.len(), 286);
-        let SexpError::EvaluationFailed { message } =
-            path_translation_error(&source, &value, false).unwrap()
-        else {
-            panic!("typed C path diagnostic")
-        };
+        assert_eq!(diagnostic.as_str().len(), 286);
+        assert_eq!(total(&arena), before + 286);
+        drop(diagnostic);
+        assert_eq!(total(&arena), before);
+        let diagnostic = path_translation_error(&source, &value, false, 999).unwrap();
         assert_eq!(
-            message,
+            diagnostic.as_str(),
             format!("unable to translate '{}' to UTF-8", ".".repeat(255))
         );
+        assert_eq!(total(&arena), before + diagnostic.capacity());
+        drop(diagnostic);
+        assert_eq!(total(&arena), before);
     }
 
     #[test]
@@ -579,5 +647,28 @@ mod tests {
                 TextEncoding::Native
             );
         }
+    }
+    #[test]
+    fn owned_path_diagnostic_lowered_original_cap_denies_canonical_publication() {
+        let arena = RSession::new_for_gc_tests();
+        let value = character(&arena, &[0x81], TextEncoding::Latin1);
+        let source = Source::read(&value, &value).unwrap();
+        let prepared = path_translation_error(&source, &value, true, 999).unwrap();
+        let ledger = value.allocation().unwrap().heap_identity().byte_ledger();
+        assert_eq!(ledger.workspace_bytes_for_test(), prepared.capacity());
+        arena.with_active(|| {
+            let owner = arena.owner_token().unwrap();
+            owner
+                .with_arena(|a| a.set_budget(ArenaBudget::new(1, 0)))
+                .unwrap();
+            let error = crate::sexp::owner::with_runtime(&owner.weak_owner().unwrap(), |access| {
+                prepared.into_owned(access, &value)
+            })
+            .unwrap();
+            assert!(matches!(error, Err(SexpError::AllocationFailed { .. })));
+            assert_eq!(ledger.workspace_bytes_for_test(), 0);
+            assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), 1);
+            assert!(value.try_char_eq(&[0x81]).unwrap());
+        });
     }
 }

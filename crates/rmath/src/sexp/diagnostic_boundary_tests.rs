@@ -18,11 +18,13 @@ enum MessageOperation {
     Case,
     Raw,
     Iconv,
+    Path,
 }
 
 fn actual_message_publication(action: u8, operation: MessageOperation) {
     let expected: &'static [u8] = match operation {
         MessageOperation::Case => EXPECTED,
+        MessageOperation::Path => b"unable to translate '<81>' to UTF-8",
         _ => b"embedded nul in string: 'A\\0B'",
     };
     let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
@@ -40,15 +42,20 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
     unsafe {
         super::session::with_instance_active(instance, || {
             let input = match operation {
-                MessageOperation::Case => {
+                MessageOperation::Case | MessageOperation::Path => {
                     let mut input = SexpMut::try_from_checked(
                         factory
                             .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))
                             .unwrap(),
                     )
                     .unwrap();
+                    let (bytes, encoding) = if matches!(operation, MessageOperation::Path) {
+                        (&b"\x81"[..], TextEncoding::Latin1)
+                    } else {
+                        (&b"a\xff"[..], TextEncoding::Utf8)
+                    };
                     let character = factory
-                        .allocate(|a| encoding::allocate_character(a, b"a\xff", TextEncoding::Utf8))
+                        .allocate(|a| encoding::allocate_character(a, bytes, encoding))
                         .unwrap();
                     input.try_set_string_elt(0, character).unwrap();
                     input.freeze()
@@ -95,6 +102,28 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
                         .unwrap();
                 }
                 args.into_owned().unwrap()
+            } else if matches!(operation, MessageOperation::Path) {
+                let mut components = SexpMut::try_from_checked(
+                    factory
+                        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                        .unwrap(),
+                )
+                .unwrap();
+                components.try_set_vector_elt(0, input.clone()).unwrap();
+                let tail = factory
+                    .pairlist_cell(
+                        &factory.strings(&["/"]).unwrap(),
+                        &factory.nil(),
+                        &factory.nil(),
+                    )
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                factory
+                    .pairlist_cell(&components.freeze(), &tail, &factory.nil())
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
             } else {
                 factory
                     .pairlist_cell(&input, &factory.nil(), &factory.nil())
@@ -158,6 +187,12 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
                     crate::mainutils::character::case_entry(args.as_raw(), true)
                 }
                 MessageOperation::Raw => crate::mainutils::essentials::do_rawToChar(
+                    factory.nil().as_raw(),
+                    factory.nil().as_raw(),
+                    args.as_raw(),
+                    factory.nil().as_raw(),
+                ),
+                MessageOperation::Path => crate::mainutils::paste::do_filepath(
                     factory.nil().as_raw(),
                     factory.nil().as_raw(),
                     args.as_raw(),
@@ -298,4 +333,17 @@ fn owned_nul_diagnostic_iconv_callback_panic_releases_ticket() {
 #[test]
 fn owned_nul_diagnostic_iconv_callback_revocation_cannot_publish() {
     actual_message_publication(2, MessageOperation::Iconv);
+}
+
+#[test]
+fn owned_path_diagnostic_actual_constructor_keeps_source_tag_and_ticket() {
+    actual_message_publication(0, MessageOperation::Path);
+}
+#[test]
+fn owned_path_diagnostic_actual_callback_panic_releases_ticket() {
+    actual_message_publication(1, MessageOperation::Path);
+}
+#[test]
+fn owned_path_diagnostic_actual_callback_revocation_cannot_publish() {
+    actual_message_publication(2, MessageOperation::Path);
 }
