@@ -4,7 +4,7 @@
     "rport-evnx.5.5"
   ],
   "source_base": "c822d9d4",
-  "status": "native_and_wasm_verified_strict_miri_running",
+  "status": "native_wasm_and_28_renderer_strict_miri_verified",
   "date": "2026-10-21",
   "scope": "Raw default diagnostic byte rendering, explicit host escaping, original runtime restoration, pre-handler named stop message selection, safe native simple-condition constructors and GNU simpleMessage message preservation.",
   "observed_red": [
@@ -146,23 +146,12 @@
     "limits": "unchanged64MiB sessions/256MiB Wasm cap; ctor GC gap1/wait1, original cap1, foreign allocations+flags stable; no Miri alias/provenance/isolation relaxation"
   },
   "pending": {
-    "renderer_miri": {
-      "log": "target/default-error-rendering-evidence/miri-default-owner-final.log",
-      "status": "running_no_pass_claim",
-      "expected_tests": 28,
-      "scope": "Renderer production files frozen before independent native constructor adapter changes; no constructor tests in this run."
-    },
-    "constructor_miri": {
-      "log": "target/simple-condition-ownership-evidence/miri-simple-constructor-final.log",
-      "status": "running_no_pass_claim",
-      "expected_tests": 19,
-      "scope": "Frozen constructor source; later cfg(test) full-base native-only generic dispatch test added."
-    },
     "original_full_startup_miri": {
-      "log": "target/portable-libm-evidence/miri-original-startup-x86_64.log",
-      "status": "running_no_pass_claim",
       "issue": "rport-cvs2.15",
-      "notes": "Original constructor/PROTECT/GC/cap1 assertions untouched; prior i686 exhausted addresses, not UB/PASS."
+      "status": "running_no_pass_claim",
+      "log": "target/portable-libm-evidence/miri-original-87477-x86_64.log",
+      "source_base": "87477cfb",
+      "notes": "Exact original test_full_gc_never_moves_protected_objects from frozen clean managed checkout. Constructor is new_without_default_packages; no full default-package startup pass claim."
     }
   },
   "source_sha256": {
@@ -263,10 +252,377 @@
     "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
   },
   "remaining_parent_inventory": [
-    "Both milestone beads remain open until strict Miri completes.",
-    "evnx.5.3.3 persistent cache admission plus broader renderer/host/control String accounting remains open.",
-    "w03x.10 actual Perl class/UCP mismatch reproduced against this module; full PCRE2 remains open.",
-    "Broader native errorCondition/warningCondition extra-field construction and memory/control metadata remain parent work.",
+    "Broader native diagnostic control/host/trace allocations and remaining errorCondition extra-field construction remain parent work.",
+    "Full interpreter ownership and total native memory admission remain open.",
+    "Full PCRE2 parity remains open; UTF-8 Perl class policy child w03x.10 is closed.",
     "Dolt origin missing rport-0d5o; source Git remote available."
-  ]
+  ],
+  "historical_pending": {
+    "renderer_miri": {
+      "log": "target/default-error-rendering-evidence/miri-default-owner-final.log",
+      "status": "running_no_pass_claim",
+      "expected_tests": 28,
+      "scope": "Renderer production files frozen before independent native constructor adapter changes; no constructor tests in this run."
+    },
+    "constructor_miri": {
+      "log": "target/simple-condition-ownership-evidence/miri-simple-constructor-final.log",
+      "status": "running_no_pass_claim",
+      "expected_tests": 19,
+      "scope": "Frozen constructor source; later cfg(test) full-base native-only generic dispatch test added."
+    },
+    "original_full_startup_miri": {
+      "log": "target/portable-libm-evidence/miri-original-startup-x86_64.log",
+      "status": "running_no_pass_claim",
+      "issue": "rport-cvs2.15",
+      "notes": "Original constructor/PROTECT/GC/cap1 assertions untouched; prior i686 exhausted addresses, not UB/PASS."
+    }
+  },
+  "completion_2026_10_24": {
+    "renderer_distinct_strict_miri_tests": 28,
+    "target": "i686-unknown-linux-gnu",
+    "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks",
+    "isolation": "default enabled",
+    "original_gc_schedule": "unchanged gap1/wait1",
+    "source_sha256": {
+      "crates/rmath/src/mainutils/errors/default_byte_tests.rs": "fa30c4fb957eb4878c086ed7c3f74cfcababb1632da0d398e94666eb8ce3d368",
+      "crates/rmath/src/mainutils/errors/mod.rs": "f7d4a000c49d457a2a843caff01bc3576af72d9bd19016c2439bc10c16780890",
+      "crates/rmath/src/mainutils/errors/render.rs": "b666b532189193c5f527e93a9c085287c8163f0e89dacc7e9da3fa0118ba2381",
+      "crates/rmath/src/mainutils/errors/rendered_cache.rs": "728ffb7ce2bff1505881062589ec15d862ff8d83854eefdb861c34fbba8c05a2",
+      "crates/rmath/src/mainutils/errors/rendered_cache_tests.rs": "763a4d8ed15b55366f0a2bef35478e64e94716dac95514004afb29f565c4bf56",
+      "crates/rmath/src/mainutils/errors/state.rs": "85c36d250ca311db555879f5dffa13b36a9a0af8e36d333b29cb222574e3cc26",
+      "crates/rmath/src/sexp/diagnostic_boundary_tests.rs": "d1d1ee96a32215578104bbe25e6c9395562eb94587f4ad296b21805b68247dd4",
+      "crates/rmath/src/sexp/instance.rs": "921896c18ff8d0bcca51bc4c535e3ca49a8f290b2279c63a21a96b64d1d9b252"
+    },
+    "by_log": [
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/00-owned_native_call_lookup_child_survives_package_detach_gc_and_reentry.log",
+        "sha256": "1da79e724706848ce750818469f7763d4bb3799be4025300c53f7b1141d44b5d",
+        "tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_call_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "renderer_tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_call_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/01-owned_native_external2_lookup_child_survives_package_detach_gc_and_reentry.log",
+        "sha256": "fa321c50c8afb16f3763f2969c3a85370de1730e8a9ce7de7422d13357c2638d",
+        "tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_external2_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "renderer_tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_external2_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/02-owned_native_external_lookup_child_survives_package_detach_gc_and_reentry.log",
+        "sha256": "0c47d21c2697a5dd8ab36bbf6b6bfc649fa9c46e20c552265f50824e0ee2c33a",
+        "tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_external_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "renderer_tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_external_lookup_child_survives_package_detach_gc_and_reentry"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/03-owned_native_list_name_provider_retains_original_payload_before_detach_and_gc.log",
+        "sha256": "0cb7233a9bb945ea60ea3ad294c2fb8ee5e01b53f61f62176a2178ccd354c977",
+        "tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_list_name_provider_retains_original_payload_before_detach_and_gc"
+        ],
+        "renderer_tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_list_name_provider_retains_original_payload_before_detach_and_gc"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/04-owned_native_lookup_child_retained_until_package_revocation_rejects_publication.log",
+        "sha256": "7874277f681644d777fb2fdb037b30a9c44a9c56eb7a447630ff6edb22402151",
+        "tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_lookup_child_retained_until_package_revocation_rejects_publication"
+        ],
+        "renderer_tests": [
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_lookup_child_retained_until_package_revocation_rejects_publication"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/05-owned_error_buffer_c_setter_can_read_its_own_buffer_without_aliasing.log",
+        "sha256": "2b9e8115853048a4ea434ff40fe1db293cf803a16a7210d2f81b1bb35f25962c",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_c_setter_can_read_its_own_buffer_without_aliasing"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_c_setter_can_read_its_own_buffer_without_aliasing"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/06-owned_error_buffer_getter_constructor_panic_unwinds.log",
+        "sha256": "369973f5811ef8413e340701b909629ed39055f8a03a73a0efb6e9e846958842",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_constructor_panic_unwinds"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_constructor_panic_unwinds"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/07-owned_error_buffer_getter_constructor_revocation_rejects_publication.log",
+        "sha256": "1d461d27a279904bc677058b90457d84350f787ad98a1ac4d35ac6b3585ac076",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_constructor_revocation_rejects_publication"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_constructor_revocation_rejects_publication"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/08-owned_error_buffer_getter_snapshot_precedes_constructor_gc.log",
+        "sha256": "e527c1dbb1cad86ecc3bcd798c7ce0a4abd41c555afb2705dc8dae775e966159",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_snapshot_precedes_constructor_gc"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_getter_snapshot_precedes_constructor_gc"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/09-owned_error_buffer_matches_gnu_oracle_for_every_byte_after_valid_utf8_prefixes.log",
+        "sha256": "b7c377f9208a96449958f8343683b589f7f96c324ca9b39ba36e2f259092b407",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_matches_gnu_oracle_for_every_byte_after_valid_utf8_prefixes"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_matches_gnu_oracle_for_every_byte_after_valid_utf8_prefixes"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/10-owned_error_buffer_setter_rejects_foreign_arguments_before_allocation_or_mutation.log",
+        "sha256": "42e310bf5f4dcd93871129f0fd12d2b87bd66439f0e28ef983ebd07d9a1c3fff",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_setter_rejects_foreign_arguments_before_allocation_or_mutation"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_setter_rejects_foreign_arguments_before_allocation_or_mutation"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/11-owned_error_buffer_simple_error_resets_raw_bytes_before_each_collecting_handler.log",
+        "sha256": "ada044a934204426ccef886881f6a460e54bf241e77b932fc1d3fd0cb1b72cc2",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_simple_error_resets_raw_bytes_before_each_collecting_handler"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_simple_error_resets_raw_bytes_before_each_collecting_handler"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/12-owned_error_buffer_stack_snapshot_needs_no_workspace_but_getter_obeys_original_cap.log",
+        "sha256": "835f3886d8d990e5abbd1216f9188578e15fdebc584a1853cbabf47e726e6945",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_stack_snapshot_needs_no_workspace_but_getter_obeys_original_cap"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_stack_snapshot_needs_no_workspace_but_getter_obeys_original_cap"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/13-owned_error_buffer_utf8_tail_and_fixed_limit_match_rstrncpy.log",
+        "sha256": "315ba32733a5c0c18adef44ff4d0ff6c3617660c7540abfe6944be2cc42c14d0",
+        "tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_utf8_tail_and_fixed_limit_match_rstrncpy"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::byte_buffer_tests::owned_error_buffer_utf8_tail_and_fixed_limit_match_rstrncpy"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/14-owned_native_calling_handler_cannot_call_expired_userdata.log",
+        "sha256": "3c41fe037f297b6da115dbb0c86d5a9995f43d0fe8e4610f5d1e161d683a18b3",
+        "tests": [
+          "mainutils::errors::native::tests::owned_native_calling_handler_cannot_call_expired_userdata"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::native::tests::owned_native_calling_handler_cannot_call_expired_userdata"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/15-owned_native_calling_handler_invokes_before_error_and_restores_stack_on_unwind.log",
+        "sha256": "4de40370c254a30f42ec8af5fde6bee5e4d6e4372c79ebdeec5b8de3c9022236",
+        "tests": [
+          "mainutils::errors::native::tests::owned_native_calling_handler_invokes_before_error_and_restores_stack_on_unwind"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::native::tests::owned_native_calling_handler_invokes_before_error_and_restores_stack_on_unwind"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/16-owned_native_trycatch_callbacks_unwind_and_keep_conditions_through_final_gc.log",
+        "sha256": "74558979b7896642eb94a0a512c0ba5096225957a1b0947a44b8997d222535c8",
+        "tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_callbacks_unwind_and_keep_conditions_through_final_gc"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_callbacks_unwind_and_keep_conditions_through_final_gc"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/17-owned_native_trycatch_filters_classes_and_finalizes_unmatched_or_host_panics.log",
+        "sha256": "0a3c106e0a72d3fef262addc09166e76915aa853f0f01c23367bc0651d67f740",
+        "tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_filters_classes_and_finalizes_unmatched_or_host_panics"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_filters_classes_and_finalizes_unmatched_or_host_panics"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/18-owned_native_trycatch_rethrows_return_ticket_through_collecting_finalizer.log",
+        "sha256": "96ca815e51325058a9e9ba1ad9402325e096c4d097d159ec16f61021d348cb1a",
+        "tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_rethrows_return_ticket_through_collecting_finalizer"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::native::tests::owned_native_trycatch_rethrows_return_ticket_through_collecting_finalizer"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/renderer-miri-leaves-2026-10-24/19-owned_default_byte_clipping_repairs_only_cut_suffix_and_preserves_complete_invalid_tail.log",
+        "sha256": "6775761125aca8cc26c9fb787cded031094ce25fdf89cdc58a6283486f3cc30c",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_clipping_repairs_only_cut_suffix_and_preserves_complete_invalid_tail"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_clipping_repairs_only_cut_suffix_and_preserves_complete_invalid_tail"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-cache-publication-controls.log",
+        "sha256": "fb2d9120b2c432a62f00213e1e5fdf0c1b85d86cd32801a85d310068e4331ab0",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_survives_real_deparse_gc",
+          "mainutils::errors::default_byte_tests::owned_default_byte_self_buffer_and_real_deparse_gc_keep_original_message",
+          "sexp::diagnostic_boundary_tests::owned_diagnostic_actual_message_constructor_keeps_source_tag_and_ticket"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_survives_real_deparse_gc",
+          "mainutils::errors::default_byte_tests::owned_default_byte_self_buffer_and_real_deparse_gc_keep_original_message"
+        ],
+        "successful_footer_pass_count": 3
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-panic.log",
+        "sha256": "c5904a1ed79295bd25b4769693d6ddfe1c4e2ea46060aa6a7aad6a918a1ff58a",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_panic_restores_original_flags"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_panic_restores_original_flags"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-revocation.log",
+        "sha256": "8d0fb44cb5d6c4c8f099eee926ce9d394dfb61ebdd42c0fdd75889283d3238f1",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_revocation_restores_original_flags"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_revocation_restores_original_flags"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-stop-panic.log",
+        "sha256": "c68f28df6d8fc8dbb27eebf9b0827ab81ad2f92e9a56963df3060a7bd024e30b",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_panic_restores_original_flags"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_panic_restores_original_flags"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-stop-revocation.log",
+        "sha256": "b50754866b82581a7a70ec232d25e961c0ce1010d783f1b74577f5e3f71d2bbd",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_revocation_restores_original_flags"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_revocation_restores_original_flags"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-foreign.log",
+        "sha256": "5cd9cfd5b4118f2ae35c21c767bffb4efa76ed005e76b724564f4acec515ac9c",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_revocation_cannot_restore_into_foreign_runtime"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_real_deparse_revocation_cannot_restore_into_foreign_runtime"
+        ],
+        "successful_footer_pass_count": 1
+      },
+      {
+        "log": "target/perl-character-class-evidence/miri-renderer-stop-foreign.log",
+        "sha256": "ffcf5fd01b8329ae4d98114f573d7eaea163b30d7c465f66fd067a58ce1c44bc",
+        "tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_cannot_publish_in_foreign_runtime"
+        ],
+        "renderer_tests": [
+          "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_cannot_publish_in_foreign_runtime"
+        ],
+        "successful_footer_pass_count": 1
+      }
+    ],
+    "compile_retry": [
+      {
+        "test": "mainutils::dotcode::lookup_snapshot_tests::owned_native_external_lookup_child_survives_package_detach_gc_and_reentry",
+        "command": [
+          "scripts/cargo_dev.sh",
+          "+nightly",
+          "miri",
+          "test",
+          "-p",
+          "rmath",
+          "--lib",
+          "--target",
+          "i686-unknown-linux-gnu",
+          "--",
+          "mainutils::dotcode::lookup_snapshot_tests::owned_native_external_lookup_child_survives_package_detach_gc_and_reentry",
+          "--exact",
+          "--test-threads=1"
+        ],
+        "returncode": 1,
+        "passed": false,
+        "phase": "compile error in unrelated new test module; target not executed",
+        "original_log_path": "target/renderer-miri-leaves-2026-10-24/02-owned_native_external_lookup_child_survives_package_detach_gc_and_reentry.log",
+        "original_log_sha256": "69497acaf8187fab084c7307d675ee6aac76901718495b54606be75212662e63",
+        "original_raw_log_retained": false
+      }
+    ],
+    "constructor_verification": "docs/ci-checkpoints/owned-simple-conditions-2026-10-21.json (rport-evnx.5.5 closed)",
+    "cache_verification": "docs/ci-checkpoints/owned-rendered-error-cache-2026-10-21.json (rport-evnx.5.3.3 closed)",
+    "limits": "No GC, cap, isolation or original assertions weakened. Broader renderer/control/native String and full ownership work remain parent issues."
+  }
 }
