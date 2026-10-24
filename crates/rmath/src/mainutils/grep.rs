@@ -37,6 +37,8 @@ use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
 use crate::tre::regapi::{tre_regfree, tre_regnexec};
 
 #[cfg(test)]
+mod capture_publication_tests;
+#[cfg(test)]
 mod perl_class_tests;
 mod perl_dialect;
 mod positions;

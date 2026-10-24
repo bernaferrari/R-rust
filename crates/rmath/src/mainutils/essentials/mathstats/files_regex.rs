@@ -707,9 +707,9 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 .map_or(0, |positions| positions.len());
             let mut starts = position_workspace.buffer(capacity);
             let mut lengths = position_workspace.buffer(capacity);
-            // Per-match group spans (0-based start, length); None mirrors
-            // PCRE2_UNSET groups (0/0 arithmetic below).
-            let mut group_spans: Vec<Vec<Option<(usize, usize)>>> = Vec::new();
+            // Keep original admitted kernel storage through R capture-matrix
+            // construction instead of copying into uncharged native row vectors.
+            let mut capture_rows: Option<crate::mainutils::grep::RegexMatches> = None;
             if let Some(positions) = empty_positions {
                 for position in positions {
                     starts.push(position);
@@ -722,20 +722,14 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     ignore_case,
                     requested_bytes,
                 ) {
-                    for caps in all {
+                    for caps in all.iter() {
                         if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
                             starts.push(whole.start + 1);
                             lengths.push(whole.end - whole.start);
-                            group_spans.push(
-                                (1..=capture_count)
-                                    .map(|g| {
-                                        caps.get(g)
-                                            .and_then(|c| c.as_ref())
-                                            .map(|m| (m.start, m.end - m.start))
-                                    })
-                                    .collect(),
-                            );
                         }
+                    }
+                    if capture_count != 0 {
+                        capture_rows = Some(all);
                     }
                 }
             } else {
@@ -785,20 +779,13 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     *start = s as usize;
                     *length = n as usize;
                 }
-                for groups in &mut group_spans {
-                    for (start, length) in groups.iter_mut().flatten() {
-                        let (s, n) = regex_span(&txt, *start, *start + *length, false);
-                        *start = s as usize - 1;
-                        *length = n as usize;
-                    }
-                }
             }
             let missing = TYPEOF(text) == SEXPTYPE::STRSXP
                 && STRING_ELT(text, i) == crate::sexp::globals::R_NaString();
             if missing {
                 starts.clear();
                 lengths.clear();
-                group_spans.clear();
+                capture_rows = None;
             }
             let (elt, match_lengths) = if starts.is_empty() {
                 let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
@@ -841,13 +828,19 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                         (-1, -1)
                     });
                 } else {
-                    let spans = &group_spans;
+                    let spans = capture_rows
+                        .as_ref()
+                        .expect("successful Perl matches retain their admitted captures");
                     set_gregexpr_capture_attrs(
                         elt,
                         starts.len(),
                         capture_count,
                         &capture_names,
-                        |k, g| spans[k][g].map_or((0, 0), |(s, l)| (s as c_int + 1, l as c_int)),
+                        |k, g| {
+                            spans[k][g + 1].map_or((0, 0), |span| {
+                                regex_span(&txt, span.start, span.end, byte_mode)
+                            })
+                        },
                     );
                 }
             }

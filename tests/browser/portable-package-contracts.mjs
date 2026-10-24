@@ -77,6 +77,7 @@ const contracts = [
     'perl-character-class-contract',
     'perl-class-family-contract',
     'perl-empty-pattern-contract',
+    'gregexpr-capture-attribution-contract',
     'regex-replacement-case-contract',
     'regex-replacement-missing-contract',
     'regex-compile-error-recovery-contract',

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs"
 const contracts = [
   "perl-class-family-contract",
   "perl-empty-pattern-contract",
+  "gregexpr-capture-attribution-contract",
 ].map((name) => ({
   code: readFileSync(
     new URL(`../../crates/r-embed/tests/fixtures/${name}.R`, import.meta.url),

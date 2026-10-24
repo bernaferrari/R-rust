@@ -74,11 +74,11 @@ for (kind in classes) {
         raise RuntimeError("GNU Unicode scalar ranges differ from committed fixture")
     if run("unicode-class-public", (FIXTURES / "perl-character-class-contract.R").read_text()) != (FIXTURES / "perl-character-class-contract.out").read_text():
         raise RuntimeError("GNU public character-class print contract failed")
-    for name in ["perl-class-family-contract", "perl-empty-pattern-contract"]:
+    for name in ["perl-class-family-contract", "perl-empty-pattern-contract", "gregexpr-capture-attribution-contract"]:
         actual = run(name, (FIXTURES / (name + ".R")).read_text())
         if actual != (FIXTURES / (name + ".out")).read_text():
             raise RuntimeError(f"GNU public UTF-8 contract failed: {name}")
-    print(f"GNU UTF-8 oracle verified: {len(cases)} patterns, {len(oracle['ranges'])} complete scalar classes, 3 public contracts")
+    print(f"GNU UTF-8 oracle verified: {len(cases)} patterns, {len(oracle['ranges'])} complete scalar classes, 4 public contracts")
 
 
 if __name__ == "__main__":
