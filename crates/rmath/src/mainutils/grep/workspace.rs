@@ -182,6 +182,13 @@ impl AsRef<str> for WorkspaceText {
         &self.value
     }
 }
+
+#[cfg(test)]
+impl WorkspaceText {
+    pub(super) fn capacity(&self) -> usize {
+        self.value.capacity()
+    }
+}
 impl std::fmt::Debug for WorkspaceText {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.value.fmt(f)

@@ -74,6 +74,8 @@ const contracts = [
     'unserialize-connection-contract',
     'text-publication-contract',
     'regex-unicode-public-contract',
+    'perl-character-class-contract',
+    'perl-class-family-contract',
     'regex-replacement-case-contract',
     'regex-replacement-missing-contract',
     'regex-compile-error-recovery-contract',

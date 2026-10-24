@@ -37,6 +37,9 @@ use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
 use crate::tre::regapi::{tre_regfree, tre_regnexec};
 
 #[cfg(test)]
+mod perl_class_tests;
+mod perl_dialect;
+#[cfg(test)]
 mod replacement_memory_tests;
 #[cfg(test)]
 mod replacement_tests;
@@ -490,6 +493,12 @@ impl PerlRegex {
 
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         let workspace = regex_workspace();
+        let prepared = if bytes {
+            None
+        } else {
+            Some(perl_dialect::prepare(pattern, &workspace, ignore_case).map_err(str::to_owned)?)
+        };
+        let pattern = prepared.as_deref().unwrap_or(pattern);
         PerlRegexBuilder::new(pattern)
             .case_insensitive(ignore_case)
             .bytes_mode(if bytes {
@@ -1221,16 +1230,35 @@ pub(crate) fn mode_captures_all(
 ) -> Option<RegexMatches> {
     let re = PerlRegex::compile_mode(pattern, ignore_case, bytes).ok()?;
     let mut all = re.workspace.buffer(0);
-    for captures in re.regex.captures_iter(text.as_bytes()) {
-        let captures = captures.ok()?;
+    let mut offset = 0;
+    while let Some(captures) = re.regex.captures_from_pos(text.as_bytes(), offset).ok()? {
+        let whole = captures.get(0)?;
+        let next = if whole.start() == whole.end() {
+            whole.end().checked_add(if bytes {
+                1
+            } else {
+                text.get(whole.end()..)?
+                    .chars()
+                    .next()
+                    .map_or(1, char::len_utf8)
+            })?
+        } else {
+            whole.end()
+        };
         let mut matches = re.workspace.buffer(captures.len());
-        for i in 0..captures.len() {
-            matches.push(captures.get(i).map(|m| RegexMatch {
-                start: m.start(),
-                end: m.end(),
+        for index in 0..captures.len() {
+            matches.push(captures.get(index).map(|matched| RegexMatch {
+                start: matched.start(),
+                end: matched.end(),
             }));
         }
         all.push(matches);
+        // GNU gregexpr does not initiate another search after advancing to
+        // the terminal offset. The first search may still find an end anchor.
+        if next >= text.len() {
+            break;
+        }
+        offset = next;
     }
     Some(all)
 }
@@ -1294,20 +1322,7 @@ pub(crate) fn perl_captures_all(
     text: &str,
     ignore_case: bool,
 ) -> Option<RegexMatches> {
-    let re = PerlRegex::compile(pattern, ignore_case).ok()?;
-    let mut all = re.workspace.buffer(0);
-    for caps in re.regex.captures_iter(text.as_bytes()) {
-        let caps = caps.ok()?;
-        let mut matches = re.workspace.buffer(caps.len());
-        for idx in 0..caps.len() {
-            matches.push(caps.get(idx).map(|m| RegexMatch {
-                start: m.start(),
-                end: m.end(),
-            }));
-        }
-        all.push(matches);
-    }
-    Some(all)
+    mode_captures_all(pattern, text, ignore_case, false)
 }
 
 /// Capture-group metadata for a perl pattern: `(group count excluding the
