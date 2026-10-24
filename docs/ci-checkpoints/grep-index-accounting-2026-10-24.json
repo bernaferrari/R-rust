@@ -2,7 +2,7 @@
   "date": "2026-10-24",
   "issue": "rport-cvs2.8.5",
   "source_base": "d7afb81d",
-  "status": "native_verified_cross_platform_pending",
+  "status": "verified",
   "scope": "Production grep selection indices and value/name result construction use original-ledger storage without a duplicate vector.",
   "red": "Actual production grep_match_indices returned3 indices while original workspace ledger remained0.",
   "implementation": [
@@ -35,12 +35,124 @@
       "sha256": "87bc770fca08b101d12295d8d0c48387641dc766079a0078fbad41e8c19b4049",
       "tests": [],
       "footer": []
+    },
+    "public-grep-indices.log": {
+      "sha256": "037260e1de10f180cbba9d3cc26501e6a0bab0a15415856b872126079b8f7563",
+      "tests": [
+        "grep_indices_values_and_names_preserve_original_utf8_contract",
+        "grep_indices_obey_original_cap_and_recover_without_raising_it"
+      ],
+      "footer": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.38s"
+      ]
+    },
+    "miri-grep-indices.log": {
+      "sha256": "c93fec18019b3b5733b180ef5292a59040dabf9e06945e06f24930222501c32e",
+      "tests": [
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_consuming_iterator_keeps_original_charge_after_teardown",
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_growth_denial_recovers_at_original_cap",
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_stay_admitted_until_publication_finishes"
+      ],
+      "footer": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4432 filtered out; finished in 202.67s"
+      ]
+    },
+    "clippy-grep-indices.log": {
+      "sha256": "410524d12491c1f066aa37132054a040a03f8b6609e1c1f6bbf9036bf881cd0d",
+      "tests": [],
+      "footer": []
+    },
+    "android-grep-indices.log": {
+      "sha256": "0b1efc117561b1822791bae9d5f0b15dae4100ef4b6dffd310778e814049e7dc",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-grep-indices-build.log": {
+      "sha256": "74b7db6d2f1b423848678119a2a7b24c6b6463a12d452ac749520970c62e7655",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-grep-indices-optimize.log": {
+      "sha256": "3a53cfc363101f482b5afbd11fa747497db038d9ab8664825f93b5b47740d185",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-grep-indices-public.log": {
+      "sha256": "98245273a6e0a7b6a35770ae6058dc973b53171a61fbd619516d2d417cda41d0",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-grep-indices-prepare.log": {
+      "sha256": "9aba4f026747f73425514b625f946300043a911db36bc9f0043dfaa802711cad",
+      "tests": [],
+      "footer": []
+    },
+    "browser-grep-indices.log": {
+      "sha256": "7f02499b7a52adf2b8c30eec2e167b0a8bdf48cfe73814508994b5e8745ee25f",
+      "tests": [],
+      "footer": []
     }
   },
-  "pending": [
-    "native public cap/recovery and GNU fixture",
-    "strict Miri3",
-    "optimizedWasm/Chromium",
-    "Clippy/Android"
-  ]
+  "pending": [],
+  "strict_miri": {
+    "target": "i686-unknown-linux-gnu",
+    "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks",
+    "isolation": "default enabled",
+    "passed": 3,
+    "seconds": 202.67
+  },
+  "optimized_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29835423,
+      "sha256": "e166273773be12d99126ef4fd756751c855190080cdfb4320fbd92fe1407ef08"
+    },
+    "output": {
+      "bytes": 25494706,
+      "sha256": "378166594a792be56a69fa0d9bfb245a4d65eaa8076a07e479d7866864dbf2bf"
+    }
+  },
+  "cross_platform": {
+    "native_tests": 5,
+    "strict_miri_tests": 3,
+    "wasm_public_contracts": 130,
+    "same_session_recovery_checks": 130,
+    "diagnostic_checks": 78,
+    "fresh_generation_tempfile_checks": 2,
+    "chromium_tests": 1,
+    "chromium_isolated_workers": 2,
+    "chromium_contracts_per_worker": 4,
+    "android_target": "aarch64-linux-android",
+    "android_packages": [
+      "rmath",
+      "r-embed",
+      "r-wasm",
+      "r-uniffi"
+    ],
+    "clippy": "same4 packages, alltargets, -D warnings",
+    "limits": "Original native caps and256MiB Wasm linear memory maximum unchanged."
+  },
+  "source_sha256": {
+    "crates/rmath/src/mainutils/grep.rs": "4e911bdf5e9ee29d54dcbda8781dcccabbdf04d25d48f3a022be77c5dd828ca0",
+    "crates/rmath/src/mainutils/essentials/shared/runtime_misc.rs": "10e6f165cff535e08f5b6671c336580875849d504a0710d976694f46b30f0460",
+    "crates/rmath/src/mainutils/essentials/strings/gsub_grep.rs": "8f91081afc3f3c16e31c68c38103de6d10e5254b67b4542439fa04ebdca6bccc",
+    "crates/r-embed/tests/grep_index_memory_public.rs": "26c16a5a99cf2f404dcbe8b69b8c9c6b046696818dacc184cc8ad2bce4c36150",
+    "crates/r-embed/tests/fixtures/grep-owned-index-contract.R": "74b356419b3b760070c98a48c49d93ae8f09d537f805437d46c63de37d7fcc80",
+    "crates/r-embed/tests/fixtures/grep-owned-index-contract.out": "87bc770fca08b101d12295d8d0c48387641dc766079a0078fbad41e8c19b4049",
+    "tests/browser/portable-package-contracts.mjs": "c0d17b9258d3d5f7d918781a3fbfe7490d1fb4dbcd14709b761a231e5861ce0a",
+    "website/tests/perl-unicode-contracts.spec.ts": "4cb1b533ba3b43bb7a19cffcfcb63fcd5326c0ccb965897985f5884ec8953118"
+  },
+  "preserved_user_graphics_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "artifact_notes": "Wasm contains the preserved user graphics edits; this is verification of the local combined state, not a clean release artifact."
 }
