@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 
 const contracts = [
   "perl-class-family-contract",
+  "grep-owned-index-contract",
   "perl-empty-pattern-contract",
   "gregexpr-capture-attribution-contract",
 ].map((name) => ({

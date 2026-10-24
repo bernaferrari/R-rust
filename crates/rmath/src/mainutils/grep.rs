@@ -53,6 +53,7 @@ mod workspace;
 pub(crate) use workspace::RegexWorkspace;
 use workspace::{TextBuilder, WorkspaceBuffer, WorkspaceText};
 
+pub(crate) type RegexIndices = WorkspaceBuffer<R_xlen_t>;
 pub(crate) type RegexCaptures = WorkspaceBuffer<Option<RegexMatch>>;
 pub(crate) type RegexMatches = WorkspaceBuffer<RegexCaptures>;
 

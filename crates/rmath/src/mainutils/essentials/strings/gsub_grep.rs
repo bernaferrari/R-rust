@@ -122,7 +122,7 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let index = matches.clone();
+            let index = &matches;
             for (out_idx, src_idx) in index.iter().enumerate() {
                 if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
                     SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, *src_idx));

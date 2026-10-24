@@ -76,6 +76,7 @@ const contracts = [
     'regex-unicode-public-contract',
     'perl-character-class-contract',
     'perl-class-family-contract',
+    'grep-owned-index-contract',
     'perl-empty-pattern-contract',
     'gregexpr-capture-attribution-contract',
     'regex-replacement-case-contract',

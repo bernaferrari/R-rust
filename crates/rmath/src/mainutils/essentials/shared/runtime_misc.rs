@@ -284,13 +284,13 @@ pub(crate) fn grep_match_indices(
     perl: bool,
     fixed: bool,
     invert: bool,
-) -> Vec<R_xlen_t> {
+) -> crate::mainutils::grep::RegexIndices {
+    let mut matches = crate::mainutils::grep::regex_workspace().buffer(0);
     unsafe {
         if x.is_null() || x == R_NilValue() {
-            return Vec::new();
+            return matches;
         }
         let n = XLENGTH(x);
-        let mut matches = Vec::new();
         let mut utf8_warned = false;
         for i in 0..n {
             if is_string_na(x, i) {
@@ -805,5 +805,75 @@ pub(crate) fn elt_real_safe(x: SEXP, i: R_xlen_t) -> f64 {
         } else {
             NA_REAL
         }
+    }
+}
+
+#[cfg(test)]
+mod grep_indices_memory_tests {
+    use super::*;
+    #[test]
+    fn owned_grep_indices_stay_admitted_until_publication_finishes() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let source = owner.node_factory().strings(&["é", "éa", "é"]).unwrap();
+        let indices = grep_match_indices(source.as_raw(), "é", false, false, true, false);
+        assert_eq!(&*indices, &[0, 1, 2]);
+        let required = indices.len() * std::mem::size_of::<R_xlen_t>();
+        assert!(owner.with_arena(|a| a.workspace_bytes()).unwrap() >= required);
+        drop(indices);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+    #[test]
+    fn owned_grep_indices_growth_denial_recovers_at_original_cap() {
+        use crate::sexp::memory::ArenaBudget;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let source = owner.node_factory().strings(&["é"; 16]).unwrap();
+        let used = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        let cap = used + 12 * std::mem::size_of::<R_xlen_t>();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(cap, 0)))
+            .unwrap();
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| grep_match_indices(
+                source.as_raw(),
+                "é",
+                false,
+                false,
+                true,
+                false
+            )))
+            .is_err()
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        let indices = grep_match_indices(source.as_raw(), "x", false, false, true, false);
+        assert!(indices.is_empty());
+        assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), cap);
+        drop(indices);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+
+    #[test]
+    fn owned_grep_indices_consuming_iterator_keeps_original_charge_after_teardown() {
+        let first = crate::sexp::RSession::new_for_gc_tests();
+        let owner = first.owner_token().unwrap();
+        let source = owner.node_factory().strings(&["é", "a", "é"]).unwrap();
+        let ledger = source.allocation().unwrap().heap_identity().byte_ledger();
+        let indices = grep_match_indices(source.as_raw(), "é", false, false, true, false);
+        let charge = ledger.workspace_bytes_for_test();
+        assert!(charge >= 2 * std::mem::size_of::<R_xlen_t>());
+        let second = crate::sexp::RSession::new_for_gc_tests();
+        let other = second.owner_token().unwrap();
+        let before = other.with_arena(|a| a.workspace_bytes()).unwrap();
+        let mut iter = indices.into_iter();
+        assert_eq!(iter.next(), Some(0));
+        drop(source);
+        drop(first);
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(ledger.workspace_bytes_for_test(), charge);
+        assert_eq!(other.with_arena(|a| a.workspace_bytes()).unwrap(), before);
+        drop(iter);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
     }
 }

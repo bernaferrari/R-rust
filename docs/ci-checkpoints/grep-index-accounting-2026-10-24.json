@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-24",
+  "issue": "rport-cvs2.8.5",
+  "source_base": "d7afb81d",
+  "status": "native_verified_cross_platform_pending",
+  "scope": "Production grep selection indices and value/name result construction use original-ledger storage without a duplicate vector.",
+  "red": "Actual production grep_match_indices returned3 indices while original workspace ledger remained0.",
+  "implementation": [
+    "Return charged RegexIndices with original allocation peak admission and drop/consuming-iterator tickets.",
+    "Borrow the same immutable index slice for value=TRUE and names construction; delete uncharged vector clone.",
+    "No new unsafe production code; regex compile/VM and other native string copies remain parent."
+  ],
+  "verification": {
+    "native-grep-indices-red.log": {
+      "sha256": "76f75a36624bdfb08751d01e89cc7c3723879170b8dfaba292aae2448f17899e",
+      "tests": [
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_stay_admitted_until_publication_finishes"
+      ],
+      "footer": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4463 filtered out; finished in 0.01s"
+      ]
+    },
+    "native-grep-indices-green.log": {
+      "sha256": "38e471e62f71c09305afc301d39ced8a3209b0e17756d629721c99f583c07ab2",
+      "tests": [
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_stay_admitted_until_publication_finishes",
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_consuming_iterator_keeps_original_charge_after_teardown",
+        "mainutils::essentials::shared::runtime_misc::grep_indices_memory_tests::owned_grep_indices_growth_denial_recovers_at_original_cap"
+      ],
+      "footer": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4463 filtered out; finished in 0.01s"
+      ]
+    },
+    "gnu-grep-owned-index.log": {
+      "sha256": "87bc770fca08b101d12295d8d0c48387641dc766079a0078fbad41e8c19b4049",
+      "tests": [],
+      "footer": []
+    }
+  },
+  "pending": [
+    "native public cap/recovery and GNU fixture",
+    "strict Miri3",
+    "optimizedWasm/Chromium",
+    "Clippy/Android"
+  ]
+}
