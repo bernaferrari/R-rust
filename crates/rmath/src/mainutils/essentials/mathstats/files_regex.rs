@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::mainutils::grep::{EmptyPatternMode, empty_pattern_positions};
+use crate::sexp::constructors::Rf_mkCharLen;
 
 /// R sample.int(n, size = n, replace = FALSE) — uniform sampling from 1:n.
 pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -404,9 +405,9 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         // also fails the per-element match below (reported as no match).
         let (capture_count, capture_names) = if perl && !fixed {
             crate::mainutils::grep::perl_group_info(&pat, ignore_case)
-                .unwrap_or_else(|| (0, Vec::new()))
+                .unwrap_or_else(|| (0, Default::default()))
         } else {
-            (0, Vec::new())
+            (0, Default::default())
         };
 
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -438,8 +439,12 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
             let _nsg = protect(names_sexp);
             for (g, name) in capture_names.iter().enumerate() {
-                let cstr = CString::new(name.as_str()).unwrap_or_default();
-                SET_STRING_ELT(names_sexp, g as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                let length = c_int::try_from(name.len()).expect("compiled capture-name length");
+                SET_STRING_ELT(
+                    names_sexp,
+                    g as R_xlen_t,
+                    Rf_mkCharLen(name.as_ptr().cast(), length),
+                );
             }
 
             capture_start = alloc_int_matrix(n, capture_count);
@@ -677,9 +682,9 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // gets capture attribution (same guard as do_regexpr).
         let (capture_count, capture_names) = if perl && !fixed {
             crate::mainutils::grep::perl_group_info(&pat, ignore_case)
-                .unwrap_or_else(|| (0, Vec::new()))
+                .unwrap_or_else(|| (0, Default::default()))
         } else {
-            (0, Vec::new())
+            (0, Default::default())
         };
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -957,7 +962,7 @@ unsafe fn set_gregexpr_capture_attrs(
     elt: SEXP,
     n_match: usize,
     capture_count: usize,
-    capture_names: &[String],
+    capture_names: &crate::mainutils::grep::GroupNames,
     span: impl Fn(usize, usize) -> (c_int, c_int),
 ) {
     unsafe {
@@ -967,8 +972,12 @@ unsafe fn set_gregexpr_capture_attrs(
         }
         let _nsg = protect(names_sexp);
         for (g, name) in capture_names.iter().enumerate() {
-            let cstr = CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(names_sexp, g as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            let length = c_int::try_from(name.len()).expect("compiled capture-name length");
+            SET_STRING_ELT(
+                names_sexp,
+                g as R_xlen_t,
+                Rf_mkCharLen(name.as_ptr().cast(), length),
+            );
         }
 
         let capture_start = alloc_int_matrix(n_match as R_xlen_t, capture_count);

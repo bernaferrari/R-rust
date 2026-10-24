@@ -72,6 +72,11 @@ pub(crate) struct WorkspaceBuffer<T> {
 }
 
 impl<T> WorkspaceBuffer<T> {
+    #[cfg(test)]
+    pub(super) fn capacity(&self) -> usize {
+        self.values.capacity()
+    }
+
     fn try_reserve_capacity(&mut self, capacity: usize) -> Result<(), ()> {
         if capacity <= self.values.capacity() {
             return Ok(());

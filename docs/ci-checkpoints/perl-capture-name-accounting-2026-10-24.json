@@ -1,0 +1,140 @@
+{
+  "issue": "rport-cvs2.8.4",
+  "source_base": "87477cfb",
+  "status": "native_verified_cross_platform_pending",
+  "scope": "Original-ledger admission for copied Perl UTF-8 capture-name metadata and backing strings; remove transient CString copies during R names publication.",
+  "red": "Original native retained capacity 107 bytes; original ledger 0.",
+  "implementation": [
+    "Reuse charged WorkspaceBuffer<WorkspaceText>; expose only immutable name iteration. Both the container capacity and string capacities retain original ledger reservations through drop.",
+    "Length-aware CHARSXP allocation uses the same arena allocator as mkChar without temporary native CString. Empty and unnamed captures preserved."
+  ],
+  "verification": {
+    "native-group-names-red.log": {
+      "sha256": "48a3b9de72a4a6df8a70c7585c384579f922ffa68f53ec1b659869b51a3f79e2",
+      "tests": [
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_retained_capacity_is_charged_to_original_ledger"
+      ],
+      "footer": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4460 filtered out; finished in 0.01s"
+      ]
+    },
+    "native-group-names-verified.log": {
+      "sha256": "ce61d8480b795d0857f4db4ee31829c77550c780ef7a6fcfcf735062f755c194",
+      "tests": [
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_partial_copy_denial_releases_and_recovers_at_same_cap",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_retained_capacity_is_charged_to_original_ledger",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_original_owner_and_revoked_read_lifetime"
+      ],
+      "footer": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4460 filtered out; finished in 0.01s"
+      ]
+    },
+    "native-group-names-regression.log": {
+      "sha256": "ab07cbb0f371bf1aac132c53d27da956aa50d0b9f051646e165778a462243311",
+      "tests": [
+        "mainutils::grep::perl_class_tests::perl_class_policy_default_digit_is_ascii_while_subject_is_unicode",
+        "mainutils::grep::perl_class_tests::perl_class_policy_default_space_is_ascii_while_subject_is_unicode",
+        "mainutils::grep::perl_class_tests::perl_class_policy_dot_still_consumes_one_unicode_scalar",
+        "mainutils::grep::perl_class_tests::perl_class_policy_ucp_digit_uses_unicode_properties",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_retained_capacity_is_charged_to_original_ledger",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_original_owner_and_revoked_read_lifetime",
+        "mainutils::grep::perl_class_tests::perl_class_policy_default_word_is_ascii_while_subject_is_unicode",
+        "mainutils::grep::perl_class_tests::perl_class_policy_inline_case_flag_control",
+        "mainutils::grep::perl_class_tests::perl_class_policy_global_progression_stops_at_terminal_offset_after_a_match",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_partial_copy_denial_releases_and_recovers_at_same_cap",
+        "mainutils::grep::perl_class_tests::perl_class_policy_ucp_space_uses_unicode_properties",
+        "mainutils::grep::perl_dialect::owned_tests::owned_perl_dialect_cap_one_and_syntax_failure_release_every_temporary",
+        "mainutils::grep::perl_dialect::owned_tests::owned_perl_dialect_buffer_retains_exact_original_charge_through_consumer",
+        "mainutils::grep::capture_publication_tests::owned_gregexpr_capture_rows_stay_charged_through_real_gc_publication",
+        "mainutils::grep::perl_dialect::owned_tests::owned_perl_dialect_second_pass_stack_cannot_bypass_original_peak_limit",
+        "mainutils::grep::replacement_memory_tests::replacement_output_retains_original_workspace_until_final_drop",
+        "mainutils::grep::positions::tests::empty_positions_match_pinned_gnu_utf8_and_byte_coordinate_rows",
+        "mainutils::grep::perl_dialect::owned_tests::owned_perl_dialect_small_malformed_unicode_patterns_never_panic_or_retain_charge",
+        "mainutils::grep::perl_dialect::owned_tests::owned_perl_dialect_uses_original_ledger_with_foreign_ambient_and_rejects_revocation",
+        "mainutils::grep::replacement_memory_tests::replacement_output_growth_denies_before_allocation_and_recovers_at_same_limit",
+        "mainutils::grep::replacement_memory_tests::replacement_output_original_owner_teardown_keeps_only_native_data_charge",
+        "mainutils::grep::replacement_memory_tests::replacement_output_short_original_limit_control",
+        "mainutils::grep::replacement_memory_tests::replacement_output_registered_arena_lend_uses_original_ledger",
+        "mainutils::grep::replacement_tests::replacement_contract_01_switch",
+        "mainutils::grep::positions::tests::owned_gregexpr_position_clear_retains_original_charge_with_foreign_ambient",
+        "mainutils::grep::replacement_tests::replacement_contract_02_literal_preserved",
+        "mainutils::grep::replacement_tests::replacement_contract_03_end_mode",
+        "mainutils::grep::replacement_tests::replacement_contract_05_missing_group",
+        "mainutils::grep::replacement_tests::replacement_contract_04_switch_and_reset",
+        "mainutils::grep::replacement_tests::replacement_contract_06_unset_group",
+        "mainutils::grep::replacement_tests::replacement_contract_07_per_match_reset",
+        "mainutils::grep::replacement_tests::replacement_contract_08_escaped_slash_control",
+        "mainutils::grep::replacement_tests::replacement_contract_09_unsupported_single_case_control",
+        "mainutils::grep::replacement_tests::replacement_contract_10_trailing_escape",
+        "mainutils::grep::replacement_tests::replacement_contract_11_ere_trailing_escape",
+        "mainutils::grep::replacement_tests::replacement_contract_12_ere_mode_letters_control",
+        "mainutils::grep::replacement_tests::replacement_contract_14_boundary_empty_groups",
+        "mainutils::grep::replacement_tests::replacement_contract_15_ascii_word_boundary_control",
+        "mainutils::grep::replacement_tests::replacement_contract_13_zero_group_control",
+        "mainutils::grep::replacement_tests::replacement_contract_16_literal_backspace",
+        "mainutils::grep::replacement_tests::replacement_contract_19_unicode_supplementary",
+        "mainutils::grep::replacement_tests::replacement_contract_18_unicode_simple_lower",
+        "mainutils::grep::replacement_tests::replacement_contract_20_bytes_upper_preserves_non_ascii_capture",
+        "mainutils::grep::replacement_tests::replacement_contract_22_mode_resets_before_first_reference",
+        "mainutils::grep::replacement_tests::replacement_contract_21_bytes_lower_preserves_non_ascii_capture",
+        "mainutils::grep::replacement_tests::replacement_contract_23_literal_byte_parser_preserves_opaque_data_and_modes",
+        "mainutils::grep::replacement_tests::replacement_contract_17_unicode_simple_upper",
+        "mainutils::grep::tests::test_compile_ere_anchors",
+        "mainutils::grep::perl_class_tests::perl_class_policy_ucp_word_uses_unicode_properties",
+        "mainutils::grep::tests::global_capture_buffers_reject_under_session_cap_and_recover",
+        "mainutils::grep::tests::test_compile_ere_char_class",
+        "mainutils::grep::tests::test_compile_ere_dot",
+        "mainutils::grep::tests::test_compile_ere_escaped",
+        "mainutils::grep::tests::test_compile_ere_literal",
+        "mainutils::grep::tests::test_compile_ere_negated_char_class",
+        "mainutils::grep::tests::test_compile_ere_plus",
+        "mainutils::grep::tests::grepraw_rejects_reference_vectors_before_reading_payload_bytes",
+        "mainutils::grep::tests::test_compile_ere_question",
+        "mainutils::grep::tests::test_ere_gsub_basic",
+        "mainutils::grep::tests::test_compile_ere_star",
+        "mainutils::grep::tests::test_ere_gsub_global",
+        "mainutils::grep::tests::test_ere_match_anchor",
+        "mainutils::grep::tests::test_ere_match_dot",
+        "mainutils::grep::tests::test_ere_match_escaped_digit",
+        "mainutils::grep::tests::test_ere_match_escaped_word",
+        "mainutils::grep::tests::test_ere_match_char_class",
+        "mainutils::grep::tests::test_ere_match_ignore_case",
+        "mainutils::grep::tests::test_ere_match_literal",
+        "mainutils::grep::tests::test_ere_match_plus",
+        "mainutils::grep::tests::test_ere_match_star",
+        "mainutils::grep::tests::test_ere_match_question",
+        "mainutils::grep::tests::test_fixed_search_basic",
+        "mainutils::grep::tests::test_fixed_search_ignore_case",
+        "mainutils::grep::tests::test_fixed_search_multiple",
+        "mainutils::grep::tests::test_ere_replace_expands_r_style_backrefs",
+        "mainutils::grep::tests::test_gsub_fixed_global",
+        "mainutils::grep::tests::test_gsub_fixed_no_match",
+        "mainutils::grep::tests::test_gsub_fixed_ignore_case",
+        "mainutils::grep::tests::test_gsub_fixed_single",
+        "mainutils::grep::tests::test_match_str_ere",
+        "mainutils::grep::tests::test_match_str_fixed",
+        "mainutils::grep::tests::test_r_grep_fixed",
+        "mainutils::grep::tests::test_r_grep_fixed_inner",
+        "mainutils::grep::tests::test_perl_replace_expands_r_style_backrefs",
+        "mainutils::grep::tests::retained_captures_charge_original_session_until_drop",
+        "mainutils::grep::tests::test_perl_regex_supports_lookbehind_and_captures",
+        "mainutils::grep::workspace::tests::partial_iteration_retains_backing_admission_until_drop",
+        "mainutils::grep::workspace::tests::closed_owner_buffers_remain_readable_but_cannot_allocate",
+        "mainutils::grep::tests::unicode_capture_buffers_reject_under_session_cap",
+        "mainutils::grep::workspace::tests::replacement_peak_denial_preserves_storage_and_charge",
+        "mainutils::grep::perl_class_tests::perl_class_policy_unicode_pattern_corpus_matches_both_gnu_locales",
+        "mainutils::grep::perl_class_tests::perl_class_policy_ucp_matches_complete_scalar_oracle"
+      ],
+      "footer": [
+        "test result: ok. 92 passed; 0 failed; 0 ignored; 0 measured; 4371 filtered out; finished in 3.54s"
+      ]
+    }
+  },
+  "pending": [
+    "strict Miri ownership cases",
+    "native public capture GC/cap/recovery regression",
+    "optimized Wasm/Chromium",
+    "Clippy and Android check"
+  ],
+  "remaining": "Underlying regex compilation and execution allocations remain rport-cvs2.8; full regex fidelity remains rport-w03x."
+}

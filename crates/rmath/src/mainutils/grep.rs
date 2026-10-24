@@ -39,6 +39,8 @@ use crate::tre::regapi::{tre_regfree, tre_regnexec};
 #[cfg(test)]
 mod capture_publication_tests;
 #[cfg(test)]
+mod group_names_memory_tests;
+#[cfg(test)]
 mod perl_class_tests;
 mod perl_dialect;
 mod positions;
@@ -1335,15 +1337,49 @@ pub(crate) fn perl_captures_all(
 /// "". Port of grep.c's pcre2_pattern_info(PCRE2_INFO_CAPTURECOUNT /
 /// NAMECOUNT / NAMETABLE) block in do_regexpr. Returns None when the
 /// pattern fails to compile.
-pub(crate) fn perl_group_info(pattern: &str, ignore_case: bool) -> Option<(usize, Vec<String>)> {
+pub(crate) fn perl_group_info(pattern: &str, ignore_case: bool) -> Option<(usize, GroupNames)> {
     let re = PerlRegex::compile(pattern, ignore_case).ok()?;
-    let names: Vec<String> = re
-        .regex
-        .capture_names()
-        .skip(1) // group 0 (the whole match) is always unnamed
-        .map(|name| name.unwrap_or("").to_string())
-        .collect();
-    Some((names.len(), names))
+    let names = GroupNames::copy(
+        &re.workspace,
+        re.regex.capture_names().skip(1).count(),
+        re.regex
+            .capture_names()
+            .skip(1)
+            .map(|name| name.unwrap_or("")),
+    );
+    Some((names.iter().count(), names))
+}
+
+/// Immutable metadata retains both string and container admission until drop.
+#[derive(Default)]
+pub(crate) struct GroupNames(Option<WorkspaceBuffer<WorkspaceText>>);
+impl GroupNames {
+    fn copy<'a>(
+        workspace: &RegexWorkspace,
+        count: usize,
+        source: impl Iterator<Item = &'a str>,
+    ) -> Self {
+        let mut names = workspace.buffer(count);
+        for name in source {
+            let mut text = workspace.text(name.len());
+            text.push_str(name);
+            names.push(text.finish().expect("copied valid UTF-8 capture name"));
+        }
+        Self(Some(names))
+    }
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &str> {
+        self.0
+            .iter()
+            .flat_map(|names| names.iter())
+            .map(|name| &**name)
+    }
+    #[cfg(test)]
+    fn physical_capacity(&self) -> usize {
+        self.0.as_ref().map_or(0, |names| {
+            names.capacity() * std::mem::size_of::<WorkspaceText>()
+                + names.iter().map(WorkspaceText::capacity).sum::<usize>()
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
