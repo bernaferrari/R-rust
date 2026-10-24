@@ -3,7 +3,7 @@
   "parent": "rport-evnx.5.3",
   "source_base": "badabdeb",
   "date": "2026-10-21",
-  "status": "native_and_wasm_verified_partial_miri_pending",
+  "status": "verified",
   "scope": "Admit persistent rendered-message cache String storage in its original runtime; remove equality-only clone; preserve existing cache/buffer on quota denial.",
   "observed_red": {
     "accepted": "native-cache-workspace-red.log: real uncaught default error leaves cached String.capacity6 while original workspace is0.",
@@ -112,15 +112,27 @@
     },
     "native_additional_c_tests": 4,
     "c_counted_again": false,
-    "strict_isolated_miri_verified_distinct_tests": 1,
+    "strict_isolated_miri_verified_distinct_tests": 10,
     "miri_by_log": {
       "miri-cache-canonical-message.log": [
         "sexp::diagnostic_boundary_tests::owned_diagnostic_actual_message_constructor_keeps_source_tag_and_ticket"
+      ],
+      "miri-render-cache.log": [
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_actual_default_error_retains_original_capacity_charge_until_clear",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_keeps_independent_text_and_releases_on_panic",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_obeys_lowered_original_cap_before_allocation",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_rejects_inactive_owner_before_foreign_allocation",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_denied_replacement_preserves_previous_buffer_charge_and_flags",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_physical_copy_outlives_revoked_owner_and_releases_original_ledger",
+        "mainutils::errors::rendered_cache_tests::owned_render_cache_replacement_releases_previous_charge_and_compares_exactly"
+      ],
+      "miri-cache-publication-controls.log": [
+        "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_survives_real_deparse_gc",
+        "mainutils::errors::default_byte_tests::owned_default_byte_self_buffer_and_real_deparse_gc_keep_original_message",
+        "sexp::diagnostic_boundary_tests::owned_diagnostic_actual_message_constructor_keeps_source_tag_and_ticket"
       ]
     },
-    "miri_pending": [
-      "miri-cache-complete.log: 7 cache tests and2 actual deparse controls; do not count without successful footer."
-    ],
+    "miri_pending": [],
     "miri_flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks; default isolation; i686-unknown-linux-gnu",
     "scope_notes": "Production frozen before all gates. Subsequent changes are cfg(test) only: unnecessary Box return removed for Clippy and explicit canonical cache-charge assertion added. Native75+11/finalClippy cover both; canonical Miri1 checked separately.",
     "optimized_wasm_checks": 800,
@@ -160,7 +172,11 @@
     "optimized_web_default_diagnostic_checks": 78,
     "clippy": "rmath/r-embed/r-wasm/r-uniffi all targets -Dwarnings",
     "android": "aarch64-linux-android r-uniffi compile check; no device execution",
-    "limits": "unchanged64MiB sessions/256MiB Wasm cap, original cap1 and actual constructor GC gap1/wait1"
+    "limits": "unchanged64MiB sessions/256MiB Wasm cap, original cap1 and actual constructor GC gap1/wait1",
+    "historical_miri_pending": [
+      "miri-cache-complete.log: 7 cache tests and2 actual deparse controls; do not count without successful footer."
+    ],
+    "canonical_repeated_not_counted_twice": true
   },
   "source_sha256": {
     "crates/rmath/src/mainutils/errors/default_byte_tests.rs": "fa30c4fb957eb4878c086ed7c3f74cfcababb1632da0d398e94666eb8ce3d368",
@@ -233,7 +249,9 @@
     "target/rendered-error-cache-evidence/verified-wasm/wasm-try-byte-diagnostic.log": "a7b927f44fe7d86765d1a3a9870cfaec23f58cda26a8c63f4e7844d854be0363",
     "target/rendered-error-cache-evidence/verified-wasm/wasm-web-contracts.log": "2d6fd6e38c8d533a67f2fc7114e18b31dc2f9d9020cd03924886853e8ad976a2",
     "target/rendered-error-cache-evidence/wasm-cache-build.log": "9e1facc5526e491a685ea3ac217c8527f1f5989d40fe204e9eddd5ed46c7c287",
-    "target/rendered-error-cache-evidence/wasm-cache-validation.log": "8fe966c551c09d425d590c80b45dcb34c73ad663d52a4c00681f521aa8510b5d"
+    "target/rendered-error-cache-evidence/wasm-cache-validation.log": "8fe966c551c09d425d590c80b45dcb34c73ad663d52a4c00681f521aa8510b5d",
+    "2026-10-24/miri-render-cache.log": "47368231b2eff068b90f3506641a45137546c05f2e6dc523ea9ebd35c8ff7569",
+    "2026-10-24/miri-cache-publication-controls.log": "fb2d9120b2c432a62f00213e1e5fdf0c1b85d86cd32801a85d310068e4331ab0"
   },
   "preserved_user_graphics_sha256": {
     "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
@@ -248,5 +266,29 @@
     "cvs2.15 original unchanged full-base x86_64 Miri remains running, no PASS claimed; earlieri686 address exhaustion not UB/PASS.",
     "FullPCRE2 remains open; w03x.10 ASCII/UCP class mismatch independently reproduced.",
     "Dolt origin missing (rport-0d5o), source Git remote available."
-  ]
+  ],
+  "completion": {
+    "date": "2026-10-24",
+    "miri_source_base": "acefe999",
+    "cache_source_matches_original_sha256": true,
+    "distinct_miri_tests": [
+      "mainutils::errors::default_byte_tests::owned_default_byte_selected_stop_message_survives_real_deparse_gc",
+      "mainutils::errors::default_byte_tests::owned_default_byte_self_buffer_and_real_deparse_gc_keep_original_message",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_actual_default_error_retains_original_capacity_charge_until_clear",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_keeps_independent_text_and_releases_on_panic",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_obeys_lowered_original_cap_before_allocation",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_copy_rejects_inactive_owner_before_foreign_allocation",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_denied_replacement_preserves_previous_buffer_charge_and_flags",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_physical_copy_outlives_revoked_owner_and_releases_original_ledger",
+      "mainutils::errors::rendered_cache_tests::owned_render_cache_replacement_releases_previous_charge_and_compares_exactly",
+      "sexp::diagnostic_boundary_tests::owned_diagnostic_actual_message_constructor_keeps_source_tag_and_ticket"
+    ],
+    "cache_seven_seconds": 534.37,
+    "publication_controls_three_seconds": 2666.29,
+    "flags": "-Zmiri-strict-provenance -Zmiri-ignore-leaks",
+    "target": "i686-unknown-linux-gnu",
+    "isolation": "default",
+    "expected_native_stderr": "Canonical-message test emits invalid UTF-8 diagnostic before ok; aggregate footer confirms3PASS.",
+    "scope": "Original cache, flags, deparse/GC and canonical message files unchanged. No full interpreter-startup or broader default-renderer28test completion claim."
+  }
 }
