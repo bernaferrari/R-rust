@@ -8,7 +8,7 @@ use crate::sexp::{
 };
 
 #[derive(Clone)]
-pub(super) struct RegexWorkspace {
+pub(crate) struct RegexWorkspace {
     ledger: MemoryLedger,
     availability: Option<InstanceLiveness>,
 }
@@ -35,7 +35,7 @@ impl RegexWorkspace {
         }
     }
 
-    pub(super) fn buffer<T>(&self, capacity: usize) -> WorkspaceBuffer<T> {
+    pub(crate) fn buffer<T>(&self, capacity: usize) -> WorkspaceBuffer<T> {
         self.require_live();
         let reservation = self.ledger.reserve(0).unwrap_or_else(|| memory_error());
         let mut buffer = WorkspaceBuffer {
@@ -130,7 +130,7 @@ impl<T> WorkspaceBuffer<T> {
         }
     }
 
-    pub(super) fn push(&mut self, value: T) {
+    pub(crate) fn push(&mut self, value: T) {
         if self.values.len() == self.values.capacity() {
             self.grow_for(
                 self.values
@@ -140,6 +140,11 @@ impl<T> WorkspaceBuffer<T> {
             );
         }
         self.values.push(value);
+    }
+
+    pub(crate) fn clear(&mut self) {
+        // Logical removal does not release the retained allocation's ticket.
+        self.values.clear();
     }
 
     pub(super) fn resize(&mut self, length: usize, value: T)

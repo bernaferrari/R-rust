@@ -1,6 +1,7 @@
 //! sample, toString, normalizePath, tempfile, proc.time, regex matching builtins — extracted verbatim from essentials/mathstats.rs.
 
 use super::*;
+use crate::mainutils::grep::{EmptyPatternMode, empty_pattern_positions};
 
 /// R sample.int(n, size = n, replace = FALSE) — uniform sampling from 1:n.
 pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -653,6 +654,7 @@ unsafe fn fill_capture_no_match(
 /// do_gregexpr; non-matching elements get one row of -1s.
 pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let position_workspace = crate::mainutils::grep::regex_workspace();
         let pattern = CAR(args);
         if pattern.is_null()
             || TYPEOF(pattern) != SEXPTYPE::STRSXP
@@ -688,18 +690,30 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         for i in 0..n {
             let txt = elt_to_string(text, i);
-            let mut starts = Vec::new();
-            let mut lengths = Vec::new();
+            let empty_positions = pat.is_empty().then(|| {
+                let mode = if fixed || (perl && requested_bytes) {
+                    EmptyPatternMode::Bytes
+                } else if perl {
+                    EmptyPatternMode::PerlCharacters
+                } else if requested_bytes {
+                    EmptyPatternMode::EreBytes
+                } else {
+                    EmptyPatternMode::EreCharacters
+                };
+                empty_pattern_positions(&txt, mode)
+            });
+            let capacity = empty_positions
+                .as_ref()
+                .map_or(0, |positions| positions.len());
+            let mut starts = position_workspace.buffer(capacity);
+            let mut lengths = position_workspace.buffer(capacity);
             // Per-match group spans (0-based start, length); None mirrors
             // PCRE2_UNSET groups (0/0 arithmetic below).
             let mut group_spans: Vec<Vec<Option<(usize, usize)>>> = Vec::new();
-            if pat.is_empty() {
-                // An empty pattern matches at every character, length 0.
-                let mut pos = 1usize;
-                for ch in txt.chars() {
-                    starts.push(pos);
+            if let Some(positions) = empty_positions {
+                for position in positions {
+                    starts.push(position);
                     lengths.push(0);
-                    pos += ch.len_utf8();
                 }
             } else if perl {
                 if let Some(all) = crate::mainutils::grep::mode_captures_all(
@@ -765,8 +779,8 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 }
             }
 
-            if !byte_mode {
-                for (start, length) in starts.iter_mut().zip(&mut lengths) {
+            if !byte_mode && !pat.is_empty() {
+                for (start, length) in starts.iter_mut().zip(lengths.iter_mut()) {
                     let (s, n) = regex_span(&txt, *start - 1, *start - 1 + *length, false);
                     *start = s as usize;
                     *length = n as usize;

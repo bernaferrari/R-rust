@@ -39,12 +39,15 @@ use crate::tre::regapi::{tre_regfree, tre_regnexec};
 #[cfg(test)]
 mod perl_class_tests;
 mod perl_dialect;
+mod positions;
+pub(crate) use positions::{EmptyPatternMode, empty_pattern_positions};
 #[cfg(test)]
 mod replacement_memory_tests;
 #[cfg(test)]
 mod replacement_tests;
 mod workspace;
-use workspace::{RegexWorkspace, TextBuilder, WorkspaceBuffer, WorkspaceText};
+pub(crate) use workspace::RegexWorkspace;
+use workspace::{TextBuilder, WorkspaceBuffer, WorkspaceText};
 
 pub(crate) type RegexCaptures = WorkspaceBuffer<Option<RegexMatch>>;
 pub(crate) type RegexMatches = WorkspaceBuffer<RegexCaptures>;
@@ -55,7 +58,7 @@ pub(crate) fn single_capture(value: RegexMatch) -> RegexCaptures {
     captures
 }
 
-fn regex_workspace() -> RegexWorkspace {
+pub(crate) fn regex_workspace() -> RegexWorkspace {
     // Pure kernel unit tests may run without an interpreter. Production regex
     // entrypoints require an original active owner, rather than an unlimited fallback.
     #[cfg(test)]
