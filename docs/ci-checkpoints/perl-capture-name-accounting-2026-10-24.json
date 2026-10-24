@@ -1,7 +1,7 @@
 {
   "issue": "rport-cvs2.8.4",
   "source_base": "87477cfb",
-  "status": "native_verified_cross_platform_pending",
+  "status": "verified",
   "scope": "Original-ledger admission for copied Perl UTF-8 capture-name metadata and backing strings; remove transient CString copies during R names publication.",
   "red": "Original native retained capacity 107 bytes; original ledger 0.",
   "implementation": [
@@ -128,13 +128,113 @@
       "footer": [
         "test result: ok. 92 passed; 0 failed; 0 ignored; 0 measured; 4371 filtered out; finished in 3.54s"
       ]
+    },
+    "miri-group-names.log": {
+      "sha256": "5020ef1da282cedad19e0f33a0b732f10312cac717a62ed27e17040d2e9cee83",
+      "tests": [
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_original_owner_and_revoked_read_lifetime",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_partial_copy_denial_releases_and_recovers_at_same_cap",
+        "mainutils::grep::group_names_memory_tests::owned_perl_group_names_retained_capacity_is_charged_to_original_ledger"
+      ],
+      "footer": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4429 filtered out; finished in 169.93s"
+      ]
+    },
+    "android-group-names-verified.log": {
+      "sha256": "ae9a271a9d4ac4a4dc5c708d86bc99ec47b221c5f7494cdb5fd2145f7878eca7",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-group-names-build.log": {
+      "sha256": "af03aee2e33c75a42c4fe1d8eab86b6f82a7cac083d7ae40dedb31428952ce61",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-group-names-optimize.log": {
+      "sha256": "e3dda65fcdd11ad19af1098afb22e4c0bab2d49099ea34ae998c41e2144f9d6c",
+      "tests": [],
+      "footer": []
+    },
+    "public-group-names-regression.log": {
+      "sha256": "1592ca44a806c2d53fd401d1f6c2a4ad18eda399ce6c382403c706531ab2112d",
+      "tests": [
+        "gregexpr_capture_metadata_matches_gnu_for_utf8_and_unset_groups",
+        "gregexpr_capture_attribution_stays_charged_through_r_result_construction",
+        "gregexpr_capture_matrices_survive_collection_during_publication"
+      ],
+      "footer": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 228.70s"
+      ]
+    },
+    "clippy-group-names-final.log": {
+      "sha256": "39d9a28216a9b4897c53c57127638cd3f759e9a2f666dffb851aafc75310bf8d",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-group-names-public.log": {
+      "sha256": "816268603517d85d0f1af6d5554d82d938533811ed7fd18582e4dfd993fa2b0e",
+      "tests": [],
+      "footer": []
+    },
+    "wasm-group-names-prepare.log": {
+      "sha256": "f32852e21f409fe229e95ec45b548beade0a53ce74981fd19f48f8b47103f84e",
+      "tests": [],
+      "footer": []
+    },
+    "browser-group-names.log": {
+      "sha256": "802d774d1e69f5b99777728cd3623a169df065e9707bf6197cbedea548ff0593",
+      "tests": [],
+      "footer": []
     }
   },
-  "pending": [
-    "strict Miri ownership cases",
-    "native public capture GC/cap/recovery regression",
-    "optimized Wasm/Chromium",
-    "Clippy and Android check"
+  "pending": [],
+  "remaining": "Underlying regex compilation and execution allocations remain rport-cvs2.8; full regex fidelity remains rport-w03x.",
+  "notes": [
+    "Android cross-compilation: aarch64-linux-android for rmath, r-embed, r-wasm, r-uniffi.",
+    "Strict Miri: i686-unknown-linux-gnu, strict provenance, default isolation, ignore leaks; 3 pass in169.93s.",
+    "Wasm built from207f6fe7 with preserved user graphics edits. Later explicit GroupNames::default naming is a style-only correction; original native/source hashes retained."
   ],
-  "remaining": "Underlying regex compilation and execution allocations remain rport-cvs2.8; full regex fidelity remains rport-w03x."
+  "native_distinct_test_count": 95,
+  "optimized_wasm": {
+    "schema_version": 1,
+    "binaryen_version": "133",
+    "optimizer_sha256": "81041e09f332df94db1c2009a64d8f3b85f0431a2c920ccd014d3ceebb343402",
+    "arguments": [
+      "-Oz"
+    ],
+    "feature_policy": "preserve input target_features",
+    "input": {
+      "bytes": 29683488,
+      "sha256": "dfce01a2e33f78d84e52efdfe57236fa2ed50b0dfa96b785e2e05e2a506cb350"
+    },
+    "output": {
+      "bytes": 25358785,
+      "sha256": "69bbe3973eaee31ad7cc482d122b87a6793d9fec9fb0ce8d3102e7964ec86fa7"
+    }
+  },
+  "cross_platform": {
+    "public_contracts": 128,
+    "diagnostic_checks": 78,
+    "public_contracts_per_generation": 64,
+    "fresh_generations": 2,
+    "chromium_tests": 1,
+    "chromium_isolated_workers": 2,
+    "strict_miri_tests": 3,
+    "strict_miri_seconds": 169.93,
+    "android_target": "aarch64-linux-android",
+    "clippy": "rmath,r-embed,r-wasm,r-uniffi --all-targets -- -D warnings",
+    "limits": "Original native session caps unchanged; Wasm linear memory maximum256MiB unchanged. This module includes preserved user graphics edits, not a clean release artifact."
+  },
+  "final_source_sha256": {
+    "crates/rmath/src/mainutils/grep.rs": "d22aca4db695aed40d5352fc75d2349939005fc5845b3310c542ac160e54162c",
+    "crates/rmath/src/mainutils/grep/workspace.rs": "8eb5685f4595e6282ffaec9f102ec21cf99e032b1d138f59be99f42764e2020b",
+    "crates/rmath/src/mainutils/grep/group_names_memory_tests.rs": "fdf0ee0516a706882024087208bc29695c8b37ed709683c4c1e8b9a5aa74c154",
+    "crates/rmath/src/mainutils/essentials/mathstats/files_regex.rs": "b810eb498e30423c918781059594f06c1002c5819024ff71837ade905e421beb"
+  },
+  "preserved_user_graphics_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  }
 }

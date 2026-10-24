@@ -1,7 +1,7 @@
 //! sample, toString, normalizePath, tempfile, proc.time, regex matching builtins — extracted verbatim from essentials/mathstats.rs.
 
 use super::*;
-use crate::mainutils::grep::{EmptyPatternMode, empty_pattern_positions};
+use crate::mainutils::grep::{EmptyPatternMode, GroupNames, empty_pattern_positions};
 use crate::sexp::constructors::Rf_mkCharLen;
 
 /// R sample.int(n, size = n, replace = FALSE) — uniform sampling from 1:n.
@@ -405,9 +405,9 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         // also fails the per-element match below (reported as no match).
         let (capture_count, capture_names) = if perl && !fixed {
             crate::mainutils::grep::perl_group_info(&pat, ignore_case)
-                .unwrap_or_else(|| (0, Default::default()))
+                .unwrap_or_else(|| (0, GroupNames::default()))
         } else {
-            (0, Default::default())
+            (0, GroupNames::default())
         };
 
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -682,9 +682,9 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // gets capture attribution (same guard as do_regexpr).
         let (capture_count, capture_names) = if perl && !fixed {
             crate::mainutils::grep::perl_group_info(&pat, ignore_case)
-                .unwrap_or_else(|| (0, Default::default()))
+                .unwrap_or_else(|| (0, GroupNames::default()))
         } else {
-            (0, Default::default())
+            (0, GroupNames::default())
         };
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -962,7 +962,7 @@ unsafe fn set_gregexpr_capture_attrs(
     elt: SEXP,
     n_match: usize,
     capture_count: usize,
-    capture_names: &crate::mainutils::grep::GroupNames,
+    capture_names: &GroupNames,
     span: impl Fn(usize, usize) -> (c_int, c_int),
 ) {
     unsafe {
