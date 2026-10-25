@@ -21,12 +21,12 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 mod condition_objects;
-mod simple_owned;
 mod env_lookup;
 mod handlers;
 mod owned_tests;
 mod raise;
 mod restarts;
+mod simple_owned;
 mod try_catch;
 mod warning_signal;
 mod with_restarts;
