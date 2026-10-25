@@ -1,7 +1,7 @@
 import { runDefaultByteDiagnostics } from './default-byte-diagnostic-contract.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -17,6 +17,13 @@ console.log(JSON.stringify({ wasm_sha256: createHash('sha256').update(moduleByte
 
 const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
+  ...readdirSync(resolve(root, 'tests/conformance/cases'))
+    .filter(name => /^\d+_utf8_substring_.*\.R$/.test(name))
+    .sort()
+    .map(name => [
+      resolve(root, 'tests/conformance/cases', name),
+      resolve(root, 'tests/conformance/golden', name.replace(/\.R$/, '.out')),
+    ]),
   ...[
     '260_length_replacement',
     '492_rep_int_len_helpers',
