@@ -18,7 +18,7 @@ console.log(JSON.stringify({ wasm_sha256: createHash('sha256').update(moduleByte
 const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
   ...readdirSync(resolve(root, 'tests/conformance/cases'))
-    .filter(name => /^\d+_utf8_substring_.*\.R$/.test(name))
+    .filter(name => /^\d+_utf8_(?:substring|string)_.*\.R$/.test(name))
     .sort()
     .map(name => [
       resolve(root, 'tests/conformance/cases', name),
