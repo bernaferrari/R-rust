@@ -47,6 +47,10 @@ mod substring_owned;
 mod substring_ownership_tests;
 #[cfg(test)]
 mod tests;
+mod vector_text_entry;
+mod vector_text_owned;
+#[cfg(test)]
+mod vector_text_ownership_tests;
 
 pub use bits_utf8::*;
 pub use encodings::*;

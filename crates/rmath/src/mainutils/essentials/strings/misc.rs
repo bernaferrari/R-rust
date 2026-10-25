@@ -414,56 +414,9 @@ pub unsafe fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `strtrim(x, width)` — truncate strings to a maximum width.
-pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x_arg = CAR(args);
-        let width_arg = CAR(CDR(args));
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(x_arg);
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let width_len = if width_arg.is_null() || width_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(width_arg)
-        };
-        if width_len == 0 {
-            super::shared::base_error("invalid 'width' argument");
-        }
-        // GNU strtrim keeps NA strings as NA instead of the text "NA".
-        let width = real_or_default(width_arg, f64::MAX) as usize;
-        let x = if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
-            x_arg
-        } else {
-            crate::main::coerce::coerceVector(x_arg, SEXPTYPE::STRSXP.as_c_int())
-        };
-        let _x_guard = protect(x);
-
-        let n = XLENGTH(x_arg);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for i in 0..n {
-            let s = STRING_ELT(x, i as R_xlen_t);
-            if s == crate::sexp::globals::R_NaString() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, s);
-                continue;
-            }
-            let text = elt_to_string(x, i);
-            let truncated: String = text.chars().take(width).collect();
-            let cstr = CString::new(truncated).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Trim)
     }
 }
 

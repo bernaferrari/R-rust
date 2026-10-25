@@ -9,96 +9,9 @@ use super::*;
 /// R's `nchar(x, type = "chars", allowNA = FALSE, keepNA = NA)`.
 ///
 /// GNU default `type="chars"` counts Unicode code points, not bytes.
-pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
-        }
-        let x = if TYPEOF(x) != SEXPTYPE::STRSXP {
-            let coerced = crate::mainutils::essentials::do_as_character(
-                _call,
-                _op,
-                Rf_cons(x, R_NilValue()),
-                _rho,
-            );
-            let _c = protect(coerced);
-            coerced
-        } else {
-            x
-        };
-        let mut nchar_type = NcharKind::Chars;
-        let mut keep_na_seen = false;
-        let mut keep_na = false;
-        let mut cell = CDR(args);
-        let mut positional = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                let pname = PRINTNAME(tag);
-                if !pname.is_null() {
-                    Some(
-                        std::ffi::CStr::from_ptr(CHAR(pname))
-                            .to_string_lossy()
-                            .into_owned(),
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let slot = named.as_deref();
-            let is_type = slot == Some("type") || (slot.is_none() && positional == 0);
-            let is_keep_na = slot == Some("keepNA") || (slot.is_none() && positional == 2);
-            if is_type && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
-                let text = elt_to_string(value, 0);
-                nchar_type = match text.as_str() {
-                    t if t.starts_with('b') => NcharKind::Bytes,
-                    t if t.starts_with('w') => NcharKind::Width,
-                    _ => NcharKind::Chars,
-                };
-            }
-            if is_keep_na {
-                let l = crate::mainutils::seq::asLogical(value);
-                if l == crate::sexp::ffi::NA_LOGICAL {
-                    keep_na = !matches!(nchar_type, NcharKind::Width);
-                } else {
-                    keep_na = l != 0;
-                }
-                keep_na_seen = true;
-            }
-            if slot.is_none() {
-                positional += 1;
-            }
-            cell = CDR(cell);
-        }
-        if !keep_na_seen {
-            keep_na = !matches!(nchar_type, NcharKind::Width);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
-        for i in 0..n {
-            if TYPEOF(x) == SEXPTYPE::STRSXP {
-                let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
-                let charsxp = STRING_ELT(x, idx);
-                if charsxp == crate::sexp::globals::R_NaString() {
-                    // GNU R_nchar: NA_STRING is NA_INTEGER when keepNA,
-                    // else the two characters of "NA".
-                    *dst.add(i as usize) = if keep_na { NA_INTEGER } else { 2 };
-                    continue;
-                }
-            }
-            let s = elt_to_string(x, i);
-            *dst.add(i as usize) = nchar_count(&s, nchar_type) as c_int;
-        }
-        result
+        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Count)
     }
 }
 
@@ -164,21 +77,6 @@ pub unsafe fn do_file_path_sans_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
             SET_STRING_ELT(result, i, Rf_mkChar(c.as_ptr()));
         }
         result
-    }
-}
-
-#[derive(Clone, Copy)]
-enum NcharKind {
-    Bytes,
-    Chars,
-    Width,
-}
-
-fn nchar_count(s: &str, kind: NcharKind) -> usize {
-    match kind {
-        NcharKind::Bytes => s.len(),
-        NcharKind::Chars => s.chars().count(),
-        NcharKind::Width => s.chars().map(unicode_display_width).sum(),
     }
 }
 
@@ -267,53 +165,9 @@ unsafe fn substring_entry(
 }
 
 /// GNU `strrep(x, times)` — recycle `x` and `times` to a common length.
-pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x0 = CAR(args);
-        let n0 = CADR(args);
-        let x = crate::main::coerce::coerceVector(x0, SEXPTYPE::STRSXP.as_c_int());
-        let _x = protect(x);
-        let n = crate::main::coerce::coerceVector(n0, SEXPTYPE::INTSXP.as_c_int());
-        let _n = protect(n);
-        let nx = XLENGTH(x);
-        let nn = XLENGTH(n);
-        if nx == 0 || nn == 0 {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let ns = nx.max(nn);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, ns);
-        let _result = protect(result);
-        for is in 0..ns {
-            let el = STRING_ELT(x, is % nx);
-            let ni = *INTEGER(n).add((is % nn) as usize);
-            if el == crate::sexp::globals::R_NaString() || ni == NA_INTEGER {
-                SET_STRING_ELT(result, is, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            if ni < 0 {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "invalid 'times' value",
-                );
-            }
-            let s = elt_to_string(x, is % nx);
-            if (s.len() as i64).saturating_mul(ni as i64) > i32::MAX as i64 {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "R character strings are limited to 2^31-1 bytes",
-                );
-            }
-            let repeated = s.repeat(ni as usize);
-            let cstr = CString::new(repeated).unwrap_or_default();
-            SET_STRING_ELT(result, is, Rf_mkChar(cstr.as_ptr()));
-        }
-        if ns == nx {
-            let names = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                crate::attrib_core::setAttrib(result, crate::attrib_core::R_NamesSymbol(), names);
-            }
-        }
-        result
+        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Repeat)
     }
 }
 

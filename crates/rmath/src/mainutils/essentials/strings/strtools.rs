@@ -46,50 +46,15 @@ pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// R's `startsWith(x, prefix)` — check if strings start with prefix.
-pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let prefix_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || prefix_arg.is_null() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        let prefix = elt_to_string(prefix_arg, 0);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            *dst.add(i as usize) = if s.starts_with(&prefix) { TRUE } else { FALSE };
-        }
-        result
+        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Prefix)
     }
 }
 
-/// R's `endsWith(x, suffix)` — check if strings end with suffix.
-pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let suffix_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || suffix_arg.is_null() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        let suffix = elt_to_string(suffix_arg, 0);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            *dst.add(i as usize) = if s.ends_with(&suffix) { TRUE } else { FALSE };
-        }
-        result
+        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Suffix)
     }
 }
 
