@@ -43,8 +43,6 @@ pub(crate) struct ManualClip {
 pub(crate) struct GraphicsState {
     pub current: Option<Coordinates>,
     pub clip: Option<ManualClip>,
-    layout: [usize; 2],
-    next: usize,
 }
 impl Coordinates {
     fn map(self, x: f64, y: f64) -> Point {
@@ -508,21 +506,8 @@ fn install(coords: Coordinates) {
         (*inst).portable_graphics.current = Some(coords);
     });
     set_plot_parameter("usr", ParValue::Real(coords.limits.to_vec()));
-    // R-side layout and string metrics must see the dimensions of this
-    // device/figure/plot, rather than the registry's default seven-inch page.
-    for (name, rect) in [
-        ("din", coords.device),
-        ("fin", coords.figure),
-        ("pin", coords.rect),
-    ] {
-        set_plot_parameter(
-            name,
-            ParValue::Real(vec![
-                f64::from(rect[2] - rect[0]) / 72.,
-                f64::from(rect[3] - rect[1]) / 72.,
-            ]),
-        );
-    }
+    // din/fin/pin/fig/plt are owned by the par layout state, which the
+    // region math in `coordinates` drives in exact f64.
     set_plot_parameter("xlog", ParValue::Logical(vec![i32::from(coords.log[0])]));
     set_plot_parameter("ylog", ParValue::Logical(vec![i32::from(coords.log[1])]));
     if !coords.log[0] {
@@ -531,6 +516,21 @@ fn install(coords: Coordinates) {
     if !coords.log[1] {
         set_linear_axp("yaxp", coords.limits[2], coords.limits[3]);
     }
+}
+
+/// Rebuild the portable frame regions from the par layout state after a
+/// layout-coupled par() change (par(mar=), par(fig=), ...), keeping the
+/// current usr window like GNU's GReset does.
+pub(crate) fn refresh_frame_regions() {
+    let regions = crate::library::graphics::par::current_regions();
+    with_required_current_instance(|inst| unsafe {
+        if let Some(current) = (*inst).portable_graphics.current.as_mut() {
+            let cast = |v: [f64; 4]| [v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32];
+            current.rect = cast(regions.plot);
+            current.figure = cast(regions.figure);
+            current.device = cast(regions.device);
+        }
+    });
 }
 fn set_linear_axp(name: &str, lo: f64, hi: f64) {
     if !lo.is_finite() || !hi.is_finite() || lo == hi {
@@ -668,82 +668,58 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
             );
         }
         let (w, h) = (&*renderer()).dimensions();
-        let layout = par_numbers("mfrow");
-        let layout = [
-            layout.first().copied().unwrap_or(1.).max(1.) as usize,
-            layout.get(1).copied().unwrap_or(1.).max(1.) as usize,
-        ];
-        let panels = layout[0]
-            .checked_mul(layout[1])
-            .unwrap_or_else(|| base_error("graphics layout is too large"));
-        let index = with_required_current_instance(|inst| {
-            let state = &mut (*inst).portable_graphics;
-            if state.layout != layout {
-                state.layout = layout;
-                state.next = 0;
-            }
-            let index = if new {
-                let i = state.next;
-                state.next = (state.next + 1) % panels;
-                i
-            } else {
-                state.next.saturating_sub(1)
-            };
-            index
-        });
         // A portable device uses 72 device units per inch. GNU captures the
         // base character expansion at plot.new; changing cex while annotating
         // that plot does not change its physical margin unit.
         let cex = par_numbers("cex").first().copied().unwrap_or(1.);
-        let mut csi = 0.2 * cex;
-        let margins = |name: &str| {
-            let values = par_numbers(name);
-            if values.len() != 4 || values.iter().any(|v| !v.is_finite() || *v < 0.) {
-                base_error(format!(
-                    "invalid value specified for graphical parameter \"{name}\""
-                ));
-            }
-            values
-        };
-        let oma = margins("oma");
-        let mar = margins("mar");
+        let mex = par_numbers("mex").first().copied().unwrap_or(1.);
+        let mut font_scale = 1.;
         // The embedding device also admits thumbnail viewports. Its default
         // margins adapt only when the normal physical margins would consume
         // that viewport; explicit margins retain their admission/error rules.
-        if mar == [5.1, 4.1, 4.1, 2.1] && oma == [0.; 4] && w <= 160 && h <= 120 {
-            csi *= (f64::from(w) / 240.).min(f64::from(h) / 180.).min(1.);
+        let default_mar =
+            matches!(&parameter("mar"), ParValue::Real(v) if v == &[5.1, 4.1, 4.1, 2.1]);
+        let default_oma = matches!(&parameter("oma"), ParValue::Real(v) if *v == [0.; 4]);
+        if default_mar && default_oma && w <= 160 && h <= 120 {
+            font_scale = (f64::from(w) / 240.).min(f64::from(h) / 180.).min(1.);
         }
-        set_plot_parameter("csi", ParValue::Real(vec![csi]));
-        let line = csi * 72. * par_numbers("mex").first().copied().unwrap_or(1.);
-        let inner = [
-            (oma[1] * line) as f32,
-            (oma[2] * line) as f32,
-            w as f32 - (oma[3] * line) as f32,
-            h as f32 - (oma[0] * line) as f32,
-        ];
-        if inner[0] >= inner[2] || inner[1] >= inner[3] {
+        let clear = crate::library::graphics::par::begin_plot_figure(cex, mex, font_scale);
+        let regions = crate::library::graphics::par::current_regions();
+        // GNewPlot validity checks, same order and messages as GNU.
+        let inner = regions.inner;
+        let figure = regions.figure;
+        let plot = regions.plot;
+        if !(figure[0] < figure[2] && figure[1] < figure[3]) {
             base_error("outer margins too large (figure region too small)");
         }
-        let pw = (inner[2] - inner[0]) / layout[1] as f32;
-        let ph = (inner[3] - inner[1]) / layout[0] as f32;
-        let ox = inner[0] + (index % layout[1]) as f32 * pw;
-        let oy = inner[1] + (index / layout[1]) as f32 * ph;
-        let left = ox + (mar[1] * line) as f32;
-        let right = ox + pw - (mar[3] * line) as f32;
-        let top = oy + (mar[2] * line) as f32;
-        let bottom = oy + ph - (mar[0] * line) as f32;
-        if left >= right || top >= bottom {
+        let slack = f32::EPSILON as f64;
+        if inner[0] < -slack
+            || inner[2] > f64::from(w) + slack
+            || inner[1] < -slack
+            || inner[3] > f64::from(h) + slack
+        {
+            base_error("figure region too large");
+        }
+        if !(plot[0] < plot[2] && plot[1] < plot[3]) {
             base_error("figure margins too large");
         }
+        if plot[0] < -slack
+            || plot[2] > f64::from(w) + slack
+            || plot[1] < -slack
+            || plot[3] > f64::from(h) + slack
+        {
+            base_error("plot region too large");
+        }
+        let to_f32 = |v: [f64; 4]| [v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32];
         (
             Coordinates {
                 limits,
-                rect: [left, top, right, bottom],
-                figure: [ox, oy, ox + pw, oy + ph],
-                device: [0., 0., w as f32, h as f32],
+                rect: to_f32(plot),
+                figure: to_f32(figure),
+                device: to_f32(regions.device),
                 log: logs,
             },
-            new && index == 0,
+            clear,
         )
     }
 }
@@ -2249,6 +2225,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             install(c);
             return invisible();
         }
+        // GMode(1): any drawing dirties the plot and clears par(new=TRUE).
+        set_plot_parameter("new", ParValue::Logical(vec![0]));
         // GNU graphics natives with dedicated portable implementations run
         // before the generic decode (erase must not require a plot frame).
         if let Some(result) = graphics_natives::dispatch(name, args) {

@@ -3,6 +3,7 @@
 mod base;
 pub(crate) mod graphics;
 mod init;
+pub(crate) mod layout;
 pub(crate) mod par;
 mod par_common;
 pub(crate) mod plot;

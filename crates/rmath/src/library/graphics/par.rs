@@ -23,6 +23,7 @@
  *  Provides the functionality of the "par" function in S.
  */
 
+use super::layout::{LayoutState, Regions};
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uchar, c_uint, c_ushort};
@@ -120,6 +121,7 @@ struct DeviceGParEntry {
 #[derive(Default)]
 pub(crate) struct GraphicsParState {
     overrides: BTreeMap<String, ParValue>,
+    pub(crate) layout: LayoutState,
     base_register_index: Option<c_int>,
     device_gpars: HashMap<usize, DeviceGParEntry>,
 }
@@ -300,38 +302,23 @@ fn default_par_value(name: &str) -> Option<ParValue> {
             ParValue::Real(vec![1.0])
         }
         "cex.main" => ParValue::Real(vec![1.2]),
-        "cin" => ParValue::Real(vec![0.15, 0.2]),
+        // mai/mar/oma/omi/omd/fig/fin/plt/pin/din/csi/cin/cra/cxy/mfg/
+        // mfrow/mfcol are owned by LayoutState (see layout.rs).
         "col" | "col.axis" | "col.lab" | "col.main" | "col.sub" | "fg" => {
             ParValue::String("black".into())
         }
-        "cra" => ParValue::Real(vec![10.8, 14.4]),
         "crt" | "srt" => ParValue::Real(vec![0.0]),
-        "csi" => ParValue::Real(vec![0.2]),
-        "cxy" => ParValue::Real(vec![0.0260416666666667, 0.0387596899224806]),
-        "din" | "fin" => ParValue::Real(vec![7.0, 7.0]),
         "err" | "las" => ParValue::Integer(vec![0]),
         "family" => ParValue::String(String::new()),
-        "fig" | "omd" | "usr" => ParValue::Real(vec![0.0, 1.0, 0.0, 1.0]),
+        "usr" => ParValue::Real(vec![0.0, 1.0, 0.0, 1.0]),
         "font" | "font.axis" | "font.lab" | "font.sub" | "pch" => ParValue::Integer(vec![1]),
         "font.main" => ParValue::Integer(vec![2]),
         "lab" => ParValue::Integer(vec![5, 5, 7]),
         "lend" | "ljoin" => ParValue::String("round".into()),
         "lmitre" => ParValue::Real(vec![10.0]),
         "lty" => ParValue::String("solid".into()),
-        "mai" => ParValue::Real(vec![1.02, 0.82, 0.82, 0.42]),
-        "mar" => ParValue::Real(vec![5.1, 4.1, 4.1, 2.1]),
-        "mfcol" | "mfrow" => ParValue::Integer(vec![1, 1]),
-        "mfg" => ParValue::Integer(vec![1, 1, 1, 1]),
         "mgp" => ParValue::Real(vec![3.0, 1.0, 0.0]),
         "mkh" => ParValue::Real(vec![0.001]),
-        "oma" | "omi" => ParValue::Real(vec![0.0, 0.0, 0.0, 0.0]),
-        "pin" => ParValue::Real(vec![5.76, 5.16]),
-        "plt" => ParValue::Real(vec![
-            0.117142857142857,
-            0.94,
-            0.145714285714286,
-            0.882857142857143,
-        ]),
         "ps" => ParValue::Integer(vec![12]),
         "pty" => ParValue::String("m".into()),
         "tck" => ParValue::Real(vec![NA_REAL]),
@@ -353,7 +340,7 @@ fn is_known_par(name: &str) -> bool {
     PAR_ORDER.contains(&name)
 }
 
-fn par_error(message: impl Into<String>) -> ! {
+pub(crate) fn par_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
         message: message.into(),
     });
@@ -781,9 +768,11 @@ unsafe fn Specify(what: *const c_char, value: SEXP, _dd: pGEDevDesc) {
             par_error(format!("graphical parameter \"{name}\" is read-only"));
         }
         let value = sexp_to_par_value(value);
-        with_par_state(|state| {
-            state.overrides.insert(name, value);
-        });
+        let regions_changed = with_par_state(|state| apply_parameter(state, &name, &value));
+        if regions_changed {
+            #[cfg(feature = "renderplot-device")]
+            crate::mainutils::portable_plot::refresh_frame_regions();
+        }
     }
 }
 
@@ -817,8 +806,55 @@ pub(crate) fn parameter(name: &str) -> ParValue {
             crate::library::grdevices::device_registry::page_question(None) as c_int,
         ]);
     }
-    with_par_state(|state| current_par_value(state, name))
+    with_par_state(|state| match layout_par_value(state, name) {
+        Some(value) => value,
+        None => current_par_value(state, name),
+    })
 }
+
+/// Queries owned by the device-layout state (see layout.rs).
+fn layout_par_value(state: &GraphicsParState, name: &str) -> Option<ParValue> {
+    match name {
+        "cxy" => {
+            let usr = match state.overrides.get("usr") {
+                Some(ParValue::Real(values)) if values.len() == 4 => {
+                    [values[0], values[1], values[2], values[3]]
+                }
+                _ => [0.0, 1.0, 0.0, 1.0],
+            };
+            Some(state.layout.query_cxy(usr))
+        }
+        "page" => {
+            // Mimics the GNewPlot decision logic, like GNU's par.c.
+            let new = logical_override(state, "new");
+            let starts_page = if new {
+                !super::graphics::plot_new_called()
+            } else {
+                state.layout.starts_new_page()
+            };
+            Some(ParValue::Logical(vec![i32::from(starts_page)]))
+        }
+        _ => state.layout.query(name),
+    }
+}
+
+fn logical_override(state: &GraphicsParState, name: &str) -> bool {
+    matches!(
+        state.overrides.get(name),
+        Some(ParValue::Logical(values)) if values.first().is_some_and(|value| *value != 0)
+    )
+}
+
+fn real_override(state: &GraphicsParState, name: &str, fallback: f64) -> f64 {
+    match state.overrides.get(name) {
+        Some(ParValue::Real(values)) if values.len() == 1 && values[0].is_finite() => values[0],
+        Some(ParValue::Integer(values)) if values.len() == 1 && values[0] != NA_INTEGER => {
+            f64::from(values[0])
+        }
+        _ => fallback,
+    }
+}
+
 pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
     if name == "ask" {
         let ask = match value {
@@ -839,15 +875,152 @@ pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
         crate::library::grdevices::device_registry::page_question(Some(ask));
         return;
     }
-    with_par_state(|state| {
-        state.overrides.insert(name.to_owned(), value);
-    });
+    let regions_changed = with_par_state(|state| apply_parameter(state, name, &value));
+    if regions_changed {
+        #[cfg(feature = "renderplot-device")]
+        crate::mainutils::portable_plot::refresh_frame_regions();
+    }
+}
+
+/// Specify(): route layout-coupled parameters through the GNU-faithful
+/// layout state (validation + coupled recomputation); everything else
+/// lands in the plain override map. Returns true when the device
+/// regions moved.
+fn apply_parameter(state: &mut GraphicsParState, name: &str, value: &ParValue) -> bool {
+    let cexbase = real_override(state, "cex", 1.0);
+    let mex = real_override(state, "mex", 1.0);
+    match name {
+        "mai" => {
+            state.layout.set_mai(value, cexbase, mex, 1.0);
+            true
+        }
+        "mar" => {
+            state.layout.set_mar(value, cexbase, mex, 1.0);
+            true
+        }
+        "mex" => {
+            let mex = state.layout.check_mex(value);
+            state
+                .overrides
+                .insert("mex".into(), ParValue::Real(vec![mex]));
+            state.layout.refresh(cexbase, mex, 1.0);
+            true
+        }
+        "oma" => {
+            state.layout.set_oma(value, cexbase, mex, 1.0);
+            true
+        }
+        "omi" => {
+            state.layout.set_omi(value, cexbase, mex, 1.0);
+            true
+        }
+        "omd" => {
+            state.layout.set_omd(value, cexbase, mex, 1.0);
+            true
+        }
+        "fig" => {
+            state.layout.set_fig(value, cexbase, mex, 1.0);
+            true
+        }
+        "fin" => {
+            state.layout.set_fin(value, cexbase, mex, 1.0);
+            true
+        }
+        "pin" => {
+            state.layout.set_pin(value, cexbase, mex, 1.0);
+            true
+        }
+        "plt" => {
+            state.layout.set_plt(value, cexbase, mex, 1.0);
+            true
+        }
+        "pty" => {
+            if let ParValue::String(text) = value {
+                state.layout.set_pty(text);
+            } else {
+                par_error("invalid value specified for graphical parameter \"pty\"");
+            }
+            false
+        }
+        "mfrow" | "mfcol" => {
+            let (nrow, ncol) = state.layout.set_mfrow(value, name == "mfcol");
+            let cex = LayoutState::split_cex(nrow, ncol);
+            state
+                .overrides
+                .insert("cex".into(), ParValue::Real(vec![cex]));
+            state
+                .overrides
+                .insert("mex".into(), ParValue::Real(vec![1.0]));
+            true
+        }
+        "mfg" => {
+            for warning in state.layout.set_mfg(value, cexbase, mex, 1.0) {
+                let message = std::ffi::CString::new(warning).unwrap_or_default();
+                unsafe {
+                    crate::mainutils::errors::warningcall(
+                        crate::sexp::globals::R_NilValue(),
+                        message.as_ptr(),
+                    );
+                }
+            }
+            state
+                .overrides
+                .insert("new".into(), ParValue::Logical(vec![TRUE]));
+            true
+        }
+        "ps" => {
+            let ps = match value {
+                ParValue::Integer(values) | ParValue::Logical(values) => {
+                    if values.len() != 1 {
+                        par_error("graphical parameter \"ps\" has the wrong length");
+                    }
+                    values[0]
+                }
+                ParValue::Real(values) => {
+                    if values.len() != 1 {
+                        par_error("graphical parameter \"ps\" has the wrong length");
+                    }
+                    values[0] as c_int
+                }
+                _ => par_error("invalid value specified for graphical parameter \"ps\""),
+            };
+            if ps == NA_INTEGER || ps < 0 {
+                par_error("invalid value specified for graphical parameter \"ps\"");
+            }
+            state
+                .overrides
+                .insert("ps".into(), ParValue::Integer(vec![ps]));
+            false
+        }
+        _ => {
+            state.overrides.insert(name.to_owned(), value.clone());
+            false
+        }
+    }
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
     crate::sexp::instance::with_required_current_instance(|instance| unsafe {
         f(&mut (*instance).graphics_par_state)
     })
+}
+
+/// plot.new's GNewPlot region half: advance the figure counter and
+/// recapture the layout yardsticks. Returns true when a new page
+/// started (the scene must be cleared). With par(new=TRUE) on an
+/// established frame nothing moves, exactly like GNewPlot.
+pub(crate) fn begin_plot_figure(cexbase: f64, mex: f64, font_scale: f64) -> bool {
+    with_par_state(|state| {
+        if logical_override(state, "new") && super::graphics::plot_new_called() {
+            return false;
+        }
+        state.layout.begin_figure(cexbase, mex, font_scale)
+    })
+}
+
+/// Current device/inner/figure/plot regions in raster units.
+pub(crate) fn current_regions() -> Regions {
+    with_par_state(|state| state.layout.regions())
 }
 
 fn graphics_error(message: impl Into<String>) -> ! {
@@ -935,32 +1108,11 @@ unsafe fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec
 }
 
 fn apply_layout_state(nrow: c_int, ncol: c_int, order: &[c_int], num_figures: c_int) {
-    let (mut current_row, mut current_col) = (1, 1);
-    if num_figures > 0
-        && let Some(index) = order.iter().position(|value| *value == num_figures)
-    {
-        current_row = (index as c_int % nrow) + 1;
-        current_col = (index as c_int / nrow) + 1;
-    }
-    let cex = if nrow > 2 || ncol > 2 {
-        0.66
-    } else if nrow == 2 && ncol == 2 {
-        0.83
-    } else {
-        1.0
-    };
-
-    with_par_state(|state| {
+    let cex = LayoutState::split_cex(nrow, ncol);
+    let regions_moved = with_par_state(|state| {
         state
-            .overrides
-            .insert("mfrow".into(), ParValue::Integer(vec![nrow, ncol]));
-        state
-            .overrides
-            .insert("mfcol".into(), ParValue::Integer(vec![nrow, ncol]));
-        state.overrides.insert(
-            "mfg".into(),
-            ParValue::Integer(vec![current_row, current_col, nrow, ncol]),
-        );
+            .layout
+            .set_layout(nrow, ncol, order, num_figures, cex, 1.0, 1.0);
         state
             .overrides
             .insert("cex".into(), ParValue::Real(vec![cex]));
@@ -970,7 +1122,12 @@ fn apply_layout_state(nrow: c_int, ncol: c_int, order: &[c_int], num_figures: c_
         state
             .overrides
             .insert("new".into(), ParValue::Logical(vec![FALSE]));
+        true
     });
+    if regions_moved {
+        #[cfg(feature = "renderplot-device")]
+        crate::mainutils::portable_plot::refresh_frame_regions();
+    }
 }
 
 unsafe fn matrix_shape(value: SEXP) -> Option<(c_int, c_int)> {
