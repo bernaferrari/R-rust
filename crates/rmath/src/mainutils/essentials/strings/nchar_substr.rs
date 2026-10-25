@@ -191,14 +191,18 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { substring_entry(args, false) }
+    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Extract) }
 }
 
 pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { substring_entry(args, true) }
+    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Replace) }
 }
 
-unsafe fn substring_entry(args: SEXP, replacement: bool) -> SEXP {
+unsafe fn substring_entry(
+    args: SEXP,
+    rho: SEXP,
+    operation: super::substring_owned::Operation,
+) -> SEXP {
     use crate::sexp::{
         object::Sexp,
         owner::{OwnerToken, with_runtime},
@@ -215,13 +219,41 @@ unsafe fn substring_entry(args: SEXP, replacement: bool) -> SEXP {
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     };
     let args = own(args);
+    let environment = own(rho);
     let na = own(unsafe { crate::sexp::globals::R_NaString() });
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| crate::sexp::context::r_error("substring requires a managed runtime"));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         with_runtime(&weak, |access| {
-            super::substring_owned::evaluate(access, &args, &na, replacement)
+            super::substring_owned::evaluate(
+                access,
+                &args,
+                &na,
+                operation,
+                |access, value, kind| {
+                    access.with_native(|original| {
+                        let raw = if kind == SEXPTYPE::STRSXP {
+                            let factory = original.node_factory();
+                            let arguments =
+                                factory.pairlist_cell(value, &factory.nil(), &factory.nil())?;
+                            unsafe {
+                                crate::mainutils::essentials_basic::do_as_character(
+                                    factory.nil().as_raw(),
+                                    factory.nil().as_raw(),
+                                    arguments.as_raw(),
+                                    environment.as_raw(),
+                                )
+                            }
+                        } else {
+                            unsafe {
+                                crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
+                            }
+                        };
+                        original.sexp(raw)?.into_owned()
+                    })
+                },
+            )
         })
     }));
     owner
@@ -290,51 +322,7 @@ pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// length max(len(text), len(first), len(last)) first (character.R);
 /// zero-length text stays zero-length.
 pub unsafe fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let first_arg = CAR(CDR(args));
-        let last_arg = CAR(CDR(CDR(args)));
-
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let lt = XLENGTH(x);
-        if lt == 0 {
-            return do_substr(_call, _op, args, _rho);
-        }
-        let lf = if first_arg.is_null() || first_arg == R_NilValue() {
-            1
-        } else {
-            XLENGTH(first_arg)
-        };
-        let ll = if last_arg.is_null() || last_arg == R_NilValue() {
-            1
-        } else {
-            XLENGTH(last_arg)
-        };
-        let n = lt.max(lf).max(ll);
-        if lt >= n {
-            return do_substr(_call, _op, args, _rho);
-        }
-        // rep_len(x, n): recycle the string vector.
-        let rep = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if rep.is_null() {
-            return R_NilValue();
-        }
-        let _rep_guard = protect(rep);
-        for i in 0..n {
-            SET_STRING_ELT(rep, i, STRING_ELT(x, i % lt));
-        }
-        let new_args = Rf_cons(
-            rep,
-            Rf_cons(
-                first_arg,
-                Rf_cons(last_arg, crate::sexp::globals::R_NilValue()),
-            ),
-        );
-        let _args_guard = protect(new_args);
-        do_substr(_call, _op, new_args, _rho)
-    }
+    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Recycle) }
 }
 
 // ---------------------------------------------------------------------------

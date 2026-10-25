@@ -9,6 +9,12 @@ use crate::sexp::{
 };
 use std::ops::Range;
 type Value = Sexp<'static>;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Operation {
+    Extract,
+    Recycle,
+    Replace,
+}
 
 fn error(message: &str) -> SexpError {
     SexpError::EvaluationFailed {
@@ -110,49 +116,59 @@ pub(super) fn evaluate(
     access: &RuntimeAccess,
     args: &Value,
     na: &Value,
-    replacement: bool,
+    operation: Operation,
+    mut coerce: impl FnMut(&RuntimeAccess, &Value, SEXPTYPE) -> SexpResult<Value>,
 ) -> SexpResult<Value> {
     access.require_active()?;
     let domain = access.domain();
     domain.link(args)?;
     domain.link(na)?;
-    let x = argument(args, 0)?;
-    let first = argument(args, 1)?;
-    let last = argument(args, 2)?;
-    if x.typeof_() != SEXPTYPE::STRSXP {
-        return Err(error(if replacement {
-            "replacing substrings in a non-character object"
-        } else {
-            "extracting substrings from a non-character object"
-        }));
-    }
-    if x.is_empty() {
-        return Ok(x);
-    }
-    if first.typeof_() != SEXPTYPE::INTSXP
-        || first.is_empty()
-        || (!last.is_nil() && (last.typeof_() != SEXPTYPE::INTSXP || last.is_empty()))
-    {
-        return Err(error("invalid substring arguments"));
-    }
-    let value = if replacement {
+    // Select every operand before a coercion can collect, detach arguments,
+    // invoke a class method or revoke the original facade.
+    let mut x = argument(args, 0)?;
+    let mut first = argument(args, 1)?;
+    let mut last = argument(args, 2)?;
+    let value = if operation == Operation::Replace {
         Some(argument(args, 3)?)
     } else {
         None
     };
+    if x.typeof_() != SEXPTYPE::STRSXP {
+        if operation == Operation::Replace {
+            return Err(error("replacing substrings in a non-character object"));
+        }
+        x = coerce(access, &x, SEXPTYPE::STRSXP)?;
+    }
+    if first.typeof_() != SEXPTYPE::INTSXP {
+        first = coerce(access, &first, SEXPTYPE::INTSXP)?;
+    }
+    if !last.is_nil() && last.typeof_() != SEXPTYPE::INTSXP {
+        last = coerce(access, &last, SEXPTYPE::INTSXP)?;
+    }
+    if x.is_empty() {
+        return Ok(x);
+    }
+    if first.is_empty() || (!last.is_nil() && last.is_empty()) {
+        return Err(error("invalid substring arguments"));
+    }
     if value
         .as_ref()
         .is_some_and(|v| v.typeof_() != SEXPTYPE::STRSXP || v.is_empty())
     {
         return Err(error("invalid value"));
     }
+    let n = if operation == Operation::Recycle {
+        x.len().max(first.len()).max(last.len())
+    } else {
+        x.len()
+    };
     let mut out = SexpMut::try_from_checked(
         access
             .allocator(&domain)?
-            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, x.len())))?,
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, n)))?,
     )?;
-    for i in 0..x.len() {
-        let source = x.try_string_elt(i)?.into_owned()?;
+    for i in 0..n {
+        let source = x.try_string_elt(i % x.len())?.into_owned()?;
         let start = first.try_integer_elt(i % first.len())?;
         let stop = if last.is_nil() {
             None
@@ -196,12 +212,14 @@ pub(super) fn evaluate(
         };
         out.try_set_string_elt(i, result)?;
     }
-    super::iconv_owned::copy_attributes(access, &x, &mut out)?;
+    if n == x.len() {
+        super::iconv_owned::copy_attributes(access, &x, &mut out)?;
+    }
     let result = out.freeze();
     let node = result.allocation()?;
     let heap = node.heap_identity();
     let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-    header.sxpinfo.set_obj(x.is_object());
+    header.sxpinfo.set_obj(n == x.len() && x.is_object());
     heap.replace_node(node, header)
         .ok_or(SexpError::StaleAllocation)?;
     access.require_active()?;

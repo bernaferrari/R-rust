@@ -292,10 +292,10 @@
     }
   },
   "pending": [
-    "195 independent GNU/golden comparisons (30new+165controls)",
-    "strict Miri7 ownership/GC tests",
-    "optimized Wasm30 cases and Chromium2workers",
-    "Clippy and Android compilation"
+    "195 independent comparisons of corrected candidate",
+    "strictMiri6 substring tests after coercion correction; unchanged regexec Miri1 alreadyPASS185.47s",
+    "rebuild optimizedWasm and repeat190public/Chromium30case checks",
+    "repeat Clippy and Android after correction"
   ],
   "limitations": [
     "No full-GNU-R parity or total-memory completion claim. Five historical graphics cases excluded to preserve unrelated user edits.",
@@ -310,5 +310,11 @@
     "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
     "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
     "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  },
+  "candidate_correction": {
+    "observed": "First independent final run passed194/195: original control1102_str_atomic_preview called substr with double bounds and exposed missing integer coercion. No existing expectation changed.",
+    "repair": "Snapshot all operands before original-runtime coercion callbacks; reuse native Rust coercion/as.character dispatch through checked access. Shared safe module also owns substring recycling, removing raw nested cons construction.",
+    "verification": "42/42 aggregate probes stillPASS, all numeric/factor/recycling/empty peers match GNU, str_atomic exact output matches, Native6 ownership testsPASS with REALSXP bounds.",
+    "previous_report_sha256": "4dfc1766d2bbe3c123d78de863b6571941e2a896ef87cf6e17edd5d318d23f61"
   }
 }

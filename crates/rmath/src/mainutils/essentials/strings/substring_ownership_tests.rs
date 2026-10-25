@@ -15,11 +15,11 @@ fn fixture(factory: &SessionNodeFactory<'_>, replacement: bool) -> Sexp<'static>
     let integer = || {
         let mut v = SexpMut::try_from_checked(
             factory
-                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::REALSXP, 1)))
                 .unwrap(),
         )
         .unwrap();
-        v.try_set_integer_elt(0, 3).unwrap();
+        v.try_set_real_elt(0, 3.0).unwrap();
         v.freeze()
     };
     let mut values = vec![x.freeze(), integer(), integer()];
@@ -178,7 +178,13 @@ fn owned_substring_foreign_arguments_reject_before_copy_or_allocation() {
             .with_arena(|a| a.total_bytes_allocated())
             .unwrap();
         let result = with_runtime(&original, |access| {
-            super::substring_owned::evaluate(access, &foreign, &na, false)
+            super::substring_owned::evaluate(
+                access,
+                &foreign,
+                &na,
+                super::substring_owned::Operation::Extract,
+                |_, value, _| Ok(value.clone()),
+            )
         })
         .unwrap();
         assert_eq!(
