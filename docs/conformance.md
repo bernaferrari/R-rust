@@ -25,7 +25,8 @@ Exact UTF-8 expectations in `golden_utf8/` and `error_golden_utf8/` override onl
 identically named base goldens; all other cases retain their original golden.
 The error087 override records pinned GNU R's default `useFancyQuotes=TRUE`
 under UTF-8. Its original C-locale straight-quote expectation is preserved.
-No quote folding or other new output normalization is applied. Shard contracts
+Normalization commands retain `LC_ALL=C` byte rules independently of the
+runtime locale, preserving non-ASCII whitespace. No quote folding is applied. Shard contracts
 record the character locale and hash the selected expectations, so results from
 different locale profiles cannot be combined as one complete pass.
 

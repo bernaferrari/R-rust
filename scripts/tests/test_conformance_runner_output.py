@@ -108,5 +108,23 @@ pub mod android {
         self.assertEqual(result.stderr, b"")
 
 
+class NormalizationLocaleTests(unittest.TestCase):
+    def normalize(self, function, payload):
+        source = (ROOT / "scripts/conformance_parity.sh").read_text()
+        functions = source[source.index("normalize_output() {"):source.index("regen_normal_goldens() {")]
+        return subprocess.run(["bash", "-c", functions + "\n" + function],
+            input=payload, capture_output=True, check=True,
+            env={**os.environ, "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"}).stdout
+
+    def test_utf8_runtime_profile_preserves_non_ascii_trailing_whitespace(self):
+        self.assertEqual(self.normalize("normalize_output", "雪\u2003 \t\r\n\n".encode()),
+                         "雪\u2003\n".encode())
+
+    def test_unicode_space_does_not_become_an_ascii_error_continuation(self):
+        self.assertEqual(self.normalize("normalize_error_output",
+            "Error in f() :\n\u2003payload\nExecution halted\n".encode()),
+            "Error in f() :\n\u2003payload\n".encode())
+
+
 if __name__ == "__main__":
     unittest.main()

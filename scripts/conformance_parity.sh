@@ -238,9 +238,10 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
 fi
 
 normalize_output() {
-    tr -d '\r' |
-        sed 's/[[:space:]]*$//' |
-        awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && lines[n] == "") n--; for (i = 1; i <= n; i++) print lines[i] }'
+    # Runtime text is UTF-8; normalization retains its original C byte rules.
+    LC_ALL=C tr -d '\r' |
+        LC_ALL=C sed 's/[[:space:]]*$//' |
+        LC_ALL=C awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && lines[n] == "") n--; for (i = 1; i <= n; i++) print lines[i] }'
 }
 
 normalize_error_output() {
@@ -257,7 +258,7 @@ normalize_error_output() {
     # "Calls:" traceback blocks are dropped, and the "Execution halted"
     # footer is removed.
     normalize_output |
-        awk '
+        LC_ALL=C awk '
             /^Error in .* :$/ {
                 if (pending != "") print pending
                 pending = $0
@@ -279,8 +280,8 @@ normalize_error_output() {
                 if (pending != "") print pending
             }
         ' |
-        sed '/^Calls:/d' |
-        sed '/^Execution halted$/d'
+        LC_ALL=C sed '/^Calls:/d' |
+        LC_ALL=C sed '/^Execution halted$/d'
 }
 
 regen_normal_goldens() {
