@@ -17,6 +17,8 @@ console.log(JSON.stringify({ wasm_sha256: createHash('sha256').update(moduleByte
 
 const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
+  // Check defaults before later contracts intentionally change session options.
+  [resolve(fixtures, 'quote-options-contract.R'), resolve(fixtures, 'quote-options-contract.out')],
   ...readdirSync(resolve(root, 'tests/conformance/cases'))
     .filter(name => /^\d+_utf8_(?:substring|string)_.*\.R$/.test(name))
     .sort()
@@ -73,7 +75,6 @@ const contracts = [
     'internal-dput-contract',
     's4-next-method-public-contract',
     's4-cache-new-contract',
-    'quote-options-contract',
     'unicode-print-width-contract',
     'gnu-compiled-source-edit-contract',
     'try-condition-caller-context-contract',
