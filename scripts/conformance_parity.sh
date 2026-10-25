@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export LC_ALL=C LANG=C
+# Match browser/Android's UTF-8 text with deterministic C formatting categories.
+# LC_ALL would override LC_CTYPE, so remove it before applying the profile.
+unset LC_ALL
+export LANG=C LC_COLLATE=C LC_MONETARY=C LC_NUMERIC=C LC_TIME=C LC_MESSAGES=C
+export LC_CTYPE="${RPORT_CONFORMANCE_CTYPE:-en_US.UTF-8}"
+python3 - <<'PYTHON'
+import locale
+import os
+# Fail before collecting evidence if the requested character locale is absent.
+locale.setlocale(locale.LC_CTYPE, os.environ["LC_CTYPE"])
+PYTHON
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
@@ -148,7 +158,7 @@ fi
 # internals legitimately differ (e.g. the R 4.7 .Random.seed kind-word
 # layout). Detect major.minor once so version-sensitive cases become
 # expected skips instead of hard failures.
-R_MAJ_MIN="$(env LC_ALL=C LANG=C Rscript --vanilla -e 'cat(as.character(getRversion()))' | awk -F. '{ print $1"."$2 }')"
+R_MAJ_MIN="$(Rscript --vanilla -e 'cat(as.character(getRversion()))' | awk -F. '{ print $1"."$2 }')"
 
 if [[ ! -d "$CASES_DIR" ]]; then
     echo "ERROR: missing cases directory: $CASES_DIR" >&2
@@ -298,9 +308,9 @@ regen_normal_goldens() {
             continue
         fi
 
-        golden_file="$GOLDEN_DIR/${case_name}.out"
+        golden_file="$(regen_golden_path "$GOLDEN_DIR" "$case_name")"
         raw_out="$(mktemp "${TMPDIR:-/tmp}/rport-regen.XXXXXX")"
-        if ! env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
+        if ! Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
             echo "ERROR: ${case_name}: Rscript exited non-zero, expected success; golden left unchanged." >&2
             rm -f "$raw_out"
             exit 1
@@ -337,9 +347,9 @@ regen_error_goldens() {
     local case_file case_name golden_file raw_out count=0
     for case_file in "${error_cases[@]}"; do
         case_name="$(basename "$case_file" .R)"
-        golden_file="$ERROR_GOLDEN_DIR/${case_name}.out"
+        golden_file="$(regen_golden_path "$ERROR_GOLDEN_DIR" "$case_name")"
         raw_out="$(mktemp "${TMPDIR:-/tmp}/rport-regen.XXXXXX")"
-        if env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
+        if Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
             echo "ERROR: ${case_name}: Rscript succeeded, expected an error; golden left unchanged." >&2
             rm -f "$raw_out"
             exit 1
@@ -398,7 +408,7 @@ prepare_execution() {
     python3 - "$ROOT_DIR" "$INVENTORY_TSV" "$EXECUTION_JSON" "$SHARD_INDEX" "$SHARD_COUNT" \
         "${RPORT_CONFORMANCE_PROFILE:-debug}" "$CASE_TIMEOUT" "$STRICT" \
         "${RPORT_REQUIRE_PINNED_ORACLE:-0}" "$R_MAJ_MIN" "$CASES_DIR" "$GOLDEN_DIR" \
-        "$ERROR_CASES_DIR" "$ERROR_GOLDEN_DIR" "$XFAIL_FILE" "${RUSTFLAGS_FOR_BUILD:--Awarnings}" <<'PYTHON'
+        "$ERROR_CASES_DIR" "$ERROR_GOLDEN_DIR" "$XFAIL_FILE" "${RUSTFLAGS_FOR_BUILD:--Awarnings}" "${LC_CTYPE:-en_US.UTF-8}" <<'PYTHON'
 import csv
 import json
 from pathlib import Path
@@ -412,7 +422,7 @@ contract = capture_contract(root, inventory, index=int(sys.argv[4]), count=int(s
     profile=sys.argv[6], timeout=float(sys.argv[7]), strict=sys.argv[8] == "1",
     pinned=sys.argv[9] == "1", engine=sys.argv[10], cases=Path(sys.argv[11]),
     golden=Path(sys.argv[12]), errors=Path(sys.argv[13]), error_golden=Path(sys.argv[14]),
-    xfail=Path(sys.argv[15]), rustflags=sys.argv[16])
+    xfail=Path(sys.argv[15]), rustflags=sys.argv[16], ctype=sys.argv[17])
 Path(sys.argv[3]).write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n")
 PYTHON
 }
@@ -697,10 +707,33 @@ PY
     fi
 }
 
+regen_golden_path() {
+    local base="$1" name="$2"
+    case "${LC_CTYPE:-en_US.UTF-8}" in
+        *UTF-8*|*utf-8*|*UTF8*|*utf8*) base="${base}_utf8" ;;
+    esac
+    mkdir -p "$base"
+    printf '%s\n' "$base/${name}.out"
+}
+
+golden_path() {
+    local base="$1" name="$2"
+    local ctype="${LC_CTYPE:-en_US.UTF-8}"
+    case "$ctype" in
+        *UTF-8*|*utf-8*|*UTF8*|*utf8*)
+            if [[ -f "${base}_utf8/${name}.out" ]]; then
+                printf '%s\n' "${base}_utf8/${name}.out"
+                return
+            fi
+            ;;
+    esac
+    printf '%s\n' "$base/${name}.out"
+}
+
 run_with_deadline() {
     local marker="$1"
     shift
-    env LC_ALL=C LANG=C python3 "$ROOT_DIR/scripts/run_parity_case.py" \
+    python3 "$ROOT_DIR/scripts/run_parity_case.py" \
         --timeout "$CASE_TIMEOUT" --timeout-marker "$marker" -- "$@"
 }
 
@@ -717,7 +750,8 @@ run_case() {
     case_name="$(basename "$case_file" .R)"
     CASE_TIMEOUT_DETAIL=""
 
-    local golden_file="$GOLDEN_DIR/${case_name}.out"
+    local golden_file
+    golden_file="$(golden_path "$GOLDEN_DIR" "$case_name")"
     if [[ ! -f "$golden_file" ]]; then
         echo "FAIL ${case_name}: missing golden file $golden_file"
         return 1
@@ -779,7 +813,8 @@ run_error_case() {
     case_name="$(basename "$case_file" .R)"
     CASE_TIMEOUT_DETAIL=""
 
-    local golden_file="$ERROR_GOLDEN_DIR/${case_name}.out"
+    local golden_file
+    golden_file="$(golden_path "$ERROR_GOLDEN_DIR" "$case_name")"
     if [[ ! -f "$golden_file" ]]; then
         echo "FAIL ${case_name}: missing error golden file $golden_file"
         return 1

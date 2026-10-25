@@ -1,4 +1,7 @@
 local({
+    stopifnot(identical(getOption("useFancyQuotes"), TRUE),
+              identical(sQuote("x"), sQuote("x", q = TRUE)),
+              identical(dQuote("x"), dQuote("x", q = TRUE)))
     stopifnot(typeof(sQuote) == "closure", typeof(dQuote) == "closure",
               identical(names(formals(sQuote)), c("x", "q")),
               identical(names(formals(dQuote)), c("x", "q")))

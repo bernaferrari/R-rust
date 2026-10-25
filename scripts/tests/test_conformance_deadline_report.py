@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @unittest.skipUnless(os.name == "posix", "the Bash parity harness uses POSIX groups")
 class ConformanceDeadlineReportTests(unittest.TestCase):
-    def run_fixture(self, normal_timeout=False, error_timeout=False, shard_index=0, shard_count=1):
+    def run_fixture(self, normal_timeout=False, error_timeout=False, shard_index=0, shard_count=1, utf8_error=False):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             for name in ["cases", "golden", "error_cases", "error_golden", "bin"]:
@@ -29,11 +29,15 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
             (directory / "error_golden/001_error.out").write_text("Error: expected\n")
             xfail = "001_first" if normal_timeout else "001_error"
             (directory / "xfail.tsv").write_text(f"{xfail}\tfixture\texpected semantic gap\n" if normal_timeout or error_timeout else "")
+            error_text = "Error: ‘expected’" if utf8_error else "Error: expected"
+            if utf8_error:
+                (directory / "error_golden_utf8").mkdir()
+                (directory / "error_golden_utf8/001_error.out").write_text(error_text + "\n")
             oracle = directory / "bin/Rscript"
             oracle.write_text(
                 f"#!{sys.executable}\nfrom pathlib import Path\nimport sys\n"
                 "error = 'error' in Path(sys.argv[-1]).read_text()\n"
-                "print('Error: expected' if error else 'OK')\nraise SystemExit(1 if error else 0)\n"
+                f"print({error_text!r} if error else 'OK')\nraise SystemExit(1 if error else 0)\n"
             )
             oracle.chmod(0o755)
             rust = directory / "bin/rust_runner"
@@ -41,7 +45,7 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
                 f"#!{sys.executable}\nfrom pathlib import Path\nimport sys,time\n"
                 "body=Path(sys.argv[-1]).read_text()\n"
                 "if 'hang' in body: time.sleep(30)\n"
-                "error='error' in body\nprint('Error: expected' if error else 'OK')\n"
+                f"error='error' in body\nprint({error_text!r} if error else 'OK')\n"
                 "raise SystemExit(1 if error else 0)\n"
             )
             rust.chmod(0o755)
@@ -61,7 +65,7 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
                 "REPORT_DIR": directory, "RUST_BIN": rust, "MODE": "--check", "R_MAJ_MIN": "4.7",
                 "STRICT": "1", "CASE_TIMEOUT": "2", "CASE_TIMEOUT_DETAIL": "",
                 "SHARD_INDEX": str(shard_index), "SHARD_COUNT": str(shard_count),
-                "EXECUTION_JSON": directory / "execution.json",
+                "EXECUTION_JSON": directory / "execution.json", "LC_CTYPE": "en_US.UTF-8",
             }
             for name in ["results.tsv", "inventory.tsv"]:
                 (directory / name).touch()
@@ -79,6 +83,14 @@ class ConformanceDeadlineReportTests(unittest.TestCase):
             self.assertTrue(report_path.exists(), (result.stdout, result.stderr))
             report = json.loads(report_path.read_text())
             return result, report
+
+    def test_exact_utf8_error_override_is_used_by_real_harness(self):
+        result, report = self.run_fixture(utf8_error=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["passed"], 3)
+        self.assertTrue(report["execution_complete"])
+        self.assertEqual(report["execution"]["locale"],
+                         {"LC_CTYPE": "en_US.UTF-8", "other_categories": "C"})
 
     def test_normal_timeout_is_a_failure_even_when_case_is_xfail(self):
         result, report = self.run_fixture(normal_timeout=True)

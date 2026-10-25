@@ -15,6 +15,20 @@ The harness:
 - treats `tests/conformance/xfail.tsv` as the owned known-gap list
 - optionally writes machine-readable JSON and human-readable Markdown reports
 
+The canonical portable profile uses `LC_CTYPE=en_US.UTF-8` and C numeric,
+monetary, collation, time, and message categories. This tests UTF-8 text while
+matching browser/Android formatting. The harness clears inherited `LC_ALL` and
+rejects an unavailable character locale before running cases. For a separate
+legacy character-locale check, set `RPORT_CONFORMANCE_CTYPE=C`.
+
+Exact UTF-8 expectations in `golden_utf8/` and `error_golden_utf8/` override only
+identically named base goldens; all other cases retain their original golden.
+The error087 override records pinned GNU R's default `useFancyQuotes=TRUE`
+under UTF-8. Its original C-locale straight-quote expectation is preserved.
+No quote folding or other new output normalization is applied. Shard contracts
+record the character locale and hash the selected expectations, so results from
+different locale profiles cannot be combined as one complete pass.
+
 ## Commands
 
 Run parity only:
@@ -47,7 +61,7 @@ timeout the harness cleans up its owned process group, records a failure even
 for an expected-failure case, and stops with an incomplete report. The report
 lists unattempted cases and sets `execution_complete` to false; it cannot serve
 as a completed parity checkpoint. CI uploads this report even when the gate
-fails. Golden regeneration is unchanged.
+fails.
 
 The standalone Rust runner writes the runtime's captured bytes directly to
 stdout or stderr, including an empty capture and intentional trailing spaces
@@ -79,8 +93,10 @@ It re-runs every `tests/conformance/cases/*.R` and
 `tests/conformance/error_cases/*.R` under `Rscript --vanilla`, applies the
 harness's normalization (plain output normalization for normal cases, error
 normalization for expected-error cases), and rewrites
-`tests/conformance/golden/*.out` and `tests/conformance/error_golden/*.out`
-in place. It refuses to run without `Rscript` on `PATH` and leaves goldens
+`tests/conformance/golden_utf8/*.out` and
+`tests/conformance/error_golden_utf8/*.out` for the UTF-8 profile. Explicit
+`RPORT_CONFORMANCE_CTYPE=C` regeneration writes the base `golden/` and
+`error_golden/` directories. It refuses to run without `Rscript` on `PATH` and leaves goldens
 untouched whenever stock R misbehaves (a normal case exiting non-zero, or an
 error case that stops erroring).
 

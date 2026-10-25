@@ -62,11 +62,21 @@ def source_identity(root: Path) -> dict:
     return {"source_commit": commit, "source_sha256": digest(inputs)}
 
 
+def golden_path(directory: Path, name: str, ctype: str) -> Path:
+    """Select an explicit UTF-8 expectation without rewriting the C baseline."""
+    if "utf8" in ctype.lower().replace("-", ""):
+        override = directory.with_name(directory.name + "_utf8") / (name + ".out")
+        if override.is_file():
+            return override
+    return directory / (name + ".out")
+
+
 def capture_contract(root: Path, inventory: list[dict], *, index: int, count: int,
                      profile: str, timeout: float, strict: bool, pinned: bool,
                      engine: str, cases: Path | None = None, golden: Path | None = None,
                      errors: Path | None = None, error_golden: Path | None = None,
-                     xfail: Path | None = None, rustflags: str = "-Awarnings") -> dict:
+                     xfail: Path | None = None, rustflags: str = "-Awarnings",
+                     ctype: str = "en_US.UTF-8") -> dict:
     selected = partition(inventory, index, count)
     if profile not in {"debug", "release"}:
         raise ValueError("unsupported conformance build profile")
@@ -77,11 +87,12 @@ def capture_contract(root: Path, inventory: list[dict], *, index: int, count: in
     for row in inventory:
         code, expected = directories[row["kind"]]
         inputs.append({**row, "source_sha256": file_digest(code / (row["case"] + ".R")),
-                       "golden_sha256": file_digest(expected / (row["case"] + ".out"))})
+                       "golden_sha256": file_digest(golden_path(expected, row["case"], ctype))})
     return {
         "schema_version": 1, **source_identity(root),
         "corpus_sha256": digest({"cases": inputs, "xfail_sha256": file_digest(xfail or base / "xfail.tsv")}),
         "oracle_manifest_sha256": file_digest(root / "oracle/r-oracle.json"),
+        "locale": {"LC_CTYPE": ctype, "other_categories": "C"},
         "profile": profile, "build_rustflags": rustflags, "case_timeout_seconds": timeout,
         "strict": strict, "pinned_oracle_required": pinned, "engine_major_minor": engine,
         "shard": {"index": index, "count": count, "global_inventory_total": len(inventory),

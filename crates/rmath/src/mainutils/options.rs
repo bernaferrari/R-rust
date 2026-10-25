@@ -918,6 +918,7 @@ fn populate_options<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<HashMap<
     options.insert("device".to_string(), pm("pdf")?);
     options.insert("show.coef.Pvalues".to_string(), pl(TRUE)?);
     options.insert("show.signif.stars".to_string(), pl(TRUE)?);
+    options.insert("useFancyQuotes".to_string(), pl(TRUE)?);
     options.insert("echo".to_string(), pl(TRUE)?);
     options.insert("quiet".to_string(), pl(FALSE)?);
     options.insert("verbose".to_string(), pl(FALSE)?);
@@ -1803,8 +1804,9 @@ mod tests {
             assert_eq!(R_ShowWarningOption(), 0);
             assert_eq!(asInteger(GetOptionByName("expressions")), 5000);
             assert_eq!(asInteger(GetOptionByName("max.print")), 99999);
+            assert_eq!(asLogical(GetOptionByName("useFancyQuotes")), TRUE);
             let owner = session.owner_token().unwrap();
-            assert_eq!((*owner.as_ptr()).options.len(), 47);
+            assert_eq!((*owner.as_ptr()).options.len(), 48);
             assert_eq!(
                 (*owner.as_ptr()).options_initialization,
                 OptionsInitialization::Initialized
@@ -1837,7 +1839,7 @@ mod tests {
             );
 
             let binding = crate::sexp::envir::R_findVarInFrame(R_BaseEnv(), options_symbol());
-            assert_eq!(Rf_length(binding), 47);
+            assert_eq!(Rf_length(binding), 48);
             let platform = session
                 .sexp(crate::sexp::envir::R_findVarInFrame(
                     R_BaseEnv(),
@@ -2159,6 +2161,14 @@ mod tests {
             // Clean up
             R_SetOption(tag, R_NilValue());
         }
+    }
+    #[test]
+    fn owned_options_fancy_quotes_default_matches_original_gnu() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            InitOptions();
+            assert_eq!(asLogical(GetOptionByName("useFancyQuotes")), TRUE);
+        });
     }
 }
 

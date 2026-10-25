@@ -97,6 +97,7 @@ class ConformanceShardTests(unittest.TestCase):
         replacements = {"source_commit": "c" * 40, "source_sha256": "d" * 64,
             "corpus_sha256": "e" * 64, "oracle_manifest_sha256": "f" * 64,
             "strict": False, "pinned_oracle_required": False,
+            "locale": {"LC_CTYPE": "C", "other_categories": "C"},
             "profile": "debug", "build_rustflags": "-C opt-level=0", "case_timeout_seconds": 600, "engine_major_minor": "4.6"}
         for field, value in replacements.items():
             with self.subTest(field=field):
@@ -117,6 +118,21 @@ class ConformanceShardTests(unittest.TestCase):
                 path.write_bytes(original + b"changed\n")
                 self.assertFalse(self.merge(reports)["strict_pass"])
                 path.write_bytes(original)
+
+    def test_utf8_override_is_hashed_and_c_baseline_is_preserved(self):
+        base = self.root / "tests/conformance/golden"
+        override = base.with_name("golden_utf8")
+        override.mkdir()
+        path = override / "001_first.out"
+        path.write_text("UTF8 expectation\n")
+        self.assertEqual(shards.golden_path(base, "001_first", "en_US.UTF-8"), path)
+        self.assertEqual(shards.golden_path(base, "001_first", "C"), base / "001_first.out")
+        self.assertEqual(shards.golden_path(base, "002_second", "en_US.UTF-8"), base / "002_second.out")
+        reports = self.reports()
+        self.assertTrue(self.merge(reports)["strict_pass"])
+        path.write_text("changed UTF8 expectation\n")
+        self.assertFalse(self.merge(reports)["strict_pass"])
+        self.assertEqual((base / "001_first.out").read_text(), "[1] 1\n")
 
     def test_malformed_json_shapes_are_rejected_with_failure_evidence(self):
         for broken in ([], {"execution": []}, {"execution": None}):
