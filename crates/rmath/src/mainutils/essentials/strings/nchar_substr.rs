@@ -191,152 +191,46 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let start_arg = CAR(CDR(args));
-        let stop_arg = CAR(CDR(CDR(args)));
-
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        // Upstream substr.c recycles x/start/stop to the COMMON length
-        // n = max(len(x), len(start), len(stop)) — vector bounds with a
-        // scalar string yield a vector result (substring over gregexpr's
-        // per-match positions).
-        let nx = XLENGTH(x);
-        let nstart = if start_arg.is_null() || start_arg == R_NilValue() {
-            1
-        } else {
-            XLENGTH(start_arg)
-        };
-        let nstop = if stop_arg.is_null() || stop_arg == R_NilValue() {
-            1
-        } else {
-            XLENGTH(stop_arg)
-        };
-        // Upstream split (character.c do_substr vs base::substring):
-        // the INTERNAL iterates only len(x) — start/stop recycle against
-        // it but never extend the result. base::substring (an R wrapper)
-        // rep_lens text to max(len(text), len(first), len(last)) FIRST;
-        // our `substring` handler below reproduces that. Zero-length x
-        // stays zero-length either way (the wrapper's `lt &&` guard).
-        let n = nx;
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for i in 0..n {
-            let xi = if nx == 0 { 0 } else { i % nx };
-            if TYPEOF(x) == SEXPTYPE::STRSXP && nx > 0 {
-                if STRING_ELT(x, xi) == crate::sexp::globals::R_NaString() {
-                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                    continue;
-                }
-            }
-            let s = elt_to_string(x, xi);
-            let chars: Vec<char> = s.chars().collect();
-            let si = if nstart == 0 { 0 } else { i % nstart };
-            let ei = if nstop == 0 { 0 } else { i % nstop };
-            let start = (real_elt_or_default(start_arg, si, 1.0) as usize).max(1) - 1;
-            let missing = crate::sexp::globals::R_MissingArg();
-            let stop_open = stop_arg.is_null() || stop_arg == R_NilValue() || stop_arg == missing;
-            let stop = if stop_open {
-                chars.len()
-            } else {
-                real_elt_or_default(stop_arg, ei, chars.len() as f64) as usize
-            };
-            let end = stop.min(chars.len());
-            let sub: String = if start < end {
-                chars[start..end].iter().collect()
-            } else {
-                String::new()
-            };
-            let cstr = CString::new(sub).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-
-        result
-    }
+    unsafe { substring_entry(args, false) }
 }
 
-/// `substr<-`(x, start, stop, value). Replaces characters start:stop.
-/// A longer value is truncated to the span. A shorter value replaces only
-/// its own characters; the rest of the span stays.
 pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let start_arg = CAR(CDR(args));
-        let stop_arg = CAR(CDR(CDR(args)));
-        let value = CAR(CDR(CDR(CDR(args))));
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
-            return x;
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _g = protect(result);
-        let nv = if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
-            0
-        } else {
-            XLENGTH(value)
-        };
-        for i in 0..n {
-            if STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            let s = elt_to_string(x, i);
-            let mut chars: Vec<char> = s.chars().collect();
-            let start = (real_elt_or_default(start_arg, i, 1.0) as isize).max(1) as usize;
-            let stop_raw = if stop_arg.is_null() || stop_arg == R_NilValue() {
-                chars.len() as f64
-            } else {
-                real_elt_or_default(stop_arg, i, chars.len() as f64)
-            };
-            let stop = (stop_raw as isize).max(0) as usize;
-            if start == 0 || start > chars.len() || start > stop {
-                let cstr = CString::new(s.as_str()).unwrap_or_default();
-                SET_STRING_ELT(
-                    result,
-                    i,
-                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
-                );
-                continue;
-            }
-            let end = stop.min(chars.len());
-            let span = end - start + 1;
-            if nv > 0 && STRING_ELT(value, i % nv) == crate::sexp::globals::R_NaString() {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            let repl = if nv == 0 {
-                String::new()
-            } else {
-                elt_to_string(value, i % nv)
-            };
-            for (k, ch) in repl.chars().take(span).enumerate() {
-                chars[start - 1 + k] = ch;
-            }
-            let out: String = chars.into_iter().collect();
-            let cstr = CString::new(out).unwrap_or_default();
-            SET_STRING_ELT(
-                result,
-                i,
-                crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
-            );
-        }
-        let at = crate::sexp::accessors::ATTRIB(x);
-        if !at.is_null() && at != R_NilValue() {
-            crate::sexp::accessors::SET_ATTRIB(
-                result,
-                crate::mainutils::duplicate::Rf_duplicate(at),
-            );
-        }
-        result
+    unsafe { substring_entry(args, true) }
+}
+
+unsafe fn substring_entry(args: SEXP, replacement: bool) -> SEXP {
+    use crate::sexp::{
+        object::Sexp,
+        owner::{OwnerToken, with_runtime},
+    };
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let own = |raw| {
+        owner
+            .sexp(raw)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    };
+    let args = own(args);
+    let na = own(unsafe { crate::sexp::globals::R_NaString() });
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("substring requires a managed runtime"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_runtime(&weak, |access| {
+            super::substring_owned::evaluate(access, &args, &na, replacement)
+        })
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 

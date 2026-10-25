@@ -109,3 +109,73 @@ fn owned_gregexpr_capture_rows_stay_charged_through_real_gc_publication() {
         assert_eq!(ledger.workspace_bytes_for_test(), 0);
     });
 }
+
+#[test]
+fn owned_regexec_named_captures_survive_every_collecting_constructor() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let nil = factory.nil();
+    let pattern = factory.strings(&["(?<one>a)(b)?"]).unwrap();
+    let text = factory.strings(&["ab", "a", "x"]).unwrap();
+    let yes = factory.domain().logical(true);
+    let no = factory.domain().logical(false);
+    let mut args = nil.clone();
+    for value in [pattern, text, no.clone(), yes, no.clone(), no]
+        .into_iter()
+        .rev()
+    {
+        args = factory.pairlist_cell(&value, &args, &nil).unwrap();
+    }
+    let pin = owner.weak_owner().unwrap().pin().unwrap();
+    let instance = pin.as_ptr();
+    let called = Rc::new(Cell::new(0));
+    let observed = called.clone();
+    session.with_active(|| unsafe {
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1)
+        }));
+        (*instance).memory_state.gc_force_gap = 1;
+        (*instance).memory_state.gc_force_wait = 1;
+        let raw = crate::mainutils::essentials::do_regexec(
+            nil.as_raw(),
+            nil.as_raw(),
+            args.as_raw(),
+            nil.as_raw(),
+        );
+        let result = owner.sexp(raw).unwrap().into_owned().unwrap();
+        (*instance).memory_state.gc_force_gap = 0;
+        assert!(called.get() > 0);
+        owner.full_gc().unwrap();
+        for (i, expected) in [&[1, 1, 2][..], &[1, 1, 0][..], &[-1][..]]
+            .into_iter()
+            .enumerate()
+        {
+            let element = result.try_vector_elt(i as _).unwrap();
+            for (j, value) in expected.iter().enumerate() {
+                assert_eq!(element.try_integer_elt(j as _).unwrap(), *value);
+            }
+            let names = owner
+                .sexp(crate::sexp::attrib_core::getAttrib(
+                    element.as_raw(),
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                ))
+                .unwrap();
+            if i < 2 {
+                assert_eq!(names.len(), 3);
+                for (j, name) in ["", "one", ""].into_iter().enumerate() {
+                    assert!(
+                        names
+                            .try_string_elt(j as _)
+                            .unwrap()
+                            .try_char_eq(name.as_bytes())
+                            .unwrap()
+                    );
+                }
+            } else {
+                assert!(names.is_nil());
+            }
+        }
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    });
+}

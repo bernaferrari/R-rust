@@ -142,7 +142,7 @@ pub(super) fn convert(
         _ticket: ticket,
     }))
 }
-fn copy_attributes(
+pub(super) fn copy_attributes(
     access: &RuntimeAccess,
     x: &Value,
     out: &mut SexpMut<'static>,

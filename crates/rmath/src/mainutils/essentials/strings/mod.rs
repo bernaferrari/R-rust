@@ -42,6 +42,9 @@ mod nclass_bw;
 mod pattern;
 mod strsplit;
 mod strtools;
+mod substring_owned;
+#[cfg(test)]
+mod substring_ownership_tests;
 #[cfg(test)]
 mod tests;
 

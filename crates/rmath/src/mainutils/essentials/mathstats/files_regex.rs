@@ -1049,6 +1049,15 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             .unwrap_or_else(|message| super::base_error(&message));
         let (requested_bytes, byte_mode) = regex_coordinates(args, &pat, text);
 
+        let capture_names = if perl && !fixed {
+            crate::mainutils::grep::perl_group_info(&pat, ignore_case)
+                .map(|(_, names)| names)
+                .unwrap_or_default()
+        } else {
+            GroupNames::default()
+        };
+        let named_groups = capture_names.iter().any(|name| !name.is_empty());
+
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -1081,14 +1090,12 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     requested_bytes,
                 )
             };
-            let (elt, match_lengths) = if let Some(captures) = captures {
-                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, captures.len() as R_xlen_t);
-                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, captures.len() as R_xlen_t);
-                if elt.is_null() || match_lengths.is_null() {
-                    return R_NilValue();
-                }
-                let _elt_guard = protect(elt);
-                let _ml_guard = protect(match_lengths);
+            let count = captures.as_ref().map_or(1, |spans| spans.len()) as R_xlen_t;
+            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, count);
+            let _elt_guard = protect(elt);
+            let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, count);
+            let _ml_guard = protect(match_lengths);
+            if let Some(captures) = &captures {
                 for (idx, capture) in captures.iter().enumerate() {
                     if let Some(m) = capture {
                         *INTEGER(elt).add(idx) = regex_span(&txt, m.start, m.end, byte_mode).0;
@@ -1099,19 +1106,29 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                         *INTEGER(match_lengths).add(idx) = if perl { 0 } else { -1 };
                     }
                 }
-                (elt, match_lengths)
-            } else {
-                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                if elt.is_null() || match_lengths.is_null() {
-                    return R_NilValue();
+                if named_groups {
+                    let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
+                    let _names_guard = protect(names);
+                    SET_STRING_ELT(names, 0, Rf_mkChar(c"".as_ptr()));
+                    for (g, name) in capture_names.iter().enumerate() {
+                        let length =
+                            c_int::try_from(name.len()).expect("compiled capture-name length");
+                        SET_STRING_ELT(
+                            names,
+                            (g + 1) as R_xlen_t,
+                            Rf_mkCharLen(name.as_ptr().cast(), length),
+                        );
+                    }
+                    crate::sexp::attrib_core::setAttrib(
+                        elt,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        names,
+                    );
                 }
-                let _elt_guard = protect(elt);
-                let _ml_guard = protect(match_lengths);
+            } else {
                 *INTEGER(elt) = if missing { NA_INTEGER } else { -1 };
                 *INTEGER(match_lengths) = if missing { NA_INTEGER } else { -1 };
-                (elt, match_lengths)
-            };
+            }
 
             crate::sexp::attrib_core::setAttrib(
                 elt,

@@ -1,0 +1,314 @@
+{
+  "date": "2026-10-24",
+  "issue": "rport-jxfp.3.12.6.16.1",
+  "source_base": "78d2327e",
+  "status": "native_candidate_verified_cross_platform_pending",
+  "scope": "30 newly failing GNU conformance cases for UTF8 substring extraction/replacement, byte-coordinate regmatches, missing bounds, attribute preservation, named regexec captures and argument errors. Existing historical165 controls already passed before these changes and are NOT counted as new fixes.",
+  "baseline": {
+    "profile": "release",
+    "locale": "en_US.UTF-8",
+    "oracle": "GNU R4.7 devel r90451, source bac583951b728e97b9786804d3b4081f0fe18df5",
+    "historical_non_graphics_cases": 165,
+    "historical_passed_before": 165,
+    "new_cases_failed_before": 30,
+    "old_runner_sha256": "5ef184e5ce1ec578bfd78fc78e32d679727e5697411790b67796d9c20688a84e",
+    "new_case_results": [
+      {
+        "case": "1118_utf8_substring_byte_middle",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "de9acf6c4bb0a1b9e5950d578807fddfb82d2500b8bb936e55bfe59448ff054d",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1119_utf8_substring_byte_prefix",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "a7ecf4082a8e6b02327c0d57d9281b3103cb1b27e50911344c15a2e23d8f9956",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1120_utf8_substring_byte_suffix",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "16b75d7807cae3d37664de430b4b074c5a12ecdb2efa74de51eb2323bf02a718",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1121_utf8_substring_byte_substring_middle",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "601fe6530eadd3a2aec9bd4b707048d5b22f23c1051cfce24591a64f5e73f027",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1122_utf8_substring_byte_substring_open",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "ce2eea2f86da914e69ae8b31040fde2309bd0ebda47d8f7d66ae0be72cf67228",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1123_utf8_substring_byte_recycle_first",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "15e10c4bdbe3b0e3b12bc084ccfac8ed89da9af0f6a1e2258d203c5934d5d47b",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1124_utf8_substring_missing_start",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "11b8239750bb8908ec2abd34852ae4d54e5af24b6025c2cfbfcdbebb71400b66",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1125_utf8_substring_missing_stop",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "be8c09796306eb1199fa7f3e1606e419e750b58134ab47f84930cb847edbad1f",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1126_utf8_substring_substring_missing_first",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "5e8d4082c00004a854f3d2deb411d8459e9c3fd31324b94e5d4ae844b6350f62",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1127_utf8_substring_missing_bounds_recycled",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "dadb8106ca6614e7d86aa066333cffabe060b480f6d39bdac2adb3cb8396f9c1",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1128_utf8_substring_names_preserved",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "fbd891d2e80880d9aacb25c080c38c6d5ab9f38a9dc59611e474d3a99d00c78e",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1129_utf8_substring_dimensions_preserved",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "1c3513fd29dbad877124f4ede1076092fd26c3e89df07e63bb1ec2e5129549d8",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1130_utf8_substring_class_preserved",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "c0617b07cd8fc82299a6fb3e129dba105753cd2d26d6ac227bd42b56e38c75ad",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1131_utf8_substring_replace_byte_middle",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "de4976183ffd9095aa4bd1c76d1f8fb59c5e0aa4c6e014d9e9c08baf4d2a327b",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1132_utf8_substring_replace_byte_multibyte",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "246afe89b498fac10b9a1cdb631614b46bd829641397e59d6e8980be4127a00a",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1133_utf8_substring_replace_byte_short",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "cdf261171f29d202d4e8b8d58ca181bc2286f520b579fcde9fdfadcdd98a76b7",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1134_utf8_substring_replace_byte_end",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "7af8df14849c4a68982e398d193d7e43b9a4133b75503c50e0c403b7b73d6af1",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1135_utf8_substring_replace_missing_start",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "72a02f84159fa19bb8564f41e9ad601c6c95e94c3462f4b3f480b3c460115063",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1136_utf8_substring_replace_missing_stop",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "feb308432d58f2e968466a848635d2f76caee667c8e1b66677f46e4a82373bab",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1137_utf8_substring_replace_value_bytes",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "b5ef21ab152c22960f26c8d8d059cf60c04b1647287298279b328aca0664d726",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1138_utf8_substring_regexpr_byte_match",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "e6425266e6dbc7871700d1f7c3b9aec3dc87bfee4d79cc097506662d79ebb4ed",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1139_utf8_substring_gregexpr_byte_unicode",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "fa5901b106d323a1d6312f963b05bda4f563250f12fc8a7961a69986e18d856e",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1140_utf8_substring_regexec_byte_captures",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "3f232b64dbee279a084e66a8a66d186c890ef23442033f71e5882bfbbfc9c566",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1141_utf8_substring_regexec_byte_named",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "1db6bf265e545f36bce9657ba7c93c48f40e01163033530d3103cb5388f04911",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1142_utf8_substring_gregexpr_byte_invert",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "b25f5027a725f6001a92a49d93ace5b72d17699cce07be4fa344e1132a6f3b1c",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1143_utf8_substring_gregexpr_byte_interleave",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "2092be1bd06ef7bb328050ba6273d7d8b82fddb9082343219e75f6d5583db9ec",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1144_utf8_substring_empty_start_bound",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "eaad7dfca344835cb63cb7604091b96cfb3b8d82c94b50dbe29798a70af81c97",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1145_utf8_substring_empty_stop_bound",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "6706ea41a14aefdc5f59bfc9a5e16f4f52dfae7c5434dfc815dc6e478f5a295d",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1146_utf8_substring_empty_replacement",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "b5757d51fcaddd54817a31fb1175323aabdd3a79c0f5aab5f9359464f45eac0e",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      },
+      {
+        "case": "1147_utf8_substring_replace_empty_start",
+        "gnu": "[1] TRUE\n",
+        "rust_before": "[1] FALSE\n",
+        "source_sha256": "9f776ae5f953ae7fa53f0dbd4183c1a2f7bd3e18414d0b62c8ce168f018b781e",
+        "golden_sha256": "60f9e4e84b466c407bfda8b4565a93c6b74182dd5e13cde7ee87a470741e1745"
+      }
+    ]
+  },
+  "implementation": [
+    "Safe checked original-owner substring module forbids unsafe code. Byte-tagged data uses byte coordinates; UTF8 data uses scalar boundaries without Vec<char>.",
+    "Input and replacement storage retains original memory reservations through collecting result construction. Attribute pairlists are copied through original checked factories and object status preserved.",
+    "Keep empty input behavior, argument errors, NA bounds and encoding tags faithful to pinned GNU R.",
+    "Publish named regexec groups, retaining original capture-name reservations and rooting each result vector before subsequent constructors."
+  ],
+  "verification": {
+    "oracle-identity.log": {
+      "sha256": "7442ba6ee9635c0243c23723ea1442babcd40ab1376945302369f8bf9b1cbc21",
+      "tests": [],
+      "successful_footers": []
+    },
+    "substring-cohort-red.log": {
+      "sha256": "c05202a63a957730db64a0ad9ad842ca864db65d29d45fa2c3f1832eaa4f6c75",
+      "tests": [],
+      "successful_footers": []
+    },
+    "substring-cohort-candidate-v2.log": {
+      "sha256": "cb9c142aeff046e78324f422ddb05938d91c1e31d7f28fff604b4c5abbf03992",
+      "tests": [],
+      "successful_footers": []
+    },
+    "substring-neighbor-oracle.gnu": {
+      "sha256": "64b3416cfa5a7b6b87f50c10bc5f7067217133b3feb59d11bb604112eebd5ca9",
+      "tests": [],
+      "successful_footers": []
+    },
+    "substring-neighbor-candidate-v2.log": {
+      "sha256": "64b3416cfa5a7b6b87f50c10bc5f7067217133b3feb59d11bb604112eebd5ca9",
+      "tests": [],
+      "successful_footers": []
+    },
+    "probe-regexec-names-oracle.gnu": {
+      "sha256": "b167bd54dc5379ed7c678e9bfd3c3e92a0d23a8b529f845eb9d15bf494097b47",
+      "tests": [],
+      "successful_footers": []
+    },
+    "probe-regexec-names-candidate-v2.log": {
+      "sha256": "b167bd54dc5379ed7c678e9bfd3c3e92a0d23a8b529f845eb9d15bf494097b47",
+      "tests": [],
+      "successful_footers": []
+    },
+    "native-substring-ownership-verified.log": {
+      "sha256": "c0fe3825d89ddcc2303ce183c713e223ff5df0be3874e69edc8a5b528f0e0b89",
+      "tests": [
+        "mainutils::essentials::strings::substring_owned::tests::owned_substring_workspace_denial_recovers_at_original_cap",
+        "mainutils::essentials::strings::substring_ownership_tests::owned_substring_foreign_arguments_reject_before_copy_or_allocation",
+        "mainutils::essentials::strings::substring_ownership_tests::owned_substring_extraction_survives_detach_and_collecting_constructor",
+        "mainutils::essentials::strings::substring_ownership_tests::owned_substring_replacement_survives_detach_and_collecting_constructor",
+        "mainutils::essentials::strings::substring_ownership_tests::owned_substring_revocation_rejects_publication",
+        "mainutils::essentials::strings::substring_ownership_tests::owned_substring_constructor_panic_releases_original_workspace"
+      ],
+      "successful_footers": [
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 4467 filtered out; finished in 0.01s"
+      ]
+    },
+    "native-regexec-roots.log": {
+      "sha256": "7c91b8f89786e3c5d84c391498720f67aa8e2af571320fe2b6e8e2038504495a",
+      "tests": [
+        "mainutils::grep::capture_publication_tests::owned_regexec_named_captures_survive_every_collecting_constructor"
+      ],
+      "successful_footers": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4472 filtered out; finished in 0.01s"
+      ]
+    }
+  },
+  "pending": [
+    "195 independent GNU/golden comparisons (30new+165controls)",
+    "strict Miri7 ownership/GC tests",
+    "optimized Wasm30 cases and Chromium2workers",
+    "Clippy and Android compilation"
+  ],
+  "limitations": [
+    "No full-GNU-R parity or total-memory completion claim. Five historical graphics cases excluded to preserve unrelated user edits.",
+    "Old debug exploratory inventory was superseded by explicit existing release profile; partial observations preserved, cancellations not counted as semantic failures."
+  ],
+  "evidence_json_sha256": {
+    "release-baseline-results.json": "51b13dcd79aa9323bb030f8116f0bdda78f20b8e55210c754e3a4abbcc568838",
+    "new-cohort-red-results.json": "d41e0f81860b338a640c89c68c83328f5715d37d805f20263b73d8a7b7594cf2"
+  },
+  "preserved_user_graphics_sha256": {
+    "crates/rmath/src/library/graphics/mod.rs": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+    "crates/rmath/src/library/graphics/par.rs": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+    "crates/rmath/src/library/graphics/layout.rs": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+    "crates/rmath/src/mainutils/portable_plot.rs": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67"
+  }
+}
