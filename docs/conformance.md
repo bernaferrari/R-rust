@@ -4,6 +4,19 @@
 It is the release-facing proof that a checked-in fixture behaves the same in
 both engines.
 
+The 2026-10-25 complete checkpoint passes **1,261/1,261** curated cases
+(1,193 normal and 68 expected errors) at source `90588275`, with zero failures,
+skips, xfails, timeouts, or unattempted cases. Six release shards use the pinned
+GNU oracle and the unchanged 300-second deadlines. The
+[checkpoint](ci-checkpoints/gnu-conformance-complete-2026-10-25.json) and
+[all case results](ci-checkpoints/gnu-conformance-complete-2026-10-25-cases.json)
+record the exact source, corpus, locale, oracle, and browser artifact identities.
+This certifies the curated portable profile; full upstream tests and native
+localized monetary formatting retain separately tracked work. The focused
+32-bit strict-Miri default test passes; the full-options Miri stress run was
+interrupted after more than 40 minutes and is tracked as incomplete in
+`rport-jxfp.3.12.6.16.3`.
+
 The harness:
 
 - runs normal fixtures from `tests/conformance/cases/*.R`

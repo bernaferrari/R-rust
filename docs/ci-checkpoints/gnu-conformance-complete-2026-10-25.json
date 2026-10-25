@@ -1,0 +1,274 @@
+{
+  "status": "verified",
+  "date": "2026-10-25",
+  "scope": "Complete current curated GNU R conformance corpus under the portable UTF8-text/C-formatting profile. This does not certify all unmodified GNU upstream tests or all native locales.",
+  "source_commit": "905882758c234c713b6b9eda4e28e5be2c1321bf",
+  "execution": {
+    "build_rustflags": "-Awarnings",
+    "case_timeout_seconds": 300.0,
+    "corpus_sha256": "fd48cfc99d15e4059da9c9e334ab408f4e79f1212003f0d3c1905e60c2d8c532",
+    "engine_major_minor": "4.7",
+    "locale": {
+      "LC_CTYPE": "en_US.UTF-8",
+      "other_categories": "C"
+    },
+    "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+    "pinned_oracle_required": true,
+    "profile": "release",
+    "schema_version": 1,
+    "source_commit": "905882758c234c713b6b9eda4e28e5be2c1321bf",
+    "source_sha256": "ed1ff35a60d731343da1dfdceaa0800cbc1bbb4866b46e95bf1b04c98497431e",
+    "strict": true
+  },
+  "oracle": {
+    "version": "GNU R 4.7.0 development r90451",
+    "source_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679"
+  },
+  "full_corpus": {
+    "total": 1261,
+    "normal": 1193,
+    "expected_error": 68,
+    "passed": 1261,
+    "failed": 0,
+    "skipped": 0,
+    "xfail": 0,
+    "xpass": 0,
+    "timed_out": 0,
+    "unattempted": 0,
+    "shards": 6,
+    "case_timeout_seconds": 300,
+    "case_report": "gnu-conformance-complete-2026-10-25-cases.json",
+    "case_report_sha256": "3124b4fe16ff1f96ad4626d85626cc564cc1f2fb737afac6865b2cfa02de9a93"
+  },
+  "baseline": {
+    "source_base": "4c505c1296cd4d9a65a642cfe683ef8281fa1ca9",
+    "runner_sha256": "b91a323643f752245ffe107b0fc561e173fb9a673c6a81922c7ddef30c93db16",
+    "profile": {
+      "LC_ALL": "en_US.UTF-8"
+    },
+    "total": 1261,
+    "passed": 1258,
+    "failed": 3,
+    "timed_out": 0,
+    "failures": [
+      {
+        "kind": "error",
+        "name": "087_math_factor_not_meaningful",
+        "gnu_code": 1,
+        "rust_code": 1,
+        "golden_matches_gnu": false,
+        "golden_matches_rust": true
+      },
+      {
+        "kind": "normal",
+        "name": "236_sys_localeconv_shape",
+        "gnu_code": 0,
+        "rust_code": 0,
+        "golden_matches_gnu": false,
+        "golden_matches_rust": true
+      },
+      {
+        "kind": "normal",
+        "name": "532_factor_group_generic_ops",
+        "gnu_code": 0,
+        "rust_code": 0,
+        "golden_matches_gnu": false,
+        "golden_matches_rust": true
+      }
+    ],
+    "interpretation": "087 and532 expose missing owned useFancyQuotes TRUE.236 exposes native enUS monetary formatting, intentionally separate from the portable profile and still tracked. The baseline and final locale contracts differ explicitly.",
+    "evidence": {
+      "path": "target/full-gnu-2026-10-25/baseline-results.json",
+      "sha256": "51d80ec409a3d9ed95eb81e59b33fc44ac08a5833f2ed5002246c7331d033205"
+    }
+  },
+  "changes": [
+    "Initialize useFancyQuotes TRUE through the existing owner-pinned checked logical default factory; preserve reentrant mutations and all48 owned defaults.",
+    "Declare UTF8 character classification and deterministic C formatting categories; preserve original C goldens and exact UTF8 overlays for087 and532.",
+    "Keep original byte normalization independently pinned to LC_ALL=C; executed RED regression exposed lost Unicode em-space before correction; no quote folding.",
+    "Use nondegenerate influence data and compare every observation at the original four-decimal precision instead of platform-sensitive exact-zero/NaN classifications.",
+    "Check quote defaults on fresh Node/browser sessions before fixtures intentionally change shared options."
+  ],
+  "validation": {
+    "native_options_tests": {
+      "passed": 21,
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/options-green-v2.log",
+        "sha256": "cf186c59188cc26404050e9c7386107a4f4436cbdb287de9650dd1c4dc8c9eb9"
+      }
+    },
+    "native_forced_gc": {
+      "passed": 1,
+      "seconds": 0.13,
+      "torture_gap": 1,
+      "torture_wait": 1,
+      "reentrant_callbacks_minimum": 45,
+      "default_count": 48,
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/options-forced-gc-timing.log",
+        "sha256": "e3774ed1103e6fe8db5929329503344bdbaed02086b6991e97ab3ea0dc61bd9a"
+      }
+    },
+    "gnu_locale_controls": {
+      "passed": 7,
+      "locales": [
+        "C",
+        "en_US.UTF-8"
+      ],
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/options-fixed-checks.json",
+        "sha256": "5fe395f754cf18ce43f8134d15831073ec58bd3a0cb3e3489c709fc71a4f27fa"
+      }
+    },
+    "native_public_quote_tests": {
+      "passed": 2,
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/public-quote-native.log",
+        "sha256": "53027d96e6bc475bd56ba23a7003f84a2901ba7af6cb66936f48ad13ccbb7a9d"
+      }
+    },
+    "harness_tests": {
+      "passed": 34,
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/harness-byte-green.log",
+        "sha256": "aa0e4c81d97e649b2ababc1a81c3817a9c663b9fd046ac1fc9321e148dc7e02f"
+      }
+    },
+    "clippy": {
+      "packages": [
+        "rmath",
+        "r-embed",
+        "r-wasm",
+        "r-uniffi"
+      ],
+      "all_targets": true,
+      "deny_warnings": true,
+      "status": "pass",
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/clippy.log",
+        "sha256": "2fedca4bddeb637b18349308191f7a93edfd0b6aaada3e9734382e2a9877f7a5"
+      }
+    },
+    "android": {
+      "target": "aarch64-linux-android",
+      "packages": [
+        "rmath",
+        "r-embed",
+        "r-wasm",
+        "r-uniffi"
+      ],
+      "check": "pass",
+      "runtime_execution_claimed": false,
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/android-check.log",
+        "sha256": "519e14e2e55c88c1665ce5ba7718b5976f62e7ccf1fd7ed00205a50ea98aad7c"
+      }
+    },
+    "focused_miri": {
+      "test": "owned_options_fancy_quotes_default_matches_original_gnu",
+      "passed": 1,
+      "seconds": 95.92,
+      "target": "i686-unknown-linux-gnu",
+      "strict_provenance": true,
+      "default_isolation": true,
+      "ignore_leaks": true,
+      "source_commit": "64194dd2af8713b35cd204768a2fe7dc6ef15b00",
+      "options_module_unchanged_in_final_source": true,
+      "options_module_sha256": "84a85b4bc76a75c25623e4176d5b1a243f96ba8b7355f0f71fb7e54d93b93458",
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/clean-default-miri.log",
+        "sha256": "158db49eeac68227590ac0fd77e54c88b56168438c5711d8f48ad7fefb27b75b"
+      }
+    },
+    "full_options_miri_stress": {
+      "status": "interrupted_not_passed",
+      "native_version": "passed",
+      "followup": "rport-jxfp.3.12.6.16.3",
+      "evidence": {
+        "path": "target/full-gnu-2026-10-25/options-full-miri-interruption.json",
+        "sha256": "80180b2bbcbf57baa5b90d83c50717eb651f8f89fa27fb031a2c202a4369d9b6"
+      }
+    }
+  },
+  "wasm": {
+    "sha256": "a56473d33b3a1471797b9a78461b557ae3aa9cec2957cbeca4cebbc44c9b829d",
+    "javascript_sha256": "6e41c726b4682c12524ec920617a998d835097b59c6bdd4fa28e0d86d543aa59",
+    "maximum_memory_bytes": 268435456,
+    "panic_strategy": "unwind",
+    "toolchain": "nightly-2026-08-25",
+    "wasm_bindgen": "0.2.127",
+    "binaryen": 133,
+    "source_equivalence": {
+      "source_commit": "905882758c234c713b6b9eda4e28e5be2c1321bf",
+      "first_fixed_wasm_source_base": "b82a71e9",
+      "production_changes": [
+        "crates/rmath/src/library/graphics/layout.rs",
+        "crates/rmath/src/library/graphics/mod.rs",
+        "crates/rmath/src/library/graphics/par.rs",
+        "crates/rmath/src/mainutils/portable_plot.rs"
+      ],
+      "preexisting_graphics": [
+        {
+          "path": "crates/rmath/src/library/graphics/mod.rs",
+          "sha256": "4a14bd2c6c37b4d9bb08bd43a7644e867713c711f0212b5ec842b9e9505c87f1",
+          "identical_to_preexisting_graphics": true
+        },
+        {
+          "path": "crates/rmath/src/library/graphics/par.rs",
+          "sha256": "c2c1f3523b29fa7b51352c8b0a6cf9b52566ac78f1fc2e32fd454f08ba3fd131",
+          "identical_to_preexisting_graphics": true
+        },
+        {
+          "path": "crates/rmath/src/mainutils/portable_plot.rs",
+          "sha256": "5158fb29c4e4230d1fd008727d011c37ae70b7d8de10f793de83e38708415a67",
+          "identical_to_preexisting_graphics": true
+        },
+        {
+          "path": "crates/rmath/src/library/graphics/layout.rs",
+          "sha256": "6438bffe80198c1f2b321ac1a9799ecf7a6f3963764c9b60df620b21eac7d804",
+          "identical_to_preexisting_graphics": true
+        }
+      ],
+      "first_fixed_wasm_sha256": "a56473d33b3a1471797b9a78461b557ae3aa9cec2957cbeca4cebbc44c9b829d"
+    },
+    "source_equivalence_explanation": "The first fixed Wasm build used b82a71e9 plus the four preexisting graphics files. Their recorded bytes exactly match90588275; these are the only production changes between those commits. All other Rust/Cargo inputs are unchanged.",
+    "public_contracts_passed": 290,
+    "recovery_checks": 290,
+    "byte_diagnostic_checks": 78,
+    "fresh_session_filename_checks": 2,
+    "chromium_tests_passed": 4,
+    "chromium_fresh_workers": 8,
+    "website_asset_byte_identity": true,
+    "node_evidence": {
+      "path": "target/full-gnu-2026-10-25/wasm-contracts-v2.log",
+      "sha256": "46a4280b7f40ffa48072ec97ca4592e30e77283e584a6a37255f12d2d8fc20ef"
+    },
+    "chromium_evidence": {
+      "path": "target/full-gnu-2026-10-25/chromium.log",
+      "sha256": "cb79382f1f2f441e85afacbe793ef2e905115b6f4c46fba763acf0b2cfe078fa"
+    }
+  },
+  "independent_clean_core_checkpoint": {
+    "source_commit": "64194dd2af8713b35cd204768a2fe7dc6ef15b00",
+    "full_corpus_passed": 1261,
+    "wasm_sha256": "46f2f9e552c861b4908eeace4fb6b837771fd5ffa93869519a2472622376b34c",
+    "public_contracts_passed": 290,
+    "chromium_tests_passed": 4,
+    "evidence": {
+      "path": "target/full-gnu-2026-10-25/clean-union/summary.json",
+      "sha256": "457d25ca3effa29d5a6f8c9f804a1778e503ff38fb9e40495ca3a653883c165b"
+    }
+  },
+  "remaining_outside_current_corpus": [
+    "Full unmodified GNU upstream tests retain separately tracked gaps; no universal GNU R compatibility claim.",
+    "Native localized monetary conventions remain tracked by rport-jxfp.3.12.6.16.2.2.",
+    "Full-options strict-Miri stress throughput remains tracked by rport-jxfp.3.12.6.16.3; the interrupted run is not counted as a pass.",
+    "Dolt issue-data push is blocked because its origin remote is absent (rport-0d5o)."
+  ],
+  "ci_checkpoint": {
+    "url": "https://github.com/bernaferrari/R-rust/actions/runs/40165863857",
+    "source_commit": "64194dd2af8713b35cd204768a2fe7dc6ef15b00",
+    "role": "independent Linux checkpoint; not substituted for final-source local proof and not claimed complete"
+  }
+}

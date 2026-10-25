@@ -8842,8 +8842,8 @@
     "pinned_oracle_required": true,
     "profile": "release",
     "schema_version": 1,
-    "source_commit": "64194dd2af8713b35cd204768a2fe7dc6ef15b00",
-    "source_sha256": "d8d29f585a3edc1c3d1878d95765e6ae3f16130191a21c9e7302e8d4ccb272de",
+    "source_commit": "905882758c234c713b6b9eda4e28e5be2c1321bf",
+    "source_sha256": "ed1ff35a60d731343da1dfdceaa0800cbc1bbb4866b46e95bf1b04c98497431e",
     "strict": true
   },
   "execution_complete": true,
