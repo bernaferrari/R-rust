@@ -111,6 +111,40 @@ fn read_exact_output(
     Ok(bytes)
 }
 
+fn read_lzma2_output(
+    mut input: &[u8],
+    dictionary: u32,
+    expected: usize,
+    mut bytes: InputBytes,
+) -> Result<InputBytes, DecodeError> {
+    // The admitted input already owns all compressed bytes. Decode directly
+    // from it rather than copying each chunk to a second 64 KiB range buffer.
+    let mut decoder = lzma_rust2::Lzma2Stream::new(dictionary);
+    let mut chunk = [0u8; 8192];
+    loop {
+        let result = decoder.process(input, &mut chunk, lzma_rust2::Action::Finish)?;
+        if bytes
+            .len()
+            .checked_add(result.bytes_produced)
+            .is_none_or(|length| length > expected)
+        {
+            return Err(DecodeError::Invalid);
+        }
+        bytes.write_all(&chunk[..result.bytes_produced])?;
+        input = &input[result.bytes_consumed..];
+        if result.status == lzma_rust2::Status::StreamEnd {
+            return if bytes.len() == expected {
+                Ok(bytes)
+            } else {
+                Err(DecodeError::Invalid)
+            };
+        }
+        if result.bytes_consumed == 0 && result.bytes_produced == 0 {
+            return Err(DecodeError::Invalid);
+        }
+    }
+}
+
 pub(super) fn decode(
     owner: &OwnerToken<'_>,
     input: &[u8],
@@ -137,14 +171,16 @@ pub(super) fn decode(
         .unwrap_or(usize::MAX)
         .clamp(4096, 8 * 1024 * 1024) as u32;
     let workspace = match marker {
-        b'1' => 128 * 1024,
+        // &[u8] already implements BufRead: no 32 KiB Reader adapter copy.
+        b'1' => 96 * 1024,
         b'2' => 4 * 1024 * 1024,
-        // The decoder estimator covers its dictionary, 64 KiB range buffer
-        // and probability models. Property resets temporarily hold both old
-        // and new models, so add another 40 KiB before any codec allocation.
-        // Input/output buffers have separate charges.
+        // The stream reads our input directly, so subtract the Reader's
+        // 64 KiB range copy. Add 40 KiB for simultaneous old/new probability
+        // models on property reset, and 1 KiB for stream header/carry state.
+        // Input/output buffers keep their independent admission charges.
         b'Z' if mode == 3 => (lzma_rust2::lzma2_get_memory_usage(dictionary) as usize)
-            .checked_add(40)
+            .checked_sub(64)
+            .and_then(|kib| kib.checked_add(41))
             .and_then(|kib| kib.checked_mul(1024))
             .ok_or_else(|| DecodeError::Resource(super::workspace::memory_error()))?,
         _ => return Err(DecodeError::Invalid),
@@ -152,12 +188,8 @@ pub(super) fn decode(
     let _workspace = reserve(owner, workspace).map_err(DecodeError::Resource)?;
     let bytes = output(owner)?;
     match marker {
-        b'1' => read_exact_output(flate2::read::ZlibDecoder::new(data), expected, bytes),
+        b'1' => read_exact_output(flate2::bufread::ZlibDecoder::new(data), expected, bytes),
         b'2' => read_exact_output(bzip2::read::BzDecoder::new(data), expected, bytes),
-        _ => read_exact_output(
-            lzma_rust2::Lzma2Reader::new(data, dictionary, None),
-            expected,
-            bytes,
-        ),
+        _ => read_lzma2_output(data, dictionary, expected, bytes),
     }
 }

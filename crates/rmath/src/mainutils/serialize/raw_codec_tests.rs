@@ -221,7 +221,7 @@ fn serialization_workspace_small_gnu_lzma_record_uses_only_possible_history() {
     let expected = include_bytes!("fixtures/gnu-lazy-codecs/expected.rds");
     let input = raw(&factory, fixture);
     let limit = owner
-        .with_arena(|arena| arena.total_bytes_allocated() + 3 * 1024 * 1024)
+        .with_arena(|arena| arena.total_bytes_allocated() + 100 * 1024)
         .unwrap();
     owner
         .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
@@ -301,5 +301,43 @@ fn serialization_workspace_lzma_declared_large_history_is_bounded_and_validated(
     assert_eq!(
         owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
         0
+    );
+}
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_gnu_zlib_uses_the_existing_input_buffer() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let input = raw(
+        &factory,
+        include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin"),
+    );
+    let limit = owner
+        .with_arena(|arena| arena.total_bytes_allocated() + 110 * 1024)
+        .unwrap();
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    let mut invalid = 0;
+    let decoded = factory
+        .wrap(unsafe { R_decompress1(input.as_raw(), &mut invalid) })
+        .unwrap();
+    assert_eq!(invalid, 0);
+    let crate::sexp::SexpValue::RawVector(bytes) = decoded.to_owned_value().unwrap() else {
+        panic!("raw decode");
+    };
+    assert_eq!(
+        bytes,
+        include_bytes!("fixtures/gnu-lazy-codecs/expected.rds")
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+        limit
     );
 }
