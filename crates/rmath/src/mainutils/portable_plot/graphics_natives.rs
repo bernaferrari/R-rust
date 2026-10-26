@@ -1253,7 +1253,17 @@ unsafe fn persp_axes(
             4
         };
         let lab = |s: SEXP| -> String {
-            if XLENGTH(s) == 0 || STRING_ELT(s, 0) == R_NaString() {
+            let missing = if s.is_null() || s == R_NilValue() || XLENGTH(s) == 0 {
+                true
+            } else {
+                match SEXPTYPE(TYPEOF(s)) {
+                    SEXPTYPE::STRSXP => STRING_ELT(s, 0) == R_NaString(),
+                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => INTEGER_ELT(s, 0) == NA_INTEGER,
+                    SEXPTYPE::REALSXP => crate::sexp::ffi::R_IsNA(*REAL(s)),
+                    _ => false,
+                }
+            };
+            if missing {
                 String::new()
             } else {
                 crate::mainutils::essentials::elt_to_string(s, 0)
