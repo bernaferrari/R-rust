@@ -130,10 +130,23 @@ pub(super) fn decode(
         bytes.write_all(data)?;
         return Ok(bytes);
     }
+    // No valid match can refer farther back than the complete output. Keep
+    // GNU's 8 MiB maximum, but do not allocate that dictionary for tiny records.
+    let dictionary = expected
+        .checked_next_power_of_two()
+        .unwrap_or(usize::MAX)
+        .clamp(4096, 8 * 1024 * 1024) as u32;
     let workspace = match marker {
         b'1' => 128 * 1024,
         b'2' => 4 * 1024 * 1024,
-        b'Z' if mode == 3 => 16 * 1024 * 1024,
+        // The decoder estimator covers its dictionary, 64 KiB range buffer
+        // and probability models. Property resets temporarily hold both old
+        // and new models, so add another 40 KiB before any codec allocation.
+        // Input/output buffers have separate charges.
+        b'Z' if mode == 3 => (lzma_rust2::lzma2_get_memory_usage(dictionary) as usize)
+            .checked_add(40)
+            .and_then(|kib| kib.checked_mul(1024))
+            .ok_or_else(|| DecodeError::Resource(super::workspace::memory_error()))?,
         _ => return Err(DecodeError::Invalid),
     };
     let _workspace = reserve(owner, workspace).map_err(DecodeError::Resource)?;
@@ -142,7 +155,7 @@ pub(super) fn decode(
         b'1' => read_exact_output(flate2::read::ZlibDecoder::new(data), expected, bytes),
         b'2' => read_exact_output(bzip2::read::BzDecoder::new(data), expected, bytes),
         _ => read_exact_output(
-            lzma_rust2::Lzma2Reader::new(data, 8 * 1024 * 1024, None),
+            lzma_rust2::Lzma2Reader::new(data, dictionary, None),
             expected,
             bytes,
         ),

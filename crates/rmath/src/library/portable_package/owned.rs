@@ -183,7 +183,7 @@ pub(super) fn fetch(
         let workspace = capacity
             .checked_add(bytes.len())
             .ok_or_else(|| failure("portable package record is too large"))?;
-        let _reservation = access
+        let decompression_reservation = access
             .with_arena(|arena| arena.try_reserve_transient(workspace))?
             .ok_or(SexpError::AllocationFailed {
                 object: "portable package decompression workspace",
@@ -202,7 +202,14 @@ pub(super) fn fetch(
             return Err(failure("portable package database is corrupt"));
         }
         let raw = raw(access, &decoded)?;
+        // The initialized R raw owns its copy. Release codec storage before
+        // restoration hooks can recursively fetch another package record.
+        drop(decoded);
+        drop(decompression_reservation);
         let result = super::bridge::decode(access, &raw, &hook)?;
+        // The decoded graph now owns its allocation leases independently of
+        // the serialized input, including across promise evaluation callbacks.
+        drop(raw);
         let result = super::bridge::force(access, &result)?;
         if image.path == "<builtin:methods>/R/methods.rdb" {
             super::bridge::restore_methods_metadata(access, &result)?;

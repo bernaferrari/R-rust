@@ -210,3 +210,96 @@ fn serialization_workspace_raw_decoders_distinguish_budget_denial_from_corrupt_d
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
     }
 }
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_small_gnu_lzma_record_uses_only_possible_history() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let fixture = include_bytes!("fixtures/gnu-lazy-codecs/mode3.bin");
+    let expected = include_bytes!("fixtures/gnu-lazy-codecs/expected.rds");
+    let input = raw(&factory, fixture);
+    let limit = owner
+        .with_arena(|arena| arena.total_bytes_allocated() + 3 * 1024 * 1024)
+        .unwrap();
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    let mut invalid = 0;
+    let decoded = factory
+        .wrap(unsafe { R_decompress3(input.as_raw(), &mut invalid) })
+        .unwrap();
+    assert_eq!(invalid, 0);
+    let crate::sexp::SexpValue::RawVector(bytes) = decoded.to_owned_value().unwrap() else {
+        panic!("raw decode");
+    };
+    assert_eq!(bytes, expected);
+    // Two original GNU chunks reset their properties between records. The
+    // replacement model must coexist with the previous one under admission.
+    let mut reset_chunks = ((expected.len() * 2) as u32).to_be_bytes().to_vec();
+    reset_chunks.push(b'Z');
+    reset_chunks.extend_from_slice(&fixture[5..fixture.len() - 1]);
+    reset_chunks.extend_from_slice(&fixture[5..]);
+    let restored = super::super::raw_codecs::decode(&owner, &reset_chunks, 3).unwrap();
+    assert_eq!(&*restored, expected.repeat(2));
+    drop(restored);
+    // A dishonest short extent must still be rejected even though the decoder
+    // can no longer allocate GNU's full dictionary for this small record.
+    let mut malformed = fixture.to_vec();
+    malformed[..4].copy_from_slice(&1u32.to_be_bytes());
+    let input = raw(&factory, &malformed);
+    let result = unsafe { R_decompress3(input.as_raw(), &mut invalid) };
+    assert_eq!(invalid, 1);
+    assert_eq!(result, unsafe { R_NilValue() });
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+        limit
+    );
+}
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_lzma_declared_large_history_is_bounded_and_validated() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let limit = owner
+        .with_arena(|arena| arena.total_bytes_allocated() + 12 * 1024 * 1024)
+        .unwrap();
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    let mut malformed = include_bytes!("fixtures/gnu-lazy-codecs/mode3.bin").to_vec();
+    malformed[..4].copy_from_slice(&u32::MAX.to_be_bytes());
+    assert!(matches!(
+        super::super::raw_codecs::decode(&owner, &malformed, 3),
+        Err(super::super::raw_codecs::DecodeError::Invalid)
+    ));
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+    // This valid stream needs more than the minimum dictionary. Its original
+    // bytes must survive beyond the minimum dictionary and output-buffer growth.
+    let original: Vec<_> = (0..200_000).map(|index| (index % 251) as u8).collect();
+    // Encoding has its own larger, independently checked workspace budget.
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(0, 0)))
+        .unwrap();
+    let encoded = super::super::raw_codecs::encode(&owner, &original, 3).unwrap();
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    let restored = super::super::raw_codecs::decode(&owner, &encoded, 3).unwrap();
+    assert_eq!(&*restored, original);
+    drop(restored);
+    drop(encoded);
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+}
