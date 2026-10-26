@@ -569,9 +569,11 @@ pub unsafe fn GetOption(name: *const c_char) -> SEXP {
 /// Read a logical option by name: true iff the option is set and its value
 /// is `TRUE` — the `asLogical(GetOption1(install(name)))` probe used
 /// throughout R's C code (e.g. the warnPartialMatch* option readers).
+/// Read the existing string key directly: error-path probes must not intern
+/// a symbol and replace the original error when allocation is exhausted.
 pub(crate) unsafe fn logical_option_enabled(name: &CStr) -> bool {
     unsafe {
-        let s = GetOption1(Rf_install(name.as_ptr()));
+        let s = GetOption(name.as_ptr());
         !s.is_null() && s != R_NilValue() && crate::mainutils::coerce::asLogical(s) == 1
     }
 }
@@ -1648,6 +1650,35 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 mod tests {
     use super::*;
     use crate::sexp::protect::{R_ProtectCount, protect_n};
+
+    #[test]
+    fn logical_option_lookup_never_interns_names_when_memory_is_exhausted() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            (*instance).options_initialization = OptionsInitialization::Initialized;
+            let _retained = factory.strings(&["retained allocation"]).unwrap();
+            (*instance).options.insert(
+                "logical_lookup_enabled".into(),
+                factory.domain().logical(true).into_owned().unwrap(),
+            );
+            let bytes = (*instance).arena.total_bytes_allocated();
+            assert!(bytes > 0);
+            let symbols = (*instance).symbols.len();
+            (*instance)
+                .arena
+                .set_budget(crate::sexp::memory::ArenaBudget::new(bytes, 0));
+            // Script error handling probes this absent option after evaluation
+            // has failed. The read must preserve that failure without needing
+            // permanent allocation to discover the default FALSE value.
+            assert!(!logical_option_enabled(c"catch.script.errors"));
+            assert!(logical_option_enabled(c"logical_lookup_enabled"));
+            assert!(!logical_option_enabled(c"another_absent_logical_option"));
+            assert_eq!((*instance).symbols.len(), symbols);
+            assert_eq!((*instance).arena.total_bytes_allocated(), bytes);
+            assert_eq!((*instance).arena.budget().max_bytes, bytes);
+        });
+    }
 
     #[test]
     fn owned_options_vector_keeps_selected_values_after_callback_clears_storage() {
