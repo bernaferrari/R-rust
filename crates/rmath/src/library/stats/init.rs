@@ -33,11 +33,47 @@ pub struct R_ExternalMethodDef {
 
 use std::os::raw::c_int;
 
-/// This is a placeholder for the R_init_stats function.
-/// In the Rust port, this is not needed since we link statically,
-/// but we keep the symbol for ABI compatibility.
+/// Initialize the stats package's runtime-local cross-package callables.
+/// C and Fortran routine tables are metadata in this statically linked port.
+///
+/// # Safety
+/// Must run with an active initialized R instance, as required by
+/// `R_RegisterCCallable`.
 pub unsafe fn R_init_stats(_dll: *mut c_void) {
-    // No-op in the Rust static library port.
-    // The registration tables from the C version are not needed here
-    // since all functions are linked directly.
+    // The C and Fortran registration tables are not used by the static port,
+    // but stats' typed cross-package callable is part of its public contract.
+    let package = c"stats";
+    let name = c"rcont2";
+    let callable: unsafe extern "C" fn(
+        c_int,
+        c_int,
+        *const c_int,
+        *const c_int,
+        c_int,
+        *const f64,
+        *mut c_int,
+        *mut c_int,
+    ) = super::rcont::rcont2_c_callable;
+    let erased = unsafe {
+        std::mem::transmute::<
+            unsafe extern "C" fn(
+                c_int,
+                c_int,
+                *const c_int,
+                *const c_int,
+                c_int,
+                *const f64,
+                *mut c_int,
+                *mut c_int,
+            ),
+            unsafe extern "C" fn(),
+        >(callable)
+    };
+    unsafe {
+        crate::mainutils::rdynload::R_RegisterCCallable(
+            package.as_ptr(),
+            name.as_ptr(),
+            Some(erased),
+        );
+    }
 }

@@ -1013,7 +1013,7 @@ tools	.C	Renctest	1";
         }
         assert_eq!(
             covered, 25,
-            "rcont2 is the one unsupported registration (explicit inventory gap)"
+            "25 registrations have .C/.Fortran buffer adapters; .C rcont2 is metadata only because its upstream scalar-value ABI is a typed C-callable, not a .C buffer function"
         );
         assert_eq!(
             invocation_count(),

@@ -23,7 +23,7 @@ pub(crate) mod hclust_f;
 pub(crate) mod hclust_utils;
 pub(crate) mod holtwinters;
 pub(crate) mod influence;
-mod init;
+pub(crate) mod init;
 pub(crate) mod integrate;
 pub(crate) mod isoreg;
 mod kendall;

@@ -115,6 +115,8 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
             require_initialization_live(&pin);
             initialize_primitive_metadata_in(base_env);
             require_initialization_live(&pin);
+            crate::library::stats::init::R_init_stats(std::ptr::null_mut());
+            require_initialization_live(&pin);
         });
     }
 }
