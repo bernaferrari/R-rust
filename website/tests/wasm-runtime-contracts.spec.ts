@@ -585,7 +585,7 @@ test("named S4 signatures dispatch and reject invalid argument names recoverably
     }
   })
   expect(result.error).toContain(
-    "there are named arguments ('z') in the method signature that are missing from the generic signature, for function 'mix'"
+    "there are named arguments (‘z’) in the method signature that are missing from the generic signature, for function ‘mix’"
   )
   expect(result.output).toContain("matched")
 })

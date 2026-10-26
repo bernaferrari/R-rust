@@ -1,4 +1,12 @@
 import { test, expect } from "@playwright/test"
+
+async function waitForConsoleExecution(page: import("@playwright/test").Page) {
+  const stop = page.getByRole("button", { name: "Stop & reset" })
+  // Observe the running state before waiting for it to finish, so this cannot
+  // pass against the idle console before the submitted command starts.
+  await expect(stop).toBeVisible({ timeout: 30000 })
+  await expect(stop).toHaveCount(0, { timeout: 30000 })
+}
 test("console preserves variables, recovers from errors, renders plots and resets", async ({
   page,
 }) => {
@@ -31,6 +39,7 @@ test("console mobile layout and multiline input", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/console/")
   await page.getByRole("button", { name: /A week in numbers/ }).click()
+  await waitForConsoleExecution(page)
   const command = page.getByRole("textbox", { name: "R command", exact: true })
   await expect(command).toHaveValue(/temperatures/)
   await command.press("ControlOrMeta+End")
@@ -50,6 +59,7 @@ test("interactive errors keep partial console output and plots", async ({
   const command = page.getByRole("textbox", { name: "R command", exact: true })
   await command.fill("cat('partial\\n'); plot(1:2); stop('boom')")
   await page.getByRole("button", { name: "Run command", exact: true }).click()
+  await waitForConsoleExecution(page)
   await expect(page.getByRole("log")).toContainText("partial")
   await expect(page.getByRole("log")).toContainText("boom")
   await expect(
@@ -76,6 +86,7 @@ for (const title of [
   test(`example conversation can continue: ${title}`, async ({ page }) => {
     await page.goto("/console/")
     await page.getByRole("button", { name: new RegExp(title) }).click()
+    await waitForConsoleExecution(page)
     await expect(
       page.getByRole("textbox", { name: "R command", exact: true })
     ).not.toHaveValue("")
