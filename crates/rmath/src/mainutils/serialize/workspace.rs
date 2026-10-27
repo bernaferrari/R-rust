@@ -1,7 +1,10 @@
 //! Native containers retain admission from their original session.
 #![forbid(unsafe_code)]
 
-use crate::sexp::{memory::WorkspaceReservation, owner::OwnerToken};
+use crate::sexp::{
+    memory::WorkspaceReservation,
+    owner::{OwnerToken, StoredOwner},
+};
 
 pub(super) fn memory_error() -> String {
     "serialization workspace exceeds session memory limit".into()
@@ -20,21 +23,30 @@ pub(super) fn reserve(
 pub(super) struct WorkspaceVec<T> {
     values: Vec<T>,
     reservation: WorkspaceReservation,
+    owner: StoredOwner<'static>,
 }
 
 impl<T> WorkspaceVec<T> {
     pub(super) fn new(owner: &OwnerToken<'_>) -> Result<Self, String> {
-        Ok(Self::with_reservation(reserve(owner, 0)?))
+        let stored = StoredOwner::from_token(*owner)
+            .into_owned()
+            .map_err(|e| e.to_string())?;
+        Ok(Self::with_reservation(reserve(owner, 0)?, stored))
     }
 
-    pub(super) fn with_reservation(reservation: WorkspaceReservation) -> Self {
+    pub(super) fn with_reservation(
+        reservation: WorkspaceReservation,
+        owner: StoredOwner<'static>,
+    ) -> Self {
         Self {
             values: Vec::new(),
             reservation,
+            owner,
         }
     }
 
     pub(super) fn reserve_len(&mut self, length: usize) -> Result<(), String> {
+        self.owner.require_active().map_err(|e| e.to_string())?;
         if length <= self.values.capacity() {
             return Ok(());
         }
@@ -46,9 +58,15 @@ impl<T> WorkspaceVec<T> {
         let width = std::mem::size_of::<T>();
         let old_bytes = old_capacity.checked_mul(width).ok_or_else(memory_error)?;
         let bytes = capacity.checked_mul(width).ok_or_else(memory_error)?;
-        self.reservation
-            .try_resize(old_bytes.checked_add(bytes).ok_or_else(memory_error)?)
-            .ok_or_else(memory_error)?;
+        let peak = old_bytes.checked_add(bytes).ok_or_else(memory_error)?;
+        if self.reservation.try_resize(peak).is_none() {
+            // No Vec element/payload or arena loan spans this call. Reclaim
+            // optional weak storage in the original owner only; do not run GC.
+            self.owner
+                .with_arena(|arena| arena.release_bytecode_string_hints())
+                .map_err(|e| e.to_string())?;
+            self.reservation.try_resize(peak).ok_or_else(memory_error)?;
+        }
         let mut replacement = Vec::new();
         if replacement.try_reserve_exact(capacity).is_err() {
             self.reservation
@@ -120,3 +138,7 @@ mod tests {
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "workspace_vec_tests.rs"]
+mod workspace_vec_tests;

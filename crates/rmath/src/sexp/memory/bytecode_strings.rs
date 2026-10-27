@@ -31,6 +31,12 @@ fn slot(character: NodeLink) -> usize {
 }
 
 impl RArena {
+    /// Release only weak lookup hints, without callbacks or live-node collection.
+    /// Exclusive access excludes every lookup and mutable entry borrow.
+    pub(crate) fn release_bytecode_string_hints(&mut self) {
+        drop(std::mem::take(&mut self.bytecode_string_cache));
+    }
+
     fn cached_bytecode_string(&self, key: NodeLink) -> Option<SEXP> {
         let hint = self
             .bytecode_string_cache

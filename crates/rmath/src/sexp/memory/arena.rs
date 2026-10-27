@@ -506,7 +506,7 @@ impl RArena {
         // Only copied weak identities live in this optional hint table. The
         // exclusive arena borrow prevents a lookup/entry borrow surviving this
         // call; dropping storage/ticket cannot execute R or collect live nodes.
-        drop(std::mem::take(&mut self.bytecode_string_cache));
+        self.release_bytecode_string_hints();
         reserve(self)
     }
 

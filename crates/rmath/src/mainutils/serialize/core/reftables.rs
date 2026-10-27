@@ -83,6 +83,13 @@ pub struct ReadRefTable {
 }
 
 impl ReadRefTable {
+    pub(super) fn workspace<T>(&self) -> Result<WorkspaceVec<T>, String> {
+        self.owner.require_active().map_err(|e| e.to_string())?;
+        Ok(WorkspaceVec::with_reservation(
+            self.reserve(0)?,
+            self.owner.clone(),
+        ))
+    }
     pub(super) fn reserve(
         &self,
         bytes: usize,

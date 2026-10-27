@@ -713,9 +713,7 @@ pub(crate) unsafe fn read_persistent_item(
         ref_table.add(restored);
         if let Some(key) = cache_key {
             if reader.persist_cache.is_none() {
-                reader.persist_cache = Some(
-                    super::super::workspace::WorkspaceVec::with_reservation(ref_table.reserve(0)?),
-                );
+                reader.persist_cache = Some(ref_table.workspace()?);
             }
             reader
                 .persist_cache
