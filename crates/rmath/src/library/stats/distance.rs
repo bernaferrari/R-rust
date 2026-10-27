@@ -361,8 +361,16 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     };
     let _x_guard = unsafe { protect_sexp(x) };
     let x_len = unsafe { LENGTH(x) };
-    let x_slice = unsafe { slice::from_raw_parts(REAL(x), x_len as usize) };
-    let ans_slice = unsafe { slice::from_raw_parts_mut(REAL(ans), n_val as usize) };
+    let x_slice: &[c_double] = if x_len == 0 {
+        &[]
+    } else {
+        unsafe { slice::from_raw_parts(REAL(x), x_len as usize) }
+    };
+    let ans_slice: &mut [c_double] = if n_val == 0 {
+        &mut []
+    } else {
+        unsafe { slice::from_raw_parts_mut(REAL(ans), n_val as usize) }
+    };
 
     R_distance(x_slice, nr, nc, ans_slice, diag, method, rp);
 
