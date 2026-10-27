@@ -222,13 +222,13 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if key_vecs.is_empty() || key_vecs[0].is_null() || key_vecs[0] == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let kt = TYPEOF(key_vecs[0]);
-        if kt != SEXPTYPE::LGLSXP
-            && kt != SEXPTYPE::INTSXP
-            && kt != SEXPTYPE::REALSXP
-            && kt != SEXPTYPE::CPLXSXP
-            && kt != SEXPTYPE::STRSXP
-            && kt != SEXPTYPE::RAWSXP
+        let key_type = TYPEOF(key_vecs[0]);
+        if key_type != SEXPTYPE::LGLSXP
+            && key_type != SEXPTYPE::INTSXP
+            && key_type != SEXPTYPE::REALSXP
+            && key_type != SEXPTYPE::CPLXSXP
+            && key_type != SEXPTYPE::STRSXP
+            && key_type != SEXPTYPE::RAWSXP
         {
             base_error("unimplemented type in 'order'".to_string());
         }
@@ -345,7 +345,11 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
                 STRING_ELT(key, i as R_xlen_t),
                 STRING_ELT(key, j as R_xlen_t),
             ),
-            t if t == SEXPTYPE::RAWSXP => (*RAW(key).add(i)).cmp(&*RAW(key).add(j)),
+            t if t == SEXPTYPE::RAWSXP => {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "unimplemented type 'raw' in 'listgreater'\n".to_string(),
+                });
+            }
             _ => elt_real_safe(key, i as R_xlen_t)
                 .partial_cmp(&elt_real_safe(key, j as R_xlen_t))
                 .unwrap_or(std::cmp::Ordering::Equal),
@@ -368,6 +372,9 @@ pub(crate) fn ordered_atomic_indices(
     na_placement: SortNaPlacement,
 ) -> Vec<R_xlen_t> {
     unsafe {
+        if TYPEOF(x) == SEXPTYPE::RAWSXP {
+            base_error("unimplemented type 'raw' in 'orderVector1'\n".to_string());
+        }
         reject_unorderable(x);
         let n = XLENGTH(x);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
@@ -530,6 +537,9 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        if TYPEOF(x) == SEXPTYPE::RAWSXP {
+            base_error("raw vectors cannot be sorted".to_string());
         }
         reject_unorderable(x);
         let n = XLENGTH(x);
