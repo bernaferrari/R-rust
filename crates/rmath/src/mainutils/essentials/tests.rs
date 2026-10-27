@@ -250,7 +250,7 @@ fn essentials_options_delegates_to_options_runtime() {
 fn ls_all_names_includes_reserved_names_in_user_environments() {
     let mut session = crate::sexp::session::RSession::new();
     let (result, _, _) = session.eval_code_with_output_capture(
-        "ordinary <- new.env(); assign('.packageName', 'ordinary', ordinary); assign('.namespaceEnv', ordinary, ordinary); assign('.hidden', 1L, ordinary); assign('visible', 2L, ordinary); paste(c(all(c('.packageName', '.namespaceEnv', '.hidden', 'visible') %in% ls(ordinary, all.names=TRUE)), identical(ls(ordinary, all.names=FALSE), 'visible'), '.packageName' %in% ls(asNamespace('datasets'), all.names=TRUE)), collapse=';')",
+        "ordinary <- new.env(); assign('.packageName', 'ordinary', ordinary); assign('.namespaceEnv', ordinary, ordinary); assign('.hidden', 1L, ordinary); assign('visible', 2L, ordinary); paste(c(all(c('.packageName', '.namespaceEnv', '.hidden', 'visible') %in% ls(ordinary, all.names=TRUE)), identical(ls(ordinary, all.names=FALSE), 'visible'), '.packageName' %in% ls(asNamespace('datasets'), all.names=TRUE), !any(c('.packageName', '.namespaceEnv') %in% getNamespaceExports('datasets'))), collapse=';')",
     );
     let result = result.expect("ls(all.names=TRUE) must expose bound metadata-looking names");
     assert!(
@@ -258,7 +258,7 @@ fn ls_all_names_includes_reserved_names_in_user_environments() {
             .string_value_elt(0)
             .flatten()
             .unwrap_or_default()
-            .starts_with("TRUE;TRUE;TRUE")
+            .starts_with("TRUE;TRUE;TRUE;TRUE")
     );
 }
 
