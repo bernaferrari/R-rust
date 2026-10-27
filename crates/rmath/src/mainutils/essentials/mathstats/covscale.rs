@@ -409,9 +409,9 @@ pub unsafe fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `scale(x, center=TRUE, scale=TRUE)` — standardize a numeric vector.
 pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let center_arg = CAR(CDR(args));
-        let scale_arg = CAR(CDR(CDR(args)));
+        let x = scale_argument(args, "x", 0);
+        let center_arg = scale_argument(args, "center", 1);
+        let scale_arg = scale_argument(args, "scale", 2);
 
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -433,11 +433,47 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        if !dim.is_null() && dim != R_NilValue() {
+        let result_dim = if !dim.is_null() && dim != R_NilValue() {
+            dim
+        } else {
+            let result_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(result_dim) = nrow as c_int;
+            *INTEGER(result_dim).add(1) = ncol as c_int;
+            result_dim
+        };
+        let _result_dim_guard = protect(result_dim);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            result_dim,
+        );
+        let input_dimnames = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        let result_dimnames = if !input_dimnames.is_null() && input_dimnames != R_NilValue() {
+            input_dimnames
+        } else {
+            let input_names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::symbol::Rf_install(c"names".as_ptr()),
+            );
+            if input_names.is_null() || input_names == R_NilValue() {
+                R_NilValue()
+            } else {
+                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _dn = protect(dimnames);
+                SET_VECTOR_ELT(dimnames, 0, input_names);
+                SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+                dimnames
+            }
+        };
+        let _result_dimnames_guard = protect(result_dimnames);
+        if !result_dimnames.is_null() && result_dimnames != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 result,
-                crate::sexp::attrib_core::R_DimSymbol(),
-                dim,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                result_dimnames,
             );
         }
         let center_numeric = !center_arg.is_null()
@@ -465,6 +501,8 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         };
         let dst = REAL(result);
+        let mut centers = vec![0.0; ncol as usize];
+        let mut scales = vec![1.0; ncol as usize];
         for j in 0..ncol {
             let mut sum = 0.0;
             let mut count = 0i64;
@@ -504,6 +542,8 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 1.0
             };
+            centers[j as usize] = cen;
+            scales[j as usize] = sc;
             for i in 0..nrow {
                 let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
                 let centered = if cen.is_nan() { NA_REAL } else { v - cen };
@@ -514,7 +554,64 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 };
             }
         }
+        let colnames = if TYPEOF(result_dimnames) == SEXPTYPE::VECSXP
+            && XLENGTH(result_dimnames) > 1
+        {
+            VECTOR_ELT(result_dimnames, 1)
+        } else {
+            R_NilValue()
+        };
+        let set_scale_metadata = |name: &'static [u8], values: &[f64]| {
+            let attribute = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+            let _a = protect(attribute);
+            for (i, value) in values.iter().enumerate() {
+                *REAL(attribute).add(i) = *value;
+            }
+            if TYPEOF(colnames) == SEXPTYPE::STRSXP
+                && XLENGTH(colnames) == values.len() as R_xlen_t
+            {
+                crate::sexp::attrib_core::setAttrib(
+                    attribute,
+                    crate::sexp::symbol::Rf_install(c"names".as_ptr()),
+                    colnames,
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::symbol::Rf_install(name.as_ptr().cast()),
+                attribute,
+            );
+        };
+        if do_center || center_numeric {
+            set_scale_metadata(b"scaled:center\0", &centers);
+        }
+        if do_scale || scale_numeric {
+            set_scale_metadata(b"scaled:scale\0", &scales);
+        }
         result
+    }
+}
+
+fn scale_argument(args: SEXP, formal: &str, position: usize) -> SEXP {
+    unsafe {
+        let mut partial = None;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(tag) = tag_name(current) {
+                if tag == formal {
+                    return CAR(current);
+                }
+                if !tag.is_empty() && formal.starts_with(&tag) {
+                    if partial.is_some() {
+                        partial = None;
+                        break;
+                    }
+                    partial = Some(CAR(current));
+                }
+            }
+            current = CDR(current);
+        }
+        partial.unwrap_or_else(|| arg_by_name_or_position(args, &[formal], position))
     }
 }
 

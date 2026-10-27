@@ -41,7 +41,17 @@ fn integer_matrix_as_factor_uses_distinct_values() {
                 "(Intercept)", paste0("origin", 2:8),
                 paste0("destination", 2:8), paste0("Diag", 1:8),
                 "Rscore:Cscore")))
-            stopifnot(length(coef(fit)) == 24L)
+            expected <- c(0.568591610355818, 0.431314202154426,
+                1.46186176130743, 1.78873105620529, 0.4410113224708,
+                2.49173500586256, 1.12753590591426, 0.796445456860856,
+                0.873202402077571, 1.81399182333093, 2.08251512288905,
+                1.36638308969248, 2.81636896807576, 1.90391819141279,
+                1.39858523552884, 1.66549505893183, 0.959681272107498,
+                0.0217496866307568, 0.226398977645518, 0.808646203652358,
+                0.13227671418244, 0.506708955158415, 0.221880455226052,
+                0.13697439478698)
+            stopifnot(isTRUE(all.equal(unname(coef(fit)), expected,
+                                       tolerance = 1e-6)))
             "#,
             )
             .unwrap_or_else(|error| panic!("glm contrast fit; portable={portable}; {error}"));
