@@ -1,0 +1,40 @@
+hessian=FALSE
+expression({
+    .value <- x * y + x^2
+    .grad <- array(0, c(length(.value), 2L), list(NULL, c("x", 
+        "y")))
+    .grad[, "x"] <- y + 2 * x
+    .grad[, "y"] <- x
+    attr(.value, "gradient") <- .grad
+    .value
+})
+structure(10, gradient = structure(c(7, 2), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))))
+hessian=TRUE
+expression({
+    .value <- x * y + x^2
+    .grad <- array(0, c(length(.value), 2L), list(NULL, c("x", 
+        "y")))
+    .hessian <- array(0, c(length(.value), 2L, 2L), list(NULL, 
+        c("x", "y"), c("x", "y")))
+    .grad[, "x"] <- y + 2 * x
+    .hessian[, "x", "x"] <- 2
+    .hessian[, "x", "y"] <- .hessian[, "y", "x"] <- 1
+    .grad[, "y"] <- x
+    attr(.value, "gradient") <- .grad
+    attr(.value, "hessian") <- .hessian
+    .value
+})
+structure(10, gradient = structure(c(7, 2), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))), hessian = structure(c(2, 1, 1, 0), dim = c(1L, 
+2L, 2L), dimnames = list(NULL, c("x", "y"), c("x", "y"))))
+closure=closure; environment=R_GlobalEnv
+pairlist(x = 2, y = 3)
+structure(10, gradient = structure(c(7, 2), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))), hessian = structure(c(2, 1, 1, 0), dim = c(1L, 
+2L, 2L), dimnames = list(NULL, c("x", "y"), c("x", "y"))))
+generated closure=closure; environment=R_GlobalEnv
+as.pairlist(alist(x = , y = ))
+structure(10, gradient = structure(c(7, 2), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))), hessian = structure(c(2, 1, 1, 0), dim = c(1L, 
+2L, 2L), dimnames = list(NULL, c("x", "y"), c("x", "y"))))

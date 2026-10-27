@@ -3,10 +3,7 @@
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SETCAR, SETCDR, STRING_ELT, TYPEOF,
 };
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_cons, Rf_lang2, Rf_lang3, Rf_lang4,
-    Rf_lang5, Rf_mkString,
-};
+use crate::sexp::constructors::{Rf_allocVector, Rf_cons, Rf_lang2, Rf_lang3};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
@@ -20,10 +17,6 @@ fn ty(x: SEXP) -> SEXPTYPE {
 
 unsafe fn sym(name: &str) -> SEXP {
     unsafe { Rf_install(CString::new(name).unwrap_or_default().as_ptr()) }
-}
-
-unsafe fn constant(x: f64) -> SEXP {
-    unsafe { Rf_ScalarReal(x) }
 }
 
 // Raw native boundaries retain the original runtime across every callback and
@@ -284,131 +277,85 @@ unsafe fn replace(symbol: SEXP, expr: SEXP, lst: SEXP) -> SEXP {
     }
 }
 
+// Native auxiliary builders retain actual inputs and every intermediate in
+// the original runtime. The remaining common-subexpression traversal below
+// is migrated independently from these bounded construction helpers.
+#[path = "deriv/builders.rs"]
+mod builders;
+
+fn duplicate_builder_value(
+    access: &crate::sexp::owner::RuntimeAccess,
+    value: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    access.domain().link(value)?;
+    access.with_native(|owner| unsafe {
+        owner
+            .sexp(crate::mainutils::duplicate::Rf_duplicate(value.as_raw()))?
+            .into_owned()
+    })
+}
+
 unsafe fn create_grad(names: SEXP) -> SEXP {
     unsafe {
-        let n = LENGTH(names);
-        let mut args: Vec<SEXP> = Vec::new();
-        for i in 0..n {
-            args.push(Rf_mkString(crate::sexp::accessors::CHAR(STRING_ELT(
-                names,
-                i as R_xlen_t,
-            ))));
-        }
-        let dimnames = Rf_lang3(sym("list"), R_NilValue(), names_c_call(&args));
-        let dim = Rf_lang3(
-            sym("c"),
-            Rf_lang2(sym("length"), sym(".value")),
-            Rf_ScalarInteger(n),
-        );
-        Rf_lang3(
-            sym("<-"),
-            sym(".grad"),
-            Rf_lang4(sym("array"), constant(0.0), dim, dimnames),
-        )
+        run_owned_derivative(names, None, |access, names, _| {
+            builders::Builder::new(access).initialize(names, false)
+        })
     }
 }
-
-unsafe fn deriv_assign(name: SEXP, expr: SEXP) -> SEXP {
-    unsafe {
-        let bracket = Rf_lang4(
-            sym("["),
-            sym(".grad"),
-            R_MissingArg(),
-            Rf_mkString(crate::sexp::accessors::CHAR(name)),
-        );
-        Rf_lang3(sym("<-"), bracket, expr)
-    }
-}
-
-unsafe fn add_grad() -> SEXP {
-    unsafe {
-        Rf_lang3(
-            sym("<-"),
-            Rf_lang3(
-                sym("attr"),
-                sym(".value"),
-                Rf_mkString(c"gradient".as_ptr()),
-            ),
-            sym(".grad"),
-        )
-    }
-}
-
-unsafe fn names_c_call(args: &[SEXP]) -> SEXP {
-    unsafe {
-        let mut tail = R_NilValue();
-        for arg in args.iter().rev() {
-            tail = Rf_cons(*arg, tail);
-        }
-        // GNU deriv.c builds this with LCONS(): a call `c(name1, ..., namen)`.
-        let call = Rf_cons(sym("c"), tail);
-        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        call
-    }
-}
-
 unsafe fn create_hess(names: SEXP) -> SEXP {
     unsafe {
-        let n = LENGTH(names);
-        let mut args: Vec<SEXP> = Vec::new();
-        for i in 0..n {
-            args.push(Rf_mkString(crate::sexp::accessors::CHAR(STRING_ELT(
-                names,
-                i as R_xlen_t,
-            ))));
-        }
-        let names_call = names_c_call(&args);
-        let dimnames = Rf_lang4(
-            sym("list"),
-            R_NilValue(),
-            names_call,
-            crate::mainutils::duplicate::Rf_duplicate(names_call),
-        );
-        let dim = Rf_lang4(
-            sym("c"),
-            Rf_lang2(sym("length"), sym(".value")),
-            Rf_ScalarInteger(n),
-            Rf_ScalarInteger(n),
-        );
-        Rf_lang3(
-            sym("<-"),
-            sym(".hessian"),
-            Rf_lang4(sym("array"), constant(0.0), dim, dimnames),
-        )
+        run_owned_derivative(names, None, |access, names, _| {
+            builders::Builder::new(access).initialize(names, true)
+        })
     }
 }
-
+unsafe fn deriv_assign(name: SEXP, expr: SEXP) -> SEXP {
+    unsafe {
+        run_owned_derivative(name, Some(expr), |access, name, expression| {
+            builders::Builder::new(access).assign_gradient(
+                name,
+                expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+            )
+        })
+    }
+}
 unsafe fn hess_assign1(name: SEXP, expr: SEXP) -> SEXP {
     unsafe {
-        let bracket = Rf_lang5(
-            sym("["),
-            sym(".hessian"),
-            R_MissingArg(),
-            Rf_mkString(crate::sexp::accessors::CHAR(name)),
-            Rf_mkString(crate::sexp::accessors::CHAR(name)),
-        );
-        Rf_lang3(sym("<-"), bracket, expr)
+        run_owned_derivative(name, Some(expr), |access, name, expression| {
+            builders::Builder::new(access).assign_hessian(
+                name,
+                None,
+                expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+            )
+        })
     }
 }
-
 unsafe fn hess_assign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
     unsafe {
-        let new1 = Rf_mkString(crate::sexp::accessors::CHAR(name1));
-        let new2 = Rf_mkString(crate::sexp::accessors::CHAR(name2));
-        let tmp1 = Rf_lang5(sym("["), sym(".hessian"), R_MissingArg(), new1, new2);
-        let tmp2 = Rf_lang5(sym("["), sym(".hessian"), R_MissingArg(), new2, new1);
-        let inner = Rf_lang3(sym("<-"), tmp2, expr);
-        Rf_lang3(sym("<-"), tmp1, inner)
+        // Retain all three operands before any helper allocation. The tuple
+        // is built with owning values inside the original-runtime boundary.
+        run_owned_derivative(name1, Some(name2), |access, first, second| {
+            let expression = access.with_native(|owner| owner.sexp(expr)?.into_owned())?;
+            builders::Builder::new(access).assign_hessian(
+                first,
+                Some(second.ok_or(crate::sexp::object::SexpError::RootUnavailable)?),
+                &expression,
+            )
+        })
     }
 }
-
+unsafe fn add_grad() -> SEXP {
+    unsafe {
+        run_owned_derivative(R_NilValue(), None, |access, _, _| {
+            builders::Builder::new(access).attach(false)
+        })
+    }
+}
 unsafe fn add_hess() -> SEXP {
     unsafe {
-        Rf_lang3(
-            sym("<-"),
-            Rf_lang3(sym("attr"), sym(".value"), Rf_mkString(c"hessian".as_ptr())),
-            sym(".hessian"),
-        )
+        run_owned_derivative(R_NilValue(), None, |access, _, _| {
+            builders::Builder::new(access).attach(true)
+        })
     }
 }
 
@@ -436,16 +383,33 @@ unsafe fn prune(lst: SEXP) -> SEXP {
     }
 }
 
+fn install_builder_formal(
+    access: &crate::sexp::owner::RuntimeAccess,
+    name: &[u8],
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    let name = CStr::from_bytes_with_nul(name).map_err(|_| {
+        crate::sexp::object::SexpError::EvaluationFailed {
+            message: "invalid variable name".into(),
+        }
+    })?;
+    // The caller retains admitted immutable native bytes. No R payload loan
+    // or interpreter field borrow spans this original-owner native boundary.
+    access.with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })
+}
+
+fn builder_environment(
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    access.with_native(|owner| unsafe { owner.sexp((*owner.as_ptr()).global_env)?.into_owned() })
+}
 unsafe fn closure_with_formals(names: SEXP, body: SEXP) -> SEXP {
     unsafe {
-        let n = LENGTH(names);
-        let mut formals = R_NilValue();
-        for i in (0..n).rev() {
-            let cell = Rf_cons(R_MissingArg(), formals);
-            crate::sexp::accessors::SETTAG(cell, sym(&string_at(names, i as R_xlen_t)));
-            formals = cell;
-        }
-        crate::mainutils::dstruct::R_mkClosure(formals, body, crate::sexp::globals::R_GlobalEnv())
+        run_owned_derivative(names, Some(body), |access, names, body| {
+            builders::Builder::new(access).closure(
+                names,
+                body.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+            )
+        })
     }
 }
 /// `.External(C_deriv, expr, namevec, function.arg, tag, hessian)`.
@@ -640,3 +604,7 @@ pub unsafe fn do_deriv(args: SEXP) -> SEXP {
 #[cfg(test)]
 #[path = "deriv/owned_tests.rs"]
 mod owned_tests;
+
+#[cfg(test)]
+#[path = "deriv/builder_tests.rs"]
+mod builder_tests;
