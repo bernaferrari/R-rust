@@ -7,7 +7,7 @@ use crate::sexp::accessors::{CAR, CDR, CHAR, CLOENV, FORMALS, PRINTNAME, TAG, TY
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 
-use crate::sexp::memory_ext::vmaxget;
+use crate::sexp::memory_ext::TransientScope;
 use crate::sexp::object::{SessionNodeFactory, Sexp};
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
@@ -146,7 +146,7 @@ pub(crate) fn apply_special_safe<'a>(
     let call = frame.call.clone();
     let args = frame.args.clone();
     let rho = frame.rho.clone();
-    let _vmax = unsafe { vmaxget() };
+    let _transient = frame.transient_scope()?;
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
     let op_name = primitive_call_name(primitive.clone(), fun.clone(), call.clone());
@@ -228,6 +228,21 @@ impl<'a> PrimitiveCall<'a> {
         }))
     }
 
+    fn transient_scope(&self) -> Result<TransientScope<'a>, String> {
+        self.factory
+            .require_active()
+            .map_err(|error| error.to_string())?;
+        // Immutable singletons carry no runtime authority. Every checked
+        // non-singleton in this frame belongs to the factory's original owner.
+        let anchor = [&self.rho, &self.fun, &self.call, &self.args]
+            .into_iter()
+            .find(|value| value.owner() != crate::sexp::object::SexpOwner::Static)
+            .ok_or_else(|| "primitive has no original owner".to_string())?;
+        let owner = crate::sexp::owner::StoredOwner::from_value(anchor)
+            .map_err(|error| error.to_string())?;
+        TransientScope::enter(owner).map_err(|error| error.to_string())
+    }
+
     fn eval_args(&self) -> Sexp<'a> {
         super::dispatch::evalList(
             self.args.clone(),
@@ -285,7 +300,7 @@ pub(crate) fn apply_builtin_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let frame = PrimitiveCall::new(fun, call, args, rho)?;
-    let _vmax = unsafe { vmaxget() };
+    let _transient = frame.transient_scope()?;
     let primitive = PrimitiveDescriptor::from_sexp(frame.fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
     let has_funtab_entry = primitive.is_some();
@@ -341,7 +356,7 @@ pub(crate) fn apply_builtin_values_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let frame = PrimitiveCall::new(fun, call, args, rho)?;
-    let _vmax = unsafe { vmaxget() };
+    let _transient = frame.transient_scope()?;
     let primitive = PrimitiveDescriptor::from_sexp(frame.fun.clone());
     let flag = descriptor_print_flag(primitive.as_ref());
     // Already-forced arguments carry visibility (cat, message, ...elt).

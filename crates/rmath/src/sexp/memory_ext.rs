@@ -405,6 +405,47 @@ pub(crate) unsafe fn R_alloc_in(
     }
 }
 
+/// Mark-relative C-stack storage for one primitive application. Managed
+/// runtimes retain the original physical owner through cleanup, including
+/// revocation; explicitly borrowed fixtures retain their caller's lifetime.
+pub(crate) struct TransientScope<'session> {
+    owner: super::owner::StoredOwner<'session>,
+    mark: usize,
+    // Drop's body releases buffers before this operation pin is released.
+    _pin: Option<super::owner::OwnerPin>,
+}
+
+impl<'session> TransientScope<'session> {
+    pub(crate) fn enter(
+        owner: super::owner::StoredOwner<'session>,
+    ) -> super::object::SexpResult<Self> {
+        let pin = owner.managed().map(|owner| owner.pin()).transpose()?;
+        owner.require_active()?;
+        let mark = with_vmax_in(owner.identity_ptr(), |vmax| vmax.len());
+        Ok(Self {
+            owner,
+            mark,
+            _pin: pin,
+        })
+    }
+}
+
+impl Drop for TransientScope<'_> {
+    fn drop(&mut self) {
+        // SAFETY: the original managed allocation is physically pinned until
+        // after this cleanup. Borrowed native callers retain their proven
+        // lifetime. Releasing OwnedBuffer/ticket fields cannot invoke R.
+        // Never consult ambient activation or require logical liveness here:
+        // a primitive may have revoked/replaced the original interpreter.
+        unsafe {
+            vmaxset_in(
+                self.owner.identity_ptr(),
+                ptr::without_provenance_mut(self.mark),
+            )
+        };
+    }
+}
+
 /// Get the current transient allocation watermark.
 ///
 /// Returns an opaque value to pass to vmaxset().
@@ -457,6 +498,10 @@ fn vmax_len_in(instance: *mut RInstance) -> usize {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[path = "transient_scope_tests.rs"]
+mod transient_scope_tests;
 
 #[cfg(test)]
 #[path = "memory_ext_tail_tests.rs"]
