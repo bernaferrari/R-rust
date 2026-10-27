@@ -171,8 +171,11 @@ pub(super) fn decode(
         .unwrap_or(usize::MAX)
         .clamp(4096, 8 * 1024 * 1024) as u32;
     let workspace = match marker {
-        // &[u8] already implements BufRead: no 32 KiB Reader adapter copy.
-        b'1' => 96 * 1024,
+        // rmath selects locked zlib-rs 0.6.3: one decoder slab has <16 KiB
+        // state/tables, a 32 KiB window, 64-byte padding and <=127-byte
+        // alignment overhead. 64 KiB covers it. &[u8] is already BufRead,
+        // so flate2 adds no separate 32 KiB Reader adapter buffer.
+        b'1' => 64 * 1024,
         b'2' => 4 * 1024 * 1024,
         // The stream reads our input directly, so subtract the Reader's
         // 64 KiB range copy. Add 40 KiB for simultaneous old/new probability

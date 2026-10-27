@@ -314,13 +314,35 @@ fn serialization_workspace_gnu_zlib_uses_the_existing_input_buffer() {
         &factory,
         include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin"),
     );
-    let limit = owner
-        .with_arena(|arena| arena.total_bytes_allocated() + 110 * 1024)
+    let baseline = owner
+        .with_arena(|arena| arena.total_bytes_allocated())
         .unwrap();
+    // Admit the input snapshot but leave decoder scratch one byte short.
+    let denied_limit = baseline + 64 * 1024 + input.len() as usize - 1;
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(denied_limit, 0)))
+        .unwrap();
+    let mut invalid = 0;
+    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        R_decompress1(input.as_raw(), &mut invalid)
+    }))
+    .expect_err("decoder scratch must be admitted before construction");
+    assert!(
+        denied
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message
+            .contains("session memory limit")
+    );
+    assert_eq!(invalid, 0, "budget denial must not report corrupt data");
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+    let limit = baseline + 80 * 1024;
     owner
         .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
         .unwrap();
-    let mut invalid = 0;
     let decoded = factory
         .wrap(unsafe { R_decompress1(input.as_raw(), &mut invalid) })
         .unwrap();
