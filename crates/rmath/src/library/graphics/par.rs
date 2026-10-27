@@ -806,9 +806,16 @@ pub(crate) fn parameter(name: &str) -> ParValue {
             crate::library::grdevices::device_registry::page_question(None) as c_int,
         ]);
     }
-    with_par_state(|state| match layout_par_value(state, name) {
-        Some(value) => value,
-        None => current_par_value(state, name),
+    with_par_state(|state| {
+        let cexbase = real_override(state, "cex", 1.0);
+        let mex = real_override(state, "mex", 1.0);
+        state
+            .layout
+            .refresh_if_device_geometry_changed(cexbase, mex, 1.0);
+        match layout_par_value(state, name) {
+            Some(value) => value,
+            None => current_par_value(state, name),
+        }
     })
 }
 

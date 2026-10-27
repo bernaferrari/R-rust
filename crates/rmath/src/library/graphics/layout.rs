@@ -450,6 +450,22 @@ impl LayoutState {
         self.current_figure + 1 > self.last_figure
     }
 
+    pub(crate) fn refresh_if_device_geometry_changed(
+        &mut self,
+        cexbase: f64,
+        mex: f64,
+        font_scale: f64,
+    ) {
+        let (width, height) = device_size_raster();
+        if self.width == width && self.height == height {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        self.map_ndc2dev(cexbase, mex, font_scale);
+        self.apply_mapping();
+    }
+
     fn refresh_device_geometry(&mut self) {
         let (width, height) = device_size_raster();
         self.width = width;
