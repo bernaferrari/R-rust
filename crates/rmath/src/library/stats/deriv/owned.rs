@@ -17,6 +17,49 @@ fn invalid(message: impl Into<String>) -> SexpError {
     }
 }
 
+// GNU prints the deparsed callable in derivative-table diagnostics.  Symbols
+// that are not R identifiers need backticks and R's character escapes.
+fn derivative_function_name(name: &str) -> String {
+    let valid = if name.is_ascii() {
+        crate::mainutils::deparse::is_valid_r_name_bytes(name.as_bytes())
+    } else {
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(first) if first.is_alphabetic() || first == '.' => {
+                let rest = chars.as_str();
+                !(first == '.' && rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
+                    && rest
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '.' || c == '_')
+            }
+            _ => false,
+        }
+    };
+    if valid {
+        return name.to_owned();
+    }
+    let mut result = String::from("`");
+    for c in name.chars() {
+        match c {
+            '`' => result.push_str("\\`"),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            '\u{0007}' => result.push_str("\\a"),
+            '\u{0008}' => result.push_str("\\b"),
+            '\u{000b}' => result.push_str("\\v"),
+            '\u{000c}' => result.push_str("\\f"),
+            c if c.is_ascii_control() => {
+                use std::fmt::Write;
+                let _ = write!(result, "\\{:03o}", c as u32);
+            }
+            c => result.push(c),
+        }
+    }
+    result.push('`');
+    result
+}
+
 struct Call {
     head: Value,
     arguments: Vec<Value>,
@@ -609,7 +652,7 @@ where
                     }
                     _ => Err(invalid(format!(
                         "Function '{}' is not in the derivatives table",
-                        function
+                        derivative_function_name(&function)
                     ))),
                 }
             }
