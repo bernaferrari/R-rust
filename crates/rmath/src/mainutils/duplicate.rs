@@ -536,13 +536,23 @@ fn prepare_value<'source>(
     flags: crate::sexp::ffi::SxpInfo,
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> SexpResult<VectorContinuation<'source>> {
+    prepare_value_attempt(source, flags, access, true)
+}
+
+fn prepare_value_attempt<'source>(
+    source: &Sexp<'source>,
+    flags: crate::sexp::ffi::SxpInfo,
+    access: &crate::sexp::owner::RuntimeAccess,
+    allow_gc_retry: bool,
+) -> SexpResult<VectorContinuation<'source>> {
     let domain: crate::sexp::object::NodeDomain<'source> = source.node_factory()?.into();
     let node = source.allocation()?;
     let heap = node.heap_identity();
-    let header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-    let attributes = snapshot_attributes(source)?;
+    let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+    let mut attributes = snapshot_attributes(source)?;
+    let mut flags = flags;
     let kind = flags.type_of();
-    let (length, truelength) = match header.data {
+    let (mut length, mut truelength) = match header.data {
         crate::sexp::ffi::NodeBody::Vector(vector) => (
             usize::try_from(vector.length)
                 .map_err(|_| SexpError::MissingData { sexptype: kind })?,
@@ -570,18 +580,67 @@ fn prepare_value<'source>(
         }
         _ => 0,
     };
-    let bytes = length
+    let mut bytes = length
         .checked_mul(element_bytes)
         .ok_or(SexpError::AllocationFailed {
             object: "duplication snapshot size",
         })?;
     // This original physical-store admission is passive: it does not lend
     // an arena or flush pending callbacks before the source snapshot exists.
-    let reservation =
-        heap.reserve_payload_bytes(node, bytes)
-            .ok_or(SexpError::AllocationFailed {
-                object: "duplication snapshot budget",
-            })?;
+    let reservation = match heap.reserve_payload_bytes(node, bytes) {
+        Some(reservation) => reservation,
+        None => {
+            if !allow_gc_retry {
+                return Err(SexpError::AllocationFailed {
+                    object: "duplication snapshot budget",
+                });
+            }
+            // A portable lazy-load can reach the arena cap with promoted
+            // garbage. Collect only after actual denial, while `source` and
+            // the owned attribute snapshot keep the original graph rooted.
+            access.with_native(|owner| owner.full_gc().map(|_| ()))?;
+            access.require_active()?;
+
+            // A finalizer may have mutated or detached the source during GC.
+            // Never continue with stale shape or attribute snapshots.
+            let refreshed = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+            if refreshed.sxpinfo.type_of() != kind {
+                return Err(SexpError::StaleAllocation);
+            }
+            if refreshed.attrib != header.attrib
+                || refreshed.payload != header.payload
+                || refreshed.data != header.data
+            {
+                drop(attributes);
+                return prepare_value_attempt(source, refreshed.sxpinfo, access, false);
+            }
+            header = refreshed;
+            flags = header.sxpinfo;
+            attributes = snapshot_attributes(source)?;
+            (length, truelength) = match header.data {
+                crate::sexp::ffi::NodeBody::Vector(vector) => (
+                    usize::try_from(vector.length)
+                        .map_err(|_| SexpError::MissingData { sexptype: kind })?,
+                    if flags.gp() & GROWABLE_BIT_MASK == 0 {
+                        vector.truelength
+                    } else {
+                        0
+                    },
+                ),
+                _ if kind == SEXPTYPE::OBJSXP => (0, 0),
+                _ => return Err(SexpError::StaleAllocation),
+            };
+            bytes = length
+                .checked_mul(element_bytes)
+                .ok_or(SexpError::AllocationFailed {
+                    object: "duplication snapshot size",
+                })?;
+            heap.reserve_payload_bytes(node, bytes)
+                .ok_or(SexpError::AllocationFailed {
+                    object: "duplication snapshot budget",
+                })?
+        }
+    };
     let payload = heap.payload_lease(node);
     let missing = || SexpError::MissingData { sexptype: kind };
     let values = match kind {

@@ -722,13 +722,20 @@ fn owning_graph_live_callback_panic_preserves_exact_payload_and_cleanup() {
 #[test]
 fn owning_graph_revoked_original_cannot_publish_copy_or_adopt_replacement() {
     let session = RSession::new_for_gc_tests();
-    let source = session
-        .owner_token()
-        .unwrap()
+    let owner = session.owner_token().unwrap();
+    let source = owner
         .node_factory()
         .wrap(unsafe { Rf_allocVector3(SEXPTYPE::VECSXP, 1) })
         .unwrap()
         .into_owned()
+        .unwrap();
+    let current_bytes = owner
+        .with_arena(|arena| arena.total_bytes_allocated())
+        .unwrap();
+    owner
+        .with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::new(current_bytes, 0));
+        })
         .unwrap();
     let original = source.runtime_owner.as_ref().unwrap().clone();
     let holder = Rc::new(RefCell::new(Some(session)));
@@ -742,7 +749,6 @@ fn owning_graph_revoked_original_cannot_publish_copy_or_adopt_replacement() {
         drop(callback_holder.borrow_mut().take());
         *installed.borrow_mut() = Some(RSession::new_for_gc_tests());
     }));
-    force_next_gc(holder.borrow().as_ref().unwrap());
     let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         duplicate(source.as_raw())
     }))
@@ -774,6 +780,73 @@ fn owning_graph_revoked_original_cannot_publish_copy_or_adopt_replacement() {
             13
         );
     });
+}
+
+#[test]
+fn owning_graph_snapshot_admission_collects_once_and_restarts_after_source_detach() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(unsafe { Rf_allocVector3(SEXPTYPE::INTSXP, 32) })
+        .unwrap();
+    let label = factory
+        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(17) })
+        .unwrap();
+    let attributes = factory
+        .pairlist_cell(&label, &factory.nil(), &factory.nil())
+        .unwrap();
+    unsafe { SET_ATTRIB(source.as_raw(), attributes.as_raw()) };
+
+    let source_node = source.allocation().unwrap().clone();
+    let heap = source_node.heap_identity();
+    let header = heap.node_snapshot(&source_node).unwrap();
+    let baseline = owner
+        .with_arena(|arena| arena.total_bytes_allocated())
+        .unwrap();
+    let garbage = factory
+        .wrap(unsafe { Rf_allocVector3(SEXPTYPE::RAWSXP, 1024 * 1024) })
+        .unwrap();
+    drop(garbage);
+
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    let source_node_for_gc = source_node.clone();
+    let nil = factory.link(&factory.nil()).unwrap();
+    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+        observed.set(observed.get() + 1);
+        let mut current = heap.node_snapshot(&source_node_for_gc).unwrap();
+        current.attrib = nil;
+        heap.replace_node(&source_node_for_gc, current).unwrap();
+    }));
+
+    // The live heap starts well above this cap. Reclaiming the unrooted large
+    // raw vector makes room for the snapshot and the new copy.
+    let snapshot_bytes = 32 * std::mem::size_of::<i32>();
+    owner
+        .with_arena(|arena| {
+            arena.set_budget(crate::sexp::memory::ArenaBudget::new(
+                baseline
+                    + snapshot_bytes * 4
+                    + std::mem::size_of::<crate::sexp::ffi::SexprecCore>() * 8,
+                0,
+            ));
+        })
+        .unwrap();
+    let result =
+        crate::sexp::owner::with_runtime(source.runtime_owner.as_ref().unwrap(), |access| {
+            prepare_value(&source, header.sxpinfo, access).map(|continuation| {
+                assert_eq!(continuation._reservation.bytes(), snapshot_bytes);
+                continuation.attributes.is_none()
+            })
+        })
+        .unwrap()
+        .unwrap();
+    assert!(
+        result,
+        "the copy must use the refreshed detached attributes"
+    );
+    assert_eq!(calls.get(), 1, "admission retries with one full collection");
 }
 
 #[test]
