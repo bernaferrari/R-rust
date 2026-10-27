@@ -17,11 +17,25 @@ fn fexact_hash_key_error_is_catchable_and_uncaught_propagates() {
             tried <- try(fisher.test(reli, workspace=2000000))
             caught <- tryCatch(
               fisher.test(reli, workspace=2000000),
-              error=function(e) list(class=class(e)[1], message=conditionMessage(e)))
+              error=function(e) list(class=class(e)[1], message=conditionMessage(e),
+                                     call=deparse1(conditionCall(e))))
+            wrapper <- function() fisher.test(reli, workspace=2000000)
+            nested <- tryCatch(
+              wrapper(),
+              error=function(e) list(class=class(e)[1], message=conditionMessage(e),
+                                     call=deparse1(conditionCall(e))))
             stopifnot(inherits(tried, "try-error"),
+                      grepl("Error in fisher.test(reli, workspace = 2e+06)",
+                            as.character(tried)[1], fixed=TRUE),
+                      identical(deparse1(attr(tried, "condition")$call),
+                                "fisher.test(reli, workspace = 2e+06)"),
                       identical(caught$class, "simpleError"),
                       grepl("FEXACT error 501", caught$message, fixed=TRUE),
                       grepl("hash table key", caught$message, fixed=TRUE))
+            stopifnot(identical(caught$call, "fisher.test(reli, workspace = 2e+06)"),
+                      identical(nested$class, caught$class),
+                      identical(nested$message, caught$message),
+                      identical(nested$call, caught$call))
             cat("fexact-error-caught\n")
             "#
         ))
