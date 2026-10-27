@@ -107,3 +107,63 @@ cat(paste(sprintf("%.5f", par("din")), collapse=","), "|",
         "4.44444,3.33333|3.74444,2.73333|0.50000,0.60000,0.70000,0.80000|0.25000,0.30000,0.35000,0.40000|2.34444,1.53333|0.16024,0.78635,0.18293,0.74390\n"
     );
 }
+
+#[test]
+fn mfrow_and_mfcol_coerce_fractional_dimensions_and_reject_invalid_values_atomically() {
+    let output = run(r#"
+emit <- function(tag) {
+  cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+      paste(par("mfrow"), collapse=","), "|",
+      paste(par("mfcol"), collapse=","), "|", par("cex"), "|", par("mex"),
+      "\n", sep="")
+}
+
+bad <- list(c(NA_real_,2), c(Inf,2), c(-.2,2), c(0,2), c(2147483648,2))
+par(mfrow=c(2.9,3.1)); emit("fractional-row")
+for (x in bad) suppressWarnings(tryCatch(par(mfrow=x), error=function(e)
+  cat("mfrow-error|", conditionMessage(e), "\n", sep="")))
+emit("row-after-errors")
+par(mfcol=c(2.9,3.1)); emit("fractional-col")
+for (x in bad) suppressWarnings(tryCatch(par(mfcol=x), error=function(e)
+  cat("mfcol-error|", conditionMessage(e), "\n", sep="")))
+emit("col-after-errors")
+"#);
+    assert_eq!(
+        output,
+        include_str!("fixtures/graphics-mfrow-coercion-gnu.out")
+    );
+}
+
+#[test]
+fn near_i32_max_mfg_index_is_safe() {
+    let output = run(r#"
+par(mfrow=c(46340,46340)); par(mfg=c(46340,46340))
+cat("large|", paste(par("mfg"), collapse=","), "\n", sep="")
+par(mfrow=c(1,2147483647))
+cat("page|", par("page"), "|mfg|", paste(par("mfg"), collapse=","), "\n", sep="")
+par(mfg=c(1,2147483647))
+cat("max-mfg|", paste(par("mfg"), collapse=","), "|page|", par("page"), "\n", sep="")
+"#);
+    assert_eq!(
+        output,
+        "large|46340,46340,46340,46340\npage|TRUE|mfg|1,2147483647,1,2147483647\nmax-mfg|1,2147483647,1,2147483647|page|TRUE\n"
+    );
+}
+
+#[test]
+fn near_i32_max_plot_new_wraps_without_overflow() {
+    let output = run(r#"
+par(mfrow=c(46340,46340)); par(mar=rep(0,4))
+cat("start|", paste(par("mfg"), collapse=","), "\n", sep="")
+plot.new(); cat("plot1|", paste(par("mfg"), collapse=","), "\n", sep="")
+plot.new(); cat("plot2|", paste(par("mfg"), collapse=","), "\n", sep="")
+tryCatch(par(mfrow=c(50000,50000)), error=function(e)
+  cat("overflow-error|", conditionMessage(e), "\n", sep=""))
+cat("after|", paste(par("mfg"), collapse=","), "|",
+    paste(par("mfrow"), collapse=","), "\n", sep="")
+"#);
+    assert_eq!(
+        output,
+        "start|46340,46340,46340,46340\nplot1|1,1,46340,46340\nplot2|1,2,46340,46340\noverflow-error|invalid value specified for graphical parameter \"mfrow\"\nafter|1,2,46340,46340|46340,46340\n"
+    );
+}

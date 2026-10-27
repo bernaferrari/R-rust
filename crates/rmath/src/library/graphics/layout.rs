@@ -447,7 +447,7 @@ impl LayoutState {
 
     /// par("page") logic: does the next plot start a new page?
     pub(crate) fn starts_new_page(&self) -> bool {
-        self.current_figure + 1 > self.last_figure
+        self.current_figure >= self.last_figure
     }
 
     pub(crate) fn refresh_if_device_geometry_changed(
@@ -478,8 +478,18 @@ impl LayoutState {
             let target = self.current_figure;
             let nrow = self.numrows;
             for j in 0..self.numcols {
+                let Some(column_offset) = (j as usize).checked_mul(nrow as usize) else {
+                    continue;
+                };
                 for i in 0..nrow {
-                    if self.order[(i + j * nrow) as usize] == target {
+                    let Some(index) = (i as usize).checked_add(column_offset) else {
+                        continue;
+                    };
+                    if self
+                        .order
+                        .get(index)
+                        .is_some_and(|figure| *figure == target)
+                    {
                         return (i, j);
                     }
                 }
@@ -682,19 +692,29 @@ impl LayoutState {
     pub(crate) fn set_mfrow(&mut self, value: &ParValue, column_first: bool) -> (i32, i32) {
         let name = if column_first { "mfcol" } else { "mfrow" };
         let values = real_values(value, name, 2);
-        for v in &values {
-            let truncated = *v as i32;
-            if truncated <= 0 || f64::from(truncated) != *v {
+        let mut dimensions = [0; 2];
+        for (dimension, value) in dimensions.iter_mut().zip(values) {
+            // GNU first coerces mfrow/mfcol through an integer vector. This
+            // truncates finite fractional values toward zero; it does not
+            // require the input doubles to already be integral.
+            let truncated = value.trunc();
+            if !value.is_finite() || truncated < 1.0 || truncated > f64::from(i32::MAX) {
                 par_error(format!(
                     "invalid value specified for graphical parameter \"{name}\""
                 ));
             }
+            *dimension = truncated as i32;
         }
-        let (nrow, ncol) = (values[0] as i32, values[1] as i32);
+        let (nrow, ncol) = (dimensions[0], dimensions[1]);
+        let figure_count = nrow.checked_mul(ncol).unwrap_or_else(|| {
+            par_error(format!(
+                "invalid value specified for graphical parameter \"{name}\""
+            ));
+        });
         self.numrows = nrow;
         self.numcols = ncol;
-        self.current_figure = nrow * ncol;
-        self.last_figure = nrow * ncol;
+        self.current_figure = figure_count;
+        self.last_figure = figure_count;
         self.default_figure = true;
         self.layout_grid = false;
         self.order.clear();
@@ -745,11 +765,23 @@ impl LayoutState {
                 warnings.push("value of 'nc' in \"mfg\" is wrong and will be ignored".to_owned());
             }
         }
-        self.last_figure = nrow * ncol;
+        self.last_figure = nrow.checked_mul(ncol).unwrap_or_else(|| {
+            par_error("invalid value specified for graphical parameter \"mfg\"");
+        });
         self.current_figure = if self.mfind {
-            (col - 1) * nrow + row
+            (col - 1)
+                .checked_mul(nrow)
+                .and_then(|index| index.checked_add(row))
+                .unwrap_or_else(|| {
+                    par_error("invalid value specified for graphical parameter \"mfg\"");
+                })
         } else {
-            (row - 1) * ncol + col
+            (row - 1)
+                .checked_mul(ncol)
+                .and_then(|index| index.checked_add(col))
+                .unwrap_or_else(|| {
+                    par_error("invalid value specified for graphical parameter \"mfg\"");
+                })
         };
         self.reset(cexbase, mex, font_scale);
         warnings
@@ -768,6 +800,9 @@ impl LayoutState {
         mex: f64,
         font_scale: f64,
     ) {
+        if nrow <= 0 || ncol <= 0 || num_figures <= 0 {
+            par_error("invalid value specified for graphics layout");
+        }
         self.numrows = nrow;
         self.numcols = ncol;
         self.order = order.to_vec();
@@ -784,11 +819,12 @@ impl LayoutState {
     /// advance started a new page.
     pub(crate) fn begin_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
         self.refresh_device_geometry();
-        self.current_figure += 1;
         let mut new_page = false;
-        if self.current_figure > self.last_figure {
+        if self.current_figure >= self.last_figure {
             self.current_figure = 1;
             new_page = true;
+        } else {
+            self.current_figure += 1;
         }
         self.reset(cexbase, mex, font_scale);
         new_page
@@ -1008,6 +1044,42 @@ mod tests {
         assert_eq!(
             layout.query("mfg").unwrap(),
             ParValue::Integer(vec![1, 1, 2, 2])
+        );
+    }
+
+    #[test]
+    fn maximum_figure_count_has_safe_page_and_mfg_arithmetic() {
+        let mut layout = LayoutState::default();
+        let max = f64::from(i32::MAX);
+        layout.set_mfrow(&real(&[1.0, max]), false);
+        assert!(layout.starts_new_page());
+        assert_eq!(
+            layout.query("mfg").unwrap(),
+            ParValue::Integer(vec![1, i32::MAX, 1, i32::MAX])
+        );
+
+        layout.set_mfg(&real(&[1.0, max]), 1.0, 1.0, 1.0);
+        assert!(layout.starts_new_page());
+        assert!(layout.begin_figure(1.0, 1.0, 1.0));
+        assert_eq!(
+            layout.query("mfg").unwrap(),
+            ParValue::Integer(vec![1, 1, 1, i32::MAX])
+        );
+    }
+
+    #[test]
+    fn figure_count_overflow_is_rejected_before_mutating_the_grid() {
+        let mut layout = LayoutState::default();
+        layout.set_mfrow(&ParValue::Integer(vec![2, 3]), false);
+        let before = layout.query("mfg").unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            layout.set_mfrow(&real(&[50_000.0, 50_000.0]), false);
+        }));
+        assert!(result.is_err());
+        assert_eq!(layout.query("mfg").unwrap(), before);
+        assert_eq!(
+            layout.query("mfrow").unwrap(),
+            ParValue::Integer(vec![2, 3])
         );
     }
 
