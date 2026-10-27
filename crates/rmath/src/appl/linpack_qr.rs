@@ -395,15 +395,14 @@ pub unsafe fn dqrsl(
         if cb {
             dcopy(k as c_int, qty, 1, b, 1);
         }
-        let kp1 = k + 1;
         if cxb {
             dcopy(k as c_int, qty, 1, xb, 1);
         }
         if cr && k < n {
             dcopy((n - k) as c_int, qty.add(k), 1, rsd.add(k), 1);
         }
-        if cxb && kp1 <= n {
-            for i in kp1..n {
+        if cxb && k < n {
+            for i in k..n {
                 *xb.add(i) = 0.0;
             }
         }
