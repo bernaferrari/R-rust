@@ -542,11 +542,8 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 } else {
                     std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
                 };
-                let msg = std::ffi::CString::new(format!(
-                    "variable lengths differ (found for '{name}')"
-                ))
-                .unwrap_or_else(|_| std::ffi::CString::new("variable lengths differ").unwrap());
-                crate::main::errors::Rf_error(msg.as_ptr());
+                let msg = format!("variable lengths differ (found for '{name}')");
+                crate::main::errors::errorcall_str(crate::main::errors::findCall(), &msg);
             }
         }
         if XLENGTH(data) == 0 {
@@ -636,5 +633,37 @@ fn model_column_rows(col: SEXP) -> R_xlen_t {
             }
         }
         XLENGTH(col)
+    }
+}
+
+#[cfg(test)]
+mod weighted_revocation_tests {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use crate::sexp::RSession;
+
+    #[test]
+    fn weighted_lm_gc_callback_revocation_refuses_publication() {
+        let mut session = RSession::new_for_gc_tests();
+        let instance = session.instance_ptr();
+        let revoked = Rc::new(Cell::new(false));
+        let observed = revoked.clone();
+        unsafe {
+            (*instance).memory_state.gc_force_gap = 0;
+            (*instance).memory_state.gc_force_wait = 0;
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(true) {
+                    return;
+                }
+                crate::sexp::instance::revoke_instance_availability(instance);
+            }));
+        }
+
+        let (result, _, _) = session.eval_script_with_output_capture(
+            "lm(c(1, 2, 4) ~ 1, weights = local({ gc(); c(1, 1, 8) }))",
+        );
+        assert!(revoked.get(), "the explicit GC in the weight promise must run");
+        assert!(result.is_err(), "a revoked owner must not publish a weighted model");
     }
 }
