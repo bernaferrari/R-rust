@@ -44,9 +44,6 @@ pub(crate) unsafe fn populate_package_namespace(
         let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
         define_lazy_data_names(package_env, &lazy_data_names);
         if let Some(directives) = namespace.as_ref() {
-            if package == "stats" {
-                source_stats_dendrogram_helpers(package_env)?;
-            }
             // The namespace metadata must exist before registration records
             // its declarations; the final refresh also publishes later exports.
             ensure_namespace_info(package, package_dir, package_env, Some(directives));
@@ -58,26 +55,6 @@ pub(crate) unsafe fn populate_package_namespace(
             )?;
         }
         Ok(namespace)
-    }
-}
-
-/// The port's dendrogram methods use a native leaf-construction helper, but
-/// their generic and methods belong to stats. Source these overrides into
-/// that namespace before registering S3 methods so their closures retain the
-/// same lexical environment as GNU's packaged stats definitions.
-unsafe fn source_stats_dendrogram_helpers(package_env: SEXP) -> Result<(), String> {
-    unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let expression = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse(
-                include_str!("../../../sexp/gnu_dendrogram.R"),
-                arena,
-                parser_factory.clone(),
-            )
-            .map_err(|error| error.to_string())
-        })?;
-        let _ = crate::eval::eval::Rf_eval(expression.as_raw(), package_env);
-        Ok(())
     }
 }
 
