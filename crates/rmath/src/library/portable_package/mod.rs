@@ -1,5 +1,7 @@
 //! Original pinned package images share one namespace and lazy-record lifecycle.
 use crate::sexp::object::{Sexp, SexpResult};
+use std::collections::HashSet;
+use std::sync::OnceLock;
 mod bridge;
 mod owned;
 
@@ -9,7 +11,7 @@ pub(crate) struct PackageImage {
     directory: &'static str,
     database: LazyDatabase,
     sysdata: Option<LazyDatabase>,
-    namespace_source: &'static str,
+    pub(crate) namespace_source: &'static str,
     exports: &'static [u8],
     imports: Option<&'static [u8]>,
     s3_methods: &'static [u8],
@@ -91,6 +93,32 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
         "stats4" => Some(&STATS4),
         _ => None,
     }
+}
+
+/// Whether a registered primitive name is also supplied by an embedded
+/// package's S3method declaration. Such native implementations remain
+/// available to S3 dispatch, but must not shadow the package method through
+/// inherited symbol lookup before that package's namespace is consulted.
+pub(crate) fn is_namespace_s3_method_name(name: &str) -> bool {
+    static NAMES: OnceLock<HashSet<String>> = OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            [
+                &METHODS,
+                &UTILS,
+                &TOOLS,
+                &GRDEVICES,
+                &GRAPHICS,
+                &STATS,
+                &STATS4,
+            ]
+            .into_iter()
+            .flat_map(|image| {
+                crate::mainutils::essentials::s3_method_function_names(image.namespace_source)
+            })
+            .collect()
+        })
+        .contains(name)
 }
 
 pub(crate) struct LazyDatabase {

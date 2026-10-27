@@ -31,6 +31,10 @@ use crate::sexp::symbol::Rf_install;
 use super::*;
 
 mod namespace_conditions;
+pub(crate) use namespace_parse::s3_method_function_names;
+
+#[cfg(test)]
+mod native_s3_binding_tests;
 
 thread_local! {
     static CACHING_ATTACHED_S4: Cell<bool> = const { Cell::new(false) };

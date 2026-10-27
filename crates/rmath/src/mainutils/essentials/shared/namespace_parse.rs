@@ -174,6 +174,22 @@ pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
     directives
 }
 
+/// Names made available as `generic.class` by a NAMESPACE S3method record.
+/// Builtin method implementations with these names must remain dispatch
+/// fallbacks instead of becoming inherited bindings in the base symbol table.
+pub(crate) fn s3_method_function_names(content: &str) -> Vec<String> {
+    parse_namespace_directives(content)
+        .s3_methods
+        .into_iter()
+        .map(|method| {
+            let generic = method.generic.rsplit("::").next().unwrap_or_default();
+            method
+                .method
+                .unwrap_or_else(|| format!("{generic}.{}", method.class))
+        })
+        .collect()
+}
+
 pub(crate) fn reject_native_namespace_directives(
     package: &str,
     directives: &NamespaceDirectives,

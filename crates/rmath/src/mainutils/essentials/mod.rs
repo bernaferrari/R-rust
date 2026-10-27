@@ -112,6 +112,16 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             if is_rport_private_base_name(name)
                 || !crate::sexp::init::is_accounted_primitive_name(name)
             {
+                if !is_rport_private_base_name(name)
+                    && crate::library::portable_package::is_namespace_s3_method_name(name)
+                {
+                    // This primitive is an S3 dispatch fallback for a method
+                    // supplied by a package namespace. Publishing its symbol
+                    // value would make inherited get()/get0() lookup return
+                    // the primitive before getS3method can consult the
+                    // namespace's registered method table.
+                    continue;
+                }
                 SET_SYMVALUE(sym, prim);
                 continue;
             }

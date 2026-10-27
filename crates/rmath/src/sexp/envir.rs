@@ -732,6 +732,13 @@ unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     if name.is_empty() || crate::eval::builtin::is_hidden_builtin_name(&name) {
         return None;
     }
+    // Some evaluator builtins stand in for S3 methods that are supplied by
+    // package namespaces. They remain valid function-dispatch fallbacks (see
+    // `find_fun_result`), but GNU's reflective variable lookup does not expose
+    // them as inherited bindings ahead of the registered namespace method.
+    if crate::library::portable_package::is_namespace_s3_method_name(&name) {
+        return None;
+    }
     if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
         let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
         if !prim.is_null() && prim != unsafe { R_NilValue() } {
