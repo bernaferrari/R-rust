@@ -567,7 +567,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             let _c = protect(compact);
             if nr > 0 {
                 *INTEGER(compact) = NA_INTEGER;
-                *INTEGER(compact).add(1) = -(nr as i32);
+                *INTEGER(compact).add(1) = nr as i32;
             }
             crate::sexp::attrib_core::setAttrib(
                 data,
