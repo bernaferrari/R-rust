@@ -1128,10 +1128,14 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         }
 
-        if package_name != "base" {
-            // Recommended packages (methods, stats, ...) ship with the
-            // engine but have their own namespaces. Look there first so
-            // `methods:::new` is the GNU closure, not base's primitive.
+        {
+            // Every qualified lookup uses the package namespace, including
+            // base. Searching the attached base environment here would walk
+            // into the global search path and resolve unexported names from
+            // other packages (for example, `base::lm` finding stats::lm).
+            // Recommended packages (methods, stats, ...) also need namespace
+            // identity so `methods:::new` returns GNU's closure, not a base
+            // primitive.
 
             let namespace = match load_package_namespace_by_name(&package_name) {
                 Ok(env) => env,
@@ -1196,14 +1200,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             return force_namespace_value(value);
         }
 
-        let value = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
-        if value == crate::sexp::globals::R_UnboundValue() {
-            std::panic::panic_any(RError {
-                message: format!("object '{lookup_name}' not found in base namespace"),
-            });
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-        force_namespace_value(value)
     }
 }
 
