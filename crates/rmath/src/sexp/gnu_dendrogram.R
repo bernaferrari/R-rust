@@ -221,7 +221,5 @@ cut.dendrogram <- function(x, h, ...)
     list(upper = assignNodes(x, h), lower = LOWER)
 }
 
-assign("cut.dendrogram", cut.dendrogram, envir = baseenv())
-
 as.dendrogram
 }

@@ -291,11 +291,6 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         );
         eval_base_binding(
             base_env,
-            "as.dendrogram",
-            include_str!("../gnu_dendrogram.R"),
-        );
-        eval_base_binding(
-            base_env,
             "reorder",
             "function(x, ...) if (inherits(x, \"dendrogram\")) .rport_reorder_dendrogram(x, ..1) else .rport_reorder_default(x, ..1)",
         );
