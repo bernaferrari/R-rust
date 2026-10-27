@@ -1,0 +1,51 @@
+{
+  "issue": "rport-3f79j",
+  "scope": "check remainingboundedinput before advancing twochars after namedclassclosingcolon; preserve earlierclasserror and existing acceptedforms",
+  "source_sha256": "35a4ec26f57f2c14ee9887271c5f106dd64a94e2346f4f633d6be06a99984275",
+  "actual_red": "/tmp/rport-tre-class-lookahead-red-miri.log: selected3, first2PASS then outofbounds pointerarithmetic endptr.add(2), only4Bremain",
+  "native_baseline": "/tmp/rport-tre-class-red-native.log: selected1 observed existingREG_EBRACK7 orsuccess for5forms",
+  "validation": {
+    "native_tre": {
+      "passed": 78,
+      "failed": 0,
+      "log": "/tmp/rport-tre-class-final-native.log"
+    },
+    "native_grep": {
+      "passed": 100,
+      "failed": 0,
+      "seconds": 3.85,
+      "log": "/tmp/rport-tre-class-final-grep.log",
+      "immutable_binary": {
+        "sha256_before": "605df15153f971ba700b38431ae3bd4b8db98178a5f7e0f6186b174ccb40f370",
+        "sha256_after": "605df15153f971ba700b38431ae3bd4b8db98178a5f7e0f6186b174ccb40f370",
+        "unchanged": true,
+        "grep_exit": 0
+      }
+    },
+    "strict_miri": {
+      "selected": 3,
+      "passed": 3,
+      "seconds": 9.12,
+      "flag": "-Zmiri-strict-provenance",
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "log": "/tmp/rport-tre-class-final-miri.log",
+      "tests": [
+        "bounded bracket exact inputs",
+        "13class IDs and actual exactwide compilation/matches",
+        "7incomplete/accepted namedclass forms"
+      ]
+    },
+    "fmt": "scopedrustfmt/diffcheck PASS"
+  },
+  "gnu": {
+    "log": "/tmp/rport-tre-class-pinned-gnu.log",
+    "runtime": "pinned4.7r90451",
+    "difference": "[[:alpha:=>GNUOutofmemory; existingRustREG_EBRACK7 preserved; parityfollowupks106OPEN",
+    "accepted_forms": "[[:alpha:]] and[[:alpha:x] remainaccepted; unknownclasses preserveREG_ECTYPE"
+  },
+  "remaining": [
+    "ks106syntaxerrortext parity",
+    "kuo32large250kWasm moduletermination",
+    "broaderregexmemorygaps"
+  ]
+}

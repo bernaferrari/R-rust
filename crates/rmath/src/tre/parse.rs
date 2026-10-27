@@ -426,7 +426,16 @@ unsafe fn tre_parse_bracket_items(
                             class = 0;
                             skip = 1;
                         }
-                        re = endptr.add(2);
+                        // A final colon has no following character to skip.
+                        // Preserve an earlier class error without forming a
+                        // pointer beyond the bounded input's one-past end.
+                        if re_end.offset_from(endptr) < 2 {
+                            if status == REG_OK {
+                                status = REG_EBRACK;
+                            }
+                        } else {
+                            re = endptr.add(2);
+                        }
                     } else {
                         status = REG_ECTYPE;
                     }
@@ -1753,6 +1762,35 @@ mod bounded_bracket_tests {
             )
         };
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod incomplete_class_tests {
+    #[test]
+    fn incomplete_named_classes_keep_existing_errors_without_past_end_pointers() {
+        use super::{REG_EBRACK, REG_ECTYPE};
+        for (pattern, expected) in [
+            ("[[:alpha:", Some(REG_EBRACK)),
+            ("[[:alpha:]", Some(REG_EBRACK)),
+            ("[[:alpha:]]", None),
+            ("[[:alpha:x", Some(REG_EBRACK)),
+            ("[[:alpha:x]", None),
+            ("[[:notaclass:", Some(REG_ECTYPE)),
+            ("[[:notaclass:]]", Some(REG_ECTYPE)),
+        ] {
+            let wide: Box<[u32]> = pattern.chars().map(u32::from).collect();
+            let result = unsafe {
+                crate::tre::compile::tre_compile_owned(
+                    wide.as_ptr(),
+                    wide.len(),
+                    crate::tre::ast::REG_EXTENDED,
+                    crate::mainutils::grep::RegexWorkspace::unbounded(),
+                )
+            };
+            assert_eq!(result.as_ref().err().copied(), expected, "{pattern}");
+            drop(result);
+        }
     }
 }
 
