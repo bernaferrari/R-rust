@@ -3,10 +3,11 @@
 use crate::sexp::{
     ffi::SEXPTYPE,
     heap::NodeLink,
+    memory::WorkspaceReservation,
     object::{Sexp, SexpError, SexpResult},
     owner::RuntimeAccess,
 };
-use std::{cell::RefCell, collections::HashSet};
+use std::{cell::RefCell, mem::size_of};
 
 type Value = Sexp<'static>;
 
@@ -23,6 +24,14 @@ struct Call {
     attributes: Value,
     object: bool,
     gp: u16,
+    // Declared after the buffers so the buffers are freed before their charge.
+    _workspace: WorkspaceReservation,
+}
+
+fn workspace(access: &RuntimeAccess, bytes: usize, what: &str) -> SexpResult<WorkspaceReservation> {
+    access
+        .with_arena(|arena| arena.reserve_workspace(bytes))?
+        .ok_or_else(|| invalid(format!("cannot retain {what}")))
 }
 
 fn snapshot(access: &RuntimeAccess, expression: &Value) -> SexpResult<Call> {
@@ -31,21 +40,47 @@ fn snapshot(access: &RuntimeAccess, expression: &Value) -> SexpResult<Call> {
     let info = expression.header().sxpinfo;
     let head = expression.try_car()?.into_owned()?;
     let attributes = expression.try_attrib()?.into_owned()?;
-    let mut arguments = Vec::new();
-    let mut tags = Vec::new();
-    let mut seen = HashSet::new();
+
+    // Count and cycle-check before allocating native buffers. Floyd's walk
+    // uses only rooted SEXP handles, so no unadmitted identity table is needed.
+    let mut count = 0usize;
     let mut cell = expression.try_cdr()?.into_owned()?;
+    let mut slow = cell.clone();
+    let mut fast = cell.clone();
     while !cell.is_nil() {
-        seen.try_reserve(1)
-            .map_err(|_| invalid("cannot inspect derivative arguments"))?;
-        if !seen.insert(domain.link(&cell)?) {
+        let _ = cell.try_car()?;
+        count = count
+            .checked_add(1)
+            .ok_or_else(|| invalid("cannot retain derivative arguments"))?;
+        cell = cell.try_cdr()?.into_owned()?;
+
+        if !slow.is_nil() {
+            slow = slow.try_cdr()?.into_owned()?;
+        }
+        for _ in 0..2 {
+            if !fast.is_nil() {
+                fast = fast.try_cdr()?.into_owned()?;
+            }
+        }
+        if !slow.is_nil() && !fast.is_nil() && domain.link(&slow)? == domain.link(&fast)? {
             return Err(invalid("cyclic derivative argument list"));
         }
-        arguments
-            .try_reserve(1)
-            .map_err(|_| invalid("cannot retain derivative arguments"))?;
-        tags.try_reserve(1)
-            .map_err(|_| invalid("cannot retain derivative tags"))?;
+    }
+
+    let slots = count
+        .checked_mul(2)
+        .and_then(|n| n.checked_mul(size_of::<Value>()))
+        .ok_or_else(|| invalid("cannot retain derivative arguments"))?;
+    let _workspace = workspace(access, slots, "derivative arguments")?;
+    let mut arguments = Vec::new();
+    let mut tags = Vec::new();
+    arguments
+        .try_reserve_exact(count)
+        .map_err(|_| invalid("cannot retain derivative arguments"))?;
+    tags.try_reserve_exact(count)
+        .map_err(|_| invalid("cannot retain derivative tags"))?;
+    let mut cell = expression.try_cdr()?.into_owned()?;
+    while !cell.is_nil() {
         arguments.push(cell.try_car()?.into_owned()?);
         tags.push(cell.try_tag()?.into_owned()?);
         cell = cell.try_cdr()?.into_owned()?;
@@ -57,6 +92,7 @@ fn snapshot(access: &RuntimeAccess, expression: &Value) -> SexpResult<Call> {
         attributes,
         object: info.obj(),
         gp: info.gp(),
+        _workspace,
     })
 }
 
@@ -65,19 +101,21 @@ fn name(value: &Value) -> SexpResult<String> {
 }
 
 struct Path<'a> {
-    active: &'a RefCell<HashSet<NodeLink>>,
+    active: &'a RefCell<Vec<NodeLink>>,
     link: NodeLink,
 }
 impl Drop for Path<'_> {
     fn drop(&mut self) {
-        self.active.borrow_mut().remove(&self.link);
+        let removed = self.active.borrow_mut().pop();
+        debug_assert_eq!(removed.as_ref(), Some(&self.link));
     }
 }
 
 pub(super) struct Kernel<'a, F> {
     access: &'a RuntimeAccess,
     install: F,
-    active: RefCell<HashSet<NodeLink>>,
+    active: RefCell<Vec<NodeLink>>,
+    active_workspace: RefCell<Option<WorkspaceReservation>>,
 }
 
 impl<'a, F> Kernel<'a, F>
@@ -88,19 +126,32 @@ where
         Self {
             access,
             install,
-            active: RefCell::new(HashSet::new()),
+            active: RefCell::new(Vec::new()),
+            active_workspace: RefCell::new(None),
         }
     }
 
     fn enter(&self, value: &Value) -> SexpResult<Path<'_>> {
         let link = self.access.domain().link(value)?;
         let mut active = self.active.borrow_mut();
-        active
-            .try_reserve(1)
-            .map_err(|_| invalid("cannot inspect derivative expression"))?;
-        if !active.insert(link) {
+        if active.contains(&link) {
             return Err(invalid("cyclic derivative expression"));
         }
+        if active.len() == active.capacity() {
+            let next = active
+                .len()
+                .checked_add(1)
+                .and_then(|n| n.checked_mul(size_of::<NodeLink>()))
+                .ok_or_else(|| invalid("cannot inspect derivative expression"))?;
+            // The old ticket remains live while Vec reallocates, admitting the
+            // old+new peak before the allocator can move its backing storage.
+            let ticket = workspace(self.access, next, "derivative expression path")?;
+            active
+                .try_reserve_exact(1)
+                .map_err(|_| invalid("cannot inspect derivative expression"))?;
+            *self.active_workspace.borrow_mut() = Some(ticket);
+        }
+        active.push(link.clone());
         drop(active);
         Ok(Path {
             active: &self.active,
@@ -581,6 +632,12 @@ where
         let _path = self.enter(expression)?;
         let call = snapshot(self.access, expression)?;
         let function = name(&call.head)?;
+        let bytes = call
+            .arguments
+            .len()
+            .checked_mul(size_of::<Value>())
+            .ok_or_else(|| invalid("cannot retain derivative operands"))?;
+        let _workspace = workspace(self.access, bytes, "derivative operands")?;
         let mut values = Vec::new();
         values
             .try_reserve_exact(call.arguments.len())
@@ -679,4 +736,159 @@ where
     let kernel = Kernel::new(access, install);
     let result = kernel.derive(&expression, &variable)?;
     kernel.parentheses(&result)
+}
+
+#[cfg(test)]
+mod scratch_admission_tests {
+    use super::*;
+    use crate::sexp::{RSession, memory::ArenaBudget};
+
+    #[test]
+    fn call_snapshot_admits_native_scratch_and_releases_its_ticket() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture(&format!(
+                "quote(f({}))",
+                (0..512)
+                    .map(|i| format!("arg{i}=x"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let before = crate::sexp::owner::with_runtime(&owner, |access| {
+            access.with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))
+        })
+        .unwrap()
+        .unwrap();
+        session.set_arena_budget(ArenaBudget::new(before.0, 0));
+
+        let pin = owner.pin().unwrap();
+        let denied = crate::sexp::owner::with_runtime(&owner, |access| {
+            let call = super::snapshot(access, &expression)?;
+            Ok::<_, SexpError>((
+                call.arguments.len(),
+                call.arguments.capacity(),
+                call.tags.capacity(),
+            ))
+        })
+        .unwrap()
+        .unwrap_err();
+        assert!(
+            denied
+                .to_string()
+                .contains("cannot retain derivative arguments")
+        );
+        let after_denial = crate::sexp::owner::with_runtime(&owner, |access| {
+            access.with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            after_denial, before,
+            "denial must not leak a partial ticket"
+        );
+
+        session.set_arena_budget(ArenaBudget::unlimited());
+        let (call, result, held) = crate::sexp::owner::with_runtime(&owner, |access| {
+            let call = super::snapshot(access, &expression)?;
+            let result = (
+                call.arguments.len(),
+                call.arguments.capacity(),
+                call.tags.capacity(),
+            );
+            let held = call._workspace.bytes();
+            Ok::<_, SexpError>((call, result, held))
+        })
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(result.0, 512);
+        assert_eq!(result.1, 512);
+        assert_eq!(result.2, 512);
+        assert_eq!(held, (result.1 + result.2) * size_of::<Value>());
+        drop(call);
+        let after = crate::sexp::owner::with_runtime(&owner, |access| {
+            access.with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            after, before,
+            "snapshot ticket must release with its buffers"
+        );
+        drop(pin);
+    }
+
+    #[test]
+    fn active_path_growth_admits_old_and_new_backings_before_reallocation() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture("quote(f(f(x)))")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        let pin = owner.pin().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let kernel = Kernel::new(access, |_, _| Err(invalid("unused test installer")));
+            let child = expression.try_cdr()?.try_car()?.into_owned()?;
+            let _outer = kernel.enter(&expression)?;
+            assert_eq!(kernel.active.borrow().capacity(), 1);
+            let old_bytes = size_of::<NodeLink>();
+            assert_eq!(
+                kernel.active_workspace.borrow().as_ref().unwrap().bytes(),
+                old_bytes
+            );
+
+            let (allocated, held) = access
+                .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+            assert_eq!(held, old_bytes);
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(allocated + held + 2 * old_bytes - 1, 0));
+            })?;
+            let denied = kernel.enter(&child).err().unwrap();
+            assert!(
+                denied
+                    .to_string()
+                    .contains("cannot retain derivative expression path"),
+                "unexpected admission error: {denied}"
+            );
+            assert_eq!(kernel.active.borrow().len(), 1);
+            assert_eq!(kernel.active.borrow().capacity(), 1);
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                old_bytes,
+                "failed growth must retain only the old backing's ticket"
+            );
+
+            access.with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))?;
+            let _inner = kernel.enter(&child)?;
+            assert_eq!(kernel.active.borrow().len(), 2);
+            assert_eq!(kernel.active.borrow().capacity(), 2);
+            let new_bytes = 2 * size_of::<NodeLink>();
+            assert_eq!(
+                kernel.active_workspace.borrow().as_ref().unwrap().bytes(),
+                new_bytes
+            );
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                new_bytes
+            );
+            drop(_inner);
+            assert_eq!(kernel.active.borrow().len(), 1);
+            drop(_outer);
+            assert_eq!(kernel.active.borrow().len(), 0);
+            drop(kernel);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, 0);
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+        drop(pin);
+    }
 }
