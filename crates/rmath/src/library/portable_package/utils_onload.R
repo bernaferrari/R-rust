@@ -36,8 +36,11 @@ local({
             identical(run.dontrun, FALSE) && identical(run.donttest, FALSE) &&
             identical(catch.aborts, FALSE) && !isTRUE(verbose) &&
             (identical(ask, "default") || identical(ask, FALSE))) {
-            portable_topic <- if (isTRUE(character.only)) as.character(topic)[1L] else
-                deparse(substitute(topic))[1L]
+            ## GNU's prompt.prefix abbreviates the resolved character topic,
+            ## but preserves a bare symbol topic without forcing it.
+            topic_expression <- substitute(topic)
+            portable_topic <- if (isTRUE(character.only) || is.character(topic_expression))
+                as.character(topic)[1L] else deparse(topic_expression)[1L]
             portable_prefix <- if (missing(prompt.prefix)) abbreviate(portable_topic, 6L) else
                 prompt.prefix
             if (.rport_portable_example(substitute(topic), package=package, echo=echo,
