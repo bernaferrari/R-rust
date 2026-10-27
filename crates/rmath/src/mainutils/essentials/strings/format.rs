@@ -239,6 +239,52 @@ fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {
     }
 }
 
+fn formatc_round_significant(v: f64, digits: usize) -> f64 {
+    if v == 0.0 {
+        return 0.0;
+    }
+    let exponent = v.abs().log10().floor() as i32;
+    let scale = 10f64.powi(digits as i32 - 1 - exponent);
+    (v * scale).round() / scale
+}
+
+fn formatc_g_style(v: f64, digits: usize, alt: bool) -> String {
+    let digits = digits.max(1);
+    let rounded = formatc_round_significant(v, digits);
+    let exponent = rounded.abs().log10().floor() as i32;
+    if exponent < -4 || exponent >= digits as i32 {
+        let mut text = formatc_exp(rounded, digits.saturating_sub(1), false);
+        if let Some(index) = text.rfind('e') {
+            let (head, tail) = text.split_at(index);
+            let head = if alt {
+                if head.contains('.') {
+                    head.to_string()
+                } else {
+                    format!("{head}.")
+                }
+            } else {
+                head.trim_end_matches('0').trim_end_matches('.').to_string()
+            };
+            text = format!("{head}{tail}");
+        }
+        text
+    } else {
+        let decimals = (digits as i32 - exponent - 1).max(0) as usize;
+        let text = format!("{rounded:.decimals$}");
+        if alt {
+            if text.contains('.') {
+                text
+            } else {
+                format!("{text}.")
+            }
+        } else if text.contains('.') {
+            text.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            text
+        }
+    }
+}
+
 fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
     // GNU util.c str_signif: dig = abs(digits); a negative `digits` is the
     // R-level flag ("#") signal to keep trailing zeros (digits >= 0 strips).
@@ -257,7 +303,7 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
                     "Inf".to_string()
                 };
             }
-            if v == 0.0 {
+            if v == 0.0 || d == 0 {
                 return "0".to_string();
             }
             let exp = v.abs().log10().floor() as i32;
@@ -293,31 +339,43 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
                     "Inf".to_string()
                 };
             }
-            if v == 0.0 || d == 0 {
+            if v == 0.0 {
                 return "0".to_string();
             }
-            // GNU adds a 1e-12 fuzz before the floor so values like 99.5
-            // (log10 just below 2) still land on the intended decade.
-            let exp = (v.abs().log10() + 1e-12).floor() as i32;
-            let scale = 10f64.powi(d as i32 - 1 - exp);
-            let rounded = (v * scale).round() / scale;
-            let exp2 = if rounded == 0.0 {
-                exp
+            // Mirror GNU str_signif's "smart f" path: round the absolute
+            // mantissa, carry a decade only for positive exponents, then use
+            // significant-digit g formatting unless the value is below 1e-4.
+            let mut exponent = (v.abs().log10() + 1e-12).floor() as i32;
+            let scale = 10f64.powi(d as i32 - 1);
+            let mantissa = v.abs() / 10f64.powi(exponent) + 1e-12;
+            let rounded_mantissa = (mantissa * scale).round() / scale;
+            let mut rounded = v;
+            if exponent > 0 && rounded_mantissa >= 10.0 {
+                // GNU's source assigns the positive absolute mantissa here.
+                rounded = rounded_mantissa * 10f64.powi(exponent);
+                exponent += 1;
+            }
+            if exponent == -4 && rounded.abs() < 1e-4 {
+                exponent = -5;
+            }
+
+            if exponent < -4 {
+                let decimals = (d as i32 - 1 - exponent).max(0) as usize;
+                let text = format!("{rounded:.decimals$}");
+                if digits >= 0 {
+                    text.trim_end_matches('0').trim_end_matches('.').to_string()
+                } else if text.contains('.') {
+                    text
+                } else {
+                    format!("{text}.")
+                }
             } else {
-                (rounded.abs().log10() + 1e-12).floor() as i32
-            };
-            let decimals = (d as i32 - 1 - exp2).max(0) as usize;
-            let s = format!("{rounded:.decimals$}");
-            // Strip trailing zeros iff digits >= 0 (no "#" flag); GNU util.c
-            // keys this on the sign of `digits`, not on the flag string.
-            if digits >= 0 && s.contains('.') {
-                s.trim_end_matches('0').trim_end_matches('.').to_string()
-            } else if !s.contains('.') {
-                // "%#g" keeps the decimal point even without fractional
-                // digits: formatC(123.456, 2, "fg", "#") is "123.".
-                format!("{s}.")
-            } else {
-                s
+                let precision = if exponent >= d as i32 {
+                    exponent as usize + 1
+                } else {
+                    d
+                };
+                formatc_g_style(rounded, precision, alt)
             }
         }
         "d" => format!("{}", v as i64),
