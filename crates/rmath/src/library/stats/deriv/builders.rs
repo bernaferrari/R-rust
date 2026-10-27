@@ -15,10 +15,10 @@ impl<'a> Builder<'a> {
     pub(super) fn new(access: &'a RuntimeAccess) -> Self {
         Self { access }
     }
-    fn symbol(&self, name: &str) -> SexpResult<Value> {
+    pub(super) fn symbol(&self, name: &str) -> SexpResult<Value> {
         super::derivative_symbol(self.access, name)
     }
-    fn call(&self, name: &str, arguments: &[Value]) -> SexpResult<Value> {
+    pub(super) fn call(&self, name: &str, arguments: &[Value]) -> SexpResult<Value> {
         let function = self.symbol(name)?;
         let domain = self.access.domain();
         let allocator = self.access.allocator(&domain)?;
@@ -160,7 +160,7 @@ impl<'a> Builder<'a> {
         };
         self.call("<-", &[target, expression])
     }
-    fn formal_symbol(&self, character: &Value) -> SexpResult<Value> {
+    pub(super) fn formal_symbol(&self, character: &Value) -> SexpResult<Value> {
         self.access.domain().link(character)?;
         let failure = || SexpError::AllocationFailed {
             object: "derivative formal name",
@@ -206,10 +206,19 @@ impl<'a> Builder<'a> {
             formals = allocator.pairlist_cell(&domain.missing(), &formals, &tag)?;
         }
         let environment = super::builder_environment(self.access)?;
-        let formals_link = domain.link(&formals)?;
+        self.closure_with_parts(&formals, body, &environment)
+    }
+    pub(super) fn closure_with_parts(
+        &self,
+        formals: &Value,
+        body: &Value,
+        environment: &Value,
+    ) -> SexpResult<Value> {
+        let domain = self.access.domain();
+        let formals_link = domain.link(formals)?;
         let body_link = domain.link(body)?;
-        let environment_link = domain.link(&environment)?;
-        allocator.allocate(|arena| {
+        let environment_link = domain.link(environment)?;
+        self.access.allocator(&domain)?.allocate(|arena| {
             let raw = arena.alloc_node(SEXPTYPE::CLOSXP);
             let node = arena.node_token(raw)?;
             let heap = arena.heap_identity();
