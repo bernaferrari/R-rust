@@ -496,3 +496,45 @@ fn owned_derivative_symbolic_power_survives_source_collection() {
         .unwrap()
     );
 }
+
+#[test]
+fn owned_derivative_symbolic_power_graph_survives_gc() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let expression = call(&owner, "^", &[symbol(&owner, "x"), symbol(&owner, "y")]);
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let result = session.with_active(|| unsafe {
+        session
+            .sexp(super::do_d(args.as_raw()))
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    drop(args);
+    drop(expression);
+    drop(variable);
+    crate::sexp::owner::with_runtime(&owner, |access| access.with_native(|owner| owner.full_gc()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.typeof_(), SEXPTYPE::LANGSXP);
+    assert!(
+        result
+            .try_car()
+            .unwrap()
+            .try_printname()
+            .unwrap()
+            .try_char_eq(b"*")
+            .unwrap()
+    );
+    assert_eq!(
+        result.try_cdr().unwrap().try_car().unwrap().typeof_(),
+        SEXPTYPE::LANGSXP
+    );
+}
