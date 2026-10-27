@@ -78,6 +78,61 @@ pub unsafe fn do_model_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// GNU model.frame removes time-series metadata from evaluated columns while
+/// leaving unrelated classes (for example, a leading user class) intact.
+/// Work on a duplicate so model.frame never mutates variables in the caller.
+unsafe fn model_frame_drop_time_series_attributes(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null()
+            || value == R_NilValue()
+            || crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_TspSymbol(),
+            ) == R_NilValue()
+        {
+            return value;
+        }
+
+        let duplicate = crate::mainutils::duplicate::Rf_duplicate(value);
+        let _duplicate_root = protect(duplicate);
+        crate::sexp::attrib_core::setAttrib(
+            duplicate,
+            crate::sexp::attrib_core::R_TspSymbol(),
+            R_NilValue(),
+        );
+
+        let class_symbol = crate::sexp::attrib_core::R_ClassSymbol();
+        let class = crate::sexp::attrib_core::getAttrib(duplicate, class_symbol);
+        if TYPEOF(class) == SEXPTYPE::STRSXP {
+            let mut kept = Vec::new();
+            for index in 0..XLENGTH(class) {
+                let element = STRING_ELT(class, index);
+                if element.is_null() || element == crate::sexp::globals::R_NaString() {
+                    kept.push(element);
+                    continue;
+                }
+                let name = std::ffi::CStr::from_ptr(CHAR(element)).to_bytes();
+                if name != b"ts" && name != b"mts" {
+                    kept.push(element);
+                }
+            }
+            if kept.len() as R_xlen_t != XLENGTH(class) {
+                if kept.is_empty() {
+                    crate::sexp::attrib_core::setAttrib(duplicate, class_symbol, R_NilValue());
+                } else {
+                    let next = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as i64);
+                    let _next_root = protect(next);
+                    for (index, element) in kept.into_iter().enumerate() {
+                        SET_STRING_ELT(next, index as i64, element);
+                    }
+                    crate::sexp::attrib_core::setAttrib(duplicate, class_symbol, next);
+                }
+            }
+        }
+        duplicate
+    }
+}
+
 /// GNU `expand.model.frame(model, extras, na.expand = FALSE)`.
 pub unsafe fn do_expand_model_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -405,8 +460,13 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _d = protect(data);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, nvars + nactual);
         let _n = protect(names);
+        let mut column_roots = Vec::new();
         for i in 0..nvars {
-            SET_VECTOR_ELT(data, i, VECTOR_ELT(variables, i));
+            let source = VECTOR_ELT(variables, i);
+            let _source_root = protect(source);
+            let column = model_frame_drop_time_series_attributes(source);
+            column_roots.push(protect(column));
+            SET_VECTOR_ELT(data, i, column);
             SET_STRING_ELT(names, i, STRING_ELT(varnames, i));
         }
         let mut j = nvars;
@@ -415,7 +475,10 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             if v.is_null() || v == R_NilValue() {
                 continue;
             }
-            SET_VECTOR_ELT(data, j, v);
+            let _source_root = protect(v);
+            let column = model_frame_drop_time_series_attributes(v);
+            column_roots.push(protect(column));
+            SET_VECTOR_ELT(data, j, column);
             if TYPEOF(dotnames) == SEXPTYPE::STRSXP && i < XLENGTH(dotnames) {
                 let raw = CHAR(STRING_ELT(dotnames, i));
                 let s = if raw.is_null() {
