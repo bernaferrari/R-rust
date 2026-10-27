@@ -6,6 +6,8 @@ const ORDER_RAW_SCRIPT: &str = r##"
     multi_order_error <- tryCatch(order(rep(1, 13), raw_value), error=function(error) error)
     first_multi_order_error <- tryCatch(order(raw_value, 1:13), error=function(error) error)
     rank_error <- tryCatch(rank(raw_value), error=function(error) error)
+    sort_error <- tryCatch(sort(raw_value), error=function(error) error)
+    partial_sort_error <- tryCatch(sort(raw_value, partial=5), error=function(error) error)
     stopifnot(inherits(order_error, "error"))
     stopifnot(identical(conditionMessage(order_error),
         "unimplemented type 'raw' in 'orderVector1'\n"))
@@ -17,9 +19,14 @@ const ORDER_RAW_SCRIPT: &str = r##"
         "unimplemented type 'raw' in 'listgreater'\n"))
     stopifnot(inherits(rank_error, "error"))
     stopifnot(identical(conditionMessage(rank_error), "raw vectors cannot be sorted"))
+    stopifnot(inherits(sort_error, "error"))
+    stopifnot(identical(conditionMessage(sort_error), "raw vectors cannot be sorted"))
+    stopifnot(inherits(partial_sort_error, "error"))
+    stopifnot(identical(conditionMessage(partial_sort_error), "raw vectors cannot be sorted"))
 
     stopifnot(identical(order(c(3, 1, 2)), c(2L, 3L, 1L)))
     stopifnot(identical(rank(c(3, 1, 2)), c(3, 1, 2)))
+    stopifnot(identical(sort(c(3, 1, 2)), c(1, 2, 3)))
     stopifnot(identical(order(c(1, 1, 2), c(3, 1, 2)), c(2L, 1L, 3L)))
     stopifnot(identical(order(1:13, raw_value), 1:13))
     stopifnot(identical(raw_value, charToRaw("A test string")))

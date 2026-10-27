@@ -885,6 +885,9 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        if TYPEOF(x) == SEXPTYPE::RAWSXP {
+            base_error("raw vectors cannot be sorted".to_string());
+        }
         reject_unorderable(x);
         let decreasing = sort_logical_arg(args, &["decreasing"], 1).unwrap_or(false);
         let na_placement = sort_na_placement(args);
