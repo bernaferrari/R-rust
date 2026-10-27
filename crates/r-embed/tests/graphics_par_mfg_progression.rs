@@ -19,6 +19,7 @@ emit <- function(tag) {
   cat(tag, "|", paste(par("mfg"), collapse=","), "|",
       paste(sprintf("%.3f", par("fig")), collapse=","), "\n", sep="")
 }
+
 emit("fresh")
 par(mfrow=c(2,3)); emit("mfrow-initial")
 for (i in 1:7) { plot.new(); emit(paste0("mfrow-", i)) }
@@ -32,6 +33,43 @@ plot(1:2); emit("after-plot-1")
 plot(1:2); emit("after-plot-2")
 "#);
     assert_eq!(output, include_str!("fixtures/graphics-par-mfg-gnu.out"));
+}
+
+#[test]
+fn fresh_device_mfg_resets_once_then_advances_in_row_and_column_order() {
+    // Earlier RenderPlot sessions may have queried the device without
+    // producing a frame; that must not make this new session look plotted.
+    let _ = run("cat(paste(par('din'), collapse=','))");
+    let _ = run("cat(paste(par('din'), collapse=','))");
+    let row = run(r#"
+emit <- function(tag) cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+                       par("new"), "|", par("page"), "\n", sep="")
+par(mfrow=c(2,3)); par(mfg=c(2,2)); emit("row-mfg")
+par(new=FALSE); emit("row-false")
+plot.new(); emit("row-first")
+par(new=FALSE); plot.new(); emit("row-next")
+tryCatch(par(mfg=c(0,2)), error=function(e)
+  cat("invalid|", conditionMessage(e), "\n", sep=""))
+par(new=FALSE); plot.new(); emit("row-after-invalid")
+"#);
+    assert_eq!(
+        row,
+        include_str!("fixtures/graphics-par-mfg-fresh-row-gnu.out")
+    );
+
+    let col = run(r#"
+emit <- function(tag) cat(tag, "|", paste(par("mfg"), collapse=","), "|",
+                       par("new"), "|", par("page"), "\n", sep="")
+par(mfcol=c(2,3)); par(mfg=c(2,2)); emit("col-mfg")
+par(new=FALSE); emit("col-false")
+plot.new(); emit("col-first")
+par(new=FALSE); plot.new(); emit("col-next")
+plot.new(); emit("col-implicit")
+"#);
+    assert_eq!(
+        col,
+        include_str!("fixtures/graphics-par-mfg-fresh-col-gnu.out")
+    );
 }
 
 #[test]
