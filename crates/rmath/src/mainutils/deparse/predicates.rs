@@ -107,6 +107,10 @@ pub unsafe fn needsparens(
                 }
                 _ => return false,
             }
+        } else if TYPEOF(arg) == SEXPTYPE::CPLXSXP && XLENGTH(arg) == 1 {
+            // A scalar complex literal prints as a sum (e.g. 2+3i).
+            return mainop_prec > PREC_SUM
+                || (mainop_prec == PREC_SUM && left == mainop_rightassoc);
         } else if isLanguage(arg)
             && isUserBinop(CAR(arg))
             && (mainop_prec > PREC_PERCENT
