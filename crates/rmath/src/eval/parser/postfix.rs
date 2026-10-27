@@ -173,6 +173,11 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let mut slots = Vec::new();
         self.skip_newlines();
         if self.peek() == close {
+            // `x[]` and `x[[]]` each carry one explicitly missing index in
+            // GNU's call AST. Keep that node: replacement dispatch observes
+            // its presence via nargs(), and read-side `[[` must report a
+            // missing subscript instead of treating the call as `x`.
+            slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
             return Ok(slots);
         }
         loop {
