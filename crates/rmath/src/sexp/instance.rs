@@ -192,10 +192,14 @@ pub(crate) struct ProfilingState {
     pub current_opcode: c_int,
     pub opcode_counts: [c_int; PROFILING_OPCODE_COUNT],
     pub profiling_event: c_int,
+    pub profile_schedule: Option<crate::eval::profiling::ProfileSchedule>,
+    pub profile_generation: u64,
+    pub sampling_in_progress: bool,
     pub profile_outfile: c_int,
     pub memory_peak_bytes: usize,
     /// Completed filename offsets into the owning byte buffer.
     pub srcfiles: Vec<usize>,
+    pub srcfiles_reservation: Option<super::memory::WorkspaceReservation>,
     pub srcfile_bytes_used: usize,
     pub srcfile_bufcount: usize,
     pub srcfiles_buffer: RuntimeValue,
@@ -215,9 +219,13 @@ impl Default for ProfilingState {
             current_opcode: NO_PROFILING_OPCODE,
             opcode_counts: [0; PROFILING_OPCODE_COUNT],
             profiling_event: 0,
+            profile_schedule: None,
+            profile_generation: 0,
+            sampling_in_progress: false,
             profile_outfile: -1,
             memory_peak_bytes: 0,
             srcfiles: Vec::new(),
+            srcfiles_reservation: None,
             srcfile_bytes_used: 0,
             srcfile_bufcount: 0,
             srcfiles_buffer: RuntimeValue::empty(),
@@ -835,7 +843,8 @@ impl Drop for RInstance {
         self.eval_state.parse_error_file = RuntimeValue::empty();
         self.eval_state.exec_token = RuntimeValue::empty();
         self.eval_state.profiling.sref = RuntimeValue::empty();
-        self.eval_state.profiling.srcfiles.clear();
+        self.eval_state.profiling.srcfiles = Vec::new();
+        self.eval_state.profiling.srcfiles_reservation = None;
         self.eval_state.profiling.srcfile_bytes_used = 0;
         self.eval_state.profiling.srcfiles_buffer = RuntimeValue::empty();
         // Persistent headers and character bytes are owned Rust fields; their

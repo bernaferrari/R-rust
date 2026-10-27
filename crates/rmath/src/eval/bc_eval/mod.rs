@@ -53,6 +53,8 @@ fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
         bc_error("bytecode collection requires the original active runtime");
     }
     crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+    unsafe { crate::eval::profiling::sample_at_safe_point(owner) }
+        .unwrap_or_else(|error| bc_error(error.to_string()));
     owner
         .require_active()
         .unwrap_or_else(|error| bc_error(error.to_string()));

@@ -9,6 +9,10 @@ mod stubs;
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     match name {
+        "Rprof" | "C_Rprof" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
+            c_rprof,
+            crate::mainutils::native_routines::PayloadArity::Fixed(10),
+        )),
         "flushconsole" | "C_flushconsole" => {
             Some(crate::mainutils::native_routines::NativeRoutine::Call(
                 crate::mainutils::native_routines::CallRoutine::Args0(c_flushconsole),
@@ -59,6 +63,31 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
             ))
         }
         _ => None,
+    }
+}
+
+unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+    unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let arguments = owner
+            .node_factory()
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let nil = crate::sexp::globals::R_NilValue();
+        let result = crate::mainutils::essentials::do_Rprof(
+            nil,
+            nil,
+            crate::sexp::accessors::CDR(arguments.as_raw()),
+            nil,
+        );
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        result
     }
 }
 
@@ -116,6 +145,43 @@ unsafe extern "C-unwind" fn c_edit(
 
 pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
+        // The original utils wrapper calls .External(C_Rprof, ...). Keep its
+        // registration authority in this namespace's original allocation.
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let namespace = factory
+            .wrap(env)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let binding = factory
+            .wrap(crate::sexp::symbol::Rf_install(c"C_Rprof".as_ptr()))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let keys = crate::mainutils::native_symbols::AttributeKeys {
+            names: factory
+                .wrap(crate::sexp::symbol::Rf_install(c"names".as_ptr()))
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            class: factory
+                .wrap(crate::sexp::symbol::Rf_install(c"class".as_ptr()))
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+        };
+        let metadata =
+            crate::mainutils::native_symbols::symbol_info(owner, "Rprof", "utils", true, &keys)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+                .expect("bundled Rprof registration is present");
+        let address = metadata
+            .try_vector_elt(1)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
+        drop(metadata);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let flush = c"C_flushconsole";
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(flush.as_ptr()),

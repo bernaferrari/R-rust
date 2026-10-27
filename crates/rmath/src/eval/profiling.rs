@@ -10,8 +10,8 @@
 //!
 //! Key functions:
 //! - `do_Rprof` / `R_InitProfiling` / `R_EndProfiling` -- main profiling lifecycle
-//! - `doprof` / `doprof_null` -- profiling signal handlers
-//! - `ProfileThread` -- profiling timer thread (Unix/pthreads)
+//! - `doprof` -- render a sample on the owning execution thread
+//! - `ProfileSchedule` -- owner-local CPU/elapsed deadlines
 //! - `lineprof` / `getFilenum` -- line profiling helpers
 //! - `pb_str` / `pb_uint` / `pb_int` / `pb_dbl` -- profiling buffer writers
 //! - `pf_str` / `pf_int` -- profiling file writers
@@ -43,6 +43,31 @@ use crate::sexp::instance::{
     with_required_current_instance,
 };
 
+mod schedule;
+mod workspace;
+pub(crate) use schedule::ProfileSchedule;
+use workspace::ProfileBuffer;
+
+/// Read only the caller's thread CPU counter; no runtime or process timer.
+#[cfg(all(unix, not(target_arch = "wasm32")))]
+fn thread_cpu_time_nanos() -> Option<u64> {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) } != 0 {
+        return None;
+    }
+    u64::try_from(time.tv_sec)
+        .ok()?
+        .checked_mul(1_000_000_000)?
+        .checked_add(u64::try_from(time.tv_nsec).ok()?)
+}
+#[cfg(not(all(unix, not(target_arch = "wasm32"))))]
+fn thread_cpu_time_nanos() -> Option<u64> {
+    None
+}
+
 /// Profiling timer type (ITIMER_PROF is not available on Android).
 #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
 const PROF_TIMER: core::ffi::c_int = libc::ITIMER_PROF;
@@ -65,7 +90,20 @@ unsafe fn get_R_InBCInterpreter() -> SEXP {
 }
 
 unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
-    super::runtime::global_context()
+    unsafe {
+        let mut context = super::runtime::global_context();
+        while !context.is_null() && !(*context).nextcontext.is_null() {
+            context = (*context).nextcontext;
+        }
+        // The Rust evaluator can start with a function as its oldest frame,
+        // without a separate GNU CTXT_TOPLEVEL anchor. That function remains
+        // profileable; only an actual top-level marker is an exclusion bound.
+        if !context.is_null() && (*context).callflag == ctxt_flags::CTXT_TOPLEVEL {
+            context
+        } else {
+            ptr::null_mut()
+        }
+    }
 }
 
 unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
@@ -125,6 +163,96 @@ where
     // caller's closure is strictly local state arithmetic (counters, flags,
     // file descriptors) — no allocation, protect, or eval can reenter here.
     f(unsafe { &mut (*instance).eval_state.profiling })
+}
+
+/// Retain the physical original owner across profiling callbacks and detect
+/// stop/restart without consulting a replacement runtime.
+struct ProfileEpoch {
+    pin: crate::sexp::owner::OwnerPin,
+    generation: u64,
+}
+impl ProfileEpoch {
+    fn capture(owner: crate::sexp::owner::OwnerToken<'_>) -> crate::sexp::object::SexpResult<Self> {
+        owner.require_active()?;
+        let pin = owner
+            .pin()?
+            .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
+        let generation = with_profiling_state_in(owner.as_ptr(), |state| state.profile_generation);
+        Ok(Self { pin, generation })
+    }
+    fn unchanged(&self) -> bool {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(self.pin.as_ptr()) };
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        with_profiling_state_in(owner.as_ptr(), |state| {
+            state.profile_generation == self.generation
+        })
+    }
+}
+struct SamplingGuard(ProfileEpoch);
+impl Drop for SamplingGuard {
+    fn drop(&mut self) {
+        // Physical cleanup must still work when a provider revoked the owner.
+        with_profiling_state_in(self.0.pin.as_ptr(), |state| {
+            if state.profile_generation == self.0.generation {
+                state.sampling_in_progress = false;
+            }
+        });
+    }
+}
+
+/// Caller roots the active execution graph and ends every arena/payload loan
+/// before servicing a sample, which may invoke line/source providers.
+#[inline]
+pub(crate) unsafe fn sample_at_safe_point(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+) -> crate::sexp::object::SexpResult<()> {
+    // Each audited caller has just checked its original execution owner. The
+    // disabled path must stay a plain flag read, without clocks or Rc traffic.
+    if with_profiling_state_in(owner.as_ptr(), |state| {
+        state.profiling == 0 || state.profile_schedule.is_none()
+    }) {
+        return Ok(());
+    }
+    crate::sexp::instance::check_cancellation();
+    write_profile_sample(owner, false)
+}
+fn write_profile_sample(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    forced: bool,
+) -> crate::sexp::object::SexpResult<()> {
+    owner.require_active()?;
+    if with_profiling_state_in(owner.as_ptr(), |state| {
+        state.profiling == 0 || state.sampling_in_progress
+    }) {
+        return Ok(());
+    }
+    let epoch = ProfileEpoch::capture(owner)?;
+    let ready = with_profiling_state_in(owner.as_ptr(), |state| {
+        if state.profiling == 0 || state.sampling_in_progress {
+            return false;
+        }
+        if !forced
+            && !state
+                .profile_schedule
+                .as_mut()
+                .is_some_and(ProfileSchedule::due)
+        {
+            return false;
+        }
+        state.sampling_in_progress = true;
+        true
+    });
+    if ready {
+        let _guard = SamplingGuard(epoch);
+        let _visibility = super::runtime::VisibilityGuard::new();
+        unsafe {
+            doprof(0);
+        }
+        owner.require_active()?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -419,19 +547,60 @@ unsafe fn pb_dbl(pb: *mut profbuf, num: c_double) {
 /// If this one is new, try to add it.
 ///
 /// Ported from R's `getFilenum()` in eval.c.
-unsafe fn getFilenum(filename: *const c_char) -> c_int {
+fn ensure_source_slots(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+) -> crate::sexp::object::SexpResult<bool> {
+    let (length, capacity, maximum, charged) = with_profiling_state(|state| {
+        (
+            state.srcfiles.len(),
+            state.srcfiles.capacity(),
+            state.srcfile_bufcount,
+            state.srcfiles_reservation.is_some(),
+        )
+    });
+    if capacity > length && charged {
+        return Ok(true);
+    }
+    if length >= maximum || (capacity != 0 && !charged) {
+        return Ok(false);
+    }
+    let Some(mut replacement) = ProfileBuffer::with_capacity(owner, maximum)? else {
+        return Ok(false);
+    };
+    if !with_profiling_state(|state| replacement.copy_from_slice(&state.srcfiles)) {
+        return Ok(false);
+    }
+    let (values, reservation) = replacement.into_parts();
+    // The old reservation remains charged while both actual allocations live.
+    let (old_values, old_reservation) = with_profiling_state(|state| {
+        (
+            std::mem::replace(&mut state.srcfiles, values),
+            state.srcfiles_reservation.replace(reservation),
+        )
+    });
+    drop(old_values);
+    drop(old_reservation);
+    Ok(true)
+}
+
+/// The typed filename and buffer owners survive providers. Reborrow character
+/// bytes only after callbacks, so no filename or source-offset copy is needed.
+unsafe fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
     unsafe {
-        if filename.is_null() {
+        if filename.typeof_() != SEXPTYPE::CHARSXP {
             return 0;
         }
-        // Copy before callbacks or buffer access can invalidate a borrowed name.
-        let filename = std::ffi::CStr::from_ptr(filename).to_bytes().to_vec();
-        let instance = with_required_current_instance(|instance| instance);
-        let pin = crate::sexp::context::pin_context_owner_in(instance);
-        let (buffer, offsets, used, capacity, line_prof) = with_profiling_state(|state| {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .node_factory()
+            .link(filename)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let epoch = ProfileEpoch::capture(owner)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let (buffer, used, capacity, line_prof) = with_profiling_state(|state| {
             (
                 state.srcfiles_buffer.owned(),
-                state.srcfiles.clone(),
                 state.srcfile_bytes_used,
                 state.srcfile_bufcount,
                 state.line_profiling,
@@ -444,38 +613,53 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
             return 0;
         }
         let total = XLENGTH(buffer.as_raw()) as usize;
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return 0;
+        }
         let bytes = RAW(buffer.as_raw());
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return 0;
+        }
         if !with_profiling_state(|state| state.srcfiles_buffer.as_raw() == buffer.as_raw()) {
             return 0;
         }
-        for (index, offset) in offsets.iter().copied().enumerate() {
-            let Some(remaining) = total.checked_sub(offset) else {
-                with_profiling_state(|state| state.profiling_error = 2);
-                return 0;
-            };
-            if remaining == 0 || bytes.is_null() {
+        // This scope performs only bounded byte reads. It ends every payload
+        // reference before source-table admission borrows the original arena.
+        let (existing, length) = {
+            let name = std::ffi::CStr::from_ptr(CHAR(filename.as_raw())).to_bytes();
+            let existing = with_profiling_state(|state| {
+                for (index, offset) in state.srcfiles.iter().copied().enumerate() {
+                    let Some(remaining) = total.checked_sub(offset) else {
+                        return Err(());
+                    };
+                    if remaining == 0 || bytes.is_null() {
+                        return Err(());
+                    }
+                    let stored = std::slice::from_raw_parts(bytes.add(offset), remaining);
+                    let Some(end) = stored.iter().position(|byte| *byte == 0) else {
+                        return Err(());
+                    };
+                    if stored[..end] == *name {
+                        return Ok(Some((index + 1) as c_int));
+                    }
+                }
+                Ok(None)
+            });
+            (existing, name.len())
+        };
+        match existing {
+            Ok(Some(number)) => return number,
+            Err(()) => {
                 with_profiling_state(|state| state.profiling_error = 2);
                 return 0;
             }
-            let stored = std::slice::from_raw_parts(bytes.add(offset), remaining);
-            let Some(end) = stored.iter().position(|byte| *byte == 0) else {
-                with_profiling_state(|state| state.profiling_error = 2);
-                return 0;
-            };
-            if stored[..end] == filename {
-                return (index + 1) as c_int;
-            }
+            Ok(None) => {}
         }
-        if offsets.len() >= capacity {
+        if with_profiling_state(|state| state.srcfiles.len()) >= capacity {
             with_profiling_state(|state| state.profiling_error = 1);
             return 0;
         }
-        let Some(next) = used
-            .checked_add(filename.len())
-            .and_then(|len| len.checked_add(1))
-        else {
+        let Some(next) = used.checked_add(length).and_then(|len| len.checked_add(1)) else {
             with_profiling_state(|state| state.profiling_error = 2);
             return 0;
         };
@@ -483,14 +667,34 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
             with_profiling_state(|state| state.profiling_error = 2);
             return 0;
         }
-        ptr::copy_nonoverlapping(filename.as_ptr(), bytes.add(used), filename.len());
+        if !ensure_source_slots(owner)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        {
+            with_profiling_state(|state| state.profiling_error = 2);
+            return 0;
+        }
+        if !epoch.unchanged() {
+            return 0;
+        }
+        // Admission above runs no R callback or collection. Both dense payloads
+        // remain rooted, and no payload reference spans that arena operation.
+        let name = std::ffi::CStr::from_ptr(CHAR(filename.as_raw())).to_bytes();
+        if name.len() != length {
+            with_profiling_state(|state| state.profiling_error = 2);
+            return 0;
+        }
+        ptr::copy_nonoverlapping(name.as_ptr(), bytes.add(used), length);
         *bytes.add(next - 1) = 0;
         with_profiling_state(|state| {
-            state.srcfiles.push(used);
+            if state.srcfiles.len() == state.srcfiles.capacity() {
+                state.profiling_error = 2;
+                return 0;
+            }
+            state.srcfiles.push(used); // Fixed admitted capacity; cannot allocate.
             state.srcfile_bytes_used = next;
-            state.line_profiling = state.srcfiles.len() as c_int + 1;
-        });
-        (offsets.len() + 1) as c_int
+            state.line_profiling = (state.srcfiles.len() as c_int).saturating_add(1);
+            state.srcfiles.len() as c_int
+        })
     }
 }
 
@@ -508,35 +712,59 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         }
         let instance = with_required_current_instance(|instance| instance);
         let pin = crate::sexp::context::pin_context_owner_in(instance);
+        let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+        let epoch = ProfileEpoch::capture(owner)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let srcref = crate::sexp::context::own_control_value(srcref);
         let line = crate::mainutils::coerce::asInteger(srcref.as_raw());
         crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return;
+        }
         if line == NA_INTEGER {
             return;
         }
         let srcfile_sym = Rf_install(c"srcfile".as_ptr());
         crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return;
+        }
         let srcfile = getAttrib(srcref.as_raw(), srcfile_sym);
+        if !epoch.unchanged() {
+            return;
+        }
         if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return;
         }
         let srcfile = crate::sexp::context::own_control_value(srcfile);
         let filename_sym = Rf_install(c"filename".as_ptr());
         crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return;
+        }
         let filename = R_findVar(filename_sym, srcfile.as_raw());
         crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return;
+        }
         let filename = crate::sexp::context::own_control_value(filename);
         if filename.typeof_() != SEXPTYPE::STRSXP {
             return;
         }
         let length = filename.len();
         crate::sexp::context::require_context_owner_live(pin.as_ref());
+        if !epoch.unchanged() {
+            return;
+        }
         if length == 0 {
             return;
         }
         let chars = crate::sexp::context::own_control_value(STRING_ELT(filename.as_raw(), 0));
         crate::sexp::context::require_context_owner_live(pin.as_ref());
-        let number = getFilenum(CHAR(chars.as_raw()));
+        if !epoch.unchanged() {
+            return;
+        }
+        let number = getFilenum(&chars);
         if number != 0 {
             pb_int(pb, number as i64);
             pb_str(pb, c"#".as_ptr());
@@ -584,7 +812,14 @@ unsafe fn findProfContext(cptr: *mut RCNTXT, eval_internal: SEXP) -> *mut RCNTXT
         }
 
         if !result.is_null() {
-            return result;
+            // Native synthetic contexts can use their caller's environment.
+            // Parent lookup may then identify this same frame; every profiler
+            // step must still advance along the owning context chain.
+            return if result == cptr {
+                (*cptr).nextcontext
+            } else {
+                result
+            };
         }
 
         // Base case: this interrupts the iteration over context frames
@@ -701,18 +936,20 @@ unsafe fn R_getCurrentSrcref() -> SEXP {
 // doprof -- signal handler for profiling (full implementation)
 // ---------------------------------------------------------------------------
 
-/// Profiling signal handler.
+/// Render a call-stack sample on its owning execution thread.
 ///
-/// Called asynchronously (via SIGPROF on Unix) to sample the call stack.
-/// This function walks the context stack and writes function names to
-/// the profiling output file.
-///
-/// Careful: This is called in a signal handler context, so only
-/// async-signal-safe operations may be used.
+/// The caller retains roots and ends arena/payload loans before entering.
+/// Sampling may invoke source providers, so it is never a worker-thread or
+/// signal-handler entry point. Physical pins and generations reject revoked
+/// owners and discard samples retained through stop/restart callbacks.
 ///
 /// Ported from R's `doprof()` in eval.c.
 unsafe fn doprof(_sig: c_int) {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let epoch = ProfileEpoch::capture(owner)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let mut buf = [0u8; PROFBUFSIZ];
         let prevnum = with_profiling_state(|state| state.line_profiling);
 
@@ -738,26 +975,46 @@ unsafe fn doprof(_sig: c_int) {
         let eval_internal = if with_profiling_state(|state| state.filter_callframes) != 0 {
             let symbol = Rf_install(c"eval".as_ptr());
             crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+            if !epoch.unchanged() {
+                return;
+            }
             crate::sexp::accessors::INTERNAL(symbol)
         } else {
             ptr::null_mut()
         };
         let current_srcref = with_profiling_state(|state| state.sref.owned());
-        let mut frames = Vec::new();
+        let mut frame_count = 0usize;
         let mut cptr = super::runtime::global_context();
         while !cptr.is_null() {
+            let Some(next) = frame_count.checked_add(1) else {
+                with_profiling_state(|state| state.profiling_error = 3);
+                return;
+            };
+            frame_count = next;
             cptr = findProfContext(cptr, eval_internal);
-            if cptr.is_null() {
-                break;
-            }
+        }
+        // Even an empty context stack uses one bounded snapshot slot before
+        // line/source providers run. Failed admission skips this sample.
+        let Some(mut frames) = ProfileBuffer::with_capacity(owner, frame_count.max(1))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        else {
+            with_profiling_state(|state| state.profiling_error = 3);
+            return;
+        };
+        let mut cptr = super::runtime::global_context();
+        while !cptr.is_null() {
             let cell = crate::sexp::context::retain_context_in(instance, cptr)
                 .unwrap_or_else(|| crate::sexp::context::r_error("unavailable profiling context"));
-            frames.push((
+            if !frames.push((
                 cell,
                 (*cptr).callflag,
                 (*cptr).call.owned(),
                 (*cptr).srcref.owned(),
-            ));
+            )) {
+                with_profiling_state(|state| state.profiling_error = 3);
+                return;
+            }
+            cptr = findProfContext(cptr, eval_internal);
         }
         if with_profiling_state(|state| state.line_profiling) != 0 {
             let srcref = current_srcref
@@ -772,6 +1029,10 @@ unsafe fn doprof(_sig: c_int) {
                 },
             );
         }
+        if !epoch.unchanged() {
+            return;
+        }
+        let (frames, frame_reservation) = frames.into_parts();
         for (cell, callflag, call_owner, srcref_owner) in frames {
             let cptr = cell.get();
             let call = call_owner
@@ -816,6 +1077,9 @@ unsafe fn doprof(_sig: c_int) {
                             || TYPEOF(arg2) == SEXPTYPE::REALSXP)
                         && LENGTH(arg2) > 0
                     {
+                        if !epoch.unchanged() {
+                            return;
+                        }
                         // Function accessed via [[
                         pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
                         pb_str(&mut pb, b"[[\0".as_ptr() as *const c_char);
@@ -824,12 +1088,28 @@ unsafe fn doprof(_sig: c_int) {
                             pb_str(&mut pb, CHAR(PRINTNAME(arg2)));
                         } else if TYPEOF(arg2) == SEXPTYPE::STRSXP {
                             pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
-                            pb_str(&mut pb, CHAR(STRING_ELT(arg2, 0)));
+                            let value = STRING_ELT(arg2, 0);
+                            if !epoch.unchanged() {
+                                return;
+                            }
+                            let value = owner
+                                .node_factory()
+                                .wrap(value)
+                                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                            pb_str(&mut pb, CHAR(value.as_raw()));
                             pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
                         } else if TYPEOF(arg2) == SEXPTYPE::INTSXP {
-                            pb_int(&mut pb, *INTEGER(arg2) as i64);
+                            let value = INTEGER(arg2);
+                            if !epoch.unchanged() {
+                                return;
+                            }
+                            pb_int(&mut pb, *value as i64);
                         } else if TYPEOF(arg2) == SEXPTYPE::REALSXP {
-                            pb_dbl(&mut pb, *REAL(arg2)); // %0.f
+                            let value = REAL(arg2);
+                            if !epoch.unchanged() {
+                                return;
+                            }
+                            pb_dbl(&mut pb, *value); // %0.f
                         }
 
                         pb_str(&mut pb, b"]]\0".as_ptr() as *const c_char);
@@ -856,7 +1136,13 @@ unsafe fn doprof(_sig: c_int) {
                 }
             }
             crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
+            if !epoch.unchanged() {
+                return;
+            }
         }
+
+        // IntoIter has released the actual frame backing and its roots.
+        drop(frame_reservation);
 
         // Null-terminate the buffer
         if pb.left > 0 {
@@ -867,22 +1153,31 @@ unsafe fn doprof(_sig: c_int) {
             with_profiling_state(|state| state.profiling_error = 3);
         }
 
+        if !epoch.unchanged() {
+            return;
+        }
         // Write any new source file references
         let line_prof_val = with_profiling_state(|state| state.line_profiling);
-        let (source_offsets, source_buffer) =
-            with_profiling_state(|state| (state.srcfiles.clone(), state.srcfiles_buffer.owned()));
+        let source_buffer = with_profiling_state(|state| state.srcfiles_buffer.owned());
         let mut i = prevnum;
         while i < line_prof_val {
             pf_str(b"#File \0".as_ptr() as *const c_char);
             pf_int(i);
             pf_str(b": \0".as_ptr() as *const c_char);
-            if let (Some(buffer), Some(offset)) =
-                (&source_buffer, source_offsets.get((i - 1) as usize))
-            {
-                if *offset < XLENGTH(buffer.as_raw()) as usize {
+            let offset =
+                with_profiling_state(|state| state.srcfiles.get((i - 1) as usize).copied());
+            if let (Some(buffer), Some(offset)) = (&source_buffer, offset) {
+                let length = XLENGTH(buffer.as_raw()) as usize;
+                if !epoch.unchanged() {
+                    return;
+                }
+                if offset < length {
                     let bytes = RAW(buffer.as_raw());
                     crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
-                    pf_str(bytes.add(*offset).cast());
+                    if !epoch.unchanged() {
+                        return;
+                    }
+                    pf_str(bytes.add(offset).cast());
                 }
             }
             pf_str(b"\n\0".as_ptr() as *const c_char);
@@ -915,56 +1210,23 @@ unsafe fn doprof_null(_sig: c_int) {
 }
 
 // ---------------------------------------------------------------------------
-// ProfileThread -- profiling timer thread (Unix/pthreads)
-// ---------------------------------------------------------------------------
-
-/// Profiling timer thread function (Unix/pthreads variant).
-///
-/// This thread runs on a timer, sending SIGPROF to the main thread
-/// at regular intervals when using elapsed-time profiling.
-///
-/// Ported from R's `ProfileThread()` in eval.c.
-///
-/// Note: In this Rust port, threading is handled via std::thread.
-/// This is a simplified version that uses sleep instead of pthread_cond_timedwait.
-#[cfg(not(target_arch = "wasm32"))]
-fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receiver<()>) {
-    use std::sync::mpsc::RecvTimeoutError;
-    use std::time::Duration;
-
-    loop {
-        match terminate_rx.recv_timeout(Duration::from_micros(interval_us)) {
-            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => {
-                // Send profiling signal to main thread. In the C version, this
-                // calls pthread_kill(R_profiled_thread, SIGPROF); here we call
-                // doprof directly for the current simplified port.
-                unsafe {
-                    doprof(libc::SIGPROF);
-                }
-            }
-        }
-    }
-}
-
-/// WASM M1 no-op stub: no SIGPROF timer thread on wasm.
-#[cfg(target_arch = "wasm32")]
-#[allow(dead_code)]
-fn profile_thread_entry(_interval_us: u64, _terminate_rx: std::sync::mpsc::Receiver<()>) {}
-
-// ---------------------------------------------------------------------------
 // R_EndProfiling -- stop profiling (full implementation)
 // ---------------------------------------------------------------------------
 
 /// Stop profiling and close the output file.
 ///
 /// This follows R's `R_EndProfiling()` state transition, but deliberately does
-/// not manipulate process-global profiling timers. Samples are emitted through
-/// `R_WriteProfile`, keeping profiler state session-owned for Android and
-/// parallel runtimes.
+/// not manipulate process-global profiling timers. Rooted interpreter boundaries
+/// and explicit `R_WriteProfile` calls service the owning runtime, including on
+/// single-threaded Android hosts.
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn R_EndProfiling() {
     unsafe {
+        with_profiling_state(|state| {
+            state.profile_generation = state.profile_generation.wrapping_add(1);
+            state.profile_schedule = None;
+            state.sampling_in_progress = false;
+        });
         // Close the output file
         let outfile = with_profiling_state(|state| state.profile_outfile);
         if outfile >= 0 {
@@ -982,7 +1244,8 @@ unsafe fn R_EndProfiling() {
 
         // Clear derived offsets before releasing the canonical buffer owner.
         with_profiling_state(|state| {
-            state.srcfiles.clear();
+            state.srcfiles = Vec::new();
+            state.srcfiles_reservation = None;
             state.srcfile_bytes_used = 0;
             state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
         });
@@ -1008,6 +1271,11 @@ unsafe fn R_EndProfiling() {
 #[cfg(target_arch = "wasm32")]
 unsafe fn R_EndProfiling() {
     unsafe {
+        with_profiling_state(|state| {
+            state.profile_generation = state.profile_generation.wrapping_add(1);
+            state.profile_schedule = None;
+            state.sampling_in_progress = false;
+        });
         // Reset state
         with_profiling_state(|state| {
             state.profiling = 0;
@@ -1018,7 +1286,8 @@ unsafe fn R_EndProfiling() {
 
         // Clear derived offsets before releasing the canonical buffer owner.
         with_profiling_state(|state| {
-            state.srcfiles.clear();
+            state.srcfiles = Vec::new();
+            state.srcfiles_reservation = None;
             state.srcfile_bytes_used = 0;
             state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
         });
@@ -1035,8 +1304,9 @@ unsafe fn R_EndProfiling() {
 ///
 /// R's C runtime uses process-global signals/timers for automatic sampling.
 /// This Rust/Android port avoids those globals so multiple `RSession`s can run
-/// in parallel without stealing each other's profiling timer. The active
-/// session can emit samples with `R_WriteProfile`.
+/// in parallel without stealing each other's profiling timer. CPU/elapsed
+/// deadlines are serviced on the owner thread; `R_WriteProfile` also supports
+/// an explicit sample without creating a worker or installing a signal.
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn R_InitProfiling(
     filename: SEXP,
@@ -1082,7 +1352,16 @@ unsafe fn R_InitProfiling(
         if fd < 0 {
             return;
         }
-        with_profiling_state(|state| state.profile_outfile = fd);
+        with_profiling_state(|state| {
+            state.profile_outfile = fd;
+            state.profile_generation = state.profile_generation.wrapping_add(1);
+            state.profile_schedule = None;
+            state.sampling_in_progress = false;
+        });
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let epoch = ProfileEpoch::capture(owner)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
 
         let interval: c_int = (1e6 * dinterval + 0.5) as c_int;
 
@@ -1127,17 +1406,27 @@ unsafe fn R_InitProfiling(
                 Rf_allocVector(SEXPTYPE::RAWSXP, bufsize),
             );
             crate::sexp::context::require_context_owner_live(pin.as_ref());
+            if !epoch.unchanged() {
+                return;
+            }
             with_profiling_state(|state| {
-                state.srcfiles.clear();
+                state.srcfiles = Vec::new();
+                state.srcfiles_reservation = None;
                 state.srcfile_bytes_used = 0;
                 state.srcfile_bufcount = count;
                 state.srcfiles_buffer = buffer;
             });
         }
 
-        with_profiling_state(|state| state.profiling_event = profiling_event_code(event));
-
-        with_profiling_state(|state| state.profiling = 1);
+        if !epoch.unchanged() {
+            return;
+        }
+        let schedule = ProfileSchedule::new(interval, event);
+        with_profiling_state(|state| {
+            state.profiling_event = profiling_event_code(event);
+            state.profile_schedule = schedule;
+            state.profiling = 1;
+        });
     }
 }
 
@@ -1173,6 +1462,20 @@ unsafe fn R_InitProfiling(
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let _arguments = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let require_owner = || {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
         // BC profiling check
         if with_profiling_state(|state| state.bc_profiling) != 0 {
             // Cannot use R profiling while byte code profiling
@@ -1186,44 +1489,71 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
         }
 
         // Get filename string
-        if TYPEOF(filename_arg) != SEXPTYPE::STRSXP || LENGTH(filename_arg) != 1 {
+        if TYPEOF(filename_arg) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let filename_count = LENGTH(filename_arg);
+        require_owner();
+        if filename_count != 1 {
             return R_NilValue();
         }
 
         let filename_sexp = STRING_ELT(filename_arg, 0);
+        require_owner();
+        let _filename = factory
+            .wrap(filename_sexp)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         args = CDR(args);
 
         let append_mode = crate::mainutils::coerce::asLogical(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let dinterval = crate::mainutils::coerce::asReal(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let mem_profiling = crate::mainutils::coerce::asLogical(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let gc_profiling = crate::mainutils::coerce::asLogical(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let line_profiling = crate::mainutils::coerce::asLogical(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let filter_callframes = crate::mainutils::coerce::asLogical(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let numfiles = crate::mainutils::coerce::asInteger(CAR(args));
+        require_owner();
         args = CDR(args);
 
         let bufsize = crate::mainutils::coerce::asInteger(CAR(args));
+        require_owner();
         args = CDR(args);
 
         // Get event type argument
         let event_arg_sexp = CAR(args);
-        let event = if !event_arg_sexp.is_null()
-            && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP
-            && LENGTH(event_arg_sexp) == 1
+        let event_count = if !event_arg_sexp.is_null() && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP
         {
-            let event_str = CHAR(STRING_ELT(event_arg_sexp, 0));
+            let count = LENGTH(event_arg_sexp);
+            require_owner();
+            count
+        } else {
+            0
+        };
+        let event = if event_count == 1 {
+            let event_value = STRING_ELT(event_arg_sexp, 0);
+            require_owner();
+            let event_value = factory
+                .wrap(event_value)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let event_str = CHAR(event_value.as_raw());
             if !event_str.is_null() {
                 let bytes = CStr::from_ptr(event_str);
                 match bytes.to_bytes() {
@@ -1257,6 +1587,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
             R_EndProfiling();
         }
 
+        require_owner();
         R_NilValue()
     }
 }
@@ -1264,17 +1595,43 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 /// Starting profiling raises the catchable R platform-unavailable error
 /// (matching upstream's `error(_("R profiling is not available on this system"))`
 /// fallback). Stopping with an empty filename stays a silent no-op.
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 pub unsafe fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT, TYPEOF};
     unsafe {
-        let filename_arg = CAR(args);
-        let empty = filename_arg.is_null()
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let arguments = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let require_owner = || {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
+        let filename_arg = CAR(arguments.as_raw());
+        if filename_arg.is_null()
             || filename_arg == R_NilValue()
             || TYPEOF(filename_arg) != SEXPTYPE::STRSXP
-            || LENGTH(filename_arg) != 1
-            || LENGTH(STRING_ELT(filename_arg, 0)) == 0;
-        if empty {
+        {
+            return R_NilValue();
+        }
+        let count = LENGTH(filename_arg);
+        require_owner();
+        if count != 1 {
+            return R_NilValue();
+        }
+        let filename = STRING_ELT(filename_arg, 0);
+        require_owner();
+        let filename = factory
+            .wrap(filename)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let length = LENGTH(filename.as_raw());
+        require_owner();
+        if length == 0 {
             return R_NilValue();
         }
         crate::sexp::context::r_error("R profiling is not available on this platform")
@@ -1289,6 +1646,20 @@ pub unsafe fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let _arguments = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let require_owner = || {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
         let filename_arg = if args.is_null() || args == R_NilValue() {
             Rf_mkString(c"Rprofmem.out".as_ptr())
         } else {
@@ -1297,10 +1668,16 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
             arg
         };
 
-        if filename_arg.is_null()
-            || TYPEOF(filename_arg) != SEXPTYPE::STRSXP
-            || LENGTH(filename_arg) != 1
-        {
+        require_owner();
+        let _filename_arg = factory
+            .wrap(filename_arg)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        if filename_arg.is_null() || TYPEOF(filename_arg) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let count = LENGTH(filename_arg);
+        require_owner();
+        if count != 1 {
             return R_NilValue();
         }
 
@@ -1309,7 +1686,12 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
         } else {
             crate::mainutils::coerce::asLogical(CAR(args))
         };
+        require_owner();
         let filename_sexp = STRING_ELT(filename_arg, 0);
+        require_owner();
+        let _filename = factory
+            .wrap(filename_sexp)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
 
         if LENGTH(filename_sexp) > 0 {
             R_InitProfiling(
@@ -1328,6 +1710,10 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
             R_EndProfiling();
         }
 
+        require_owner();
+        // Retain the existing explicit memory-sample boundary; Rprofmem is not
+        // a periodic CPU/elapsed Rprof session.
+        with_profiling_state(|state| state.profile_schedule = None);
         R_NilValue()
     }
 }
@@ -1545,11 +1931,10 @@ pub unsafe fn do_bcprofcounts(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
 ///
 /// Ported from R's `R_WriteProfile()` in eval.c.
 pub fn R_WriteProfile(_out: c_int) {
-    if R_Profiling_active() != 0 {
-        unsafe {
-            doprof(0);
-        }
-    }
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    write_profile_sample(owner, true)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
 }
 
 // ---------------------------------------------------------------------------
@@ -1616,25 +2001,32 @@ mod tests {
             drop(buffer);
             owner.full_gc().unwrap();
             assert!(node.is_live());
-            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
-            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
+            let abcde = owner.node_factory().character("abcde").unwrap();
+            assert_eq!(getFilenum(&abcde), 1);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                std::mem::size_of::<usize>()
+            );
+            assert_eq!(getFilenum(&abcde), 1);
             assert_eq!(with_profiling_state(|state| state.srcfiles.clone()), [0]);
             assert_eq!(with_profiling_state(|state| state.srcfile_bytes_used), 6);
-            assert_eq!(getFilenum(c"x".as_ptr()), 0);
+            assert_eq!(getFilenum(&owner.node_factory().character("x").unwrap()), 0);
             assert_eq!(with_profiling_state(|state| state.profiling_error), 1);
             with_profiling_state(|state| {
                 state.srcfile_bufcount = 2;
                 state.profiling_error = 0;
             });
-            assert_eq!(getFilenum(c"x".as_ptr()), 0);
+            assert_eq!(getFilenum(&owner.node_factory().character("x").unwrap()), 0);
             assert_eq!(with_profiling_state(|state| state.profiling_error), 2);
-            assert_eq!(getFilenum(c"abcde".as_ptr()), 1);
+            assert_eq!(getFilenum(&abcde), 1);
             R_EndProfiling();
             owner.full_gc().unwrap();
             assert!(!node.is_live());
             with_profiling_state(|state| {
                 assert!(state.srcfiles_buffer.is_null());
                 assert!(state.srcfiles.is_empty());
+                assert_eq!(state.srcfiles.capacity(), 0);
+                assert!(state.srcfiles_reservation.is_none());
                 assert_eq!(state.srcfile_bytes_used, 0);
             });
         });
@@ -1985,6 +2377,7 @@ mod tests {
             unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ with_arena(|arena| {
                 arena.alloc_vector(SEXPTYPE::INTSXP, 128);
             }) };
+            assert!(with_profiling_state(|state| state.profile_schedule.is_none()));
             R_WriteProfile(0);
 
             unsafe {
@@ -2022,3 +2415,6 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod owner_tests;

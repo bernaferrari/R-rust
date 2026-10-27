@@ -473,8 +473,17 @@ pub(crate) fn eval_bytecode_loop(
     let mut frames = PrivateLoopStack::default();
     let mut current_pc = *pc;
     let mut completed: Option<(Sexp<'static>, ControlFlow)> = None;
+    let mut sampling_ticks = 0u8;
     loop {
         execution.require_live()?;
+        if sampling_ticks == 0 {
+            // Instruction words are an owned copy and every execution value
+            // is rooted. No arena/payload loan survives the prior instruction.
+            execution
+                .native(|owner| unsafe { crate::eval::profiling::sample_at_safe_point(owner) })?
+                .map_err(|e| e.to_string())?;
+        }
+        sampling_ticks = (sampling_ticks + 1) & 63;
         if let Some((value, control)) = completed.take() {
             let Some(mut frame) = frames.pop()? else {
                 *pc = current_pc;
