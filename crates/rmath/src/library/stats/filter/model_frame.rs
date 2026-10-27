@@ -493,6 +493,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             j += 1;
         }
         crate::sexp::attrib_core::setAttrib(data, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        let mut nr: R_xlen_t = 0;
         for i in 0..XLENGTH(data) {
             let ans = VECTOR_ELT(data, i);
             let t = TYPEOF(ans);
@@ -531,13 +532,29 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                         });
                 crate::main::errors::Rf_error(msg.as_ptr());
             }
+            let rows = model_column_rows(ans);
+            if i == 0 {
+                nr = rows;
+            } else if rows != nr {
+                let raw = CHAR(STRING_ELT(names, i));
+                let name = if raw.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+                };
+                let msg = std::ffi::CString::new(format!(
+                    "variable lengths differ (found for '{name}')"
+                ))
+                .unwrap_or_else(|_| std::ffi::CString::new("variable lengths differ").unwrap());
+                crate::main::errors::Rf_error(msg.as_ptr());
+            }
         }
-        let mut nr: R_xlen_t = 0;
-        for i in 0..XLENGTH(data) {
-            nr = nr.max(model_column_rows(VECTOR_ELT(data, i)));
-        }
-        if nr == 0 && !row_names.is_null() && row_names != R_NilValue() {
-            nr = XLENGTH(row_names);
+        if XLENGTH(data) == 0 {
+            nr = if row_names.is_null() || row_names == R_NilValue() {
+                0
+            } else {
+                XLENGTH(row_names)
+            };
         }
         let class = Rf_mkString(c"data.frame".as_ptr());
         let _cl = protect(class);
