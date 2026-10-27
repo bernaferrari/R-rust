@@ -830,6 +830,15 @@ impl LayoutState {
         new_page
     }
 
+    /// GNewPlot on an unused device ignores a previously selected `mfg`
+    /// cell and initializes the first figure of the page.
+    pub(crate) fn begin_first_figure(&mut self, cexbase: f64, mex: f64, font_scale: f64) -> bool {
+        self.refresh_device_geometry();
+        self.current_figure = 1;
+        self.reset(cexbase, mex, font_scale);
+        true
+    }
+
     /// Y-down raster rectangles for the drawing layer.
     pub(crate) fn regions(&self) -> Regions {
         let height = self.height;

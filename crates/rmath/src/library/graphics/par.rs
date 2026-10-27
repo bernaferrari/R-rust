@@ -122,6 +122,9 @@ struct DeviceGParEntry {
 pub(crate) struct GraphicsParState {
     overrides: BTreeMap<String, ParValue>,
     pub(crate) layout: LayoutState,
+    /// GNU keeps `par(mfg=...)`'s implicit `new=TRUE` on an unused device
+    /// until GNewPlot resets the first figure to cell 1.
+    pending_mfg_before_first_plot: bool,
     base_register_index: Option<c_int>,
     device_gpars: HashMap<usize, DeviceGParEntry>,
 }
@@ -768,7 +771,9 @@ unsafe fn Specify(what: *const c_char, value: SEXP, _dd: pGEDevDesc) {
             par_error(format!("graphical parameter \"{name}\" is read-only"));
         }
         let value = sexp_to_par_value(value);
-        let regions_changed = with_par_state(|state| apply_parameter(state, &name, &value));
+        let frame_started = graphics_frame_started();
+        let regions_changed =
+            with_par_state(|state| apply_parameter(state, &name, &value, frame_started));
         if regions_changed {
             #[cfg(feature = "renderplot-device")]
             crate::mainutils::portable_plot::refresh_frame_regions();
@@ -835,7 +840,7 @@ fn layout_par_value(state: &GraphicsParState, name: &str) -> Option<ParValue> {
             // Mimics the GNewPlot decision logic, like GNU's par.c.
             let new = logical_override(state, "new");
             let starts_page = if new {
-                !super::graphics::plot_new_called()
+                !graphics_frame_started()
             } else {
                 state.layout.starts_new_page()
             };
@@ -882,7 +887,9 @@ pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
         crate::library::grdevices::device_registry::page_question(Some(ask));
         return;
     }
-    let regions_changed = with_par_state(|state| apply_parameter(state, name, &value));
+    let frame_started = graphics_frame_started();
+    let regions_changed =
+        with_par_state(|state| apply_parameter(state, name, &value, frame_started));
     if regions_changed {
         #[cfg(feature = "renderplot-device")]
         crate::mainutils::portable_plot::refresh_frame_regions();
@@ -893,7 +900,12 @@ pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
 /// layout state (validation + coupled recomputation); everything else
 /// lands in the plain override map. Returns true when the device
 /// regions moved.
-fn apply_parameter(state: &mut GraphicsParState, name: &str, value: &ParValue) -> bool {
+fn apply_parameter(
+    state: &mut GraphicsParState,
+    name: &str,
+    value: &ParValue,
+    frame_started: bool,
+) -> bool {
     let cexbase = real_override(state, "cex", 1.0);
     let mex = real_override(state, "mex", 1.0);
     match name {
@@ -973,7 +985,20 @@ fn apply_parameter(state: &mut GraphicsParState, name: &str, value: &ParValue) -
             state
                 .overrides
                 .insert("new".into(), ParValue::Logical(vec![TRUE]));
+            state.pending_mfg_before_first_plot = !frame_started;
             true
+        }
+        "new"
+            if !frame_started
+                && state.pending_mfg_before_first_plot
+                && logical_false_value(value) =>
+        {
+            // GNU keeps the implicit `new=TRUE` established by par(mfg=)
+            // on an unused device; the first GNewPlot still resets to cell 1.
+            state
+                .overrides
+                .insert("new".into(), ParValue::Logical(vec![TRUE]));
+            false
         }
         "ps" => {
             let ps = match value {
@@ -1017,12 +1042,35 @@ fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
 /// started (the scene must be cleared). With par(new=TRUE) on an
 /// established frame nothing moves, exactly like GNewPlot.
 pub(crate) fn begin_plot_figure(cexbase: f64, mex: f64, font_scale: f64) -> bool {
+    let frame_started = graphics_frame_started();
     with_par_state(|state| {
-        if logical_override(state, "new") && super::graphics::plot_new_called() {
+        if logical_override(state, "new") && frame_started {
             return false;
+        }
+        if !frame_started {
+            state.pending_mfg_before_first_plot = false;
+            return state.layout.begin_first_figure(cexbase, mex, font_scale);
         }
         state.layout.begin_figure(cexbase, mex, font_scale)
     })
+}
+
+fn graphics_frame_started() -> bool {
+    #[cfg(feature = "renderplot-device")]
+    if let Some(started) = crate::mainutils::portable_plot::renderplot_frame_started() {
+        return started;
+    }
+    super::graphics::plot_new_called()
+}
+
+fn logical_false_value(value: &ParValue) -> bool {
+    match value {
+        ParValue::Logical(values) | ParValue::Integer(values) => {
+            values.first().is_some_and(|value| *value == 0)
+        }
+        ParValue::Real(values) => values.first().is_some_and(|value| *value == 0.0),
+        _ => false,
+    }
 }
 
 /// Current device/inner/figure/plot regions in raster units.

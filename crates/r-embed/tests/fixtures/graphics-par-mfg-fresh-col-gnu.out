@@ -1,0 +1,5 @@
+col-mfg|2,2,2,3|TRUE|TRUE
+col-false|2,2,2,3|TRUE|TRUE
+col-first|1,1,2,3|TRUE|FALSE
+col-next|2,1,2,3|FALSE|FALSE
+col-implicit|1,2,2,3|FALSE|FALSE
