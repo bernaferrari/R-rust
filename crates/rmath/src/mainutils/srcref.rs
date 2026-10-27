@@ -26,13 +26,48 @@ fn line_col(src: &str, char_index: usize) -> (i32, i32) {
     let mut line = 1i32;
     let mut last_nl = -1i64;
     for (i, &b) in bytes.iter().enumerate().take(byte.min(bytes.len())) {
-        if b == b'\n' {
+        if b == b'\r' {
             line += 1;
+            last_nl = i as i64;
+        } else if b == b'\n' {
+            if i == 0 || bytes[i - 1] != b'\r' {
+                line += 1;
+            }
             last_nl = i as i64;
         }
     }
     let col = (byte as i64 - last_nl).max(1) as i32;
     (line, col)
+}
+
+/// Split source text on LF, CRLF, and bare CR without retaining terminators.
+pub(crate) fn source_lines(src: &str) -> Vec<&str> {
+    let bytes = src.as_bytes();
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\r' => {
+                lines.push(&src[start..i]);
+                i += 1;
+                if bytes.get(i) == Some(&b'\n') {
+                    i += 1;
+                }
+                start = i;
+            }
+            b'\n' => {
+                lines.push(&src[start..i]);
+                i += 1;
+                start = i;
+            }
+            _ => i += 1,
+        }
+    }
+    if start < bytes.len() {
+        lines.push(&src[start..]);
+    }
+    lines
 }
 
 /// GNU 8-integer lloc for a char span. Safe to call while the parse arena
@@ -67,10 +102,7 @@ unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
             env,
         );
         if copy {
-            let mut lines: Vec<&str> = src.split('\n').collect();
-            if lines.last() == Some(&"") {
-                lines.pop();
-            }
+            let lines = source_lines(src);
             let line_vec =
                 crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as i64);
             let _lg = crate::sexp::protect::protect(line_vec);

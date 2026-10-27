@@ -677,7 +677,7 @@ unsafe fn eval_source_text_with_options(
             // does not parse completely.
             base_error(format!("{}: parse error (unterminated input)", filename));
         };
-        let lines: Vec<&str> = content.lines().collect();
+        let lines = crate::mainutils::srcref::source_lines(content);
         let nlines = lines.len() as i32;
         let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
             crate::sexp::ffi::SEXPTYPE::EXPRSXP,
@@ -1008,7 +1008,7 @@ unsafe fn run_portable_example(source: &str, topic: &str, args: SEXP, rho: SEXP)
 }
 
 fn example_echo_offset(source: &str) -> c_int {
-    let lines = source.lines().collect::<Vec<_>>();
+    let lines = crate::mainutils::srcref::source_lines(source);
     let Some(marker) = lines.iter().position(|line| *line == "### ** Examples") else {
         return 0;
     };

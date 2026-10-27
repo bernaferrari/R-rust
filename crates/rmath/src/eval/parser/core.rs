@@ -297,12 +297,26 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let offset = offset.min(self.source.len());
         let mut line = 1usize;
         let mut col = 0usize;
-        for &ch in &self.source[..offset] {
-            if ch == '\n' {
-                line += 1;
-                col = 0;
-            } else {
-                col += 1;
+        let mut i = 0;
+        while i < offset {
+            match self.source[i] {
+                '\r' => {
+                    line += 1;
+                    col = 0;
+                    i += 1;
+                    if i < offset && self.source.get(i) == Some(&'\n') {
+                        i += 1;
+                    }
+                }
+                '\n' => {
+                    line += 1;
+                    col = 0;
+                    i += 1;
+                }
+                _ => {
+                    col += 1;
+                    i += 1;
+                }
             }
         }
         (line, col)

@@ -727,6 +727,18 @@ fn test_comment_preserves_newline_terminator() {
 }
 
 #[test]
+fn test_comment_stops_at_carriage_return_and_hash_in_string_stays_literal() {
+    let session = RSession::new_for_gc_tests();
+    let carriage_return_comment = parse_list(&session, "# ignored\rx <- 1\rx", false)
+        .expect("bare CR must end a line comment");
+    assert_eq!(carriage_return_comment.len(), 2);
+
+    let hash_in_string = parse_list(&session, "x <- \"# literal\"\rx", false)
+        .expect("hash in string is not a comment");
+    assert_eq!(hash_in_string.len(), 2);
+}
+
+#[test]
 fn test_newline_after_infix_continues_expression() {
     let session = RSession::new_for_gc_tests();
     unsafe {

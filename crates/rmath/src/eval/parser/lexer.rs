@@ -136,7 +136,7 @@ impl Lexer {
     pub(crate) fn skip_comment(&mut self) {
         if self.peek_char() == Some('#') {
             while let Some(ch) = self.peek_char() {
-                if ch == '\n' {
+                if ch == '\n' || ch == '\r' {
                     break;
                 }
                 self.advance();
@@ -155,6 +155,15 @@ impl Lexer {
 
         if ch == '\n' {
             self.advance();
+            return Token::Newline;
+        }
+        // A CR terminates a comment (unlike other CR whitespace consumed by
+        // skip_whitespace); preserve it as the statement boundary here.
+        if ch == '\r' {
+            self.advance();
+            if self.peek_char() == Some('\n') {
+                self.advance();
+            }
             return Token::Newline;
         }
 
