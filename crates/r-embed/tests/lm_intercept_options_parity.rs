@@ -26,6 +26,10 @@ fn model_frame_rejects_mismatched_columns_before_lm_fit() {
                 matrix_y <- matrix(1:6, nrow = 3L)
                 short_x <- 1:2
                 variable_first <- capture(model.frame(matrix_y ~ short_x))
+                frame_data <- data.frame(y = 1:3)
+                frame_weights <- capture(
+                    model.frame(y ~ 1, data = frame_data, weights = 1:2)
+                )
                 matrix_rows <- capture(
                     model.frame(y ~ 1, data = list(y = 1:3), weights = matrix(1:4, nrow = 2L))
                 )
@@ -37,6 +41,7 @@ fn model_frame_rejects_mismatched_columns_before_lm_fit() {
                 dput(list(
                     weights_first = weights_first,
                     variable_first = variable_first,
+                    frame_weights = frame_weights,
                     matrix_rows = matrix_rows,
                     weighted_gc = weighted
                 ))
