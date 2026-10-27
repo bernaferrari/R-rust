@@ -201,54 +201,18 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 // Read from text_data buffer
                 let data = conn.text_data.clone();
                 let pos = conn.text_pos;
-                let remaining = &data[pos..];
-                let ends_with_nl = remaining.ends_with('\n');
-                let mut pieces: Vec<&str> = remaining.split('\n').collect();
-                if ends_with_nl {
-                    pieces.pop();
-                }
-                for line_str in pieces {
-                    if lines.len() >= n {
-                        break;
-                    }
-                    lines.push(nul_normalized_line(line_str.as_bytes().to_vec(), skip_nul));
-                }
-                if backend_limit == 0 {
-                    // Pushback satisfied this read without touching the underlying data.
-                } else if lines.len() >= n {
-                    // Update position
-                    let mut new_pos = pos;
-                    for _ in 0..backend_limit {
-                        if let Some(idx) = data[new_pos..].find('\n') {
-                            new_pos += idx + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    conn.text_pos = new_pos;
-                } else {
-                    conn.text_pos = data.len();
-                }
+                let remaining = data.as_bytes().get(pos..).unwrap_or_default();
+                let (read, consumed) =
+                    read_nul_normalized_lines(remaining, backend_limit, skip_nul);
+                lines.extend(read);
+                conn.text_pos = pos + consumed;
             }
             ConnKind::RawConnection => {
                 let remaining = &conn.raw_data[conn.raw_pos..];
-                let mut line = Vec::new();
-                let mut consumed = 0usize;
-                for &byte in remaining {
-                    consumed += 1;
-                    if byte == b'\n' {
-                        lines.push(nul_normalized_line(std::mem::take(&mut line), skip_nul));
-                    } else {
-                        line.push(byte);
-                    }
-                    if lines.len() >= n {
-                        break;
-                    }
-                }
+                let (read, consumed) =
+                    read_nul_normalized_lines(remaining, backend_limit, skip_nul);
+                lines.extend(read);
                 conn.raw_pos += consumed;
-                if !line.is_empty() && lines.len() < n {
-                    lines.push(nul_normalized_line(line, skip_nul));
-                }
             }
             ConnKind::Terminal(name) if name == "stdin" => {
                 let stdin = io::stdin();

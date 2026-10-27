@@ -579,32 +579,61 @@ pub fn nul_normalized_line(mut line: Vec<u8>, skip_nul: bool) -> String {
     String::from_utf8_lossy(&line).to_string()
 }
 
+/// Return the byte range of the next logical line and the first byte after
+/// its terminator. R accepts LF, CRLF, and bare CR as line endings.
+pub fn line_terminator(bytes: &[u8]) -> Option<(usize, usize)> {
+    let end = bytes
+        .iter()
+        .position(|byte| matches!(*byte, b'\n' | b'\r'))?;
+    let after = if bytes[end] == b'\r' && bytes.get(end + 1) == Some(&b'\n') {
+        end + 2
+    } else {
+        end + 1
+    };
+    Some((end, after))
+}
+
 pub fn nul_normalized_lines(bytes: &[u8], limit: usize, skip_nul: bool) -> Vec<String> {
+    read_nul_normalized_lines(bytes, limit, skip_nul).0
+}
+
+/// Read up to `limit` logical lines and return the number of source bytes
+/// consumed. This keeps memory-backed connections' cursors aligned with the
+/// same LF/CRLF/CR rules used by file connections.
+pub fn read_nul_normalized_lines(
+    bytes: &[u8],
+    limit: usize,
+    skip_nul: bool,
+) -> (Vec<String>, usize) {
     let mut lines = Vec::new();
     let mut start = 0;
     while start < bytes.len() && lines.len() < limit {
-        let end = bytes[start..]
-            .iter()
-            .position(|byte| *byte == b'\n')
-            .map_or(bytes.len(), |offset| start + offset);
+        let (end, after) = line_terminator(&bytes[start..])
+            .map(|(end, after)| (start + end, start + after))
+            .unwrap_or((bytes.len(), bytes.len()));
         lines.push(nul_normalized_line(bytes[start..end].to_vec(), skip_nul));
+        start = after;
         if end == bytes.len() {
             break;
         }
-        start = end + 1;
     }
-    lines
+    (lines, start)
 }
 
 pub fn read_pushback_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
     let mut line = Vec::new();
     while let Some(byte) = pop_pushback_byte(conn) {
-        if byte == b'\n' {
+        if matches!(byte, b'\n' | b'\r') {
+            if byte == b'\r' {
+                if let Some(next) = pop_pushback_byte(conn) {
+                    if next != b'\n' {
+                        conn.pushback.push(vec![next]);
+                    }
+                }
+            }
             return Some(nul_normalized_line(line, skip_nul));
         }
-        if byte != b'\r' {
-            line.push(byte);
-        }
+        line.push(byte);
     }
 
     (!line.is_empty()).then(|| nul_normalized_line(line, skip_nul))
@@ -615,13 +644,10 @@ pub fn read_raw_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
         return None;
     }
     let start = conn.raw_pos;
-    while conn.raw_pos < conn.raw_data.len() && conn.raw_data[conn.raw_pos] != b'\n' {
-        conn.raw_pos += 1;
-    }
-    let end = conn.raw_pos;
-    if conn.raw_pos < conn.raw_data.len() && conn.raw_data[conn.raw_pos] == b'\n' {
-        conn.raw_pos += 1;
-    }
+    let (relative_end, relative_after) = line_terminator(&conn.raw_data[start..])
+        .unwrap_or((conn.raw_data.len() - start, conn.raw_data.len() - start));
+    let end = start + relative_end;
+    conn.raw_pos = start + relative_after;
     Some(nul_normalized_line(
         conn.raw_data[start..end].to_vec(),
         skip_nul,
