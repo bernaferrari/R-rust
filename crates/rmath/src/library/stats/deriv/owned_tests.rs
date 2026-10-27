@@ -403,24 +403,26 @@ fn owned_derivative_gc_malformed_inputs_rejected_and_recovery() {
                 .message
                 .contains("cyclic derivative argument list")
         );
-        let cyclic_unary = call(&owner, "+", std::slice::from_ref(&input));
-        let cell = cyclic_unary.try_cdr().unwrap().into_owned().unwrap();
-        let mut writable = crate::sexp::object::SexpMut::try_from_checked(cell).unwrap();
-        writable.try_set_pairlist_car(&cyclic_unary).unwrap();
-        drop(writable);
-        let variable = factory.strings(&["x"]).unwrap().into_owned().unwrap();
-        let cyclic_args = arguments(&owner, &cyclic_unary, &variable);
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            super::do_d(cyclic_args.as_raw())
-        }))
-        .unwrap_err();
-        assert!(
-            error
-                .downcast::<crate::sexp::context::RError>()
-                .unwrap()
-                .message
-                .contains("cyclic derivative expression")
-        );
+        for operator in ["+", "-", "("] {
+            let cyclic_unary = call(&owner, operator, std::slice::from_ref(&input));
+            let cell = cyclic_unary.try_cdr().unwrap().into_owned().unwrap();
+            let mut writable = crate::sexp::object::SexpMut::try_from_checked(cell).unwrap();
+            writable.try_set_pairlist_car(&cyclic_unary).unwrap();
+            drop(writable);
+            let variable = factory.strings(&["x"]).unwrap().into_owned().unwrap();
+            let cyclic_args = arguments(&owner, &cyclic_unary, &variable);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(cyclic_args.as_raw())
+            }))
+            .unwrap_err();
+            assert!(
+                error
+                    .downcast::<crate::sexp::context::RError>()
+                    .unwrap()
+                    .message
+                    .contains("cyclic derivative expression")
+            );
+        }
         let variable = factory.strings(&["x"]).unwrap().into_owned().unwrap();
         let args = arguments(&owner, &input, &variable);
         let result = unsafe { super::do_d(args.as_raw()) };
@@ -739,4 +741,58 @@ fn owned_parentheses_callback_gc_and_panic_cleanup() {
 #[test]
 fn owned_parentheses_callback_original_owner_revocation() {
     parentheses_callback_cleanup(2);
+}
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_mixed_unary_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_MIXED_UNARY_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let mut expression = symbol(&owner, "x");
+                for index in 0..4096 {
+                    let head = match index % 4 {
+                        0 => "+",
+                        1 | 2 => "-",
+                        _ => "(",
+                    };
+                    expression = call(&owner, head, &[expression]);
+                }
+                let variable = owner
+                    .node_factory()
+                    .unwrap()
+                    .strings(&["x"])
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let args = arguments(&owner, &expression, &variable);
+                let result = session.with_active(|| unsafe {
+                    session
+                        .sexp(super::do_d(args.as_raw()))
+                        .unwrap()
+                        .into_owned()
+                        .unwrap()
+                });
+                assert_eq!(result.try_real_elt(0).unwrap(), 1.0);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_mixed_unary_subprocess")
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

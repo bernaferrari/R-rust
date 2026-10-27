@@ -91,3 +91,26 @@ fn derivative_table_matches_pinned_gnu() {
         );
     }
 }
+
+#[test]
+fn mixed_unary_derivatives_match_pinned_gnu() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "tmp"))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        if portable {
+            session.enable_browser_files();
+        }
+        let output = session
+            .eval(include_str!("fixtures/deriv-mixed-unary.R"))
+            .unwrap();
+        assert_eq!(
+            output,
+            include_str!("fixtures/deriv-mixed-unary.out"),
+            "portable={portable}"
+        );
+    }
+}

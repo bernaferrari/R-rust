@@ -441,16 +441,28 @@ where
             start: self.active.borrow().len(),
         };
         let mut current = expression.clone();
+        let mut negations = 0usize;
         while current.typeof_() == SEXPTYPE::LANGSXP {
             let call = snapshot(self.access, &current)?;
             let function = name(&call.head)?;
-            if !matches!(function.as_str(), "(" | "+") || call.arguments.len() != 1 {
+            if !matches!(function.as_str(), "(" | "+" | "-") || call.arguments.len() != 1 {
                 break;
             }
             self.push_active(&current)?;
+            if function == "-" {
+                negations = negations
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("cannot inspect derivative expression"))?;
+            }
             current = call.arguments[0].clone();
         }
-        self.derive(&current, variable)
+        let mut result = self.derive(&current, variable)?;
+        // Apply every unary minus, rather than folding parity: GNU's
+        // simplifier may replace a zero or remove an existing unary call.
+        for _ in 0..negations {
+            result = self.simplify("-", result, None)?;
+        }
+        Ok(result)
     }
 
     pub(super) fn derive(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
@@ -482,6 +494,10 @@ where
                 };
                 match function.as_str() {
                     "(" | "+" if call.arguments.len() == 1 => self.derive_transparent(&a, variable),
+                    "-" if call.arguments.len() == 1 => {
+                        let derivative = self.derive_transparent(&a, variable)?;
+                        self.simplify("-", derivative, None)
+                    }
                     "+" | "-" => {
                         let first = self.derive(&a, variable)?;
                         let second = match b {
