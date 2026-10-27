@@ -48,7 +48,6 @@ fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
 unsafe fn prterr(icode: c_int, mes: &str) {
     unsafe {
         let msg = format!("FEXACT error {}.\n{}", icode, mes);
-        eprintln!("{}", msg);
         std::panic::panic_any(crate::sexp::context::RError { message: msg });
     }
 }
