@@ -263,6 +263,22 @@ fn ls_all_names_includes_reserved_names_in_user_environments() {
 }
 
 #[test]
+fn get_mode_continues_after_mismatch_and_get0_forces_only_the_selected_promise() {
+    let mut session = crate::sexp::session::RSession::new();
+    let (result, _, _) = session.eval_code_with_output_capture(
+        "parent <- new.env(); parent$x <- 9L; child <- new.env(parent=parent); child$x <- 'wrong'; mode_ok <- identical(get('x', envir=child, mode='numeric'), 9L); active_parent <- new.env(); active_parent$y <- 12L; active_child <- new.env(parent=active_parent); active_calls <- 0L; makeActiveBinding('y', function() { active_calls <<- active_calls + 1L; 'wrong' }, active_child); active_ok <- identical(get('y', envir=active_child, mode='numeric'), 12L) && identical(active_calls, 1L); delayed <- new.env(parent=emptyenv()); forces <- 0L; delayedAssign('selected', { forces <<- forces + 1L; 11L }, eval.env=globalenv(), assign.env=delayed); selected <- get0('selected', envir=delayed, mode='numeric', inherits=FALSE); force_ok <- identical(selected, 11L) && identical(forces, 1L); calls <- 0L; fallback <- function() { calls <<- calls + 1L }; fallback_ok <- identical(get0('missing', envir=delayed, ifnotfound=fallback), fallback) && identical(calls, 0L); list_env <- as.environment(list(fromList=17L)); list_env_ok <- identical(get('fromList', envir=list_env), 17L); list_pos_result <- try(get('fromList', pos=list(fromList=17L)), silent=TRUE); list_pos_ok <- identical(list_pos_result, 17L); quoted_symbol_ok <- identical(get(quote(x), envir=child), 'wrong'); null_env_value <- 42L; get_null_env_error <- inherits(try(get('null_env_value', envir=NULL), silent=TRUE), 'try-error'); get0_null_env_error <- inherits(try(get0('null_env_value', envir=NULL), silent=TRUE), 'try-error'); probe <- new.env(); probe_calls <- 0L; makeActiveBinding('z', function() { probe_calls <<- probe_calls + 1L; 1L }, probe); invalid_mode_order <- inherits(try(get('z', envir=probe, mode='not-a-mode'), silent=TRUE), 'try-error') && identical(probe_calls, 0L); invalid_inherits_order <- inherits(try(get('z', envir=probe, inherits=NA), silent=TRUE), 'try-error') && identical(probe_calls, 0L); get_mode_type_error <- inherits(try(get('x', envir=child, mode=1L), silent=TRUE), 'try-error'); get0_mode_type_error <- inherits(try(get0('x', envir=child, mode=1L), silent=TRUE), 'try-error'); get_inherits_na_error <- inherits(try(get('x', envir=child, inherits=NA), silent=TRUE), 'try-error'); get0_inherits_na_error <- inherits(try(get0('x', envir=child, inherits=NA), silent=TRUE), 'try-error'); paste(c(mode_ok, active_ok, force_ok, fallback_ok, list_env_ok, list_pos_ok, quoted_symbol_ok, get_null_env_error, get0_null_env_error, invalid_mode_order, invalid_inherits_order, get_mode_type_error, get0_mode_type_error, get_inherits_na_error, get0_inherits_na_error), collapse=';')",
+    );
+    let result = result.expect("get/get0 mode and promise lookup must preserve GNU behavior");
+    let output = result.string_value_elt(0).flatten().unwrap_or_default();
+    assert!(
+        output.starts_with(
+            "TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE;TRUE"
+        ),
+        "{output}"
+    );
+}
+
+#[test]
 fn test_do_log2_default_base_two() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {

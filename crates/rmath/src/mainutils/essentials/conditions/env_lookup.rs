@@ -166,17 +166,13 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
-        let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
-        let mode_arg = arg_by_name_or_position(args, &["mode"], 3);
-        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
-            "any".to_string()
-        } else if TYPEOF(mode_arg) == SEXPTYPE::STRSXP {
-            elt_to_string(mode_arg, 0)
-        } else {
-            "any".to_string()
-        };
+        let env = lookup_get_environment(args, rho, _call, _op, true);
+        let _env_root = crate::sexp::protect::protect(env);
+        let mode =
+            lookup_mode_argument(args, 3).unwrap_or_else(|| base_error("invalid 'mode' argument"));
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        let inherits = logical_arg_by_name_or_position(args, "inherits", 4).unwrap_or(true);
+        let inherits = lookup_inherits_argument(args, 4, true)
+            .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
         let selected = mget::lookup_one(sym, env, &mode, inherits)
             .unwrap_or_else(|error| base_error(error.to_string()));
         let Some(selected) = selected else {
@@ -200,22 +196,19 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `get0(x, envir, mode = "any", inherits = TRUE, ifnotfound = NULL)` —
-/// `get()` that returns `ifnotfound` instead of erroring when the binding
-/// is missing (upstream get0 delegates to mget with a one-element
-/// ifnotfound list and unwraps the result).
+/// R's `get0(x, envir, mode = "any", inherits = TRUE, ifnotfound = NULL)`.
+/// Returns the original fallback value unchanged when no matching binding is
+/// found; function fallbacks are data here and must not be invoked.
 pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
-        let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
-        let mode_arg = arg_by_name_or_position(args, &["mode"], 2);
-        let mode = if mode_arg == R_NilValue() {
-            "any".into()
-        } else {
-            elt_to_string(mode_arg, 0)
-        };
-        let inherits = logical_arg_by_name_or_position(args, "inherits", 3).unwrap_or(true);
+        let env = lookup_get_environment(args, rho, _call, _op, false);
+        let _env_root = crate::sexp::protect::protect(env);
+        let mode =
+            lookup_mode_argument(args, 2).unwrap_or_else(|| base_error("invalid 'mode' argument"));
+        let inherits = lookup_inherits_argument(args, 3, true)
+            .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
         let ifnotfound = arg_by_name_or_position(args, &["ifnotfound"], 4);
         let fallback = if ifnotfound.is_null() {
             R_NilValue()
@@ -228,6 +221,119 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             Some(value) => value.as_raw(),
             None => fallback,
+        }
+    }
+}
+
+unsafe fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
+    unsafe {
+        let mode = arg_by_name_or_position(args, &["mode"], position);
+        if mode.is_null() || mode == R_NilValue() {
+            return Some("any".to_string());
+        }
+        (TYPEOF(mode) == SEXPTYPE::STRSXP).then(|| elt_to_string(mode, 0))
+    }
+}
+
+unsafe fn lookup_get_environment(
+    args: SEXP,
+    default: SEXP,
+    call: SEXP,
+    op: SEXP,
+    allow_pos: bool,
+) -> SEXP {
+    unsafe {
+        if let Some(environment) = named_argument(args, "envir") {
+            return strict_get_environment(environment);
+        }
+
+        if allow_pos {
+            if let Some(position) =
+                named_argument(args, "pos").or_else(|| positional_argument(args, 1))
+            {
+                if TYPEOF(position) == SEXPTYPE::ENVSXP {
+                    return position;
+                }
+                return as_get_position_environment(call, op, position, default);
+            }
+            return default;
+        }
+
+        positional_argument(args, 1)
+            .map(|environment| strict_get_environment(environment))
+            .unwrap_or(default)
+    }
+}
+
+unsafe fn strict_get_environment(environment: SEXP) -> SEXP {
+    unsafe {
+        if environment.is_null() || environment == R_NilValue() {
+            base_error("use of NULL environment is defunct");
+        }
+        if TYPEOF(environment) != SEXPTYPE::ENVSXP {
+            base_error("invalid 'envir' argument");
+        }
+        environment
+    }
+}
+
+unsafe fn as_get_position_environment(call: SEXP, op: SEXP, position: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if position.is_null() || position == R_NilValue() {
+            base_error("use of NULL environment is defunct");
+        }
+        let conversion_args = Rf_cons(position, R_NilValue());
+        let _args_root = crate::sexp::protect::protect(conversion_args);
+        let environment =
+            crate::mainutils::essentials::do_as_environment(call, op, conversion_args, rho);
+        if environment.is_null() || TYPEOF(environment) != SEXPTYPE::ENVSXP {
+            base_error("invalid 'envir' argument");
+        }
+        environment
+    }
+}
+
+unsafe fn named_argument(args: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if tag_name(cell).as_deref() == Some(name) {
+                return Some(CAR(cell));
+            }
+            cell = CDR(cell);
+        }
+        None
+    }
+}
+
+unsafe fn positional_argument(args: SEXP, position: usize) -> Option<SEXP> {
+    unsafe {
+        let mut cell = args;
+        let mut index = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            if tag_name(cell).is_none() {
+                if index == position {
+                    return Some(CAR(cell));
+                }
+                index += 1;
+            }
+            cell = CDR(cell);
+        }
+        None
+    }
+}
+
+unsafe fn lookup_inherits_argument(args: SEXP, position: usize, default: bool) -> Option<bool> {
+    unsafe {
+        let inherits = arg_by_name_or_position(args, &["inherits"], position);
+        if inherits.is_null() || inherits == R_NilValue() {
+            return Some(default);
+        }
+        let value = crate::mainutils::coerce::asLogical(inherits);
+        if value == crate::sexp::ffi::NA_LOGICAL {
+            None
+        } else {
+            Some(value != FALSE)
         }
     }
 }
