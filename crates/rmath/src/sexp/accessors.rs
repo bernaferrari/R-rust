@@ -1404,7 +1404,30 @@ mod tests {
             result.is_err(),
             "out-of-range string write must be rejected"
         );
-        assert!(unsafe { STRING_ELT(node, 0) }.is_null());
+        let blank = unsafe { STRING_ELT(node, 0) };
+        assert_eq!(unsafe { TYPEOF(blank) }, SEXPTYPE::CHARSXP);
+        assert!(
+            unsafe { std::ffi::CStr::from_ptr(CHAR(blank)) }
+                .to_bytes()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn direct_arena_character_vectors_are_initialized_before_publication() {
+        let mut arena = super::super::memory::RArena::new();
+        let vector = arena.alloc_vector(SEXPTYPE::STRSXP, 2);
+        for index in 0..2 {
+            let blank = unsafe { STRING_ELT(vector, index) };
+            assert_eq!(unsafe { TYPEOF(blank) }, SEXPTYPE::CHARSXP);
+            assert!(
+                unsafe { std::ffi::CStr::from_ptr(CHAR(blank)) }
+                    .to_bytes()
+                    .is_empty()
+            );
+        }
+        let empty = arena.alloc_vector(SEXPTYPE::STRSXP, 0);
+        assert_eq!(unsafe { XLENGTH(empty) }, 0);
     }
 
     #[test]

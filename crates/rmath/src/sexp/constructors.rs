@@ -99,6 +99,21 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
                 require_allocation(list)
             };
         }
+        if sexptype == SEXPTYPE::STRSXP && length > 0 {
+            // Character vectors are initialized to R_BlankString. Acquire it
+            // before lending the arena so blank creation cannot reenter an
+            // active mutable arena borrow. The allocation retry roots this
+            // session-owned input through collection and the filling below is
+            // completed within the same arena operation.
+            let blank = crate::mainutils::bind::R_BlankString();
+            return allocate_with_gc_retry([blank], |arena| {
+                if arena.install_blank_string(blank) {
+                    arena.alloc_vector(sexptype, length)
+                } else {
+                    ptr::null_mut()
+                }
+            });
+        }
         allocate_with_gc_retry([], |arena| arena.alloc_vector(sexptype, length))
     }
 }

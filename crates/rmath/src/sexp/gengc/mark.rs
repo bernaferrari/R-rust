@@ -191,6 +191,7 @@ pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(obj);
         }
         mark_reachable((*instance).bind_state.blank_string);
+        mark_reachable((*instance).arena.blank_string);
 
         // Options and cached base wrappers own exact-generation automatic roots.
         // Task callbacks own exact-generation automatic roots.

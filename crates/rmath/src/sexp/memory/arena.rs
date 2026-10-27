@@ -22,6 +22,9 @@ pub struct RArena {
     slab_page: usize,
     /// Current offset within the current page's admitted header capacity.
     pub(super) slab_offset: usize,
+    /// Session-local empty CHARSXP. Runtime sessions install it before base
+    /// bootstrap; direct arena fixtures may leave it unset.
+    pub(crate) blank_string: SEXP,
     /// Counts and a local logical head; all per-slot links are already funded.
     live_count: usize,
     reclaimed_count: usize,
@@ -53,6 +56,17 @@ pub struct RArena {
 }
 
 impl RArena {
+    fn ensure_blank_string(&mut self) -> bool {
+        if self.blank_string.is_null() {
+            let blank = self.alloc_charsxp(b"");
+            if blank.is_null() {
+                return false;
+            }
+            self.blank_string = blank;
+        }
+        true
+    }
+
     fn current_page_capacity(&self) -> usize {
         self.backing
             .node_pages
@@ -308,6 +322,7 @@ impl RArena {
             heap_identity,
             slab_page: 0,
             slab_offset: NODE_PAGE_SIZE,
+            blank_string: ptr::null_mut(),
             live_count: 0,
             reclaimed_count: 0,
             reclaimed_head: None,
@@ -695,6 +710,9 @@ impl RArena {
         let Ok(layout) = vector_storage_layout(sexptype, length) else {
             return ptr::null_mut();
         };
+        if sexptype == SEXPTYPE::STRSXP && length > 0 && !self.ensure_blank_string() {
+            return ptr::null_mut();
+        }
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
@@ -723,7 +741,21 @@ impl RArena {
         if let Some(lease) = &data {
             header.payload = lease.link();
         }
-        self.allocate_core_with_payload(header, data)
+        let node = self.allocate_core_with_payload(header, data);
+        if !node.is_null() && sexptype == SEXPTYPE::STRSXP && !self.blank_string.is_null() {
+            let Ok(length) = usize::try_from(length) else {
+                return ptr::null_mut();
+            };
+            for index in 0..length {
+                if self
+                    .set_reference_element(node, index, self.blank_string)
+                    .is_none()
+                {
+                    return ptr::null_mut();
+                }
+            }
+        }
+        node
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper.
@@ -743,6 +775,9 @@ impl RArena {
         length: R_xlen_t,
     ) -> Result<SEXP, ArenaError> {
         let layout = vector_storage_layout(sexptype, length)?;
+        if sexptype == SEXPTYPE::STRSXP && length > 0 && !self.ensure_blank_string() {
+            return Err(ArenaError::OutOfMemory);
+        }
 
         self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
@@ -802,7 +837,13 @@ impl RArena {
         if node_ptr.is_null() {
             return Err(ArenaError::OutOfMemory);
         }
-
+        if sexptype == SEXPTYPE::STRSXP && !self.blank_string.is_null() {
+            let length = usize::try_from(length).map_err(|_| ArenaError::InvalidLength)?;
+            for index in 0..length {
+                self.set_reference_element(node_ptr, index, self.blank_string)
+                    .ok_or(ArenaError::OutOfMemory)?;
+            }
+        }
         Ok(node_ptr)
     }
 
@@ -1038,6 +1079,23 @@ impl RArena {
     }
     pub(crate) fn heap_identity(&self) -> HeapIdentity {
         self.heap_identity.clone()
+    }
+
+    /// Install the owning runtime's canonical blank string before allocating
+    /// vectors. This pointer is also retained by that owner's bind state.
+    pub(crate) fn install_blank_string(&mut self, blank: SEXP) -> bool {
+        if blank.is_null() || unsafe { crate::sexp::accessors::TYPEOF(blank) } != SEXPTYPE::CHARSXP
+        {
+            return false;
+        }
+        if !self.blank_string.is_null() {
+            return self.blank_string == blank;
+        }
+        if self.node_token(blank).is_none() {
+            return false;
+        }
+        self.blank_string = blank;
+        true
     }
 
     /// Constructor bridge: resolve each current projection once while the

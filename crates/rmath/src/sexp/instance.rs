@@ -728,6 +728,20 @@ impl RInstance {
                 "base initialization uses its original runtime"
             );
             super::session::with_instance_active(instance, || {
+                // GNU's runtime has a canonical blank CHARSXP before it
+                // evaluates base bindings. Install the owning arena's copy
+                // now so every STRSXP allocated during bootstrap starts with
+                // valid, session-local character references.
+                let blank = unsafe { super::super::mainutils::bind::R_BlankString() };
+                let installed = unsafe {
+                    super::memory::with_arena_in(instance, |arena| {
+                        arena.install_blank_string(blank)
+                    })
+                };
+                assert!(
+                    installed,
+                    "installing the runtime blank string must succeed"
+                );
                 super::init::initialize_base_bindings((*instance).base_env);
                 pin.require_live()
                     .expect("base initialization runtime was closed by a callback");

@@ -213,6 +213,7 @@ pub(crate) fn update_instance_roots_in(
             update_field(obj, old_to_new);
         }
         update_field(&mut (*instance).bind_state.blank_string, old_to_new);
+        update_field(&mut (*instance).arena.blank_string, old_to_new);
 
         let old_cache = std::mem::take(&mut (*instance).package_namespace_cache);
         (*instance).package_namespace_cache = old_cache

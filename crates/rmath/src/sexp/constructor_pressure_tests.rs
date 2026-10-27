@@ -56,6 +56,62 @@ fn constructor_pressure_reclaims_garbage_but_preserves_retained_exhaustion_and_r
 }
 
 #[test]
+fn character_vectors_start_blank_and_root_owner_blank_across_gc_retry() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let blank = crate::mainutils::bind::R_BlankString();
+        fill(&session);
+        let vector = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        assert_eq!(crate::sexp::accessors::STRING_ELT(vector, 0), blank);
+        assert_eq!(crate::sexp::accessors::STRING_ELT(vector, 1), blank);
+        let zero = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        assert_eq!(crate::sexp::accessors::XLENGTH(zero), 0);
+
+        let owner = session.owner_token().unwrap();
+        owner
+            .with_arena(|arena| {
+                let checked = arena.alloc_vector_checked(SEXPTYPE::STRSXP, 2).unwrap();
+                assert_eq!(crate::sexp::accessors::STRING_ELT(checked, 0), blank);
+                assert_eq!(crate::sexp::accessors::STRING_ELT(checked, 1), blank);
+                let empty = arena.alloc_vector_checked(SEXPTYPE::STRSXP, 0).unwrap();
+                assert_eq!(crate::sexp::accessors::XLENGTH(empty), 0);
+            })
+            .unwrap();
+    });
+}
+
+#[test]
+fn character_vector_budget_denial_does_not_publish_uninitialized_slots() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let blank = crate::mainutils::bind::R_BlankString();
+        let owner = session.owner_token().unwrap();
+        let before = owner
+            .with_arena(|arena| {
+                let count = arena.node_count();
+                arena.set_budget(ArenaBudget::new(0, count));
+                count
+            })
+            .unwrap();
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Rf_allocVector3(SEXPTYPE::STRSXP, 2)
+        }));
+        assert!(
+            failure.is_err(),
+            "the exhausted node budget must reject allocation"
+        );
+        owner
+            .with_arena(|arena| {
+                assert_eq!(arena.node_count(), before);
+                arena.set_budget(ArenaBudget::unlimited());
+            })
+            .unwrap();
+        assert_eq!(crate::sexp::accessors::TYPEOF(blank), SEXPTYPE::CHARSXP);
+        assert_eq!(crate::mainutils::bind::R_BlankString(), blank);
+    });
+}
+
+#[test]
 fn constructor_pressure_roots_cons_and_promise_inputs_across_the_collecting_retry() {
     for promise in [false, true] {
         let session = RSession::new_for_gc_tests();
@@ -97,13 +153,14 @@ fn constructor_pressure_never_retries_after_original_owner_revocation_in_a_gc_ca
     let right_pointer = right.owner_token().unwrap().as_ptr();
     let left_pointer = left.owner_token().unwrap().as_ptr();
     left.with_active(|| unsafe {
+        let _blank = crate::mainutils::bind::R_BlankString();
         fill(&left);
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             crate::sexp::instance::revoke_instance_availability(left_pointer);
             crate::sexp::instance::set_current_instance(right_pointer);
         }));
         let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            Rf_allocVector3(SEXPTYPE::INTSXP, 1)
+            Rf_allocVector3(SEXPTYPE::STRSXP, 1)
         }))
         .expect_err("callback-selected owner must not receive the retry");
         let error = failure
