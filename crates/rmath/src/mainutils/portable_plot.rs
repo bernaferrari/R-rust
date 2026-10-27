@@ -2071,6 +2071,9 @@ fn titles(
     c: Coordinates,
     labels: &[Option<crate::mainutils::plotmath::Label>],
 ) {
+    let main_scale = par_numbers("cex.main").first().copied().unwrap_or(1.2) / 1.2;
+    let sub_scale = par_numbers("cex.sub").first().copied().unwrap_or(1.0);
+    let lab_scale = par_numbers("cex.lab").first().copied().unwrap_or(1.0);
     for (i, (_name, position, angle, size)) in [
         (
             "main",
@@ -2079,7 +2082,7 @@ fn titles(
                 y: c.rect[1] - 18.,
             },
             0.,
-            16.,
+            16. * main_scale,
         ),
         (
             "xlab",
@@ -2088,7 +2091,7 @@ fn titles(
                 y: c.rect[3] + 45.,
             },
             0.,
-            12.,
+            12. * lab_scale,
         ),
         (
             "ylab",
@@ -2097,7 +2100,7 @@ fn titles(
                 y: (c.rect[1] + c.rect[3]) / 2.,
             },
             90.,
-            12.,
+            12. * lab_scale,
         ),
         (
             "sub",
@@ -2106,7 +2109,7 @@ fn titles(
                 y: c.rect[3] + 59.,
             },
             0.,
-            11.,
+            11. * sub_scale,
         ),
     ]
     .into_iter()
@@ -2124,7 +2127,7 @@ fn titles(
                 && let crate::mainutils::plotmath::Label::Math(expr) = text
             {
                 let mut params = PlotParameters {
-                    font_size: size,
+                    font_size: size as f32,
                     text_color,
                     text_anchor: TextAnchor::Middle,
                     ..Default::default()
@@ -2157,7 +2160,7 @@ fn titles(
                 target,
                 position,
                 &PlotParameters {
-                    font_size: size,
+                    font_size: size as f32,
                     text_color,
                     text_angle: angle,
                     text_anchor: TextAnchor::Middle,
@@ -2247,6 +2250,11 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
         let c = current();
         if name == "mtext" {
             return mtext::draw(c, args);
+        }
+        if name == "title" {
+            let labels = title_labels(args);
+            titles(&mut *renderer(), c, &labels);
+            return invisible();
         }
         // Text has GNU's own cex normalization and does not use point radii.
         let size = if matches!(name, "text" | "text.default") {
@@ -2456,10 +2464,6 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     );
                 }
                 target.set_clip(None);
-            }
-            "title" => {
-                let labels = title_labels(args);
-                titles(&mut *renderer(), c, &labels)
             }
             "box" => box_path(&mut *renderer(), c, style.color(0)),
             "axis" => {
