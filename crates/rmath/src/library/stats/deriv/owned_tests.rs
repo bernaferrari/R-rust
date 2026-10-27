@@ -466,3 +466,33 @@ fn owned_derivative_publication_public_sequential_error_calls_and_recovery() {
     );
     assert!(result.try_to_bool().unwrap());
 }
+
+#[test]
+#[cfg_attr(miri, ignore = "real-base graph execution is covered natively")]
+fn owned_derivative_symbolic_power_survives_source_collection() {
+    let mut session = RSession::new_without_default_packages();
+    let expression = code(&mut session, "quote((x+1)^(x*y))");
+    let variable = code(&mut session, "'x'");
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let derivative = session.with_active(|| unsafe {
+        session
+            .sexp(super::do_d(args.as_raw()))
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    assert!(session.define_var("saved_derivative", derivative));
+    drop(args);
+    drop(expression);
+    drop(variable);
+    session.gc();
+    assert!(
+        code(
+            &mut session,
+            "x <- 2; y <- 3; abs(eval(saved_derivative) - (3^5*6 + 3^6*log(3)*3)) < 1e-10"
+        )
+        .try_to_bool()
+        .unwrap()
+    );
+}

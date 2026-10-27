@@ -1,0 +1,24 @@
+x^-2
+-(x^-(2 + 1) * 2)
+0
+x^y
+x^(y - 1) * y
+x^y * log(x)
+0^x
+0
+0
+1^x
+log(1)
+0
+(x + 1)^(x * 2)
+(x + 1)^((x * 2) - 1) * (x * 2) + (x + 1)^(x * 2) * (log((x + 
+    1)) * 2)
+0
+x^2
+2 * x
+0
+y^x
+y^x * log(y)
+y^(x - 1) * x
+structure(8, gradient = structure(c(12, 5.54517744447956), dim = 1:2, dimnames = list(
+    NULL, c("x", "y"))))

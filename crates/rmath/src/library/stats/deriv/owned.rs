@@ -456,13 +456,26 @@ where
                     }
                     "^" => {
                         let b = binary()?;
-                        let exponent = self
-                            .numeric(&b)?
-                            .ok_or_else(|| invalid("Function is not in the derivatives table"))?;
-                        let first = self.derive(&a, variable)?;
-                        let power = self.simplify("^", a, Some(self.scalar(exponent - 1.)?))?;
-                        let product = self.simplify("*", first, Some(power))?;
-                        self.simplify("*", b, Some(product))
+                        if let Some(exponent) = self.numeric(&b)? {
+                            let first = self.derive(&a, variable)?;
+                            let power = self.simplify("^", a, Some(self.scalar(exponent - 1.)?))?;
+                            let product = self.simplify("*", first, Some(power))?;
+                            self.simplify("*", b, Some(product))
+                        } else {
+                            // Preserve GNU's construction order and simplification rules:
+                            // a^(b-1) * (b * D(a)) + a^b * (log(a) * D(b)).
+                            let exponent = self.simplify("-", b.clone(), Some(self.scalar(1.)?))?;
+                            let power = self.simplify("^", a.clone(), Some(exponent))?;
+                            let factor =
+                                self.simplify("*", b.clone(), Some(self.derive(&a, variable)?))?;
+                            let first = self.simplify("*", power, Some(factor))?;
+                            let power = self.simplify("^", a.clone(), Some(b.clone()))?;
+                            let log = self.call("log", &[a])?;
+                            let factor =
+                                self.simplify("*", log, Some(self.derive(&b, variable)?))?;
+                            let second = self.simplify("*", power, Some(factor))?;
+                            self.simplify("+", first, Some(second))
+                        }
                     }
                     "sin" => self.simplify(
                         "*",
