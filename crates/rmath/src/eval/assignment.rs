@@ -445,6 +445,18 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // direct `[[<-` in the right-hand side keeps its own call.
         let _source_call = SourceAssignCall::enter(call);
 
+        // GNU evaluates the RHS before discovering an invalid callable head,
+        // but it rejects that head before evaluating any target/index
+        // expressions. Do not turn an unsupported dynamic head into a
+        // successful no-op assignment.
+        let mut assignment_level = expr;
+        while TYPEOF(assignment_level) == SEXPTYPE::LANGSXP {
+            if replacement_fun_head(CAR(assignment_level)) == R_NilValue() {
+                error("invalid function in complex assignment");
+            }
+            assignment_level = CADR(assignment_level);
+        }
+
         let primval = crate::mainutils::relop::PRIMVAL(op);
         let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
 
@@ -998,7 +1010,7 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
 }
 
 #[path = "assignment/restore_tmp.rs"]
-mod restore_tmp;
+pub(crate) mod restore_tmp;
 
 /// Passive cleanup adapters retain the exact original allocation. These short
 /// field operations never enter R, adopt TLS authority, or span a callback.

@@ -125,6 +125,82 @@ fn compiled_general_names_replacement_preserves_rhs_and_order() {
     );
 }
 
+#[test]
+#[cfg(not(miri))]
+fn compiled_general_namespace_qualified_names_replacement_matches_gnu() {
+    for namespace in ["base::", "base:::"] {
+        compare(
+            &mut RSession::new_without_default_packages(),
+            NAMES,
+            &format!("{namespace}names(x[[i()]])<-rhs()"),
+            "stopifnot(identical(x,list(c(left=1L,right=2L))),identical(events,c('rhs','i','i')))",
+        );
+    }
+}
+
+#[test]
+#[cfg(not(miri))]
+fn compiled_general_namespace_qualified_direct_root_matches_gnu() {
+    compare(
+        &mut RSession::new(),
+        "x<-1:3;rhsValue<-c(0,2,1)",
+        "stats::tsp(x)<-rhsValue",
+        "stopifnot(identical(attr(x,'tsp'),c(0,2,1)))",
+    );
+}
+
+#[test]
+#[cfg(not(miri))]
+fn compiled_general_namespace_qualified_stats_setter_loads_original_namespace() {
+    compare(
+        &mut RSession::new(),
+        "x<-list(1:3);events<-character();rhsValue<-c(0,2,1);rhs<-function(){events<<-c(events,'rhs');rhsValue};i<-function(){events<<-c(events,'i');1L}",
+        "stats::tsp(x[[i()]])<-rhs()",
+        "stopifnot(identical(attr(x[[1L]],'tsp'),c(0,2,1)),identical(events,c('rhs','i','i')))",
+    );
+}
+
+#[test]
+#[cfg(not(miri))]
+fn compiled_general_non_symbol_heads_decline_and_keep_gnu_errors() {
+    let mut session = RSession::new_without_default_packages();
+    setup(
+        &mut session,
+        "x<-c(a='old');fns<-list(names);events<-character();rhs<-function(){events<<-c(events,'rhs');'new'};i<-function(){events<<-c(events,'i');1L}",
+    );
+    let environment = session.global_env().unwrap().into_owned().unwrap();
+    for syntax in ["get('names')(x)<-rhs()", "fns[[i()]](x)<-rhs()"] {
+        let expression = parse(&session, syntax, &environment);
+        assert!(unsafe { compile_expr(expression.as_raw(), environment.as_raw()) }.is_none());
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
+        }))
+        .unwrap_err();
+        assert!(
+            error_message(error).contains("invalid function in complex assignment"),
+            "syntax: {syntax}"
+        );
+        assert_eq!(
+            binding(&environment, c"events")
+                .try_string_elt(0)
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "rhs"
+        );
+        assert_eq!(binding(&environment, c"events").len(), 1);
+        assert_eq!(
+            binding(&environment, c"x")
+                .try_string_elt(0)
+                .unwrap()
+                .try_as_string()
+                .unwrap(),
+            "old"
+        );
+        setup(&mut session, "events<-character()");
+    }
+}
+
 fn compile(session: &RSession, syntax: &str) -> (Sexp<'static>, Sexp<'static>) {
     let environment = session.global_env().unwrap().into_owned().unwrap();
     let expression = parse(session, syntax, &environment);
@@ -298,7 +374,8 @@ fn owned_general_replacement_refuses_revoked_original_runtime() {
         &mut session,
         "x<-list(1L);rhsValue<-7L;`[[`<-function(x,i){gc();x}",
     );
-    let (body, environment) = compile(&session, "attr(x[[1L]],'note')<-rhsValue");
+    let (body, environment) = compile(&session, "base::attr(x[[1L]],'note')<-rhsValue");
+    session.gc();
     let original = environment.runtime_owner.as_ref().unwrap().clone();
     let owner = original.clone();
     let observed = Rc::new(Cell::new(false));

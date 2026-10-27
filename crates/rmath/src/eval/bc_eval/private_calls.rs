@@ -143,36 +143,6 @@ pub(crate) fn private_target_call_owned(
             .and_then(|owner| owner.managed().ok_or(SexpError::RootUnavailable))
             .unwrap_or_else(|error| bc_error(error.to_string()));
         with_runtime(&owner, |access| {
-            let function = access.with_native(|owner| {
-                let function = unsafe {
-                    crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
-                }
-                .map_err(|message| SexpError::EvaluationFailed { message })?
-                .ok_or_else(|| SexpError::EvaluationFailed {
-                    message: "could not find replacement function".into(),
-                })?;
-                if function.is_closure() {
-                    return owner.sexp(function.as_raw())?.into_owned();
-                }
-                if !function.is_primitive() {
-                    return Err(SexpError::EvaluationFailed {
-                        message: "replacement is not a function".into(),
-                    });
-                }
-                // Immortal primitive projections are identity only. Materialize
-                // the selected identity in the original managed heap once.
-                let kind = function.typeof_();
-                let name =
-                    super::super::primitive::PrimitiveDescriptor::from_sexp(function.clone())
-                        .map(|descriptor| descriptor.name.to_owned())
-                        .or_else(|| super::super::primitive::portable_primitive_name(function))
-                        .ok_or_else(|| SexpError::EvaluationFailed {
-                            message: "replacement primitive has no identity".into(),
-                        })?;
-                let function =
-                    unsafe { super::super::primitive::make_primitive_binding(&name, kind) };
-                owner.sexp(function)?.into_owned()
-            })?;
             let domain = access.domain();
             let allocator = access.allocator(&domain)?;
             let (temporary, value_tag) = access.with_native(|owner| {
@@ -221,12 +191,48 @@ pub(crate) fn private_target_call_owned(
                 }
                 crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
             }
+            let syntax_arguments = allocator.pairlist_cell(&temporary, &tail, &domain.nil())?;
+            let call = allocator.call(setter, &syntax_arguments)?;
+            if setter.typeof_() == SEXPTYPE::LANGSXP {
+                if !is_replacement_function_head(setter) {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "invalid replacement function head".into(),
+                    });
+                }
+                let restore_temporary = crate::eval::assignment::restore_tmp::RestoreTmp::capture(
+                    environment.clone(),
+                    temporary.clone(),
+                )?;
+                return restore_temporary.run(|| {
+                    access.with_native(|owner| {
+                        unsafe {
+                            crate::sexp::envir::defineVar(
+                                temporary.as_raw(),
+                                object.as_raw(),
+                                environment.as_raw(),
+                            );
+                        }
+                        access.require_active()?;
+                        let result = unsafe {
+                            super::super::eval::Rf_eval(call.as_raw(), environment.as_raw())
+                        };
+                        access.require_active()?;
+                        owner.sexp(result)?.into_owned()
+                    })
+                })?;
+            }
             let target =
                 allocator.evaluated_promise_with_expression(&temporary, environment, object)?;
             let execution_arguments = allocator.pairlist_cell(&target, &tail, &domain.nil())?;
-            let syntax_arguments = allocator.pairlist_cell(&temporary, &tail, &domain.nil())?;
-            let call = allocator.call(setter, &syntax_arguments)?;
             access.with_native(|owner| {
+                let function = unsafe {
+                    crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
+                }
+                .map_err(|message| SexpError::EvaluationFailed { message })?
+                .ok_or_else(|| SexpError::EvaluationFailed {
+                    message: "could not find replacement function".into(),
+                })?;
+                access.require_active()?;
                 if function.is_closure() {
                     let result = unsafe {
                         super::super::closure::applyClosure(
@@ -400,6 +406,46 @@ pub(crate) fn private_replacement_path_owned(
     match attempt {
         Ok(result) => result,
         Err(payload) => Err(recover_loop_jump(payload, loops)),
+    }
+}
+
+/// Whether a bytecode replacement head is a symbol or the narrow explicit
+/// namespace form supported by the replacement-chain adapter.
+pub(crate) fn is_replacement_function_head(value: &Sexp<'static>) -> bool {
+    if value.typeof_() == SEXPTYPE::SYMSXP {
+        return true;
+    }
+    if value.typeof_() != SEXPTYPE::LANGSXP {
+        return false;
+    }
+    unsafe {
+        let Some(operator) = crate::eval::bc_compile::symbol_name_from_sexp(
+            crate::sexp::accessors::CAR(value.as_raw()),
+        ) else {
+            return false;
+        };
+        if !matches!(operator.as_str(), "::" | ":::") {
+            return false;
+        }
+        let package_cell = crate::sexp::accessors::CDR(value.as_raw());
+        if package_cell.is_null() || package_cell == crate::sexp::globals::R_NilValue() {
+            return false;
+        }
+        let member_cell = crate::sexp::accessors::CDR(package_cell);
+        if member_cell.is_null()
+            || member_cell == crate::sexp::globals::R_NilValue()
+            || crate::sexp::accessors::CDR(member_cell) != crate::sexp::globals::R_NilValue()
+        {
+            return false;
+        }
+        let package_tag = crate::sexp::accessors::TAG(package_cell);
+        let member_tag = crate::sexp::accessors::TAG(member_cell);
+        (package_tag.is_null() || package_tag == crate::sexp::globals::R_NilValue())
+            && (member_tag.is_null() || member_tag == crate::sexp::globals::R_NilValue())
+            && crate::sexp::accessors::TYPEOF(crate::sexp::accessors::CAR(package_cell))
+                == SEXPTYPE::SYMSXP
+            && crate::sexp::accessors::TYPEOF(crate::sexp::accessors::CAR(member_cell))
+                == SEXPTYPE::SYMSXP
     }
 }
 

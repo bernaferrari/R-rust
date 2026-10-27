@@ -454,6 +454,14 @@ impl BytecodeCompiler {
 
             let rhs = rhs_owned.as_raw();
             if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+                // A namespace-qualified getter head is itself a language
+                // object even when its target is a plain symbol. Let the
+                // strict general-chain recognizer decide whether it is a
+                // supported ::/::: form; arbitrary dynamic heads still
+                // decline and retain source evaluation semantics.
+                if TYPEOF(CAR(lhs)) == SEXPTYPE::LANGSXP {
+                    return self.compile_general_replacement(lhs, rhs, false);
+                }
                 let object = own_operand(CAR(CDR(lhs)));
                 if object.typeof_() == SEXPTYPE::LANGSXP {
                     let dollar_root = symbol_name_from_sexp(CAR(object.as_raw())).as_deref()
@@ -591,7 +599,7 @@ impl BytecodeCompiler {
                     compiler_error("cyclic replacement syntax spine");
                 }
                 let getter = own_operand(CAR(current.as_raw()));
-                let Some(name) = symbol_name_from_sexp(getter.as_raw()) else {
+                let Some(setter) = Self::replacement_setter_head(&getter) else {
                     return false;
                 };
                 let mut cell = CDR(current.as_raw());
@@ -626,7 +634,7 @@ impl BytecodeCompiler {
                 levels
                     .try_reserve(1)
                     .unwrap_or_else(|_| compiler_error("cannot snapshot replacement levels"));
-                levels.push((getter, name, arguments));
+                levels.push((getter, setter, arguments));
             }
             if current.typeof_() != SEXPTYPE::SYMSXP || levels.is_empty() {
                 return false;
@@ -634,10 +642,7 @@ impl BytecodeCompiler {
             let root = self.add_const(current.as_raw());
             let expression = self.add_const(rhs.as_raw());
             let mut operands = Vec::new();
-            for (getter, name, arguments) in levels.iter().rev() {
-                let name = std::ffi::CString::new(format!("{name}<-"))
-                    .unwrap_or_else(|_| compiler_error("invalid replacement setter name"));
-                let setter = own_operand(crate::sexp::symbol::Rf_install(name.as_ptr()));
+            for (getter, setter, arguments) in levels.iter().rev() {
                 operands
                     .try_reserve(3)
                     .unwrap_or_else(|_| compiler_error("cannot encode replacement levels"));
@@ -670,6 +675,64 @@ impl BytecodeCompiler {
                 self.emit(operand);
             }
             true
+        }
+    }
+
+    /// Construct the matching setter head for source getters that the
+    /// replacement-chain opcode can resolve safely. Ordinary names remain
+    /// symbols; an explicit `::`/`:::` namespace call retains its syntax so
+    /// the runtime can resolve it in the original owner. Other callable heads
+    /// stay on the source path.
+    unsafe fn replacement_setter_head(getter: &Sexp<'static>) -> Option<Sexp<'static>> {
+        unsafe {
+            let name = if getter.typeof_() == SEXPTYPE::SYMSXP {
+                symbol_name_from_sexp(getter.as_raw())?
+            } else {
+                if getter.typeof_() != SEXPTYPE::LANGSXP {
+                    return None;
+                }
+                let operator = CAR(getter.as_raw());
+                let operator_name = symbol_name_from_sexp(operator)?;
+                if !matches!(operator_name.as_str(), "::" | ":::") {
+                    return None;
+                }
+                let package_cell = CDR(getter.as_raw());
+                if package_cell.is_null() || package_cell == R_NilValue() {
+                    return None;
+                }
+                let member_cell = CDR(package_cell);
+                if member_cell.is_null()
+                    || member_cell == R_NilValue()
+                    || CDR(member_cell) != R_NilValue()
+                {
+                    return None;
+                }
+                let package_tag = TAG(package_cell);
+                let member_tag = TAG(member_cell);
+                if (!package_tag.is_null() && package_tag != R_NilValue())
+                    || (!member_tag.is_null() && member_tag != R_NilValue())
+                {
+                    return None;
+                }
+                let package = CAR(package_cell);
+                let member = CAR(member_cell);
+                if TYPEOF(package) != SEXPTYPE::SYMSXP || TYPEOF(member) != SEXPTYPE::SYMSXP {
+                    return None;
+                }
+                symbol_name_from_sexp(member)?
+            };
+            let setter_name = std::ffi::CString::new(format!("{name}<-"))
+                .unwrap_or_else(|_| compiler_error("invalid replacement setter name"));
+            let setter_symbol = crate::sexp::symbol::Rf_install(setter_name.as_ptr());
+            if getter.typeof_() == SEXPTYPE::SYMSXP {
+                return Some(own_operand(setter_symbol));
+            }
+            let setter = crate::sexp::constructors::Rf_lang3(
+                CAR(getter.as_raw()),
+                CAR(CDR(getter.as_raw())),
+                setter_symbol,
+            );
+            Some(own_operand(setter))
         }
     }
 
@@ -1028,7 +1091,7 @@ unsafe fn is_function_syntax(expr: SEXP) -> bool {
     }
 }
 
-unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
+pub(crate) unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
     unsafe {
         if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
             return None;

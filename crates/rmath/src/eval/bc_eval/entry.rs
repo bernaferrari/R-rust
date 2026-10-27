@@ -621,10 +621,10 @@ pub(crate) unsafe fn bc_eval_private(
                             setter as i64,
                             "REPLACEMENT_CHAIN setter",
                         ));
-                        if getter.typeof_() != SEXPTYPE::SYMSXP
-                            || setter.typeof_() != SEXPTYPE::SYMSXP
+                        if !super::private_calls::is_replacement_function_head(&getter)
+                            || !super::private_calls::is_replacement_function_head(&setter)
                         {
-                            bc_error("REPLACEMENT_CHAIN functions must be symbols");
+                            bc_error("invalid REPLACEMENT_CHAIN function head");
                         }
                         let mut arguments = Vec::new();
                         arguments.try_reserve(extras).unwrap_or_else(|_| {

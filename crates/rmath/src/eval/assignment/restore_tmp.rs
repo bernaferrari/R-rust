@@ -8,7 +8,7 @@ use crate::sexp::{
     owner::{OwnerPin, StoredOwner},
 };
 
-pub(super) struct RestoreTmp {
+pub(crate) struct RestoreTmp {
     authority: StoredOwner<'static>,
     pin: OwnerPin,
     environment: Sexp<'static>,
@@ -69,7 +69,7 @@ fn acyclic(heap: &HeapIdentity, head: NodeLink) -> SexpResult<()> {
 }
 
 impl RestoreTmp {
-    pub(super) fn capture(environment: Sexp<'static>, symbol: Sexp<'static>) -> SexpResult<Self> {
+    pub(crate) fn capture(environment: Sexp<'static>, symbol: Sexp<'static>) -> SexpResult<Self> {
         let authority = StoredOwner::from_value(&environment)?.into_owned()?;
         authority.require_active()?;
         let pin = authority
@@ -188,7 +188,7 @@ impl RestoreTmp {
         Ok(())
     }
 
-    pub(super) fn run<T>(self, operation: impl FnOnce() -> T) -> SexpResult<T> {
+    pub(crate) fn run<T>(self, operation: impl FnOnce() -> T) -> SexpResult<T> {
         self.authority.require_active()?;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
         // Keep both the original allocation and its cleanup guard through the
