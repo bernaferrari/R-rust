@@ -170,64 +170,117 @@ pub(crate) unsafe fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String>
 }
 
 pub(crate) unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
-    unsafe {
-        if state.is_null() || TYPEOF(state) != SEXPTYPE::LISTSXP {
-            return Err("invalid deferred string state".into());
-        }
-        let arg = CAR(state);
-        if arg.is_null() || arg == R_NilValue() {
-            return Err("invalid deferred string argument".into());
-        }
-        let n = XLENGTH(arg);
-        let s = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _s = protect(s);
-        match TYPEOF(arg) {
-            t if t == SEXPTYPE::INTSXP => {
-                let data = INTEGER(arg);
-                for i in 0..n as isize {
-                    let v = *data.offset(i);
-                    if v == crate::sexp::NA_INTEGER {
-                        SET_STRING_ELT(s, i as R_xlen_t, crate::sexp::globals::R_NaString());
-                    } else {
-                        let text = v.to_string();
-                        SET_STRING_ELT(
-                            s,
-                            i as R_xlen_t,
-                            Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
-                        );
-                    }
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                let data = REAL(arg);
-                for i in 0..n as isize {
-                    let v = *data.offset(i);
-                    if crate::sexp::ffi::is_na_real(v) {
-                        SET_STRING_ELT(s, i as R_xlen_t, crate::sexp::globals::R_NaString());
-                    } else if v.is_nan() {
-                        SET_STRING_ELT(
-                            s,
-                            i as R_xlen_t,
-                            Rf_mkCharLen(b"NaN".as_ptr() as *const c_char, 3),
-                        );
-                    } else {
-                        let text = if v.fract() == 0.0 && v.abs() < 1e15 {
-                            format!("{}", v as i64)
-                        } else {
-                            format!("{v}")
-                        };
-                        SET_STRING_ELT(
-                            s,
-                            i as R_xlen_t,
-                            Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
-                        );
-                    }
-                }
-            }
-            _ => return Err("unsupported type for deferred string coercion".into()),
-        }
-        Ok(s)
+    use crate::sexp::object::SexpMut;
+
+    // Capture both edges before the first allocation: formatting and character
+    // construction may collect or reenter the owning interpreter.
+    let owner =
+        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
+    let factory = owner.node_factory();
+    let state = factory.wrap(state).map_err(|error| error.to_string())?;
+    if state.typeof_() != SEXPTYPE::LISTSXP {
+        return Err("invalid deferred string state".into());
     }
+    let arg = state.try_car().map_err(|error| error.to_string())?;
+    let info = state.try_cdr().map_err(|error| error.to_string())?;
+    if arg.is_nil() {
+        return Err("invalid deferred string argument".into());
+    }
+    let kind = arg.typeof_();
+    if kind != SEXPTYPE::INTSXP && kind != SEXPTYPE::REALSXP {
+        return Err("unsupported type for deferred string coercion".into());
+    }
+
+    let (print, decimal) = if kind == SEXPTYPE::REALSXP {
+        if info.typeof_() != SEXPTYPE::INTSXP || info.len() != 1 {
+            return Err("invalid deferred string formatting state".into());
+        }
+        let scipen = info.try_integer_elt(0).map_err(|error| error.to_string())?;
+        let mut decimal = String::from(".");
+        if !info
+            .try_attrib()
+            .map_err(|error| error.to_string())?
+            .is_nil()
+        {
+            let symbol = unsafe { crate::sexp::symbol::Rf_install(c"OutDec".as_ptr()) };
+            owner.require_active().map_err(|error| error.to_string())?;
+            let attribute = unsafe { crate::sexp::attrib_core::getAttrib(info.as_raw(), symbol) };
+            let attribute = factory.wrap(attribute).map_err(|error| error.to_string())?;
+            if attribute.typeof_() == SEXPTYPE::STRSXP && attribute.len() == 1 {
+                decimal = attribute
+                    .try_string_elt(0)
+                    .map_err(|error| error.to_string())?
+                    .try_as_string()
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        let decimal = std::ffi::CString::new(decimal)
+            .map_err(|_| "invalid deferred string decimal mark".to_owned())?;
+        (
+            Some(crate::mainutils::format::RPrint {
+                digits: 15,
+                scipen,
+                na_width: 2,
+                na_width_noquote: 2,
+            }),
+            Some(decimal),
+        )
+    } else {
+        (None, None)
+    };
+
+    let n = arg.len();
+    let result = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, n)))
+        .map_err(|error| error.to_string())?;
+    for i in 0..n {
+        // Read one element into a scalar; no payload loan crosses character
+        // allocation, and both input and result retain their original owners.
+        let text = if kind == SEXPTYPE::INTSXP {
+            let value = arg.try_integer_elt(i).map_err(|error| error.to_string())?;
+            (value != crate::sexp::NA_INTEGER).then(|| value.to_string())
+        } else {
+            let value = arg.try_real_elt(i).map_err(|error| error.to_string())?;
+            if crate::sexp::ffi::is_na_real(value) {
+                None
+            } else {
+                let field = crate::mainutils::format::real_field_with_print(
+                    1,
+                    0,
+                    print.expect("real formatting state"),
+                    |_| value,
+                );
+                let encoded = unsafe {
+                    crate::mainutils::printutils::EncodeRealDrop0(
+                        value,
+                        field.w,
+                        field.d,
+                        field.e,
+                        decimal.as_ref().expect("real decimal mark").as_ptr(),
+                    )
+                };
+                Some(
+                    unsafe { std::ffi::CStr::from_ptr(encoded) }
+                        .to_str()
+                        .map_err(|_| "invalid UTF-8 deferred string".to_owned())?
+                        .to_owned(),
+                )
+            }
+        };
+        let character = match text {
+            Some(text) => factory
+                .character(&text)
+                .map_err(|error| error.to_string())?,
+            None => factory
+                .wrap(unsafe { crate::sexp::globals::R_NaString() })
+                .map_err(|error| error.to_string())?,
+        };
+        SexpMut::try_from_checked(result.clone())
+            .map_err(|error| error.to_string())?
+            .try_set_string_elt(i, character)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(result.as_raw())
 }
 
 pub(crate) unsafe fn altrep_unserialize_ex(

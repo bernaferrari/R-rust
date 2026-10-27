@@ -1779,3 +1779,151 @@ fn gnu_deferred_string_altrep_unserializes_to_character() {
         }
     }
 }
+
+#[test]
+fn gnu_deferred_real_strings_restore_captured_formatting() {
+    let _session = crate::sexp::session::RSession::new_for_gc_tests();
+    let cases: &[(&[u8], &[&str])] = &[
+        (
+            include_bytes!("fixtures/deferred-real-default.rds"),
+            &[
+                "0",
+                "0",
+                "1e-09",
+                "1e+20",
+                "3.14159265358979",
+                "Inf",
+                "-Inf",
+                "NaN",
+                "NA",
+                "1.23456789012346",
+            ],
+        ),
+        (
+            include_bytes!("fixtures/deferred-real-fixed.rds"),
+            &[
+                "0",
+                "0",
+                "0.000000001",
+                "100000000000000000000",
+                "3.14159265358979",
+                "Inf",
+                "-Inf",
+                "NaN",
+                "NA",
+                "1.23456789012346",
+            ],
+        ),
+        (
+            include_bytes!("fixtures/deferred-real-comma.rds"),
+            &[
+                "0",
+                "0",
+                "1e-09",
+                "1e+20",
+                "3,14159265358979",
+                "Inf",
+                "-Inf",
+                "NaN",
+                "NA",
+                "1,23456789012346",
+            ],
+        ),
+        (
+            include_bytes!("fixtures/deferred-real-utf8.rds"),
+            &[
+                "0",
+                "0",
+                "1e-09",
+                "1e+20",
+                "3·14159265358979",
+                "Inf",
+                "-Inf",
+                "NaN",
+                "NA",
+                "1·23456789012346",
+            ],
+        ),
+    ];
+    for (bytes, expected) in cases {
+        unsafe {
+            let raw = make_raw(bytes);
+            let _raw = protect(raw);
+            let result = R_unserialize(raw, R_NilValue());
+            let _result = protect(result);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(result) as usize, expected.len());
+            for (i, expected) in expected.iter().enumerate() {
+                let elt = STRING_ELT(result, i as R_xlen_t);
+                if i == 8 {
+                    assert_eq!(elt, crate::sexp::globals::R_NaString());
+                } else {
+                    let actual = std::ffi::CStr::from_ptr(CHAR(elt)).to_str().unwrap();
+                    assert_eq!(actual, *expected, "element {i}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn deferred_real_string_expansion_retains_inputs_during_collecting_callbacks() {
+    use std::{cell::Cell, rc::Rc};
+    let session = crate::sexp::session::RSession::new_for_gc_tests();
+    session.with_active_in(|instance| unsafe {
+        let factory = session.owner_token().unwrap().node_factory();
+        let values = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, 2)))
+            .unwrap();
+        let mut values = crate::sexp::SexpMut::try_from_checked(values).unwrap();
+        values.try_set_real_elt(0, 1e-9).unwrap();
+        values.try_set_real_elt(1, std::f64::consts::PI).unwrap();
+        let values = values.freeze();
+        let info = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let mut info = crate::sexp::SexpMut::try_from_checked(info).unwrap();
+        info.try_set_integer_elt(0, 0).unwrap();
+        let info = info.freeze();
+        let state = factory
+            .pairlist_cell(&values, &info, &factory.nil())
+            .unwrap();
+        let digits = crate::mainutils::options::GetOption(c"digits".as_ptr());
+        let scipen = crate::mainutils::options::GetOption(c"scipen".as_ptr());
+        let outdec = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            observed.set(observed.get() + 1)
+        }));
+        (*instance).memory_state.gc_force_gap = 1;
+        (*instance).memory_state.gc_force_wait = 1;
+        let result = factory
+            .wrap(expand_deferred_string(state.as_raw()).unwrap())
+            .unwrap();
+        assert!(
+            calls.get() > 0,
+            "the expansion must actually trigger collection"
+        );
+        assert_eq!(
+            crate::mainutils::options::GetOption(c"digits".as_ptr()),
+            digits
+        );
+        assert_eq!(
+            crate::mainutils::options::GetOption(c"scipen".as_ptr()),
+            scipen
+        );
+        assert_eq!(
+            crate::mainutils::options::GetOption(c"OutDec".as_ptr()),
+            outdec
+        );
+        assert_eq!(
+            result.try_string_elt(0).unwrap().try_as_string().unwrap(),
+            "1e-09"
+        );
+        assert_eq!(
+            result.try_string_elt(1).unwrap().try_as_string().unwrap(),
+            "3.14159265358979"
+        );
+    });
+}

@@ -257,6 +257,26 @@ pub unsafe fn format_scientific(
     roundingwidens: *mut bool,
 ) {
     unsafe {
+        // Zero needs no print configuration and remains usable without an
+        // active runtime, as in the original formatter.
+        let digits = if *x == 0.0 {
+            0
+        } else {
+            current_R_print().digits
+        };
+        format_scientific_with_digits(x, neg, kpower, nsig, roundingwidens, digits);
+    }
+}
+
+unsafe fn format_scientific_with_digits(
+    x: *const c_double,
+    neg: *mut c_int,
+    kpower: *mut c_int,
+    nsig: *mut c_int,
+    roundingwidens: *mut bool,
+    digits: c_int,
+) {
+    unsafe {
         let xv = *x;
 
         if xv == 0.0 {
@@ -276,7 +296,6 @@ pub unsafe fn format_scientific(
             r = xv;
         }
 
-        let digits = current_R_print().digits;
         if digits == 0 {
             // No digits configured; fall back to a safe default.
             *kpower = 0;
@@ -831,8 +850,30 @@ pub(crate) struct RealField {
 pub(crate) fn real_field(
     n: R_xlen_t,
     nsmall: c_int,
+    elt: impl FnMut(R_xlen_t) -> c_double,
+) -> RealField {
+    real_field_impl(n, nsmall, None, elt)
+}
+
+/// Compute field parameters using a captured formatting configuration.
+/// Deferred strings retain their creation-time precision and scipen even if
+/// the caller has changed the active session options before deserialization.
+pub(crate) fn real_field_with_print(
+    n: R_xlen_t,
+    nsmall: c_int,
+    print: RPrint,
+    elt: impl FnMut(R_xlen_t) -> c_double,
+) -> RealField {
+    real_field_impl(n, nsmall, Some(print), elt)
+}
+
+fn real_field_impl(
+    n: R_xlen_t,
+    nsmall: c_int,
+    print: Option<RPrint>,
     mut elt: impl FnMut(R_xlen_t) -> c_double,
 ) -> RealField {
+    let settings = || print.unwrap_or_else(current_R_print);
     if n <= 0 {
         return RealField { w: 0, d: 0, e: 0 };
     }
@@ -848,7 +889,7 @@ pub(crate) fn real_field(
     let mut mxsl: c_int = c_int::MIN;
     let mut mxns: c_int = c_int::MIN;
 
-    let na_width = current_R_print().na_width;
+    let na_width = settings().na_width;
 
     for i in 0..n {
         let xi = elt(i);
@@ -872,7 +913,14 @@ pub(crate) fn real_field(
             let mut roundingwidens: bool = false;
 
             unsafe {
-                format_scientific(&xi, &mut neg_i, &mut kpower, &mut nsig, &mut roundingwidens);
+                format_scientific_with_digits(
+                    &xi,
+                    &mut neg_i,
+                    &mut kpower,
+                    &mut nsig,
+                    &mut roundingwidens,
+                    settings().digits,
+                );
             }
 
             let mut left = kpower + 1;
@@ -906,7 +954,7 @@ pub(crate) fn real_field(
     }
 
     // F vs E format decision
-    if current_R_print().digits == 0 {
+    if settings().digits == 0 {
         rgt = 0;
     }
     if mxl < 0 {
@@ -923,7 +971,7 @@ pub(crate) fn real_field(
     let (mut w, d) = if mxns != c_int::MIN {
         let mut d = mxns - 1;
         let mut w = neg + if d > 0 { 1 } else { 0 } + d + 4 + e; // width for E format
-        if wF <= w + current_R_print().scipen {
+        if wF <= w.saturating_add(settings().scipen) {
             // Fixpoint if it needs less space
             e = 0;
             let nsmall_i = nsmall as c_int;
@@ -1741,6 +1789,14 @@ mod tests {
             assert_eq!(nsig, 1);
             assert!(!rw);
         }
+    }
+
+    #[test]
+    fn test_scientific_zero_without_active_runtime() {
+        let value = 0.0;
+        let (mut neg, mut power, mut digits, mut widens) = (1, 1, 0, true);
+        unsafe { format_scientific(&value, &mut neg, &mut power, &mut digits, &mut widens) };
+        assert_eq!((neg, power, digits, widens), (0, 0, 1, false));
     }
 
     #[test]
