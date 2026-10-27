@@ -129,3 +129,71 @@ pub unsafe fn tre_stack_pop_int(s: tre_stack_t) -> c_int {
         (*((*s).stack.add((*s).ptr as usize))).int_value
     }
 }
+
+#[cfg(test)]
+mod checked_growth_tests {
+    use super::*;
+
+    #[test]
+    fn parser_reports_scratch_stack_growth_allocation_denial() {
+        let workspace = crate::mainutils::grep::RegexWorkspace::unbounded();
+        let mut arena = mem::tre_mem_struct::new(workspace).unwrap();
+        let pattern = [u32::from('a')];
+        let (status, report) = mem::fault::observe(Some(2), || unsafe {
+            // Descriptor + first item succeed; first growth allocation fails.
+            let stack = tre_stack_new(1, 10240, 128);
+            assert!(!stack.is_null());
+            let mut context: crate::tre::ast::tre_parse_ctx_t = std::mem::zeroed();
+            context.stack = stack;
+            context.mem = &mut arena;
+            context.re = pattern.as_ptr();
+            context.len = pattern.len();
+            context.cflags = crate::tre::ast::REG_EXTENDED;
+            context.max_backref = -1;
+            context.cur_max = 1;
+            let status = crate::tre::parse::tre_parse(&mut context);
+            tre_stack_destroy(stack);
+            status
+        });
+        assert_eq!(
+            status, REG_ESPACE,
+            "actual parser discarded stack growth denial"
+        );
+        assert_eq!(report.remaining, 0);
+    }
+    #[test]
+    fn parser_reports_each_work_stack_allocation_failure_and_recovers() {
+        fn run(fail_at: Option<usize>) -> (c_int, mem::fault::Report) {
+            let workspace = crate::mainutils::grep::RegexWorkspace::unbounded();
+            let mut arena = mem::tre_mem_struct::new(workspace).unwrap();
+            let pattern: Vec<u32> = "(a|b)*c".chars().map(u32::from).collect();
+            mem::fault::observe(fail_at, || unsafe {
+                let stack = tre_stack_new(1, 10240, 1);
+                if stack.is_null() {
+                    return REG_ESPACE;
+                }
+                let mut context: crate::tre::ast::tre_parse_ctx_t = std::mem::zeroed();
+                context.stack = stack;
+                context.mem = &mut arena;
+                context.re = pattern.as_ptr();
+                context.len = pattern.len();
+                context.cflags = crate::tre::ast::REG_EXTENDED;
+                context.max_backref = -1;
+                context.cur_max = 1;
+                let status = crate::tre::parse::tre_parse(&mut context);
+                tre_stack_destroy(stack);
+                status
+            })
+        }
+        let (status, baseline) = run(None);
+        assert_eq!(status, REG_OK);
+        assert_eq!(baseline.remaining, 0);
+        assert!(baseline.attempts > 2);
+        for fail_at in 0..baseline.attempts {
+            let (status, report) = run(Some(fail_at));
+            assert_eq!(status, REG_ESPACE, "allocation {fail_at}");
+            assert_eq!(report.remaining, 0, "allocation {fail_at}");
+        }
+        assert_eq!(run(None).0, REG_OK);
+    }
+}
