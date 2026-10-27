@@ -12,6 +12,17 @@ fn integer_matrix_as_factor_uses_distinct_values() {
         session
             .eval(
                 r#"
+                multi <- factor(c("a", "b", "a"))
+                stopifnot(ncol(model.matrix(~ multi)) == 2L)
+                for (single in list(factor(c("a", "a")),
+                                    factor(c(NA_character_, NA_character_)),
+                                    factor(character()))) {
+                    message <- tryCatch(model.matrix(~ single),
+                                        error = function(e) conditionMessage(e))
+                    stopifnot(identical(message,
+                        "contrasts can be applied only to factors with 2 or more levels"))
+                }
+
             x <- diag(1:8)
             f <- as.factor(x)
             stopifnot(length(f) == 64L)
