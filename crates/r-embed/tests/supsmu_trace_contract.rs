@@ -40,7 +40,7 @@ fn fixed_trace_matches_gnu_and_automatic_trace_keeps_all_eight_events() {
         "smooth(span=0.05, iper=-1) -> (var, cvar) = (0.204082, 0.757143)\n",
     ];
     for (event, expected) in events[..6].iter().zip(expected[..6].iter()) {
-        assert_eq!(event, expected.trim_end());
+        assert_eq!(*event, expected.trim_end());
     }
     assert_eq!(events[7], expected[6].trim_end());
     let residual = events[6];
