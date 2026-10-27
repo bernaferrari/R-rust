@@ -807,5 +807,21 @@ pub(super) const INTERNALS_FUNTAB: &[FunTabEntry] = &[
         0,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"getLoadedDLLs\0",
+        None,
+        0,
+        11,
+        0,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"getSymbolInfo\0",
+        None,
+        0,
+        11,
+        3,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // Unimplemented entries for remaining functions
 ];

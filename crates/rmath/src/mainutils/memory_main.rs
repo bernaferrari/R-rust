@@ -1073,6 +1073,9 @@ pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
 /// This is the equivalent of R's `R_ClearExternalPtr()`.
 pub unsafe fn R_ClearExternalPtr(s: SEXP) {
     unsafe {
+        if let Ok(owner) = crate::sexp::owner::OwnerToken::current() {
+            let _ = crate::mainutils::native_symbols::invalidate(owner, s);
+        }
         if !s.is_null() {
             (*s).data.extptr_mut().address = ptr::null_mut();
         }
@@ -1084,6 +1087,9 @@ pub unsafe fn R_ClearExternalPtr(s: SEXP) {
 /// This is the equivalent of R's `R_SetExternalPtrAddr()`.
 pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
     unsafe {
+        if let Ok(owner) = crate::sexp::owner::OwnerToken::current() {
+            let _ = crate::mainutils::native_symbols::invalidate(owner, s);
+        }
         if !s.is_null() {
             (*s).data.extptr_mut().address = p;
         }

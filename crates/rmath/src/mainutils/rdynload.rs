@@ -1020,6 +1020,43 @@ unsafe fn call_init_routine(info: *mut DllInfo) {
 
 pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(spackage) == SEXPTYPE::EXTPTRSXP {
+            let result = (|| {
+                let owner = crate::sexp::owner::OwnerToken::current()?;
+                let _pin = owner.pin()?;
+                owner.require_active()?;
+                let factory = owner.node_factory();
+                // Retain all caller graphs before an ALTREP name provider runs.
+                let name = factory.wrap(sname)?.into_owned()?;
+                let package = factory.wrap(spackage)?.into_owned()?;
+                let registration = factory.wrap(_with_registration)?.into_owned()?;
+                let library = crate::mainutils::native_symbols::library(owner, &package)?;
+                if name.typeof_() != SEXPTYPE::STRSXP || name.len() != 1 {
+                    return Err(crate::mainutils::native_symbols::invalid_symbol());
+                }
+                let character = name.try_string_elt(0)?;
+                let name = crate::mainutils::native_symbols::name(owner, &character)?;
+                owner.require_active()?;
+                let keys = crate::mainutils::native_symbols::AttributeKeys {
+                    names: factory.wrap(R_NamesSymbol())?,
+                    class: factory.wrap(R_ClassSymbol())?,
+                };
+                let registered = registration.try_logical_elt(0)? != FALSE;
+                let package = library.package()?;
+                let result = crate::mainutils::native_symbols::symbol_info(
+                    owner,
+                    name.as_str(),
+                    package,
+                    registered,
+                    &keys,
+                )?;
+                library.package()?;
+                Ok(result.unwrap_or_else(|| factory.nil().into_owned().unwrap()))
+            })();
+            return result
+                .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
+                .as_raw();
+        }
         let name = if Rf_isString(sname) == 0 || Rf_length(sname) != 1 {
             error("invalid 'name' argument");
         } else {
@@ -1089,20 +1126,45 @@ pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: S
 
 pub unsafe fn R_getDllTable() -> SEXP {
     unsafe {
+        if native_extensions_enabled() {
+            return legacy_foreign_dll_table();
+        }
+        bundled_dll_table_entry()
+    }
+}
+
+unsafe fn bundled_dll_table_entry() -> SEXP {
+    unsafe {
+        let result = (|| {
+            let owner = crate::sexp::owner::OwnerToken::current()?;
+            let _pin = owner.pin()?;
+            owner.require_active()?;
+            let factory = owner.node_factory();
+            let keys = crate::mainutils::native_symbols::AttributeKeys {
+                names: factory.wrap(R_NamesSymbol())?,
+                class: factory.wrap(R_ClassSymbol())?,
+            };
+            let table = crate::mainutils::native_symbols::dll_table(owner, &keys)?;
+            owner.require_active()?;
+            Ok(table)
+        })();
+        result
+            .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
+            .as_raw()
+    }
+}
+
+unsafe fn legacy_foreign_dll_table() -> SEXP {
+    unsafe {
         let dlls = with_dynload_state(|state| state.loaded_dll.clone());
-        let count = dlls.len();
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, count as c_int);
-        for i in 0..count {
-            let info = dlls[i].pointer();
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, dlls.len() as c_int);
+        for (index, dll) in dlls.iter().enumerate() {
+            let info = dll.pointer();
             if !info.is_null() {
-                SET_VECTOR_ELT(ans, i as R_xlen_t, make_dll_info_sexp(info));
+                SET_VECTOR_ELT(ans, index as R_xlen_t, make_dll_info_sexp(info));
             }
         }
-        setAttrib(
-            ans,
-            R_ClassSymbol(),
-            Rf_mkString(b"DLLInfoList\0".as_ptr() as *const c_char),
-        );
+        setAttrib(ans, R_ClassSymbol(), Rf_mkString(c"DLLInfoList".as_ptr()));
         ans
     }
 }
@@ -1285,6 +1347,14 @@ pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 pub unsafe fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
+        // The public pure-R wrapper admits only authenticated bundled DLL
+        // references. Name-only lookup cannot mint a typed library authority.
+        if TYPEOF(CAR(CDR(args))) == SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        if TYPEOF(CAR(CDR(args))) != SEXPTYPE::EXTPTRSXP {
+            error("invalid DLLInfo reference");
+        }
         R_getSymbolInfo(CAR(args), CAR(CDR(args)), CAR(CDR(CDR(args))))
     }
 }
@@ -1292,7 +1362,7 @@ pub unsafe fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
 pub unsafe fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        R_getDllTable()
+        bundled_dll_table_entry()
     }
 }
 
@@ -1646,6 +1716,20 @@ mod tests {
     fn test_dynload_tables_are_session_local_on_same_thread() {
         let left = RSession::new();
         let right = RSession::new();
+        unsafe extern "C" fn left_only() {}
+        unsafe fn stats_registration() -> (SEXP, *mut c_void) {
+            unsafe {
+                let root = with_dynload_state(|state| state.c_entry_table);
+                assert!(!root.is_null());
+                let stats = R_findVarInFrame(root, Rf_install(c"stats".as_ptr()));
+                assert_ne!(stats, R_UnboundValue());
+                let callable = R_findVarInFrame(stats, Rf_install(c"rcont2".as_ptr()));
+                assert_eq!(TYPEOF(callable), SEXPTYPE::EXTPTRSXP);
+                (callable, R_ExternalPtrAddr(callable))
+            }
+        }
+        let left_stats = left.with_protected(|| unsafe { stats_registration() });
+        let right_stats = right.with_protected(|| unsafe { stats_registration() });
 
         let (left_package_table, left_root_table) = left.with_protected(|| unsafe {
             init_loaded_dll();
@@ -1654,6 +1738,7 @@ mod tests {
                 b"left_name\0".as_ptr() as *const c_char,
                 ptr::null_mut(),
             );
+            R_RegisterCCallable(c"leftpkg".as_ptr(), c"leftonly".as_ptr(), Some(left_only));
             let table = get_package_centry_table(b"leftpkg\0".as_ptr() as *const c_char);
             let root = with_dynload_state(|state| {
                 assert_eq!(state.loaded_dll.len(), 1);
@@ -1663,11 +1748,19 @@ mod tests {
             (table, root)
         });
 
-        right.with_protected(|| {
-            with_dynload_state(|state| {
+        right.with_protected(|| unsafe {
+            let root = with_dynload_state(|state| {
                 assert!(state.loaded_dll.is_empty());
-                assert!(state.c_entry_table.is_null());
+                state.c_entry_table
             });
+            // Startup registers stats callables in each session. Isolation
+            // means no left-only registration, rather than an empty table.
+            assert_ne!(root, left_root_table);
+            assert_eq!(
+                R_findVarInFrame(root, Rf_install(c"leftpkg".as_ptr())),
+                R_UnboundValue()
+            );
+            assert_eq!(stats_registration(), right_stats);
         });
 
         let (right_package_table, right_root_table) = right.with_protected(|| unsafe {
@@ -1683,5 +1776,28 @@ mod tests {
 
         assert_ne!(left_root_table, right_root_table);
         assert_ne!(left_package_table, right_package_table);
+        left.with_protected(|| unsafe {
+            assert_eq!(stats_registration(), left_stats);
+            let registered = R_GetCCallable(c"leftpkg".as_ptr(), c"leftonly".as_ptr());
+            assert_eq!(
+                registered.map(|f| f as *const ()),
+                Some(left_only as *const ())
+            );
+            assert_eq!(
+                R_findVarInFrame(left_root_table, Rf_install(c"rightpkg".as_ptr())),
+                R_UnboundValue()
+            );
+        });
+        right.with_protected(|| unsafe {
+            assert_eq!(stats_registration(), right_stats);
+            assert_eq!(
+                R_findVarInFrame(right_root_table, Rf_install(c"leftpkg".as_ptr())),
+                R_UnboundValue()
+            );
+        });
     }
 }
+
+#[cfg(test)]
+#[path = "rdynload/native_symbol_handle_tests.rs"]
+mod native_symbol_handle_tests;

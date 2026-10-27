@@ -963,11 +963,11 @@ pub unsafe fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP
 /// Actual owning payloads captured before reconstruction or native callbacks.
 /// Control arguments select resolution; they never become callable payloads.
 struct NativeOperands {
-    // Preserve the original structured name for native/foreign metadata while
-    // retaining the exact child used for lookup before a control provider can
-    // mutate its container and collect the detached child.
+    // Retain the original name graph and any authenticated address child before
+    // a control provider can mutate the container or collect detached values.
     name: crate::sexp::object::Sexp<'static>,
     lookup_child: crate::sexp::object::Sexp<'static>,
+    symbol_address: Option<crate::sexp::object::Sexp<'static>>,
     payload: Vec<(
         crate::sexp::object::Sexp<'static>,
         crate::sexp::object::Sexp<'static>,
@@ -1016,14 +1016,10 @@ impl NativeOperands {
             snapshots.push((value, tag));
             cursor = cursor.try_cdr()?;
         }
-        // A list-name ALTREP element provider may itself reenter and detach
-        // argument cells. Capture every payload/tag first, then the lookup child
+        // Capture every payload/tag and the actual symbol authority child
         // before PACKAGE providers can change the original name container.
-        let lookup_child = if name.typeof_() == SEXPTYPE::VECSXP && name.len() > 0 {
-            name.try_vector_elt(0)?.into_owned()?
-        } else {
-            name.clone()
-        };
+        let symbol_address = crate::mainutils::native_symbols::address(&name)?;
+        let lookup_child = name.clone();
         access.require_active()?;
         let mut payload = Vec::new();
         let mut package = None;
@@ -1061,6 +1057,7 @@ impl NativeOperands {
         Ok(Self {
             name,
             lookup_child,
+            symbol_address,
             payload,
             package,
         })
@@ -1100,38 +1097,7 @@ fn lookup_bundled_native(
     name: &str,
     package: Option<&str>,
 ) -> Option<crate::mainutils::native_routines::NativeRoutine> {
-    fn in_package(
-        name: &str,
-        package: &str,
-    ) -> Option<crate::mainutils::native_routines::NativeRoutine> {
-        match package {
-            "methods" => crate::library::methods::native_calls::lookup(name),
-            "tools" => crate::library::tools::native_calls::lookup(name),
-            "utils" => crate::library::utils::lookup(name),
-            "stats" => crate::library::stats::random::lookup_external(name)
-                .or_else(|| crate::library::stats::random::lookup_call(name)),
-            "splines" => crate::library::splines::splines::lookup(name),
-            "grDevices" => crate::library::grdevices::lookup(name),
-            "grid" => crate::library::grid::lookup(name),
-            "graphics" => crate::library::graphics::lookup(name),
-            _ => None,
-        }
-    }
-    match package {
-        Some(package) => in_package(name, package),
-        None => [
-            "methods",
-            "tools",
-            "utils",
-            "stats",
-            "splines",
-            "grDevices",
-            "grid",
-            "graphics",
-        ]
-        .into_iter()
-        .find_map(|package| in_package(name, package)),
-    }
+    crate::mainutils::native_symbols::lookup(name, package)
 }
 
 /// This translated entry retains original values and execution authority for
@@ -1165,9 +1131,19 @@ unsafe fn invoke_native_handler(
         let name = operands.lookup_name()?;
         access.require_active()?;
         let package = operands.package.as_ref().map(|(name, _, _)| name.as_str());
-        let routine = name
-            .as_deref()
-            .and_then(|name| lookup_bundled_native(name, package));
+        let handle = operands
+            .symbol_address
+            .as_ref()
+            .map(|address| {
+                access.with_native(|owner| crate::mainutils::native_symbols::symbol(owner, address))
+            })
+            .transpose()?;
+        let routine = if let Some(handle) = &handle {
+            Some(handle.routine()?)
+        } else {
+            name.as_deref()
+                .and_then(|name| lookup_bundled_native(name, package))
+        };
         // Rejection happens before any argument-list construction, wrapper
         // allocation, or native callback. The pointer descriptor is definitive.
         if let Some(routine) = routine {
@@ -1186,6 +1162,9 @@ unsafe fn invoke_native_handler(
                         .map(|(value, _)| value.as_raw())
                         .collect();
                     access.require_active()?;
+                    if let Some(handle) = &handle {
+                        handle.routine()?;
+                    }
                     unsafe { routine.invoke_call(&pointers) }
                         .map_err(|error| native_admission_error(error.to_string()))?
                 }
@@ -1194,6 +1173,9 @@ unsafe fn invoke_native_handler(
                     let list = operands.argument_list(&allocator, false, &domain.nil())?;
                     if interface == NativeInterface::External {
                         access.require_active()?;
+                        if let Some(handle) = &handle {
+                            handle.routine()?;
+                        }
                         unsafe { routine.invoke_external1(list.as_raw(), operands.payload.len()) }
                     } else {
                         let operator = match operator_identity {
@@ -1206,6 +1188,9 @@ unsafe fn invoke_native_handler(
                             None => domain.nil(),
                         };
                         access.require_active()?;
+                        if let Some(handle) = &handle {
+                            handle.routine()?;
+                        }
                         unsafe {
                             routine.invoke_external2(
                                 call.as_raw(),

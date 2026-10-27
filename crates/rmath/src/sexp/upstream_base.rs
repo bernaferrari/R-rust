@@ -581,6 +581,7 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
             "[.DLLInfoList",
             "dyn.load",
             "dyn.unload",
+            "getLoadedDLLs",
             "getCallingDLL",
             "getCallingDLLe",
             "getDLLRegisteredRoutines",
@@ -1075,8 +1076,6 @@ const BLOCKED_EXPORTS: &[&str] = &[
     "extSoftVersion",
     "findRestart",
     "getDLLRegisteredRoutines.DLLInfo",
-    "getLoadedDLLs",
-    "getNativeSymbolInfo",
     "globalCallingHandlers",
     "icuGetCollate",
     "icuSetCollate",
@@ -1167,6 +1166,7 @@ pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
         load_oracle_recovered_closures(base_env, staging);
         load_fortran_symbol_bindings(base_env);
         load_profile_common_bindings(base_env);
+        load_lazy_native_symbol_info(base_env, namespace);
     }
 }
 
@@ -1598,7 +1598,7 @@ unsafe fn assignment_target_blocked(expr: SEXP) -> bool {
                 && let Some(name) = symbol_name(head)
                 && (name == "<-" || name == "=" || name == "<<-")
                 && let Some(target) = symbol_name(super::accessors::CADR(expr))
-                && BLOCKED_EXPORTS.contains(&target.as_str())
+                && (BLOCKED_EXPORTS.contains(&target.as_str()) || target == "getNativeSymbolInfo")
             {
                 return true;
             }
@@ -1641,5 +1641,123 @@ unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
             .to_str()
             .ok()
             .map(str::to_owned)
+    }
+}
+
+/// Ordinary R promise: materialize the original closure only on first lookup.
+unsafe fn load_lazy_native_symbol_info(base_env: SEXP, namespace: SEXP) {
+    unsafe {
+        let result = (|| {
+            let owner = crate::sexp::owner::OwnerToken::current()?;
+            let _pin = owner.pin()?;
+            owner.require_active()?;
+            let factory = owner.node_factory();
+            let symbol = factory.wrap(Rf_install_in_current("getNativeSymbolInfo"))?;
+            if defined_in(base_env, "getNativeSymbolInfo") {
+                return Ok(());
+            }
+            let eval = factory.wrap(Rf_install_in_current("eval"))?;
+            let parse = factory.wrap(Rf_install_in_current("parse"))?;
+            let text = factory.wrap(Rf_install_in_current("text"))?;
+            let environment = factory.wrap(namespace)?;
+            let source = factory.strings(&[include_str!("native_symbol_info.R")])?;
+            let parse_args = factory.pairlist_cell(&source, &factory.nil(), &text)?;
+            let parsed = factory.call(&parse, &parse_args)?;
+            let eval_env = factory.pairlist_cell(&environment, &factory.nil(), &factory.nil())?;
+            let eval_args = factory.pairlist_cell(&parsed, &eval_env, &factory.nil())?;
+            let expression = factory.call(&eval, &eval_args)?;
+            let promise = factory.promise(&expression, &environment)?;
+            owner.require_active()?;
+            defineVar(symbol.as_raw(), promise.as_raw(), base_env);
+            SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
+            owner.require_active()
+        })();
+        result.unwrap_or_else(|e: crate::sexp::object::SexpError| {
+            crate::sexp::context::r_error(e.to_string())
+        });
+    }
+}
+
+#[cfg(test)]
+mod lazy_native_symbol_tests {
+    use super::*;
+    #[test]
+    fn lazy_native_symbol_binding_retains_expression_through_collection_and_forces_once() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let owner = session.owner_token().unwrap();
+            let base = crate::sexp::globals::R_BaseEnv();
+            load_lazy_native_symbol_info(base, base);
+            let symbol = Rf_install_in_current("getNativeSymbolInfo");
+            let promise = owner.sexp(R_findVarInFrame(base, symbol)).unwrap();
+            assert_eq!(promise.typeof_(), crate::sexp::ffi::SEXPTYPE::PROMSXP);
+            owner.full_gc().unwrap();
+            crate::sexp::envir::lock_binding_raw(base, symbol);
+            let first = owner
+                .sexp(crate::eval::eval::Rf_eval(symbol, base))
+                .unwrap();
+            assert_eq!(first.typeof_(), crate::sexp::ffi::SEXPTYPE::CLOSXP);
+            let second = crate::eval::eval::Rf_eval(symbol, base);
+            assert_eq!(first.as_raw(), second);
+            let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                defineVar(symbol, R_NilValue(), base)
+            }));
+            assert!(
+                denied.is_err(),
+                "forcing the promise must not unlock or rebind the export"
+            );
+        });
+    }
+    #[test]
+    fn lazy_native_symbol_binding_rejects_revocation_during_force() {
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+        };
+        let original = crate::sexp::session::RSession::new_for_gc_tests();
+        let replacement = Rc::new(RefCell::new(None::<crate::sexp::session::RSession>));
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        let target = Rc::downgrade(&replacement);
+        let owner = original.owner_token().unwrap();
+        let weak = owner.weak_owner().unwrap();
+        unsafe {
+            let base = crate::sexp::globals::R_BaseEnv();
+            load_lazy_native_symbol_info(base, base);
+            let symbol = Rf_install_in_current("getNativeSymbolInfo");
+            let promise = owner.sexp(R_findVarInFrame(base, symbol)).unwrap();
+            let unbound = crate::sexp::globals::R_UnboundValue();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(1) != 0 {
+                    return;
+                }
+                let pin = weak.pin().unwrap();
+                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::sexp::instance::revoke_instance_availability(pin.as_ptr());
+                *target.upgrade().unwrap().borrow_mut() =
+                    Some(crate::sexp::session::RSession::new_for_gc_tests());
+            }));
+            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
+            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::eval::eval::Rf_eval(symbol, base)
+            }));
+            assert!(denied.is_err());
+            assert_eq!(notifications.get(), 1);
+            assert_eq!(crate::sexp::accessors::PRVALUE(promise.as_raw()), unbound);
+        }
+        let replacement = replacement.borrow();
+        replacement.as_ref().unwrap().with_active(|| {
+            assert!(
+                replacement
+                    .as_ref()
+                    .unwrap()
+                    .owner_token()
+                    .unwrap()
+                    .node_factory()
+                    .character("live replacement")
+                    .is_ok()
+            );
+        });
     }
 }
