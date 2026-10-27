@@ -15,6 +15,20 @@ use super::ast::*;
 use super::mem;
 use super::stack;
 
+// Compiler continuations can contain several stack words. Stop on the first
+// failed push so a partial continuation is never interpreted as a complete one.
+macro_rules! checked_stack_push {
+    ($push:expr) => {
+        checked_stack_push!($push, {})
+    };
+    ($push:expr, $cleanup:block) => {
+        if $push != stack::REG_OK {
+            $cleanup
+            return REG_ESPACE as c_int;
+        }
+    };
+}
+
 // ===== Tag insertion =====
 
 #[repr(C)]
@@ -197,8 +211,23 @@ unsafe fn tre_add_tags(
             (*saved_states.offset(i)).tag = -1;
         }
 
-        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-        stack::tre_stack_push_int(stack, tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int);
+        // These scratch tables predate arena ownership; release them on a
+        // stack allocation failure just as on the ordinary exit path.
+        macro_rules! checked_tag_stack_push {
+            ($push:expr) => {
+                checked_stack_push!($push, {
+                    mem::xfree(orig_regset as *mut c_void);
+                    mem::xfree(parents as *mut c_void);
+                    mem::xfree(saved_states as *mut c_void);
+                })
+            };
+        }
+
+        checked_tag_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
+        checked_tag_stack_push!(stack::tre_stack_push_int(
+            stack,
+            tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int
+        ));
 
         let mut num_tags: c_int = 0;
         let mut num_minimals: c_int = 0;
@@ -269,11 +298,14 @@ unsafe fn tre_add_tags(
                             }
                         }
 
-                        stack::tre_stack_push_int(stack, (*node).submatch_id);
-                        stack::tre_stack_push_int(
+                        checked_tag_stack_push!(stack::tre_stack_push_int(
+                            stack,
+                            (*node).submatch_id
+                        ));
+                        checked_tag_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_addtags_symbol_t::ADDTAGS_SET_SUBMATCH_END as c_int,
-                        );
+                        ));
                     }
 
                     match (*node).type_ {
@@ -311,62 +343,83 @@ unsafe fn tre_add_tags(
                             let right = (*cat).right;
                             let mut reserved_tag: c_int = -1;
 
-                            stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                node as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_CAT_RIGHT as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_voidptr(stack, right as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                right as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_int(stack, next_tag + (*left).num_tags);
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                                stack,
+                                next_tag + (*left).num_tags
+                            ));
                             if (*left).num_tags > 0 && (*right).num_tags > 0 {
                                 reserved_tag = next_tag;
                                 next_tag += 1;
                             }
-                            stack::tre_stack_push_int(stack, reserved_tag);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, reserved_tag));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_CAT_LEFT as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_voidptr(stack, left as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                left as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
-                            );
+                            ));
                         }
                         tre_ast_type_t::ITERATION => {
                             let iter = (*node).obj as *mut tre_iteration_t;
 
                             if first_pass {
-                                stack::tre_stack_push_int(
+                                checked_tag_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     if *regset >= 0 || (*iter).minimal != 0 {
                                         1
                                     } else {
                                         0
                                     },
-                                );
+                                ));
                             } else {
-                                stack::tre_stack_push_int(stack, tag);
-                                stack::tre_stack_push_int(stack, (*iter).minimal as c_int);
+                                checked_tag_stack_push!(stack::tre_stack_push_int(stack, tag));
+                                checked_tag_stack_push!(stack::tre_stack_push_int(
+                                    stack,
+                                    (*iter).minimal as c_int
+                                ));
                             }
-                            stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                node as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_ITERATION as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                (*iter).arg as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
-                            );
+                            ));
 
                             if *regset >= 0 || (*iter).minimal != 0 {
                                 if !first_pass {
@@ -408,34 +461,55 @@ unsafe fn tre_add_tags(
                                 (tag, next_tag)
                             };
 
-                            stack::tre_stack_push_int(stack, right_tag);
-                            stack::tre_stack_push_int(stack, left_tag);
-                            stack::tre_stack_push_voidptr(stack, regset as *mut c_void);
-                            stack::tre_stack_push_int(stack, if *regset >= 0 { 1 } else { 0 });
-                            stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                            stack::tre_stack_push_voidptr(stack, right as *mut c_void);
-                            stack::tre_stack_push_voidptr(stack, left as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, right_tag));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, left_tag));
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                regset as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                                stack,
+                                if *regset >= 0 { 1 } else { 0 }
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                node as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                right as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                left as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_RIGHT as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_voidptr(stack, right as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                right as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_LEFT as c_int,
-                            );
+                            ));
 
-                            stack::tre_stack_push_voidptr(stack, left as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                left as *mut c_void
+                            ));
+                            checked_tag_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
-                            );
+                            ));
 
                             if *regset >= 0 {
                                 if !first_pass {
@@ -626,8 +700,11 @@ unsafe fn tre_copy_ast(
         let mut first_tag: c_int = 1;
         let mut result = copy;
 
-        stack::tre_stack_push_voidptr(stack, ast as *mut c_void);
-        stack::tre_stack_push_int(stack, tre_copyast_symbol_t::COPY_RECURSE as c_int);
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, ast as *mut c_void));
+        checked_stack_push!(stack::tre_stack_push_int(
+            stack,
+            tre_copyast_symbol_t::COPY_RECURSE as c_int
+        ));
 
         while status == REG_OK as c_int && stack::tre_stack_num_objects(stack) > bottom {
             let symbol = stack::tre_stack_pop_int(stack);
@@ -679,23 +756,32 @@ unsafe fn tre_copy_ast(
                             } else {
                                 let tmp = (**result).obj as *mut tre_union_t;
                                 result = &mut (*tmp).left;
-                                stack::tre_stack_push_voidptr(stack, (*uni).right as *mut c_void);
-                                stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    (*uni).right as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_RECURSE as c_int,
-                                );
+                                ));
                                 let right_ptr: *mut *mut tre_ast_node_t =
                                     std::ptr::addr_of_mut!((*tmp).right);
-                                stack::tre_stack_push_voidptr(stack, right_ptr as *mut c_void);
-                                stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    right_ptr as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_SET_RESULT_PTR as c_int,
-                                );
-                                stack::tre_stack_push_voidptr(stack, (*uni).left as *mut c_void);
-                                stack::tre_stack_push_int(
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    (*uni).left as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_RECURSE as c_int,
-                                );
+                                ));
                             }
                         }
                         tre_ast_type_t::CATENATION => {
@@ -708,32 +794,44 @@ unsafe fn tre_copy_ast(
                                 (*tmp).left = ptr::null_mut();
                                 (*tmp).right = ptr::null_mut();
                                 result = &mut (*tmp).left;
-                                stack::tre_stack_push_voidptr(stack, (*cat).right as *mut c_void);
-                                stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    (*cat).right as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_RECURSE as c_int,
-                                );
+                                ));
                                 let right_ptr2: *mut *mut tre_ast_node_t =
                                     std::ptr::addr_of_mut!((*tmp).right);
-                                stack::tre_stack_push_voidptr(stack, right_ptr2 as *mut c_void);
-                                stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    right_ptr2 as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_SET_RESULT_PTR as c_int,
-                                );
-                                stack::tre_stack_push_voidptr(stack, (*cat).left as *mut c_void);
-                                stack::tre_stack_push_int(
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_voidptr(
+                                    stack,
+                                    (*cat).left as *mut c_void
+                                ));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     tre_copyast_symbol_t::COPY_RECURSE as c_int,
-                                );
+                                ));
                             }
                         }
                         tre_ast_type_t::ITERATION => {
                             let iter = (*node).obj as *mut tre_iteration_t;
-                            stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
-                            stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
+                                stack,
+                                (*iter).arg as *mut c_void
+                            ));
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_copyast_symbol_t::COPY_RECURSE as c_int,
-                            );
+                            ));
                             *result = tre_ast_new_iter(
                                 mem,
                                 (*iter).arg,
@@ -776,8 +874,11 @@ unsafe fn tre_expand_ast(
         let params_depth: c_int = 0;
         let mut iter_depth: c_int = 0;
 
-        stack::tre_stack_push_voidptr(stack, ast as *mut c_void);
-        stack::tre_stack_push_int(stack, tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int);
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, ast as *mut c_void));
+        checked_stack_push!(stack::tre_stack_push_int(
+            stack,
+            tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int
+        ));
 
         while status == REG_OK as c_int && stack::tre_stack_num_objects(stack) > bottom {
             let symbol = stack::tre_stack_pop_int(stack);
@@ -796,43 +897,61 @@ unsafe fn tre_expand_ast(
                     }
                     tre_ast_type_t::UNION => {
                         let uni = (*node).obj as *mut tre_union_t;
-                        stack::tre_stack_push_voidptr(stack, (*uni).right as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).right as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int,
-                        );
-                        stack::tre_stack_push_voidptr(stack, (*uni).left as *mut c_void);
-                        stack::tre_stack_push_int(
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).left as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int,
-                        );
+                        ));
                     }
                     tre_ast_type_t::CATENATION => {
                         let cat = (*node).obj as *mut tre_catenation_t;
-                        stack::tre_stack_push_voidptr(stack, (*cat).right as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*cat).right as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int,
-                        );
-                        stack::tre_stack_push_voidptr(stack, (*cat).left as *mut c_void);
-                        stack::tre_stack_push_int(
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*cat).left as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int,
-                        );
+                        ));
                     }
                     tre_ast_type_t::ITERATION => {
                         let iter = (*node).obj as *mut tre_iteration_t;
-                        stack::tre_stack_push_int(stack, pos_add);
-                        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_int(stack, pos_add));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            node as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_AFTER_ITER as c_int,
-                        );
-                        stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
-                        stack::tre_stack_push_int(
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*iter).arg as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_expand_ast_symbol_t::EXPAND_RECURSE as c_int,
-                        );
+                        ));
                         if (*iter).min > 1 || (*iter).max > 1 {
                             pos_add = 0;
                         }
@@ -1199,7 +1318,7 @@ unsafe fn tre_match_empty(
             *_params_seen = 0;
         }
 
-        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
 
         while status == REG_OK as c_int && stack::tre_stack_num_objects(stack) > bottom {
             node = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
@@ -1250,20 +1369,35 @@ unsafe fn tre_match_empty(
                 tre_ast_type_t::UNION => {
                     let uni = (*node).obj as *mut tre_union_t;
                     if !(*uni).left.is_null() && (*(*uni).left).nullable != 0 {
-                        stack::tre_stack_push_voidptr(stack, (*uni).left as *mut c_void);
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).left as *mut c_void
+                        ));
                     } else if !(*uni).right.is_null() && (*(*uni).right).nullable != 0 {
-                        stack::tre_stack_push_voidptr(stack, (*uni).right as *mut c_void);
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).right as *mut c_void
+                        ));
                     }
                 }
                 tre_ast_type_t::CATENATION => {
                     let cat = (*node).obj as *mut tre_catenation_t;
-                    stack::tre_stack_push_voidptr(stack, (*cat).left as *mut c_void);
-                    stack::tre_stack_push_voidptr(stack, (*cat).right as *mut c_void);
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*cat).left as *mut c_void
+                    ));
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*cat).right as *mut c_void
+                    ));
                 }
                 tre_ast_type_t::ITERATION => {
                     let iter = (*node).obj as *mut tre_iteration_t;
                     if !(*iter).arg.is_null() && (*(*iter).arg).nullable != 0 {
-                        stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*iter).arg as *mut c_void
+                        ));
                     }
                 }
             }
@@ -1290,8 +1424,11 @@ unsafe fn tre_compute_nfl(
 ) -> c_int {
     unsafe {
         let bottom = stack::tre_stack_num_objects(stack);
-        stack::tre_stack_push_voidptr(stack, tree as *mut c_void);
-        stack::tre_stack_push_int(stack, tre_nfl_stack_symbol_t::NFL_RECURSE as c_int);
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, tree as *mut c_void));
+        checked_stack_push!(stack::tre_stack_push_int(
+            stack,
+            tre_nfl_stack_symbol_t::NFL_RECURSE as c_int
+        ));
 
         while stack::tre_stack_num_objects(stack) > bottom {
             let symbol = stack::tre_stack_pop_int(stack);
@@ -1366,53 +1503,77 @@ unsafe fn tre_compute_nfl(
                         }
                     }
                     tre_ast_type_t::UNION => {
-                        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            node as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_POST_UNION as c_int,
-                        );
+                        ));
                         let uni = (*node).obj as *mut tre_union_t;
-                        stack::tre_stack_push_voidptr(stack, (*uni).right as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).right as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_RECURSE as c_int,
-                        );
-                        stack::tre_stack_push_voidptr(stack, (*uni).left as *mut c_void);
-                        stack::tre_stack_push_int(
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*uni).left as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_RECURSE as c_int,
-                        );
+                        ));
                     }
                     tre_ast_type_t::CATENATION => {
-                        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            node as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_POST_CATENATION as c_int,
-                        );
+                        ));
                         let cat = (*node).obj as *mut tre_catenation_t;
-                        stack::tre_stack_push_voidptr(stack, (*cat).right as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*cat).right as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_RECURSE as c_int,
-                        );
-                        stack::tre_stack_push_voidptr(stack, (*cat).left as *mut c_void);
-                        stack::tre_stack_push_int(
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*cat).left as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_RECURSE as c_int,
-                        );
+                        ));
                     }
                     tre_ast_type_t::ITERATION => {
-                        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            node as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_POST_ITERATION as c_int,
-                        );
+                        ));
                         let iter = (*node).obj as *mut tre_iteration_t;
-                        stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
-                        stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_voidptr(
+                            stack,
+                            (*iter).arg as *mut c_void
+                        ));
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_nfl_stack_symbol_t::NFL_RECURSE as c_int,
-                        );
+                        ));
                     }
                 },
                 x if x == tre_nfl_stack_symbol_t::NFL_POST_UNION as c_int => {
@@ -1751,7 +1912,7 @@ unsafe fn tre_ast_to_tnfa_iter(
     offs: *const c_int,
 ) -> c_int {
     unsafe {
-        stack::tre_stack_push_voidptr(stack, node as *mut c_void);
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
 
         while stack::tre_stack_num_objects(stack) > 0 {
             let node = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
@@ -1759,8 +1920,14 @@ unsafe fn tre_ast_to_tnfa_iter(
                 tre_ast_type_t::LITERAL => {}
                 tre_ast_type_t::UNION => {
                     let uni = (*node).obj as *mut tre_union_t;
-                    stack::tre_stack_push_voidptr(stack, (*uni).right as *mut c_void);
-                    stack::tre_stack_push_voidptr(stack, (*uni).left as *mut c_void);
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*uni).right as *mut c_void
+                    ));
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*uni).left as *mut c_void
+                    ));
                 }
                 tre_ast_type_t::CATENATION => {
                     let cat = (*node).obj as *mut tre_catenation_t;
@@ -1774,8 +1941,14 @@ unsafe fn tre_ast_to_tnfa_iter(
                     if errcode != REG_OK as c_int {
                         return errcode;
                     }
-                    stack::tre_stack_push_voidptr(stack, (*cat).right as *mut c_void);
-                    stack::tre_stack_push_voidptr(stack, (*cat).left as *mut c_void);
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*cat).right as *mut c_void
+                    ));
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*cat).left as *mut c_void
+                    ));
                 }
                 tre_ast_type_t::ITERATION => {
                     let iter = (*node).obj as *mut tre_iteration_t;
@@ -1791,7 +1964,10 @@ unsafe fn tre_ast_to_tnfa_iter(
                             return errcode;
                         }
                     }
-                    stack::tre_stack_push_voidptr(stack, (*iter).arg as *mut c_void);
+                    checked_stack_push!(stack::tre_stack_push_voidptr(
+                        stack,
+                        (*iter).arg as *mut c_void
+                    ));
                 }
             }
         }
@@ -2428,5 +2604,114 @@ mod owned_table_tests {
             owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod traversal_stack_tests {
+    use super::*;
+
+    #[derive(Clone, Copy, Debug)]
+    enum Pass {
+        Tags,
+        Copy,
+        Expand,
+        Empty,
+        Nfl,
+        Tnfa,
+    }
+
+    // Empty leaves let TNFA construction exercise the same continuation pushes
+    // without needing transition buffers; every pass visits union, catenation,
+    // and iteration nodes.
+    fn run(pass: Pass, fail_at: Option<usize>) -> (c_int, mem::fault::Report) {
+        let mut arena =
+            mem::tre_mem_struct::new(crate::mainutils::grep::RegexWorkspace::unbounded()).unwrap();
+        unsafe {
+            let mem = &mut arena as mem::tre_mem_t;
+            let left = tre_ast_new_literal(mem, EMPTY as c_int, -1, -1);
+            let right = tre_ast_new_literal(mem, EMPTY as c_int, -1, -1);
+            let union = tre_ast_new_union(mem, left, right);
+            let iter = tre_ast_new_iter(mem, union, 0, -1, 0);
+            let tail = tre_ast_new_literal(mem, EMPTY as c_int, -1, -1);
+            let tree = tre_ast_new_catenation(mem, iter, tail);
+            assert!(!tree.is_null());
+            // Nullable and position sets are prerequisites for the final two
+            // traversals; prepare them before observing scratch allocations.
+            if matches!(pass, Pass::Empty | Pass::Tnfa) {
+                let stack = stack::tre_stack_new(64, 10240, 64);
+                assert!(!stack.is_null());
+                assert_eq!(tre_compute_nfl(mem, stack, tree), REG_OK);
+                stack::tre_stack_destroy(stack);
+            }
+            mem::fault::observe(fail_at, || {
+                let stack = stack::tre_stack_new(1, 10240, 1);
+                if stack.is_null() {
+                    return REG_ESPACE;
+                }
+                let mut value = 0;
+                let mut depth = 0;
+                let mut copy = ptr::null_mut();
+                let mut tnfa: tre_tnfa_t = std::mem::zeroed();
+                let status = match pass {
+                    Pass::Tags => tre_add_tags(ptr::null_mut(), stack, tree, &mut tnfa),
+                    Pass::Copy => tre_copy_ast(
+                        mem,
+                        stack,
+                        tree,
+                        0,
+                        &mut value,
+                        ptr::null_mut(),
+                        &mut copy,
+                        &mut depth,
+                    ),
+                    Pass::Expand => {
+                        tre_expand_ast(mem, stack, tree, &mut value, ptr::null_mut(), &mut depth)
+                    }
+                    Pass::Empty => tre_match_empty(
+                        stack,
+                        tree,
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                    ),
+                    Pass::Nfl => tre_compute_nfl(mem, stack, tree),
+                    Pass::Tnfa => tre_ast_to_tnfa_iter(
+                        stack,
+                        tree,
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null(),
+                    ),
+                };
+                stack::tre_stack_destroy(stack);
+                status
+            })
+        }
+    }
+
+    #[test]
+    fn every_compiler_traversal_rejects_stack_growth_failure_and_recovers() {
+        for pass in [
+            Pass::Tags,
+            Pass::Copy,
+            Pass::Expand,
+            Pass::Empty,
+            Pass::Nfl,
+            Pass::Tnfa,
+        ] {
+            let (status, baseline) = run(pass, None);
+            assert_eq!(status, REG_OK, "{pass:?}");
+            assert_eq!(baseline.remaining, 0, "{pass:?}");
+            assert!(baseline.attempts > 2, "{pass:?} must grow its stack");
+            for failure in 0..baseline.attempts {
+                let (status, report) = run(pass, Some(failure));
+                assert_eq!(status, REG_ESPACE, "{pass:?}: allocation {failure}");
+                assert_eq!(report.remaining, 0, "{pass:?}: allocation {failure}");
+            }
+            assert_eq!(run(pass, None).0, REG_OK, "{pass:?} recovery");
+        }
     }
 }
