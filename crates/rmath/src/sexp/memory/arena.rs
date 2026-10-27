@@ -491,13 +491,23 @@ impl RArena {
     /// including an R error or cancellation unwind. The allocation itself is
     /// owned by the caller; this only accounts for its peak workspace.
     pub(crate) fn try_reserve_transient(&mut self, bytes: usize) -> Option<TransientReservation> {
-        TransientReservation::new(
-            self.budget.max_bytes,
-            self.allocated_bytes.get(),
-            0,
-            &self.transient_bytes,
-            bytes,
-        )
+        let reserve = |arena: &Self| {
+            TransientReservation::new(
+                arena.budget.max_bytes,
+                arena.allocated_bytes.get(),
+                0,
+                &arena.transient_bytes,
+                bytes,
+            )
+        };
+        if let Some(reservation) = reserve(self) {
+            return Some(reservation);
+        }
+        // Only copied weak identities live in this optional hint table. The
+        // exclusive arena borrow prevents a lookup/entry borrow surviving this
+        // call; dropping storage/ticket cannot execute R or collect live nodes.
+        drop(std::mem::take(&mut self.bytecode_string_cache));
+        reserve(self)
     }
 
     pub(crate) fn workspace_bytes(&self) -> usize {
