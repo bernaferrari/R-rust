@@ -39,16 +39,12 @@ try {
         'smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, 0.290816)',
     ]);
     assert.equal(
+        events[6],
+        'smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, -2.08167e-17)',
+    );
+    assert.equal(
         events[7],
         'smooth(span=0.05, iper=-1) -> (var, cvar) = (0.204082, 0.757143)',
-    );
-    assert.match(
-        events[6],
-        /^smooth\(span= 0\.2, iper=-1\) -> \(var, cvar\) = \(0\.204082, [-+0-9.e]+\)$/,
-    );
-    console.warn(
-        'Known GNU trace parity gap (rport-wpdk.6.6.2): automatic event 7 cvar differs near zero; pinned GNU prints -2.08167e-17, port prints:',
-        events[6],
     );
 
     const quiet = isolated.eval(

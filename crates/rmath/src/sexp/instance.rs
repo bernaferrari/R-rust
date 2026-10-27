@@ -1061,6 +1061,14 @@ pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
     CURRENT_INSTANCE.with(|ci| ci.borrow().as_ref().and_then(CurrentRuntime::projection))
 }
 
+/// Whether a runtime capability is installed, even if its owner has been revoked.
+/// Callers that support unscoped fixtures can distinguish a truly absent
+/// runtime from a configured capability that failed its liveness check.
+#[inline]
+pub(crate) fn current_instance_is_configured() -> bool {
+    CURRENT_INSTANCE.with(|ci| ci.borrow().is_some())
+}
+
 /// Return whether this thread currently has an active runtime instance.
 ///
 /// Code that only needs a capability check should use this instead of

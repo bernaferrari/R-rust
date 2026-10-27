@@ -59,16 +59,16 @@ pub(super) fn smooth(
         let before = total;
         total += w;
         if total > 0. {
-            xm = (before * xm + w * x) / total;
-            ym = (before * ym + w * input.y[index]) / total;
+            xm = before.mul_add(xm, w * x) / total;
+            ym = before.mul_add(ym, w * input.y[index]) / total;
         }
         let delta = if before > 0. {
             total * w * (x - xm) / before
         } else {
             0.
         };
-        var += delta * (x - xm);
-        cvar += delta * (input.y[index] - ym);
+        var = delta.mul_add(x - xm, var);
+        cvar = delta.mul_add(input.y[index] - ym, cvar);
     }
     for j in 1..=n {
         let out = j as i64 - bw - 1;
@@ -95,30 +95,30 @@ pub(super) fn smooth(
             } else {
                 0.
             };
-            var -= delta * (xo - xm);
-            cvar -= delta * (input.y[out] - ym);
+            var = (-delta).mul_add(xo - xm, var);
+            cvar = (-delta).mul_add(input.y[out] - ym, cvar);
             if total > 0. {
-                xm = (before * xm - w * xo) / total;
-                ym = (before * ym - w * input.y[out]) / total;
+                xm = before.mul_add(xm, -(w * xo)) / total;
+                ym = before.mul_add(ym, -(w * input.y[out])) / total;
             }
             let w = input.weights[new];
             let before = total;
             total += w;
             if total > 0. {
-                xm = (before * xm + w * xi) / total;
-                ym = (before * ym + w * input.y[new]) / total;
+                xm = before.mul_add(xm, w * xi) / total;
+                ym = before.mul_add(ym, w * input.y[new]) / total;
             }
             let delta = if before > 0. {
                 total * w * (xi - xm) / before
             } else {
                 0.
             };
-            var += delta * (xi - xm);
-            cvar += delta * (input.y[new] - ym);
+            var = delta.mul_add(xi - xm, var);
+            cvar = delta.mul_add(input.y[new] - ym, cvar);
         }
         let i = j - 1;
         let slope = if var > p.variance { cvar / var } else { 0. };
-        smo[i] = slope * (input.x[i] - xm) + ym;
+        smo[i] = slope.mul_add(input.x[i] - xm, ym);
         if p.crossvalidate {
             let mut h = if total > 0. { 1. / total } else { 0. };
             if var > p.variance {
@@ -154,7 +154,7 @@ pub(super) fn smooth(
         let mut sum = input.weights[j];
         while j + 1 < n && input.x[j + 1] <= input.x[j] {
             j += 1;
-            sy += smo[j] * input.weights[j];
+            sy = smo[j].mul_add(input.weights[j], sy);
             sum += input.weights[j];
         }
         if j > start {

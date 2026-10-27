@@ -60,7 +60,7 @@ fn shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
 fn invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     ROUTINE.validate_buffers(BufferInterface::Fortran, b)?;
     let p = parameters(b)?;
-    let trace_enabled = crate::library::stats::smart::settings().trace;
+    let trace_enabled = crate::library::stats::smart::trace_enabled().map_err(BufferError::new)?;
     let [
         _,
         NativeBuffer::Real(x),

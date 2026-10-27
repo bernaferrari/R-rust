@@ -67,6 +67,16 @@ pub(crate) fn settings() -> Common {
     })
 }
 
+pub(crate) fn trace_enabled() -> Result<bool, &'static str> {
+    if !crate::sexp::instance::current_instance_is_configured() {
+        return Ok(false);
+    }
+    crate::sexp::instance::with_current_instance(|instance| unsafe {
+        (*instance).ppr_settings.get().trace
+    })
+    .ok_or("configured R runtime owner is no longer active")
+}
+
 fn update_settings(update: impl FnOnce(&mut Common)) {
     crate::sexp::instance::with_required_current_instance(|instance| unsafe {
         let mut settings = (*instance).ppr_settings.get();
@@ -1511,16 +1521,24 @@ mod settings_tests {
 
     #[test]
     fn ppr_settings_are_original_runtime_owned_and_snapshots_stay_immutable() {
+        assert_eq!(
+            trace_enabled(),
+            Ok(false),
+            "unscoped direct calls stay quiet"
+        );
         let first = RSession::new_for_gc_tests();
         let second = RSession::new_for_gc_tests();
         let original = first.with_active(|| {
             assert_eq!(settings(), Common::default());
+            assert_eq!(trace_enabled(), Ok(false));
             setppr(0.3, 2.0, 1, -2, 5.0, 1.5);
             let saved = settings();
             assert_eq!(saved.ismethod, 1);
             assert!(saved.trace);
+            assert_eq!(trace_enabled(), Ok(true));
             second.with_active(|| {
                 assert_eq!(settings(), Common::default());
+                assert_eq!(trace_enabled(), Ok(false));
                 setppr(0.8, 7.0, 3, 2, 8.0, 2.5);
                 assert_eq!(settings().span, 0.8);
             });
@@ -1533,6 +1551,7 @@ mod settings_tests {
             let reset = settings();
             assert_eq!(reset.ismethod, 0);
             assert!(!reset.trace);
+            assert_eq!(trace_enabled(), Ok(false));
             assert_eq!(reset.span, saved.span);
             assert_eq!(reset.alpha, saved.alpha);
             assert_eq!(reset.lf, saved.lf);
@@ -1540,6 +1559,7 @@ mod settings_tests {
             assert_eq!(reset.gcvpen, saved.gcvpen);
             setsmu(-1);
             assert!(settings().trace);
+            assert_eq!(trace_enabled(), Ok(true));
             assert_eq!(saved.ismethod, 1, "the invocation snapshot cannot change");
             saved
         });
@@ -1553,5 +1573,21 @@ mod settings_tests {
         assert_eq!(original.span, 0.3);
         assert_eq!(original.ismethod, 1);
         second.with_active(|| assert_eq!(settings().span, 0.8));
+    }
+
+    #[test]
+    fn trace_setting_rejects_a_configured_but_revoked_owner() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            crate::sexp::instance::with_current_instance(|instance| unsafe {
+                crate::sexp::instance::revoke_instance_availability(instance);
+                assert_eq!(
+                    trace_enabled(),
+                    Err("configured R runtime owner is no longer active")
+                );
+            })
+            .expect("the initial owner is live");
+        });
+        drop(session);
     }
 }

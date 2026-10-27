@@ -24,10 +24,6 @@ fn fixed_trace_matches_gnu_and_automatic_trace_keeps_all_eight_events() {
             "{DATA}\nexpected <- stats::supsmu(x, y, trace=FALSE); actual <- stats::supsmu(x, y, trace=TRUE); stopifnot(identical(actual, expected)); invisible(NULL)"
         ))
         .expect("automatic-span supersmoother call");
-    // Keep every event and the complete order checked. Event seven's
-    // near-zero covariance differs from pinned GNU; rport-wpdk.6.6.2 tracks
-    // that arithmetic discrepancy without locking the current value in as
-    // expected behavior.
     let events: Vec<_> = automatic.output.lines().collect();
     assert_eq!(events.len(), 8, "automatic trace event count");
     let expected = [
@@ -37,24 +33,12 @@ fn fixed_trace_matches_gnu_and_automatic_trace_keeps_all_eight_events() {
         "smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, 0.290816)\n",
         "smooth(span= 0.5, iper=+1) -> (var, cvar) = (0.204082, 0.714286)\n",
         "smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, 0.290816)\n",
+        "smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, -2.08167e-17)\n",
         "smooth(span=0.05, iper=-1) -> (var, cvar) = (0.204082, 0.757143)\n",
     ];
-    for (event, expected) in events[..6].iter().zip(expected[..6].iter()) {
+    for (event, expected) in events.iter().zip(expected.iter()) {
         assert_eq!(*event, expected.trim_end());
     }
-    assert_eq!(events[7], expected[6].trim_end());
-    let residual = events[6];
-    let prefix = "smooth(span= 0.2, iper=-1) -> (var, cvar) = (0.204082, ";
-    let cvar = residual
-        .strip_prefix(prefix)
-        .and_then(|value| value.strip_suffix(')'))
-        .expect("event seven keeps its exact position and metadata")
-        .parse::<f64>()
-        .expect("event seven covariance is numeric");
-    assert!(cvar.is_finite());
-    eprintln!(
-        "Known GNU trace parity gap (rport-wpdk.6.6.2): event 7 cvar is {cvar:.6e}; pinned GNU prints -2.08167e-17"
-    );
 }
 
 #[test]
