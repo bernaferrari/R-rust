@@ -1,0 +1,31 @@
+{
+  "scope": "Exhausted bracket caret read and range-lookahead pointer formation only",
+  "issue": "rport-jp8en",
+  "source": {
+    "file": "crates/rmath/src/tre/parse.rs",
+    "sha256": "42f2d9e5b63a2691f9e7e3d10602a6100b84f47f1d5d00ed76a6b73093e97bf8"
+  },
+  "actual_miri_red": "/tmp/rport-tre-denial-miri.log: invalid4B read parse.rs531 for exactlength [ input",
+  "strict_miri": {
+    "flag": "-Zmiri-strict-provenance",
+    "selected": 1,
+    "passed": 1,
+    "seconds": 0.61,
+    "log": "/tmp/rport-tre-bracket-miri.log",
+    "patterns": [
+      "[",
+      "[^",
+      "[a",
+      "[]",
+      "[^]"
+    ],
+    "valid_recovery": "[a]"
+  },
+  "gnu": {
+    "runtime": "GNU R4.6.1(2026-06-24) installed oracle",
+    "log": "/tmp/rport-tre-bracket-gnu.log",
+    "result": "five Missing ] errors and valid[a]matches"
+  },
+  "other_gates": "integrated public/Wasm/S4 receipts in tre-memory-denial-propagation-2026-10-27.json",
+  "remaining": "rport-3f79j OPEN separate incomplete named-class closing lookahead, no all-parser-safety claim"
+}

@@ -367,7 +367,10 @@ unsafe fn tre_parse_bracket_items(
                 let mut class: tre_ctype_t = 0;
                 let mut skip: c_int = 0;
 
-                if re.add(2) < re_end && *re.add(1) == CHAR_MINUS && *re.add(2) != CHAR_RBRACKET {
+                if re_end.offset_from(re) > 2
+                    && *re.add(1) == CHAR_MINUS
+                    && *re.add(2) != CHAR_RBRACKET
+                {
                     min = *re;
                     max = *re.add(2);
                     re = re.add(3);
@@ -513,6 +516,10 @@ unsafe fn tre_parse_bracket_items(
 
 unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
     unsafe {
+        // The opening bracket may be the final character of a bounded input.
+        if ctx.re >= ctx.re_end {
+            return REG_EBRACK;
+        }
         let mut node: *mut tre_ast_node_t = ptr::null_mut();
         let mut negate: c_int = 0;
         let mut status: c_int = REG_OK;
@@ -1698,5 +1705,40 @@ unsafe fn parse_literal(
             ctx.re = ctx.re.add(1);
             node
         }
+    }
+}
+
+#[cfg(test)]
+mod bounded_bracket_tests {
+    use super::*;
+
+    #[test]
+    fn exhausted_brackets_reject_exact_length_wide_input_and_recover() {
+        for pattern in ["[", "[^", "[a", "[]", "[^]"] {
+            // No trailing NUL or spare sentinel: the compiler takes a length.
+            let wide: Box<[u32]> = pattern.chars().map(u32::from).collect();
+            let result = unsafe {
+                crate::tre::compile::tre_compile_owned(
+                    wide.as_ptr(),
+                    wide.len(),
+                    REG_EXTENDED,
+                    crate::mainutils::grep::RegexWorkspace::unbounded(),
+                )
+            };
+            match result {
+                Err(code) => assert_eq!(code, REG_EBRACK, "{pattern}"),
+                Ok(_) => panic!("unterminated bracket accepted: {pattern}"),
+            }
+        }
+        let wide = [u32::from('['), u32::from('a'), u32::from(']')];
+        let result = unsafe {
+            crate::tre::compile::tre_compile_owned(
+                wide.as_ptr(),
+                wide.len(),
+                REG_EXTENDED,
+                crate::mainutils::grep::RegexWorkspace::unbounded(),
+            )
+        };
+        assert!(result.is_ok());
     }
 }
