@@ -244,11 +244,14 @@ impl<'a> BinaryReader<'a> {
     pub(crate) fn read_string_bytes(
         &mut self,
         len: usize,
-        reservation: crate::sexp::memory::WorkspaceReservation,
+        reserve: impl FnOnce(usize) -> Result<crate::sexp::memory::WorkspaceReservation, String>,
     ) -> Result<super::super::owned_input::InputBytes, String> {
         if !self.ascii_body {
             let bytes = self.read_bytes(len)?;
-            let mut out = super::super::owned_input::InputBytes::new(reservation, len)
+            // Validate source bytes before admitting the complete copy through
+            // its original owner. A zero ticket followed by direct resize
+            // bypasses optional-cache reclamation on actual budget denial.
+            let mut out = super::super::owned_input::InputBytes::new(reserve(len)?, len)
                 .map_err(|e| e.to_string())?;
             std::io::Write::write_all(&mut out, bytes).map_err(|e| e.to_string())?;
             return Ok(out);
@@ -262,7 +265,7 @@ impl<'a> BinaryReader<'a> {
         if !self.ensure(len) || len > self.remaining() {
             return Err("read error: truncated ASCII string".into());
         }
-        let mut out = super::super::owned_input::InputBytes::new(reservation, len)
+        let mut out = super::super::owned_input::InputBytes::new(reserve(len)?, len)
             .map_err(|e| e.to_string())?;
         while out.len() < len {
             let byte = self

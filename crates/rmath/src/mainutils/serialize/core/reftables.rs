@@ -145,10 +145,9 @@ mod workspace_admission_tests {
         let owner = session.owner_token().unwrap();
         let mut reader = BinaryReader::new(b"abc");
         let bytes = reader
-            .read_string_bytes(
-                3,
-                super::super::super::workspace::reserve(&owner, 0).unwrap(),
-            )
+            .read_string_bytes(3, |length| {
+                super::super::super::workspace::reserve(&owner, length)
+            })
             .unwrap();
         assert!(
             owner.with_arena(|a| a.workspace_bytes()).unwrap() >= 3,
@@ -341,5 +340,124 @@ mod workspace_admission_tests {
         );
         drop((reads, writes, value));
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), before);
+    }
+    #[test]
+    fn serialization_string_admission_reclaims_only_original_weak_cache() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let character = owner
+                .node_factory()
+                .character("string admission literal")
+                .unwrap();
+            let raw = owner
+                .with_arena(|a| a.immutable_bytecode_string(character.as_raw()))
+                .unwrap();
+            let scalar = owner.sexp(raw).unwrap().into_owned().unwrap();
+            let references = ReadRefTable::for_owner(&owner);
+            let held = references.reserve(128).unwrap();
+            let charged = owner
+                .with_arena(|a| {
+                    let charged = a.workspace_bytes();
+                    assert!(charged > 64 * 1024);
+                    a.set_budget(ArenaBudget::new(a.total_bytes_allocated() + charged, 0));
+                    charged
+                })
+                .unwrap();
+            let mut reader = BinaryReader::new(b"abc");
+            let bytes = reader
+                .read_string_bytes(3, |length| references.reserve(length))
+                .unwrap();
+            assert_eq!(&*bytes, b"abc");
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 131);
+            assert!(charged > 131);
+            owner.full_gc().unwrap();
+            assert_eq!(
+                scalar.try_string_elt(0).unwrap().as_raw(),
+                character.as_raw()
+            );
+            drop(bytes);
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 128);
+            drop(held);
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        });
+    }
+    #[test]
+    fn serialization_string_admission_validates_source_before_reserving() {
+        use std::cell::Cell;
+        for ascii in [false, true] {
+            let calls = Cell::new(0);
+            let mut reader = BinaryReader::new(b"x");
+            reader.set_ascii_body(ascii);
+            let error = reader
+                .read_string_bytes(usize::MAX, |_| {
+                    calls.set(calls.get() + 1);
+                    Err("admission must follow validation".into())
+                })
+                .unwrap_err();
+            assert!(!error.contains("admission"));
+            assert_eq!(calls.get(), 0);
+        }
+    }
+
+    #[test]
+    fn serialization_string_admission_denial_preserves_held_ticket_and_truncated_escape() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let references = ReadRefTable::for_owner(&owner);
+        let held = references.reserve(128).unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(a.total_bytes_allocated() + 128, 0)))
+            .unwrap();
+        let mut reader = BinaryReader::new(b"abc");
+        assert!(
+            reader
+                .read_string_bytes(3, |n| references.reserve(n))
+                .is_err()
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 128);
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let mut reader = BinaryReader::new(b"\\");
+        reader.set_ascii_body(true);
+        assert!(
+            reader
+                .read_string_bytes(1, |n| references.reserve(n))
+                .unwrap_err()
+                .contains("truncated")
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 128);
+        drop(held);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+
+    #[test]
+    fn serialization_string_admission_rejects_revoked_owner_without_charging_replacement() {
+        let original = RSession::new_for_gc_tests();
+        let references = ReadRefTable::for_owner(&original.owner_token().unwrap());
+        drop(original);
+        let replacement = RSession::new_for_gc_tests();
+        let owner = replacement.owner_token().unwrap();
+        let held = owner
+            .with_arena(|a| a.reserve_workspace(128).unwrap())
+            .unwrap();
+        let before = owner
+            .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+            .unwrap();
+        let mut reader = BinaryReader::new(b"abc");
+        assert!(
+            reader
+                .read_string_bytes(3, |n| references.reserve(n))
+                .is_err()
+        );
+        drop(references);
+        assert_eq!(
+            owner
+                .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+                .unwrap(),
+            before
+        );
+        drop(held);
     }
 }

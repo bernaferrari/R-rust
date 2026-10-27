@@ -1432,25 +1432,25 @@ fn test_binary_reader_remaining() {
 #[test]
 fn ascii_string_rejects_declared_size_larger_than_input() {
     let session = crate::sexp::RSession::new_for_gc_tests();
-    let reserve = || {
-        session
+    let reserve = |length| {
+        Ok(session
             .owner_token()
             .unwrap()
-            .with_arena(|a| a.reserve_workspace(0))
+            .with_arena(|a| a.reserve_workspace(length))
             .unwrap()
-            .unwrap()
+            .unwrap())
     };
     let mut reader = BinaryReader::new(b"x\n");
     reader.set_ascii_body(true);
     assert!(
         reader
-            .read_string_bytes(usize::MAX, reserve())
+            .read_string_bytes(usize::MAX, reserve)
             .unwrap_err()
             .contains("truncated")
     );
     let mut reader = BinaryReader::new(b"a\\nb\n");
     reader.set_ascii_body(true);
-    assert_eq!(&*reader.read_string_bytes(3, reserve()).unwrap(), b"a\nb");
+    assert_eq!(&*reader.read_string_bytes(3, reserve).unwrap(), b"a\nb");
 }
 
 #[test]

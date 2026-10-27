@@ -854,7 +854,8 @@ pub(crate) unsafe fn read_character_item(
             let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
             Ok(s)
         } else {
-            let bytes = reader.read_string_bytes(len as usize, _ref_table.reserve(0)?)?;
+            let bytes =
+                reader.read_string_bytes(len as usize, |length| _ref_table.reserve(length))?;
             if let Some(name) = crate::sexp::symbol::interned_ascii_character(&bytes) {
                 return Ok(name);
             }
@@ -1103,7 +1104,8 @@ pub(crate) unsafe fn read_primitive_item(
         if length < 0 {
             return Err("invalid primitive name length".into());
         }
-        let bytes = reader.read_string_bytes(length as usize, _ref_table.reserve(0)?)?;
+        let bytes =
+            reader.read_string_bytes(length as usize, |length| _ref_table.reserve(length))?;
         let mut cbuf = bytes;
         cbuf.push(0).map_err(|e| e.to_string())?;
         let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
