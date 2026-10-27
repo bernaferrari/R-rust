@@ -605,3 +605,138 @@ fn owned_derivative_deep_unary_traversal_subprocess() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_parentheses_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_PARENTHESES_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let mut expression = symbol(&owner, "x");
+                for _ in 0..4096 {
+                    expression = call(&owner, "f", &[expression]);
+                }
+                let result = crate::sexp::owner::with_runtime(&owner, |access| {
+                    let kernel = super::owned::Kernel::new(access, super::derivative_symbol);
+                    kernel.parentheses(&expression)
+                })
+                .unwrap()
+                .unwrap();
+                assert_eq!(result.typeof_(), SEXPTYPE::LANGSXP);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_parentheses_subprocess")
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn owned_parentheses_rejects_cycles_and_accepts_shared_children() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let x = symbol(&owner, "x");
+    let cycle = call(&owner, "+", std::slice::from_ref(&x));
+    let cell = cycle.try_cdr().unwrap().into_owned().unwrap();
+    let mut writable = crate::sexp::object::SexpMut::try_from_checked(cell).unwrap();
+    writable.try_set_pairlist_car(&cycle).unwrap();
+    drop(writable);
+    let child = call(&owner, "+", &[x.clone(), x]);
+    let shared = call(&owner, "*", &[child.clone(), child]);
+    let result = crate::sexp::owner::with_runtime(&owner, |access| {
+        let kernel = super::owned::Kernel::new(access, super::derivative_symbol);
+        let error = kernel.parentheses(&cycle).unwrap_err();
+        assert!(error.to_string().contains("cyclic derivative expression"));
+        kernel.parentheses(&shared)
+    })
+    .unwrap()
+    .unwrap();
+    drop(shared);
+    crate::sexp::owner::with_runtime(&owner, |access| access.with_native(|owner| owner.full_gc()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.typeof_(), SEXPTYPE::LANGSXP);
+    assert!(
+        result
+            .try_car()
+            .unwrap()
+            .try_printname()
+            .unwrap()
+            .try_char_eq(b"*")
+            .unwrap()
+    );
+}
+
+fn parentheses_callback_cleanup(action: u8) {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let owner = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let x = symbol(&owner, "x");
+    let child = call(&owner, "+", &[x.clone(), x.clone()]);
+    let expression = call(&owner, "*", &[child, x]);
+    let calls = Cell::new(0);
+    let pin = owner.pin().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(pin.as_ptr(), || {
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let kernel = super::owned::Kernel::new(access, |access, name| {
+                    calls.set(calls.get() + 1);
+                    access.with_native(|runtime| runtime.full_gc())?;
+                    if action == 2 {
+                        facade.borrow_mut().as_mut().unwrap().close();
+                    }
+                    if action == 1 {
+                        std::panic::panic_any(918_u32);
+                    }
+                    super::derivative_symbol(access, name)
+                });
+                kernel.parentheses(&expression)
+            })
+        })
+    }));
+    assert!(calls.get() > 0);
+    match action {
+        0 => assert_eq!(
+            result.unwrap().unwrap().unwrap().typeof_(),
+            SEXPTYPE::LANGSXP
+        ),
+        1 => assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 918),
+        2 => assert!(matches!(
+            result.unwrap(),
+            Err(crate::sexp::object::SexpError::RootUnavailable)
+        )),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn owned_parentheses_callback_gc_and_panic_cleanup() {
+    parentheses_callback_cleanup(0);
+    parentheses_callback_cleanup(1);
+}
+
+#[test]
+fn owned_parentheses_callback_original_owner_revocation() {
+    parentheses_callback_cleanup(2);
+}

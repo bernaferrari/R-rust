@@ -71,6 +71,24 @@ struct Call {
     _workspace: WorkspaceReservation,
 }
 
+#[derive(Clone, Copy)]
+enum ParenthesesOperator {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Power,
+    Other,
+}
+
+struct ParenthesesFrame {
+    call: Call,
+    operator: ParenthesesOperator,
+    values: Vec<Value>,
+    // The values buffer is dropped before its reservation.
+    _workspace: WorkspaceReservation,
+}
+
 fn workspace(access: &RuntimeAccess, bytes: usize, what: &str) -> SexpResult<WorkspaceReservation> {
     access
         .with_arena(|arena| arena.reserve_workspace(bytes))?
@@ -725,38 +743,124 @@ where
     }
 
     pub(super) fn parentheses(&self, expression: &Value) -> SexpResult<Value> {
-        if expression.typeof_() != SEXPTYPE::LANGSXP {
-            return Ok(expression.clone());
+        let _path = PathRange {
+            active: &self.active,
+            start: self.active.borrow().len(),
+        };
+        // Hold the old frame-buffer reservation until a new allocation has
+        // been admitted and installed, including its reallocation peak.
+        let mut _frame_workspace: Option<WorkspaceReservation> = None;
+        let mut frames: Vec<ParenthesesFrame> = Vec::new();
+        let mut current = expression.clone();
+        loop {
+            let mut result = if current.typeof_() != SEXPTYPE::LANGSXP {
+                current
+            } else {
+                self.push_active(&current)?;
+                let call = snapshot(self.access, &current)?;
+                let operator = match name(&call.head)?.as_str() {
+                    "+" => ParenthesesOperator::Plus,
+                    "-" => ParenthesesOperator::Minus,
+                    "*" => ParenthesesOperator::Multiply,
+                    "/" => ParenthesesOperator::Divide,
+                    "^" => ParenthesesOperator::Power,
+                    _ => ParenthesesOperator::Other,
+                };
+                let bytes = call
+                    .arguments
+                    .len()
+                    .checked_mul(size_of::<Value>())
+                    .ok_or_else(|| invalid("cannot retain derivative operands"))?;
+                let mut values_workspace = workspace(self.access, bytes, "derivative operands")?;
+                let mut values = Vec::new();
+                values
+                    .try_reserve_exact(call.arguments.len())
+                    .map_err(|_| invalid("cannot retain derivative operands"))?;
+                let actual = values
+                    .capacity()
+                    .checked_mul(size_of::<Value>())
+                    .ok_or_else(|| invalid("cannot retain derivative operands"))?;
+                values_workspace
+                    .try_resize(actual)
+                    .ok_or_else(|| invalid("cannot retain derivative operands"))?;
+                if call.arguments.is_empty() {
+                    let result = self.finish_parentheses(call, operator, values)?;
+                    self.active.borrow_mut().pop();
+                    result
+                } else {
+                    if frames.len() == frames.capacity() {
+                        let bytes = frames
+                            .len()
+                            .checked_add(1)
+                            .and_then(|n| n.checked_mul(size_of::<ParenthesesFrame>()))
+                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                        let mut next = workspace(self.access, bytes, "derivative frames")?;
+                        let mut replacement = Vec::new();
+                        replacement
+                            .try_reserve_exact(frames.len() + 1)
+                            .map_err(|_| invalid("cannot retain derivative frames"))?;
+                        let actual = replacement
+                            .capacity()
+                            .checked_mul(size_of::<ParenthesesFrame>())
+                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                        next.try_resize(actual)
+                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                        replacement.append(&mut frames);
+                        drop(std::mem::replace(&mut frames, replacement));
+                        _frame_workspace = Some(next);
+                    }
+                    current = call.arguments[0].clone();
+                    frames.push(ParenthesesFrame {
+                        call,
+                        operator,
+                        values,
+                        _workspace: values_workspace,
+                    });
+                    continue;
+                }
+            };
+            loop {
+                let Some(frame) = frames.last_mut() else {
+                    return Ok(result);
+                };
+                frame.values.push(result);
+                if frame.values.len() < frame.call.arguments.len() {
+                    current = frame.call.arguments[frame.values.len()].clone();
+                    break;
+                }
+                let frame = frames.pop().expect("frame just observed");
+                result = self.finish_parentheses(frame.call, frame.operator, frame.values)?;
+                self.active.borrow_mut().pop();
+            }
         }
-        let _path = self.enter(expression)?;
-        let call = snapshot(self.access, expression)?;
-        let function = name(&call.head)?;
-        let bytes = call
-            .arguments
-            .len()
-            .checked_mul(size_of::<Value>())
-            .ok_or_else(|| invalid("cannot retain derivative operands"))?;
-        let _workspace = workspace(self.access, bytes, "derivative operands")?;
-        let mut values = Vec::new();
-        values
-            .try_reserve_exact(call.arguments.len())
-            .map_err(|_| invalid("cannot retain derivative operands"))?;
-        for value in call.arguments {
-            values.push(self.parentheses(&value)?);
-        }
-        if values.len() == 1 && function == "-" && self.form(&values[0], &["+", "-", "*", "/"])? {
+    }
+
+    fn finish_parentheses(
+        &self,
+        call: Call,
+        operator: ParenthesesOperator,
+        mut values: Vec<Value>,
+    ) -> SexpResult<Value> {
+        if values.len() == 1
+            && matches!(operator, ParenthesesOperator::Minus)
+            && self.form(&values[0], &["+", "-", "*", "/"])?
+        {
             values[0] = self.call("(", std::slice::from_ref(&values[0]))?;
         }
         if values.len() == 2 {
-            let wrap_first = match function.as_str() {
-                "*" | "/" => self.form(&values[0], &["+", "-"])?,
-                "^" => self.form(&values[0], &["^"])?,
+            let wrap_first = match operator {
+                ParenthesesOperator::Multiply | ParenthesesOperator::Divide => {
+                    self.form(&values[0], &["+", "-"])?
+                }
+                ParenthesesOperator::Power => self.form(&values[0], &["^"])?,
                 _ => false,
             };
-            let wrap_second = match function.as_str() {
-                "+" => self.form(&values[1], &["+"])?,
-                "-" => self.form(&values[1], &["+", "-"])?,
-                "*" | "/" | "^" => self.form(&values[1], &["+", "-", "*", "/"])?,
+            let wrap_second = match operator {
+                ParenthesesOperator::Plus => self.form(&values[1], &["+"])?,
+                ParenthesesOperator::Minus => self.form(&values[1], &["+", "-"])?,
+                ParenthesesOperator::Multiply
+                | ParenthesesOperator::Divide
+                | ParenthesesOperator::Power => self.form(&values[1], &["+", "-", "*", "/"])?,
                 _ => false,
             };
             if wrap_first {
@@ -841,6 +945,46 @@ where
 mod scratch_admission_tests {
     use super::*;
     use crate::sexp::{RSession, memory::ArenaBudget};
+
+    #[test]
+    fn parentheses_frame_denial_releases_workspace_and_allows_recovery() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture("quote(f(x))")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let kernel = Kernel::new(access, |_, _| Err(invalid("unused installer")));
+            let (allocated, held) = access
+                .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+            let allowance =
+                size_of::<NodeLink>() + 3 * size_of::<Value>() + size_of::<ParenthesesFrame>() - 1;
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(allocated + held + allowance, 0))
+            })?;
+            let error = kernel.parentheses(&expression).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("cannot retain derivative frames"),
+                "{error}"
+            );
+            assert!(kernel.active.borrow().is_empty());
+            let after = access.with_arena(|arena| arena.workspace_bytes())?;
+            assert_eq!(after, held + size_of::<NodeLink>());
+            access.with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))?;
+            assert_eq!(
+                kernel.parentheses(&expression)?.typeof_(),
+                SEXPTYPE::LANGSXP
+            );
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
 
     #[test]
     fn call_snapshot_admits_native_scratch_and_releases_its_ticket() {
