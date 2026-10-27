@@ -314,3 +314,343 @@ fn imported_bytecode_reuses_private_metadata_within_one_original_owner() {
         );
     }
 }
+
+// Independently accepted by pinned GNU R's unserialize(refhook = identity):
+// list(persistent "token", as.raw(rep(42L, 65536L))).
+fn owned_reader_payload() -> Vec<u8> {
+    let mut bytes = b"X\n".to_vec();
+    for word in [2_i32, 0x40700, 0x20300, 19, 2, 247, 0, 1, 262153, 5] {
+        bytes.extend_from_slice(&word.to_be_bytes());
+    }
+    bytes.extend_from_slice(b"token");
+    for word in [24_i32, 65536] {
+        bytes.extend_from_slice(&word.to_be_bytes());
+    }
+    bytes.resize(bytes.len() + 65536, 42);
+    bytes
+}
+
+#[test]
+fn owned_reader_reuses_admitted_snapshot_under_original_cap() {
+    let mut session = RSession::new_for_gc_tests();
+    let hook = session
+        .eval_code_with_output_capture("function(x) { .Internal(gc(FALSE, FALSE, TRUE)); x }")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    session.with_active(|| unsafe {
+        crate::mainutils::options::InitOptions();
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let source = factory
+            .wrap(raw_from_bytes(&owned_reader_payload()))
+            .unwrap();
+        let bytes = super::super::compress::raw_snapshot(&owner, source.as_raw(), 0, false);
+        let workspace = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        let limit = owner
+            .with_arena(|a| a.total_bytes_allocated() + a.workspace_bytes() + 65536 + 32768)
+            .unwrap();
+        owner
+            .with_arena(|a| a.set_budget(crate::sexp::memory::ArenaBudget::new(limit, 0)))
+            .unwrap();
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            R_unserialize(source.as_raw(), hook.as_raw())
+        }))
+        .expect_err("the public raw API must admit its separate mutable-input snapshot");
+        assert!(
+            failure
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("memory")
+        );
+        owner.full_gc().unwrap();
+        let value = unserialize_native_snapshot(&owner, &bytes, &hook).unwrap();
+        let result = value.try_vector_elt(1).unwrap();
+        assert_eq!(result.len(), 65536);
+        assert_eq!(result.try_raw_elt(0).unwrap(), 42);
+        assert_eq!(result.try_raw_elt(65535).unwrap(), 42);
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            workspace
+        );
+        assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
+    });
+}
+
+fn owned_reader_hook_reentry(action: u8) {
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let hook = facade
+        .borrow_mut()
+        .as_mut()
+        .unwrap()
+        .eval_code_with_output_capture("function(x) { .Internal(gc(FALSE, FALSE, TRUE)); x }")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let (weak, source) = {
+        let facade = facade.borrow();
+        let session = facade.as_ref().unwrap();
+        let owner = session.owner_token().unwrap();
+        let source = session.with_active(|| unsafe {
+            owner
+                .sexp(raw_from_bytes(&owned_reader_payload()))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        (owner.weak_owner().unwrap(), source)
+    };
+    let pin = weak.pin().unwrap();
+    let calls = Rc::new(Cell::new(0));
+    let observed = calls.clone();
+    let closed = Rc::downgrade(&facade);
+    let callback_source = source.clone();
+    let replacement = Rc::new(RefCell::new(None));
+    let installed = replacement.clone();
+    unsafe {
+        crate::sexp::session::with_instance_active(pin.as_ptr(), || {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(pin.as_ptr());
+            let bytes = super::super::compress::raw_snapshot(&owner, source.as_raw(), 0, false);
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if observed.replace(observed.get() + 1) != 0 {
+                    return;
+                }
+                match action {
+                    0 => {
+                        let mut source =
+                            SexpMut::try_from_checked(callback_source.clone()).unwrap();
+                        for index in 0..source.len() {
+                            source.try_set_raw_elt(index, 0).unwrap();
+                        }
+                    }
+                    1 => {
+                        drop(closed.upgrade().unwrap().borrow_mut().take());
+                        *installed.borrow_mut() = Some(RSession::new_for_gc_tests());
+                    }
+                    2 => std::panic::panic_any(819_u32),
+                    _ => unreachable!(),
+                }
+            }));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                unserialize_native_snapshot(&owner, &bytes, &hook)
+            }));
+            assert!(calls.get() > 0, "actual restoration closure must collect");
+            if action == 0 {
+                let value = result.unwrap().unwrap();
+                let raw = value.try_vector_elt(1).unwrap();
+                assert_eq!(raw.try_raw_elt(0).unwrap(), 42);
+                assert_eq!(raw.try_raw_elt(65535).unwrap(), 42);
+                assert_eq!(source.try_raw_elt(0).unwrap(), 0);
+            } else {
+                let error =
+                    result.expect_err("a revoked owner or hook unwind must not publish success");
+                if action == 2 {
+                    assert_eq!(error.downcast_ref::<u32>(), Some(&819));
+                } else {
+                    assert_eq!(
+                        error
+                            .downcast_ref::<crate::sexp::context::RError>()
+                            .unwrap()
+                            .message,
+                        crate::sexp::object::SexpError::RootUnavailable.to_string()
+                    );
+                }
+            }
+        });
+    }
+}
+
+#[test]
+fn owned_reader_snapshot_survives_collecting_hook_input_mutation() {
+    owned_reader_hook_reentry(0);
+}
+#[test]
+fn owned_reader_refuses_revoked_owner_after_collecting_hook() {
+    owned_reader_hook_reentry(1);
+}
+#[test]
+fn owned_reader_preserves_collecting_hook_unwind() {
+    owned_reader_hook_reentry(2);
+}
+
+#[test]
+fn native_lazy_codec_retry_reclaims_garbage_but_preserves_retained_denial() {
+    use std::{cell::Cell, rc::Rc};
+    for keep in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let garbage = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 128 * 1024)))
+                .unwrap();
+            let retained = keep.then(|| garbage.clone());
+            drop(garbage);
+            let limit = owner
+                .with_arena(|arena| arena.total_bytes_allocated() + 4096)
+                .unwrap();
+            owner
+                .with_arena(|arena| {
+                    arena.set_budget(crate::sexp::memory::ArenaBudget::new(limit, 0))
+                })
+                .unwrap();
+            let calls = Rc::new(Cell::new(0));
+            let observed = calls.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                observed.set(observed.get() + 1)
+            }));
+            let result = decode_lazy_record(
+                &owner,
+                include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin"),
+                1,
+            );
+            assert_eq!(
+                calls.get(),
+                1,
+                "only an actual denied codec gets one collecting retry"
+            );
+            if keep {
+                assert!(matches!(
+                    result,
+                    Err(super::super::raw_codecs::DecodeError::Resource(_))
+                ));
+                assert_eq!(retained.as_ref().unwrap().len(), 128 * 1024);
+            } else {
+                assert_eq!(
+                    &*result.unwrap(),
+                    include_bytes!("fixtures/gnu-lazy-codecs/expected.rds")
+                );
+            }
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                0
+            );
+            assert_eq!(
+                owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+                limit
+            );
+        });
+    }
+}
+
+#[test]
+fn native_lazy_codec_retry_refuses_owner_revoked_by_collection() {
+    use std::{cell::RefCell, rc::Rc};
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let closed = Rc::downgrade(&facade);
+    let replacement = Rc::new(RefCell::new(None));
+    let installed = replacement.clone();
+    unsafe {
+        crate::sexp::session::with_instance_active(pin.as_ptr(), || {
+            let owner = crate::sexp::owner::OwnerToken::from_raw(pin.as_ptr());
+            owner
+                .with_arena(|arena| {
+                    arena.alloc_vector(SEXPTYPE::RAWSXP, 128 * 1024);
+                })
+                .unwrap();
+            let limit = owner
+                .with_arena(|arena| arena.total_bytes_allocated() + 4096)
+                .unwrap();
+            owner
+                .with_arena(|arena| {
+                    arena.set_budget(crate::sexp::memory::ArenaBudget::new(limit, 0))
+                })
+                .unwrap();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                drop(closed.upgrade().unwrap().borrow_mut().take());
+                *installed.borrow_mut() = Some(RSession::new_for_gc_tests());
+            }));
+            let result = decode_lazy_record(
+                &owner,
+                include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin"),
+                1,
+            );
+            let Err(super::super::raw_codecs::DecodeError::Resource(message)) = result else {
+                panic!("revocation must prevent a retry against the replacement runtime");
+            };
+            assert_eq!(
+                message,
+                crate::sexp::object::SexpError::RootUnavailable.to_string()
+            );
+        });
+    }
+}
+
+#[test]
+fn native_lazy_fetch_collecting_retry_retains_entire_call_argument_graph() {
+    use std::{cell::Cell, rc::Rc};
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let path =
+            std::env::temp_dir().join(format!("rport-owned-fetch-{}.rdb", std::process::id()));
+        let fixture = include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin");
+        std::fs::write(&path, fixture).unwrap();
+        let args = {
+            let file = factory.strings(&[path.to_str().unwrap()]).unwrap();
+            let key = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap();
+            let mut key = SexpMut::try_from_checked(key).unwrap();
+            key.try_set_integer_elt(0, 0).unwrap();
+            key.try_set_integer_elt(1, fixture.len() as i32).unwrap();
+            let compressed = factory.wrap(Rf_ScalarInteger(1)).unwrap();
+            let mut args = factory.nil();
+            for value in [factory.nil(), compressed, file, key.freeze()] {
+                args = factory
+                    .pairlist_cell(&value, &args, &factory.nil())
+                    .unwrap();
+            }
+            args
+        };
+        owner
+            .with_arena(|arena| {
+                arena.alloc_vector(SEXPTYPE::RAWSXP, 128 * 1024);
+            })
+            .unwrap();
+        let limit = owner
+            .with_arena(|arena| arena.total_bytes_allocated() + 4096)
+            .unwrap();
+        owner
+            .with_arena(|arena| arena.set_budget(crate::sexp::memory::ArenaBudget::new(limit, 0)))
+            .unwrap();
+        let raw_args = args.as_raw();
+        drop(args);
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        let weak = owner.weak_owner().unwrap();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            let graph = weak.node_factory().unwrap().wrap(raw_args).unwrap();
+            assert_eq!(graph.typeof_(), SEXPTYPE::LISTSXP);
+            assert_eq!(graph.try_car().unwrap().len(), 2);
+            observed.set(observed.get() + 1);
+        }));
+        let value = do_lazyLoadDBfetch(R_NilValue(), R_NilValue(), raw_args, R_NilValue());
+        let value = owner.sexp(value).unwrap();
+        assert_eq!(value.integer_elt(0), Some(7));
+        assert_eq!(value.integer_elt(127), Some(7));
+        assert_eq!(calls.get(), 1);
+        assert_eq!(
+            owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+            limit
+        );
+        std::fs::remove_file(path).unwrap();
+    });
+}

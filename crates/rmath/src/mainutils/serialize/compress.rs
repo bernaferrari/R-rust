@@ -6,7 +6,7 @@ mod workspace_tests;
 
 // Raw entry points retain only an original operation pin and checked native
 // snapshots. All codec allocation and framing lives in the safe Rust module.
-unsafe fn raw_snapshot(
+pub(super) unsafe fn raw_snapshot(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     input: SEXP,
     mode: u8,

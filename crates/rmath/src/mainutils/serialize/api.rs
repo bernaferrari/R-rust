@@ -995,14 +995,41 @@ unsafe fn R_unserialize_from_stream_hooks(
             )
             .unwrap_or_else(|failure| error(&failure.to_string()));
         }
-        let decompressed = super::owned_input::expand(&data, reserve).unwrap_or_else(|failure| {
+        unserialize_owned_input(&owner, &data, hook_func, hook_data, lazy_restore)
+    }
+}
+
+/// Decode an already admitted immutable native snapshot. Callers retain the
+/// original hook graph across restoration callbacks; no borrowed R payload or
+/// interpreter field loan may span this operation.
+unsafe fn unserialize_owned_input(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    data: &[u8],
+    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
+    hook_data: SEXP,
+    lazy_restore: Option<LazyLoadRestore>,
+) -> SEXP {
+    unsafe {
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        if data.is_empty() {
+            error("read error");
+        }
+        let reserve = |bytes| {
+            owner
+                .with_arena(|arena| arena.reserve_workspace(bytes))
+                .map_err(|error| std::io::Error::other(error.to_string()))?
+                .ok_or_else(super::owned_input::memory_error)
+        };
+        let decompressed = super::owned_input::expand(data, reserve).unwrap_or_else(|failure| {
             if failure.kind() == std::io::ErrorKind::OutOfMemory {
                 error(&failure.to_string());
             }
             error("read error")
         });
-        let payload = decompressed.as_deref().unwrap_or(&data);
-
+        let payload = decompressed.as_deref().unwrap_or(data);
         let mut reader = BinaryReader::new(payload);
         reader.lazy_restore = lazy_restore;
         if hook_func.is_some() {
@@ -1010,8 +1037,34 @@ unsafe fn R_unserialize_from_stream_hooks(
         } else {
             reader.set_persist_hook(hook_data);
         }
-        decode_stream_object(&owner, &mut reader)
+        decode_stream_object(owner, &mut reader)
     }
+}
+
+/// Decode a caller-owned immutable native snapshot without copying it into R.
+/// The caller keeps its admitted backing storage alive and unchanged through
+/// restoration callbacks. A checked hook and operation pin retain the original
+/// runtime; no R payload view or interpreter field loan crosses a callback.
+pub(crate) fn unserialize_native_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    data: &[u8],
+    hook: &crate::sexp::object::Sexp<'_>,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    let _pin = owner.pin()?;
+    owner.require_active()?;
+    let hook = owner.sexp(hook.as_raw())?.into_owned()?;
+    let lazy_restore =
+        (hook.typeof_() == SEXPTYPE::ENVSXP).then(|| LazyLoadRestore { data: hook.clone() });
+    let hook_data = if lazy_restore.is_some() {
+        unsafe { R_NilValue() }
+    } else {
+        hook.as_raw()
+    };
+    // SAFETY: the native slice is immutable and its caller owns its complete
+    // backing across callbacks. The original hook graph is owned above.
+    let result = unsafe { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
+    owner.require_active()?;
+    owner.sexp(result)?.into_owned()
 }
 
 /// Parse the stream header (format, versions, native encoding) and decode the
@@ -1360,6 +1413,28 @@ pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
     }
 }
 
+/// The failed codec has dropped every temporary reservation and constructs no
+/// R graph. At actual resource denial only, the caller's owned operands and
+/// native snapshot permit one full collection and retry in the same runtime.
+fn decode_lazy_record(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    encoded: &[u8],
+    mode: u8,
+) -> Result<super::owned_input::InputBytes, super::raw_codecs::DecodeError> {
+    match super::raw_codecs::decode(owner, encoded, mode) {
+        Err(super::raw_codecs::DecodeError::Resource(_)) => {
+            owner
+                .full_gc()
+                .map_err(|failure| super::raw_codecs::DecodeError::Resource(failure.to_string()))?;
+            owner
+                .require_active()
+                .map_err(|failure| super::raw_codecs::DecodeError::Resource(failure.to_string()))?;
+            super::raw_codecs::decode(owner, encoded, mode)
+        }
+        result => result,
+    }
+}
+
 pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
@@ -1372,6 +1447,25 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
         // Inspection of ordinary file vectors invokes no provider accessor.
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+        // Retain the entire native call, environment and argument graph before
+        // making the codec retry collecting. NULL compatibility arguments
+        // have no R graph to retain. No field or payload loan crosses GC.
+        let _entry_roots = [call, op, args, env].map(|value| {
+            (!value.is_null()).then(|| {
+                owner
+                    .sexp(value)
+                    .and_then(|value| value.into_owned())
+                    .unwrap_or_else(|failure| error(&failure.to_string()))
+            })
+        });
+        // Retain selected operands before coercion/provider callbacks too.
+        let operands = [key, compsxp, hook].map(|value| {
+            owner
+                .sexp(value)
+                .and_then(|value| value.into_owned())
+                .unwrap_or_else(|e| error(&e.to_string()))
+        });
         let file_owned = owner
             .sexp(file)
             .and_then(crate::sexp::object::Sexp::into_owned)
@@ -1404,34 +1498,43 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
                 .as_raw();
         }
         let compressed = asInteger(compsxp);
-
-        let mut err: Rboolean = 0;
-        let mut raw = readRawFromFile(file, key);
-        let mut raw_guard = protect(raw);
-        if compressed == 3 {
-            let next = R_decompress3(raw, &mut err);
-            raw = next;
-            raw_guard = protect(raw);
-        } else if compressed == 2 {
-            let next = R_decompress2(raw, &mut err);
-            raw = next;
-            raw_guard = protect(raw);
-        } else if compressed != 0 {
-            let next = R_decompress1(raw, &mut err);
-            raw = next;
-            raw_guard = protect(raw);
-        }
-
-        if err != 0 {
-            let file_name = sexp_to_path(file);
-            error(&format!(
-                "lazy-load database '{}' is corrupt",
-                file_name.display()
-            ));
-        }
-
-        let mut val = R_unserialize(raw, hook);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| error(&e.to_string()));
+        let mode = match compressed {
+            0 => 0,
+            2 => 2,
+            3 => 3,
+            _ => 1,
+        };
+        let raw = readRawFromFile(file, key);
+        let raw_guard = protect(raw);
+        let encoded = super::compress::raw_snapshot(&owner, raw, mode, false);
+        drop(raw_guard);
+        let data = if mode == 0 {
+            encoded
+        } else {
+            let decoded = match decode_lazy_record(&owner, &encoded, mode) {
+                Ok(decoded) => decoded,
+                Err(super::raw_codecs::DecodeError::Resource(message)) => error(&message),
+                Err(super::raw_codecs::DecodeError::Invalid) => {
+                    let file_name = sexp_to_path(file);
+                    error(&format!(
+                        "lazy-load database '{}' is corrupt",
+                        file_name.display()
+                    ));
+                }
+            };
+            drop(encoded);
+            decoded
+        };
+        // The native bytes remain admitted across every nested restore hook.
+        // Avoid the former native -> R raw -> native round trip entirely.
+        let value = unserialize_native_snapshot(&owner, &data, &operands[2])
+            .unwrap_or_else(|failure| error(&failure.to_string()));
+        let mut val = value.as_raw();
         let mut val_guard = protect(val);
+        drop(data);
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
             val = Rf_eval(val, R_GlobalEnv());
             val_guard = protect(val);
@@ -1439,7 +1542,7 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
                 SET_NAMED(val, 2);
             }
         }
-        let _ = (raw_guard, val_guard);
+        let _ = val_guard;
         val
     }
 }
