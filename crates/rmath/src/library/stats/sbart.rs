@@ -914,7 +914,7 @@ pub unsafe fn sbart_(
 
                     // f must not be evaluated too close to ax or bx
                     if u - a < tol2 || b - u < tol2 {
-                        d = (xm - x).copysign(tol1);
+                        d = tol1.copysign(xm - x);
                     }
 
                     false // parabolic interpolation used
