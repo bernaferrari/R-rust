@@ -60,6 +60,17 @@ pub(crate) unsafe fn namespace_exports_contains(
     name: &str,
 ) -> bool {
     unsafe {
+        // GNU's getNamespaceExports("base") is names(.BaseNamespaceEnv),
+        // not the exports environment stored in .__NAMESPACE__. The latter
+        // can omit bindings that GNU exposes through the base namespace.
+        // Use the live namespace frame so qualified base lookup has the same
+        // authority and still cannot inherit names from the search path.
+        if package_env == crate::sexp::envir::R_BaseNamespace() {
+            return frame_binding_names(package_env, true)
+                .iter()
+                .any(|binding| binding == name);
+        }
+
         // Portable namespaces have no host NAMESPACE file. Their original
         // exports environment is also the live authority for namespaceExport
         // additions; a leading dot does not make an explicit export private.

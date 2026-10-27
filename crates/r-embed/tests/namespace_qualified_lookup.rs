@@ -6,6 +6,8 @@ const NAMESPACE_QUALIFIED_LOOKUP_SCRIPT: &str = r##"
     stopifnot(inherits(try(graphics::log, silent=TRUE), "try-error"))
     stopifnot(identical(base::as.list, as.list))
     stopifnot(identical(base:::as.list, as.list))
+    stopifnot(identical(base::.S3PrimitiveGenerics,
+                        get(".S3PrimitiveGenerics", asNamespace("base"))))
     stopifnot(identical(stats::lm, stats:::lm))
     stopifnot(inherits(try(stats::.approxfun, silent=TRUE), "try-error"))
     stopifnot(is.function(stats:::.approxfun))
