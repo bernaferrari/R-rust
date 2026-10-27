@@ -279,6 +279,20 @@ fn get_mode_continues_after_mismatch_and_get0_forces_only_the_selected_promise()
 }
 
 #[test]
+fn get_and_get0_report_missing_arguments_with_the_gnu_condition_classes() {
+    let mut session = crate::sexp::session::RSession::new();
+    let (result, _, _) = session.eval_code_with_output_capture(
+        "capture <- function(expr) tryCatch(eval(substitute(expr), parent.frame()), error=function(e) class(e)[1]); env <- new.env(); env$missing_arg <- quote(expr=); paste(c(capture(get()), capture(get0()), capture(get('missing_arg', envir=env)), capture(get0('missing_arg', envir=env))), collapse=';')",
+    );
+    let result = result.expect("get/get0 missing argument checks must evaluate");
+    let output = result.string_value_elt(0).flatten().unwrap_or_default();
+    assert_eq!(
+        output,
+        "getvarError;getvarError;getMissingError;getMissingError"
+    );
+}
+
+#[test]
 fn test_do_log2_default_base_two() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {

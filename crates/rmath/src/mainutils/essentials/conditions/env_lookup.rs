@@ -165,6 +165,16 @@ unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: 
 pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
+        if name_arg.is_null()
+            || name_arg == R_NilValue()
+            || name_arg == crate::sexp::globals::R_MissingArg()
+        {
+            crate::mainutils::errors::R_MissingArgError_c(
+                c"x".as_ptr(),
+                _call,
+                c"getvarError".as_ptr(),
+            );
+        }
         let name = elt_to_string(name_arg, 0);
         let env = lookup_get_environment(args, rho, _call, _op, true);
         let _env_root = crate::sexp::protect::protect(env);
@@ -202,6 +212,16 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
+        if name_arg.is_null()
+            || name_arg == R_NilValue()
+            || name_arg == crate::sexp::globals::R_MissingArg()
+        {
+            crate::mainutils::errors::R_MissingArgError_c(
+                c"x".as_ptr(),
+                _call,
+                c"getvarError".as_ptr(),
+            );
+        }
         let name = elt_to_string(name_arg, 0);
         let env = lookup_get_environment(args, rho, _call, _op, false);
         let _env_root = crate::sexp::protect::protect(env);
@@ -215,11 +235,22 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             ifnotfound
         };
-        let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         match mget::lookup_one(sym, env, &mode, inherits)
             .unwrap_or_else(|error| base_error(error.to_string()))
         {
-            Some(value) => value.as_raw(),
+            Some(value) => {
+                let value = value.as_raw();
+                if value == crate::sexp::globals::R_MissingArg() {
+                    let c_name = CString::new(name).unwrap_or_default();
+                    crate::mainutils::errors::R_MissingArgError_c(
+                        c_name.as_ptr(),
+                        _call,
+                        c"getMissingError".as_ptr(),
+                    );
+                }
+                value
+            }
             None => fallback,
         }
     }
