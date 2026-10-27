@@ -253,7 +253,90 @@ fn derivative_string_prefix(
             .map_or(0, |text| text.len()))
     })
 }
+// GNU deriv.c tests the int returned by asLogical(), so NA_LOGICAL is
+// deliberately truthy here. This is not R's if()/asRboolean() conversion.
+// Use element getters: pointer access would force an entire lazy flag vector.
+#[forbid(unsafe_code)]
 fn derivative_hessian_flag(
+    access: &crate::sexp::owner::RuntimeAccess,
+    value: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<bool> {
+    access.require_active()?;
+    access.domain().link(value)?;
+    let flag = match value.typeof_() {
+        SEXPTYPE::LGLSXP
+        | SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::RAWSXP
+        | SEXPTYPE::STRSXP
+            if value.is_empty() =>
+        {
+            true
+        }
+        SEXPTYPE::LGLSXP => value.try_logical_elt(0)? != 0,
+        SEXPTYPE::INTSXP => value.try_integer_elt(0)? != 0,
+        SEXPTYPE::REALSXP => value.try_real_elt(0)? != 0.,
+        SEXPTYPE::CPLXSXP => {
+            let value = value.try_complex_elt(0)?;
+            value.r != 0. || value.i != 0.
+        }
+        SEXPTYPE::RAWSXP => value.try_raw_elt(0)? != 0,
+        SEXPTYPE::STRSXP => {
+            let character = value.try_string_elt(0)?;
+            access.require_active()?;
+            derivative_character_hessian_flag(access, &character.into_owned()?)?
+        }
+        SEXPTYPE::CHARSXP => derivative_character_hessian_flag(access, value)?,
+        _ => true,
+    };
+    access.require_active()?;
+    Ok(flag)
+}
+#[forbid(unsafe_code)]
+fn derivative_character_hessian_flag(
+    access: &crate::sexp::owner::RuntimeAccess,
+    value: &crate::sexp::object::Sexp<'static>,
+) -> crate::sexp::object::SexpResult<bool> {
+    use crate::sexp::object::SexpError;
+    access.require_active()?;
+    access.domain().link(value)?;
+    if value.typeof_() != SEXPTYPE::CHARSXP {
+        return Err(SexpError::TypeMismatch {
+            expected: "character scalar",
+            actual: value.typeof_(),
+        });
+    }
+    if value.is_na_string() {
+        return Ok(true);
+    }
+    let header = value.header();
+    let bytes = header.payload_lease().ok_or(SexpError::MissingData {
+        sexptype: SEXPTYPE::CHARSXP,
+    })?;
+    // StringFalse in pinned GNU compares these exact C strings. A bounded
+    // copied-byte match handles long/non-UTF-8 input without converting it or
+    // holding a payload view across a callback. Only the first six byte
+    // positions can be inspected.
+    let is_false = [
+        b"F\0".as_slice(),
+        b"False\0".as_slice(),
+        b"FALSE\0".as_slice(),
+        b"false\0".as_slice(),
+    ]
+    .into_iter()
+    .any(|pattern| {
+        pattern
+            .iter()
+            .copied()
+            .enumerate()
+            .all(|(index, expected)| bytes.byte_elt(index) == Some(expected))
+    });
+    Ok(!is_false)
+}
+// Keep the existing direct logical function.arg behavior separate from the
+// hessian asLogical conversion (GNU deriv.c accesses LOGICAL(funarg)[0]).
+fn derivative_function_flag(
     access: &crate::sexp::owner::RuntimeAccess,
     value: &crate::sexp::object::Sexp<'static>,
 ) -> crate::sexp::object::SexpResult<bool> {
@@ -356,3 +439,7 @@ mod builder_tests;
 #[cfg(test)]
 #[path = "deriv/outer_tests.rs"]
 mod outer_tests;
+
+#[cfg(test)]
+#[path = "deriv/flag_tests.rs"]
+mod flag_tests;

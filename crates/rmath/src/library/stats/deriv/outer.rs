@@ -513,7 +513,7 @@ impl<'a> Program<'a> {
             current = next;
         }
         if function.typeof_() == SEXPTYPE::LGLSXP
-            && super::derivative_hessian_flag(self.access, function)?
+            && super::derivative_function_flag(self.access, function)?
         {
             return self.builder.closure(names, &self.expressions);
         }
