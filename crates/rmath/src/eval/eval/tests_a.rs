@@ -115,14 +115,14 @@ mod tests_a {
         let _session = RSession::new();
         unsafe {
             let int_expr = Sexp::from_raw(Rf_ScalarInteger(1)).expect("integer scalar");
-            assert_eq!(classify_expr(int_expr), EvalKind::SelfEvaluating);
+            assert_eq!(classify_expr(&int_expr), EvalKind::SelfEvaluating);
 
             let symbol = Sexp::from_raw(Rf_install(c"x".as_ptr())).expect("symbol");
-            assert_eq!(classify_expr(symbol), EvalKind::Symbol);
+            assert_eq!(classify_expr(&symbol), EvalKind::Symbol);
 
             let call = Sexp::from_raw(Rf_lang2(Rf_install(c"quote".as_ptr()), Rf_ScalarInteger(1)))
                 .expect("language call");
-            assert_eq!(classify_expr(call), EvalKind::Language);
+            assert_eq!(classify_expr(&call), EvalKind::Language);
 
             let expr_vec = Sexp::from_raw(crate::sexp::constructors::Rf_allocVector(
                 SEXPTYPE::EXPRSXP,
@@ -131,7 +131,7 @@ mod tests_a {
             .expect("expression vector");
             // eval.c Rf_eval returns expression vectors unchanged; only
             // R-level eval() (do_eval) walks their elements.
-            assert_eq!(classify_expr(expr_vec), EvalKind::SelfEvaluating);
+            assert_eq!(classify_expr(&expr_vec), EvalKind::SelfEvaluating);
         }
     }
 

@@ -59,13 +59,18 @@ pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
     // the body's final expression.
     super::super::runtime::set_visible(crate::sexp::ffi::TRUE);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_safe_inner(expr, env)
+    // Keep the rooted result here rather than copying it through each unwind
+    // adapter in a nested evaluator chain.
+    let mut evaluated = None;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        evaluated = Some(unsafe {
+            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+            eval_safe_inner(expr, env)
+        });
     }));
 
     match result {
-        Ok(inner) => inner.and_then(|value| {
+        Ok(()) => evaluated.expect("evaluation completed").and_then(|value| {
             factory
                 .wrap(value.as_raw())
                 .map_err(|err| sexp_err("evaluation result", err))
@@ -108,7 +113,7 @@ pub(crate) unsafe fn eval_safe_inner<'a>(
     expr: Sexp<'a>,
     env: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
-    match classify_expr(expr.clone()) {
+    match classify_expr(&expr) {
         EvalKind::SelfEvaluating => Ok(expr),
         EvalKind::Symbol => unsafe { eval_symbol_safe(expr, env) },
         EvalKind::Language => unsafe {
@@ -184,7 +189,7 @@ pub(crate) enum EvalKind {
     Unsupported(SEXPTYPE),
 }
 
-pub(crate) fn classify_expr(expr: Sexp<'_>) -> EvalKind {
+pub(crate) fn classify_expr(expr: &Sexp<'_>) -> EvalKind {
     match expr.typeof_() {
         SEXPTYPE::NILSXP
         | SEXPTYPE::LISTSXP
@@ -226,30 +231,22 @@ pub(crate) fn classify_expr(expr: Sexp<'_>) -> EvalKind {
 /// through allocation and R reentry. No Rust payload loan may cross execution.
 #[inline(never)]
 pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let fun = e
-        .clone()
-        .try_car()
-        .clone()
-        .map_err(|err| sexp_err("empty call", err))?;
-    let args = e
-        .clone()
-        .try_cdr()
-        .clone()
-        .map_err(|err| sexp_err("missing args", err))?;
+    let fun = e.try_car().map_err(|err| sexp_err("empty call", err))?;
+    let args = e.try_cdr().map_err(|err| sexp_err("missing args", err))?;
 
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
-    let fun_val = unsafe { resolve_call_function(fun.clone(), e.clone(), rho.clone()) }?;
+    let fun_val = unsafe { resolve_call_function(&fun, &e, &rho) }?;
 
-    match fun_val.clone().typeof_() {
+    match fun_val.typeof_() {
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
         SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
         kind => {
-            let head = if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
+            let head = if fun.typeof_() == SEXPTYPE::SYMSXP {
                 unsafe { get_symbol_name(fun.as_raw()) }
             } else {
-                format!("{:?}", fun.clone().typeof_())
+                format!("{:?}", fun.typeof_())
             };
             Err(format!("cannot call type {kind:?} for {head}"))
         }

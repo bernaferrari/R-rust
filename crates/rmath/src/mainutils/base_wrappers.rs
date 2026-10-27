@@ -64,6 +64,50 @@ fn apply_owned(
     environment: SEXP,
 ) -> SexpResult<Sexp<'static>> {
     let domain = access.domain();
+    let rho = domain.wrap(rho)?;
+    let call = prepare_call(
+        access,
+        name,
+        source,
+        args,
+        rho.as_raw(),
+        evaluated,
+        environment,
+    )?;
+    let fun = call.try_car()?;
+    let args = call.try_cdr()?;
+    // The cached head is already a rooted closure. Enter ordinary closure
+    // application directly instead of evaluating a synthetic call and resolving
+    // that same head again. Preserve the evaluator's entry checks and visibility.
+    let _timer = crate::eval::limits::EvalTimerGuard::start_if_needed();
+    crate::sexp::instance::check_cancellation();
+    crate::eval::runtime::set_visible(crate::sexp::ffi::TRUE);
+    let _depth = crate::eval::limits::check_eval_depth().unwrap_or_else(|message| {
+        std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
+    });
+    access.with_native(|owner| {
+        let result = crate::eval::apply::apply_closure_safe(fun, call, args, rho).unwrap_or_else(
+            |message| std::panic::panic_any(crate::sexp::context::RSignal::Error { message }),
+        );
+        let raw = unsafe { crate::eval::jit::handle_exec_continuation(result.as_raw()) };
+        owner.sexp(raw)?.into_owned()
+    })
+}
+
+// Finish parsing, cache lookup and argument assembly before recursive R
+// evaluation. Only the completed rooted call and its environment need to stay
+// on the caller's stack while the wrapper executes.
+#[inline(never)]
+fn prepare_call(
+    access: &RuntimeAccess,
+    name: &'static str,
+    source: &str,
+    args: SEXP,
+    rho: SEXP,
+    evaluated: bool,
+    environment: SEXP,
+) -> SexpResult<Sexp<'static>> {
+    let domain = access.domain();
     let allocator = access.allocator(&domain)?;
     let args = domain.wrap(args)?;
     let rho = domain.wrap(rho)?;
@@ -130,8 +174,7 @@ fn apply_owned(
             call_args = allocator.pairlist_cell(&promise, &call_args, &tag)?;
         }
     }
-    let call = allocator.call(&fun, &call_args)?;
-    evaluate(access, &call, &rho)
+    allocator.call(&fun, &call_args)
 }
 
 #[cfg(test)]
@@ -258,6 +301,54 @@ mod tests {
                 !closure.is_live(),
                 "eviction must release the actual closure root"
             );
+        });
+    }
+
+    #[test]
+    fn cached_wrapper_keeps_lazy_defaults_visibility_and_error_unwinding() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let env = (*instance).global_env;
+            let nil = factory.nil();
+            let value = factory
+                .wrap(apply(
+                    "owned_wrapper_lazy",
+                    "function(x = stop('unused default')) invisible(42L)",
+                    nil.as_raw(),
+                    env,
+                    false,
+                ))
+                .unwrap();
+            assert_eq!(value.integer_elt(0), Some(42));
+            assert_eq!(crate::eval::runtime::visible(), crate::sexp::ffi::FALSE);
+            let depth = (*instance).eval_state.eval_depth;
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                apply(
+                    "owned_wrapper_error",
+                    "function() stop('wrapper failure')",
+                    nil.as_raw(),
+                    env,
+                    false,
+                )
+            }))
+            .unwrap_err();
+            let signal = error.downcast::<crate::sexp::context::RSignal>().unwrap();
+            assert!(
+                matches!(*signal, crate::sexp::context::RSignal::Error { ref message }
+                if message == "wrapper failure")
+            );
+            assert_eq!((*instance).eval_state.eval_depth, depth);
+            let value = factory
+                .wrap(apply(
+                    "owned_wrapper_return",
+                    "function() { return(17L); stop('unreachable') }",
+                    nil.as_raw(),
+                    env,
+                    false,
+                ))
+                .unwrap();
+            assert_eq!(value.integer_elt(0), Some(17));
         });
     }
 }

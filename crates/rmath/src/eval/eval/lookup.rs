@@ -6,12 +6,12 @@ use super::*;
 // function; the caller retains the original call, arguments and environment.
 #[inline(never)]
 pub(crate) unsafe fn resolve_call_function<'a>(
-    fun: Sexp<'a>,
-    e: Sexp<'a>,
-    rho: Sexp<'a>,
+    fun: &Sexp<'a>,
+    e: &Sexp<'a>,
+    rho: &Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     Ok({
-        if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
+        if fun.typeof_() == SEXPTYPE::SYMSXP {
             match (unsafe {
                 /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
                 find_fun_result(fun.clone(), rho.clone())

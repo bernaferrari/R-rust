@@ -225,3 +225,23 @@ fn string_and_grob_widths_match_gnu_r_4_6_1() {
     expected.push("'x' and 'units' must have length > 0");
     assert_eq!(parity, expected.join("|"));
 }
+
+#[test]
+fn expression_metrics_through_lazy_comparison_fit_default_stack() {
+    // Each conversion alone fits the default test thread stack. Promise forcing
+    // through the public comparison helpers exposed excessive evaluator frames.
+    let mut session = RSession::new().unwrap();
+    let parity = report(
+        &mut session,
+        192,
+        96,
+        r#"
+        library(grid)
+        grid.newpage()
+        near <- function(a, b) isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance=1e-4))
+        w <- function(x) as.numeric(convertWidth(x, 'inches', TRUE))
+        parity <- near(w(stringWidth(expression(x+y))), w(grobWidth(textGrob(expression(x+y)))))
+        "#,
+    );
+    assert_eq!(parity, "TRUE");
+}
