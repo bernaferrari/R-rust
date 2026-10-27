@@ -293,6 +293,31 @@ fn get_and_get0_report_missing_arguments_with_the_gnu_condition_classes() {
 }
 
 #[test]
+fn get_accepts_s4_environment_data_and_public_frame_indices() {
+    let mut session = crate::sexp::session::RSession::new();
+    let (result, _, _) = session.eval_code_with_output_capture(
+        "methods::setClass('RportGetEnvBox', contains='environment'); wrapped <- methods::new('RportGetEnvBox'); methods::slot(wrapped, '.xData')$x <- 303L; slot <- methods::slot(wrapped, '.xData'); slot_info <- paste(typeof(slot), is.environment(slot), exists('x', envir=slot, inherits=FALSE), sep=','); s4_result <- try(c(get('x', envir=wrapped), get0('x', envir=wrapped)), silent=TRUE); x <- 101L; caller <- function() { x <- 202L; getter <- function(pos) get('x', pos=pos); c(getter(-1L), getter(1L)) }; frame_result <- try(caller(), silent=TRUE); paste(c(typeof(wrapped), paste(class(wrapped), collapse=','), methods::is(wrapped, 'RportGetEnvBox'), slot_info, inherits(s4_result, 'try-error'), paste(as.character(s4_result), collapse=','), inherits(frame_result, 'try-error'), paste(as.character(frame_result), collapse=',')), collapse=';')",
+    );
+    let result = result.expect("get environment conversions must evaluate");
+    let output = result.string_value_elt(0).flatten().unwrap_or_default();
+    assert!(
+        output.contains("FALSE;303,303") && output.contains("FALSE;202,101"),
+        "{output}"
+    );
+}
+
+#[test]
+fn get_and_get0_raise_named_before_returning_selected_values() {
+    let mut session = crate::sexp::session::RSession::new();
+    let (result, _, _) = session.eval_code_with_output_capture(
+        "x <- list(a=1L); y <- get('x'); y$a <- 2L; get_ok <- identical(x$a, 1L); env <- new.env(); delayedAssign('p', list(a=1L), assign.env=env); z <- get0('p', envir=env); z$a <- 2L; get0_ok <- identical(env$p$a, 1L); paste(c(get_ok, get0_ok), collapse=';')",
+    );
+    let result = result.expect("get/get0 values must retain copy-on-modify semantics");
+    let output = result.string_value_elt(0).flatten().unwrap_or_default();
+    assert_eq!(output, "TRUE;TRUE");
+}
+
+#[test]
 fn test_do_log2_default_base_two() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {

@@ -201,8 +201,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 c"getMissingError".as_ptr(),
             );
         }
-
-        value
+        ensure_get_value_named(value)
     }
 }
 
@@ -249,10 +248,21 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         c"getMissingError".as_ptr(),
                     );
                 }
-                value
+                ensure_get_value_named(value)
             }
             None => fallback,
         }
+    }
+}
+
+/// GNU GET_VALUE forces a selected promise and then raises NAMED from zero to
+/// one so later copy-on-modify operations do not mutate the binding in place.
+unsafe fn ensure_get_value_named(value: SEXP) -> SEXP {
+    unsafe {
+        if crate::sexp::accessors::NAMED(value) == 0 {
+            crate::sexp::accessors::SET_NAMED(value, 1);
+        }
+        value
     }
 }
 
@@ -301,6 +311,14 @@ unsafe fn strict_get_environment(environment: SEXP) -> SEXP {
         if environment.is_null() || environment == R_NilValue() {
             base_error("use of NULL environment is defunct");
         }
+        let environment = if crate::mainutils::coerce::IS_S4_OBJECT(environment) != FALSE {
+            crate::mainutils::subassign::R_getS4DataSlot(
+                environment,
+                SEXPTYPE::ANYSXP.as_c_int(),
+            )
+        } else {
+            environment
+        };
         if TYPEOF(environment) != SEXPTYPE::ENVSXP {
             base_error("invalid 'envir' argument");
         }
