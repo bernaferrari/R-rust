@@ -5,6 +5,7 @@ use super::Input;
 pub(super) struct Plan {
     pub periodic: bool,
     pub variance: f64,
+    pub span: f64,
     bw: usize,
     crossvalidate: bool,
 }
@@ -23,12 +24,19 @@ impl Plan {
         Some(Self {
             periodic,
             variance,
+            span,
             bw: bw as usize,
             crossvalidate,
         })
     }
 }
-pub(super) fn smooth(input: Input<'_>, p: Plan, smo: &mut [f64], acvr: &mut [f64]) {
+pub(super) fn smooth(
+    input: Input<'_>,
+    p: Plan,
+    smo: &mut [f64],
+    acvr: &mut [f64],
+    trace: Option<&mut super::TraceBuffer>,
+) {
     let n = input.x.len();
     let bw = p.bw as i64;
     let ni = n as i64;
@@ -128,6 +136,16 @@ pub(super) fn smooth(input: Input<'_>, p: Plan, smo: &mut [f64], acvr: &mut [f64
                 0.
             };
         }
+    }
+    // GNU smoothprt runs after the moving window has completed, before fitted
+    // values at duplicate x coordinates are collapsed.
+    if let Some(trace) = trace {
+        trace.push(super::TraceEvent {
+            span: p.span,
+            iper: (if p.crossvalidate { 1 } else { -1 }) * (if p.periodic { 2 } else { 1 }),
+            variance: var,
+            covariance: cvar,
+        });
     }
     let mut j = 0;
     while j < n {

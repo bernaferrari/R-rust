@@ -21,6 +21,42 @@ pub(crate) struct Output<'a> {
     pub smoothed: &'a mut [f64],
     pub scratch: &'a mut [f64],
     pub edf: &'a mut [f64],
+    pub trace: Option<&'a mut TraceBuffer>,
+}
+const MAX_TRACE_EVENTS: usize = 8;
+#[derive(Clone, Copy, Default)]
+pub(crate) struct TraceEvent {
+    pub span: f64,
+    pub iper: i32,
+    pub variance: f64,
+    pub covariance: f64,
+}
+pub(crate) struct TraceBuffer {
+    events: [TraceEvent; MAX_TRACE_EVENTS],
+    len: usize,
+}
+impl Default for TraceBuffer {
+    fn default() -> Self {
+        Self {
+            events: [TraceEvent::default(); MAX_TRACE_EVENTS],
+            len: 0,
+        }
+    }
+}
+impl TraceBuffer {
+    fn push(&mut self, event: TraceEvent) {
+        debug_assert!(
+            self.len < MAX_TRACE_EVENTS,
+            "supersmoother trace event bound"
+        );
+        if self.len < MAX_TRACE_EVENTS {
+            self.events[self.len] = event;
+            self.len += 1;
+        }
+    }
+    pub(crate) fn events(&self) -> &[TraceEvent] {
+        &self.events[..self.len]
+    }
 }
 #[derive(Debug)]
 pub(crate) struct Error(&'static str);
@@ -120,7 +156,7 @@ impl Parameters {
         self.plan(input, lengths).map(|_| ())
     }
 }
-pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Result<(), Error> {
+pub(crate) fn filter(input: Input<'_>, p: Parameters, mut output: Output<'_>) -> Result<(), Error> {
     let branch = p.plan(
         input,
         [
@@ -149,6 +185,7 @@ pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Res
             plan,
             &mut output.smoothed[..n],
             &mut output.scratch[..n],
+            output.trace.as_deref_mut(),
         ),
         Branch::Automatic(base) => {
             // The sole allocation precedes every caller-visible write; no temporary raw loans.
@@ -162,7 +199,7 @@ pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Res
                 let (fit, error) = pair.split_at_mut(n);
                 let plan = Plan::new(n, span, base.periodic, base.variance, true)
                     .expect("default spans bounded by validated observation count");
-                smooth(input, plan, fit, selected);
+                smooth(input, plan, fit, selected, output.trace.as_deref_mut());
                 let plan = Plan::new(n, SPANS[1], base.periodic, base.variance, false)
                     .expect("default span bounded");
                 smooth(
@@ -174,6 +211,7 @@ pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Res
                     plan,
                     error,
                     &mut h,
+                    output.trace.as_deref_mut(),
                 );
             }
             for j in 0..n {
@@ -201,6 +239,7 @@ pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Res
                 plan,
                 &mut sc[n..2 * n],
                 &mut h,
+                output.trace.as_deref_mut(),
             );
             let (left, right) = sc.split_at_mut(3 * n);
             let (target, right) = right.split_at_mut(n);
@@ -226,6 +265,7 @@ pub(crate) fn filter(input: Input<'_>, p: Parameters, output: Output<'_>) -> Res
                 plan,
                 &mut output.smoothed[..n],
                 &mut h,
+                output.trace.as_deref_mut(),
             );
             output.edf[0] = 0.;
         }
@@ -273,7 +313,8 @@ mod tests {
                     Output {
                         smoothed: &mut smo,
                         scratch: &mut scratch,
-                        edf: &mut edf
+                        edf: &mut edf,
+                        trace: None,
                     }
                 )
                 .is_err()

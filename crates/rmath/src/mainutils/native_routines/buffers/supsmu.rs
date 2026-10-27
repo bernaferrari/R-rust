@@ -60,6 +60,7 @@ fn shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
 fn invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     ROUTINE.validate_buffers(BufferInterface::Fortran, b)?;
     let p = parameters(b)?;
+    let trace_enabled = crate::library::stats::smart::settings().trace;
     let [
         _,
         NativeBuffer::Real(x),
@@ -75,6 +76,7 @@ fn invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     else {
         return Err(BufferError::new("invalid supersmoother input types"));
     };
+    let mut trace = supsmu::TraceBuffer::default();
     supsmu::filter(
         Input { x, y, weights },
         p,
@@ -82,7 +84,12 @@ fn invoke(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
             smoothed,
             scratch,
             edf,
+            trace: trace_enabled.then_some(&mut trace),
         },
     )
-    .map_err(|e| BufferError::new(e.to_string()))
+    .map_err(|e| BufferError::new(e.to_string()))?;
+    if trace_enabled {
+        crate::library::stats::lowess::emit_supsmu_trace(&trace).map_err(BufferError::new)?;
+    }
+    Ok(())
 }

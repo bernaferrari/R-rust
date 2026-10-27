@@ -422,3 +422,61 @@ fn supsmu_public_matches_exact_names_before_positionals_and_partial_names() {
     let result = f.wrap(result).unwrap().into_owned().unwrap();
     assert_eq!(result.try_vector_elt(0).unwrap().len(), 24);
 }
+
+#[test]
+fn supsmu_direct_handler_publishes_periodic_trace_only_when_enabled() {
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let nil = factory.nil().into_owned().unwrap();
+    let x = real(
+        &factory,
+        &[0., 1. / 7., 2. / 7., 3. / 7., 4. / 7., 5. / 7., 6. / 7., 1.],
+    );
+    let y = real(&factory, &[0., 1., 0., 2., 1., 3., 2., 4.]);
+    let weights = real(&factory, &[1.; 8]);
+    let span = real(&factory, &[0.25]);
+    let periodic = real(&factory, &[1.]);
+    let bass = real(&factory, &[0.]);
+    let traced = real(&factory, &[1.]);
+    let silent = real(&factory, &[0.]);
+
+    let args = |trace: &Sexp<'static>| {
+        let mut tail = nil.clone();
+        for value in [&x, &y, &weights, &span, &periodic, &bass, trace]
+            .into_iter()
+            .rev()
+        {
+            tail = factory
+                .pairlist_cell(value, &tail, &nil)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+        }
+        tail
+    };
+    let traced_args = args(&traced);
+    let (result, output) = session.with_output_capture(|| unsafe {
+        crate::library::stats::lowess::do_supsmu(
+            nil.as_raw(),
+            nil.as_raw(),
+            traced_args.as_raw(),
+            nil.as_raw(),
+        )
+    });
+    assert!(!result.is_null());
+    assert_eq!(
+        output.stdout,
+        "smooth(span=0.25, iper=+2) -> (var, cvar) = (0.106122, -0.428571)\n"
+    );
+
+    let silent_args = args(&silent);
+    let (_, output) = session.with_output_capture(|| unsafe {
+        crate::library::stats::lowess::do_supsmu(
+            nil.as_raw(),
+            nil.as_raw(),
+            silent_args.as_raw(),
+            nil.as_raw(),
+        )
+    });
+    assert!(output.stdout.is_empty());
+}

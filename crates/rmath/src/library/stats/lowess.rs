@@ -450,6 +450,176 @@ pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU default/fixed-span supersmoother through owning inputs and checked slices.
+struct TraceText<const N: usize> {
+    bytes: [u8; N],
+    len: usize,
+}
+
+impl<const N: usize> Default for TraceText<N> {
+    fn default() -> Self {
+        Self {
+            bytes: [0; N],
+            len: 0,
+        }
+    }
+}
+
+impl<const N: usize> std::fmt::Write for TraceText<N> {
+    fn write_str(&mut self, text: &str) -> std::fmt::Result {
+        let end = self.len.checked_add(text.len()).ok_or(std::fmt::Error)?;
+        if end >= N {
+            return Err(std::fmt::Error);
+        }
+        self.bytes[self.len..end].copy_from_slice(text.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+impl<const N: usize> TraceText<N> {
+    fn as_c_str(&mut self) -> *const std::ffi::c_char {
+        self.bytes[self.len] = 0;
+        self.bytes.as_ptr().cast()
+    }
+
+    fn write_event(&mut self, event: super::supsmu::TraceEvent) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        let mut span = TraceText::<32>::default();
+        write_g(&mut span, event.span, 2)?;
+        self.write_str("smooth(span=")?;
+        for _ in span.len..4 {
+            self.write_char(' ')?;
+        }
+        self.write_str(std::str::from_utf8(&span.bytes[..span.len]).map_err(|_| std::fmt::Error)?)?;
+        write!(self, ", iper={:+2}) -> (var, cvar) = (", event.iper)?;
+        write_g(self, event.variance, 6)?;
+        self.write_str(", ")?;
+        write_g(self, event.covariance, 6)?;
+        self.write_str(")\n")
+    }
+}
+
+pub(crate) fn emit_supsmu_trace(events: &super::supsmu::TraceBuffer) -> Result<(), String> {
+    if events.events().is_empty() {
+        return Ok(());
+    }
+    if crate::sexp::instance::is_cancellation_requested() {
+        return Err("operation cancelled".into());
+    }
+    // SAFETY: native routine dispatch and interpreted builtins both execute
+    // with the original runtime activated; upgrading and pinning its exact
+    // owner keeps output routing valid through the callback.
+    let owner =
+        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
+    let _pin = owner.pin().map_err(|error| error.to_string())?;
+    owner.require_active().map_err(|error| error.to_string())?;
+    let mut text = TraceText::<1024>::default();
+    for event in events.events() {
+        text.write_event(*event)
+            .map_err(|_| "supersmoother trace formatting failed")?;
+    }
+    // SAFETY: text is a stack-owned NUL-terminated ASCII buffer retained
+    // until Rprintf copies it into the original runtime's charged output
+    // snapshot. It contains no borrowed R payload or mutable arena loan.
+    unsafe {
+        crate::mainutils::printutils::Rprintf(text.as_c_str(), std::ptr::null_mut());
+    }
+    owner.require_active().map_err(|error| error.to_string())?;
+    if crate::sexp::instance::is_cancellation_requested() {
+        return Err("operation cancelled".into());
+    }
+    Ok(())
+}
+
+fn write_g<const N: usize>(
+    out: &mut TraceText<N>,
+    value: f64,
+    precision: usize,
+) -> std::fmt::Result {
+    use std::fmt::Write as _;
+    if value.is_nan() {
+        return out.write_str("nan");
+    }
+    if value.is_infinite() {
+        return out.write_str(if value.is_sign_negative() {
+            "-inf"
+        } else {
+            "inf"
+        });
+    }
+    if value == 0. {
+        return out.write_str(if value.is_sign_negative() { "-0" } else { "0" });
+    }
+
+    // C's `%g` rounds to significant digits, switches to exponent form below
+    // 1e-4 or at 10^precision, and trims insignificant zeroes. Generate the
+    // rounded significant digits in a bounded stack buffer, then lay them out
+    // without a heap allocation.
+    let mut scientific = TraceText::<64>::default();
+    write!(scientific, "{:.*e}", precision.saturating_sub(1), value)?;
+    let rendered =
+        std::str::from_utf8(&scientific.bytes[..scientific.len]).map_err(|_| std::fmt::Error)?;
+    let (mantissa, exponent) = rendered.split_once('e').ok_or(std::fmt::Error)?;
+    let exponent: i32 = exponent.parse().map_err(|_| std::fmt::Error)?;
+    let negative = mantissa.starts_with('-');
+    let mantissa = mantissa.strip_prefix(['-', '+']).unwrap_or(mantissa);
+    let mut digits = TraceText::<32>::default();
+    for byte in mantissa.bytes().filter(|&b| b != b'.') {
+        digits.write_char(char::from(byte))?;
+    }
+    while digits.len > 1 && digits.bytes[digits.len - 1] == b'0' {
+        digits.len -= 1;
+    }
+
+    if exponent < -4 || exponent >= precision as i32 {
+        if negative {
+            out.write_char('-')?;
+        }
+        out.write_char(char::from(digits.bytes[0]))?;
+        if digits.len > 1 {
+            out.write_char('.')?;
+            out.write_str(
+                std::str::from_utf8(&digits.bytes[1..digits.len]).map_err(|_| std::fmt::Error)?,
+            )?;
+        }
+        write!(out, "e{exponent:+03}")
+    } else {
+        if negative {
+            out.write_char('-')?;
+        }
+        let decimal = exponent + 1;
+        if decimal <= 0 {
+            out.write_str("0.")?;
+            for _ in 0..(-decimal) {
+                out.write_char('0')?;
+            }
+            out.write_str(
+                std::str::from_utf8(&digits.bytes[..digits.len]).map_err(|_| std::fmt::Error)?,
+            )
+        } else if decimal as usize >= digits.len {
+            out.write_str(
+                std::str::from_utf8(&digits.bytes[..digits.len]).map_err(|_| std::fmt::Error)?,
+            )?;
+            for _ in digits.len..decimal as usize {
+                out.write_char('0')?;
+            }
+            Ok(())
+        } else {
+            let split = decimal as usize;
+            out.write_str(
+                std::str::from_utf8(&digits.bytes[..split]).map_err(|_| std::fmt::Error)?,
+            )?;
+            out.write_char('.')?;
+            let fractional = &digits.bytes[split..digits.len];
+            let mut end = fractional.len();
+            while end > 0 && fractional[end - 1] == b'0' {
+                end -= 1;
+            }
+            out.write_str(std::str::from_utf8(&fractional[..end]).map_err(|_| std::fmt::Error)?)
+        }
+    }
+}
+
 pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     use crate::sexp::{
         R_xlen_t, Sexp, SexpMut,
@@ -688,9 +858,10 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if !trace.is_finite() {
             return Err("invalid trace flag".into());
         }
-        if trace != 0. {
-            return Err("supersmoother trace output is not implemented".into());
-        }
+        // GNU emits trace records during the pure kernel calls. Collect them
+        // in bounded stack storage first, then publish through the original
+        // owner after computation and cancellation checks.
+        let trace_enabled = trace != 0.;
         if periodic && x.iter().any(|x| !x.is_finite() || *x < 0. || *x > 1.) {
             return Err("'x' must be between 0 and 1 for periodic smooth".into());
         }
@@ -775,6 +946,7 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             .map_err(|_| "supersmoother output allocation failed")?;
         smooth.resize(n, 0.);
         let mut edf = [0.];
+        let mut trace_events = super::supsmu::TraceBuffer::default();
         super::supsmu::filter(
             super::supsmu::Input {
                 x: &xo,
@@ -791,9 +963,14 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 smoothed: &mut smooth,
                 scratch: &mut scratch,
                 edf: &mut edf,
+                trace: trace_enabled.then_some(&mut trace_events),
             },
         )
         .map_err(|e| e.to_string())?;
+        access.require_active().map_err(|e| e.to_string())?;
+        if trace_enabled {
+            emit_supsmu_trace(&trace_events)?;
+        }
         let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
         let allocate = |kind, len| {
             allocator

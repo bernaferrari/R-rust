@@ -1194,6 +1194,7 @@ fn supsmu_ppr(
                     smoothed: smo,
                     scratch: sc,
                     edf: std::slice::from_mut(edf),
+                    trace: None,
                 },
             )
             .map_err(|e| e.to_string())?;
