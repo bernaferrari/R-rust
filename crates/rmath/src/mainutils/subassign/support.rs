@@ -585,7 +585,12 @@ pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
         while !isNull(attr) {
             let tag = TAG(attr);
             if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
-                setAttrib(dest, tag, CAR(attr));
+                // GNU copyMostAttrib uses installAttrib: this is an
+                // internal metadata transfer, not a user `attr<-` call.
+                // In particular, a temporary `[<-` result may have grown
+                // while retaining its old `tsp`; class methods validate and
+                // reject that resize after NextMethod returns.
+                crate::sexp::attrib_core::installAttrib(dest, tag, CAR(attr));
             }
             attr = CDR(attr);
         }
