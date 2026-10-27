@@ -192,6 +192,230 @@ pub(super) fn vector_allocation_validates_platform_length_and_layout_without_con
 }
 
 #[test]
+pub(super) fn byte_budget_denial_evicts_only_this_arenas_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let before_workspace = arena.workspace_bytes();
+    let character = arena.alloc_charsxp(b"bytecode-cache-owner-a");
+    let literal = arena.immutable_bytecode_string(character);
+    assert!(!character.is_null());
+    assert!(!literal.is_null());
+    let cache_workspace = arena.workspace_bytes() - before_workspace;
+    assert!(cache_workspace > 0, "fixture must populate the weak cache");
+    assert!(
+        cache_workspace > 64 * 1024,
+        "cache charge must exceed this vector request"
+    );
+    let character_root = arena.node_token(character).unwrap();
+    let literal_root = arena.node_token(literal).unwrap();
+
+    let mut other = super::RArena::new();
+    let other_character = other.alloc_charsxp(b"bytecode-cache-owner-b");
+    let other_literal = other.immutable_bytecode_string(other_character);
+    let other_workspace = other.workspace_bytes();
+    assert!(other_workspace > 0);
+    let other_literal_root = other.node_token(other_literal).unwrap();
+
+    let bytes_before = arena.total_bytes_allocated();
+    let nodes_before = arena.node_count();
+    arena.set_budget(super::ArenaBudget::new(
+        bytes_before + cache_workspace,
+        nodes_before + 1,
+    ));
+    let allocated = arena
+        .alloc_vector_checked(super::SEXPTYPE::INTSXP, 1)
+        .expect("a byte-budget denial should evict weak hints and retry once");
+    assert!(!allocated.is_null());
+    assert_eq!(arena.workspace_bytes(), before_workspace);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+    assert_eq!(other.workspace_bytes(), other_workspace);
+    assert!(other_literal_root.is_live());
+}
+
+fn populated_bytecode_string_cache(
+    arena: &mut super::RArena,
+    name: &[u8],
+) -> (usize, super::CheckedNode, super::CheckedNode) {
+    let before_workspace = arena.workspace_bytes();
+    let character = arena.alloc_charsxp(name);
+    let literal = arena.immutable_bytecode_string(character);
+    assert!(!character.is_null());
+    assert!(!literal.is_null());
+    let cache_workspace = arena.workspace_bytes() - before_workspace;
+    assert!(
+        cache_workspace > 64 * 1024,
+        "fixture must populate weak hints"
+    );
+    (
+        cache_workspace,
+        arena.node_token(character).unwrap(),
+        arena.node_token(literal).unwrap(),
+    )
+}
+
+fn set_exact_optional_cache_budget(arena: &mut super::RArena, cache_workspace: usize) {
+    let bytes_before = arena.total_bytes_allocated();
+    let nodes_before = arena.node_count();
+    // At the current cap, cache+allocation is denied. Releasing the weak-hint
+    // ticket leaves the whole cache charge available for the requested node.
+    arena.set_budget(super::ArenaBudget::new(
+        bytes_before + cache_workspace,
+        nodes_before + 1,
+    ));
+}
+
+fn set_one_byte_short_optional_cache_budget(arena: &mut super::RArena, cache_workspace: usize) {
+    let bytes_before = arena.total_bytes_allocated();
+    let nodes_before = arena.node_count();
+    // Header allocation can use a prepaid header without growing the byte
+    // counter, so force a real byte-budget denial before exercising eviction.
+    arena.set_budget(super::ArenaBudget::new(
+        bytes_before + cache_workspace - 1,
+        nodes_before + 1,
+    ));
+}
+
+#[test]
+pub(super) fn raw_vector_byte_denial_evicts_only_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let (cache_workspace, character_root, literal_root) =
+        populated_bytecode_string_cache(&mut arena, b"raw-vector-cache-eviction");
+    set_exact_optional_cache_budget(&mut arena, cache_workspace);
+
+    let vector = arena.alloc_vector(super::SEXPTYPE::INTSXP, 1);
+    assert!(
+        !vector.is_null(),
+        "byte denial should retry after cache eviction"
+    );
+    assert_eq!(arena.workspace_bytes(), 0);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+}
+
+#[test]
+pub(super) fn raw_header_byte_denial_evicts_only_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let (cache_workspace, character_root, literal_root) =
+        populated_bytecode_string_cache(&mut arena, b"raw-header-cache-eviction");
+    set_one_byte_short_optional_cache_budget(&mut arena, cache_workspace);
+
+    let node = arena.alloc_node(super::SEXPTYPE::LISTSXP);
+    assert!(
+        !node.is_null(),
+        "byte denial should retry after cache eviction"
+    );
+    assert_eq!(arena.workspace_bytes(), 0);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+}
+
+#[test]
+pub(super) fn invalid_length_does_not_evict_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let (cache_workspace, character_root, literal_root) =
+        populated_bytecode_string_cache(&mut arena, b"invalid-length-cache-control");
+    let before_workspace = arena.workspace_bytes();
+    assert!(matches!(
+        arena.alloc_vector_checked(super::SEXPTYPE::INTSXP, -1),
+        Err(super::ArenaError::InvalidLength)
+    ));
+    assert_eq!(arena.workspace_bytes(), before_workspace);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+    assert!(cache_workspace > 0);
+}
+
+#[test]
+pub(super) fn byte_denial_keeps_non_cache_reservations_charged() {
+    let mut arena = super::RArena::new();
+    let (cache_workspace, character_root, literal_root) =
+        populated_bytecode_string_cache(&mut arena, b"held-reservation-cache-control");
+    assert!(cache_workspace > 64 * 1024);
+    let held = arena.try_reserve_transient(128).unwrap();
+    let total_bytes = arena.total_bytes_allocated();
+    let nodes = arena.node_count();
+    arena.set_budget(super::ArenaBudget::new(
+        total_bytes + held.bytes() - 1,
+        nodes + 1,
+    ));
+
+    assert!(matches!(
+        arena.alloc_vector_checked(super::SEXPTYPE::INTSXP, 1),
+        Err(super::ArenaError::ByteBudgetExceeded { .. })
+    ));
+    assert_eq!(arena.workspace_bytes(), held.bytes());
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+    drop(held);
+    assert_eq!(arena.workspace_bytes(), 0);
+}
+
+#[test]
+pub(super) fn node_budget_denial_preserves_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let character = arena.alloc_charsxp(b"bytecode-cache-node-cap");
+    let literal = arena.immutable_bytecode_string(character);
+    let cache_workspace = arena.workspace_bytes();
+    assert!(cache_workspace > 0, "fixture must populate the weak cache");
+    let character_root = arena.node_token(character).unwrap();
+    let literal_root = arena.node_token(literal).unwrap();
+
+    arena.set_budget(super::ArenaBudget::new(0, arena.node_count()));
+    assert!(matches!(
+        arena.alloc_vector_checked(super::SEXPTYPE::INTSXP, 1),
+        Err(super::ArenaError::NodeBudgetExceeded { .. })
+    ));
+    assert_eq!(arena.workspace_bytes(), cache_workspace);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+}
+
+#[test]
+pub(super) fn cumulative_node_guard_denial_preserves_optional_string_hints() {
+    let mut arena = super::RArena::new();
+    let character = arena.alloc_charsxp(b"bytecode-cache-node-guard");
+    let literal = arena.immutable_bytecode_string(character);
+    let cache_workspace = arena.workspace_bytes();
+    assert!(cache_workspace > 0, "fixture must populate the weak cache");
+    let character_root = arena.node_token(character).unwrap();
+    let literal_root = arena.node_token(literal).unwrap();
+
+    arena.set_node_guard(arena.node_count());
+    assert!(matches!(
+        arena.alloc_vector_checked(super::SEXPTYPE::INTSXP, 1),
+        Err(super::ArenaError::OutOfMemory)
+    ));
+    assert_eq!(arena.workspace_bytes(), cache_workspace);
+    assert!(character_root.is_live());
+    assert!(literal_root.is_live());
+}
+
+#[test]
+pub(super) fn revoked_owner_cache_teardown_does_not_touch_replacement_arena() {
+    let mut original = super::super::instance::RInstance::new_for_gc_tests();
+    let original_pointer = std::ptr::addr_of_mut!(original);
+    let original_liveness = unsafe { super::super::instance::instance_liveness(original_pointer) };
+    let original_character = original.arena.alloc_charsxp(b"revoked-cache-owner");
+    let original_literal = original.arena.immutable_bytecode_string(original_character);
+    let original_workspace = original.arena.workspace_bytes();
+    assert!(original_workspace > 0);
+
+    let mut replacement = super::super::instance::RInstance::new_for_gc_tests();
+    let replacement_character = replacement.arena.alloc_charsxp(b"replacement-cache-owner");
+    let replacement_literal = replacement
+        .arena
+        .immutable_bytecode_string(replacement_character);
+    let replacement_workspace = replacement.arena.workspace_bytes();
+    assert_eq!(replacement_workspace, original_workspace);
+    let replacement_literal_root = replacement.arena.node_token(replacement_literal).unwrap();
+
+    drop(original);
+    assert!(!original_liveness.is_live());
+    assert_eq!(replacement.arena.workspace_bytes(), replacement_workspace);
+    assert!(replacement_literal_root.is_live());
+}
+
+#[test]
 pub(super) fn vector_allocation_preserves_all_supported_types_and_zero_lengths() {
     let mut arena = super::RArena::new();
     for tag in 0..=31 {

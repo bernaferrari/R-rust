@@ -195,7 +195,7 @@ impl RArena {
                 .expect("empty character chunk layout");
             if !header.payload.is_empty()
                 || header.data.vector().length != 0
-                || !self.can_allocate_node_with_payload(empty_storage)
+                || !self.try_admit_node_with_payload(empty_storage)
             {
                 return ptr::null_mut();
             }
@@ -212,7 +212,7 @@ impl RArena {
             .as_ref()
             .filter(|lease| !lease.belongs_to(&self.heap_identity))
             .map_or(0, PayloadLease::storage_bytes);
-        if !self.can_allocate_node_with_payload(payload_growth) {
+        if !self.try_admit_node_with_payload(payload_growth) {
             return ptr::null_mut();
         }
         match &payload {
@@ -630,11 +630,24 @@ impl RArena {
                 .is_some_and(|total| total <= self.budget.max_bytes)
     }
 
-    fn can_allocate_node_with_payload(&self, bytes: usize) -> bool {
-        self.can_activate_node()
-            && bytes
-                .checked_add(self.minimum_fresh_backing_bytes())
-                .is_some_and(|total| self.can_grow_bytes_by(total))
+    fn try_admit_growth_bytes(&mut self, bytes: usize) -> bool {
+        if self.can_grow_bytes_by(bytes) {
+            return true;
+        }
+        // A byte denial may reclaim weak hints, never active R values or live
+        // tickets. Exclusive arena access excludes every cache entry borrow.
+        self.release_bytecode_string_hints();
+        self.can_grow_bytes_by(bytes)
+    }
+
+    fn try_admit_node_with_payload(&mut self, bytes: usize) -> bool {
+        if !self.can_activate_node() {
+            return false;
+        }
+        let Some(total) = bytes.checked_add(self.minimum_fresh_backing_bytes()) else {
+            return false;
+        };
+        self.try_admit_growth_bytes(total)
     }
 
     /// Allocate a scalar SexprecCore node using slab pages.
@@ -657,7 +670,7 @@ impl RArena {
             self.alloc_gc_collect_requested = true;
         }
 
-        if !self.can_allocate_node_with_payload(0) {
+        if !self.try_admit_node_with_payload(0) {
             return ptr::null_mut();
         }
 
@@ -691,7 +704,7 @@ impl RArena {
 
         let total_bytes = layout.size();
 
-        if !self.can_allocate_node_with_payload(total_bytes) {
+        if !self.try_admit_node_with_payload(total_bytes) {
             return ptr::null_mut();
         }
 
@@ -749,23 +762,22 @@ impl RArena {
             .checked_add(self.minimum_fresh_backing_bytes())
             .ok_or(ArenaError::InvalidLength)?;
 
-        // Check byte budget
-        if self.budget.max_bytes > 0 {
-            let new_total = self
+        // A cumulative node guard still reports OOM, as the allocation core
+        // does; it must not cause optional byte-cache eviction.
+        if !self.can_activate_node() {
+            return Err(ArenaError::OutOfMemory);
+        }
+        if !self.try_admit_growth_bytes(total_increase) {
+            let requested = self
                 .allocated_bytes
                 .get()
                 .checked_add(self.transient_bytes.get())
                 .and_then(|total| total.checked_add(total_increase))
-                .ok_or(ArenaError::ByteBudgetExceeded {
-                    limit: self.budget.max_bytes,
-                    requested: usize::MAX,
-                })?;
-            if new_total > self.budget.max_bytes {
-                return Err(ArenaError::ByteBudgetExceeded {
-                    limit: self.budget.max_bytes,
-                    requested: new_total,
-                });
-            }
+                .unwrap_or(usize::MAX);
+            return Err(ArenaError::ByteBudgetExceeded {
+                limit: self.budget.max_bytes,
+                requested,
+            });
         }
 
         // Run GC if approaching thresholds (same as alloc_vector)
@@ -821,7 +833,7 @@ impl RArena {
         let Ok(total_bytes) = OwnedPayload::requested_byte_storage_bytes(total_bytes) else {
             return ptr::null_mut();
         };
-        if !self.can_allocate_node_with_payload(total_bytes) {
+        if !self.try_admit_node_with_payload(total_bytes) {
             return ptr::null_mut();
         }
 
@@ -958,7 +970,7 @@ impl RArena {
     /// Payload pointers and graph children are valid and owned by this arena
     /// or immutable storage; transferring the core must not duplicate payload ownership.
     pub(crate) unsafe fn add_node(&mut self, node: Box<SexprecCore>) -> SEXP {
-        if !self.can_allocate_node_with_payload(0) {
+        if !self.try_admit_node_with_payload(0) {
             return ptr::null_mut();
         }
 
