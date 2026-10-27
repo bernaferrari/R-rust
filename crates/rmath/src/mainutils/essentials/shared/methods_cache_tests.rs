@@ -66,3 +66,63 @@ fn installed_methods_startup_preserves_original_class_and_initializer_caches() {
         assert_eq!(binding(environment, c"initArray"), array_helper);
     });
 }
+
+#[test]
+fn namespace_loader_registers_source_package_s4_generics_before_sealing() {
+    struct PackageDir(std::path::PathBuf);
+    impl Drop for PackageDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let directory = PackageDir(std::env::temp_dir().join(format!(
+        "rport-namespace-cache-probe-{}",
+        std::process::id()
+    )));
+    std::fs::create_dir_all(directory.0.join("R")).unwrap();
+    std::fs::write(
+        directory.0.join("NAMESPACE"),
+        "import(methods)\nexport(nsCacheGeneric)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.0.join("DESCRIPTION"),
+        "Package: nsCacheProbe\nVersion: 1.0\nImports: methods\n",
+    )
+    .unwrap();
+    // Remove setGeneric's eager cache entry, as an installed lazy-load image
+    // starts without the installation process's session cache.
+    std::fs::write(
+        directory.0.join("R/probe.R"),
+        r#"
+        setGeneric("nsCacheGeneric", function(x) standardGeneric("nsCacheGeneric"),
+                   package = "nsCacheProbe")
+        methods:::.uncacheGeneric("nsCacheGeneric", nsCacheGeneric)
+    "#,
+    )
+    .unwrap();
+    let mut session = RSession::new_without_default_packages();
+    let (result, output, error_output) =
+        session.eval_script_with_output_capture("invisible(require(methods, quietly=TRUE)); TRUE");
+    assert_eq!(
+        result.unwrap().logical_elt(0),
+        Some(TRUE),
+        "{output:?} {error_output:?}"
+    );
+    session.with_active(|| unsafe {
+        let (namespace, _) =
+            load_package_namespace("nsCacheProbe", &directory.0, &mut Vec::new()).unwrap();
+        assert!(crate::sexp::envir::environment_is_locked_raw(namespace));
+        session.owner_token().unwrap().full_gc().unwrap();
+    });
+    let (result, output, error_output) = session.eval_script_with_output_capture(
+        r#"
+        g <- getGenerics()
+        at <- which(g == "nsCacheGeneric")
+        length(at) == 1L && identical(unname(packageSlot(g)[at]), "nsCacheProbe") &&
+            !"package:nsCacheProbe" %in% search()
+    "#,
+    );
+    let result = result.unwrap_or_else(|error| panic!("{error:?}; {output:?}; {error_output:?}"));
+    assert_eq!(result.logical_elt(0), Some(TRUE));
+}

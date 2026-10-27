@@ -165,6 +165,9 @@ pub(crate) unsafe fn load_package_namespace(
         if package == "graphics" {
             crate::library::graphics::install_call_symbols(package_env);
         }
+        if package != "methods" {
+            cache_loaded_namespace_metadata(package_env);
+        }
         ensure_namespace_info(package, package_dir, package_env, namespace.as_ref());
         crate::sexp::envir::lock_environment_raw(package_env);
 

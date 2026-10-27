@@ -669,11 +669,63 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
         if attach_env.is_null() {
             return;
         }
+        cache_namespace_metadata(attach_env, attach_env);
+    }
+}
+
+/// GNU `loadNamespace()` calls `methods::cacheMetaData(ns, TRUE, ns)` after
+/// `.onLoad` for namespaces that publish S4 metadata. This populates the
+/// session's generic table even when the package is only loaded by
+/// `requireNamespace()` and has not been attached.
+pub(crate) unsafe fn cache_loaded_namespace_metadata(namespace: SEXP) {
+    unsafe {
+        if namespace.is_null()
+            || namespace == R_NilValue()
+            || crate::mainutils::objects::isMethodsDispatchOn() != TRUE
+        {
+            return;
+        }
+        let has_metadata = frame_binding_names(namespace, true).iter().any(|name| {
+            name.starts_with(".__C__") || name.starts_with(".__T__") || name.starts_with(".__A__")
+        });
+        if !has_metadata || cached_namespace_by_name("methods").is_none() {
+            return;
+        }
+        cache_namespace_metadata(namespace, namespace);
+    }
+}
+
+unsafe fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
+    unsafe {
+        if where_env.is_null() || search_where.is_null() {
+            return;
+        }
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let where_root = owner
+            .sexp(where_env)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let search_root = owner
+            .sexp(search_where)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let authority = crate::sexp::owner::StoredOwner::from_value(&where_root)
+            .unwrap_or_else(|error| package_error(error.to_string()));
         let Some(methods_ns) = cached_namespace_by_name("methods") else {
             return;
         };
-        let mut fun =
-            crate::sexp::envir::R_findVarInFrame(methods_ns, Rf_install(c"cacheMetaData".as_ptr()));
+        let methods_root = owner
+            .sexp(methods_ns)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| package_error(error.to_string()));
+        let mut fun = crate::sexp::envir::R_findVarInFrame(
+            methods_root.as_raw(),
+            Rf_install(c"cacheMetaData".as_ptr()),
+        );
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;
         }
@@ -684,13 +736,25 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
             return;
         }
         let _source_body = methods_metadata_source_body(fun);
+        let _fun = crate::sexp::protect::protect(fun);
         let attach = Rf_ScalarLogical(TRUE);
         let _attach = protect(attach);
-        let call = crate::sexp::constructors::Rf_lang3(fun, attach_env, attach);
+        let call = crate::sexp::constructors::Rf_lang4(
+            fun,
+            where_root.as_raw(),
+            attach,
+            search_root.as_raw(),
+        );
         let _call = protect(call);
+        authority
+            .require_active()
+            .unwrap_or_else(|error| package_error(error.to_string()));
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv())
         }));
+        authority
+            .require_active()
+            .unwrap_or_else(|error| package_error(error.to_string()));
     }
 }
 
