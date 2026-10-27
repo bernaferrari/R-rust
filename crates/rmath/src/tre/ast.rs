@@ -102,9 +102,8 @@ pub type tre_cint_t = u32; // wint_t equivalent
 
 pub const TRE_CHAR_MAX: tre_cint_t = i32::MAX as tre_cint_t;
 
-// Character type - for now we use a function pointer approach
-// since we can't use wctype_t directly in Rust.
-// We store the ctype as a function pointer or an index.
+// Character class IDs are nonzero numeric indices into the safe dispatch table.
+// Zero denotes no class; these values never encode function addresses.
 pub type tre_ctype_t = usize;
 
 pub const ASSERT_AT_BOL: c_int = 1;

@@ -124,15 +124,7 @@ pub(crate) fn tre_toupper(c: tre_cint_t) -> tre_cint_t {
 }
 
 pub(crate) fn tre_isctype(c: tre_cint_t, class: tre_ctype_t) -> bool {
-    if class == 0 {
-        return false;
-    }
-    // SAFETY: `class` is a tre_ctype_t (usize) that was created by tre_ctype()
-    // below, which stores a fn pointer cast to usize. Casting back to the
-    // original fn pointer type is safe because tre_ctype only stores
-    // `fn(tre_cint_t) -> bool` function pointers.
-    let f: fn(tre_cint_t) -> bool = unsafe { std::mem::transmute(class) };
-    f(c)
+    CharacterClassId::from_raw(class).is_some_and(|id| id.matches(c))
 }
 
 pub(crate) fn tre_neg_char_classes_match(
@@ -159,30 +151,51 @@ pub(crate) fn tre_neg_char_classes_match(
 
 type tre_ctype_func_t = fn(tre_cint_t) -> bool;
 
-fn tre_ctype(name: &str) -> tre_ctype_t {
-    let func: Option<tre_ctype_func_t> = match name {
-        "alnum" => Some(tre_isalnum as tre_ctype_func_t),
-        "alpha" => Some(tre_isalpha as tre_ctype_func_t),
-        "ascii" => Some(tre_isascii as tre_ctype_func_t),
-        "blank" => Some(tre_isblank as tre_ctype_func_t),
-        "cntrl" => Some(tre_iscntrl as tre_ctype_func_t),
-        "digit" => Some(tre_isdigit as tre_ctype_func_t),
-        "graph" => Some(tre_isgraph as tre_ctype_func_t),
-        "lower" => Some(tre_islower as tre_ctype_func_t),
-        "print" => Some(tre_isprint as tre_ctype_func_t),
-        "punct" => Some(tre_ispunct as tre_ctype_func_t),
-        "space" => Some(tre_isspace as tre_ctype_func_t),
-        "upper" => Some(tre_isupper as tre_ctype_func_t),
-        "xdigit" => Some(tre_isxdigit as tre_ctype_func_t),
-        _ => return 0,
-    };
-    match func {
-        // SAFETY: fn pointer -> *const () -> usize roundtrip. tre_ctype_t is usize,
-        // used as an opaque handle. The roundtrip is lossless on all supported platforms
-        // (fn pointers fit in usize).
-        Some(f) => f as *const () as usize,
-        None => 0,
+const CHARACTER_CLASSES: [(&str, tre_ctype_func_t); 13] = [
+    ("alnum", tre_isalnum),
+    ("alpha", tre_isalpha),
+    ("ascii", tre_isascii),
+    ("blank", tre_isblank),
+    ("cntrl", tre_iscntrl),
+    ("digit", tre_isdigit),
+    ("graph", tre_isgraph),
+    ("lower", tre_islower),
+    ("print", tre_isprint),
+    ("punct", tre_ispunct),
+    ("space", tre_isspace),
+    ("upper", tre_isupper),
+    ("xdigit", tre_isxdigit),
+];
+
+/// Validated table index; the legacy storage uses index+1, with zero meaning none.
+#[derive(Clone, Copy)]
+struct CharacterClassId(usize);
+
+impl CharacterClassId {
+    fn from_raw(raw: tre_ctype_t) -> Option<Self> {
+        raw.checked_sub(1)
+            .filter(|&index| index < CHARACTER_CLASSES.len())
+            .map(Self)
     }
+
+    fn for_name(name: &str) -> Option<Self> {
+        CHARACTER_CLASSES
+            .iter()
+            .position(|(key, _)| *key == name)
+            .map(Self)
+    }
+
+    fn raw(self) -> tre_ctype_t {
+        self.0 + 1
+    }
+
+    fn matches(self, c: tre_cint_t) -> bool {
+        CHARACTER_CLASSES[self.0].1(c)
+    }
+}
+
+fn tre_ctype(name: &str) -> tre_ctype_t {
+    CharacterClassId::for_name(name).map_or(0, CharacterClassId::raw)
 }
 
 // Macros for expanding \w, \s, etc.
@@ -1740,5 +1753,79 @@ mod bounded_bracket_tests {
             )
         };
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod character_class_id_tests {
+    use super::*;
+
+    #[test]
+    fn typed_class_ids_preserve_all_predicates_and_reject_unknown_ids() {
+        let cases = [
+            ("alnum", '7', '!'),
+            ("alpha", 'a', '7'),
+            ("ascii", 'a', 'é'),
+            ("blank", '\t', 'a'),
+            ("cntrl", '\n', 'a'),
+            ("digit", '7', 'a'),
+            ("graph", '!', ' '),
+            ("lower", 'a', 'A'),
+            ("print", ' ', '\n'),
+            ("punct", '!', 'a'),
+            ("space", '\n', 'a'),
+            ("upper", 'A', 'a'),
+            ("xdigit", 'F', 'g'),
+        ];
+        let mut ids = Vec::new();
+        for (name, yes, no) in cases {
+            let id = tre_ctype(name);
+            assert_ne!(id, 0);
+            assert!(!ids.contains(&id));
+            ids.push(id);
+            assert!(tre_isctype(u32::from(yes), id), "{name}");
+            assert!(!tre_isctype(u32::from(no), id), "{name}");
+
+            let pattern: Box<[u32]> = format!("[[:{name}:]]").chars().map(u32::from).collect();
+            let compiled = unsafe {
+                crate::tre::compile::tre_compile_owned(
+                    pattern.as_ptr(),
+                    pattern.len(),
+                    REG_EXTENDED,
+                    crate::mainutils::grep::RegexWorkspace::unbounded(),
+                )
+            }
+            .unwrap_or_else(|code| panic!("{name} compile code {code}"));
+            let mut captures = [regmatch_t::default(); 1];
+            assert_eq!(
+                unsafe {
+                    crate::tre::regapi::tre_regwnexec(
+                        compiled.regex(),
+                        &[u32::from(yes)],
+                        &mut captures,
+                        0,
+                    )
+                },
+                REG_OK,
+                "{name}"
+            );
+            assert_eq!((captures[0].rm_so, captures[0].rm_eo), (0, 1));
+            assert_eq!(
+                unsafe {
+                    crate::tre::regapi::tre_regwnexec(
+                        compiled.regex(),
+                        &[u32::from(no)],
+                        &mut captures,
+                        0,
+                    )
+                },
+                REG_NOMATCH,
+                "{name}"
+            );
+        }
+        assert_eq!(tre_ctype("notaclass"), 0);
+        assert_eq!(tre_ctype("ALPHA"), 0);
+        assert!(!tre_isctype(u32::from('a'), 0));
+        assert!(!tre_isctype(u32::from('a'), usize::MAX));
     }
 }

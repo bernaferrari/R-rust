@@ -1,0 +1,52 @@
+{
+  "issue": "rport-mcwas",
+  "scope": "privatevalidatednumeric CharacterClassId; actual Rustfunctiontable retains functionprovenance, rawclassstorage remainsusize sentinel0; no serialized/layoutchange",
+  "source_sha256": {
+    "crates/rmath/src/tre/parse.rs": "023fd96aab3de65ef5a08b1fd1683d22ff1421153a38eafb0ca318cb870dbfaa",
+    "crates/rmath/src/tre/ast.rs": "7b0ba46a7ad4c922d6e04154d3b4c3fbb063cf8425ce40589ca0ca468e99a8b6"
+  },
+  "actual_red": "/tmp/rport-tre-class-red-miri.log: selected1 UB calling provenance-erased fn from integer atparse135",
+  "prior_candidate": "/tmp/rport-tre-class-lookahead-red-miri.log: all13class testPASS then separate malformedlookaheadUB",
+  "gnu": {
+    "runtime": "pinned4.7r90451",
+    "log": "/tmp/rport-tre-class-ids-gnu.log",
+    "standard_classes": 12,
+    "yes_no": "TRUE FALSE for12standardclasses",
+    "existing_extension": "Rustascii preserved; GNU rejects ascii Unknowncharacterclass",
+    "unknown_names": "Rust+GNU reject; checked rawunknownIDzero/usizeMAX safelyfalse"
+  },
+  "validation": {
+    "native_tre": {
+      "passed": 78,
+      "failed": 0,
+      "log": "/tmp/rport-tre-class-final-native.log"
+    },
+    "native_grep": {
+      "passed": 100,
+      "failed": 0,
+      "seconds": 3.85,
+      "log": "/tmp/rport-tre-class-final-grep.log",
+      "immutable_binary": {
+        "sha256_before": "605df15153f971ba700b38431ae3bd4b8db98178a5f7e0f6186b174ccb40f370",
+        "sha256_after": "605df15153f971ba700b38431ae3bd4b8db98178a5f7e0f6186b174ccb40f370",
+        "unchanged": true,
+        "grep_exit": 0
+      }
+    },
+    "strict_miri": {
+      "selected": 3,
+      "passed": 3,
+      "seconds": 9.12,
+      "flag": "-Zmiri-strict-provenance",
+      "cwd": "/Users/bernardoferrari/Downloads/rport",
+      "log": "/tmp/rport-tre-class-final-miri.log",
+      "tests": [
+        "bounded bracket exact inputs",
+        "13class IDs and actual exactwide compilation/matches",
+        "7incomplete/accepted namedclass forms"
+      ]
+    },
+    "fmt": "scopedrustfmt/diffcheck PASS"
+  },
+  "remaining": "noallGNUclassparity claim; existingUnicodepredicates unchanged; ks106truncatedsyntaxdifference"
+}
