@@ -242,11 +242,7 @@ pub(super) unsafe fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, 
             NA_LOGICAL
         } else if op == "==" || op == "!=" {
             let equal = unsafe { crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) } != 0;
-            if equal == (op == "==") {
-                TRUE
-            } else {
-                FALSE
-            }
+            if equal == (op == "==") { TRUE } else { FALSE }
         } else {
             let a_bytes = unsafe { crate::sexp::accessors::charsxp_as_utf8(ac.as_raw()) };
             let b_bytes = unsafe { crate::sexp::accessors::charsxp_as_utf8(bc.as_raw()) };
