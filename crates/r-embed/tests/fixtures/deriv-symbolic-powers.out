@@ -22,3 +22,7 @@ y^x * log(y)
 y^(x - 1) * x
 structure(8, gradient = structure(c(12, 5.54517744447956), dim = 1:2, dimnames = list(
     NULL, c("x", "y"))))
+numeric(0) * x^NA_real_
+NA_real_ * x^NA_real_
+1
+c(2, 3) * x

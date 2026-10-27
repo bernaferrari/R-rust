@@ -456,9 +456,18 @@ where
                     }
                     "^" => {
                         let b = binary()?;
-                        if let Some(exponent) = self.numeric(&b)? {
+                        if matches!(
+                            b.typeof_(),
+                            SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
+                        ) {
+                            let exponent = self.numeric(&b)?.unwrap_or(crate::sexp::ffi::NA_REAL);
+                            let lowered = if crate::sexp::ffi::is_na_real(exponent) {
+                                crate::sexp::ffi::NA_REAL
+                            } else {
+                                exponent - 1.
+                            };
                             let first = self.derive(&a, variable)?;
-                            let power = self.simplify("^", a, Some(self.scalar(exponent - 1.)?))?;
+                            let power = self.simplify("^", a, Some(self.scalar(lowered)?))?;
                             let product = self.simplify("*", first, Some(power))?;
                             self.simplify("*", b, Some(product))
                         } else {
