@@ -390,7 +390,7 @@ fn run_task_callback(
     succeeded: c_int,
     visible: c_int,
     environment: &crate::sexp::object::Sexp<'static>,
-) -> crate::sexp::object::SexpResult<bool> {
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
     use crate::sexp::object::SexpError;
     let domain = access.domain();
     let allocator = access.allocator(&domain)?;
@@ -483,12 +483,11 @@ fn run_task_callback(
                 .map_err(|message| SexpError::EvaluationFailed { message })?
                 .into_owned()?
         };
-        // Coercion can invoke ALTREP providers. The actual result owner lives
-        // through coercion and the native scope checks publication afterward.
-        // GNU's Rboolean contract removes only FALSE; NA and empty logical
-        // results retain the callback, including nonlogical values coerced to NA.
-        let keep = unsafe { crate::mainutils::coerce::asLogical(result.as_raw()) } != FALSE;
-        Ok(keep)
+        // Return the owned result so the caller can perform GNU's TYPEOF
+        // warning and Rboolean coercion after the callback-evaluation catch
+        // boundary. Coercion can invoke ALTREP providers and must keep this
+        // result rooted across that reentry.
+        Ok(result)
     })
 }
 
@@ -569,7 +568,7 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
             let Some(callback) = cursor.next(access)? else {
                 break;
             };
-            let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 run_task_callback(
                     access,
                     &callback,
@@ -581,9 +580,40 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
                 )
             }))
             .ok()
-            .and_then(Result::ok)
-            .unwrap_or(false);
+            .and_then(Result::ok);
             access.require_active()?;
+            let keep = if let Some(result) = result {
+                if result.typeof_() != SEXPTYPE::LGLSXP {
+                    // GNU warns only after a successful callback evaluation.
+                    // Keep this outside the catch above: with warn=2, this
+                    // warning becomes an error and must escape the callback
+                    // failure handler.
+                    unsafe {
+                        crate::mainutils::errors::Rf_warningcall1(
+                            R_NilValue(),
+                            c"top-level task callback did not return a logical value".as_ptr(),
+                        );
+                    }
+                }
+                let keep = unsafe { crate::mainutils::coerce::asLogical(result.as_raw()) != FALSE };
+                access.require_active()?;
+                keep
+            } else {
+                false
+            };
+            if crate::mainutils::errors::collect_warnings() > 0 {
+                let name = callback.name.try_as_string()?;
+                let name = name.split('\0').next().unwrap_or("");
+                if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+                    let mut attributed = String::new();
+                    attributed.push_str(&format!(
+                        "warning messages from top-level task callback '{name}'\n"
+                    ));
+                    attributed.push_str(&block);
+                    crate::sexp::output::capture_stderr(&attributed);
+                }
+                access.require_active()?;
+            }
             if !keep {
                 let retired = access.with_native(|owner| {
                     let callbacks = unsafe { &mut (*owner.as_ptr()).main_state.task_callbacks };
@@ -1135,6 +1165,40 @@ mod owned_task_callback_tests {
                 "{script}"
             );
         }
+    }
+
+    #[test]
+    fn owned_task_callback_nonlogical_warning_error_restores_handler_state() {
+        let session = RSession::new_for_gc_tests();
+        let callback = source(&session, "function(...) NULL");
+        source(&session, "options(warn=2)");
+        let id = unsafe { Rf_addTaskCallback(callback.as_raw(), R_NilValue()) };
+
+        session.with_active_in(|instance| unsafe {
+            (*instance).eval_state.visible = FALSE;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE)
+            }));
+            assert!(
+                result.is_err(),
+                "warn=2 must propagate the callback warning as an error"
+            );
+            assert!(!(*instance).main_state.running_toplevel_handlers);
+            assert_eq!((*instance).eval_state.visible, FALSE);
+            assert_eq!(
+                (*instance).main_state.task_callbacks.len(),
+                1,
+                "the warning error occurs before the callback keep/remove result"
+            );
+        });
+
+        source(&session, "options(warn=0)");
+        let selector = integer(&session, id);
+        assert_eq!(unsafe { Rf_removeTaskCallback(selector.as_raw()) }, TRUE);
+        assert!(session.with_active_in(|instance| unsafe {
+            !(*instance).main_state.running_toplevel_handlers
+                && (*instance).main_state.task_callbacks.is_empty()
+        }));
     }
 
     #[test]
