@@ -139,6 +139,63 @@ mod tests {
     }
 
     #[test]
+    fn s4_dollar_method_callback_revocation_never_publishes_assignment() {
+        use std::{cell::Cell, rc::Rc};
+
+        let mut session = crate::sexp::session::RSession::new();
+        let (setup, _, _) = session.eval_code_with_output_capture(
+            "methods::setClass('NlenzRevocationBox', contains='environment'); methods::setMethod('$<-', 'NlenzRevocationBox', function(x,name,value) { .GlobalEnv$.__nlenz_method_entered__ <- TRUE; gc(); methods::slot(x, '.xData')[[name]] <- value; x }); z <- methods::new('NlenzRevocationBox'); .__nlenz_method_entered__ <- FALSE",
+        );
+        assert!(setup.is_ok(), "S4 method setup failed: {setup:?}");
+
+        let owner = session.owner_token().unwrap();
+        let weak = owner.weak_owner().unwrap();
+        let instance = session.with_active_in(|instance| instance);
+        let entered = session.with_active_in(|_| unsafe {
+            crate::sexp::symbol::Rf_install(c".__nlenz_method_entered__".as_ptr())
+        });
+        let revoked_from_method = Rc::new(Cell::new(false));
+        let callback_observed = Rc::clone(&revoked_from_method);
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| unsafe {
+            let value = crate::sexp::envir::R_findVarInFrame((*instance).global_env, entered);
+            if !value.is_null()
+                && value != crate::sexp::globals::R_UnboundValue()
+                && crate::sexp::accessors::TYPEOF(value) == SEXPTYPE::LGLSXP
+                && crate::sexp::accessors::LOGICAL_ELT(value, 0) == TRUE
+            {
+                callback_observed.set(true);
+                crate::sexp::instance::revoke_instance_availability(instance);
+            }
+        }));
+
+        let evaluation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session
+                .eval_code_with_output_capture("z$a <- 7L")
+                .0
+                .is_err()
+        }));
+        assert!(revoked_from_method.get(), "the explicit method GC callback must revoke its original owner");
+        assert!(!weak.is_live(), "the callback must revoke the original session capability");
+        assert!(
+            evaluation.is_err() || evaluation.is_ok_and(|was_error| was_error),
+            "a revoked assignment must not publish success"
+        );
+
+        // A fresh session created after the callback revokes its owner must
+        // retain an independent method table and remain usable through GC.
+        let mut replacement = crate::sexp::session::RSession::new();
+        let (replacement_setup, _, _) = replacement.eval_code_with_output_capture(
+            "methods::setClass('NlenzReplacementBox', contains='environment'); methods::setMethod('$<-', 'NlenzReplacementBox', function(x,name,value) { gc(); methods::slot(x, '.xData')[[name]] <- 19L; x }); z <- methods::new('NlenzReplacementBox')",
+        );
+        assert!(replacement_setup.is_ok(), "replacement session setup failed: {replacement_setup:?}");
+        let (replacement_result, replacement_output, _) = replacement.eval_code_with_output_capture(
+            "z$a <- 1L; get('a', methods::slot(z, '.xData'))",
+        );
+        assert!(replacement_result.is_ok(), "replacement session dispatch failed: {replacement_result:?}");
+        assert_eq!(replacement_result.unwrap().integer_elt(0), Some(19), "replacement method returned unexpected value: {replacement_output:?}");
+    }
+
+    #[test]
     fn owned_s4_extends_cache_releases_bindings_and_table() {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
         session.with_active_in(|instance| unsafe {
