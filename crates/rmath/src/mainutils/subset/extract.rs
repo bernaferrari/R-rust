@@ -842,7 +842,9 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
             let x = factory
                 .wrap(Rf_eval(expression.as_raw(), rho_owner.as_raw()))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !isObject(x.as_raw()) {
+            if !isObject(x.as_raw())
+                && crate::mainutils::coerce::IS_S4_OBJECT(x.as_raw()) == 0
+            {
                 let rest = evalListKeepMissing(tail, rho_owner.clone());
                 if !ans.is_null() {
                     let nil = factory.nil();

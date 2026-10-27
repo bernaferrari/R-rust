@@ -706,7 +706,10 @@ pub unsafe fn DispatchOrEval(
         }
 
         // Step 2: Try to dispatch if x is an object
-        if !x.is_null() && x != R_NilValue() && isObject(x) != FALSE {
+        if !x.is_null()
+            && x != R_NilValue()
+            && (isObject(x) != FALSE || crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE)
+        {
             // Check if the generic name ends with ".default" — if so, no dispatch
             let mut pt: *const c_char = ptr::null();
             if isSymbol(CAR(call)) != FALSE {
@@ -751,7 +754,10 @@ pub unsafe fn DispatchOrEval(
                     op,
                     pargs,
                 );
-                if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
+                let s4_object = crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE;
+                let s4_generic_ready = s4_object
+                    && crate::mainutils::essentials::ensure_methods_primitive_generic_for_object(op, x);
+                if s4_generic_ready
                     && crate::mainutils::objects::R_has_methods(op) != FALSE
                 {
                     let value =

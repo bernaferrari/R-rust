@@ -391,6 +391,19 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         if call_name == "$<-" {
             let object = crate::eval::eval::Rf_eval(CAR(args), rho);
             let _object_guard = protect(object);
+            if crate::mainutils::coerce::IS_S4_OBJECT(object) != 0 {
+                // The `$<-` primitive must use R_DispatchOrEvalSP for formal
+                // methods, then R_subassign3_dflt for classes without a
+                // method. The custom path below is for ordinary/S3 values.
+                let primitive = crate::sexp::envir::R_findVarInFrame(
+                    crate::sexp::globals::R_BaseEnv(),
+                    Rf_install(c"$<-".as_ptr()),
+                );
+                let _primitive_guard = protect(primitive);
+                return crate::mainutils::subassign::do_subassign3(
+                    _call, primitive, args, rho,
+                );
+            }
             if crate::eval::attrib_core::isObject(object) != 0 {
                 let fixed = crate::mainutils::subset::fixSubset3Args(
                     _call,
@@ -476,6 +489,17 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         let _object_guard = protect(object);
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
+        }
+        // S4 objects that extend environments store their mutable bindings
+        // in the .xData environment. Keep the original S4 wrapper as the
+        // assignment result while delegating the data-slot update to the
+        // GNU default `$<-` implementation. The object and replacement value
+        // remain protected across slot access and any runtime allocation.
+        if TYPEOF(object) == SEXPTYPE::OBJSXP {
+            let name = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            return crate::mainutils::subassign::R_subassign3_dflt(
+                _call, object, name, value,
+            );
         }
         if TYPEOF(object) == SEXPTYPE::LISTSXP
             || TYPEOF(object) == SEXPTYPE::LANGSXP

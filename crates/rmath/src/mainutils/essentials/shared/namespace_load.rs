@@ -446,21 +446,155 @@ NULL"
 /// first requests it. Ordinary console and plotting work need no S4 table.
 pub(crate) unsafe fn ensure_methods_primitive_generic(op: SEXP) {
     unsafe {
-        let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op));
-        if name != c"$" || crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
+        if op.is_null() || crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
             return;
         }
         let Some(ns) = cached_namespace_by_name("methods") else {
             return;
         };
-        register_original_dollar_primitive(ns);
+        let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op));
+        register_original_primitive_generic(ns, name);
     }
 }
 
-/// GNU methods onLoad resets `$` with getGeneric("$"). The pinned image
-/// already contains that exact generic in .BasicFunsList; use the original
-/// definition without rerunning getGeneric's recursive cache discovery.
-pub(super) unsafe fn register_original_dollar_primitive(ns: SEXP) {
+pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(
+    op: SEXP,
+    object: SEXP,
+) -> bool {
+    unsafe {
+        if op.is_null() {
+            return false;
+        }
+        if crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
+            return true;
+        }
+        let Some(ns) = cached_namespace_by_name("methods") else {
+            return false;
+        };
+        let name = std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op));
+
+        // Primitive generics such as `names` and `length` include an `ANY`
+        // method in the pinned `.BasicFunsList`. Materializing that generic
+        // for every S4 value can retain a large dispatch environment even
+        // when this owner's method table has no class-specific entry. Use the
+        // current owner generic table as evidence first. Unknown or
+        // multi-argument signatures take the full path to preserve dispatch.
+        let table = crate::sexp::envir::R_findVarInFrame(
+            ns,
+            Rf_install(c".BasicFunsList".as_ptr()),
+        );
+        if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::VECSXP {
+            return true;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            table,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return true;
+        }
+        let mut generic_def = R_NilValue();
+        for index in 0..crate::sexp::accessors::XLENGTH(table) {
+            let generic_name = crate::sexp::accessors::STRING_ELT(names, index);
+            if generic_name.is_null() {
+                continue;
+            }
+            let generic_name = crate::sexp::accessors::CHAR(generic_name);
+            if generic_name.is_null()
+                || std::ffi::CStr::from_ptr(generic_name).to_bytes() != name.to_bytes()
+            {
+                continue;
+            }
+            generic_def = crate::sexp::accessors::VECTOR_ELT(table, index);
+            break;
+        }
+        if generic_def.is_null() || generic_def == R_NilValue() {
+            return true;
+        }
+        if TYPEOF(generic_def) != SEXPTYPE::CLOSXP {
+            return true;
+        }
+        let generic_env = crate::sexp::accessors::CLOENV(generic_def);
+        if generic_env.is_null()
+            || generic_env == R_NilValue()
+            || TYPEOF(generic_env) != SEXPTYPE::ENVSXP
+        {
+            return true;
+        }
+        let sig_length = crate::sexp::envir::R_findVarInFrame(
+            generic_env,
+            Rf_install(c".SigLength".as_ptr()),
+        );
+        if sig_length.is_null()
+            || sig_length == R_NilValue()
+            || TYPEOF(sig_length) != SEXPTYPE::INTSXP
+            || crate::sexp::accessors::XLENGTH(sig_length) == 0
+            || *crate::sexp::accessors::INTEGER(sig_length) != 1
+        {
+            return true;
+        }
+        let methods_table = crate::sexp::envir::R_findVarInFrame(
+            generic_env,
+            Rf_install(c".AllMTable".as_ptr()),
+        );
+        if methods_table.is_null()
+            || methods_table == R_NilValue()
+            || TYPEOF(methods_table) != SEXPTYPE::ENVSXP
+        {
+            return true;
+        }
+        let classes = crate::mainutils::objects::R_data_class2(object);
+        if classes.is_null() || classes == R_NilValue() || TYPEOF(classes) != SEXPTYPE::STRSXP {
+            return true;
+        }
+        let _classes_guard = protect(classes);
+        let mut has_specific_method = false;
+        for index in 0..crate::sexp::accessors::XLENGTH(classes) {
+            let class = crate::sexp::accessors::STRING_ELT(classes, index);
+            if class.is_null() {
+                continue;
+            }
+            let class_name = crate::sexp::accessors::CHAR(class);
+            if class_name.is_null() {
+                continue;
+            }
+            let class_symbol = crate::sexp::symbol::Rf_install(class_name);
+            let method = crate::sexp::envir::R_findVarInFrame(methods_table, class_symbol);
+            if !method.is_null()
+                && method != crate::sexp::globals::R_UnboundValue()
+                && method != R_NilValue()
+            {
+                let is_any = std::ffi::CStr::from_ptr(class_name).to_bytes() == b"ANY";
+                // The unmodified `.BasicFunsList` uses the primitive itself
+                // as the ANY fallback. It does not need S4 method dispatch;
+                // an explicit user ANY method is a closure and must dispatch.
+                if is_any
+                    && matches!(
+                        TYPEOF(method),
+                        kind if kind == SEXPTYPE::BUILTINSXP.as_c_int()
+                            || kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                    )
+                {
+                    continue;
+                }
+                has_specific_method = true;
+                break;
+            }
+        }
+        if !has_specific_method {
+            return false;
+        }
+        register_original_primitive_generic(ns, name);
+        crate::mainutils::objects::R_primitive_generic(op) != R_NilValue()
+    }
+}
+
+/// Materialize a primitive generic from the pinned methods namespace's
+/// `.BasicFunsList` without recursively calling getGeneric during dispatch.
+pub(super) unsafe fn register_original_primitive_generic(
+    ns: SEXP,
+    primitive_name: &std::ffi::CStr,
+) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| package_error(error.to_string()));
@@ -501,7 +635,7 @@ pub(super) unsafe fn register_original_dollar_primitive(ns: SEXP) {
         for index in 0..table.len() {
             if names
                 .try_string_elt(index)
-                .and_then(|name| name.try_char_eq(b"$"))
+                .and_then(|name| name.try_char_eq(primitive_name.to_bytes()))
                 .unwrap_or_else(|error| package_error(error.to_string()))
             {
                 let generic = table
@@ -509,7 +643,7 @@ pub(super) unsafe fn register_original_dollar_primitive(ns: SEXP) {
                     .unwrap_or_else(|error| package_error(error.to_string()));
                 let primitive = crate::sexp::envir::R_findVarInFrame(
                     crate::sexp::globals::R_BaseEnv(),
-                    Rf_install(c"$".as_ptr()),
+                    Rf_install(primitive_name.as_ptr()),
                 );
                 crate::mainutils::objects::do_set_prim_method(
                     primitive,
@@ -520,7 +654,10 @@ pub(super) unsafe fn register_original_dollar_primitive(ns: SEXP) {
                 return;
             }
         }
-        package_error("methods namespace has no dollar generic");
+        package_error(format!(
+            "methods namespace has no primitive generic {}",
+            primitive_name.to_string_lossy()
+        ));
     }
 }
 
