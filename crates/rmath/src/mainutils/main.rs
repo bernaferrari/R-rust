@@ -26,6 +26,7 @@ pub const CONSOLE_BUFFER_SIZE: usize = 1024;
 #[derive(Default)]
 pub(crate) struct MainRuntimeState {
     pub task_callbacks: Vec<ToplevelTaskCallback>,
+    pub task_callback_workspace: Option<crate::sexp::memory::WorkspaceReservation>,
     pub next_task_callback_id: c_int,
     pub running_toplevel_handlers: bool,
 }
@@ -33,10 +34,15 @@ pub(crate) struct MainRuntimeState {
 #[derive(Clone)]
 pub(crate) struct ToplevelTaskCallback {
     pub id: c_int,
-    pub name: String,
+    pub name: crate::sexp::object::Sexp<'static>,
+    pub use_data: bool,
     pub fun: crate::sexp::object::Sexp<'static>,
     pub data: crate::sexp::object::Sexp<'static>,
 }
+
+#[path = "main/task_callback_registration.rs"]
+mod task_callback_registration;
+pub(crate) use task_callback_registration::install as install_task_callback_symbols;
 
 // ---------------------------------------------------------------------------
 // Global symbols (initialized lazily)
@@ -388,19 +394,17 @@ fn run_task_callback(
     use crate::sexp::object::SexpError;
     let domain = access.domain();
     let allocator = access.allocator(&domain)?;
-    let mut inputs = vec![
-        ("expr", expr.clone()),
-        ("value", value.clone()),
-        ("succeeded", domain.logical(succeeded != 0)),
-        ("visible", domain.logical(visible != 0)),
+    let inputs = [
+        Some((c"expr", expr.clone())),
+        Some((c"value", value.clone())),
+        Some((c"succeeded", domain.logical(succeeded != 0))),
+        Some((c"visible", domain.logical(visible != 0))),
+        callback.use_data.then(|| (c"data", callback.data.clone())),
     ];
-    if !callback.data.is_nil() {
-        inputs.push(("data", callback.data.clone()));
-    }
     // Cached promises share the caller's values. Replacement operations in a
     // callback must duplicate before mutating those original objects.
     access.with_native(|_| {
-        for (_, value) in &inputs {
+        for (_, value) in inputs.iter().flatten() {
             unsafe {
                 crate::sexp::accessors::SET_NAMED(value.as_raw(), 2);
             }
@@ -411,8 +415,7 @@ fn run_task_callback(
     let mut special_frame = domain.nil();
     let mut syntax = domain.nil();
     let mut execution = domain.nil();
-    for (name, value) in inputs.iter().rev() {
-        let name = CString::new(*name).expect("fixed task callback argument name");
+    for (name, value) in inputs.iter().rev().flatten() {
         let symbol = access.with_native(|owner| {
             owner
                 .sexp(unsafe { Rf_install(name.as_ptr()) })?
@@ -588,27 +591,9 @@ pub unsafe fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
                 message: "task callback must be a function".into(),
             });
         }
-        access.with_native(|owner| {
-            let state = unsafe { &mut (*owner.as_ptr()).main_state };
-            let id = state.next_task_callback_id.checked_add(1).ok_or(
-                crate::sexp::object::SexpError::AllocationFailed {
-                    object: "task callback identity",
-                },
-            )?;
-            state.task_callbacks.try_reserve(1).map_err(|_| {
-                crate::sexp::object::SexpError::AllocationFailed {
-                    object: "task callback storage",
-                }
-            })?;
-            state.task_callbacks.push(ToplevelTaskCallback {
-                id,
-                name: id.to_string(),
-                fun,
-                data,
-            });
-            state.next_task_callback_id = id;
-            Ok(id)
-        })
+        let use_data = !data.is_nil();
+        task_callback_registration::register(access, fun, data, use_data, None)
+            .map(|entry| entry.id)
     })
     .and_then(|result| result)
     .unwrap_or_else(|error| main_error(error.to_string()))
@@ -631,7 +616,7 @@ pub unsafe fn Rf_removeTaskCallback(which: SEXP) -> c_int {
                     callbacks.iter().position(|callback| callback.id == id)
                 }
                 TaskCallbackSelector::Name(name) => {
-                    callbacks.iter().position(|callback| callback.name == name)
+                    task_callback_registration::name_position(callbacks, &name)?
                 }
                 TaskCallbackSelector::Missing => None,
             };
@@ -973,6 +958,10 @@ mod tests {
 
 #[cfg(test)]
 mod owned_task_callback_tests {
+    use super::task_callback_registration::{
+        add as R_add_task_callback, names as R_task_callback_names,
+        remove as R_remove_task_callback,
+    };
     use super::*;
     use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
     use std::{
@@ -1334,4 +1323,5 @@ mod owned_task_callback_tests {
         assert!(!original.is_live());
         other.with_active(|| assert_eq!(unsafe { R_GetVisible() }, TRUE));
     }
+    include!("main/task_callback_contract_tests.rs");
 }

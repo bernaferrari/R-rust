@@ -9,19 +9,7 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         // registered under the same name serves only the 7-argument
         // .Internal(formatC(...)) convention from util.c.
         eval_base_binding(base_env, "formatC", include_str!("../gnu_formatC.R"));
-        eval_base_binding(
-            base_env,
-            "addTaskCallback",
-            "function(f, data = NULL, name = character()) {\n\
-                if (!is.function(f)) stop(\"handler must be a function\")\n\
-                .Internal(addTaskCallback(f, data))\n\
-            }",
-        );
-        eval_base_binding(
-            base_env,
-            "removeTaskCallback",
-            "function(id) .Internal(removeTaskCallback(id))",
-        );
+        crate::mainutils::main::install_task_callback_symbols(base_env);
         eval_base_binding(
             base_env,
             "Math.data.frame",

@@ -298,7 +298,10 @@ pub(crate) fn dll_table(
     list(&factory, &values, keys, PACKAGES, &["DLLInfoList"])
 }
 
-fn symbol_pointer(owner: OwnerToken<'_>, routine: NativeRoutine) -> SexpResult<Sexp<'static>> {
+pub(crate) fn symbol_pointer(
+    owner: OwnerToken<'_>,
+    routine: NativeRoutine,
+) -> SexpResult<Sexp<'static>> {
     let resource = Rc::new(SymbolHandle {
         routine,
         active: Cell::new(true),
@@ -327,6 +330,21 @@ pub(crate) fn symbol_info(
     let Some(routine) = lookup(name, Some(package)) else {
         return Ok(None);
     };
+    registered_routine_info(owner, name, package, registered, routine, keys).map(Some)
+}
+
+/// Trusted bundled bindings can expose hidden static registrations without
+/// making their names available to foreign/dynamic symbol lookup.
+pub(crate) fn registered_routine_info(
+    owner: OwnerToken<'_>,
+    name: &str,
+    package: &'static str,
+    registered: bool,
+    routine: NativeRoutine,
+    keys: &AttributeKeys<'_>,
+) -> SexpResult<Sexp<'static>> {
+    let _pin = owner.pin()?;
+    owner.require_active()?;
     let factory = owner.node_factory();
     let pointer = symbol_pointer(owner, routine)?;
     let pointer = decorate(
@@ -360,7 +378,6 @@ pub(crate) fn symbol_info(
         &["name", "address", "dll", "numParameters"],
         &[kind, "NativeSymbolInfo"],
     )
-    .map(Some)
 }
 
 pub(crate) fn address(value: &Sexp<'_>) -> SexpResult<Option<Sexp<'static>>> {
