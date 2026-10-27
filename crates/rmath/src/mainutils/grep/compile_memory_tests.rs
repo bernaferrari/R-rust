@@ -49,12 +49,16 @@ fn retained_tre_tables_cannot_accumulate_beyond_fixed_session_cap() {
     let mut retained = Vec::new();
     let mut rejected = false;
     for _ in 0..attempts {
-        match TreRegex::compile(pattern, false) {
-            Ok(regex) => retained.push(regex),
-            Err(_) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            TreRegex::compile(pattern, false)
+        })) {
+            Ok(Ok(regex)) => retained.push(regex),
+            Err(error) => {
+                assert!(error.is::<RError>());
                 rejected = true;
                 break;
             }
+            Ok(Err(error)) => panic!("valid literal rejected as syntax: {error}"),
         }
     }
     assert!(
@@ -90,9 +94,11 @@ fn tre_compile_rejects_when_only_wide_pattern_fits() {
             arena.set_budget(ArenaBudget::new(used + std::mem::size_of::<u32>(), 0));
         })
         .unwrap();
-    let result = TreRegex::compile("a", false);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        TreRegex::compile("a", false)
+    }));
     assert!(
-        result.is_err(),
+        result.err().unwrap().is::<RError>(),
         "TRE compiler allocated engine storage beyond the byte cap"
     );
     assert_eq!(
@@ -114,8 +120,11 @@ fn tre_compile_arena_failure_releases_partial_storage_and_recovers() {
                 arena.set_budget(ArenaBudget::new(used + extra, 0));
             })
             .unwrap();
-        let compiled = TreRegex::compile(pattern, false);
-        if compiled.is_err() {
+        let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            TreRegex::compile(pattern, false)
+        }));
+        if let Err(error) = &compiled {
+            assert!(error.is::<RError>());
             rejected += 1;
         }
         drop(compiled);
@@ -198,4 +207,71 @@ fn retained_tre_tables_revoked_owner_drop_preserves_replacement_tables() {
     drop(right_held);
     assert_eq!(left_ledger.workspace_bytes_for_test(), 0);
     assert_eq!(right_ledger.workspace_bytes_for_test(), 0);
+}
+
+#[test]
+fn tre_option_adapters_propagate_memory_denial_and_recover_at_original_cap() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let ledger = owner
+        .with_arena(|arena| arena.heap_identity().byte_ledger())
+        .unwrap();
+    let headroom = 64 * 1024;
+    owner
+        .with_arena(|arena| {
+            let used = arena.total_bytes_allocated();
+            arena.set_budget(ArenaBudget::new(used + headroom, 0));
+        })
+        .unwrap();
+    let cap = owner.with_arena(|arena| arena.budget().max_bytes).unwrap();
+    let held = ledger.reserve(headroom - 4).unwrap();
+    for adapter in 0..6 {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match adapter {
+            0 => {
+                ere_find_at("a", "a", false, 0, false);
+            }
+            1 => {
+                mode_captures("a", "a", false, false, false);
+            }
+            2 => {
+                ere_find("a", "a", false);
+            }
+            3 => {
+                ere_captures("a", "a", false);
+            }
+            4 => {
+                ere_find_at("a", "a", false, 0, true);
+            }
+            _ => {
+                validate_pattern("a", false, false, false).unwrap();
+            }
+        }))
+        .expect_err("memory denial became syntax error or successful no-match");
+        let error = error.downcast_ref::<RError>().expect("typed R error");
+        assert_eq!(
+            error.message,
+            "regex workspace exceeds session memory limit"
+        );
+        assert_eq!(ledger.workspace_bytes_for_test(), headroom - 4);
+        assert_eq!(
+            owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+            cap
+        );
+    }
+    drop(held);
+    assert_eq!(
+        ere_find_at("a", "a", false, 0, false),
+        Some(RegexMatch { start: 0, end: 1 })
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+        cap
+    );
+    assert_eq!(ledger.workspace_bytes_for_test(), 0);
+    assert!(
+        validate_pattern("[", false, false, false)
+            .unwrap_err()
+            .contains("invalid regular expression")
+    );
+    assert_eq!(ere_find_at("[", "a", false, 0, false), None);
 }

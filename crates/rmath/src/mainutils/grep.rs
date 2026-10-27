@@ -409,7 +409,14 @@ impl TreRegex {
                 cflags,
                 workspace.clone(),
             )
-            .map_err(|rc| format!("TRE compilation failed with code {rc}"))?;
+            .map_err(|rc| {
+                // Option-based matching adapters may discard syntax failures, but
+                // exhaustion must follow the same typed error path as buffers.
+                if rc == crate::tre::ast::REG_ESPACE {
+                    workspace::memory_error();
+                }
+                format!("TRE compilation failed with code {rc}")
+            })?;
             Ok(Self {
                 preg,
                 bytes,

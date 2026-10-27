@@ -1,0 +1,127 @@
+{
+  "scope": "REG_ESPACE from TreRegex compilation uses existing typed regex workspace RError; syntax Result behavior retained. No VM/Perl/all-memory completion claim.",
+  "source": {
+    "snapshot": "/tmp/rport-tre-denial-final",
+    "files": {
+      "crates/rmath/src/mainutils/grep.rs": "35e81507484f158c1deb9d3ef66ca2944d3371e8f6bd39c7876d1d8929980bbc",
+      "crates/rmath/src/mainutils/grep/compile_memory_tests.rs": "bdaec692fa06eb412520534bea4a54c5820580c75d57bfd9734e7990d889b808",
+      "crates/r-embed/tests/regex_compile_error_recovery.rs": "a9492cf5836aa92c17b274d02d87061920bc92e1d9fe6573f501176bb53d8196",
+      "crates/rmath/src/tre/parse.rs": "42f2d9e5b63a2691f9e7e3d10602a6100b84f47f1d5d00ed76a6b73093e97bf8"
+    }
+  },
+  "actual_red": {
+    "base": "327ebe1f",
+    "selected": 1,
+    "failed": 1,
+    "seconds": 0.01,
+    "log": "/tmp/rport-tre-denial-propagation-red.log",
+    "earlier_zero_selected": "Not evidence; Cargo snapshot freshness collision. Forced isolated libmtime before real execution."
+  },
+  "native": {
+    "selected": 7,
+    "passed": 7,
+    "seconds": 0.02,
+    "log": "/tmp/rport-tre-denial-native.log"
+  },
+  "strict_miri": {
+    "passed": 1,
+    "selected": 1,
+    "seconds": 41.28,
+    "flag": "-Zmiri-strict-provenance",
+    "log": "/tmp/rport-tre-denial-miri-final.log",
+    "fixture": "six adapter/validation denials at4bytes headroom; exact original cap/ledger and release-held samecap recovery; syntax controls"
+  },
+  "public": [
+    {
+      "name": "regex_compile_error_recovery",
+      "exit": 0,
+      "seconds": 5.352863073348999
+    },
+    {
+      "name": "pcre_gregexpr",
+      "exit": 0,
+      "seconds": 8.433184146881104
+    },
+    {
+      "name": "grep_index_memory_public",
+      "exit": 0,
+      "seconds": 5.460094928741455
+    }
+  ],
+  "release_binaries": {
+    "grep_index_memory_public": {
+      "path": "/tmp/rport-tre-denial-final-grep_index_memory_public",
+      "sha256": "f22c382672223fc460c9651e49f275c05753a5324357ac456d37b24073212369"
+    },
+    "pcre_gregexpr": {
+      "path": "/tmp/rport-tre-denial-final-pcre_gregexpr",
+      "sha256": "2b91bc441b603f61da670affd73538cc5208eba112ed409178148f749188f35b"
+    },
+    "regex_compile_error_recovery": {
+      "path": "/tmp/rport-tre-denial-final-regex_compile_error_recovery",
+      "sha256": "fa168678faadfb3780da0afe643e8d10a71fa50ec4f1b7e7aec976f2359c810c"
+    },
+    "s4_next_method": {
+      "path": "/tmp/rport-tre-denial-final-s4_next_method",
+      "sha256": "38c381a464474dcdccedd98ddb9c7fc372330695fd6ec65f21e6d3599ea8e67b"
+    }
+  },
+  "public_setup_corrections": [
+    "Initial ledger pre-recovery assertion observed44B intended rendered-message cache. Current fixture clears existing .Internal(seterrmessage) cache before exact ledger assertion.",
+    "Unexported seterrmessage wrapper failed; current fixture uses registered .Internal entry. No production change from these fixture corrections."
+  ],
+  "wasm": {
+    "sha256": "30e8b14ced17df1d9e84bf17a6b16edc3f10977449f0216c0af4357769314ffa",
+    "source": "frozen exact scoped-v2 source; excludes unrelated concurrent dirty edits",
+    "existing_contracts": 19,
+    "existing_log": "/tmp/rport-tre-denial-node.log",
+    "combined_exit": 1,
+    "reason": "Existing19 PASS then new250kprobe terminated module; tracked separately below.",
+    "pressure_log": "/tmp/rport-tre-denial-pressure.log",
+    "pressure": "20000literal +38retained1MiBraw buffers, default64MiB unchanged;3typeddenial grepl/regexpr/sub plus release+GC samecap recoveryPASS",
+    "large_failure": {
+      "issue": "rport-kuo32",
+      "pattern_chars": 250000,
+      "standalone_log": "/tmp/rport-tre-denial-large-diagnostic.log",
+      "error": "Error: Module terminated at eval_checked",
+      "cause": "unproven; smaller passing pressure case does not cover this failure"
+    }
+  },
+  "s4": {
+    "acceptance": [
+      {
+        "mode": "unset",
+        "filter": "s4_next_method_",
+        "exit": 0,
+        "seconds": 48.95941519737244,
+        "log": "/tmp/rport-tre-denial-final-s4-unset-quiet.log",
+        "quiet": true
+      },
+      {
+        "mode": "nonexistent",
+        "filter": "s4_next_method_",
+        "exit": 0,
+        "seconds": 47.007184982299805,
+        "log": "/tmp/rport-tre-denial-final-s4-nonexistent.log"
+      }
+    ],
+    "timings_from_test_summary_seconds": [
+      48.94,
+      46.99
+    ],
+    "unchanged": "originals4_next_method_filter2tests; native+portable legs; original budgets unchanged",
+    "informational_overlap_run": {
+      "mode": "unset",
+      "filter": "s4_next_method_",
+      "exit": 0,
+      "seconds": 53.8512499332428,
+      "log": "/tmp/rport-tre-denial-final-s4-unset.log"
+    }
+  },
+  "fmt": "scoped rustfmt check and gitdiffcheck PASS",
+  "remaining": [
+    "rport-cvs2.8 compiler scratch/descriptors/tags/submatches/VM/Perl memory gaps",
+    "rport-3f79j source-derived incomplete namedclasslookahead",
+    "rport-kuo32 reproduced250kWasm moduletermination"
+  ]
+}
