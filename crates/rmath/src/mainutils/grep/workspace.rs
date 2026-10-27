@@ -20,6 +20,35 @@ pub(super) fn memory_error() -> ! {
 }
 
 impl RegexWorkspace {
+    pub(crate) fn is_live(&self) -> bool {
+        self.availability
+            .as_ref()
+            .is_none_or(|owner| owner.is_live())
+    }
+    pub(crate) fn unbounded() -> Self {
+        Self {
+            ledger: MemoryLedger::new(),
+            availability: None,
+        }
+    }
+
+    pub(crate) fn try_buffer<T>(&self, capacity: usize) -> Result<WorkspaceBuffer<T>, ()> {
+        if self
+            .availability
+            .as_ref()
+            .is_some_and(|owner| !owner.is_live())
+        {
+            return Err(());
+        }
+        let reservation = self.ledger.reserve(0).ok_or(())?;
+        let mut buffer = WorkspaceBuffer {
+            values: Vec::new(),
+            reservation,
+            availability: self.availability.clone(),
+        };
+        buffer.try_reserve_capacity(capacity)?;
+        Ok(buffer)
+    }
     pub(super) fn new(ledger: MemoryLedger, availability: InstanceLiveness) -> Self {
         Self {
             ledger,
@@ -72,6 +101,20 @@ pub(crate) struct WorkspaceBuffer<T> {
 }
 
 impl<T> WorkspaceBuffer<T> {
+    pub(crate) fn try_push(&mut self, value: T) -> Result<(), ()> {
+        self.try_reserve_capacity(self.values.len().checked_add(1).ok_or(())?)?;
+        self.values.push(value);
+        Ok(())
+    }
+
+    pub(crate) fn try_resize(&mut self, length: usize, value: T) -> Result<(), ()>
+    where
+        T: Clone,
+    {
+        self.try_reserve_capacity(length)?;
+        self.values.resize(length, value);
+        Ok(())
+    }
     #[cfg(test)]
     pub(super) fn capacity(&self) -> usize {
         self.values.capacity()

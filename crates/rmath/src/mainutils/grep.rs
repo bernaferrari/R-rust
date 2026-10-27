@@ -39,6 +39,8 @@ use crate::tre::regapi::{tre_regfree, tre_regnexec};
 #[cfg(test)]
 mod capture_publication_tests;
 #[cfg(test)]
+mod compile_memory_tests;
+#[cfg(test)]
 mod group_names_memory_tests;
 #[cfg(test)]
 mod perl_class_tests;
@@ -49,7 +51,7 @@ pub(crate) use positions::{EmptyPatternMode, empty_pattern_positions};
 mod replacement_memory_tests;
 #[cfg(test)]
 mod replacement_tests;
-mod workspace;
+pub(crate) mod workspace;
 pub(crate) use workspace::RegexWorkspace;
 use workspace::{TextBuilder, WorkspaceBuffer, WorkspaceText};
 
@@ -403,7 +405,13 @@ impl TreRegex {
                     wide.push(u32::from(ch));
                 }
             }
-            let rc = crate::tre::compile::tre_compile(&mut preg, wide.as_ptr(), wide.len(), cflags);
+            let rc = crate::tre::compile::tre_compile_with_workspace(
+                &mut preg,
+                wide.as_ptr(),
+                wide.len(),
+                cflags,
+                workspace.clone(),
+            );
             if rc == REG_OK {
                 Ok(Self {
                     preg,

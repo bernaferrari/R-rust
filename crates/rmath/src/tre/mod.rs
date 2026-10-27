@@ -4,6 +4,7 @@ pub mod match_approx;
 pub mod match_backtrack;
 pub mod match_parallel;
 pub mod mem;
+mod owned_arena;
 pub mod parse;
 pub mod regapi;
 pub mod stack;

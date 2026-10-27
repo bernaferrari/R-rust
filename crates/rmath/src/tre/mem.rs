@@ -5,7 +5,7 @@
 */
 
 use std::alloc::Layout;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 #[cfg(test)]
@@ -34,138 +34,66 @@ pub const TRE_MEM_BLOCK_SIZE: usize = 1024;
 // suballocation retains this alignment, including after an odd-sized request.
 const TRE_ALIGNMENT: usize = 16;
 
-#[repr(C)]
-pub struct tre_list {
-    pub data: *mut c_void,
-    pub next: *mut tre_list,
-    pub data_size: usize,
-}
-
-pub type tre_list_t = tre_list;
-
-#[repr(C)]
 pub struct tre_mem_struct {
-    pub blocks: *mut tre_list_t,
-    pub current: *mut tre_list_t,
-    pub ptr: *mut c_char,
-    pub n: usize,
+    storage: super::owned_arena::OwnedArena,
     pub failed: c_int,
 }
 
 pub type tre_mem_t = *mut tre_mem_struct;
 
-/// Returns a new memory allocator or NULL if out of memory.
+impl tre_mem_struct {
+    pub(super) fn new(workspace: crate::mainutils::grep::RegexWorkspace) -> Result<Self, ()> {
+        Ok(Self {
+            storage: super::owned_arena::OwnedArena::new(workspace)?,
+            failed: 0,
+        })
+    }
+    pub(super) fn clear(&mut self) {
+        self.storage.clear();
+    }
+}
+
+/// Legacy standalone ownership; runtime compilation keeps this value on stack.
 pub unsafe fn tre_mem_new() -> tre_mem_t {
     unsafe {
-        let layout = Layout::new::<tre_mem_struct>();
-        let allocation = alloc(layout);
+        let allocation = alloc(Layout::new::<tre_mem_struct>()).cast::<tre_mem_struct>();
         if allocation.is_null() {
             return ptr::null_mut();
         }
-        let mem = allocation.cast::<tre_mem_struct>();
-        ptr::write_bytes(mem, 0, 1);
-        mem
+        let value = tre_mem_struct::new(crate::mainutils::grep::RegexWorkspace::unbounded())
+            .expect("unbounded empty TRE arena");
+        allocation.write(value);
+        allocation
     }
 }
 
-/// Frees the memory allocator and all memory allocated with it.
 pub unsafe fn tre_mem_destroy(mem: tre_mem_t) {
     unsafe {
-        if mem.is_null() {
-            return;
+        if !mem.is_null() {
+            ptr::drop_in_place(mem);
+            dealloc(mem.cast(), Layout::new::<tre_mem_struct>());
         }
-        let mut l = (*mem).blocks;
-        while !l.is_null() {
-            let tmp = (*l).next;
-            if !(*l).data.is_null() && (*l).data_size > 0 {
-                let layout = Layout::from_size_align_unchecked((*l).data_size, TRE_ALIGNMENT);
-                dealloc((*l).data as *mut u8, layout);
-            }
-            let list_layout = Layout::new::<tre_list_t>();
-            dealloc(l as *mut u8, list_layout);
-            l = tmp;
-        }
-        let mem_layout = Layout::new::<tre_mem_struct>();
-        dealloc(mem as *mut u8, mem_layout);
     }
 }
 
-/// Allocates a block of `size` bytes from `mem`.
 pub unsafe fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
-    unsafe { tre_mem_alloc_impl(mem, false, size) }
-}
-
-/// Allocates a zero-initialized block of `size` bytes from `mem`.
-pub unsafe fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
-    unsafe { tre_mem_alloc_impl(mem, true, size) }
-}
-
-unsafe fn tre_mem_alloc_impl(mem: tre_mem_t, zero: bool, size: usize) -> *mut c_void {
     unsafe {
-        if mem.is_null() {
+        if mem.is_null() || (*mem).failed != 0 {
             return ptr::null_mut();
         }
-
-        if (*mem).failed != 0 {
-            return ptr::null_mut();
-        }
-
-        let Some(size) = size
-            .max(1)
-            .checked_add(TRE_ALIGNMENT - 1)
-            .map(|size| size & !(TRE_ALIGNMENT - 1))
-        else {
-            (*mem).failed = 1;
-            return ptr::null_mut();
-        };
-        if (*mem).n < size {
-            /* We need more memory than is available in the current block.
-            Allocate a new block. */
-            let Some(data_layout) = size.checked_mul(8).and_then(|bytes| {
-                Layout::from_size_align(bytes.max(TRE_MEM_BLOCK_SIZE), TRE_ALIGNMENT).ok()
-            }) else {
+        match (*mem).storage.allocate(size) {
+            Ok(pointer) => pointer,
+            Err(()) => {
                 (*mem).failed = 1;
-                return ptr::null_mut();
-            };
-            let block_size = data_layout.size();
-
-            let l: *mut tre_list_t = alloc(Layout::new::<tre_list_t>()) as *mut tre_list_t;
-            if l.is_null() {
-                (*mem).failed = 1;
-                return ptr::null_mut();
+                ptr::null_mut()
             }
-            let data = alloc(data_layout);
-            if data.is_null() {
-                dealloc(l as *mut u8, Layout::new::<tre_list_t>());
-                (*mem).failed = 1;
-                return ptr::null_mut();
-            }
-            (*l).data = data as *mut c_void;
-            (*l).data_size = block_size;
-            (*l).next = ptr::null_mut();
-            if !(*mem).current.is_null() {
-                (*(*mem).current).next = l;
-            }
-            if (*mem).blocks.is_null() {
-                (*mem).blocks = l;
-            }
-            (*mem).current = l;
-            (*mem).ptr = data as *mut c_char;
-            (*mem).n = block_size;
         }
-
-        /* Allocate from current block. */
-        let ptr = (*mem).ptr as *mut c_void;
-        (*mem).ptr = (*mem).ptr.add(size);
-        (*mem).n -= size;
-
-        /* Set to zero if needed. */
-        if zero {
-            ptr::write_bytes(ptr as *mut u8, 0, size);
-        }
-
-        ptr
     }
+}
+
+/// Fresh safe-owned cells are initialized to zero before any pointer publication.
+pub unsafe fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+    unsafe { tre_mem_alloc(mem, size) }
 }
 
 /* Simple xmalloc/xrealloc/xfree replacements using std::alloc.
@@ -333,5 +261,111 @@ mod tests {
             assert_eq!(value.read(), 42);
             tre_mem_destroy(arena);
         }
+    }
+    #[test]
+    fn owned_compile_arena_keeps_initialized_aligned_handles_across_directory_growth() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let baseline = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        let mut arena = tre_mem_struct::new(crate::mainutils::grep::regex_workspace()).unwrap();
+        unsafe {
+            let first = tre_mem_calloc(&mut arena, 48).cast::<u128>();
+            assert!(!first.is_null());
+            assert!(first.is_aligned());
+            for index in 0..3 {
+                assert_eq!(first.add(index).read(), 0);
+            }
+            first.write(917);
+            first.add(2).write(12345);
+            let adjacent = tre_mem_alloc(&mut arena, 16).cast::<u128>();
+            adjacent.write(82);
+            for index in 1..40 {
+                let later = tre_mem_calloc(&mut arena, index * 1024).cast::<u128>();
+                assert!(!later.is_null());
+                assert!(later.is_aligned());
+                assert_eq!(later.read(), 0);
+                later.write(index as u128);
+                if index == 3 {
+                    owner.full_gc().unwrap();
+                }
+                assert_eq!(first.read(), 917);
+                assert_eq!(first.add(2).read(), 12345);
+                assert_eq!(adjacent.read(), 82);
+            }
+            assert!(tre_mem_alloc(&mut arena, usize::MAX).is_null());
+            assert_eq!(first.read(), 917);
+            assert!(tre_mem_alloc(&mut arena, 1).is_null());
+        }
+        assert!(owner.with_arena(|arena| arena.workspace_bytes()).unwrap() > baseline);
+        drop(arena);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            baseline
+        );
+    }
+
+    #[test]
+    fn owned_compile_arena_denial_retains_live_cells_and_unrelated_tickets() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = ledger.reserve(128).unwrap();
+        let mut arena = tre_mem_struct::new(crate::mainutils::grep::regex_workspace()).unwrap();
+        unsafe {
+            let live = tre_mem_alloc(&mut arena, 16).cast::<u128>();
+            live.write(42);
+            let before = owner
+                .with_arena(|arena| {
+                    let total = arena.total_bytes_allocated();
+                    arena.set_budget(crate::sexp::memory::ArenaBudget::new(total, 0));
+                    arena.workspace_bytes()
+                })
+                .unwrap();
+            assert!(tre_mem_alloc(&mut arena, 4096).is_null());
+            assert_eq!(live.read(), 42);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                before
+            );
+        }
+        drop(arena);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            128
+        );
+        drop(held);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn owned_compile_arena_revocation_cannot_charge_replacement_owner() {
+        let mut left = crate::sexp::session::RSession::new_for_gc_tests();
+        let left_owner = left.owner_token().unwrap();
+        let ledger = left_owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let mut arena = tre_mem_struct::new(crate::mainutils::grep::regex_workspace()).unwrap();
+        unsafe {
+            assert!(!tre_mem_alloc(&mut arena, 16).is_null());
+        }
+        left.close();
+        let right = crate::sexp::session::RSession::new_for_gc_tests();
+        let right_owner = right.owner_token().unwrap();
+        let right_ledger = right_owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = right_ledger.reserve(256).unwrap();
+        unsafe {
+            assert!(tre_mem_alloc(&mut arena, 16).is_null());
+        }
+        drop(arena);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(right_ledger.workspace_bytes_for_test(), 256);
+        drop(held);
     }
 }

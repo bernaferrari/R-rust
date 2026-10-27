@@ -1825,6 +1825,24 @@ pub unsafe fn tre_compile(
     cflags: c_int,
 ) -> c_int {
     unsafe {
+        tre_compile_with_workspace(
+            preg,
+            regex,
+            n,
+            cflags,
+            crate::mainutils::grep::RegexWorkspace::unbounded(),
+        )
+    }
+}
+
+pub(crate) unsafe fn tre_compile_with_workspace(
+    preg: *mut regex_t,
+    regex: *const tre_char_t,
+    n: usize,
+    cflags: c_int,
+    workspace: crate::mainutils::grep::RegexWorkspace,
+) -> c_int {
+    unsafe {
         (*preg).value = ptr::null_mut();
         (*preg).re_nsub = 0;
         let mut parse_ctx: tre_parse_ctx_t = std::mem::zeroed();
@@ -1835,11 +1853,11 @@ pub unsafe fn tre_compile(
         if stack.is_null() {
             return REG_ESPACE as c_int;
         }
-        let mem = mem::tre_mem_new();
-        if mem.is_null() {
+        let Ok(mut arena) = mem::tre_mem_struct::new(workspace) else {
             stack::tre_stack_destroy(stack);
             return REG_ESPACE as c_int;
-        }
+        };
+        let mem = &mut arena as mem::tre_mem_t;
 
         parse_ctx.mem = mem;
         parse_ctx.stack = stack;
@@ -2069,7 +2087,7 @@ pub unsafe fn tre_compile(
         (*tnfa).num_states = parse_ctx.position;
         (*tnfa).cflags = cflags;
 
-        mem::tre_mem_destroy(mem);
+        (*mem).clear();
         stack::tre_stack_destroy(stack);
         mem::xfree(counts as *mut c_void);
         mem::xfree(offs as *mut c_void);
@@ -2090,7 +2108,7 @@ unsafe fn compile_error(
 ) -> c_int {
     unsafe {
         if !mem.is_null() {
-            mem::tre_mem_destroy(mem);
+            (*mem).clear();
         }
         if !stack.is_null() {
             stack::tre_stack_destroy(stack);
