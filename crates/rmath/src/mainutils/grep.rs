@@ -22,7 +22,6 @@
 //!   R_pcre_exec (requires PCRE library)
 
 use std::ffi::CStr;
-use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int};
 
 use fancy_regex::{Regex as PerlInnerRegex, RegexBuilder as PerlRegexBuilder};
@@ -33,8 +32,8 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
-use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
-use crate::tre::regapi::{tre_regfree, tre_regnexec};
+use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regmatch_t};
+use crate::tre::regapi::tre_regnexec;
 
 #[cfg(test)]
 mod capture_publication_tests;
@@ -367,7 +366,7 @@ pub(crate) struct RegexMatch {
 }
 
 struct TreRegex {
-    preg: regex_t,
+    preg: crate::tre::compile::CompiledTre,
     bytes: bool,
     workspace: RegexWorkspace,
 }
@@ -385,7 +384,6 @@ impl TreRegex {
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         let workspace = regex_workspace();
         unsafe {
-            let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
             let mut cflags = REG_EXTENDED;
             if ignore_case {
                 cflags |= REG_ICASE;
@@ -405,22 +403,18 @@ impl TreRegex {
                     wide.push(u32::from(ch));
                 }
             }
-            let rc = crate::tre::compile::tre_compile_with_workspace(
-                &mut preg,
+            let preg = crate::tre::compile::tre_compile_owned(
                 wide.as_ptr(),
                 wide.len(),
                 cflags,
                 workspace.clone(),
-            );
-            if rc == REG_OK {
-                Ok(Self {
-                    preg,
-                    bytes,
-                    workspace,
-                })
-            } else {
-                Err(format!("TRE compilation failed with code {rc}"))
-            }
+            )
+            .map_err(|rc| format!("TRE compilation failed with code {rc}"))?;
+            Ok(Self {
+                preg,
+                bytes,
+                workspace,
+            })
         }
     }
 
@@ -432,7 +426,7 @@ impl TreRegex {
         let text = if self.bytes { "" } else { &original[offset..] };
         let input = &original.as_bytes()[offset..];
         unsafe {
-            let nmatch = self.preg.re_nsub.saturating_add(1).max(1);
+            let nmatch = self.preg.regex().re_nsub.saturating_add(1).max(1);
             let mut pmatch = self.workspace.buffer(nmatch);
             pmatch.resize(nmatch, regmatch_t::default());
             let wide = if !self.bytes && !text.is_ascii() {
@@ -450,10 +444,10 @@ impl TreRegex {
                 crate::tre::ast::REG_NOTBOL
             };
             let status = if let Some(wide) = &wide {
-                crate::tre::regapi::tre_regwnexec(&self.preg, wide, &mut pmatch, flags)
+                crate::tre::regapi::tre_regwnexec(self.preg.regex(), wide, &mut pmatch, flags)
             } else {
                 tre_regnexec(
-                    &self.preg,
+                    self.preg.regex(),
                     input.as_ptr().cast(),
                     input.len(),
                     nmatch,
@@ -491,14 +485,6 @@ impl TreRegex {
     fn find(&self, text: &str) -> Option<RegexMatch> {
         self.captures(text)
             .and_then(|mut captures| captures.get_mut(0).and_then(|whole| whole.take()))
-    }
-}
-
-impl Drop for TreRegex {
-    fn drop(&mut self) {
-        unsafe {
-            tre_regfree(&mut self.preg);
-        }
     }
 }
 
@@ -2137,6 +2123,8 @@ mod tests {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
         let regex = TreRegex::compile("(é)", false).unwrap();
         let owner = session.owner_token().unwrap();
+        let compiled_charge = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        assert!(compiled_charge > 0);
         owner
             .with_arena(|arena| {
                 let used = arena.total_bytes_allocated();
@@ -2153,6 +2141,11 @@ mod tests {
             error.message,
             "regex workspace exceeds session memory limit"
         );
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            compiled_charge
+        );
+        drop(regex);
         assert_eq!(
             owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
             0

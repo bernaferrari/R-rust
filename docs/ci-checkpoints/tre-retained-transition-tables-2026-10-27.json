@@ -1,0 +1,103 @@
+{
+  "source": {
+    "base": "327ebe1f",
+    "snapshot": "/private/tmp/rport-tre-retained-final-2",
+    "files": {
+      "crates/rmath/src/mainutils/grep.rs": "29d4b6ccd82b47db8a6a05527f5553659b5b87243ac3158d4770af41b60c101a",
+      "crates/rmath/src/mainutils/grep/compile_memory_tests.rs": "2794911be8096e430d4888d46338e25359ff81911a0c44619d44a9dc3f023fab",
+      "crates/rmath/src/tre/compile.rs": "170f7cc11ae3221d2900d9ed91518be47d7013e76287ec29f8fa83e5af05af38",
+      "crates/rmath/src/tre/owned_arena.rs": "363b0cef5fffe78a802dfec9785823f8813ca14847079957af53c999672c7a38"
+    },
+    "previous_source": "/tmp/rport-tre-retained-final-source.json",
+    "changes": "Test-only Miri maxcount512 establishes sizeof-independent16KiB lower bound; production and native branch unchanged."
+  },
+  "release": {
+    "source": "/tmp/rport-tre-retained-final-2-source.json",
+    "binaries": {
+      "grep_index_memory_public": {
+        "path": "/tmp/rport-tre-retained-final-grep_index_memory_public",
+        "sha256": "634dd659f138856a9ba7c14329d49119f2efd6ed6f1279da7b949e18c18dcd5f"
+      },
+      "regex_compile_error_recovery": {
+        "path": "/tmp/rport-tre-retained-final-regex_compile_error_recovery",
+        "sha256": "4563ab3693cb21e38d35b8fdbe11f8597aeff382d4dc90046b18a6d81f2936b9"
+      },
+      "pcre_gregexpr": {
+        "path": "/tmp/rport-tre-retained-final-pcre_gregexpr",
+        "sha256": "2d943b8fca3cd0f1657a2ca40a4f0751863c211f3aa6cac2465e3ad1afc45fb9"
+      },
+      "s4_next_method": {
+        "path": "/tmp/rport-tre-retained-final-s4_next_method",
+        "sha256": "94cd58606a9a8e82bbb3ba9a68b6d37fd9ec7fe18134fe8350720d5d0c395fe7"
+      }
+    }
+  },
+  "contracts": [
+    {
+      "case": "grep_index_memory_public",
+      "exit": 0,
+      "seconds": 4.888360977172852
+    },
+    {
+      "case": "regex_compile_error_recovery",
+      "exit": 0,
+      "seconds": 2.7167258262634277
+    },
+    {
+      "case": "pcre_gregexpr",
+      "exit": 0,
+      "seconds": 13.539920091629028
+    },
+    {
+      "case": "node",
+      "exit": 0
+    }
+  ],
+  "node": [
+    "{\"sha256\":\"9c86d75f1f1a26b38e8491eddf5af7618097f08693d214c6947221ee2f0c4f3e\",\"source\":\"/tmp/rport-tre-retained-final-2-source.json\"}",
+    "{\"case\":\"regex-compile-error-recovery-contract\",\"state\":\"pass\",\"ms\":202.06691599999976}",
+    "{\"case\":\"regex-unicode-public-contract\",\"state\":\"pass\",\"ms\":234.88766699999996}",
+    "{\"case\":\"grep-owned-index-contract\",\"state\":\"pass\",\"ms\":84.61983299999883}",
+    "{\"case\":\"complex-print-public-contract\",\"state\":\"pass\",\"ms\":100.97208300000057}",
+    "{\"case\":\"stats-namespace-public-contract\",\"state\":\"pass\",\"ms\":1092.9007919999985}",
+    "{\"case\":\"get-lazy-mode-public-contract\",\"state\":\"pass\",\"ms\":556.0529999999999}",
+    "{\"case\":\"correlation-public-contract\",\"state\":\"pass\",\"ms\":1647.8095840000005}",
+    "{\"case\":\"palette-public-contract\",\"state\":\"pass\",\"ms\":1128.1130830000002}",
+    "{\"case\":\"tempfile-public-contract\",\"state\":\"pass\",\"ms\":22.378708000000188}",
+    "{\"case\":\"bincode-public-contract\",\"state\":\"pass\",\"ms\":487.96933400000125}",
+    "{\"case\":\"print-gap-public-contract\",\"state\":\"pass\",\"ms\":257.6972079999978}",
+    "{\"case\":\"arima0-public-contract\",\"state\":\"pass\",\"ms\":1021.2902499999982}",
+    "{\"case\":\"utils-console-public-contract\",\"state\":\"pass\",\"ms\":90.62737500000003}",
+    "{\"case\":\"mapply-public-contract\",\"state\":\"pass\",\"ms\":54.31629199999952}",
+    "{\"case\":\"sample-condition-contract\",\"state\":\"pass\",\"ms\":123.23933300000135}",
+    "{\"case\":\"rep-len-admission-contract\",\"state\":\"pass\",\"ms\":576.606749999999}",
+    "{\"case\":\"calling-error-handler-public-contract\",\"state\":\"pass\",\"ms\":1261.2899169999982}",
+    "{\"case\":\"calling-warning-handler-public-contract\",\"state\":\"pass\",\"ms\":1625.6650840000002}",
+    "{\"case\":\"s4-next-method-public-contract\",\"state\":\"pass\",\"ms\":13974.361665999997}"
+  ],
+  "scope": "retained transition and initial arrays only; descriptor/tags/submatches/VM/compiler scratch and REG_ESPACE propagation remain open",
+  "s4": [
+    {
+      "mode": "unset",
+      "filter": "s4_next_method_",
+      "exit": 0,
+      "seconds": 50.13243913650513,
+      "log": "/tmp/rport-tre-retained-final-s4-filter-unset.log"
+    },
+    {
+      "mode": "nonexistent",
+      "filter": "s4_next_method_",
+      "exit": 0,
+      "seconds": 52.84547710418701,
+      "log": "/tmp/rport-tre-retained-final-s4-filter-nonexistent.log"
+    }
+  ],
+  "s4_broad_attempt": "Interrupted own broad10test run during unrelated gc torture; no result; not acceptance.",
+  "fmt": "rustfmt --check scoped4files PASS",
+  "prior_gates": {
+    "native_retained": "5/5 PASS;75 TRE+99 grep prior identical production hashes",
+    "miri": "strict-provenance5/5 PASS272.51s; representative rawfault4indices, native exhaustive",
+    "android": "check PASS15.42s",
+    "wasm": "production web build PASS;19Nodeevaluations recorded"
+  }
+}

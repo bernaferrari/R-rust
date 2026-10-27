@@ -1842,6 +1842,82 @@ pub(crate) unsafe fn tre_compile_with_workspace(
     cflags: c_int,
     workspace: crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
+    unsafe { tre_compile_tables(preg, regex, n, cflags, workspace, None) }
+}
+
+/// Opaque runtime owner: nested legacy allocations are freed while table cells
+/// remain live, then Rust drops the admitted original-owner table storage.
+pub(crate) struct CompiledTre {
+    preg: regex_t,
+    _tables: super::owned_arena::OwnedArena,
+}
+
+impl CompiledTre {
+    pub(crate) fn regex(&self) -> &regex_t {
+        &self.preg
+    }
+}
+
+impl Drop for CompiledTre {
+    fn drop(&mut self) {
+        unsafe {
+            tre_free_tables(&mut self.preg, true);
+        }
+    }
+}
+
+pub(crate) unsafe fn tre_compile_owned(
+    regex: *const tre_char_t,
+    n: usize,
+    cflags: c_int,
+    workspace: crate::mainutils::grep::RegexWorkspace,
+) -> Result<CompiledTre, c_int> {
+    let mut tables =
+        super::owned_arena::OwnedArena::new(workspace.clone()).map_err(|()| REG_ESPACE)?;
+    let mut preg = regex_t {
+        re_nsub: 0,
+        value: ptr::null_mut(),
+    };
+    let status =
+        unsafe { tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables)) };
+    if status == REG_OK {
+        Ok(CompiledTre {
+            preg,
+            _tables: tables,
+        })
+    } else {
+        Err(status)
+    }
+}
+
+unsafe fn allocate_transition_table(
+    count: c_int,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+) -> *mut tre_tnfa_transition_t {
+    let Some(count) = usize::try_from(count).ok().and_then(|n| n.checked_add(1)) else {
+        return ptr::null_mut();
+    };
+    let Some(bytes) = count.checked_mul(std::mem::size_of::<tre_tnfa_transition_t>()) else {
+        return ptr::null_mut();
+    };
+    if let Some(storage) = storage {
+        storage
+            .allocate_exact(bytes)
+            .map_or(ptr::null_mut(), |p| p.cast())
+    } else {
+        unsafe { mem::xcalloc(count, std::mem::size_of::<tre_tnfa_transition_t>()).cast() }
+    }
+}
+
+unsafe fn tre_compile_tables(
+    preg: *mut regex_t,
+    regex: *const tre_char_t,
+    n: usize,
+    cflags: c_int,
+    workspace: crate::mainutils::grep::RegexWorkspace,
+    mut storage: Option<&mut super::owned_arena::OwnedArena>,
+) -> c_int {
+    let owned_tables = storage.is_some();
     unsafe {
         (*preg).value = ptr::null_mut();
         (*preg).re_nsub = 0;
@@ -1869,7 +1945,16 @@ pub(crate) unsafe fn tre_compile_with_workspace(
 
         let errcode = super::parse::tre_parse(&mut parse_ctx);
         if errcode != REG_OK as c_int {
-            return compile_error(mem, stack, counts, offs, preg, ptr::null_mut(), errcode);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                ptr::null_mut(),
+                errcode,
+                owned_tables,
+            );
         }
 
         (*preg).re_nsub = if parse_ctx.submatch_id > 0 {
@@ -1890,6 +1975,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                 preg,
                 ptr::null_mut(),
                 REG_ESPACE as c_int,
+                owned_tables,
             );
         }
         (*tnfa).have_backrefs = if parse_ctx.max_backref >= 0 { 1 } else { 0 };
@@ -1900,7 +1986,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
         if (*tnfa).have_backrefs != 0 || (cflags & REG_NOSUB) == 0 {
             let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa);
             if _errcode != REG_OK {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
             }
             if (*tnfa).num_tags > 0 {
                 let tag_directions =
@@ -1915,6 +2001,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                         preg,
                         tnfa,
                         REG_ESPACE as c_int,
+                        owned_tables,
                     );
                 }
                 (*tnfa).tag_directions = tag_directions;
@@ -1927,7 +2014,16 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                 std::mem::size_of::<c_int>(),
             ) as *mut c_int;
             if (*tnfa).minimal_tags.is_null() {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+                return compile_error(
+                    mem,
+                    stack,
+                    counts,
+                    offs,
+                    preg,
+                    tnfa,
+                    REG_ESPACE as c_int,
+                    owned_tables,
+                );
             }
 
             let submatch_data = mem::xcalloc(
@@ -1935,13 +2031,22 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                 std::mem::size_of::<tre_submatch_data_t>(),
             ) as *mut tre_submatch_data_t;
             if submatch_data.is_null() {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+                return compile_error(
+                    mem,
+                    stack,
+                    counts,
+                    offs,
+                    preg,
+                    tnfa,
+                    REG_ESPACE as c_int,
+                    owned_tables,
+                );
             }
             (*tnfa).submatch_data = submatch_data;
 
             let _errcode = tre_add_tags(mem, stack, tree, tnfa);
             if _errcode != REG_OK {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
             }
         }
 
@@ -1955,35 +2060,71 @@ pub(crate) unsafe fn tre_compile_with_workspace(
             &mut (*tnfa).params_depth,
         );
         if _errcode != REG_OK {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
 
         // Add dummy node for final state
         let tmp_ast_l = tree;
         let tmp_ast_r = tre_ast_new_literal(mem, 0, 0, parse_ctx.position);
         if tmp_ast_r.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
         parse_ctx.position += 1;
         let tree = tre_ast_new_catenation(mem, tmp_ast_l, tmp_ast_r);
         if tree.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
 
         let _errcode = tre_compute_nfl(mem, stack, tree);
         if _errcode != REG_OK as c_int {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
 
         counts =
             mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
         if counts.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
         offs =
             mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
         if offs.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
 
         for i in 0..parse_ctx.position as isize {
@@ -1991,7 +2132,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
         }
         let _errcode = tre_ast_to_tnfa(tree, ptr::null_mut(), counts, ptr::null());
         if _errcode != REG_OK {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
 
         let mut add: c_int = 0;
@@ -2001,19 +2142,25 @@ pub(crate) unsafe fn tre_compile_with_workspace(
             *counts.offset(i) = 0;
         }
 
-        let transitions = mem::xcalloc(
-            (add + 1) as usize,
-            std::mem::size_of::<tre_tnfa_transition_t>(),
-        ) as *mut tre_tnfa_transition_t;
+        let transitions = allocate_transition_table(add, &mut storage);
         if transitions.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
         (*tnfa).transitions = transitions;
         (*tnfa).num_transitions = add as u32;
 
         let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs);
         if _errcode != REG_OK as c_int {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode);
+            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
 
         (*tnfa).first_char = -1;
@@ -2027,12 +2174,18 @@ pub(crate) unsafe fn tre_compile_with_workspace(
             p = p.add(1);
         }
 
-        let initial = mem::xcalloc(
-            (i + 1) as usize,
-            std::mem::size_of::<tre_tnfa_transition_t>(),
-        ) as *mut tre_tnfa_transition_t;
+        let initial = allocate_transition_table(i, &mut storage);
         if initial.is_null() {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE as c_int);
+            return compile_error(
+                mem,
+                stack,
+                counts,
+                offs,
+                preg,
+                tnfa,
+                REG_ESPACE as c_int,
+                owned_tables,
+            );
         }
         (*tnfa).initial = initial;
 
@@ -2054,7 +2207,16 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                 let tags =
                     mem::xmalloc(std::mem::size_of::<c_int>() * (j as usize + 1)) as *mut c_int;
                 if tags.is_null() {
-                    return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE);
+                    return compile_error(
+                        mem,
+                        stack,
+                        counts,
+                        offs,
+                        preg,
+                        tnfa,
+                        REG_ESPACE,
+                        owned_tables,
+                    );
                 } else {
                     for k in 0..j as isize {
                         *tags.offset(k) = *(*p).tags.offset(k);
@@ -2068,7 +2230,16 @@ pub(crate) unsafe fn tre_compile_with_workspace(
                 let params =
                     mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST) as *mut c_int;
                 if params.is_null() {
-                    return compile_error(mem, stack, counts, offs, preg, tnfa, REG_ESPACE);
+                    return compile_error(
+                        mem,
+                        stack,
+                        counts,
+                        offs,
+                        preg,
+                        tnfa,
+                        REG_ESPACE,
+                        owned_tables,
+                    );
                 } else {
                     for k in 0..TRE_PARAM_LAST {
                         *params.add(k) = *(*p).params.add(k);
@@ -2097,6 +2268,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Legacy cleanup now carries explicit table ownership.
 unsafe fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
@@ -2105,6 +2277,7 @@ unsafe fn compile_error(
     preg: *mut regex_t,
     tnfa: *mut tre_tnfa_t,
     errcode: c_int,
+    owned_tables: bool,
 ) -> c_int {
     unsafe {
         if !mem.is_null() {
@@ -2120,12 +2293,18 @@ unsafe fn compile_error(
             mem::xfree(offs as *mut c_void);
         }
         (*preg).value = tnfa as *mut c_void;
-        tre_free(preg);
+        tre_free_tables(preg, owned_tables);
         errcode
     }
 }
 
 pub unsafe fn tre_free(preg: *mut regex_t) {
+    unsafe {
+        tre_free_tables(preg, false);
+    }
+}
+
+unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
     unsafe {
         if preg.is_null() {
             return;
@@ -2153,7 +2332,7 @@ pub unsafe fn tre_free(preg: *mut regex_t) {
             }
             i += 1;
         }
-        if !(*tnfa).transitions.is_null() {
+        if !owned_tables && !(*tnfa).transitions.is_null() {
             mem::xfree((*tnfa).transitions as *mut c_void);
         }
 
@@ -2168,7 +2347,9 @@ pub unsafe fn tre_free(preg: *mut regex_t) {
                 }
                 trans = trans.add(1);
             }
-            mem::xfree((*tnfa).initial as *mut c_void);
+            if !owned_tables {
+                mem::xfree((*tnfa).initial as *mut c_void);
+            }
         }
 
         if !(*tnfa).submatch_data.is_null() {
@@ -2195,5 +2376,57 @@ pub unsafe fn tre_free(preg: *mut regex_t) {
             mem::xfree((*tnfa).minimal_tags as *mut c_void);
         }
         mem::xfree(tnfa as *mut c_void);
+    }
+}
+
+#[cfg(test)]
+mod owned_table_tests {
+    use super::*;
+
+    #[test]
+    fn retained_tre_tables_every_raw_failure_releases_owned_and_legacy_storage() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let pattern: Vec<u32> = "((ab|[c-e]){1,3})+".chars().map(u32::from).collect();
+        let compile = || {
+            let result = unsafe {
+                tre_compile_owned(
+                    pattern.as_ptr(),
+                    pattern.len(),
+                    REG_EXTENDED,
+                    crate::mainutils::grep::regex_workspace(),
+                )
+            };
+            let success = result.is_ok();
+            drop(result);
+            success
+        };
+        let (success, baseline) = mem::fault::observe(None, compile);
+        assert!(success);
+        assert_eq!(baseline.remaining, 0);
+        assert!(baseline.attempts > 4);
+        let failures: Vec<usize> = if cfg!(miri) {
+            vec![0, 1, baseline.attempts / 2, baseline.attempts - 1]
+        } else {
+            (0..baseline.attempts).collect()
+        };
+        for failure in failures {
+            let (success, report) = mem::fault::observe(Some(failure), compile);
+            assert!(
+                !success,
+                "raw allocation failure {failure} must reject publication"
+            );
+            assert_eq!(report.remaining, 0, "raw allocation failure {failure}");
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                0,
+                "owned table/arena storage survives failed compile {failure}"
+            );
+        }
+        assert!(compile());
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
     }
 }

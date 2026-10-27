@@ -28,6 +28,20 @@ impl OwnedArena {
     }
 
     pub(super) fn allocate(&mut self, bytes: usize) -> Result<*mut c_void, ()> {
+        self.allocate_with_policy(bytes, 8, 64)
+    }
+
+    /// Retained tables have known final sizes and need no amortized slab slack.
+    pub(super) fn allocate_exact(&mut self, bytes: usize) -> Result<*mut c_void, ()> {
+        self.allocate_with_policy(bytes, 1, 1)
+    }
+
+    fn allocate_with_policy(
+        &mut self,
+        bytes: usize,
+        growth: usize,
+        minimum: usize,
+    ) -> Result<*mut c_void, ()> {
         if !self.workspace.is_live() {
             return Err(());
         }
@@ -37,7 +51,7 @@ impl OwnedArena {
             .last()
             .is_none_or(|block| block.len() - self.next < units)
         {
-            let capacity = units.checked_mul(8).ok_or(())?.max(64);
+            let capacity = units.checked_mul(growth).ok_or(())?.max(minimum);
             let mut slab = self.workspace.try_buffer(capacity)?;
             slab.try_resize(capacity, Unit(Cell::new(0)))?;
             self.blocks.try_push(slab)?;
