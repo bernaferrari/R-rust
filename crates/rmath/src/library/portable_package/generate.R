@@ -23,4 +23,37 @@ assignments <- as.list(body(base:::lazyLoadDBexec))
 selected <- Filter(function(x) is.call(x) && identical(x[[1L]],as.name("<-")) && identical(x[[2L]],as.name("envhook")),assignments)
 stopifnot(length(selected)==1L)
 dput(selected[[1L]][[3L]],file=file.path(out,"envhook.R"))
-cat("Pinned GNU", package, R.version$platform, "variables",length(index$variables),"references",length(index$references),"exports",length(getNamespaceExports(ns)),"\n")
+
+# Keep package examples available to runtimes whose package images have no
+# filesystem library tree. Store the exact output of GNU tools::Rd2ex, indexed
+# by every help alias, so `example()` can source it from a textConnection.
+aliases <- readRDS(file.path(p, "help", "aliases.rds"))
+topics <- names(aliases)
+example_index <- file(file.path(out, "examples.index"), open="wt", encoding="UTF-8")
+example_data <- file(file.path(out, "examples.data"), open="wb")
+offset <- 0
+example_docs <- 0L
+for (rdfile in unique(unname(aliases))) {
+    topic <- topics[match(rdfile, unname(aliases))]
+    help_file <- do.call(utils::help, list(topic=topic, package=package, help_type="text"))
+    stopifnot(length(help_file) == 1L)
+    rd <- utils:::.getHelpFile(help_file)
+    tmp <- tempfile("rport-rd-example-")
+    tools::Rd2ex(rd, tmp)
+    lines <- if (file.exists(tmp)) readLines(tmp, warn=FALSE, encoding="UTF-8") else character()
+    if (any(grepl("^### \\*\\* Examples$", lines))) {
+        bytes <- charToRaw(enc2utf8(paste0(paste(lines, collapse="\n"), "\n")))
+        len <- length(bytes)
+        writeBin(bytes, example_data)
+        for (alias in topics[unname(aliases) == rdfile]) {
+            stopifnot(!grepl("[\t\r\n]", alias))
+            writeLines(paste(alias, offset, len, sep="\t"), example_index, useBytes=TRUE)
+        }
+        offset <- offset + len
+        example_docs <- example_docs + 1L
+    }
+    unlink(tmp)
+}
+close(example_index)
+close(example_data)
+cat(paste0("Pinned GNU ", package, " ", R.version$platform, " variables ", length(index$variables), " references ", length(index$references), " exports ", length(getNamespaceExports(ns)), " example docs ", example_docs, " bytes ", offset, "\n"))

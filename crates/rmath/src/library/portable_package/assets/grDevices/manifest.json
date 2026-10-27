@@ -13,8 +13,8 @@
   },
   "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
   "generator_sha256": {
-    "generate.R": "56119fef81aeb6435cb60cdfe8d409159f488e1006443eb02df5f6c4f8c4b6d6",
-    "generate.py": "ff7df6f340887fa3464396680245175268430deb74633b3cc5471f0ce2ff858a"
+    "generate.R": "dec0325033d01fe3edd8d6c8c439e7e3868c10eb72149b7335d44c1fdea18f6b",
+    "generate.py": "aa8bdaf27dc320dcf74014a58806b6cf337e60d9d92a02364ed2ff0ef4da1ab7"
   },
   "files": {
     "DESCRIPTION": {
@@ -33,17 +33,29 @@
       "bytes": 938,
       "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
     },
+    "examples.data": {
+      "bytes": 50949,
+      "sha256": "56f1db6b6b1a79414f229e31be46e567c90ef7d688b6e6b13517f40af61abb3c"
+    },
+    "examples.index": {
+      "bytes": 2953,
+      "sha256": "31702b6945874b988228d292d29e575c5a92071ebfef5ada00c87cc7699a2d28"
+    },
     "exports.rds": {
       "bytes": 2453,
       "sha256": "e8a628922b9a531705e853e7b7505f5d6979ba2603977842eedff57ab1b98d7c"
     },
     "generation.log": {
-      "bytes": 89,
-      "sha256": "f46ae0e6a1cfe25a3b1badf1a7cfbeae93b399a00f71a950c780044d9d5cb1e2"
+      "bytes": 116,
+      "sha256": "4d75eadeb0784d98298c7999792c8d3111c9ba553abbc1ebf5703c414ccbff8c"
     },
     "grDevices.rdb": {
       "bytes": 268167,
       "sha256": "639da909b5efa32dcdf21e68179f2892db62d22be6da1547aeb8f75571fbaa67"
+    },
+    "imports.rds": {
+      "bytes": 79,
+      "sha256": "bcc685d5c1c70978a07d7ffbfbf8380846fb5cf55f3e0ead1c7eb39b953dec5a"
     },
     "index.rds": {
       "bytes": 9064,

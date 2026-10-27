@@ -1,0 +1,974 @@
+### Name: .print.via.format
+### Title: Printing Utilities
+### Aliases: .print.via.format
+### Keywords: utilities
+
+### ** Examples
+
+## The function is simply defined as
+ function (x, ...) {
+    writeLines(format(x, ...))
+    invisible(x)
+ }
+
+## is used for simple print methods in R, and as prototype for new methods.
+
+
+
+### Name: charsets
+### Title: Conversion Tables between Character Sets
+### Aliases: Adobe_glyphs charset_to_Unicode
+### Keywords: datasets
+
+### ** Examples
+
+## find Adobe names for ISOLatin2 chars.
+latin2 <- charset_to_Unicode[, "ISOLatin2"]
+aUnicode <- as.hexmode(paste0("0x", Adobe_glyphs$unicode))
+keep <- aUnicode %in% latin2
+aUnicode <- aUnicode[keep]
+aAdobe <- Adobe_glyphs[keep, 1]
+## first match
+aLatin2 <- aAdobe[match(latin2, aUnicode)]
+## all matches
+bLatin2 <- lapply(1:256, function(x) aAdobe[aUnicode == latin2[x]])
+format(bLatin2, justify = "none")
+
+
+
+### Name: licensetools
+### Title: License Tools
+### Aliases: analyze_license
+
+### ** Examples
+
+## Examples from section 'Licensing' of 'Writing R Extensions':
+analyze_license("GPL-2")
+analyze_license("LGPL (>= 2.0, < 3) | Mozilla Public License")
+analyze_license("GPL-2 | file LICENCE")
+analyze_license("GPL (>= 2) | BSD_3_clause + file LICENSE")
+analyze_license("Artistic-2.0 | AGPL-3 + file LICENSE")
+
+
+
+### Name: assertCondition
+### Title: Asserting Error Conditions
+### Aliases: assertCondition assertWarning assertError
+### Keywords: programming error
+
+### ** Examples
+
+  assertError(sqrt("abc"))
+  assertWarning(matrix(1:8, 4,3))
+
+  assertCondition( ""-1 ) # ok, any condition would satisfy this
+
+try( assertCondition(sqrt(2), "warning") )
+## .. Failed to get warning in evaluating sqrt(2)
+     assertCondition(sqrt("abc"), "error")   # ok
+try( assertCondition(sqrt("abc"), "warning") )# -> error: had no warning
+     assertCondition(sqrt("abc"), "error")
+  ## identical to assertError() call above
+
+assertCondition(matrix(1:5, 2,3), "warning")
+try( assertCondition(matrix(1:8, 4,3), "error") )
+## .. Failed to get expected error ....
+
+## either warning or worse:
+assertCondition(matrix(1:8, 4,3), "error","warning") # OK
+assertCondition(matrix(1:8, 4, 3), "warning") # OK
+
+## when both are signalled:
+ff <- function() { warning("my warning"); stop("my error") }
+    assertCondition(ff(), "warning")
+## but assertWarning does not allow an error to follow
+try(assertWarning(ff()))
+    assertCondition(ff(), "error")          # ok
+assertCondition(ff(), "error", "warning") # ok (quietly, catching warning)
+
+## assert that assertC..() does not assert [and use *one* argument only]
+assertCondition( assertCondition(sqrt( 2   ), "warning") )
+assertCondition( assertCondition(sqrt("abc"), "warning"), "error")
+assertCondition( assertCondition(matrix(1:8, 4,3), "error"),
+                "error")
+
+
+
+### Name: bibstyle
+### Title: Select or Define a Bibliography Style
+### Aliases: bibstyle getBibstyle
+### Keywords: utilities documentation
+
+### ** Examples
+
+refs <-
+c(bibentry(bibtype = "manual",
+    title = "R: A Language and Environment for Statistical Computing",
+    author = person("R Core Team"),
+    organization = "R Foundation for Statistical Computing",
+    address = "Vienna, Austria",
+    year = 2013,
+    url = "https://www.R-project.org"),
+  bibentry(bibtype = "article",
+    author = c(person(c("George", "Edward", "Pelham"), "Box"),
+               person(c("David",  "Roxbee"), "Cox")),
+    year = 1964,
+    title = "An Analysis of Transformations",
+    journal = "Journal of the Royal Statistical Society, Series B",
+    volume = 26, number = 2, pages = "211--243",
+    doi = "10.1111/j.2517-6161.1964.tb00553.x"))
+
+bibstyle("unsorted", sortKeys = function(refs) seq_along(refs),
+    fmtPrefix = function(paper) paste0("[", paper$.index, "]"),
+       .init = TRUE)
+print(refs, .bibstyle = "unsorted")
+
+
+
+### Name: buildVignettes
+### Title: List and Build Package Vignettes
+### Aliases: buildVignettes pkgVignettes
+### Keywords: utilities documentation
+
+### ** Examples
+
+gVigns <- pkgVignettes("grid")
+## No test: 
+str(gVigns)
+## End(No test)
+
+
+
+### Name: checkFF
+### Title: Check Foreign Function Calls
+### Aliases: checkFF print.checkFF
+### Keywords: programming utilities
+
+### ** Examples
+## No test: 
+ # order is pretty much random
+checkFF(package = "stats", verbose = TRUE)
+## End(No test)
+
+
+### Name: checkPoFiles
+### Title: Check Translation Files for Inconsistent Format Strings
+### Aliases: checkPoFile checkPoFiles
+### Keywords: utilities
+
+### ** Examples
+
+## Not run: 
+##D checkPoFiles("de", "/path/to/R/src/directory")
+## End(Not run)
+
+
+
+### Name: checkRd
+### Title: Check an Rd Object
+### Aliases: checkRd
+### Keywords: utilities documentation
+
+### ** Examples
+
+## parsed Rd from the installed version of _this_ help file
+rd <- Rd_db("tools")[["checkRd.Rd"]]
+## No test: 
+rd
+## End(No test)
+stopifnot(length(checkRd(rd)) == 0)  # there should be no issues
+
+## make up \tabular issues
+bad <- r"(\name{bad}\title{bad}\description{\tabular{p}{1 \tab 2}})"
+(res <- checkRd(parse_Rd(textConnection(bad))))
+stopifnot(length(res) > 0)
+
+
+
+### Name: checkRdaFiles
+### Title: Report on Details of Saved Images or Re-saves them
+### Aliases: checkRdaFiles resaveRdaFiles
+### Keywords: utilities
+
+### ** Examples
+## Not run: 
+##D ## from a package top-level source directory
+##D paths <- sort(Sys.glob(c("data/*.rda", "data/*.RData")))
+##D (res <- checkRdaFiles(paths))
+##D ## pick out some that may need attention
+##D bad <- is.na(res$ASCII) | res$ASCII | (res$size > 1e4 & res$compress == "none")
+##D res[bad, ]
+## End(Not run)
+
+
+### Name: check_packages_in_dir
+### Title: Check Source Packages and Their Reverse Dependencies
+### Aliases: check_packages_in_dir summarize_check_packages_in_dir_depends
+###   summarize_check_packages_in_dir_results
+###   summarize_check_packages_in_dir_timings check_packages_in_dir_changes
+###   check_packages_in_dir_details
+### Keywords: utilities
+
+### ** Examples
+
+## Not run: 
+##D ## Check packages in dir without reverse dependencies:
+##D check_packages_in_dir(dir)
+##D ## Check packages in dir and their reverse dependencies using the
+##D ## defaults (all repositories in getOption("repos"), all "strong"
+##D ## reverse dependencies, no recursive reverse dependencies):
+##D check_packages_in_dir(dir, reverse = list())
+##D ## Check packages in dir with their reverse dependencies from CRAN,
+##D ## using all strong reverse dependencies and reverse suggests:
+##D check_packages_in_dir(dir,
+##D                       reverse = list(repos = getOption("repos")["CRAN"],
+##D                                      which = "most"))                   
+##D ## Check packages in dir with their reverse dependencies from CRAN,
+##D ## using '--as-cran' for the former but not the latter:
+##D check_packages_in_dir(dir,
+##D                       check_args = c("--as-cran", ""),
+##D                       reverse = list(repos = getOption("repos")["CRAN"]))
+## End(Not run)
+
+
+
+### Name: urltools
+### Title: Check Package URLs
+### Aliases: check_package_urls parse_URI_reference
+### Keywords: utilities
+
+### ** Examples
+
+## Examples from RFC 3986.
+parse_URI_reference(c("foo://example.com:8042/over/there?name=ferret#nose",
+                      "urn:example:animal:ferret:nose",
+                      "mailto:John.Doe@example.com",
+                      "tel:+1-816-555-1212"))
+
+
+
+### Name: CRANtools
+### Title: CRAN Package Repository Tools
+### Aliases: CRAN_package_db CRAN_check_results CRAN_check_details
+###   CRAN_check_issues summarize_CRAN_check_status R_CRAN_WEB R_CRAN_SRC
+###   CRAN_current_db CRAN_aliases_db CRAN_rdxrefs_db CRAN_archive_db
+###   CRAN_authors_db
+
+### ** Examples
+## No test: 
+## This can be rather slow  with a non-local CRAN mirror
+## and might fail (slowly) without Internet access in that case.
+
+set.seed(11)  # but the packages chosen will change as soon as CRAN does.
+pdb <- CRAN_package_db()
+dim(pdb)
+## DESCRIPTION fields included:
+colnames(pdb)
+## Summarize publication dates:
+summary(as.Date(pdb$Published))
+## Summarize numbers of packages according to maintainer:
+summary(lengths(split(pdb$Package, pdb$Maintainer)))
+## Packages with 'LASSO' in their Description:
+pdb$Package[grepl("LASSO", pdb$Description)]
+
+results <- CRAN_check_results()
+## Available variables:
+names(results)
+## Tabulate overall check status according to flavor:
+with(results, table(Flavor, Status))
+
+details <- CRAN_check_details()
+## Available variables:
+names(details)
+## Tabulate checks according to their status:
+tab <- with(details, table(Check, Status))
+## Inspect some installation problems:
+bad <- subset(details,
+              ((Check == "whether package can be installed") &
+               (Status != "OK")))
+## Show a random sample of up to 6
+head(bad[sample(seq_len(NROW(bad)), NROW(bad)), ])
+
+issues <- CRAN_check_issues()
+head(issues)
+## Show counts of issues according to kind:
+table(issues[, "kind"])
+
+## Summarize CRAN check status for 10 randomly-selected packages
+## (reusing the information already read in):
+pos <- sample(seq_len(NROW(pdb)), 10L)
+summarize_CRAN_check_status(pdb[pos, "Package"],
+                            results, details, issues)
+## End(No test)
+
+
+### Name: delimMatch
+### Title: Delimited Pattern Matching
+### Aliases: delimMatch
+### Keywords: character
+
+### ** Examples
+
+x <- c("\\value{foo}", "function(bar)")
+delimMatch(x)
+delimMatch(x, c("(", ")"))
+
+
+
+### Name: parseLatex
+### Title: Experimental Functions to Work with LaTeX Code
+### Aliases: parseLatex deparseLatex latexToUtf8
+### Keywords: utilities documentation
+
+### ** Examples
+
+latex <- parseLatex("fran\\c{c}ais", verbose = TRUE)
+## IGNORE_RDIFF_BEGIN
+deparseLatex(latexToUtf8(latex))
+## IGNORE_RDIFF_END
+
+deparseLatex(parseLatex("$t$"), math = c("\\eqn{", "}"))
+
+
+
+### Name: dependsOnPkgs
+### Title: Find Reverse Dependencies
+### Aliases: dependsOnPkgs
+### Keywords: utilities
+
+### ** Examples
+## No test: 
+## there are few dependencies in a vanilla R installation:
+## lattice may not be installed
+dependsOnPkgs("lattice")
+## End(No test)
+
+
+### Name: encoded_text_to_latex
+### Title: Translate non-ASCII Text to LaTeX Escapes
+### Aliases: encoded_text_to_latex
+### Keywords: utilities
+
+### ** Examples
+
+x <- "fran\xE7ais"
+encoded_text_to_latex(x, "latin1")
+## Not run: 
+##D ## create a tex file to show the upper half of 8-bit charsets
+##D x <- rawToChar(as.raw(160:255), multiple = TRUE)
+##D (x <- matrix(x, ncol = 16, byrow = TRUE))
+##D xx <- x
+##D xx[] <- encoded_text_to_latex(x, "latin1") # or latin2 or latin9
+##D xx <- apply(xx, 1, paste, collapse = "&")
+##D con <- file("test-encoding.tex", "w")
+##D header <- c(
+##D "\\documentclass{article}",
+##D "\\usepackage[T1]{fontenc}",
+##D "\\usepackage{Rd}",
+##D "\\begin{document}",
+##D "\\HeaderA{test}{}{test}",
+##D "\\begin{Details}\\relax",
+##D "\\Tabular{cccccccccccccccc}{")
+##D trailer <- c("}", "\\end{Details}", "\\end{document}")
+##D writeLines(header, con)
+##D writeLines(paste0(xx, "\\\\"), con)
+##D writeLines(trailer, con)
+##D close(con)
+##D ## and some UTF_8 chars
+##D x <- intToUtf8(as.integer(
+##D     c(160:383,0x0192,0x02C6,0x02C7,0x02CA,0x02D8,
+##D       0x02D9, 0x02DD, 0x200C, 0x2018, 0x2019, 0x201C,
+##D       0x201D, 0x2020, 0x2022, 0x2026, 0x20AC)),
+##D                multiple = TRUE)
+##D x <- matrix(x, ncol = 16, byrow = TRUE)
+##D xx <- x
+##D xx[] <- encoded_text_to_latex(x, "UTF-8")
+##D xx <- apply(xx, 1, paste, collapse = "&")
+##D con <- file("test-utf8.tex", "w")
+##D writeLines(header, con)
+##D writeLines(paste(xx, "\\\\", sep = ""), con)
+##D writeLines(trailer, con)
+##D close(con)
+## End(Not run)
+
+
+### Name: fileutils
+### Title: File Utilities
+### Aliases: file_ext file_path_as_absolute file_path_sans_ext
+###   list_files_with_exts list_files_with_type
+### Keywords: file
+
+### ** Examples
+## No test: 
+dir <- file.path(R.home(), "library", "stats")
+list_files_with_exts(file.path(dir, "demo"), "R")
+list_files_with_type(file.path(dir, "demo"), "demo") # the same
+file_path_sans_ext(list.files(file.path(R.home("modules"))))
+## End(No test)
+
+
+### Name: codetools
+### Title: Find Calls in R Code
+### Aliases: find_calls find_calls_in_package_code
+
+### ** Examples
+
+## Where is sapply() still used in the 'tools' code?
+## If we cannot easily access the unpacked sources:
+exprs <- as.list(asNamespace("tools"))
+predicate <- function(e) {
+    is.call(e) && deparse1(e[[1L]]) == "sapply"
+}
+find_calls(exprs, predicate, recursive = TRUE)
+
+## Where is sapply() still used in the demos for 'base'?
+## If we cannot easily access the unpacked sources, we can take
+## advantage of the fact that the installed package has the copied
+## 'demo' subdirectory at top level too:
+calls <- find_calls_in_package_code(system.file(package = "base"),
+                                    predicate, recursive = TRUE,
+                                    which = "demo")
+## This is a named list of calls found in each demo file:
+names(calls)
+## Not all of these have calls to sapply():
+table(lengths(calls))
+## The ones that do:
+Filter(length, calls)
+
+
+
+### Name: find_gs_cmd
+### Title: Find a Ghostscript Executable
+### Aliases: find_gs_cmd R_GSCMD GSC
+
+### ** Examples
+## Not run: 
+##D ## Suppose a Solaris system has Ghostscript 9.00 on the path and
+##D ## 9.07 in /opt/csw/bin.  Then one might set
+##D Sys.setenv(R_GSCMD = "/opt/csw/bin/gs")
+## End(Not run)
+
+
+### Name: getVignetteInfo
+### Title: Get Information on Installed Vignettes
+### Aliases: getVignetteInfo
+### Keywords: utilities documentation
+
+### ** Examples
+
+## No test: 
+getVignetteInfo("grid")
+## End(No test)
+
+
+
+### Name: texttools
+### Title: Text tools
+### Aliases: gsub_with_transformed_matches
+
+### ** Examples
+
+## Suppose we want to change <FOO@BaR> to <FOO@bar>.
+## We can achieve this via a pattern using parenthesized subexpressions
+## for the name and the domain parts, and invoke tolower() on the
+## matches domain parts:
+(s <- "A <B@C> D <E@F> G")
+gsub_with_transformed_matches("<([^>]+)@([^>]+)>",
+                              "<\\1@%s>",
+                              s,
+                              tolower,
+                              2L)
+## In case we want to also uppercase the name part:
+(s <- "A <b@C> D <E@f> G")
+gsub_with_transformed_matches("<([^>]+)@([^>]+)>",
+                              "<%s@%s>",
+                              s,
+                              list(toupper, tolower),
+                              c(1L, 2L))
+
+
+
+### Name: HTMLheader
+### Title: Generate a Standard HTML Header for R Help
+### Aliases: HTMLheader
+### Keywords: utilities documentation
+
+### ** Examples
+
+cat(HTMLheader("This is a sample header"), sep="\n")
+
+
+
+### Name: loadRdMacros
+### Title: Load User-defined Rd Help System Macros
+### Aliases: loadRdMacros loadPkgRdMacros
+### Keywords: utilities documentation
+
+### ** Examples
+
+f <- tempfile()
+writeLines(r"(
+\newcommand{\Rlogo}{
+  \if{html}{\figure{Rlogo.svg}{options: width=100 alt="R logo"}}
+  \if{latex}{\figure{Rlogo.pdf}{options: width=0.5in}}
+}
+)", f)
+m <- loadRdMacros(f)
+ls(m)
+## No test: 
+ls(parent.env(m))
+## End(No test)
+ls(parent.env(parent.env(m)))
+parse_Rd(textConnection(r"(\Rlogo)"), fragment = TRUE, macros = m)
+
+
+
+### Name: makevars
+### Title: User and Site Compilation Variables
+### Aliases: makevars_user makevars_site
+### Keywords: utilities
+
+### ** Examples
+## No test: 
+makevars_user()
+makevars_site()
+## End(No test)
+## Don't show: 
+checkMV <- function(r)
+  stopifnot(is.character(r),
+            length(r) == 0 || (length(r) == 1 && file.exists(r)))
+checkMV(makevars_user())
+checkMV(makevars_site())
+## End(Don't show)
+
+
+
+### Name: md5sum
+### Title: Compute MD5 Checksums
+### Aliases: md5sum
+### Keywords: utilities
+
+### ** Examples
+
+as.vector(md5sum(dir(R.home(), pattern = "^COPY", full.names = TRUE)))
+md5sum(bytes=raw())
+md5sum(bytes=charToRaw("abc"))
+
+
+
+### Name: package_dependencies
+### Title: Computations on the Dependency Hierarchy of Packages
+### Aliases: package_dependencies
+### Keywords: utilities
+
+### ** Examples
+
+## No test: 
+myPkgs <- c("MASS", "Matrix", "KernSmooth", "class", "cluster", "codetools")
+pdb <- available.packages(repos = findCRANmirror("web"))
+system.time(
+dep1 <- package_dependencies(myPkgs, db = pdb) # all arguments at default
+) # very fast
+utils::str(dep1, vec.len=10)
+
+system.time( ## reverse dependencies, recursively --- takes much longer:
+deps <- package_dependencies(myPkgs, db = pdb, which = "most",
+                             recursive = TRUE, reverse = TRUE)
+) # seen ~ 10 seconds
+
+lengths(deps) # 2020-05-03: all are 16053, but codetools with 16057
+
+## install.packages(dependencies = TRUE) installs 'most' dependencies
+## and the strong recursive dependencies of these: these dependencies
+## can be obtained using 'which = "most"' and 'recursive = "strong"'.
+## To illustrate on the first packages with non-missing Suggests:
+packages <- pdb[head(which(!is.na(pdb[, "Suggests"]))), "Package"]
+package_dependencies(packages, db = pdb,
+                     which = "most", recursive = "strong")
+## End(No test)
+
+
+
+### Name: package_native_routine_registration_skeleton
+### Title: Write Skeleton for Adding Native Routine Registration to a
+###   Package
+### Aliases: package_native_routine_registration_skeleton
+
+### ** Examples
+## Not run: 
+##D ## with a completed splines/DESCRIPTION file,
+##D tools::package_native_routine_registration_skeleton('splines',,,FALSE)
+##D ## produces
+##D #include <R.h>
+##D #include <Rinternals.h>
+##D #include <stdlib.h> // for NULL
+##D #include <R_ext/Rdynload.h>
+##D 
+##D /* FIXME: 
+##D    Check these declarations against the C/Fortran source code.
+##D */
+##D 
+##D /* .Call calls */
+##D extern SEXP spline_basis(SEXP, SEXP, SEXP, SEXP);
+##D extern SEXP spline_value(SEXP, SEXP, SEXP, SEXP, SEXP);
+##D 
+##D static const R_CallMethodDef CallEntries[] = {
+##D     {"spline_basis", (DL_FUNC) &spline_basis, 4},
+##D     {"spline_value", (DL_FUNC) &spline_value, 5},
+##D     {NULL, NULL, 0}
+##D };
+##D 
+##D void R_init_splines(DllInfo *dll)
+##D {
+##D     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+##D     R_useDynamicSymbols(dll, FALSE);
+##D }
+## End(Not run)
+
+
+### Name: pkg2HTML
+### Title: Rd Converters
+### Aliases: pkg2HTML
+### Keywords: documentation
+
+### ** Examples
+
+## No test: 
+pkg2HTML("tools", out = tempfile(fileext = ".html")) |> browseURL()
+## End(No test)
+
+
+
+### Name: undoc
+### Title: Find Undocumented Objects
+### Aliases: undoc print.undoc
+### Keywords: documentation
+
+### ** Examples
+
+undoc("tools")                  # Undocumented objects in 'tools'
+
+
+
+### Name: pskill
+### Title: Kill a Process
+### Aliases: pskill SIGHUP SIGINT SIGQUIT SIGKILL SIGTERM SIGSTOP SIGTSTP
+###   SIGCONT SIGCHLD SIGUSR1 SIGUSR2
+### Keywords: utilities
+
+### ** Examples
+## Not run: 
+##D pskill(c(237, 245), SIGKILL)
+## End(Not run)
+
+
+### Name: R
+### Title: Call Function in Inferior R Process
+### Aliases: R
+
+### ** Examples
+
+## Compute cos(0) in an inferior R process.
+## By default, only return the value of the function call.
+R(cos, list(0))
+## If 'drop = FALSE', we also get status, stdout and stderr.
+## IGNORE_RDIFF_BEGIN
+R(cos, list(0), drop = FALSE)
+## IGNORE_RDIFF_END
+    
+
+## A call giving an error:
+(e <- tryCatch(R(stop, list("FOOBAR")), error = identity))
+## The inferior R process ran successfully:
+e$status
+## The function call gave an error:
+e$value
+
+
+
+### Name: Rd2HTML
+### Title: Rd Converters
+### Aliases: Rd2txt Rd2HTML Rd2ex Rd2latex
+### Keywords: documentation
+
+### ** Examples
+## No test: 
+## Simulate rendering of this (installed) page in HTML and text format
+Rd <- Rd_db("tools")[["Rd2HTML.Rd"]]
+
+outfile <- tempfile(fileext = ".html")
+Rd2HTML(Rd, outfile, package = "tools") |> browseURL()
+
+outfile <- tempfile(fileext = ".txt")
+Rd2txt(Rd, outfile, package = "tools") |> file.show()
+## End(No test)
+
+
+### Name: Rd2txt_options
+### Title: Set Formatting Options for Text Help
+### Aliases: Rd2txt_options
+### Keywords: documentation
+
+### ** Examples
+
+saveOpts <- Rd2txt_options()
+## No test: 
+saveOpts
+## End(No test)
+Rd2txt_options(minIndent = 4)
+Rd2txt_options()[["minIndent"]]
+Rd2txt_options(saveOpts)
+stopifnot(identical(Rd2txt_options(), saveOpts))
+
+
+
+### Name: Rdutils
+### Title: Rd Utilities
+### Aliases: Rd_db
+### Keywords: utilities documentation
+
+### ** Examples
+## No test: 
+## Build the Rd db for the (installed) base package.
+db <- Rd_db("base")
+
+## Keyword metadata per Rd object.
+keywords <- lapply(db, tools:::.Rd_get_metadata, "keyword")
+## Tabulate the keyword entries.
+kw_table <- sort(table(unlist(keywords)))
+## The 5 most frequent ones:
+rev(kw_table)[1 : 5]
+## The "most informative" ones:
+kw_table[kw_table == 1]
+
+## Concept metadata per Rd file.
+concepts <- lapply(db, tools:::.Rd_get_metadata, "concept")
+## How many files already have \concept metadata?
+sum(sapply(concepts, length) > 0)
+## How many concept entries altogether?
+length(unlist(concepts))
+## End(No test)
+
+
+### Name: userdir
+### Title: R User Directories
+### Aliases: R_user_dir
+
+### ** Examples
+## IGNORE_RDIFF_BEGIN
+R_user_dir("FOO", "cache")
+
+## Create one, platform agnostically, must work if <normal> :
+(Rdb <- R_user_dir("base"))
+if(newD <- !dir.exists(Rdb)) # should work user specifically:
+    newD <- dir.create(Rdb, recursive=TRUE)
+dir(Rdb) # typically empty
+if(newD) unlink(Rdb) # cleaning up
+
+list.files(R_user_dir("grid"), full.names = TRUE)
+## IGNORE_RDIFF_END
+
+
+### Name: sha256sum
+### Title: Compute SHA-256 Checksums
+### Aliases: sha256sum
+### Keywords: utilities
+
+### ** Examples
+
+as.vector(sha256sum(dir(R.home(), pattern = "^COPY", full.names = TRUE)))
+sha256sum(bytes=raw())
+sha256sum(bytes=charToRaw("abc"))
+
+
+
+### Name: showNonASCII
+### Title: Pick Out Non-ASCII Characters
+### Aliases: showNonASCII showNonASCIIfile
+### Keywords: utilities
+
+### ** Examples
+
+out <- c(
+"fran\xE7ais: test of showNonASCII():",
+"\\details{",
+"   This is a good line",
+"   This has an \xfcmlaut in it.",
+"   OK again.",
+"}")
+f <- tempfile()
+cat(out, file = f, sep = "\n")
+
+## IGNORE_RDIFF_BEGIN
+showNonASCIIfile(f)
+## IGNORE_RDIFF_END
+unlink(f)
+
+
+
+### Name: testInstalledPackage
+### Title: Test Installed Packages
+### Aliases: testInstalledPackage testInstalledPackages testInstalledBasic
+###   TEST_MC_CORES standard_package_names
+### Keywords: utilities
+
+### ** Examples
+
+str(stPkgs <- standard_package_names())
+## No test: 
+## consistency of packageDescription and standard_package_names :
+(pNms <- unlist(stPkgs, FALSE))
+(prio <- sapply(as.vector(pNms), packageDescription, fields = "Priority"))
+stopifnot(identical(unname(prio),
+                    sub("[0-9]+$", '', names(pNms))))
+## End(No test)
+
+
+
+### Name: systools
+### Title: Invoke a System Command
+### Aliases: system_with_capture
+
+### ** Examples
+
+## Re-using the example from ?system:
+## Both the error message and status code are OS-dependent
+## IGNORE_RDIFF_BEGIN
+system_with_capture("ls", "fizzlipuzzli")
+## IGNORE_RDIFF_END
+
+
+
+### Name: toHTML
+### Title: Display an Object in HTML
+### Aliases: toHTML toHTML.packageIQR toHTML.news_db
+### Keywords: utilities documentation
+
+### ** Examples
+
+cat(toHTML(demo(package = "base")), sep = "\n")
+
+
+
+### Name: toTitleCase
+### Title: Convert Titles to Title Case
+### Aliases: toTitleCase
+
+### ** Examples
+
+toTitleCase("bayesian network modeling and analysis")
+toTitleCase("ensemble tool for predictions from species distribution models")
+## Treatment after "-":
+toTitleCase("small- and large-scale analysis") # lowercase "and"
+
+toTitleCase("a small fox is jumping")    # "a Small Fox is .."     (the 'a' may change)% i.e. BUG
+toTitleCase("is a small fox jumping?")   # "Is a Small Fox .."     (fine)
+## After ":", start a new sentence
+toTitleCase("a pangram: the quick brown fox jumps over the lazy dog")
+toTitleCase("asking -- 'is a small fox jumping?'") # ".. -- Is a Small ..."     (fine)
+
+
+
+### Name: update_PACKAGES
+### Title: Update Existing PACKAGES Files
+### Aliases: update_PACKAGES
+### Keywords: file utilities
+
+### ** Examples
+
+## Not run: 
+##D write_PACKAGES("c:/myFolder/myRepository") # on Windows
+##D update_PACKAGES("c:/myFolder/myRepository") # on Windows
+##D write_PACKAGES("/pub/RWin/bin/windows/contrib/2.9",
+##D type = "win.binary") # on Linux
+##D update_PACKAGES("/pub/RWin/bin/windows/contrib/2.9",
+##D type = "win.binary") # on Linux
+## End(Not run)
+
+
+### Name: vignetteEngine
+### Title: Set or Get a Vignette Processing Engine
+### Aliases: vignetteEngine
+### Keywords: utilities documentation
+
+### ** Examples
+
+str(vignetteEngine("Sweave"))
+
+
+
+### Name: vignetteInfo
+### Title: Basic Information about a Vignette
+### Aliases: vignetteInfo
+### Keywords: utilities
+
+### ** Examples
+
+  gridEx <- system.file("doc", "grid.Rnw", package = "grid")
+  vi <- vignetteInfo(gridEx)
+  str(vi)
+
+
+
+### Name: write_PACKAGES
+### Title: Generate PACKAGES Files
+### Aliases: write_PACKAGES
+### Keywords: file utilities
+
+### ** Examples
+
+## Not run: 
+##D write_PACKAGES("c:/myFolder/myRepository")  # on Windows
+##D write_PACKAGES("/pub/RWin/bin/windows/contrib/2.9",
+##D                type = "win.binary")  # on Linux
+## End(Not run)
+
+
+### Name: xgettext
+### Title: Extract Translatable Messages from R Files in a Package
+### Aliases: xgettext xngettext xgettext2pot
+### Keywords: utilities
+
+### ** Examples
+## Not run: 
+##D ## in a source-directory build (not typical!) of R;
+##D ## otherwise, download and unpack the R sources, and replace
+##D ## R.home()  by  "<my_path_to_source_R>" :
+##D xgettext(file.path(R.home(), "src", "library", "splines"))
+## End(Not run)
+
+## Create source package-like  <tmp>/R/foo.R  and get text from it:
+tmpPkg <- tempdir()
+tmpRDir <- file.path(tmpPkg, "R")
+dir.create(tmpRDir, showWarnings = FALSE)
+fnChar <- paste(sep = "\n",
+  "foo <- function(x) {",
+  "  if (x < -1)  stop('too small')",
+  "  # messages unduplicated (not so for ngettext)",
+  "  if (x < -.5) stop('too small')",
+  "  if (x < 0) {",
+  "    warning(",
+  "      'sqrt(x) is', sqrt(as.complex(x)),",
+  "      ', which may be too small'",
+  "    )",
+  "  }",
+  "  # calls with domain=NA are skipped",
+  "  if (x == 0) cat(gettext('x is 0!\n', domain=NA))",
+  "  # gettext strings may be ignored due to 'outer' domain=NA",
+  "  if (x > 10) warning('x is ', gettextf('%.2f', x), domain=NA)",
+  "  # using a custom condition class",
+  "  if (x == 42)",
+  "    stop(errorCondition(gettext('needs Deep Thought'), class='myError'))",
+  "  x",
+  "}")
+
+writeLines(fnChar, con = file.path(tmpRDir, "foo.R"))
+
+## [[1]] : suppressing (tmpfile) name to make example Rdiff-able
+xgettext(tmpPkg, asCall=TRUE )[[1]] # default; shows calls
+xgettext(tmpPkg, asCall=FALSE)[[1]] # doesn't ; but then ' %.2f '
+
+unlink(tmpRDir, recursive=TRUE)
+
+
+

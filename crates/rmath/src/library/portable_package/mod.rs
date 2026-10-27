@@ -16,6 +16,8 @@ pub(crate) struct PackageImage {
     imports: Option<&'static [u8]>,
     s3_methods: &'static [u8],
     envhook: &'static str,
+    examples_index: &'static [u8],
+    examples_data: &'static [u8],
 }
 
 macro_rules! image {
@@ -38,6 +40,8 @@ macro_rules! image {
             imports: $imports,
             s3_methods: include_bytes!(concat!($assets, "/S3methods.rds")),
             envhook: include_str!(concat!($assets, "/envhook.R")),
+            examples_index: include_bytes!(concat!($assets, "/examples.index")),
+            examples_data: include_bytes!(concat!($assets, "/examples.data")),
         }
     };
 }
@@ -95,6 +99,33 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
     }
 }
 
+/// Return the pinned GNU `tools::Rd2ex` source for a package help alias.
+/// The index stores byte offsets into immutable embedded source data, so
+/// browser runtimes can run examples through text connections without files.
+pub(crate) fn example_source(package: &str, topic: &str) -> Option<&'static str> {
+    let image = image(package)?;
+    for record in image.examples_index.split(|byte| *byte == b'\n') {
+        let mut fields = record.split(|byte| *byte == b'\t');
+        let Some(name) = fields.next() else {
+            continue;
+        };
+        if name != topic.as_bytes() {
+            continue;
+        }
+        let offset = std::str::from_utf8(fields.next()?)
+            .ok()?
+            .parse::<usize>()
+            .ok()?;
+        let length = std::str::from_utf8(fields.next()?)
+            .ok()?
+            .parse::<usize>()
+            .ok()?;
+        let end = offset.checked_add(length)?;
+        return std::str::from_utf8(image.examples_data.get(offset..end)?).ok();
+    }
+    None
+}
+
 /// Whether a registered primitive name is also supplied by an embedded
 /// package's S3method declaration. Such native implementations remain
 /// available to S3 dispatch, but must not shadow the package method through
@@ -104,13 +135,7 @@ pub(crate) fn is_namespace_s3_method_name(name: &str) -> bool {
     NAMES
         .get_or_init(|| {
             [
-                &METHODS,
-                &UTILS,
-                &TOOLS,
-                &GRDEVICES,
-                &GRAPHICS,
-                &STATS,
-                &STATS4,
+                &METHODS, &UTILS, &TOOLS, &GRDEVICES, &GRAPHICS, &STATS, &STATS4,
             ]
             .into_iter()
             .flat_map(|image| {
@@ -157,6 +182,24 @@ impl LazyDatabase {
             return Ok(false);
         }
         file.try_string_elt(0)?.try_char_eq(self.path.as_bytes())
+    }
+}
+
+#[cfg(test)]
+mod example_asset_tests {
+    use super::example_source;
+
+    #[test]
+    fn pinned_examples_cover_aliases_and_multiple_package_images() {
+        let new = example_source("methods", "new").expect("methods::new example");
+        let initialize =
+            example_source("methods", "initialize").expect("methods::initialize alias");
+        assert_eq!(new, initialize);
+        assert!(new.contains("setClass(\"trackCurve\""));
+
+        let filter = example_source("stats", "filter").expect("stats::filter example");
+        assert!(filter.contains("filter(x, rep(1, 3))"));
+        assert!(example_source("methods", "__missing_topic__").is_none());
     }
 }
 

@@ -4,6 +4,10 @@ use super::EvaluatedBuiltin;
 
 pub(super) const MISC: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: ".rport_portable_example",
+        handler: crate::mainutils::essentials::do_portable_example,
+    },
+    EvaluatedBuiltin {
         name: "eigen",
         handler: crate::mainutils::eigen::do_eigen,
     },

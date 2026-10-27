@@ -16,8 +16,9 @@ use super::eval::parse_source_expression_vector;
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    LOGICAL, LOGICAL_ELT, PRCODE, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -914,6 +915,11 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `example(topic)` — `substitute(topic)` unless `character.only`.
 pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if let Some((topic, source)) = portable_example_source(args) {
+            let result = run_portable_example(source, &topic, args, rho);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
+        }
         if let Some(fun) = utils_example_closure() {
             let result =
                 crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
@@ -926,7 +932,12 @@ pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             eprintln!("example: no topic specified");
             return R_NilValue();
         }
-        let topic = topic_name_from_arg(topic_arg);
+        let topic_expression = if TYPEOF(topic_arg) == SEXPTYPE::PROMSXP {
+            PRCODE(topic_arg)
+        } else {
+            topic_arg
+        };
+        let topic = topic_name_from_arg(topic_expression);
         let example_path = find_package_example(&topic);
         if example_path.is_empty() {
             eprintln!("No examples available for topic '{}'", topic);
@@ -943,6 +954,177 @@ pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 R_NilValue()
             }
         }
+    }
+}
+
+/// Internal hook used by the portable utils::example wrapper. Returning TRUE
+/// means an embedded source was found and run; FALSE leaves GNU's ordinary
+/// help-file path in control.
+pub unsafe fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let Some((topic, source)) = portable_example_source(args) else {
+            crate::sexp::globals::set_R_Visible(TRUE);
+            return Rf_ScalarLogical(FALSE);
+        };
+        let _ = run_portable_example(source, &topic, args, rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        Rf_ScalarLogical(TRUE)
+    }
+}
+
+unsafe fn run_portable_example(source: &str, topic: &str, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let local = example_argument(args, "local")
+            .map(|value| force_example_argument(value))
+            .unwrap_or(R_NilValue());
+        let echo = example_argument(args, "echo")
+            .map(|value| force_example_argument(value))
+            .map(|value| logical_arg(value, true))
+            .unwrap_or(true);
+        let prefix = example_argument(args, "prompt.prefix")
+            .map(|value| force_example_argument(value))
+            .filter(|value| TYPEOF(*value) == SEXPTYPE::STRSXP && XLENGTH(*value) > 0)
+            .map(|value| elt_to_string(value, 0))
+            .unwrap_or_else(|| abbreviate_example_topic(topic));
+        let prompt = format!("{}{}", prefix, option_string("prompt", "> "));
+        let continue_echo = format!("{}{}", prefix, option_string("continue", "+ "));
+        let skip_echo = example_echo_offset(source);
+        let env = source_eval_env(Some(local), rho, false);
+        eval_source_text_with_options(
+            source,
+            env,
+            "<portable package example>",
+            echo,
+            echo,
+            &prompt,
+            &continue_echo,
+            skip_echo,
+            true,
+            crate::mainutils::deparse::DEFAULT_CUTOFF,
+            crate::mainutils::deparse::SHOWATTRIBUTES,
+            usize::MAX,
+        )
+    }
+}
+
+fn example_echo_offset(source: &str) -> c_int {
+    let lines = source.lines().collect::<Vec<_>>();
+    let Some(marker) = lines.iter().position(|line| *line == "### ** Examples") else {
+        return 0;
+    };
+    let mut first_example_line = marker + 1;
+    while first_example_line < lines.len() && lines[first_example_line].trim().is_empty() {
+        first_example_line += 1;
+    }
+    first_example_line.min(c_int::MAX as usize) as c_int
+}
+
+/// Resolve an embedded package example only for image-backed sessions with
+/// no filesystem package path. Normal installed-package help lookup remains
+/// owned by `utils::example`, including its package and library precedence.
+unsafe fn portable_example_source(args: SEXP) -> Option<(String, &'static str)> {
+    unsafe {
+        let topic_arg = CAR(args);
+        if topic_arg.is_null() || topic_arg == R_NilValue() || topic_arg == R_MissingArg() {
+            return None;
+        }
+        let topic_expression = if TYPEOF(topic_arg) == SEXPTYPE::PROMSXP {
+            PRCODE(topic_arg)
+        } else {
+            topic_arg
+        };
+        let topic = topic_name_from_arg(topic_expression);
+        if topic.is_empty() {
+            return None;
+        }
+
+        let mut packages = Vec::new();
+        let package_arg =
+            example_argument(args, "package").map(|value| force_example_argument(value));
+        if let Some(package) = package_arg {
+            if package.is_null() || package == R_MissingArg() {
+                return None;
+            }
+            if package != R_NilValue() {
+                if TYPEOF(package) != SEXPTYPE::STRSXP {
+                    return None;
+                }
+                for index in 0..XLENGTH(package) {
+                    let name = elt_to_string(package, index);
+                    if !name.is_empty() {
+                        packages.push(name);
+                    }
+                }
+            }
+        }
+        if packages.is_empty() {
+            for (label, _) in crate::mainutils::essentials::search_path_entries() {
+                if let Some(package) = label.strip_prefix("package:") {
+                    packages.push(package.to_string());
+                }
+            }
+        }
+        // If any requested/search-path package is physically installed,
+        // let GNU's ordinary utils::example implementation decide which help
+        // file wins. The embedded source is only the filesystem-free path.
+        if packages
+            .iter()
+            .any(|package| !crate::mainutils::essentials::find_package_path(package).is_empty())
+        {
+            return None;
+        }
+        for package in packages {
+            if let Some(source) = crate::library::portable_package::example_source(&package, &topic)
+            {
+                return Some((topic, source));
+            }
+        }
+        None
+    }
+}
+
+unsafe fn example_argument(args: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some(name) {
+                return Some(CAR(current));
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+unsafe fn force_example_argument(value: SEXP) -> SEXP {
+    unsafe {
+        if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(value)
+        } else {
+            value
+        }
+    }
+}
+
+unsafe fn abbreviate_example_topic(topic: &str) -> String {
+    unsafe {
+        let topic_vector = string_vector(&[topic.to_string()]);
+        let _topic_guard = protect(topic_vector);
+        let minlength = Rf_ScalarInteger(6);
+        let _minlength_guard = protect(minlength);
+        let args = Rf_cons(topic_vector, R_NilValue());
+        let _args_guard = protect(args);
+        let tail = Rf_cons(minlength, R_NilValue());
+        let _tail_guard = protect(tail);
+        SETCDR(args, tail);
+        let abbreviated = crate::mainutils::essentials::strings::do_abbreviate(
+            R_NilValue(),
+            R_NilValue(),
+            args,
+            R_NilValue(),
+        );
+        let _abbreviated_guard = protect(abbreviated);
+        elt_to_string(abbreviated, 0)
     }
 }
 

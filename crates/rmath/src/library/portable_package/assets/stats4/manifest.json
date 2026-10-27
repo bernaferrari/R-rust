@@ -13,7 +13,7 @@
   },
   "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
   "generator_sha256": {
-    "generate.R": "823767bff6632c30e7a2446a0b66df9fcefe9d0e0bd4180e9bea04ba86e6d895",
+    "generate.R": "dec0325033d01fe3edd8d6c8c439e7e3868c10eb72149b7335d44c1fdea18f6b",
     "generate.py": "aa8bdaf27dc320dcf74014a58806b6cf337e60d9d92a02364ed2ff0ef4da1ab7"
   },
   "files": {
@@ -33,13 +33,21 @@
       "bytes": 938,
       "sha256": "38d69810711dcbc51b9bb41a0c4c31028f8ed69febc28678e3e29012c05f8c47"
     },
+    "examples.data": {
+      "bytes": 4171,
+      "sha256": "3cfb60c1d7a8139cbafbcee70f0e8bfe63e54f63df8c99087e525b439fccf677"
+    },
+    "examples.index": {
+      "bytes": 89,
+      "sha256": "48d954f03efff372ef5db30f6fe83d44faf4986d50656405a6bc657e6e0e163a"
+    },
     "exports.rds": {
       "bytes": 554,
       "sha256": "070abbdf6b95d4fecc2f82ee695162803c6dc5f4061350bcd4c29297b0915c61"
     },
     "generation.log": {
-      "bytes": 84,
-      "sha256": "b5738740346e77096ec4bcfebef7d73b5b94eea883efb5c6232f858c84abe7ee"
+      "bytes": 109,
+      "sha256": "df9bcef28105f19d2e965f699ca4fb41460dafb8720c7f29430d1bb87a7643d2"
     },
     "imports.rds": {
       "bytes": 1110,

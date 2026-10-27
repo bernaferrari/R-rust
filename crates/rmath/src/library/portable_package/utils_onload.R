@@ -23,6 +23,31 @@ local({
     environment(hook) <- hooks
     tryCatch(hook("<builtin:utils>", "utils"),
              error = function(e) warning("utils .onLoad: ", conditionMessage(e)))
+
+    ## Portable package images have no on-disk help directory. Keep the
+    ## original GNU example() body as the fallback, but consult the embedded
+    ## package/topic source index before it searches filesystem help files.
+    example <- get("example", original, inherits=FALSE)
+    original_example_body <- body(example)
+    body(example) <- substitute({
+        if (!missing(topic) && !interactive() && length(type) > 0L &&
+            identical(type[[1L]], "console") &&
+            identical(give.lines, FALSE) && identical(setRNG, FALSE) &&
+            identical(run.dontrun, FALSE) && identical(run.donttest, FALSE) &&
+            identical(catch.aborts, FALSE) && !isTRUE(verbose) &&
+            (identical(ask, "default") || identical(ask, FALSE))) {
+            portable_topic <- if (isTRUE(character.only)) as.character(topic)[1L] else
+                deparse(substitute(topic))[1L]
+            portable_prefix <- if (missing(prompt.prefix)) abbreviate(portable_topic, 6L) else
+                prompt.prefix
+            if (.rport_portable_example(substitute(topic), package=package, echo=echo,
+                                        local=local, prompt.prefix=portable_prefix))
+                return(invisible())
+        }
+        ORIGINAL
+    }, list(ORIGINAL=original_example_body))
+    assign("example", example, envir=original)
+
     ov <- tryCatch(get("osVersion", hooks, inherits=FALSE), error = function(e) NULL)
     if (!is.character(ov) || length(ov) != 1L || !nzchar(ov)) {
         ## .onLoad may abort before assigning osVersion; derive it directly
