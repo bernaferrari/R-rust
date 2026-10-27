@@ -492,6 +492,40 @@ fn run_task_callback(
     })
 }
 
+/// Registry insertion appends strictly increasing identities. A scalar
+/// watermark therefore visits surviving and newly appended entries once,
+/// regardless of removals that shift their public positions.
+#[derive(Default)]
+struct TaskCallbackCursor {
+    last_id: c_int,
+}
+impl TaskCallbackCursor {
+    fn next(
+        &mut self,
+        access: &crate::sexp::owner::RuntimeAccess,
+    ) -> crate::sexp::object::SexpResult<Option<ToplevelTaskCallback>> {
+        access.require_active()?;
+        let callback = access.with_native(|owner| {
+            Ok(unsafe {
+                (*owner.as_ptr())
+                    .main_state
+                    .task_callbacks
+                    .iter()
+                    .find(|entry| entry.id > self.last_id)
+                    .cloned()
+            })
+        })?;
+        if let Some(callback) = &callback {
+            self.last_id = callback.id;
+        }
+        Ok(callback)
+    }
+    #[cfg(test)]
+    fn native_capacity(&self) -> usize {
+        0
+    }
+}
+
 pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int, visible: c_int) {
     let owner = task_callback_owner();
     let pin = owner
@@ -523,28 +557,18 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
             let raw = unsafe { (*owner.as_ptr()).global_env };
             owner.sexp(raw)?.into_owned()
         })?;
-        let mut visited = std::collections::HashSet::new();
+        let mut cursor = TaskCallbackCursor::default();
         loop {
-            access.require_active()?;
-            let callback = access.with_native(|owner| {
-                Ok(unsafe {
-                    (*owner.as_ptr())
-                        .main_state
-                        .task_callbacks
-                        .iter()
-                        .find(|callback| !visited.contains(&callback.id))
-                        .cloned()
-                })
+            // No field, arena or payload loan spans this cooperative boundary.
+            // A callback that keeps appending work cannot swallow cancellation
+            // in the per-callback error handler and continue indefinitely.
+            access.with_native(|_| {
+                crate::eval::limits::poll_computation();
+                Ok(())
             })?;
-            let Some(callback) = callback else {
+            let Some(callback) = cursor.next(access)? else {
                 break;
             };
-            visited.try_reserve(1).map_err(|_| {
-                crate::sexp::object::SexpError::AllocationFailed {
-                    object: "task callback iteration",
-                }
-            })?;
-            visited.insert(callback.id);
             let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 run_task_callback(
                     access,

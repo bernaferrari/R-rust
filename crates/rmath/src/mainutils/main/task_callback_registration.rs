@@ -126,6 +126,11 @@ pub(super) fn register(
                 return Ok(None);
             }
             let id = previous.checked_add(1).ok_or_else(allocation)?;
+            if s.task_callbacks.last().is_some_and(|entry| entry.id >= id) {
+                return Err(SexpError::EvaluationFailed {
+                    message: "task callback identities must increase".into(),
+                });
+            }
             if s.task_callbacks.len() == s.task_callbacks.capacity() {
                 return Ok(None);
             }

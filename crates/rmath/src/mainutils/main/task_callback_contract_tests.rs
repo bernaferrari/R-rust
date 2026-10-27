@@ -570,3 +570,136 @@ fn task_callback_lazy_metadata_revocation_never_publishes_into_replacement() {
         });
     }
 }
+
+#[test]
+fn task_callback_iteration_cursor_selects_without_heap_storage_at_zero_headroom() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let fun = source(&session, "function(...) TRUE");
+    let first = session.with_active(|| unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) });
+    let second = session.with_active(|| unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) });
+    let held = owner
+        .with_arena(|a| a.reserve_workspace(128).unwrap())
+        .unwrap();
+    let (budget, bytes, workspace) = owner
+        .with_arena(|a| {
+            let before = (a.budget(), a.total_bytes_allocated(), a.workspace_bytes());
+            a.set_budget(crate::sexp::memory::ArenaBudget::new(
+                before.1 + before.2,
+                0,
+            ));
+            before
+        })
+        .unwrap();
+    let weak = owner.weak_owner().unwrap();
+    let result = crate::sexp::owner::with_runtime(&weak, |access| {
+        let mut cursor = TaskCallbackCursor::default();
+        assert_eq!(cursor.next(access)?.unwrap().id, first);
+        assert_eq!(cursor.next(access)?.unwrap().id, second);
+        assert!(cursor.next(access)?.is_none());
+        let observed = access.with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))?;
+        Ok::<_, crate::sexp::object::SexpError>((cursor.native_capacity(), observed))
+    })
+    .unwrap()
+    .unwrap();
+    owner.with_arena(|a| a.set_budget(budget)).unwrap();
+    assert_eq!(
+        result.1,
+        (bytes, workspace),
+        "selection does not consume the held original-ledger ticket"
+    );
+    assert_eq!(
+        result.0, 0,
+        "iteration must not allocate uncharged native backing at zero headroom"
+    );
+    assert!(
+        !std::mem::needs_drop::<TaskCallbackCursor>(),
+        "the cursor must not retain a hidden heap owner"
+    );
+    drop(held);
+}
+
+#[test]
+fn task_callback_cursor_restart_and_cancellation_preserve_original_registration() {
+    let mut session = RSession::new_for_gc_tests();
+    source(&session, "cursor_hits<-0L");
+    let fun = source(&session, "function(...){cursor_hits<<-cursor_hits+1L;TRUE}");
+    let id = session.with_active(|| unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) });
+    let token = crate::sexp::session::CancellationToken::cancelled();
+    session.set_cancellation_token(Some(token.clone()));
+    let denied = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE)
+        }))
+    });
+    assert!(denied.is_err());
+    session.with_active_in(|instance| unsafe {
+        assert!(!(*instance).main_state.running_toplevel_handlers);
+        assert_eq!((*instance).main_state.task_callbacks.len(), 1);
+    });
+    token.reset();
+    assert_eq!(source(&session, "cursor_hits").integer_elt(0), Some(0));
+    for _ in 0..2 {
+        session.with_active(|| unsafe {
+            Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE)
+        });
+    }
+    assert_eq!(source(&session, "cursor_hits").integer_elt(0), Some(2));
+    let selector = integer(&session, id);
+    session.with_active(|| assert_eq!(unsafe { Rf_removeTaskCallback(selector.as_raw()) }, TRUE));
+    session
+        .with_active(|| unsafe { Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE) });
+    assert_eq!(source(&session, "cursor_hits").integer_elt(0), Some(2));
+    let other = RSession::new_for_gc_tests();
+    source(&other, "cursor_hits<-17L");
+    let other_fun = source(&other, "function(...){cursor_hits<<-cursor_hits+1L;FALSE}");
+    other.with_active(|| unsafe { Rf_addTaskCallback(other_fun.as_raw(), R_NilValue()) });
+    other
+        .with_active(|| unsafe { Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE) });
+    assert_eq!(source(&other, "cursor_hits").integer_elt(0), Some(18));
+    assert_eq!(source(&session, "cursor_hits").integer_elt(0), Some(2));
+}
+
+#[test]
+fn task_callback_cursor_identity_overflow_and_regression_reject_without_publication() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let fun = source(&session, "function(...) TRUE");
+    let first = session.with_active(|| unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) });
+    for corrupt in [c_int::MAX, first - 1] {
+        let before = session.with_active_in(|instance| unsafe {
+            let s = &mut (*instance).main_state;
+            s.next_task_callback_id = corrupt;
+            (s.task_callbacks.len(), s.task_callbacks.capacity())
+        });
+        let result = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                Rf_addTaskCallback(fun.as_raw(), R_NilValue())
+            }))
+        });
+        assert!(result.is_err());
+        session.with_active_in(|instance| unsafe {
+            let s = &(*instance).main_state;
+            assert_eq!(
+                (s.task_callbacks.len(), s.task_callbacks.capacity()),
+                before
+            );
+            assert_eq!(s.task_callbacks[0].id, first);
+        });
+    }
+    session.with_active_in(|instance| unsafe {
+        (*instance).main_state.next_task_callback_id = first;
+    });
+    let second = session.with_active(|| unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) });
+    assert!(second > first);
+    let weak = owner.weak_owner().unwrap();
+    crate::sexp::owner::with_runtime(&weak, |access| {
+        let mut cursor = TaskCallbackCursor::default();
+        assert_eq!(cursor.next(access)?.unwrap().id, first);
+        assert_eq!(cursor.next(access)?.unwrap().id, second);
+        assert!(cursor.next(access)?.is_none());
+        Ok::<_, crate::sexp::object::SexpError>(())
+    })
+    .unwrap()
+    .unwrap();
+}
