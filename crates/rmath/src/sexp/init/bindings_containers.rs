@@ -306,8 +306,10 @@ pub(crate) unsafe fn install(base_env: SEXP) {
             base_env,
             "unique.default",
             "function(x, incomparables = FALSE, fromLast = FALSE, nmax = NA, ...) {\n\
-             if (!is.object(x))\n\
+             if (!is.object(x)) {\n\
+                 if (is.array(x)) x <- as.vector(x)\n\
                  return(.Internal(unique(x, incomparables, fromLast, nmax)))\n\
+             }\n\
              if (is.factor(x)) {\n\
                  z <- .Internal(unique(x, incomparables, fromLast,\n\
                                        min(length(x), nlevels(x) + 1L)))\n\
