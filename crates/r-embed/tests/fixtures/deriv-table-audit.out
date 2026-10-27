@@ -1,0 +1,168 @@
+sin:x
+cos(x)
+sin:x * y
+cos(x * y) * y
+sin:y
+0
+cos:x
+-sin(x)
+cos:x * y
+-(sin(x * y) * y)
+cos:y
+0
+tan:x
+1/cos(x)^2
+tan:x * y
+y/cos(x * y)^2
+tan:y
+0
+sinh:x
+cosh(x)
+sinh:x * y
+cosh(x * y) * y
+sinh:y
+0
+cosh:x
+sinh(x)
+cosh:x * y
+sinh(x * y) * y
+cosh:y
+0
+tanh:x
+1/cosh(x)^2
+tanh:x * y
+y/cosh(x * y)^2
+tanh:y
+0
+asin:x
+1/sqrt(1 - x^2)
+asin:x * y
+y/sqrt(1 - (x * y)^2)
+asin:y
+0
+acos:x
+-(1/sqrt(1 - x^2))
+acos:x * y
+-(y/sqrt(1 - (x * y)^2))
+acos:y
+0
+atan:x
+1/(1 + x^2)
+atan:x * y
+y/(1 + (x * y)^2)
+atan:y
+0
+exp:x
+exp(x)
+exp:x * y
+exp(x * y) * y
+exp:y
+0
+log:x
+1/x
+log:x * y
+y/(x * y)
+log:y
+0
+sqrt:x
+0.5 * x^-0.5
+sqrt:x * y
+0.5 * (y * (x * y)^-0.5)
+sqrt:y
+0
+pnorm:x
+dnorm(x)
+pnorm:x * y
+dnorm(x * y) * y
+pnorm:y
+0
+dnorm:x
+-(x * dnorm(x))
+dnorm:x * y
+-(x * y * (dnorm(x * y) * y))
+dnorm:y
+0
+gamma:x
+gamma(x) * digamma(x)
+gamma:x * y
+y * (gamma(x * y) * digamma(x * y))
+gamma:y
+0
+lgamma:x
+digamma(x)
+lgamma:x * y
+y * digamma(x * y)
+lgamma:y
+0
+digamma:x
+trigamma(x)
+digamma:x * y
+y * trigamma(x * y)
+digamma:y
+0
+trigamma:x
+psigamma(x, 2L)
+trigamma:x * y
+y * psigamma(x * y, 2L)
+trigamma:y
+0
+psigamma:x
+psigamma(x, 1L)
+psigamma:x * y
+y * psigamma(x * y, 1L)
+psigamma:y
+0
+expm1:x
+exp(x)
+expm1:x * y
+exp(x * y) * y
+expm1:y
+0
+log1p:x
+1/(1 + x)
+log1p:x * y
+y/(1 + x * y)
+log1p:y
+0
+log2:x
+1/(x * log(2))
+log2:x * y
+y/(x * y * log(2))
+log2:y
+0
+log10:x
+1/(x * log(10))
+log10:x * y
+y/(x * y * log(10))
+log10:y
+0
+cospi:x
+-(sinpi(x) * pi)
+cospi:x * y
+-(sinpi(x * y) * (pi * y))
+cospi:y
+0
+sinpi:x
+cospi(x) * pi
+sinpi:x * y
+cospi(x * y) * (pi * y)
+sinpi:y
+0
+tanpi:x
+pi/cospi(x)^2
+tanpi:x * y
+pi * y/cospi(x * y)^2
+tanpi:y
+0
+factorial:x
+factorial(x) * digamma(x + 1L)
+factorial:x * y
+y * (factorial(x * y) * digamma(x * y + 1L))
+factorial:y
+0
+lfactorial:x
+digamma(x + 1L)
+lfactorial:x * y
+y * digamma(x * y + 1L)
+lfactorial:y
+0
