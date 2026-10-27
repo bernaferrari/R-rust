@@ -1037,22 +1037,60 @@ fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
     })
 }
 
-/// plot.new's GNewPlot region half: advance the figure counter and
-/// recapture the layout yardsticks. Returns true when a new page
-/// started (the scene must be cleared). With par(new=TRUE) on an
-/// established frame nothing moves, exactly like GNewPlot.
-pub(crate) fn begin_plot_figure(cexbase: f64, mex: f64, font_scale: f64) -> bool {
+/// A staged `plot.new` layout transition. The candidate is committed only
+/// after its derived regions pass the GNewPlot validity checks.
+pub(crate) struct PlotFigureTransition {
+    layout: Option<LayoutState>,
+    pending_mfg_before_first_plot: bool,
+}
+
+/// Prepare the layout and regions for plot.new without changing live par
+/// state. A failed region check must not consume an mfrow/mfcol cell or page.
+pub(crate) fn prepare_plot_figure(
+    cexbase: f64,
+    mex: f64,
+    font_scale: f64,
+) -> (Regions, bool, PlotFigureTransition) {
     let frame_started = graphics_frame_started();
     with_par_state(|state| {
         if logical_override(state, "new") && frame_started {
-            return false;
+            return (
+                state.layout.regions(),
+                false,
+                PlotFigureTransition {
+                    layout: None,
+                    pending_mfg_before_first_plot: state.pending_mfg_before_first_plot,
+                },
+            );
         }
-        if !frame_started {
-            state.pending_mfg_before_first_plot = false;
-            return state.layout.begin_first_figure(cexbase, mex, font_scale);
-        }
-        state.layout.begin_figure(cexbase, mex, font_scale)
+        let mut layout = state.layout.clone();
+        let mut pending_mfg_before_first_plot = state.pending_mfg_before_first_plot;
+        let clear = if !frame_started {
+            pending_mfg_before_first_plot = false;
+            layout.begin_first_figure(cexbase, mex, font_scale)
+        } else {
+            layout.begin_figure(cexbase, mex, font_scale)
+        };
+        let regions = layout.regions();
+        (
+            regions,
+            clear,
+            PlotFigureTransition {
+                layout: Some(layout),
+                pending_mfg_before_first_plot,
+            },
+        )
     })
+}
+
+/// Commit a prepared plot.new transition after the candidate regions validate.
+pub(crate) fn commit_plot_figure(transition: PlotFigureTransition) {
+    with_par_state(|state| {
+        if let Some(layout) = transition.layout {
+            state.layout = layout;
+            state.pending_mfg_before_first_plot = transition.pending_mfg_before_first_plot;
+        }
+    });
 }
 
 fn graphics_frame_started() -> bool {

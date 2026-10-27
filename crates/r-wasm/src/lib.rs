@@ -629,6 +629,55 @@ mod tests {
     }
 
     #[test]
+    fn interactive_plot_error_preserves_browser_device_progression() {
+        let mut session = WasmRSession::new().expect("session initializes");
+        let failed = session
+            .eval_interactive(
+                r#"
+emit <- function(tag) cat(tag, "|", paste(par("mfg"), collapse=","),
+                         "|new=", par("new"), "|page=", par("page"), "\n", sep="")
+par(mar=rep(0,4)); plot.new(); emit("first")
+par(mfrow=c(1,2)); emit("grid")
+par(mar=rep(100,4))
+tryCatch(plot.new(), error=function(e)
+  cat("error|", paste(class(e), collapse=","), "|", conditionMessage(e), "\n", sep=""))
+emit("failed")
+"#,
+                640,
+                480,
+            )
+            .expect("caught graphics error remains an evaluation result");
+        assert_eq!(
+            failed.output(),
+            include_str!("../../r-embed/tests/fixtures/graphics-plot-error-progression-gnu.out")
+        );
+        assert!(!failed.has_error());
+
+        let recovered = session
+            .eval_interactive(
+                r#"
+par(mar=rep(0,4)); plot.new()
+cat("recovered|", paste(par("mfg"), collapse=","),
+    "|new=", par("new"), "|page=", par("page"), "\n", sep="")
+plot.new()
+cat("next|", paste(par("mfg"), collapse=","),
+    "|new=", par("new"), "|page=", par("page"), "\n", sep="")
+plot.new()
+cat("wrapped|", paste(par("mfg"), collapse=","),
+    "|new=", par("new"), "|page=", par("page"), "\n", sep="")
+"#,
+                640,
+                480,
+            )
+            .expect("same browser session and device recover after plot.new error");
+        assert_eq!(
+            recovered.output(),
+            include_str!("../../r-embed/tests/fixtures/graphics-plot-error-recovery-gnu.out")
+        );
+        assert!(!recovered.has_error());
+    }
+
+    #[test]
     fn bounded_console_output_keeps_session_usable() {
         let mut session = WasmRSession::new().expect("session initializes");
         // Keep the exact two-MiB output contract within the unchanged native

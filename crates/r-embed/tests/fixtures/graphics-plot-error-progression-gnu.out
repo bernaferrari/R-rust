@@ -1,0 +1,4 @@
+first|1,1,1,1|new=FALSE|page=TRUE
+grid|1,2,1,2|new=FALSE|page=TRUE
+error|simpleError,error,condition|figure margins too large
+failed|1,2,1,2|new=FALSE|page=TRUE

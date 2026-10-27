@@ -707,8 +707,8 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
         if default_mar && default_oma && w <= 160 && h <= 120 {
             font_scale = (f64::from(w) / 240.).min(f64::from(h) / 180.).min(1.);
         }
-        let clear = crate::library::graphics::par::begin_plot_figure(cex, mex, font_scale);
-        let regions = crate::library::graphics::par::current_regions();
+        let (regions, clear, transition) =
+            crate::library::graphics::par::prepare_plot_figure(cex, mex, font_scale);
         // GNewPlot validity checks, same order and messages as GNU.
         let inner = regions.inner;
         let figure = regions.figure;
@@ -734,6 +734,7 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
         {
             base_error("plot region too large");
         }
+        crate::library::graphics::par::commit_plot_figure(transition);
         let to_f32 = |v: [f64; 4]| [v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32];
         (
             Coordinates {

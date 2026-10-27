@@ -13,6 +13,7 @@
 //! override map.
 
 use crate::library::graphics::par::{ParValue, par_error};
+use std::sync::Arc;
 /// Portable-device nominal font metrics: the default device reports
 /// `cra` in raster pixels at 72 dpi, derived from the 12pt nominal
 /// pointsize exactly like `pdf()` (0.9/1.2 em; the products are NOT the
@@ -60,6 +61,7 @@ pub(crate) struct Regions {
     pub plot: [f64; 4],
 }
 
+#[derive(Clone)]
 pub(crate) struct LayoutState {
     // Device geometry in raster units.
     width: f64,
@@ -84,7 +86,9 @@ pub(crate) struct LayoutState {
     f_units: RegionUnits,
     default_figure: bool,
     layout_grid: bool,
-    order: Vec<i32>,
+    // Previewing plot.new clones layout state; share a potentially large
+    // explicit layout matrix until a later layout setter replaces it.
+    order: Arc<Vec<i32>>,
     numrows: i32,
     numcols: i32,
     mfind: bool,
@@ -125,7 +129,7 @@ impl Default for LayoutState {
             f_units: RegionUnits::Relative,
             default_figure: true,
             layout_grid: false,
-            order: Vec::new(),
+            order: Arc::new(Vec::new()),
             numrows: 1,
             numcols: 1,
             mfind: false,
@@ -634,7 +638,7 @@ impl LayoutState {
         self.current_figure = 1;
         self.last_figure = 1;
         self.layout_grid = false;
-        self.order.clear();
+        Arc::make_mut(&mut self.order).clear();
         self.fig = [values[0], values[1], values[2], values[3]];
         self.reset(cexbase, mex, font_scale);
     }
@@ -648,7 +652,7 @@ impl LayoutState {
         self.current_figure = 1;
         self.last_figure = 1;
         self.layout_grid = false;
-        self.order.clear();
+        Arc::make_mut(&mut self.order).clear();
         self.fin = [values[0], values[1]];
         self.reset(cexbase, mex, font_scale);
     }
@@ -717,7 +721,7 @@ impl LayoutState {
         self.last_figure = figure_count;
         self.default_figure = true;
         self.layout_grid = false;
-        self.order.clear();
+        Arc::make_mut(&mut self.order).clear();
         self.mfind = column_first;
         // GNU's split policy: the reset runs with the reduced base
         // expansion and mex restored to 1.
@@ -805,7 +809,7 @@ impl LayoutState {
         }
         self.numrows = nrow;
         self.numcols = ncol;
-        self.order = order.to_vec();
+        self.order = Arc::new(order.to_vec());
         self.current_figure = num_figures;
         self.last_figure = num_figures;
         self.default_figure = true;
