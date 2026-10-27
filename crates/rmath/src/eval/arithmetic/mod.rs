@@ -43,6 +43,7 @@ use crate::sexp::symbol::Rf_install;
 mod binop;
 mod comparison;
 mod datetime;
+mod list_character;
 mod math;
 mod ops;
 mod summary;

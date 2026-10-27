@@ -91,7 +91,6 @@ pub(crate) unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP)
                 || t == SEXPTYPE::RAWSXP
                 || t == SEXPTYPE::VECSXP
                 || t == SEXPTYPE::EXPRSXP
-                || t == SEXPTYPE::LISTSXP
         };
         if !relop_ok(a) || !relop_ok(b) {
             arithmetic_error(format!(
@@ -103,6 +102,12 @@ pub(crate) unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP)
         let a_str = TYPEOF(a) == SEXPTYPE::STRSXP;
         let b_str = TYPEOF(b) == SEXPTYPE::STRSXP;
         if a_str || b_str {
+            if matches!(SEXPTYPE(TYPEOF(a)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
+                || matches!(SEXPTYPE(TYPEOF(b)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
+            {
+                return super::list_character::compare(op_name, a, b)
+                    .unwrap_or_else(|error| arithmetic_error(error));
+            }
             let a = if a_str {
                 a
             } else {
