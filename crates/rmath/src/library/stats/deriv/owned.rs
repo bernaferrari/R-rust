@@ -154,6 +154,18 @@ impl Drop for Path<'_> {
     }
 }
 
+// A run of transparent unary calls shares the kernel's admitted path buffer.
+// Truncation unwinds the whole run on success, error, or panic.
+struct PathRange<'a> {
+    active: &'a RefCell<Vec<NodeLink>>,
+    start: usize,
+}
+impl Drop for PathRange<'_> {
+    fn drop(&mut self) {
+        self.active.borrow_mut().truncate(self.start);
+    }
+}
+
 pub(super) struct Kernel<'a, F> {
     access: &'a RuntimeAccess,
     install: F,
@@ -174,7 +186,7 @@ where
         }
     }
 
-    fn enter(&self, value: &Value) -> SexpResult<Path<'_>> {
+    fn push_active(&self, value: &Value) -> SexpResult<NodeLink> {
         let link = self.access.domain().link(value)?;
         let mut active = self.active.borrow_mut();
         if active.contains(&link) {
@@ -195,7 +207,11 @@ where
             *self.active_workspace.borrow_mut() = Some(ticket);
         }
         active.push(link.clone());
-        drop(active);
+        Ok(link)
+    }
+
+    fn enter(&self, value: &Value) -> SexpResult<Path<'_>> {
+        let link = self.push_active(value)?;
         Ok(Path {
             active: &self.active,
             link,
@@ -401,6 +417,24 @@ where
         }
     }
 
+    fn derive_transparent(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
+        let _path = PathRange {
+            active: &self.active,
+            start: self.active.borrow().len(),
+        };
+        let mut current = expression.clone();
+        while current.typeof_() == SEXPTYPE::LANGSXP {
+            let call = snapshot(self.access, &current)?;
+            let function = name(&call.head)?;
+            if !matches!(function.as_str(), "(" | "+") || call.arguments.len() != 1 {
+                break;
+            }
+            self.push_active(&current)?;
+            current = call.arguments[0].clone();
+        }
+        self.derive(&current, variable)
+    }
+
     pub(super) fn derive(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
         self.access.require_active()?;
         self.access.domain().link(expression)?;
@@ -429,7 +463,7 @@ where
                         .ok_or_else(|| invalid("invalid binary derivative expression"))
                 };
                 match function.as_str() {
-                    "(" | "+" if call.arguments.len() == 1 => self.derive(&a, variable),
+                    "(" | "+" if call.arguments.len() == 1 => self.derive_transparent(&a, variable),
                     "+" | "-" => {
                         let first = self.derive(&a, variable)?;
                         let second = match b {
