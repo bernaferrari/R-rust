@@ -6,7 +6,81 @@ use crate::sexp::{
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::{RuntimeAccess, StoredOwner, with_runtime},
 };
-use std::io::Read;
+use std::io::{Cursor, Read};
+
+// flate2 1.1.10's zlib-rs 0.6.3 inflate backend allocates one slab containing
+// its fixed inflate state and 32 KiB history window. The state has 3,256
+// four-byte Code entries, 608 u16 scratch entries, and small control fields;
+// its size is below 16 KiB. The slab adds a 32,768-byte window, 64 bytes of
+// SIMD padding, and at most 127 bytes for alignment/rounding. 64 KiB is a
+// conservative bound for that backend allocation. Use flate2's `bufread`
+// decoder over Cursor below so it does not also allocate its default 32 KiB
+// BufReader.
+const PORTABLE_ZLIB_DECODER_SCRATCH: usize = 64 * 1024;
+
+fn decompressed_input_workspace(capacity: usize, record_len: usize) -> Option<usize> {
+    Some(capacity.checked_add(record_len)?)
+}
+
+fn reserve_decompression_workspace(
+    access: &RuntimeAccess,
+    bytes: usize,
+) -> SexpResult<crate::sexp::memory::TransientReservation> {
+    if let Some(reservation) = access.with_arena(|arena| arena.try_reserve_transient(bytes))? {
+        return Ok(reservation);
+    }
+    // A lazy fetch can arrive at the arena cap with promoted garbage. Collect
+    // only after an actual admission denial, then retry the same charged
+    // reservation once while the caller's package inputs remain rooted.
+    access.with_native(|owner| owner.full_gc().map(|_| ()))?;
+    access
+        .with_arena(|arena| arena.try_reserve_transient(bytes))?
+        .ok_or(SexpError::AllocationFailed {
+            object: "portable package decompression workspace",
+        })
+}
+
+fn reserve_decoder_scratch(
+    access: &RuntimeAccess,
+) -> SexpResult<crate::sexp::memory::TransientReservation> {
+    reserve_decompression_workspace(access, PORTABLE_ZLIB_DECODER_SCRATCH)
+}
+
+fn decode_record(
+    access: &RuntimeAccess,
+    record: &[u8],
+    expected: usize,
+) -> SexpResult<(Vec<u8>, crate::sexp::memory::TransientReservation)> {
+    let capacity = expected
+        .checked_add(1)
+        .ok_or_else(|| failure("portable package record is too large"))?;
+    let workspace = decompressed_input_workspace(capacity, record.len())
+        .ok_or_else(|| failure("portable package record is too large"))?;
+    let input_reservation = reserve_decompression_workspace(access, workspace)?;
+    // Keep the input/output Vec admitted through unserialize callbacks, but
+    // scope the decoder's separate state slab to this construction/read only.
+    let decoder_reservation = reserve_decoder_scratch(access)?;
+    let compressed = record
+        .get(4..)
+        .ok_or_else(|| failure("portable package database is corrupt"))?;
+    let mut decoded = Vec::new();
+    decoded
+        .try_reserve_exact(capacity)
+        .map_err(|_| SexpError::AllocationFailed {
+            object: "portable package decompression workspace",
+        })?;
+    {
+        flate2::bufread::ZlibDecoder::new(Cursor::new(compressed))
+            .take(capacity as u64)
+            .read_to_end(&mut decoded)
+            .map_err(|_| failure("portable package database is corrupt"))?;
+    }
+    if decoded.len() != expected {
+        return Err(failure("portable package database is corrupt"));
+    }
+    drop(decoder_reservation);
+    Ok((decoded, input_reservation))
+}
 
 fn failure(message: impl Into<String>) -> SexpError {
     SexpError::EvaluationFailed {
@@ -177,39 +251,12 @@ pub(super) fn fetch(
             .try_into()
             .map_err(|_| failure("portable package database is corrupt"))?;
         let expected = u32::from_be_bytes(prefix) as usize;
-        let capacity = expected
-            .checked_add(1)
-            .ok_or_else(|| failure("portable package record is too large"))?;
-        let workspace = capacity
-            .checked_add(bytes.len())
-            .ok_or_else(|| failure("portable package record is too large"))?;
-        let decompression_reservation = access
-            .with_arena(|arena| arena.try_reserve_transient(workspace))?
-            .ok_or(SexpError::AllocationFailed {
-                object: "portable package decompression workspace",
-            })?;
-        let mut decoded = Vec::new();
-        decoded
-            .try_reserve_exact(capacity)
-            .map_err(|_| SexpError::AllocationFailed {
-                object: "portable package decompression workspace",
-            })?;
-        flate2::read::ZlibDecoder::new(&bytes[4..])
-            .take(capacity as u64)
-            .read_to_end(&mut decoded)
-            .map_err(|_| failure("portable package database is corrupt"))?;
-        if decoded.len() != expected {
-            return Err(failure("portable package database is corrupt"));
-        }
-        let raw = raw(access, &decoded)?;
-        // The initialized R raw owns its copy. Release codec storage before
-        // restoration hooks can recursively fetch another package record.
+        let (decoded, decompression_reservation) = decode_record(access, bytes, expected)?;
+        let result = super::bridge::decode_owned_bytes(access, &decoded, &hook)?;
+        // Decoder scratch was released before entering unserialize. The
+        // serialized Vec and its ticket stay live across restoration hooks.
         drop(decoded);
         drop(decompression_reservation);
-        let result = super::bridge::decode(access, &raw, &hook)?;
-        // The decoded graph now owns its allocation leases independently of
-        // the serialized input, including across promise evaluation callbacks.
-        drop(raw);
         let result = super::bridge::force(access, &result)?;
         if image.path == "<builtin:methods>/R/methods.rdb" {
             super::bridge::restore_methods_metadata(access, &result)?;
@@ -438,3 +485,7 @@ pub(super) fn attach(image: &'static PackageImage, base: Sexp<'static>) -> Resul
         Ok(())
     })
 }
+
+#[cfg(test)]
+#[path = "owned_tests.rs"]
+mod tests;

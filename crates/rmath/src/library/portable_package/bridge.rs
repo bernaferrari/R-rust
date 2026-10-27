@@ -126,6 +126,17 @@ pub(super) fn decode(
     })
 }
 
+pub(super) fn decode_owned_bytes(
+    access: &RuntimeAccess,
+    bytes: &[u8],
+    hook: &Sexp<'static>,
+) -> SexpResult<Sexp<'static>> {
+    access.domain().link(hook)?;
+    access.with_native(|owner| {
+        crate::mainutils::serialize::unserialize_native_snapshot(&owner, bytes, hook)
+    })
+}
+
 pub(super) fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<Sexp<'static>> {
     access.domain().link(value)?;
     access.with_native(|owner| unsafe {
