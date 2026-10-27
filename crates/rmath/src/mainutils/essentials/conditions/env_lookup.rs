@@ -326,7 +326,7 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
-            super::shared::frame_binding_names(env, all_names)
+            super::shared::frame_binding_names_for_listing(env, all_names)
         } else {
             Vec::new()
         };

@@ -528,13 +528,40 @@ pub(crate) unsafe fn namespace_export_environment(package_env: SEXP) -> Option<S
 }
 
 pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
+    unsafe { collect_frame_binding_names(env, include_hidden, false) }
+}
+
+/// Public environment-name enumeration must report every bound name when
+/// `all.names=TRUE`, including names that look like namespace metadata.
+pub(crate) unsafe fn frame_binding_names_for_listing(
+    env: SEXP,
+    include_hidden: bool,
+) -> Vec<String> {
+    unsafe { collect_frame_binding_names(env, include_hidden, true) }
+}
+
+unsafe fn collect_frame_binding_names(
+    env: SEXP,
+    include_hidden: bool,
+    include_namespace_metadata: bool,
+) -> Vec<String> {
     unsafe {
         let mut names = Vec::new();
-        collect_binding_names(FRAME(env), include_hidden, &mut names);
+        collect_binding_names(
+            FRAME(env),
+            include_hidden,
+            include_namespace_metadata,
+            &mut names,
+        );
         let hashtab = HASHTAB(env);
         if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
             for i in 0..XLENGTH(hashtab) {
-                collect_binding_names(VECTOR_ELT(hashtab, i), include_hidden, &mut names);
+                collect_binding_names(
+                    VECTOR_ELT(hashtab, i),
+                    include_hidden,
+                    include_namespace_metadata,
+                    &mut names,
+                );
             }
         }
         names.sort();
@@ -546,6 +573,7 @@ pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec
 pub(super) unsafe fn collect_binding_names(
     mut frame: SEXP,
     include_hidden: bool,
+    include_namespace_metadata: bool,
     names: &mut Vec<String>,
 ) {
     unsafe {
@@ -554,8 +582,8 @@ pub(super) unsafe fn collect_binding_names(
             if value != crate::sexp::globals::R_UnboundValue()
                 && let Some(name) = symbol_name(TAG(frame))
                 && (include_hidden || !name.starts_with('.'))
-                && name != ".packageName"
-                && name != ".namespaceEnv"
+                && (include_namespace_metadata
+                    || (name != ".packageName" && name != ".namespaceEnv"))
             {
                 names.push(name);
             }
