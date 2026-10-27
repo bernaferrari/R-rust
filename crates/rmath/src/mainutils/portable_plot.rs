@@ -512,9 +512,13 @@ fn install(coords: Coordinates) {
     set_plot_parameter("ylog", ParValue::Logical(vec![i32::from(coords.log[1])]));
     if !coords.log[0] {
         set_linear_axp("xaxp", coords.limits[0], coords.limits[1]);
+    } else {
+        set_log_axp("xaxp", coords.limits[0], coords.limits[1], 0);
     }
     if !coords.log[1] {
         set_linear_axp("yaxp", coords.limits[2], coords.limits[3]);
+    } else {
+        set_log_axp("yaxp", coords.limits[2], coords.limits[3], 1);
     }
 }
 
@@ -548,6 +552,14 @@ fn set_linear_axp(name: &str, lo: f64, hi: f64) {
             (ticks.len() - 1) as f64,
         ]),
     );
+}
+fn set_log_axp(name: &str, lo: f64, hi: f64, axis: usize) {
+    let intervals = match parameter("lab") {
+        ParValue::Integer(values) => values.get(axis).copied().unwrap_or(5),
+        _ => 5,
+    };
+    let axp = crate::library::grdevices::axis_scales::axis_parameters([lo, hi], intervals, true);
+    set_plot_parameter(name, ParValue::Real(axp.to_vec()));
 }
 unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, bool) {
     unsafe {

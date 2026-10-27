@@ -236,6 +236,17 @@ fn g_axis_pars(min: &mut f64, max: &mut f64, n: &mut c_int, logflag: bool) {
     }
 }
 
+/// Compute the graphics parameters stored in `xaxp`/`yaxp` for a plot window.
+/// `usr` is in transformed coordinates when `logflag` is true, matching
+/// GScale's input and the parameters consumed by `axTicks`.
+pub(crate) fn axis_parameters(usr: [f64; 2], nint: c_int, logflag: bool) -> [f64; 3] {
+    let mut min = usr[0];
+    let mut max = usr[1];
+    let mut n = nint.max(1);
+    g_axis_pars(&mut min, &mut max, &mut n, logflag);
+    [min, max, n as f64]
+}
+
 fn gl_pretty(ul: &mut f64, uh: &mut f64, n: &mut c_int) {
     let p1 = ul.log10().ceil() as i32;
     let p2 = uh.log10().floor() as i32;

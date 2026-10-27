@@ -1342,8 +1342,38 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
             Rf_error(msg.as_ptr());
         }
     }
+    let mut ns = lo_value;
+    let mut nu = up_value;
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
-    let _ = R_pretty(lo, up, ndiv, 1, 0.25, high_u_fact.as_ptr(), 2, 0);
+    let unit = R_pretty(
+        &mut ns,
+        &mut nu,
+        ndiv,
+        1,
+        0.25,
+        high_u_fact.as_ptr(),
+        2,
+        0,
+    );
+    const ROUNDING_EPS: f64 = 1e-10;
+    if nu >= ns + 1.0 {
+        let mut modified = false;
+        if ns * unit < lo_value - ROUNDING_EPS * unit {
+            ns += 1.0;
+            modified = true;
+        }
+        if nu > ns + 1.0 && nu * unit > up_value + ROUNDING_EPS * unit {
+            nu -= 1.0;
+            modified = true;
+        }
+        if modified {
+            unsafe { *ndiv = (nu - ns) as c_int };
+        }
+    }
+    unsafe {
+        *lo = ns * unit;
+        *up = nu * unit;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2511,8 +2541,16 @@ mod tests {
             let mut up = 4.8_f64;
             let mut ndiv = 4_i32;
             GEPretty(&mut lo, &mut up, &mut ndiv);
-            assert_eq!(lo, 1.0);
-            assert_eq!(up, 5.0);
+            assert_eq!(lo, 2.0);
+            assert_eq!(up, 4.0);
+            assert_eq!(ndiv, 2);
+
+            let mut lo = 3.7_f64;
+            let mut up = 27.0_f64;
+            let mut ndiv = 5_i32;
+            GEPretty(&mut lo, &mut up, &mut ndiv);
+            assert_eq!(lo, 5.0);
+            assert_eq!(up, 25.0);
             assert_eq!(ndiv, 4);
         }
     }
