@@ -11,8 +11,10 @@
   globalThis.rportRust = {
     request(operation, code) {
       if (!worker) {
-        worker = new Worker(new URL('rust-runtime-worker.js', document.baseURI), { type: 'module' });
-        worker.onmessage = ({ data }) => {
+        const activeWorker = new Worker(new URL('rust-runtime-worker.js', document.baseURI), { type: 'module' });
+        worker = activeWorker;
+        activeWorker.onmessage = ({ data }) => {
+          if (worker !== activeWorker) return;
           const request = pending.get(data.id);
           if (!request) return;
           if (data.fatal) { reset(`${data.error}. Session reset; in-memory R objects were cleared.`); return; }
@@ -20,7 +22,10 @@
           if (data.error) request.reject(new Error(data.error));
           else request.resolve(data.value);
         };
-        worker.onerror = () => reset('Rust runtime worker failed. Session reset; run the script again.');
+        activeWorker.onerror = () => {
+          if (worker !== activeWorker) return;
+          reset('Rust runtime worker failed. Session reset; run the script again.');
+        };
       }
       return new Promise((resolve, reject) => {
         const id = ++sequence;
