@@ -1200,6 +1200,64 @@ mod scratch_admission_tests {
     }
 
     #[test]
+    fn binary_frame_denial_releases_workspace_and_retries_same_expression() {
+        let mut session = RSession::new_for_gc_tests();
+        let prior = session.arena_budget();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        for source in ["quote(x * 1)", "quote(x / 1)"] {
+            let expression = session
+                .eval_code_with_output_capture(source)
+                .0
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let variable = expression
+                .try_cdr()
+                .unwrap()
+                .try_car()
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let kernel = Kernel::new(access, |_, _| Err(invalid("unused installer")));
+                let (allocated, held) = access
+                    .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+                // Admit the active identity and both argument/tag buffers, but
+                // deny precisely the first owning continuation by one byte.
+                let allowance =
+                    size_of::<NodeLink>() + 4 * size_of::<Value>() + size_of::<DerivativeFrame>()
+                        - 1;
+                access.with_arena(|arena| {
+                    arena.set_budget(ArenaBudget::new(
+                        allocated + held + allowance,
+                        prior.max_nodes,
+                    ))
+                })?;
+                let error = kernel.derive(&expression, &variable).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("cannot retain derivative frames"),
+                    "{source}: {error}"
+                );
+                assert!(kernel.active.borrow().is_empty());
+                assert_eq!(
+                    access.with_arena(|arena| arena.workspace_bytes())?,
+                    held + size_of::<NodeLink>()
+                );
+                access.with_arena(|arena| arena.set_budget(prior))?;
+                assert_eq!(kernel.derive(&expression, &variable)?.try_real_elt(0)?, 1.);
+                assert!(kernel.active.borrow().is_empty());
+                drop(kernel);
+                assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+                Ok::<_, SexpError>(())
+            })
+            .unwrap()
+            .unwrap();
+        }
+    }
+
+    #[test]
     fn common_unary_frame_denial_releases_workspace_and_allows_recovery() {
         let mut session = RSession::new_for_gc_tests();
         let expression = session
