@@ -518,6 +518,63 @@ fn owned_derivative_symbolic_power_survives_source_collection() {
 }
 
 #[test]
+fn owned_psigamma_default_graph_survives_source_collection() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let expression = call(&owner, "psigamma", &[symbol(&owner, "x")]);
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let result = session.with_active(|| unsafe {
+        session
+            .sexp(super::do_d(args.as_raw()))
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    drop(args);
+    drop(expression);
+    drop(variable);
+    crate::sexp::owner::with_runtime(&owner, |access| access.with_native(|owner| owner.full_gc()))
+        .unwrap()
+        .unwrap();
+    assert!(
+        result
+            .try_car()
+            .unwrap()
+            .try_printname()
+            .unwrap()
+            .try_char_eq(b"psigamma")
+            .unwrap()
+    );
+    let operands = result.try_cdr().unwrap();
+    assert!(
+        operands
+            .try_car()
+            .unwrap()
+            .try_printname()
+            .unwrap()
+            .try_char_eq(b"x")
+            .unwrap()
+    );
+    assert_eq!(
+        operands
+            .try_cdr()
+            .unwrap()
+            .try_car()
+            .unwrap()
+            .try_integer_elt(0)
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
 fn owned_derivative_symbolic_power_graph_survives_gc() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap().weak_owner().unwrap();
