@@ -3,6 +3,9 @@ default cat:0.75 NA 3 NA 0.75
 default print:
    1    2    3    4    5
 0.75   NA 3.00   NA 0.75
+single cat:0.75
+single print:
+[1] 0.75
 digits= 3  scipen= -1  cat=0.75|-0.75|NaN|NA|1.23|1e-07|1e+07
 print:
 [1]  7.50e-01 -7.50e-01       NaN        NA  1.23e+00  1.00e-07  1.00e+07
