@@ -118,6 +118,11 @@ enum DerivativeOperator {
     Atan(Value),
     Exp,
     Log,
+    Expm1(Value),
+    Log1p,
+    LogBase(f64),
+    Pnorm(Value),
+    Dnorm(Value),
 }
 
 struct DerivativeFrame {
@@ -569,6 +574,20 @@ where
                             let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
                             Some(DerivativeOperator::Atan(denominator))
                         }
+                        ("expm1", _) => Some(DerivativeOperator::Expm1(
+                            self.call("exp", std::slice::from_ref(&first))?,
+                        )),
+                        ("log1p", _) => Some(DerivativeOperator::Log1p),
+                        ("log2", _) => Some(DerivativeOperator::LogBase(2.)),
+                        ("log10", _) => Some(DerivativeOperator::LogBase(10.)),
+                        ("pnorm", _) | ("dnorm", _) => {
+                            let density = self.call("dnorm", std::slice::from_ref(&first))?;
+                            Some(if function == "pnorm" {
+                                DerivativeOperator::Pnorm(density)
+                            } else {
+                                DerivativeOperator::Dnorm(density)
+                            })
+                        }
                         ("exp", _) => Some(DerivativeOperator::Exp),
                         ("log", 1) => Some(DerivativeOperator::Log),
                         ("log", _) => {
@@ -690,6 +709,29 @@ where
                     DerivativeOperator::Acos(root) => {
                         let quotient = self.simplify("/", result, Some(root))?;
                         self.simplify("-", quotient, None)?
+                    }
+                    DerivativeOperator::Expm1(factor) | DerivativeOperator::Pnorm(factor) => {
+                        self.simplify("*", factor, Some(result))?
+                    }
+                    DerivativeOperator::Dnorm(density) => {
+                        let inner = self.simplify("*", density, Some(result))?;
+                        let negated = self.simplify("-", frame.call.arguments[0].clone(), None)?;
+                        self.simplify("*", negated, Some(inner))?
+                    }
+                    DerivativeOperator::Log1p => {
+                        let denominator = self.simplify(
+                            "+",
+                            self.scalar(1.)?,
+                            Some(frame.call.arguments[0].clone()),
+                        )?;
+                        self.simplify("/", result, Some(denominator))?
+                    }
+                    DerivativeOperator::LogBase(base) => {
+                        let log_base =
+                            self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
+                        let denominator =
+                            self.simplify("*", frame.call.arguments[0].clone(), Some(log_base))?;
+                        self.simplify("/", result, Some(denominator))?
                     }
                     DerivativeOperator::Exp => {
                         self.simplify("*", frame.expression, Some(result))?
@@ -824,37 +866,6 @@ where
                     self.derive(&a, variable)?,
                     Some(self.call("psigamma", &[a, next])?),
                 )
-            }
-            "pnorm" => self.simplify(
-                "*",
-                self.call("dnorm", std::slice::from_ref(&a))?,
-                Some(self.derive(&a, variable)?),
-            ),
-            "dnorm" => {
-                let inner = self.simplify(
-                    "*",
-                    self.call("dnorm", std::slice::from_ref(&a))?,
-                    Some(self.derive(&a, variable)?),
-                )?;
-                let negated = self.simplify("-", a, None)?;
-                self.simplify("*", negated, Some(inner))
-            }
-            "expm1" => self.simplify(
-                "*",
-                self.call("exp", std::slice::from_ref(&a))?,
-                Some(self.derive(&a, variable)?),
-            ),
-            "log1p" => {
-                let derived = self.derive(&a, variable)?;
-                let denominator = self.simplify("+", self.scalar(1.)?, Some(a))?;
-                self.simplify("/", derived, Some(denominator))
-            }
-            "log2" | "log10" => {
-                let base = if function == "log2" { 2. } else { 10. };
-                let derived = self.derive(&a, variable)?;
-                let log_base = self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
-                let denominator = self.simplify("*", a, Some(log_base))?;
-                self.simplify("/", derived, Some(denominator))
             }
             "cospi" => {
                 let factor =
@@ -1258,6 +1269,12 @@ mod scratch_admission_tests {
             ("tan(foo(x))", vec![]),
             ("exp(foo(x))", vec![]),
             ("log(foo(x))", vec![]),
+            ("expm1(foo(x))", vec!["exp"]),
+            ("pnorm(foo(x))", vec!["dnorm"]),
+            ("dnorm(foo(x))", vec!["dnorm"]),
+            ("log1p(foo(x))", vec![]),
+            ("log2(foo(x))", vec![]),
+            ("log10(foo(x))", vec![]),
         ] {
             let expression = session
                 .eval_code_with_output_capture(&format!("quote({source})"))
