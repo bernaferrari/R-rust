@@ -755,7 +755,17 @@ impl RSession {
 local({{
   old <- tryCatch(grDevices::dev.cur(), error = function(e) 1L)
   result <- tryCatch({{
-    newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
+    # The renderplot backend can create its own device on first graphics use.
+    # Avoid opening the default PDF device when there is no current device;
+    # custom device options and renders with an existing device keep GNU's
+    # normal dev.new() path.
+    device <- getOption("device")
+    skip_default_device <- old == 1L && identical(device, "pdf") &&
+      !exists("pdf", envir = .GlobalEnv, inherits = FALSE)
+    newd <- if (skip_default_device) {{
+      invisible(grDevices::dev.size(units = "px"))
+      old
+    }} else tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
     withVisible(eval(quote({{ {} }}), envir = globalenv()))
   }}, error = function(e) {{
     e

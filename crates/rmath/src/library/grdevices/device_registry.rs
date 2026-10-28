@@ -1020,7 +1020,7 @@ fn renderplot_scene_is_device() -> bool {
 
 /// `dev.cur()` names the device from baseenv `.Devices`. A renderplot scene
 /// has no file, so the list entry must exist without evaluating `pdf()`.
-fn remember_device_name(name: &std::ffi::CStr) {
+fn remember_device_name(name: &std::ffi::CStr, device_label: c_int) {
     unsafe {
         let base = crate::sexp::globals::R_BaseEnv();
         let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
@@ -1034,10 +1034,11 @@ fn remember_device_name(name: &std::ffi::CStr) {
         } else {
             0
         };
-        let needed = with_registry(|registry| i64::from(registry.num_devices()));
-        if needed <= n {
-            return;
-        }
+        // Registry labels are monotonic and may contain holes after devices
+        // are closed. `.Devices` is indexed by the external label, not by the
+        // number of currently open devices.
+        let slot = i64::from(device_label - 1);
+        let needed = n.max(slot + 1);
         let devices = Rf_allocVector(SEXPTYPE::VECSXP, needed as i32);
         let _devices_guard = crate::sexp::protect::protect(devices);
         for i in 0..n {
@@ -1056,13 +1057,11 @@ fn remember_device_name(name: &std::ffi::CStr) {
         }
         let start = if n == 0 { 1 } else { n };
         for i in start..needed {
-            let label = if i + 1 == needed {
-                crate::sexp::constructors::Rf_mkString(name.as_ptr())
-            } else {
-                crate::sexp::constructors::Rf_mkString(c"null device".as_ptr())
-            };
+            let label = crate::sexp::constructors::Rf_mkString(c"null device".as_ptr());
             crate::sexp::accessors::SET_VECTOR_ELT(devices, i, label);
         }
+        let current_name = crate::sexp::constructors::Rf_mkString(name.as_ptr());
+        crate::sexp::accessors::SET_VECTOR_ELT(devices, slot, current_name);
         crate::sexp::envir::defineVar(sym, devices, base);
         let current = crate::sexp::constructors::Rf_mkString(name.as_ptr());
         let _current_guard = crate::sexp::protect::protect(current);
@@ -1081,10 +1080,8 @@ pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
             if renderplot_scene_is_device() {
                 // The scene is already the device. options("device") is pdf(),
                 // and evaluating it writes Rplots.pdf into the working directory.
-                with_registry(|registry| {
-                    registry.open_new_device();
-                });
-                remember_device_name(c"renderplot");
+                let label = with_registry(|registry| registry.open_new_device());
+                remember_device_name(c"renderplot", label);
             } else {
                 static OPENING: std::sync::atomic::AtomicBool =
                     std::sync::atomic::AtomicBool::new(false);
