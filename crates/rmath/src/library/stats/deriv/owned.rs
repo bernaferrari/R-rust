@@ -147,6 +147,63 @@ fn workspace(access: &RuntimeAccess, bytes: usize, what: &str) -> SexpResult<Wor
         .ok_or_else(|| invalid(format!("cannot retain {what}")))
 }
 
+// Doubling bounds the total number of moved elements by a constant multiple
+// of the largest backing, while retaining an exact one-element first growth.
+fn buffer_growth<T>(capacity: usize, what: &str) -> SexpResult<(usize, usize)> {
+    let capacity = capacity
+        .checked_mul(2)
+        .map(|n| n.max(1))
+        .ok_or_else(|| invalid(format!("cannot retain {what}")))?;
+    let bytes = capacity
+        .checked_mul(size_of::<T>())
+        .ok_or_else(|| invalid(format!("cannot retain {what}")))?;
+    Ok((capacity, bytes))
+}
+
+fn grow_buffer<T>(
+    access: &RuntimeAccess,
+    buffer: &mut Vec<T>,
+    ticket: &mut Option<WorkspaceReservation>,
+    what: &str,
+) -> SexpResult<()> {
+    grow_buffer_with(access, buffer, ticket, what, |capacity| {
+        let mut replacement = Vec::new();
+        replacement
+            .try_reserve_exact(capacity)
+            .map_err(|_| invalid(format!("cannot retain {what}")))?;
+        Ok(replacement)
+    })
+}
+
+fn grow_buffer_with<T>(
+    access: &RuntimeAccess,
+    buffer: &mut Vec<T>,
+    ticket: &mut Option<WorkspaceReservation>,
+    what: &str,
+    allocate: impl FnOnce(usize) -> SexpResult<Vec<T>>,
+) -> SexpResult<()> {
+    if buffer.len() < buffer.capacity() {
+        return Ok(());
+    }
+    let (capacity, bytes) = buffer_growth::<T>(buffer.capacity(), what)?;
+    // Reserve the complete old+new peak before allocation. Declaration order
+    // also frees a failed replacement before releasing its reservation.
+    let mut next = workspace(access, bytes, what)?;
+    let mut replacement = allocate(capacity)?;
+    let actual = replacement
+        .capacity()
+        .checked_mul(size_of::<T>())
+        .ok_or_else(|| invalid(format!("cannot retain {what}")))?;
+    next.try_resize(actual)
+        .ok_or_else(|| invalid(format!("cannot retain {what}")))?;
+    // Nothing moves until actual capacity is admitted. Free the empty old
+    // backing before replacing its ticket, preserving accounting on teardown.
+    replacement.append(buffer);
+    drop(std::mem::replace(buffer, replacement));
+    *ticket = Some(next);
+    Ok(())
+}
+
 fn snapshot(access: &RuntimeAccess, expression: &Value) -> SexpResult<Call> {
     let domain = access.domain();
     domain.link(expression)?;
@@ -251,20 +308,12 @@ where
         if active.contains(&link) {
             return Err(invalid("cyclic derivative expression"));
         }
-        if active.len() == active.capacity() {
-            let next = active
-                .len()
-                .checked_add(1)
-                .and_then(|n| n.checked_mul(size_of::<NodeLink>()))
-                .ok_or_else(|| invalid("cannot inspect derivative expression"))?;
-            // The old ticket remains live while Vec reallocates, admitting the
-            // old+new peak before the allocator can move its backing storage.
-            let ticket = workspace(self.access, next, "derivative expression path")?;
-            active
-                .try_reserve_exact(1)
-                .map_err(|_| invalid("cannot inspect derivative expression"))?;
-            *self.active_workspace.borrow_mut() = Some(ticket);
-        }
+        grow_buffer(
+            self.access,
+            &mut active,
+            &mut self.active_workspace.borrow_mut(),
+            "derivative expression path",
+        )?;
         active.push(link.clone());
         Ok(link)
     }
@@ -650,29 +699,12 @@ where
                         _ => None,
                     };
                     if let Some(operator) = operator {
-                        if frames.len() == frames.capacity() {
-                            let capacity = frames
-                                .len()
-                                .checked_add(1)
-                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                            let bytes = capacity
-                                .checked_mul(size_of::<DerivativeFrame>())
-                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                            let mut next = workspace(self.access, bytes, "derivative frames")?;
-                            let mut replacement = Vec::new();
-                            replacement
-                                .try_reserve_exact(capacity)
-                                .map_err(|_| invalid("cannot retain derivative frames"))?;
-                            let actual = replacement
-                                .capacity()
-                                .checked_mul(size_of::<DerivativeFrame>())
-                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                            next.try_resize(actual)
-                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                            replacement.append(&mut frames);
-                            drop(std::mem::replace(&mut frames, replacement));
-                            _frame_workspace = Some(next);
-                        }
+                        grow_buffer(
+                            self.access,
+                            &mut frames,
+                            &mut _frame_workspace,
+                            "derivative frames",
+                        )?;
                         frames.push(DerivativeFrame {
                             expression: current,
                             call,
@@ -953,27 +985,12 @@ where
                     self.active.borrow_mut().pop();
                     result
                 } else {
-                    if frames.len() == frames.capacity() {
-                        let bytes = frames
-                            .len()
-                            .checked_add(1)
-                            .and_then(|n| n.checked_mul(size_of::<ParenthesesFrame>()))
-                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                        let mut next = workspace(self.access, bytes, "derivative frames")?;
-                        let mut replacement = Vec::new();
-                        replacement
-                            .try_reserve_exact(frames.len() + 1)
-                            .map_err(|_| invalid("cannot retain derivative frames"))?;
-                        let actual = replacement
-                            .capacity()
-                            .checked_mul(size_of::<ParenthesesFrame>())
-                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                        next.try_resize(actual)
-                            .ok_or_else(|| invalid("cannot retain derivative frames"))?;
-                        replacement.append(&mut frames);
-                        drop(std::mem::replace(&mut frames, replacement));
-                        _frame_workspace = Some(next);
-                    }
+                    grow_buffer(
+                        self.access,
+                        &mut frames,
+                        &mut _frame_workspace,
+                        "derivative frames",
+                    )?;
                     current = call.arguments[0].clone();
                     frames.push(ParenthesesFrame {
                         call,
@@ -1110,6 +1127,205 @@ where
 mod scratch_admission_tests {
     use super::*;
     use crate::sexp::{RSession, memory::ArenaBudget};
+
+    #[test]
+    fn buffer_growth_checks_capacity_and_byte_overflow() {
+        assert_eq!(buffer_growth::<u64>(0, "test buffer").unwrap(), (1, 8));
+        assert_eq!(buffer_growth::<u64>(4, "test buffer").unwrap(), (8, 64));
+        assert!(buffer_growth::<u64>(usize::MAX / 2 + 1, "test buffer").is_err());
+        assert!(buffer_growth::<u64>(usize::MAX / 16 + 1, "test buffer").is_err());
+    }
+
+    #[test]
+    fn buffer_growth_is_geometric_and_charges_actual_capacity() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let held = access.with_arena(|arena| arena.workspace_bytes())?;
+            let mut ticket = None;
+            let mut values = Vec::new();
+            let mut growths = 0;
+            let mut moved = 0;
+            for value in 0_u64..33 {
+                let old_capacity = values.capacity();
+                let old_len = values.len();
+                grow_buffer(access, &mut values, &mut ticket, "test buffer")?;
+                if old_capacity != values.capacity() {
+                    growths += 1;
+                    moved += old_len;
+                    assert!(values.capacity() >= (old_capacity * 2).max(1));
+                }
+                let bytes = values.capacity() * size_of::<u64>();
+                assert_eq!(ticket.as_ref().unwrap().bytes(), bytes);
+                assert_eq!(
+                    access.with_arena(|arena| arena.workspace_bytes())?,
+                    held + bytes
+                );
+                values.push(value);
+            }
+            assert!(growths <= 7, "{growths} allocations for 33 elements");
+            assert!(moved <= 2 * values.len(), "moved {moved} elements");
+            assert_eq!(values, (0_u64..33).collect::<Vec<_>>());
+            drop(values);
+            drop(ticket);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
+
+    #[test]
+    fn buffer_growth_peak_actual_denial_and_allocation_failure_roll_back() {
+        let session = RSession::new_for_gc_tests();
+        let prior = session.arena_budget();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let baseline = access.with_arena(|arena| arena.workspace_bytes())?;
+            let mut ticket = None;
+            let mut values = Vec::new();
+            grow_buffer(access, &mut values, &mut ticket, "test buffer")?;
+            values.push(7_u64);
+            let old_capacity = values.capacity();
+            let old_bytes = old_capacity * size_of::<u64>();
+            let (capacity, requested_bytes) = buffer_growth::<u64>(old_capacity, "test buffer")?;
+            let (allocated, held) = access
+                .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+            let attempted = std::cell::Cell::new(false);
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    allocated + held + requested_bytes - 1,
+                    prior.max_nodes,
+                ))
+            })?;
+            let error = grow_buffer_with(access, &mut values, &mut ticket, "test buffer", |_| {
+                attempted.set(true);
+                Err(invalid("allocator must not run before peak admission"))
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("cannot retain test buffer"));
+            assert!(!attempted.get());
+            assert_eq!(values, [7]);
+            assert_eq!(values.capacity(), old_capacity);
+            assert_eq!(ticket.as_ref().unwrap().bytes(), old_bytes);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    allocated + held + requested_bytes,
+                    prior.max_nodes,
+                ))
+            })?;
+            let error = grow_buffer_with(
+                access,
+                &mut values,
+                &mut ticket,
+                "test buffer",
+                |requested| {
+                    attempted.set(true);
+                    assert_eq!(requested, capacity);
+                    assert_eq!(
+                        access.with_arena(|arena| arena.workspace_bytes())?,
+                        held + requested_bytes
+                    );
+                    let mut replacement = Vec::new();
+                    replacement.try_reserve_exact(requested + 1).unwrap();
+                    Ok(replacement)
+                },
+            )
+            .unwrap_err();
+            assert!(attempted.get());
+            assert!(error.to_string().contains("cannot retain test buffer"));
+            assert_eq!(values, [7]);
+            assert_eq!(values.capacity(), old_capacity);
+            assert_eq!(ticket.as_ref().unwrap().bytes(), old_bytes);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            access.with_arena(|arena| arena.set_budget(prior))?;
+            let error = grow_buffer_with(access, &mut values, &mut ticket, "test buffer", |_| {
+                Err(invalid("forced allocation failure"))
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("forced allocation failure"));
+            assert_eq!(values, [7]);
+            assert_eq!(values.capacity(), old_capacity);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            grow_buffer_with(
+                access,
+                &mut values,
+                &mut ticket,
+                "test buffer",
+                |requested| {
+                    let mut replacement = Vec::new();
+                    replacement.try_reserve_exact(requested + 1).unwrap();
+                    Ok(replacement)
+                },
+            )?;
+            assert!(values.capacity() > capacity);
+            let actual = values.capacity() * size_of::<u64>();
+            assert_eq!(ticket.as_ref().unwrap().bytes(), actual);
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                baseline + actual
+            );
+            values.push(8);
+            assert_eq!(values, [7, 8]);
+            drop(values);
+            drop(ticket);
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                baseline
+            );
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
+
+    #[test]
+    fn buffer_growth_traverses_multiple_depth_boundaries_and_releases_frames() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture(&format!("quote({}y{})", "(".repeat(9), ")".repeat(9)))
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let variable = session
+            .eval_code_with_output_capture("quote(x)")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let held = access.with_arena(|arena| arena.workspace_bytes())?;
+            let kernel = Kernel::new(access, |_, _| Err(invalid("unused installer")));
+            assert_eq!(kernel.derive(&expression, &variable)?.try_real_elt(0)?, 0.);
+            assert!(kernel.active.borrow().is_empty());
+            assert!(kernel.active.borrow().capacity() >= 16);
+            let mut result = kernel.parentheses(&expression)?;
+            for _ in 0..9 {
+                assert!(result.try_car()?.try_printname()?.try_char_eq(b"(")?);
+                result = result.try_cdr()?.try_car()?.into_owned()?;
+            }
+            assert!(result.try_printname()?.try_char_eq(b"y")?);
+            assert!(kernel.active.borrow().is_empty());
+            let path_bytes = kernel.active.borrow().capacity() * size_of::<NodeLink>();
+            assert_eq!(
+                kernel.active_workspace.borrow().as_ref().unwrap().bytes(),
+                path_bytes
+            );
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                held + path_bytes
+            );
+            drop(result);
+            drop(kernel);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
 
     #[test]
     fn parentheses_frame_denial_releases_workspace_and_allows_recovery() {
