@@ -289,21 +289,78 @@ pub unsafe fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 
 /// R's `enc2native(x)` — normalize character encodings to the native runtime encoding.
 pub unsafe fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_enc2(args) }
+    unsafe { do_enc2(args, false) }
 }
 
 /// R's `enc2utf8(x)` — normalize character encodings to UTF-8.
 pub unsafe fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_enc2(args) }
+    unsafe { do_enc2(args, true) }
 }
 
-unsafe fn do_enc2(args: SEXP) -> SEXP {
+unsafe fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
             base_error("argument is not a character vector");
         }
-        crate::mainutils::duplicate::duplicate(x)
+        let _x_root = protect(x);
+        let out = crate::mainutils::duplicate::duplicate(x);
+        let _out_root = protect(out);
+        if normalize_utf8 {
+            for i in 0..XLENGTH(x) {
+                let source = STRING_ELT(x, i);
+                if source.is_null()
+                    || source == crate::sexp::globals::R_NaString()
+                    || crate::sexp::accessors::getCharCE(source) != crate::sexp::encoding::CE_NATIVE
+                {
+                    continue;
+                }
+                let len = crate::sexp::accessors::LENGTH(source);
+                if len <= 0 {
+                    continue;
+                }
+                let byte_len = len as usize;
+                let valid_non_ascii_utf8 = {
+                    let bytes = std::slice::from_raw_parts(
+                        crate::sexp::accessors::CHAR(source) as *const u8,
+                        byte_len,
+                    );
+                    !bytes.is_ascii() && std::str::from_utf8(bytes).is_ok()
+                };
+                if !valid_non_ascii_utf8 {
+                    continue;
+                }
+                let Some(mut _reservation) =
+                    crate::sexp::memory::with_arena(|arena| arena.reserve_workspace(byte_len))
+                else {
+                    base_error("cannot allocate UTF-8 conversion workspace");
+                };
+                let mut snapshot = Vec::new();
+                if snapshot.try_reserve_exact(byte_len).is_err() {
+                    base_error("cannot allocate UTF-8 conversion workspace");
+                }
+                // Reconcile the reservation to the actual Vec capacity before
+                // copying the source payload into the admitted snapshot.
+                if _reservation.try_resize(snapshot.capacity()).is_none() {
+                    base_error("cannot allocate UTF-8 conversion workspace");
+                }
+                let bytes = std::slice::from_raw_parts(
+                    crate::sexp::accessors::CHAR(source) as *const u8,
+                    byte_len,
+                );
+                snapshot.extend_from_slice(bytes);
+                // Rf_mkCharLen infers the UTF-8 mark for valid non-ASCII
+                // bytes. Snapshot first so no CHARSXP payload borrow spans an
+                // allocation; keep the source character and attributes intact.
+                let converted =
+                    crate::sexp::constructors::Rf_mkCharLen(snapshot.as_ptr().cast(), len);
+                if converted.is_null() {
+                    base_error("cannot allocate UTF-8 character");
+                }
+                crate::sexp::accessors::SET_STRING_ELT(out, i, converted);
+            }
+        }
+        out
     }
 }
 
