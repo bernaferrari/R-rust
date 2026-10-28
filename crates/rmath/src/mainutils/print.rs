@@ -938,9 +938,11 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
             match enter_print_value(s) {
                 Some(_guard) => PrintObjectS4(s, data),
                 None => {
-                    // showDefault calls print(object, useS4=FALSE). If that
-                    // still reaches PrintObject, do not eval show() again.
-                    print_s4_data_part(s, data);
+                    // An explicit print(object) from a custom show method
+                    // dispatches again in GNU R; options(expressions) owns
+                    // the recursion error. showDefault's useS4=FALSE takes
+                    // PrintValueRec_reroot and never enters this branch.
+                    PrintObjectS4(s, data);
                 }
             }
         } else {
