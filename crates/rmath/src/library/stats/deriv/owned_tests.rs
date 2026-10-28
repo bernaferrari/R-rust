@@ -237,6 +237,8 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
             } else if binary_frame == 2 {
                 let left = call(&owner, "*", &[symbol(&owner, "y"), x]);
                 call(&owner, "/", &[left, tangent])
+            } else if binary_frame == 3 {
+                call(&owner, "^", &[x.clone(), power.clone()])
             } else {
                 call(&owner, "+", &[symbol(&owner, "y"), tangent])
             };
@@ -336,6 +338,7 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
             let expected_head = match binary_frame {
                 1 => b"+",
                 2 => b"-",
+                3 => b"+",
                 _ => b"/",
             };
             assert!(
@@ -452,6 +455,21 @@ fn owned_derivative_quotient_frame_panic_recovers() {
 #[test]
 fn owned_derivative_quotient_frame_revocation_rejects_success() {
     collecting_derivative(2, false, 2);
+}
+
+#[test]
+fn owned_derivative_power_frame_gc_retains_first_term() {
+    collecting_derivative(0, false, 3);
+}
+
+#[test]
+fn owned_derivative_power_frame_panic_recovers() {
+    collecting_derivative(1, false, 3);
+}
+
+#[test]
+fn owned_derivative_power_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 3);
 }
 
 #[test]
@@ -1513,6 +1531,232 @@ fn owned_derivative_deep_product_quotient_subprocess() {
         .arg(
             "library::stats::deriv::owned_tests::owned_derivative_deep_product_quotient_subprocess",
         )
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "GNU shape and numerical oracle checks run natively")]
+fn owned_derivative_power_shapes_and_construction_order() {
+    let mut session = RSession::new_without_default_packages();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let variable = code(&mut session, "'x'");
+    for (source, expected, value) in [
+        ("x^2", "2 * x", "4"),
+        ("x^y", "x^(y - 1) * y", "2^(3-1) * 3"),
+        ("y^x", "y^x * log(y)", "3^2 * log(3)"),
+    ] {
+        let expression = code(&mut session, &format!("quote({source})"));
+        let args = arguments(&owner, &expression, &variable);
+        let derivative = session.with_active(|| unsafe {
+            session
+                .sexp(super::do_d(args.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        assert!(session.define_var("saved_derivative", derivative));
+        assert!(
+            code(
+                &mut session,
+                &format!("identical(saved_derivative, quote({expected}))")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "shape for {source}"
+        );
+        assert!(
+            code(
+                &mut session,
+                &format!("x <- 2; y <- 3; abs(eval(saved_derivative) - ({value})) < 1e-12")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "value for {source}"
+        );
+    }
+
+    // For symbolic exponents GNU finishes D(base) before D(exponent).
+    let expression = code(&mut session, "quote(foo(x)^bar(x))");
+    let args = arguments(&owner, &expression, &variable);
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    assert!(
+        error
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap()
+            .message
+            .contains("Function 'foo' is not in the derivatives table")
+    );
+
+    // As in GNU, a missing exponent is reported before traversing the base.
+    let left = call(&owner, "foo", &[symbol(&owner, "x")]);
+    let expression = call(&owner, "^", &[left]);
+    let args = arguments(&owner, &expression, &variable);
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    assert!(
+        error
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap()
+            .message
+            .contains("invalid binary derivative expression")
+    );
+}
+
+#[test]
+fn owned_derivative_power_cycles_reject_and_recover() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let x = symbol(&owner, "x");
+    let y = symbol(&owner, "y");
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let expression = call(&owner, "^", &[x.clone(), y]);
+    let first_cell = expression.try_cdr().unwrap().into_owned().unwrap();
+    let mut writable = crate::sexp::object::SexpMut::try_from_checked(first_cell).unwrap();
+    writable.try_set_pairlist_car(&expression).unwrap();
+    drop(writable);
+    let args = arguments(&owner, &expression, &variable);
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    assert!(
+        error
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap()
+            .message
+            .contains("cyclic derivative expression")
+    );
+    let args = arguments(&owner, &x, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 1.);
+}
+
+#[test]
+fn owned_derivative_power_frame_admission_denial_recovers() {
+    let mut session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let y = symbol(&owner, "y");
+    let exponent = numeric(&owner, 2.);
+    let mut expression = y.clone();
+    for _ in 0..64 {
+        expression = call(&owner, "^", &[expression, exponent.clone()]);
+    }
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let preinstalled: Vec<_> = ["+", "-", "*", "/", "^"]
+        .into_iter()
+        .map(|operator| symbol(&owner, operator))
+        .collect();
+    let prior = session.arena_budget();
+    let used = crate::sexp::owner::with_runtime(&owner, |access| {
+        access.with_arena(|arena| arena.total_bytes_allocated())
+    })
+    .unwrap()
+    .unwrap();
+    session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+        used + 8192,
+        prior.max_nodes,
+    ));
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    let message = error
+        .downcast::<crate::sexp::context::RError>()
+        .unwrap()
+        .message;
+    assert!(
+        message.contains("cannot inspect derivative expression path")
+            || message.contains("cannot retain derivative frames")
+            || message.contains("session memory limit"),
+        "{message}"
+    );
+    drop(preinstalled);
+    session.set_arena_budget(prior);
+    let args = arguments(&owner, &y, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+}
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_power_traversal_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_POWER_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let y = symbol(&owner, "y");
+                let mut expression = y.clone();
+                let exponent = numeric(&owner, 2.);
+                for index in 0..1536 {
+                    expression = if index % 2 == 0 {
+                        call(&owner, "^", &[expression, exponent.clone()])
+                    } else {
+                        call(&owner, "^", &[y.clone(), expression])
+                    };
+                }
+                let variable = owner
+                    .node_factory()
+                    .unwrap()
+                    .strings(&["x"])
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let args = arguments(&owner, &expression, &variable);
+                let result = session.with_active(|| unsafe {
+                    session
+                        .sexp(super::do_d(args.as_raw()))
+                        .unwrap()
+                        .into_owned()
+                        .unwrap()
+                });
+                assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_power_traversal_subprocess")
         .args(["--exact", "--nocapture"])
         .env(CHILD, "1")
         .output()

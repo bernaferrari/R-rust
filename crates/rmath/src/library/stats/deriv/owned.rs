@@ -96,6 +96,17 @@ enum DerivativeOperator {
     Minus,
     Multiply,
     Divide,
+    PowerNumeric {
+        exponent: Value,
+        lowered: f64,
+    },
+    PowerSymbolicBase {
+        first_power: Value,
+    },
+    PowerSymbolicExponent {
+        second_power: Value,
+        log_base: Value,
+    },
     Sin(Value),
     Cos(Value),
     Tan,
@@ -489,6 +500,34 @@ where
                             }
                             Some(DerivativeOperator::Divide)
                         }
+                        ("^", _) => {
+                            let exponent = call
+                                .arguments
+                                .get(1)
+                                .ok_or_else(|| invalid("invalid binary derivative expression"))?
+                                .clone();
+                            if matches!(
+                                exponent.typeof_(),
+                                SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
+                            ) {
+                                let exponent_value = self
+                                    .numeric(&exponent)?
+                                    .unwrap_or(crate::sexp::ffi::NA_REAL);
+                                let lowered = if crate::sexp::ffi::is_na_real(exponent_value) {
+                                    crate::sexp::ffi::NA_REAL
+                                } else {
+                                    exponent_value - 1.
+                                };
+                                Some(DerivativeOperator::PowerNumeric { exponent, lowered })
+                            } else {
+                                // GNU constructs a^(b-1) before traversing D(a).
+                                let lowered =
+                                    self.simplify("-", exponent.clone(), Some(self.scalar(1.)?))?;
+                                let first_power =
+                                    self.simplify("^", first.clone(), Some(lowered))?;
+                                Some(DerivativeOperator::PowerSymbolicBase { first_power })
+                            }
+                        }
                         ("sin", _) => Some(DerivativeOperator::Sin(
                             self.call("cos", std::slice::from_ref(&first))?,
                         )),
@@ -548,6 +587,24 @@ where
                 let Some(frame) = frames.last_mut() else {
                     return Ok(result);
                 };
+                if let DerivativeOperator::PowerSymbolicBase { first_power } = &frame.operator {
+                    let first_power = first_power.clone();
+                    let base = frame.call.arguments[0].clone();
+                    let exponent = frame.call.arguments[1].clone();
+                    // Match the recursive GNU sequence: finish the base term,
+                    // then construct a^b and log(a), before visiting D(b).
+                    let factor = self.simplify("*", exponent.clone(), Some(result))?;
+                    let first_term = self.simplify("*", first_power, Some(factor))?;
+                    let second_power = self.simplify("^", base.clone(), Some(exponent.clone()))?;
+                    let log_base = self.call("log", &[base])?;
+                    frame.operator = DerivativeOperator::PowerSymbolicExponent {
+                        second_power,
+                        log_base,
+                    };
+                    frame.first = Some(first_term);
+                    current = exponent;
+                    break;
+                }
                 if matches!(
                     &frame.operator,
                     DerivativeOperator::Plus
@@ -624,6 +681,32 @@ where
                             Some(second),
                         )?
                     }
+                    DerivativeOperator::PowerNumeric { exponent, lowered } => {
+                        let power = self.simplify(
+                            "^",
+                            frame.call.arguments[0].clone(),
+                            Some(self.scalar(lowered)?),
+                        )?;
+                        let product = self.simplify("*", result, Some(power))?;
+                        self.simplify("*", exponent, Some(product))?
+                    }
+                    DerivativeOperator::PowerSymbolicBase { .. } => {
+                        unreachable!("symbolic power base must visit its exponent")
+                    }
+                    DerivativeOperator::PowerSymbolicExponent {
+                        second_power,
+                        log_base,
+                    } => {
+                        let factor = self.simplify("*", log_base, Some(result))?;
+                        let second = self.simplify("*", second_power, Some(factor))?;
+                        self.simplify(
+                            "+",
+                            frame
+                                .first
+                                .expect("symbolic power first term just computed"),
+                            Some(second),
+                        )?
+                    }
                 };
                 self.active.borrow_mut().pop();
             }
@@ -648,36 +731,6 @@ where
                 .ok_or_else(|| invalid("invalid binary derivative expression"))
         };
         match function.as_str() {
-            "^" => {
-                let b = binary()?;
-                if matches!(
-                    b.typeof_(),
-                    SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
-                ) {
-                    let exponent = self.numeric(&b)?.unwrap_or(crate::sexp::ffi::NA_REAL);
-                    let lowered = if crate::sexp::ffi::is_na_real(exponent) {
-                        crate::sexp::ffi::NA_REAL
-                    } else {
-                        exponent - 1.
-                    };
-                    let first = self.derive(&a, variable)?;
-                    let power = self.simplify("^", a, Some(self.scalar(lowered)?))?;
-                    let product = self.simplify("*", first, Some(power))?;
-                    self.simplify("*", b, Some(product))
-                } else {
-                    // Preserve GNU's construction order and simplification rules:
-                    // a^(b-1) * (b * D(a)) + a^b * (log(a) * D(b)).
-                    let exponent = self.simplify("-", b.clone(), Some(self.scalar(1.)?))?;
-                    let power = self.simplify("^", a.clone(), Some(exponent))?;
-                    let factor = self.simplify("*", b.clone(), Some(self.derive(&a, variable)?))?;
-                    let first = self.simplify("*", power, Some(factor))?;
-                    let power = self.simplify("^", a.clone(), Some(b.clone()))?;
-                    let log = self.call("log", &[a])?;
-                    let factor = self.simplify("*", log, Some(self.derive(&b, variable)?))?;
-                    let second = self.simplify("*", power, Some(factor))?;
-                    self.simplify("+", first, Some(second))
-                }
-            }
             "sqrt" => {
                 let power = self.call("^", &[a, self.scalar(0.5)?])?;
                 self.derive(&power, variable)
