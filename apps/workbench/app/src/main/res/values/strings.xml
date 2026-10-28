@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">R Workbench</string>
+    <string name="plots_title">Plots</string>
+    <plurals name="plot_session_count">
+        <item quantity="one">%1$d plot in this session</item>
+        <item quantity="other">%1$d plots in this session</item>
+    </plurals>
+    <string name="plot_render">Render</string>
+    <string name="plot_zoom_in">Zoom in on plot</string>
+    <string name="plot_zoom_out">Zoom out of plot</string>
+    <string name="plot_zoom_percent">%1$d%%</string>
+    <string name="plot_reset_zoom">Reset plot zoom</string>
+    <string name="plot_export_png">Export plot as PNG</string>
+    <string name="plot_share">Share plot</string>
+    <string name="plot_history_item">Plot %1$d</string>
+    <string name="plot_image_description">R plot, %1$d by %2$d pixels</string>
+    <string name="plot_empty_state">Run plotting code or choose Render.</string>
 </resources>
