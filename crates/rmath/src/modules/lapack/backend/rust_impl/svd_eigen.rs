@@ -18,12 +18,16 @@ pub unsafe fn dgesdd_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
+        let jobz_byte = (*jobz).to_ascii_uppercase();
+        if !matches!(jobz_byte, b'A' | b'S' | b'O' | b'N') {
+            *info = -1;
+            return;
+        }
         let m = *m as usize;
         let n = *n as usize;
         let lda = *lda as usize;
         let ldu_val = *ldu as usize;
         let ldvt_val = *ldvt as usize;
-        let jobz_byte = *jobz;
         let lwork_val = *lwork;
 
         if m == 0 || n == 0 {
@@ -81,7 +85,15 @@ pub unsafe fn dgesdd_(
                         let vt_mat = v_mat.transpose();
                         write_matref_f64(vt_mat, vt, n, n, ldvt_val);
                     }
-                    b'S' | b's' | _ => {
+                    b'O' if m >= n => {
+                        write_matref_f64(u_mat, a, m, n, lda);
+                        write_matref_f64(v_mat.transpose(), vt, n, n, ldvt_val);
+                    }
+                    b'O' => {
+                        write_matref_f64(u_mat, u, m, m, ldu_val);
+                        write_matref_f64(v_mat.transpose(), a, m, n, lda);
+                    }
+                    b'S' => {
                         // Thin: U (m×min), VT (min×n)
                         let mut u_thin = Mat::zeros(m, min_mn);
                         for j in 0..min_mn {
@@ -100,6 +112,7 @@ pub unsafe fn dgesdd_(
                         }
                         write_owned_f64(&vt_thin, vt, min_mn, n, ldvt_val);
                     }
+                    _ => unreachable!("validated SVD vector mode"),
                 }
             }
         }

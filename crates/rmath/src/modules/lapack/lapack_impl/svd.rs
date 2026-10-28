@@ -81,6 +81,30 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
             crate::sexp::context::r_error("invalid matrix dimensions or length");
         }
 
+        let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
+        // Bound only referenced output footprints; overwrite mode stores one
+        // vector side in x_copy. Padding and unused outputs remain accepted.
+        let (required_u_cols, required_vt_rows) = match (*ju).to_ascii_uppercase() {
+            b'A' => (Some(n), Some(p)),
+            b'S' => (Some(min_np), Some(min_np)),
+            b'O' if n >= p => (None, Some(p)),
+            b'O' => (Some(n), None),
+            b'N' => (None, None),
+            _ => crate::sexp::context::r_error("error code from Lapack routine 'dgesdd'"),
+        };
+        if n > 0 && p > 0 {
+            if required_u_cols.is_some_and(|columns| ldu < n || u_cols < columns) {
+                crate::sexp::context::r_error(
+                    "'u' is too small for the requested singular vectors",
+                );
+            }
+            if required_vt_rows.is_some_and(|rows| ldvt < rows || vt_cols < p) {
+                crate::sexp::context::r_error(
+                    "'vt' is too small for the requested singular vectors",
+                );
+            }
+        }
+
         let Some(scratch_bytes) = super::workspace_size::svd_scratch_bytes(len, min_np as usize)
         else {
             crate::sexp::context::r_error("matrix dimensions are too large");
@@ -102,7 +126,6 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
         }
         let mut iwork = vec![0 as c_int; iwork_len];
 
-        let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
         let mut tmp: f64 = 0.0;
         let mut info: c_int = 0;
         let mut lwork: c_int = -1;
