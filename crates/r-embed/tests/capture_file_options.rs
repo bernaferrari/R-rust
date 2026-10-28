@@ -38,6 +38,12 @@ fn capture_file_message_and_split_modes() {
 }
 
 #[test]
+fn capture_split_tees_to_an_already_active_output_sink() {
+    let mut s = RSession::new().unwrap();
+    assert_eq!(s.eval("local({f<-tempfile();sink(f);x<-capture.output(cat('tee\\n'),split=TRUE);sink();identical(x,'tee')&&identical(readLines(f),'tee')})").unwrap().trim(), "[1] TRUE");
+}
+
+#[test]
 fn sessions_allocate_distinct_uncreated_tempfile_names() {
     let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
     let threads = (0..8)
