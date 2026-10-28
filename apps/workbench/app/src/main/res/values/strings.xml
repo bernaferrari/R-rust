@@ -16,4 +16,24 @@
     <string name="plot_history_item">Plot %1$d</string>
     <string name="plot_image_description">R plot, %1$d by %2$d pixels</string>
     <string name="plot_empty_state">Run plotting code or choose Render.</string>
+    <string name="editor_save">Save script (Ctrl+S)</string>
+    <string name="editor_run">Run</string>
+    <string name="editor_more_actions">More editor actions</string>
+    <string name="editor_run_file">Run entire script</string>
+    <string name="editor_open">Open script</string>
+    <string name="editor_import_data">Import data</string>
+    <string name="editor_export">Export script</string>
+    <string name="editor_render_plot">Render plot</string>
+    <string name="editor_find_replace">Find and replace</string>
+    <string name="editor_export_report">Export HTML report</string>
+    <string name="editor_find">Find</string>
+    <string name="editor_replace_with">Replace with</string>
+    <string name="editor_find_next">Next</string>
+    <string name="editor_replace_all">Replace all</string>
+    <string name="editor_close_search">Close</string>
+    <string name="editor_code_label">R script editor</string>
+    <string name="editor_unsaved_changes">Unsaved changes</string>
+    <string name="editor_saved">Saved</string>
+    <string name="editor_dirty_file_name">%1$s •</string>
+    <string name="editor_diagnostic_line">Line %1$d: %2$s</string>
 </resources>

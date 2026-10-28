@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -47,6 +48,13 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
@@ -54,6 +62,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rstudio.mobile.R
 import com.rstudio.mobile.util.RSyntaxHighlighter
 import com.rstudio.mobile.util.executionTarget
 import com.rstudio.mobile.runtime.Diagnostic
@@ -83,6 +92,9 @@ fun ScriptEditor(
     var replacement by remember { mutableStateOf("") }
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
+    val editorLabel = stringResource(R.string.editor_code_label)
+    val documentState = stringResource(if (isDirty) R.string.editor_unsaved_changes else R.string.editor_saved)
+    val actionModifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
 
     LaunchedEffect(code) {
         if (code != editor.text) {
@@ -91,6 +103,7 @@ fun ScriptEditor(
     }
 
     fun runTarget() {
+        if (isRunning) return
         val selection = editor.selection
         onRunCode(executionTarget(editor.text, selection.start, selection.end))
     }
@@ -110,56 +123,59 @@ fun ScriptEditor(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = fileName + if (isDirty) " •" else "",
+                    text = if (isDirty) stringResource(R.string.editor_dirty_file_name, fileName) else fileName,
+                    modifier = Modifier.semantics { stateDescription = documentState },
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                 )
                 Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onSaveScript, enabled = !isRunning) {
-                Icon(Icons.Default.Save, contentDescription = "Save script (Ctrl+S)")
+            IconButton(onClick = onSaveScript, enabled = !isRunning, modifier = actionModifier) {
+                Icon(Icons.Default.Save, contentDescription = stringResource(R.string.editor_save))
             }
-            FilledTonalButton(onClick = ::runTarget, enabled = !isRunning) {
+            FilledTonalButton(onClick = ::runTarget, enabled = !isRunning, modifier = actionModifier) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Text("Run")
+                Text(stringResource(R.string.editor_run))
             }
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More editor actions")
+                IconButton(onClick = { menuExpanded = true }, modifier = actionModifier) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.editor_more_actions))
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("Run entire script") },
+                        text = { Text(stringResource(R.string.editor_run_file)) },
                         leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+                        enabled = !isRunning,
                         onClick = { menuExpanded = false; onRunFile() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Open script") },
+                        text = { Text(stringResource(R.string.editor_open)) },
                         leadingIcon = { Icon(Icons.Default.UploadFile, contentDescription = null) },
                         onClick = { menuExpanded = false; onOpenScript() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Import data") },
+                        text = { Text(stringResource(R.string.editor_import_data)) },
                         leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
                         onClick = { menuExpanded = false; onImportCsv() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Export script") },
+                        text = { Text(stringResource(R.string.editor_export)) },
                         leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) },
                         onClick = { menuExpanded = false; onExportScript() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Render plot") },
+                        text = { Text(stringResource(R.string.editor_render_plot)) },
                         leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                        enabled = !isRunning,
                         onClick = { menuExpanded = false; onRenderPlot() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Find and replace") },
+                        text = { Text(stringResource(R.string.editor_find_replace)) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                         onClick = { menuExpanded = false; searchVisible = true },
                     )
                     DropdownMenuItem(
-                        text = { Text("Export HTML report") },
+                        text = { Text(stringResource(R.string.editor_export_report)) },
                         leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
                         onClick = { menuExpanded = false; onExportReport() },
                     )
@@ -170,34 +186,37 @@ fun ScriptEditor(
         HorizontalDivider()
 
         if (searchVisible) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Find") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = replacement,
-                    onValueChange = { replacement = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Replace with") },
-                    singleLine = true,
-                )
-                TextButton(onClick = ::findNext) { Text("Next") }
-                TextButton(onClick = {
-                    if (searchQuery.isNotEmpty()) {
-                        val replaced = editor.text.replace(searchQuery, replacement, ignoreCase = false)
-                        editor = TextFieldValue(replaced, TextRange(replaced.length))
-                        onCodeChange(replaced)
-                    }
-                }) { Text("All") }
-                TextButton(onClick = { searchVisible = false }) { Text("Close") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text(stringResource(R.string.editor_find)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = replacement,
+                        onValueChange = { replacement = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text(stringResource(R.string.editor_replace_with)) },
+                        singleLine = true,
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    TextButton(onClick = ::findNext, modifier = actionModifier) { Text(stringResource(R.string.editor_find_next)) }
+                    TextButton(onClick = {
+                        if (searchQuery.isNotEmpty()) {
+                            val replaced = editor.text.replace(searchQuery, replacement, ignoreCase = false)
+                            editor = TextFieldValue(replaced, TextRange(replaced.length))
+                            onCodeChange(replaced)
+                        }
+                    }, modifier = actionModifier) { Text(stringResource(R.string.editor_replace_all)) }
+                    TextButton(onClick = { searchVisible = false }, modifier = actionModifier) { Text(stringResource(R.string.editor_close_search)) }
+                }
             }
         }
 
@@ -205,7 +224,10 @@ fun ScriptEditor(
             Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
                 diagnostics.forEach { diagnostic ->
                     Text(
-                        text = (diagnostic.line?.let { "Line $it: " } ?: "") + diagnostic.message,
+                        text = diagnostic.line?.let { line ->
+                            stringResource(R.string.editor_diagnostic_line, line, diagnostic.message)
+                        } ?: diagnostic.message,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -219,8 +241,8 @@ fun ScriptEditor(
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) return@onPreviewKeyEvent false
                     when {
-                        event.key == Key.S -> { onSaveScript(); true }
-                        event.key == Key.Enter && event.isShiftPressed -> { onRunFile(); true }
+                        event.key == Key.S -> { if (!isRunning) onSaveScript(); true }
+                        event.key == Key.Enter && event.isShiftPressed -> { if (!isRunning) onRunFile(); true }
                         event.key == Key.Enter -> { runTarget(); true }
                         else -> false
                     }
@@ -229,6 +251,7 @@ fun ScriptEditor(
             Text(
                 text = (1..editor.text.lineSequence().count()).joinToString("\n"),
                 modifier = Modifier
+                    .clearAndSetSemantics {}
                     .width(48.dp)
                     .fillMaxHeight()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -243,9 +266,14 @@ fun ScriptEditor(
             )
             BasicTextField(
                 value = editor,
-                onValueChange = { next -> editor = next; onCodeChange(next.text) },
+                onValueChange = { next ->
+                    val textChanged = next.text != editor.text
+                    editor = next
+                    if (textChanged) onCodeChange(next.text)
+                },
                 modifier = Modifier
                     .fillMaxSize()
+                    .semantics { contentDescription = editorLabel }
                     .verticalScroll(verticalScroll)
                     .horizontalScroll(horizontalScroll)
                     .padding(10.dp),
