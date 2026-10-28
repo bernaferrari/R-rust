@@ -127,6 +127,7 @@ enum DerivativeOperator {
     Cospi(Value),
     Tanpi(Value),
     Gamma(Value),
+    Factorial(Value),
     GammaDerivative(&'static str),
     Trigamma,
     Psigamma(Value),
@@ -493,7 +494,7 @@ where
                     self.push_active(&current)?;
                     let call = snapshot(self.access, &current)?;
                     let function = name(&call.head)?;
-                    let first = call
+                    let mut first = call
                         .arguments
                         .first()
                         .ok_or_else(|| invalid("invalid derivative expression"))?
@@ -581,6 +582,24 @@ where
                             let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
                             Some(DerivativeOperator::Atan(denominator))
                         }
+                        ("sqrt", _) => {
+                            // Retain the original sqrt as a transparent frame,
+                            // then traverse the synthetic power with the ordinary
+                            // numeric-power rule and its own active-path entry.
+                            first = self.call("^", &[first.clone(), self.scalar(0.5)?])?;
+                            Some(DerivativeOperator::Transparent)
+                        }
+                        ("factorial", _) | ("lfactorial", _) => {
+                            let shifted =
+                                self.simplify("+", first.clone(), Some(self.integer(1)?))?;
+                            let digamma = self.call("digamma", &[shifted])?;
+                            let factor = if function == "factorial" {
+                                self.simplify("*", current.clone(), Some(digamma))?
+                            } else {
+                                digamma
+                            };
+                            Some(DerivativeOperator::Factorial(factor))
+                        }
                         ("gamma", _) => {
                             let digamma = self.call("digamma", std::slice::from_ref(&first))?;
                             let product = self.simplify("*", current.clone(), Some(digamma))?;
@@ -663,9 +682,10 @@ where
                         current = first;
                         continue;
                     }
-                    let result = self.derive_call(&current, variable, call, function)?;
-                    self.active.borrow_mut().pop();
-                    result
+                    return Err(invalid(format!(
+                        "Function '{}' is not in the derivatives table",
+                        derivative_function_name(&function)
+                    )));
                 }
                 _ => return Err(invalid("invalid derivative expression")),
             };
@@ -746,7 +766,7 @@ where
                     DerivativeOperator::Expm1(factor) | DerivativeOperator::Pnorm(factor) => {
                         self.simplify("*", factor, Some(result))?
                     }
-                    DerivativeOperator::Gamma(product) => {
+                    DerivativeOperator::Gamma(product) | DerivativeOperator::Factorial(product) => {
                         self.simplify("*", result, Some(product))?
                     }
                     DerivativeOperator::GammaDerivative(outer) => {
@@ -876,41 +896,6 @@ where
                 };
                 self.active.borrow_mut().pop();
             }
-        }
-    }
-
-    fn derive_call(
-        &self,
-        expression: &Value,
-        variable: &Value,
-        call: Call,
-        function: String,
-    ) -> SexpResult<Value> {
-        let a = call
-            .arguments
-            .first()
-            .ok_or_else(|| invalid("invalid derivative expression"))?
-            .clone();
-        match function.as_str() {
-            "sqrt" => {
-                let power = self.call("^", &[a, self.scalar(0.5)?])?;
-                self.derive(&power, variable)
-            }
-            "lfactorial" => {
-                let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
-                let digamma = self.call("digamma", &[shifted])?;
-                self.simplify("*", self.derive(&a, variable)?, Some(digamma))
-            }
-            "factorial" => {
-                let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
-                let digamma = self.call("digamma", &[shifted])?;
-                let product = self.simplify("*", expression.clone(), Some(digamma))?;
-                self.simplify("*", self.derive(&a, variable)?, Some(product))
-            }
-            _ => Err(invalid(format!(
-                "Function '{}' is not in the derivatives table",
-                derivative_function_name(&function)
-            ))),
         }
     }
 
@@ -1287,6 +1272,9 @@ mod scratch_admission_tests {
             ("trigamma(foo(x))", vec![]),
             ("psigamma(foo(x))", vec![]),
             ("psigamma(foo(x), nu)", vec!["+"]),
+            ("sqrt(foo(x))", vec!["^"]),
+            ("factorial(foo(x))", vec!["+", "digamma", "*"]),
+            ("lfactorial(foo(x))", vec!["+", "digamma"]),
         ] {
             let expression = session
                 .eval_code_with_output_capture(&format!("quote({source})"))
@@ -1294,11 +1282,29 @@ mod scratch_admission_tests {
                 .unwrap()
                 .into_owned()
                 .unwrap();
+            // The sqrt rewrite traverses its newly constructed power call;
+            // use real function symbols so instrumentation preserves that AST.
+            let installed: Vec<_> = expected
+                .iter()
+                .map(|name| {
+                    let value = session
+                        .eval_code_with_output_capture(&format!("quote(`{name}`)"))
+                        .0
+                        .unwrap()
+                        .into_owned()
+                        .unwrap();
+                    (*name, value)
+                })
+                .collect();
             let events = RefCell::new(Vec::new());
             crate::sexp::owner::with_runtime(&owner, |access| {
                 let kernel = Kernel::new(access, |_, name| {
                     events.borrow_mut().push(name.to_owned());
-                    Ok(variable.clone())
+                    installed
+                        .iter()
+                        .find(|(expected, _)| *expected == name)
+                        .map(|(_, value)| value.clone())
+                        .ok_or_else(|| invalid("unexpected derivative constructor"))
                 });
                 let error = kernel.derive(&expression, &variable).unwrap_err();
                 assert!(
