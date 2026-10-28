@@ -113,6 +113,9 @@ enum DerivativeOperator {
     Cosh(Value),
     Sinh(Value),
     Tanh(Value),
+    Asin(Value),
+    Acos(Value),
+    Atan(Value),
     Exp,
     Log,
 }
@@ -549,6 +552,23 @@ where
                             let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
                             Some(DerivativeOperator::Tanh(denominator))
                         }
+                        ("asin", _) | ("acos", _) => {
+                            let square =
+                                self.simplify("^", first.clone(), Some(self.scalar(2.)?))?;
+                            let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
+                            let root = self.call("sqrt", &[radicand])?;
+                            Some(if function == "asin" {
+                                DerivativeOperator::Asin(root)
+                            } else {
+                                DerivativeOperator::Acos(root)
+                            })
+                        }
+                        ("atan", _) => {
+                            let square =
+                                self.simplify("^", first.clone(), Some(self.scalar(2.)?))?;
+                            let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
+                            Some(DerivativeOperator::Atan(denominator))
+                        }
                         ("exp", _) => Some(DerivativeOperator::Exp),
                         ("log", 1) => Some(DerivativeOperator::Log),
                         ("log", _) => {
@@ -663,6 +683,13 @@ where
                     }
                     DerivativeOperator::Tanh(denominator) => {
                         self.simplify("/", result, Some(denominator))?
+                    }
+                    DerivativeOperator::Asin(root) | DerivativeOperator::Atan(root) => {
+                        self.simplify("/", result, Some(root))?
+                    }
+                    DerivativeOperator::Acos(root) => {
+                        let quotient = self.simplify("/", result, Some(root))?;
+                        self.simplify("-", quotient, None)?
                     }
                     DerivativeOperator::Exp => {
                         self.simplify("*", frame.expression, Some(result))?
@@ -811,24 +838,6 @@ where
                 )?;
                 let negated = self.simplify("-", a, None)?;
                 self.simplify("*", negated, Some(inner))
-            }
-            "asin" => {
-                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
-                let root = self.call("sqrt", &[radicand])?;
-                self.simplify("/", self.derive(&a, variable)?, Some(root))
-            }
-            "acos" => {
-                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
-                let root = self.call("sqrt", &[radicand])?;
-                let quotient = self.simplify("/", self.derive(&a, variable)?, Some(root))?;
-                self.simplify("-", quotient, None)
-            }
-            "atan" => {
-                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
-                self.simplify("/", self.derive(&a, variable)?, Some(denominator))
             }
             "expm1" => self.simplify(
                 "*",
