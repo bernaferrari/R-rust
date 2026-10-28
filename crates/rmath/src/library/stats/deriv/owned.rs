@@ -123,6 +123,9 @@ enum DerivativeOperator {
     LogBase(f64),
     Pnorm(Value),
     Dnorm(Value),
+    Sinpi(Value),
+    Cospi(Value),
+    Tanpi(Value),
 }
 
 struct DerivativeFrame {
@@ -574,6 +577,9 @@ where
                             let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
                             Some(DerivativeOperator::Atan(denominator))
                         }
+                        ("sinpi", _) => Some(DerivativeOperator::Sinpi(self.symbol("pi")?)),
+                        ("cospi", _) => Some(DerivativeOperator::Cospi(self.symbol("pi")?)),
+                        ("tanpi", _) => Some(DerivativeOperator::Tanpi(self.symbol("pi")?)),
                         ("expm1", _) => Some(DerivativeOperator::Expm1(
                             self.call("exp", std::slice::from_ref(&first))?,
                         )),
@@ -712,6 +718,30 @@ where
                     }
                     DerivativeOperator::Expm1(factor) | DerivativeOperator::Pnorm(factor) => {
                         self.simplify("*", factor, Some(result))?
+                    }
+                    DerivativeOperator::Sinpi(pi) => {
+                        let factor = self.simplify("*", pi, Some(result))?;
+                        self.simplify(
+                            "*",
+                            self.call("cospi", std::slice::from_ref(&frame.call.arguments[0]))?,
+                            Some(factor),
+                        )?
+                    }
+                    DerivativeOperator::Cospi(pi) => {
+                        let factor = self.simplify("*", pi, Some(result))?;
+                        let negated = self.simplify("-", factor, None)?;
+                        self.simplify(
+                            "*",
+                            self.call("sinpi", std::slice::from_ref(&frame.call.arguments[0]))?,
+                            Some(negated),
+                        )?
+                    }
+                    DerivativeOperator::Tanpi(pi) => {
+                        let numerator = self.simplify("*", pi, Some(result))?;
+                        let cosine =
+                            self.call("cospi", std::slice::from_ref(&frame.call.arguments[0]))?;
+                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        self.simplify("/", numerator, Some(denominator))?
                     }
                     DerivativeOperator::Dnorm(density) => {
                         let inner = self.simplify("*", density, Some(result))?;
@@ -866,32 +896,6 @@ where
                     self.derive(&a, variable)?,
                     Some(self.call("psigamma", &[a, next])?),
                 )
-            }
-            "cospi" => {
-                let factor =
-                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
-                let negated = self.simplify("-", factor, None)?;
-                self.simplify(
-                    "*",
-                    self.call("sinpi", std::slice::from_ref(&a))?,
-                    Some(negated),
-                )
-            }
-            "sinpi" => {
-                let factor =
-                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
-                self.simplify(
-                    "*",
-                    self.call("cospi", std::slice::from_ref(&a))?,
-                    Some(factor),
-                )
-            }
-            "tanpi" => {
-                let numerator =
-                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
-                let cosine = self.call("cospi", std::slice::from_ref(&a))?;
-                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                self.simplify("/", numerator, Some(denominator))
             }
             "lfactorial" => {
                 let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
@@ -1275,6 +1279,9 @@ mod scratch_admission_tests {
             ("log1p(foo(x))", vec![]),
             ("log2(foo(x))", vec![]),
             ("log10(foo(x))", vec![]),
+            ("sinpi(foo(x))", vec!["pi"]),
+            ("cospi(foo(x))", vec!["pi"]),
+            ("tanpi(foo(x))", vec!["pi"]),
         ] {
             let expression = session
                 .eval_code_with_output_capture(&format!("quote({source})"))

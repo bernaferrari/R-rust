@@ -235,6 +235,9 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 13 => "log10",
                 14 => "pnorm",
                 15 => "dnorm",
+                16 => "sinpi",
+                17 => "cospi",
+                18 => "tanpi",
                 _ => "tan",
             };
             let tangent = if common_unary {
@@ -354,10 +357,10 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 1 => b"+",
                 2 => b"-",
                 3 => b"+",
-                4 | 5 | 10 | 14 => b"*",
+                4 | 5 | 10 | 14 | 16 => b"*",
                 6 => b"/",
-                7 | 9 | 11 | 12 | 13 => b"/",
-                8 | 15 => b"-",
+                7 | 9 | 11 | 12 | 13 | 18 => b"/",
+                8 | 15 | 17 => b"-",
                 _ => b"/",
             };
             assert!(
@@ -379,7 +382,7 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                     "parenthesis pass rebuilds calls without incidental source roots"
                 );
             }
-            let derivative = if matches!(binary_frame, 8 | 15) {
+            let derivative = if matches!(binary_frame, 8 | 15 | 17) {
                 let mut derivative = result
                     .try_cdr()
                     .unwrap()
@@ -2613,6 +2616,276 @@ fn owned_derivative_distribution_logs_shapes_and_order() {
         );
     }
     for operator in ["expm1", "log1p", "log2", "log10", "pnorm", "dnorm"] {
+        let expression = code(&mut session, &format!("quote({operator}(foo(x)))"));
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("Function 'foo' is not in the derivatives table"),
+            "{operator}"
+        );
+    }
+}
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_pi_trig_traversal_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_PI_TRIG_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let y = symbol(&owner, "y");
+                let mut expression = y.clone();
+                let operators = ["sinpi", "cospi", "tanpi"];
+                for index in 0..2048 {
+                    expression = call(&owner, operators[index % operators.len()], &[expression]);
+                }
+                let variable = owner
+                    .node_factory()
+                    .unwrap()
+                    .strings(&["x"])
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let args = arguments(&owner, &expression, &variable);
+                let result = session.with_active(|| unsafe {
+                    session
+                        .sexp(super::do_d(args.as_raw()))
+                        .unwrap()
+                        .into_owned()
+                        .unwrap()
+                });
+                assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_pi_trig_traversal_subprocess")
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn owned_derivative_pi_trig_cycles_reject_and_recover() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let x = symbol(&owner, "x");
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    for operator in ["sinpi", "cospi", "tanpi"] {
+        let expression = call(&owner, operator, std::slice::from_ref(&x));
+        let first_cell = expression.try_cdr().unwrap().into_owned().unwrap();
+        let mut writable = crate::sexp::object::SexpMut::try_from_checked(first_cell).unwrap();
+        writable.try_set_pairlist_car(&expression).unwrap();
+        drop(writable);
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("cyclic derivative expression"),
+            "{operator}"
+        );
+    }
+    let args = arguments(&owner, &x, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 1.);
+}
+
+#[test]
+fn owned_derivative_pi_trig_frame_admission_denial_recovers() {
+    let mut session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let y = symbol(&owner, "y");
+    let mut expression = y.clone();
+    for index in 0..64 {
+        expression = call(
+            &owner,
+            ["sinpi", "cospi", "tanpi"][index % 3],
+            &[expression],
+        );
+    }
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let preinstalled: Vec<_> = ["+", "-", "*", "/", "^", "pi", "sinpi", "cospi", "tanpi"]
+        .into_iter()
+        .map(|operator| symbol(&owner, operator))
+        .collect();
+    let prior = session.arena_budget();
+    let used = crate::sexp::owner::with_runtime(&owner, |access| {
+        access.with_arena(|arena| arena.total_bytes_allocated())
+    })
+    .unwrap()
+    .unwrap();
+    session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+        used + 8192,
+        prior.max_nodes,
+    ));
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    let message = error
+        .downcast::<crate::sexp::context::RError>()
+        .unwrap()
+        .message;
+    assert!(
+        message.contains("cannot inspect derivative expression path")
+            || message.contains("cannot retain derivative frames")
+            || message.contains("session memory limit"),
+        "{message}"
+    );
+    drop(preinstalled);
+    session.set_arena_budget(prior);
+    let args = arguments(&owner, &y, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+}
+
+#[test]
+fn owned_derivative_sinpi_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 16);
+}
+
+#[test]
+fn owned_derivative_sinpi_frame_panic_recovers() {
+    collecting_derivative(1, false, 16);
+}
+
+#[test]
+fn owned_derivative_sinpi_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 16);
+}
+
+#[test]
+fn owned_derivative_cospi_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 17);
+}
+
+#[test]
+fn owned_derivative_cospi_frame_panic_recovers() {
+    collecting_derivative(1, false, 17);
+}
+
+#[test]
+fn owned_derivative_cospi_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 17);
+}
+
+#[test]
+fn owned_derivative_tanpi_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 18);
+}
+
+#[test]
+fn owned_derivative_tanpi_frame_panic_recovers() {
+    collecting_derivative(1, false, 18);
+}
+
+#[test]
+fn owned_derivative_tanpi_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 18);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "GNU pi-trig shape and numerical checks run natively")]
+fn owned_derivative_pi_trig_shapes_and_order() {
+    let mut session = RSession::new_without_default_packages();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let variable = code(&mut session, "'x'");
+    for (source, expected, value) in [
+        ("sinpi(x)", "cospi(x) * pi", "cospi(0.3) * pi"),
+        ("cospi(x)", "-(sinpi(x) * pi)", "-(sinpi(0.3) * pi)"),
+        ("tanpi(x)", "pi/cospi(x)^2", "pi/cospi(0.3)^2"),
+        (
+            "sinpi(x^2)",
+            "cospi(x^2) * (pi * (2 * x))",
+            "cospi(0.3^2) * (pi * (2 * 0.3))",
+        ),
+        (
+            "cospi(x^2)",
+            "-(sinpi(x^2) * (pi * (2 * x)))",
+            "-(sinpi(0.3^2) * (pi * (2 * 0.3)))",
+        ),
+        (
+            "tanpi(x^2)",
+            "pi * (2 * x)/cospi(x^2)^2",
+            "pi * (2 * 0.3)/cospi(0.3^2)^2",
+        ),
+    ] {
+        let expression = code(&mut session, &format!("quote({source})"));
+        let args = arguments(&owner, &expression, &variable);
+        let derivative = session.with_active(|| unsafe {
+            session
+                .sexp(super::do_d(args.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        assert!(session.define_var("saved_derivative", derivative));
+        assert!(
+            code(
+                &mut session,
+                &format!("identical(saved_derivative, quote({expected}))")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "shape for {source}"
+        );
+        assert!(
+            code(
+                &mut session,
+                &format!("x <- 0.3; abs(eval(saved_derivative) - ({value})) < 1e-12")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "value for {source}"
+        );
+    }
+    for operator in ["sinpi", "cospi", "tanpi"] {
         let expression = code(&mut session, &format!("quote({operator}(foo(x)))"));
         let args = arguments(&owner, &expression, &variable);
         let error = session.with_active(|| {
