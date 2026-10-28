@@ -1,12 +1,13 @@
 use r_embed::RSession;
 
 const TSP_ASSIGNMENT_SCRIPT: &str = r##"
-    x <- ts(c(10, 20, 30), frequency=4)
+    x <- ts(rnorm(6), frequency=7)
     before <- x
-    failure <- tryCatch({ x[5] <- NA; NULL }, error=function(e) conditionMessage(e))
+    before_tsp <- tsp(x)
+    failure <- tryCatch({ x[8] <- NA; NULL }, error=function(e) conditionMessage(e))
     stopifnot(identical(failure, "only replacement of elements is allowed"))
     stopifnot(identical(x, before), identical(class(x), "ts"))
-    stopifnot(identical(tsp(x), c(1, 1.5, 4)))
+    stopifnot(identical(tsp(x), before_tsp))
 
     grown <- 1:3
     grown[5] <- 9
