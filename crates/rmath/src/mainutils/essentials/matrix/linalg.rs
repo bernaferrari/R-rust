@@ -274,7 +274,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `chol(x)` — upper Cholesky factor.
-pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = coerce_numeric_matrix(CAR(args));
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -316,6 +316,40 @@ pub unsafe fn do_chol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(pivot_s);
         let tol = Rf_ScalarReal(-1.0);
         let _t = protect(tol);
+        // GNU's native warning is attributed to the active `chol.default`
+        // method call. Prefer the runtime's current-call helper when the
+        // folded `.Internal` handler is reached from that method. The direct
+        // builtin fallback has no method frame, so construct the equivalent
+        // dispatch call by cloning the original syntax and changing only its
+        // head.
+        let method = Rf_install(c"chol.default".as_ptr());
+        let current_call = crate::mainutils::errors::condition_caller_call();
+        let has_method_call = !current_call.is_null()
+            && current_call != R_NilValue()
+            && TYPEOF(current_call) == SEXPTYPE::LANGSXP
+            && crate::sexp::accessors::CAR(current_call) == method;
+        let source_call = if has_method_call { current_call } else { call };
+        let source_call = if !source_call.is_null()
+            && source_call != R_NilValue()
+            && TYPEOF(source_call) == SEXPTYPE::LANGSXP
+        {
+            // Retain the original call owner before allocating its printable
+            // clone; no callback may turn a raw context pointer into an
+            // unrooted reference during warning construction.
+            Some(crate::sexp::context::own_control_value(source_call))
+        } else {
+            None
+        };
+        let _warning_call = if let Some(source_call) = source_call {
+            let warning_call = crate::mainutils::duplicate::Rf_duplicate(source_call.as_raw());
+            let _warning_call_root = protect(warning_call);
+            if !has_method_call && crate::sexp::accessors::CAR(warning_call) != method {
+                crate::sexp::accessors::SETCAR(warning_call, method);
+            }
+            Some(crate::mainutils::errors::warning_call_guard(warning_call))
+        } else {
+            None
+        };
         let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot_s, tol);
         let _a = protect(ans);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
