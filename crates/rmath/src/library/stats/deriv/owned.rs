@@ -89,6 +89,22 @@ struct ParenthesesFrame {
     _workspace: WorkspaceReservation,
 }
 
+#[derive(Clone, Copy)]
+enum AdditiveOperator {
+    Transparent,
+    Negate,
+    Plus,
+    Minus,
+}
+
+struct AdditiveFrame {
+    // Source and snapshot remain owned across callbacks in either child.
+    _expression: Value,
+    call: Call,
+    operator: AdditiveOperator,
+    first: Option<Value>,
+}
+
 fn workspace(access: &RuntimeAccess, bytes: usize, what: &str) -> SexpResult<WorkspaceReservation> {
     access
         .with_arena(|arena| arena.reserve_workspace(bytes))?
@@ -161,19 +177,8 @@ fn name(value: &Value) -> SexpResult<String> {
     value.try_printname()?.try_as_string()
 }
 
-struct Path<'a> {
-    active: &'a RefCell<Vec<NodeLink>>,
-    link: NodeLink,
-}
-impl Drop for Path<'_> {
-    fn drop(&mut self) {
-        let removed = self.active.borrow_mut().pop();
-        debug_assert_eq!(removed.as_ref(), Some(&self.link));
-    }
-}
-
-// A run of transparent unary calls shares the kernel's admitted path buffer.
-// Truncation unwinds the whole run on success, error, or panic.
+// Iterative traversals share the kernel's admitted path buffer.
+// Truncation unwinds the whole traversal on success, error, or panic.
 struct PathRange<'a> {
     active: &'a RefCell<Vec<NodeLink>>,
     start: usize,
@@ -226,14 +231,6 @@ where
         }
         active.push(link.clone());
         Ok(link)
-    }
-
-    fn enter(&self, value: &Value) -> SexpResult<Path<'_>> {
-        let link = self.push_active(value)?;
-        Ok(Path {
-            active: &self.active,
-            link,
-        })
     }
 
     pub(super) fn scalar(&self, value: f64) -> SexpResult<Value> {
@@ -435,318 +432,360 @@ where
         }
     }
 
-    fn derive_transparent(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
+    pub(super) fn derive(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
         let _path = PathRange {
             active: &self.active,
             start: self.active.borrow().len(),
         };
+        // Keep the old frame allocation charged until replacement succeeds.
+        let mut _frame_workspace = None;
+        let mut frames: Vec<AdditiveFrame> = Vec::new();
         let mut current = expression.clone();
-        let mut negations = 0usize;
-        while current.typeof_() == SEXPTYPE::LANGSXP {
-            let call = snapshot(self.access, &current)?;
-            let function = name(&call.head)?;
-            if !matches!(function.as_str(), "(" | "+" | "-") || call.arguments.len() != 1 {
-                break;
+        loop {
+            self.access.require_active()?;
+            self.access.domain().link(&current)?;
+            self.access.domain().link(variable)?;
+            let mut result = match current.typeof_() {
+                SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP | SEXPTYPE::CPLXSXP => {
+                    self.scalar(0.)?
+                }
+                SEXPTYPE::SYMSXP => self.scalar(if current.as_raw() == variable.as_raw() {
+                    1.
+                } else {
+                    0.
+                })?,
+                SEXPTYPE::LANGSXP => {
+                    self.push_active(&current)?;
+                    let call = snapshot(self.access, &current)?;
+                    let function = name(&call.head)?;
+                    let operator = match (function.as_str(), call.arguments.len()) {
+                        ("(" | "+", 1) => Some(AdditiveOperator::Transparent),
+                        ("-", 1) => Some(AdditiveOperator::Negate),
+                        ("+", _) => Some(AdditiveOperator::Plus),
+                        ("-", _) => Some(AdditiveOperator::Minus),
+                        _ => None,
+                    };
+                    if let Some(operator) = operator {
+                        let first = call
+                            .arguments
+                            .first()
+                            .ok_or_else(|| invalid("invalid derivative expression"))?
+                            .clone();
+                        if frames.len() == frames.capacity() {
+                            let capacity = frames
+                                .len()
+                                .checked_add(1)
+                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                            let bytes = capacity
+                                .checked_mul(size_of::<AdditiveFrame>())
+                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                            let mut next = workspace(self.access, bytes, "derivative frames")?;
+                            let mut replacement = Vec::new();
+                            replacement
+                                .try_reserve_exact(capacity)
+                                .map_err(|_| invalid("cannot retain derivative frames"))?;
+                            let actual = replacement
+                                .capacity()
+                                .checked_mul(size_of::<AdditiveFrame>())
+                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                            next.try_resize(actual)
+                                .ok_or_else(|| invalid("cannot retain derivative frames"))?;
+                            replacement.append(&mut frames);
+                            drop(std::mem::replace(&mut frames, replacement));
+                            _frame_workspace = Some(next);
+                        }
+                        frames.push(AdditiveFrame {
+                            _expression: current,
+                            call,
+                            operator,
+                            first: None,
+                        });
+                        current = first;
+                        continue;
+                    }
+                    let result = self.derive_call(&current, variable, call, function)?;
+                    self.active.borrow_mut().pop();
+                    result
+                }
+                _ => return Err(invalid("invalid derivative expression")),
+            };
+            loop {
+                let Some(frame) = frames.last_mut() else {
+                    return Ok(result);
+                };
+                if matches!(
+                    frame.operator,
+                    AdditiveOperator::Plus | AdditiveOperator::Minus
+                ) && frame.first.is_none()
+                {
+                    if let Some(second) = frame.call.arguments.get(1) {
+                        // Suspend only after D(first) succeeds. Each occurrence
+                        // is traversed independently and the left result stays rooted.
+                        current = second.clone();
+                        frame.first = Some(result);
+                        break;
+                    }
+                }
+                let frame = frames.pop().expect("frame just observed");
+                result = match frame.operator {
+                    AdditiveOperator::Transparent => result,
+                    AdditiveOperator::Negate => self.simplify("-", result, None)?,
+                    AdditiveOperator::Plus | AdditiveOperator::Minus => {
+                        let operator = if matches!(frame.operator, AdditiveOperator::Plus) {
+                            "+"
+                        } else {
+                            "-"
+                        };
+                        match frame.first {
+                            Some(first) => self.simplify(operator, first, Some(result))?,
+                            None => self.simplify(operator, result, None)?,
+                        }
+                    }
+                };
+                self.active.borrow_mut().pop();
             }
-            self.push_active(&current)?;
-            if function == "-" {
-                negations = negations
-                    .checked_add(1)
-                    .ok_or_else(|| invalid("cannot inspect derivative expression"))?;
-            }
-            current = call.arguments[0].clone();
         }
-        let mut result = self.derive(&current, variable)?;
-        // Apply every unary minus, rather than folding parity: GNU's
-        // simplifier may replace a zero or remove an existing unary call.
-        for _ in 0..negations {
-            result = self.simplify("-", result, None)?;
-        }
-        Ok(result)
     }
 
-    pub(super) fn derive(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
-        self.access.require_active()?;
-        self.access.domain().link(expression)?;
-        self.access.domain().link(variable)?;
-        match expression.typeof_() {
-            SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP | SEXPTYPE::CPLXSXP => {
-                self.scalar(0.)
+    fn derive_call(
+        &self,
+        expression: &Value,
+        variable: &Value,
+        call: Call,
+        function: String,
+    ) -> SexpResult<Value> {
+        let a = call
+            .arguments
+            .first()
+            .ok_or_else(|| invalid("invalid derivative expression"))?
+            .clone();
+        let b = call.arguments.get(1).cloned();
+        let binary = || {
+            b.clone()
+                .ok_or_else(|| invalid("invalid binary derivative expression"))
+        };
+        match function.as_str() {
+            "*" => {
+                let b = binary()?;
+                let first = self.simplify("*", self.derive(&a, variable)?, Some(b.clone()))?;
+                let second = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
+                self.simplify("+", first, Some(second))
             }
-            SEXPTYPE::SYMSXP => self.scalar(if expression.as_raw() == variable.as_raw() {
-                1.
-            } else {
-                0.
-            }),
-            SEXPTYPE::LANGSXP => {
-                let _path = self.enter(expression)?;
-                let call = snapshot(self.access, expression)?;
-                let function = name(&call.head)?;
-                let a = call
-                    .arguments
-                    .first()
-                    .ok_or_else(|| invalid("invalid derivative expression"))?
-                    .clone();
-                let b = call.arguments.get(1).cloned();
-                let binary = || {
-                    b.clone()
-                        .ok_or_else(|| invalid("invalid binary derivative expression"))
-                };
-                match function.as_str() {
-                    "(" | "+" if call.arguments.len() == 1 => self.derive_transparent(&a, variable),
-                    "-" if call.arguments.len() == 1 => {
-                        let derivative = self.derive_transparent(&a, variable)?;
-                        self.simplify("-", derivative, None)
-                    }
-                    "+" | "-" => {
-                        let first = self.derive(&a, variable)?;
-                        let second = match b {
-                            Some(value) => Some(self.derive(&value, variable)?),
-                            None => None,
-                        };
-                        self.simplify(&function, first, second)
-                    }
-                    "*" => {
-                        let b = binary()?;
-                        let first =
-                            self.simplify("*", self.derive(&a, variable)?, Some(b.clone()))?;
-                        let second = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
-                        self.simplify("+", first, Some(second))
-                    }
-                    "/" => {
-                        let b = binary()?;
-                        let first =
-                            self.simplify("/", self.derive(&a, variable)?, Some(b.clone()))?;
-                        let numerator = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
-                        let denominator = self.simplify("^", b, Some(self.scalar(2.)?))?;
-                        let second = self.simplify("/", numerator, Some(denominator))?;
-                        self.simplify("-", first, Some(second))
-                    }
-                    "^" => {
-                        let b = binary()?;
-                        if matches!(
-                            b.typeof_(),
-                            SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
-                        ) {
-                            let exponent = self.numeric(&b)?.unwrap_or(crate::sexp::ffi::NA_REAL);
-                            let lowered = if crate::sexp::ffi::is_na_real(exponent) {
-                                crate::sexp::ffi::NA_REAL
-                            } else {
-                                exponent - 1.
-                            };
-                            let first = self.derive(&a, variable)?;
-                            let power = self.simplify("^", a, Some(self.scalar(lowered)?))?;
-                            let product = self.simplify("*", first, Some(power))?;
-                            self.simplify("*", b, Some(product))
-                        } else {
-                            // Preserve GNU's construction order and simplification rules:
-                            // a^(b-1) * (b * D(a)) + a^b * (log(a) * D(b)).
-                            let exponent = self.simplify("-", b.clone(), Some(self.scalar(1.)?))?;
-                            let power = self.simplify("^", a.clone(), Some(exponent))?;
-                            let factor =
-                                self.simplify("*", b.clone(), Some(self.derive(&a, variable)?))?;
-                            let first = self.simplify("*", power, Some(factor))?;
-                            let power = self.simplify("^", a.clone(), Some(b.clone()))?;
-                            let log = self.call("log", &[a])?;
-                            let factor =
-                                self.simplify("*", log, Some(self.derive(&b, variable)?))?;
-                            let second = self.simplify("*", power, Some(factor))?;
-                            self.simplify("+", first, Some(second))
-                        }
-                    }
-                    "sin" => self.simplify(
-                        "*",
-                        self.call("cos", std::slice::from_ref(&a))?,
-                        Some(self.derive(&a, variable)?),
-                    ),
-                    "cos" => self.simplify(
-                        "*",
-                        self.call("sin", std::slice::from_ref(&a))?,
-                        Some(self.simplify("-", self.derive(&a, variable)?, None)?),
-                    ),
-                    "tan" => {
-                        let numerator = self.derive(&a, variable)?;
-                        let cosine = self.call("cos", &[a])?;
-                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                        self.simplify("/", numerator, Some(denominator))
-                    }
-                    "exp" => {
-                        self.simplify("*", expression.clone(), Some(self.derive(&a, variable)?))
-                    }
-                    "log" => {
-                        if call.arguments.len() != 1 {
-                            return Err(invalid(
-                                "only single-argument calls to log() are supported;\n  maybe use log(x,a) = log(x)/log(a)",
-                            ));
-                        }
-                        self.simplify("/", self.derive(&a, variable)?, Some(a))
-                    }
-                    "sqrt" => {
-                        let power = self.call("^", &[a, self.scalar(0.5)?])?;
-                        self.derive(&power, variable)
-                    }
-                    "gamma" => {
-                        let digamma = self.call("digamma", std::slice::from_ref(&a))?;
-                        let product = self.simplify("*", expression.clone(), Some(digamma))?;
-                        self.simplify("*", self.derive(&a, variable)?, Some(product))
-                    }
-                    "lgamma" | "digamma" => {
-                        let outer = if function == "lgamma" {
-                            "digamma"
-                        } else {
-                            "trigamma"
-                        };
-                        self.simplify(
-                            "*",
-                            self.derive(&a, variable)?,
-                            Some(self.call(outer, &[a])?),
-                        )
-                    }
-                    "trigamma" => self.simplify(
-                        "*",
-                        self.derive(&a, variable)?,
-                        Some(self.call("psigamma", &[a, self.integer(2)?])?),
-                    ),
-                    "psigamma" => {
-                        let order = match b {
-                            Some(order) => order,
-                            // psigamma(x)'s second argument defaults to 0;
-                            // d/dx psigamma(x, 0) is psigamma(x, 1L).
-                            None => self.integer(0)?,
-                        };
-                        let next = match self.numeric(&order)? {
-                            Some(order) => self.integer(
-                                (order as i32)
-                                    .checked_add(1)
-                                    .ok_or_else(|| invalid("derivative order overflow"))?,
-                            )?,
-                            None => self.call("+", &[order, self.integer(1)?])?,
-                        };
-                        self.simplify(
-                            "*",
-                            self.derive(&a, variable)?,
-                            Some(self.call("psigamma", &[a, next])?),
-                        )
-                    }
-                    "cosh" => self.simplify(
-                        "*",
-                        self.call("sinh", std::slice::from_ref(&a))?,
-                        Some(self.derive(&a, variable)?),
-                    ),
-                    "sinh" => self.simplify(
-                        "*",
-                        self.call("cosh", std::slice::from_ref(&a))?,
-                        Some(self.derive(&a, variable)?),
-                    ),
-                    "tanh" => {
-                        let cosine = self.call("cosh", std::slice::from_ref(&a))?;
-                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                        self.simplify("/", self.derive(&a, variable)?, Some(denominator))
-                    }
-                    "pnorm" => self.simplify(
-                        "*",
-                        self.call("dnorm", std::slice::from_ref(&a))?,
-                        Some(self.derive(&a, variable)?),
-                    ),
-                    "dnorm" => {
-                        let inner = self.simplify(
-                            "*",
-                            self.call("dnorm", std::slice::from_ref(&a))?,
-                            Some(self.derive(&a, variable)?),
-                        )?;
-                        let negated = self.simplify("-", a, None)?;
-                        self.simplify("*", negated, Some(inner))
-                    }
-                    "asin" => {
-                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                        let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
-                        let root = self.call("sqrt", &[radicand])?;
-                        self.simplify("/", self.derive(&a, variable)?, Some(root))
-                    }
-                    "acos" => {
-                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                        let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
-                        let root = self.call("sqrt", &[radicand])?;
-                        let quotient =
-                            self.simplify("/", self.derive(&a, variable)?, Some(root))?;
-                        self.simplify("-", quotient, None)
-                    }
-                    "atan" => {
-                        let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
-                        let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
-                        self.simplify("/", self.derive(&a, variable)?, Some(denominator))
-                    }
-                    "expm1" => self.simplify(
-                        "*",
-                        self.call("exp", std::slice::from_ref(&a))?,
-                        Some(self.derive(&a, variable)?),
-                    ),
-                    "log1p" => {
-                        let derived = self.derive(&a, variable)?;
-                        let denominator = self.simplify("+", self.scalar(1.)?, Some(a))?;
-                        self.simplify("/", derived, Some(denominator))
-                    }
-                    "log2" | "log10" => {
-                        let base = if function == "log2" { 2. } else { 10. };
-                        let derived = self.derive(&a, variable)?;
-                        let log_base =
-                            self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
-                        let denominator = self.simplify("*", a, Some(log_base))?;
-                        self.simplify("/", derived, Some(denominator))
-                    }
-                    "cospi" => {
-                        let factor = self.simplify(
-                            "*",
-                            self.symbol("pi")?,
-                            Some(self.derive(&a, variable)?),
-                        )?;
-                        let negated = self.simplify("-", factor, None)?;
-                        self.simplify(
-                            "*",
-                            self.call("sinpi", std::slice::from_ref(&a))?,
-                            Some(negated),
-                        )
-                    }
-                    "sinpi" => {
-                        let factor = self.simplify(
-                            "*",
-                            self.symbol("pi")?,
-                            Some(self.derive(&a, variable)?),
-                        )?;
-                        self.simplify(
-                            "*",
-                            self.call("cospi", std::slice::from_ref(&a))?,
-                            Some(factor),
-                        )
-                    }
-                    "tanpi" => {
-                        let numerator = self.simplify(
-                            "*",
-                            self.symbol("pi")?,
-                            Some(self.derive(&a, variable)?),
-                        )?;
-                        let cosine = self.call("cospi", std::slice::from_ref(&a))?;
-                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                        self.simplify("/", numerator, Some(denominator))
-                    }
-                    "lfactorial" => {
-                        let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
-                        let digamma = self.call("digamma", &[shifted])?;
-                        self.simplify("*", self.derive(&a, variable)?, Some(digamma))
-                    }
-                    "factorial" => {
-                        let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
-                        let digamma = self.call("digamma", &[shifted])?;
-                        let product = self.simplify("*", expression.clone(), Some(digamma))?;
-                        self.simplify("*", self.derive(&a, variable)?, Some(product))
-                    }
-                    _ => Err(invalid(format!(
-                        "Function '{}' is not in the derivatives table",
-                        derivative_function_name(&function)
-                    ))),
+            "/" => {
+                let b = binary()?;
+                let first = self.simplify("/", self.derive(&a, variable)?, Some(b.clone()))?;
+                let numerator = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
+                let denominator = self.simplify("^", b, Some(self.scalar(2.)?))?;
+                let second = self.simplify("/", numerator, Some(denominator))?;
+                self.simplify("-", first, Some(second))
+            }
+            "^" => {
+                let b = binary()?;
+                if matches!(
+                    b.typeof_(),
+                    SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
+                ) {
+                    let exponent = self.numeric(&b)?.unwrap_or(crate::sexp::ffi::NA_REAL);
+                    let lowered = if crate::sexp::ffi::is_na_real(exponent) {
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        exponent - 1.
+                    };
+                    let first = self.derive(&a, variable)?;
+                    let power = self.simplify("^", a, Some(self.scalar(lowered)?))?;
+                    let product = self.simplify("*", first, Some(power))?;
+                    self.simplify("*", b, Some(product))
+                } else {
+                    // Preserve GNU's construction order and simplification rules:
+                    // a^(b-1) * (b * D(a)) + a^b * (log(a) * D(b)).
+                    let exponent = self.simplify("-", b.clone(), Some(self.scalar(1.)?))?;
+                    let power = self.simplify("^", a.clone(), Some(exponent))?;
+                    let factor = self.simplify("*", b.clone(), Some(self.derive(&a, variable)?))?;
+                    let first = self.simplify("*", power, Some(factor))?;
+                    let power = self.simplify("^", a.clone(), Some(b.clone()))?;
+                    let log = self.call("log", &[a])?;
+                    let factor = self.simplify("*", log, Some(self.derive(&b, variable)?))?;
+                    let second = self.simplify("*", power, Some(factor))?;
+                    self.simplify("+", first, Some(second))
                 }
             }
-            _ => Err(invalid("invalid derivative expression")),
+            "sin" => self.simplify(
+                "*",
+                self.call("cos", std::slice::from_ref(&a))?,
+                Some(self.derive(&a, variable)?),
+            ),
+            "cos" => self.simplify(
+                "*",
+                self.call("sin", std::slice::from_ref(&a))?,
+                Some(self.simplify("-", self.derive(&a, variable)?, None)?),
+            ),
+            "tan" => {
+                let numerator = self.derive(&a, variable)?;
+                let cosine = self.call("cos", &[a])?;
+                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                self.simplify("/", numerator, Some(denominator))
+            }
+            "exp" => self.simplify("*", expression.clone(), Some(self.derive(&a, variable)?)),
+            "log" => {
+                if call.arguments.len() != 1 {
+                    return Err(invalid(
+                        "only single-argument calls to log() are supported;\n  maybe use log(x,a) = log(x)/log(a)",
+                    ));
+                }
+                self.simplify("/", self.derive(&a, variable)?, Some(a))
+            }
+            "sqrt" => {
+                let power = self.call("^", &[a, self.scalar(0.5)?])?;
+                self.derive(&power, variable)
+            }
+            "gamma" => {
+                let digamma = self.call("digamma", std::slice::from_ref(&a))?;
+                let product = self.simplify("*", expression.clone(), Some(digamma))?;
+                self.simplify("*", self.derive(&a, variable)?, Some(product))
+            }
+            "lgamma" | "digamma" => {
+                let outer = if function == "lgamma" {
+                    "digamma"
+                } else {
+                    "trigamma"
+                };
+                self.simplify(
+                    "*",
+                    self.derive(&a, variable)?,
+                    Some(self.call(outer, &[a])?),
+                )
+            }
+            "trigamma" => self.simplify(
+                "*",
+                self.derive(&a, variable)?,
+                Some(self.call("psigamma", &[a, self.integer(2)?])?),
+            ),
+            "psigamma" => {
+                let order = match b {
+                    Some(order) => order,
+                    // psigamma(x)'s second argument defaults to 0;
+                    // d/dx psigamma(x, 0) is psigamma(x, 1L).
+                    None => self.integer(0)?,
+                };
+                let next = match self.numeric(&order)? {
+                    Some(order) => self.integer(
+                        (order as i32)
+                            .checked_add(1)
+                            .ok_or_else(|| invalid("derivative order overflow"))?,
+                    )?,
+                    None => self.call("+", &[order, self.integer(1)?])?,
+                };
+                self.simplify(
+                    "*",
+                    self.derive(&a, variable)?,
+                    Some(self.call("psigamma", &[a, next])?),
+                )
+            }
+            "cosh" => self.simplify(
+                "*",
+                self.call("sinh", std::slice::from_ref(&a))?,
+                Some(self.derive(&a, variable)?),
+            ),
+            "sinh" => self.simplify(
+                "*",
+                self.call("cosh", std::slice::from_ref(&a))?,
+                Some(self.derive(&a, variable)?),
+            ),
+            "tanh" => {
+                let cosine = self.call("cosh", std::slice::from_ref(&a))?;
+                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                self.simplify("/", self.derive(&a, variable)?, Some(denominator))
+            }
+            "pnorm" => self.simplify(
+                "*",
+                self.call("dnorm", std::slice::from_ref(&a))?,
+                Some(self.derive(&a, variable)?),
+            ),
+            "dnorm" => {
+                let inner = self.simplify(
+                    "*",
+                    self.call("dnorm", std::slice::from_ref(&a))?,
+                    Some(self.derive(&a, variable)?),
+                )?;
+                let negated = self.simplify("-", a, None)?;
+                self.simplify("*", negated, Some(inner))
+            }
+            "asin" => {
+                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
+                let root = self.call("sqrt", &[radicand])?;
+                self.simplify("/", self.derive(&a, variable)?, Some(root))
+            }
+            "acos" => {
+                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                let radicand = self.simplify("-", self.scalar(1.)?, Some(square))?;
+                let root = self.call("sqrt", &[radicand])?;
+                let quotient = self.simplify("/", self.derive(&a, variable)?, Some(root))?;
+                self.simplify("-", quotient, None)
+            }
+            "atan" => {
+                let square = self.simplify("^", a.clone(), Some(self.scalar(2.)?))?;
+                let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
+                self.simplify("/", self.derive(&a, variable)?, Some(denominator))
+            }
+            "expm1" => self.simplify(
+                "*",
+                self.call("exp", std::slice::from_ref(&a))?,
+                Some(self.derive(&a, variable)?),
+            ),
+            "log1p" => {
+                let derived = self.derive(&a, variable)?;
+                let denominator = self.simplify("+", self.scalar(1.)?, Some(a))?;
+                self.simplify("/", derived, Some(denominator))
+            }
+            "log2" | "log10" => {
+                let base = if function == "log2" { 2. } else { 10. };
+                let derived = self.derive(&a, variable)?;
+                let log_base = self.call("log", std::slice::from_ref(&self.scalar(base)?))?;
+                let denominator = self.simplify("*", a, Some(log_base))?;
+                self.simplify("/", derived, Some(denominator))
+            }
+            "cospi" => {
+                let factor =
+                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
+                let negated = self.simplify("-", factor, None)?;
+                self.simplify(
+                    "*",
+                    self.call("sinpi", std::slice::from_ref(&a))?,
+                    Some(negated),
+                )
+            }
+            "sinpi" => {
+                let factor =
+                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
+                self.simplify(
+                    "*",
+                    self.call("cospi", std::slice::from_ref(&a))?,
+                    Some(factor),
+                )
+            }
+            "tanpi" => {
+                let numerator =
+                    self.simplify("*", self.symbol("pi")?, Some(self.derive(&a, variable)?))?;
+                let cosine = self.call("cospi", std::slice::from_ref(&a))?;
+                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                self.simplify("/", numerator, Some(denominator))
+            }
+            "lfactorial" => {
+                let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                let digamma = self.call("digamma", &[shifted])?;
+                self.simplify("*", self.derive(&a, variable)?, Some(digamma))
+            }
+            "factorial" => {
+                let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
+                let digamma = self.call("digamma", &[shifted])?;
+                let product = self.simplify("*", expression.clone(), Some(digamma))?;
+                self.simplify("*", self.derive(&a, variable)?, Some(product))
+            }
+            _ => Err(invalid(format!(
+                "Function '{}' is not in the derivatives table",
+                derivative_function_name(&function)
+            ))),
         }
     }
 
@@ -1003,6 +1042,54 @@ mod scratch_admission_tests {
     }
 
     #[test]
+    fn additive_frame_denial_releases_workspace_and_allows_recovery() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture("quote(x + y)")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let variable = expression
+            .try_cdr()
+            .unwrap()
+            .try_car()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let kernel = Kernel::new(access, |_, _| Err(invalid("unused installer")));
+            let (allocated, held) = access
+                .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+            let allowance =
+                size_of::<NodeLink>() + 4 * size_of::<Value>() + size_of::<AdditiveFrame>() - 1;
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(allocated + held + allowance, 0))
+            })?;
+            let error = kernel.derive(&expression, &variable).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("cannot retain derivative frames"),
+                "{error}"
+            );
+            assert!(kernel.active.borrow().is_empty());
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                held + size_of::<NodeLink>()
+            );
+            access.with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))?;
+            assert_eq!(kernel.derive(&expression, &variable)?.try_real_elt(0)?, 1.0);
+            drop(kernel);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
+
+    #[test]
     fn call_snapshot_admits_native_scratch_and_releases_its_ticket() {
         let mut session = RSession::new_for_gc_tests();
         let expression = session
@@ -1096,7 +1183,11 @@ mod scratch_admission_tests {
         crate::sexp::owner::with_runtime(&owner, |access| {
             let kernel = Kernel::new(access, |_, _| Err(invalid("unused test installer")));
             let child = expression.try_cdr()?.try_car()?.into_owned()?;
-            let _outer = kernel.enter(&expression)?;
+            let _outer = PathRange {
+                active: &kernel.active,
+                start: 0,
+            };
+            kernel.push_active(&expression)?;
             assert_eq!(kernel.active.borrow().capacity(), 1);
             let old_bytes = size_of::<NodeLink>();
             assert_eq!(
@@ -1110,7 +1201,7 @@ mod scratch_admission_tests {
             access.with_arena(|arena| {
                 arena.set_budget(ArenaBudget::new(allocated + held + 2 * old_bytes - 1, 0));
             })?;
-            let denied = kernel.enter(&child).err().unwrap();
+            let denied = kernel.push_active(&child).err().unwrap();
             assert!(
                 denied
                     .to_string()
@@ -1126,7 +1217,11 @@ mod scratch_admission_tests {
             );
 
             access.with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))?;
-            let _inner = kernel.enter(&child)?;
+            let _inner = PathRange {
+                active: &kernel.active,
+                start: 1,
+            };
+            kernel.push_active(&child)?;
             assert_eq!(kernel.active.borrow().len(), 2);
             assert_eq!(kernel.active.borrow().capacity(), 2);
             let new_bytes = 2 * size_of::<NodeLink>();
