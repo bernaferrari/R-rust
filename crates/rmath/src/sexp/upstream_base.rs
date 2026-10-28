@@ -1197,18 +1197,22 @@ unsafe fn load_fortran_symbol_bindings(base_env: SEXP) {
 /// that are still unbound into `base_env`. Repeats until a pass binds nothing
 /// new; only expressions that failed in the previous pass are re-evaluated.
 unsafe fn load_files(base_env: SEXP, staging: SEXP) {
+    unsafe { load_file_sources(base_env, staging, UPSTREAM_FILES) }
+}
+
+unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile]) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
-        let swallow = error_swallowing_handler(staging);
-        if swallow.is_null() {
+        let Some((swallow, failed_marker)) = error_swallowing_handler(staging) else {
             return;
-        }
+        };
         let _swallow = crate::sexp::protect::protect(swallow);
+        let _failed_marker = crate::sexp::protect::protect(failed_marker);
         let try_catch = Rf_install_in_current("tryCatch");
-        let failed: Vec<Vec<bool>> = UPSTREAM_FILES.iter().map(|_| Vec::new()).collect();
+        let mut failed: Vec<Vec<bool>> = files.iter().map(|_| Vec::new()).collect();
         for pass in 0..MAX_PASSES {
             let mut bound_any = false;
-            for (index, file) in UPSTREAM_FILES.iter().enumerate() {
+            for (index, file) in files.iter().enumerate() {
                 if file.exports.iter().all(|name| defined_in(base_env, name)) {
                     continue;
                 }
@@ -1248,9 +1252,11 @@ unsafe fn load_files(base_env: SEXP, staging: SEXP) {
                     let _wrapped = crate::sexp::protect::protect(wrapped);
                     let evaluated =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                            let _ = crate::eval::eval::Rf_eval(wrapped, staging);
+                            crate::eval::eval::Rf_eval(wrapped, staging)
                         }));
-                    if evaluated.is_err() {
+                    if matches!(evaluated, Ok(value) if value == failed_marker) {
+                        failed_now[position] = true;
+                    } else if evaluated.is_err() {
                         // A failed load-time expression leaves that binding
                         // unbound; the fixpoint retries once its missing
                         // dependency may have appeared.
@@ -1259,6 +1265,7 @@ unsafe fn load_files(base_env: SEXP, staging: SEXP) {
                     }
                 }
                 bound_any |= copy_exports(base_env, staging, file.exports);
+                failed[index] = failed_now;
             }
             if !bound_any {
                 break;
@@ -1269,25 +1276,48 @@ unsafe fn load_files(base_env: SEXP, staging: SEXP) {
     }
 }
 
-/// `function(e) NULL` evaluated in `staging`: the error handler installed for
-/// every load-time expression so failures are silent and recoverable.
-unsafe fn error_swallowing_handler(staging: SEXP) -> SEXP {
+/// Build the error handler and a private environment sentinel used to track
+/// failed load-time expressions across fixpoint passes.
+unsafe fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
     unsafe {
+        let marker = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_EmptyEnv(),
+            R_NilValue(),
+        );
+        if marker.is_null() {
+            return None;
+        }
+        let _marker = crate::sexp::protect::protect(marker);
+        // The handler closes over a private child of `staging`, so load
+        // expressions cannot accidentally return the failure sentinel as a
+        // normal value.
+        let handler_env =
+            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), staging, R_NilValue());
+        if handler_env.is_null() {
+            return None;
+        }
+        let _handler_env = crate::sexp::protect::protect(handler_env);
+        let marker_symbol = Rf_install_in_current(".__rport_upstream_error_marker__");
+        defineVar(marker_symbol, marker, handler_env);
         let parsed = crate::sexp::memory::with_arena(|arena| {
             crate::eval::parser::parse_expressions(
-                "function(e) NULL",
+                "function(e) .__rport_upstream_error_marker__",
                 arena,
                 crate::eval::parser::active_factory(),
             )
         });
         crate::eval::parser::flush_literal_warnings();
         let Ok(exprs) = parsed else {
-            return std::ptr::null_mut();
+            return None;
         };
         if exprs.len() != 1 {
-            return std::ptr::null_mut();
+            return None;
         }
-        crate::eval::eval::Rf_eval(exprs[0].clone().as_raw(), staging)
+        Some((
+            crate::eval::eval::Rf_eval(exprs[0].clone().as_raw(), handler_env),
+            marker,
+        ))
     }
 }
 
@@ -1758,6 +1788,61 @@ mod lazy_native_symbol_tests {
                     .character("live replacement")
                     .is_ok()
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod fixpoint_tests {
+    use super::*;
+
+    #[test]
+    fn failed_expressions_retry_without_replaying_successful_side_effects() {
+        static FILES: &[UpstreamFile] = &[
+            UpstreamFile {
+                source: concat!(
+                    "init_retry_count <<- init_retry_count + 1L\n",
+                    "init_retry_dependent <- init_retry_dependency\n",
+                ),
+                exports: &["init_retry_dependent"],
+            },
+            UpstreamFile {
+                source: "init_retry_dependency <- 42L\n",
+                exports: &["init_retry_dependency"],
+            },
+        ];
+
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        let (base_parity, _, _) = session.eval_script_with_output_capture(
+            "is.function(get('all.equal', baseenv())) && is.function(get('getNativeSymbolInfo', baseenv()))",
+        );
+        assert_eq!(base_parity.unwrap().try_logical_elt(0).unwrap(), 1);
+        let (initialized, _, _) = session.eval_script_with_output_capture("init_retry_count <- 0L");
+        assert!(initialized.is_ok());
+
+        session.with_active(|| unsafe {
+            let global = crate::sexp::globals::R_GlobalEnv();
+            let staging =
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), global, R_NilValue());
+            let _staging = crate::sexp::protect::protect(staging);
+            load_file_sources(global, staging, FILES);
+
+            let owner = session.owner_token().expect("test session owner");
+            let count = owner
+                .sexp(R_findVarInFrame(
+                    global,
+                    Rf_install_in_current("init_retry_count"),
+                ))
+                .expect("side-effect counter is bound");
+            assert_eq!(count.try_integer_elt(0).unwrap(), 1);
+
+            let dependent = owner
+                .sexp(R_findVarInFrame(
+                    global,
+                    Rf_install_in_current("init_retry_dependent"),
+                ))
+                .expect("dependent export is bound");
+            assert_eq!(dependent.try_integer_elt(0).unwrap(), 42);
         });
     }
 }
