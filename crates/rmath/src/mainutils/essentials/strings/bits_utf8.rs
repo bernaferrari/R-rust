@@ -289,11 +289,49 @@ pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
 pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        let m = arg_by_name_or_position(args, &["multiple"], 1);
-        let multiple = TYPEOF(m) == SEXPTYPE::LGLSXP && XLENGTH(m) > 0 && *LOGICAL(m) == TRUE;
-        let p = arg_by_name_or_position(args, &["allow_surrogate_pairs"], 2);
-        let s_pair = TYPEOF(p) == SEXPTYPE::LGLSXP && XLENGTH(p) > 0 && *LOGICAL(p) == TRUE;
+        let matched = crate::mainutils::match_mod::match_formal_slots(
+            crate::mainutils::errors::R_getCurrentCall(),
+            args,
+            &["x", "multiple", "allow_surrogate_pairs"],
+        );
+        let x = matched[0];
+        let m = matched[1];
+        let p = matched[2];
+        if x == crate::sexp::globals::R_MissingArg() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument \"x\" is missing, with no default",
+            );
+        }
+        let logical_flag = |value: SEXP, name: &str| -> bool {
+            if value == crate::sexp::globals::R_MissingArg() {
+                return false;
+            }
+            if value.is_null() || value == R_NilValue() {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    if name == "multiple" {
+                        "argument 'multiple' must be TRUE or FALSE"
+                    } else {
+                        "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
+                    },
+                );
+            }
+            let flag = crate::mainutils::coerce::asLogical(value);
+            if flag == crate::sexp::ffi::NA_LOGICAL {
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    if name == "multiple" {
+                        "argument 'multiple' must be TRUE or FALSE"
+                    } else {
+                        "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
+                    },
+                );
+            }
+            flag == TRUE
+        };
+        let multiple = logical_flag(m, "multiple");
+        let s_pair = logical_flag(p, "allow_surrogate_pairs");
         if crate::mainutils::apply::isFactor(x) != 0 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
